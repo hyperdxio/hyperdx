@@ -35,23 +35,16 @@ const HyperDXInitDefaultConfig = {
   tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
 };
 
-if (config.HDX_API_KEY) {
-  HyperDX.init({
-    ...HyperDXInitDefaultConfig,
-    apiKey: config.HDX_API_KEY,
-  });
-}
-
 export default function MyApp({ Component, pageProps }: AppProps) {
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     fetch('/api/config')
       .then(res => res.json())
-      .then(config => {
-        if (config?.apiKey) {
+      .then(_jsonData => {
+        if (_jsonData?.apiKey) {
           HyperDX.init({
             ...HyperDXInitDefaultConfig,
-            apiKey: config.apiKey,
+            apiKey: _jsonData.apiKey,
           });
         }
       })
