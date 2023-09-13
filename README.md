@@ -13,15 +13,15 @@ and session replays in one place. An open source and developer-friendly
 alternative to Datadog and New Relic.
 
 <p align="center">
-  <a href="https://www.hyperdx.io/docs">Documentation</a> • <a href="https://discord.gg/FErRRKU78j">Chat on Discord</a>  • <a href="https://api.hyperdx.io/login/demo">Live Demo</a>  • Bug Reports • Contributing
+  <a href="https://www.hyperdx.io/docs">Documentation</a> • <a href="https://discord.gg/FErRRKU78j">Chat on Discord</a>  • <a href="https://api.hyperdx.io/login/demo">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
 
 - 🕵️ Correlate end to end, go from browser session replay to logs and traces in
   just a few clicks
 - 🔥 Blazing fast performance powered by Clickhouse
-- 🔍 Intuitive full-text search and structured search syntax
+- 🔍 Intuitive full-text search and property search syntax (ex. `level:err`)
 - 🤖 Automatically cluster event patterns from billions of events
-- 📈 Dashboard high cardinality events without learning a complex query language
+- 📈 Dashboard high cardinality events without a complex query language
 - 🔔 Set up alerts in just a few clicks
 - `{` Automatic JSON/structured log parsing
 - 🔭 OpenTelemetry native
@@ -133,10 +133,10 @@ OpenTelemetry collector spun up at `http://localhost:4318`.
 We welcome all contributions! There's many ways to contribute to the project,
 including but not limited to:
 
-- Opening a PR (Contribution Guide)
-- Submitting feature requests or bugs
+- Opening a PR ([Contribution Guide](./CONTRIBUTING.md))
+- [Submitting feature requests or bugs](https://github.com/hyperdxio/hyperdx/issues/new)
 - Improving our product or contribution documentation
-- Voting on open issues or contributing use cases to a feature request
+- Voting on [open issues](https://github.com/hyperdxio/hyperdx/issues) or contributing use cases to a feature request
 
 ## Motivation
 
@@ -163,7 +163,7 @@ we're doing!
 
 HyperDX is open core, with most of our features available here under an MIT
 license. We have a cloud-hosted version available at
-[hyperdx.io](https://hyperdx.io) with a few additional features beyond what's
+[hyperdx.io](https://hyperdx.io) with a few [additional features](https://www.hyperdx.io/docs/oss-vs-cloud) beyond what's
 offered in the open source version.
 
 Our cloud hosted version exists so that we can build a sustainable business and
@@ -174,7 +174,7 @@ features in the future. In the meantime, we're highly aligned with Gitlab's
 
 ## Contact
 
-- Open an Issue
+- [Open an Issue](https://github.com/hyperdxio/hyperdx/issues/new)
 - [Discord](https://discord.gg/FErRRKU78j)
 - [Email](mailto:support@hyperdx.io)
 
