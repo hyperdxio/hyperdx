@@ -163,7 +163,7 @@ we're doing!
 
 HyperDX is open core, with most of our features available here under an MIT
 license. We have a cloud-hosted version available at
-[hyperdx.io](https://hyperdx.io) with a few additional features beyond what's
+[hyperdx.io](https://hyperdx.io) with a few [additional features](https://www.hyperdx.io/docs/oss-vs-cloud) beyond what's
 offered in the open source version.
 
 Our cloud hosted version exists so that we can build a sustainable business and
