@@ -30,10 +30,10 @@ ci-int:
 
 .PHONY: build-and-push-ghcr
 build-and-push-ghcr:
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics  --target dev --push &
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor  --target dev --push &
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector  --target dev --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner  --target dev --push &
-	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./docker/hostmetrics/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics  --target dev --push &
-	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./docker/ingestor/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor  --target dev --push &
-	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./docker/otel-collector/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector  --target dev --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api  --target dev --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app  --target prod --push
 
