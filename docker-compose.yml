@@ -12,7 +12,7 @@ services:
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_LOG_LEVEL: ERROR
       OTEL_SERVICE_NAME: hdx-oss-dev-miner
     volumes:
@@ -154,7 +154,7 @@ services:
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318'
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-dev-task-check-alerts'
       REDIS_URL: redis://redis:6379
     volumes:
@@ -193,7 +193,7 @@ services:
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318'
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-dev-api'
       PORT: 8000
       REDIS_URL: redis://redis:6379
