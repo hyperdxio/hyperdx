@@ -212,7 +212,7 @@ services:
     build:
       context: .
       dockerfile: ./packages/app/Dockerfile
-      target: prod
+      target: dev
       cache_from:
         - ${IMAGE_NAME}:${IMAGE_VERSION}-app
     ports:
