@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "miner"
+version = "0.1.0"
+description = ""
+authors = ["Mike Shi <hi@michaelshi.me>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+drain3 = "^0.9.11"
+fastapi = "^0.98.0"
+gunicorn = "^20.1.0"
+uvicorn = "^0.22.0"
+hyperdx-opentelemetry = "0.0.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

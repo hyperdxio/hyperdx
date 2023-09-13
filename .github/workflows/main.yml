@@ -1,0 +1,49 @@
+name: Main
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    timeout-minutes: 8
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install root dependencies
+        uses: bahmutov/npm-install@v1
+      - name: Install core libs
+        run: sudo apt-get install --yes curl bc
+      - name: Install vector
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | bash -s -- -y
+          ~/.vector/bin/vector --version
+          ln -s ~/.vector/bin/vector /usr/local/bin/vector
+      - name: Run lint + type check
+        run: yarn ci:lint
+  integration:
+    timeout-minutes: 8
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+      - name: Expose GitHub Runtime
+        uses: crazy-max/ghaction-github-runtime@v2
+      - name: Build images
+        run: |
+          docker buildx create --use --driver=docker-container
+          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+      - name: Run integration tests
+        run: yarn ci:int

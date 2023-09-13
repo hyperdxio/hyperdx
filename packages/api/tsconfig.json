@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "importHelpers": true,
+    "lib": ["ES2022", "dom"],
+    "module": "Node16",
+    "moduleResolution": "node",
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "build",
+    "resolveJsonModule": true,
+    "skipLibCheck": false,
+    "sourceMap": true,
+    "strict": true,
+    "strictNullChecks": false,
+    "target": "ES2022"
+  },
+  "include": ["src"]
+}

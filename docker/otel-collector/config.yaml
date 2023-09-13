@@ -1,0 +1,86 @@
+receivers:
+  # Data sources: traces
+  zipkin:
+    endpoint: '0.0.0.0:9411'
+  # Data sources: logs
+  fluentforward:
+    endpoint: '0.0.0.0:24225'
+  # Data sources: traces, metrics, logs
+  otlp:
+    protocols:
+      grpc:
+        include_metadata: true
+        endpoint: '0.0.0.0:4317'
+      http:
+        cors:
+          allowed_origins: ['*']
+          allowed_headers: ['*']
+        include_metadata: true
+        endpoint: '0.0.0.0:4318'
+processors:
+  resourcedetection:
+    detectors:
+      - env
+      - system
+      - docker
+    timeout: 5s
+    override: false
+  attributes/attachHdxKey:
+    actions:
+      - key: __HDX_API_KEY
+        from_context: authorization
+        action: upsert
+  batch:
+  memory_limiter:
+    # 80% of maximum memory up to 2G
+    limit_mib: 1500
+    # 25% of limit up to 2G
+    spike_limit_mib: 512
+    check_interval: 5s
+exporters:
+  logging:
+    loglevel: debug
+  logzio/traces:
+    account_token: 'X' # required but we don't use it
+    endpoint: 'http://ingestor:8002?hdx_platform=otel-traces'
+  logzio/logs:
+    account_token: 'X' # required but we don't use it
+    endpoint: 'http://ingestor:8002?hdx_platform=otel-logs'
+  # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter
+  splunk_hec:
+    token: 'X' # required but we don't use it
+    # endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
+    endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
+    # HTTP timeout when sending data. Defaults to 10s.
+    timeout: 10s
+    max_content_length_logs: 0
+extensions:
+  health_check:
+    endpoint: :13133
+  pprof:
+    endpoint: :1888
+  zpages:
+    endpoint: :55679
+  memory_ballast:
+    # Memory Ballast size should be max 1/3 to 1/2 of memory.
+    size_mib: 683
+service:
+  telemetry:
+    metrics:
+      address: ':8888'
+    logs:
+      level: 'debug'
+  extensions: [health_check, zpages, memory_ballast]
+  pipelines:
+    traces:
+      receivers: [otlp, zipkin]
+      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      exporters: [logzio/traces, logging]
+    metrics:
+      receivers: [otlp]
+      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      exporters: [splunk_hec, logging]
+    logs:
+      receivers: [otlp, fluentforward]
+      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      exporters: [logzio/logs, logging]

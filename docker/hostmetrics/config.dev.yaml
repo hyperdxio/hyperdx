@@ -1,0 +1,37 @@
+receivers:
+  redis:
+    endpoint: redis:6379
+    collection_interval: 5s
+  mongodb:
+    hosts:
+      - endpoint: db:27017
+    collection_interval: 5s
+    initial_delay: 1s
+    tls:
+      insecure: true
+      insecure_skip_verify: true
+  hostmetrics:
+    collection_interval: 5s
+    scrapers:
+      cpu:
+      load:
+      memory:
+      disk:
+      filesystem:
+      network:
+exporters:
+  logging:
+    loglevel: debug
+  otlphttp:
+    endpoint: 'http://otel:4318'
+    headers:
+      authorization: ${HYPERDX_API_KEY}
+    compression: gzip
+service:
+  telemetry:
+    logs:
+      level: 'debug'
+  pipelines:
+    metrics:
+      receivers: [mongodb, redis, hostmetrics]
+      exporters: [otlphttp, logging]

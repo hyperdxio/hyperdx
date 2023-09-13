@@ -1,0 +1,780 @@
+$text-muted: #c4c4c4;
+$text-purple: #9357ff; // This isn't a bootstrap variable
+$text-light: #f8f8f2;
+$green: #50fa7b;
+$red: #ff5d5b;
+$blue: #3788f6;
+$purple: #8f57f3;
+
+$gray-100: #f8f9fa;
+$body-color: $gray-100;
+
+$bg-hdx-dark: #1a1d23;
+$bg-dark-grey: #1f2429;
+$bg-grey: #21272e;
+$bg-purple: #2e273b;
+$bg-purple-active: #4a4eb5;
+$body-bg: #0f1216;
+$code-color: #4bb74a;
+
+$info: $purple;
+
+$spacer: 1rem;
+$spacers: (
+  0: 0,
+  0\.5: $spacer * 0.125,
+  1: $spacer * 0.25,
+  2: $spacer * 0.5,
+  2\.5: $spacer * 0.75,
+  3: $spacer,
+  4: $spacer * 1.5,
+  4\.5: $spacer * 2,
+  5: $spacer * 3,
+  6: $spacer * 4,
+  7: $spacer * 5,
+  8: $spacer * 8,
+  10: $spacer * 10,
+  14: $spacer * 14,
+  16: $spacer * 16,
+);
+
+$navbar-dark-active-color: $green;
+$navbar-dark-color: rgba(#fff, 0.75);
+$navbar-dark-hover-color: rgba(#fff, 1);
+
+$dropdown-dark-bg: $bg-grey;
+
+$popover-bg: $bg-purple;
+
+$font-size-base: 1rem !default; // Assumes the browser default, typically `16px`
+
+$h1-font-size: $font-size-base * 2.5 !default;
+$h2-font-size: $font-size-base * 2 !default;
+$h3-font-size: $font-size-base * 1.75 !default;
+$h4-font-size: $font-size-base * 1.5 !default;
+$h5-font-size: $font-size-base * 1.25 !default;
+$h6-font-size: $font-size-base !default;
+// scss-docs-end font-variables
+
+// scss-docs-start font-sizes
+$font-sizes: (
+  1: $h1-font-size,
+  2: $h2-font-size,
+  3: $h3-font-size,
+  4: $h4-font-size,
+  5: $h5-font-size,
+  5\.5: $font-size-base * 1.125,
+  6: $h6-font-size,
+  7: $font-size-base * 0.875,
+  7\.5: $font-size-base * 0.8125,
+  8: $font-size-base * 0.75,
+  8\.5: $font-size-base * 0.625,
+  9: $font-size-base * 0.5,
+) !default;
+// scss-docs-end font-sizes
+
+$input-bg: #ffffff1a;
+$input-border-width: 0px;
+$input-group-addon-bg: $input-bg;
+
+$form-select-indicator-color: $body-color;
+
+$accordion-button-bg: $bg-purple;
+$accordion-button-active-bg: $bg-purple-active;
+$accordion-button-active-color: $body-color;
+$accordion-bg: $body-bg;
+$accordion-border-radius: 5px;
+
+@import '~bootstrap/scss/bootstrap';
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;700&display=swap');
+
+.inter {
+  font-family: Inter, Roboto, 'Helvetica Neue', sans-serif;
+}
+.roboto {
+  font-family: 'Roboto', sans-serif;
+}
+.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+html,
+body,
+html[class~='dark'] body {
+  background-color: $body-bg;
+}
+.bg-body {
+  background-color: $body-bg;
+}
+.bg-hdx-dark {
+  background-color: $bg-hdx-dark;
+}
+
+.bg-grey {
+  background-color: $bg-grey;
+}
+
+.bg-light-grey {
+  background-color: #37414d;
+}
+.bg-light-grey-hover {
+  background-color: #37414d;
+  &:hover {
+    background-color: #4e5c6d;
+  }
+}
+
+.bg-inherit {
+  background-color: inherit;
+}
+
+.bg-dark-grey {
+  background-color: $bg-dark-grey;
+}
+.bg-default-dark-grey-hover {
+  &:hover {
+    background-color: $bg-dark-grey;
+  }
+}
+
+.border-grey-top {
+  border-top: 1px solid #393939;
+}
+.border-grey-bottom {
+  border-bottom: 1px solid #393939;
+}
+.border-grey {
+  border-color: #393939 !important;
+}
+.border-grey-gradient {
+  box-shadow: 0 0 0 1px rgb(82 82 82 / 60%);
+}
+
+.fw-500 {
+  font-weight: 500;
+}
+
+// Darker than text-muted
+.text-gray-600 {
+  color: $gray-600;
+}
+
+.text-muted-hover {
+  color: $text-muted;
+  transition: color 0.2s ease;
+  &:hover {
+    color: #e5e5e5;
+  }
+}
+
+.text-muted-hover-black {
+  color: $text-muted;
+  transition: color 0.2s ease;
+  &:hover {
+    color: black;
+  }
+}
+
+.text-white-hover {
+  color: $white;
+  transition: color 0.2s ease;
+  &:hover {
+    color: $text-muted;
+  }
+}
+
+.text-white-hover-green {
+  color: $white;
+  transition: color 0.2s ease;
+  &:hover {
+    color: $green;
+  }
+}
+
+.text-purple-hover {
+  color: $text-purple;
+  transition: color 0.2s ease;
+  &:hover {
+    color: darken($text-purple, 5);
+  }
+}
+
+.text-white-hover-success-trigger {
+  transition: color 0.2s ease;
+  .child-hover-trigger {
+    color: $white;
+  }
+  &:hover .child-hover-trigger {
+    color: $green;
+  }
+}
+
+:root {
+  --toastify-toast-width: 400px;
+  color-scheme: dark;
+}
+
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: $font-size-base * 0.875;
+}
+
+.accordion-button,
+.button,
+.form-control {
+  &:focus {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.cursor-grab {
+  cursor: grab;
+}
+
+.cursor-zoom-in {
+  cursor: zoom-in !important;
+}
+
+.cursor-crosshair {
+  cursor: crosshair !important;
+}
+
+.nav-link.active {
+  font-weight: 500;
+}
+
+.btn-brand-primary {
+  // @include button-variant(#fff, #8256d0, #ffffff00);
+  @include button-variant($purple, #ffffff00, white);
+  background-image: linear-gradient(
+    89.91deg,
+    $purple 0.06%,
+    #245ab2 99.9%
+  ) !important;
+  border: 0;
+  font-weight: 500;
+  box-shadow: 0px 0px 10px 0px #8256d0b2;
+
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.9;
+    border: 0;
+  }
+  &:focus {
+    box-shadow: none;
+  }
+}
+.btn-outline-brand-primary {
+  // @include button-outline-variant(white, white, #8256d0, #8256d0);
+  position: relative;
+
+  $border: 2px;
+  color: #fff;
+  background: $body-bg;
+  background-clip: padding-box; /* !importanté */
+  border: solid $border transparent; /* !importanté */
+
+  &:hover {
+    color: $text-muted;
+    &:before {
+      background: $purple;
+    }
+  }
+
+  &:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: -$border; /* !importanté */
+    border-radius: inherit; /* !importanté */
+    background: linear-gradient(89.91deg, $purple 0.06%, #245ab2 99.9%);
+    z-index: -1;
+  }
+
+  .btn-check:focus + &,
+  &:focus {
+    box-shadow: 0 0 0 $btn-focus-width rgba($purple, 0.5);
+  }
+}
+.btn-dark {
+  background: #151515af;
+  &:hover {
+    background: #4d4d4d;
+  }
+}
+
+.outline-green-gradient {
+  position: relative;
+
+  $border: 1px;
+  background-clip: padding-box; /* !importanté */
+  border: solid $border transparent; /* !importanté */
+
+  &:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: -$border; /* !importanté */
+    border-radius: inherit; /* !importanté */
+    background: linear-gradient(
+      300.9deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(0, 202, 51, 0.144) 100%
+    );
+    z-index: -1;
+  }
+}
+
+.primary-text {
+  background: linear-gradient(91.75deg, $purple 2.76%, #317bf5 93.09%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.fs-0 {
+  @include font-size(3rem);
+  @include rfs(3.5rem, line-height);
+  // @include font-size(3rem);
+  // font-size: 48px;
+}
+
+.bg-purple {
+  background-color: $bg-purple;
+}
+.bg-purple-active {
+  background-color: $bg-purple-active;
+}
+.bg-warning-transparent {
+  background-color: rgba($yellow, 0.15);
+}
+.bg-danger-transparent {
+  background-color: rgba($red, 0.15);
+}
+
+.transition-width {
+  transition: width 0.2s ease-in-out;
+}
+
+.transition-height {
+  transition: height 0.2s ease-in-out;
+}
+
+.min-height-65vh {
+  min-height: 65vh;
+}
+
+.gradient-divider {
+  height: 1px;
+  background: radial-gradient(
+    50% 243.6% at 50% 50%,
+    #3788f6 0%,
+    rgba(130, 86, 208, 0) 100%
+  );
+  opacity: 0.6;
+  transform: matrix(1, 0, 0, -1, 0, 0);
+}
+
+.opacity-90 {
+  opacity: 0.9;
+}
+
+.rotate-90 {
+  transform: rotate(90deg);
+}
+
+.rounded-10 {
+  border-radius: 25px;
+}
+
+/* Overwrite boostrap table */
+.table > :not(:first-child) {
+  border-top: none;
+}
+.table th {
+  font-weight: 500;
+}
+.table-dark {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: #2c3034;
+  --bs-table-striped-color: #fff;
+  --bs-table-active-bg: #373b3e;
+  --bs-table-active-color: #fff;
+  --bs-table-hover-bg: #323539;
+  --bs-table-hover-color: #fff;
+  color: #fff;
+  border-color: #373b3e;
+}
+
+/* Custom Components */
+
+// Make sure the rrweb mouse doesn't obscure elements below it for the inspector
+.replayer-mouse {
+  pointer-events: none;
+}
+
+.shimmer {
+  // animation : shimmer 1.5s infinite;
+  // background: linear-gradient(to right, #d8d8d8 4%, #a5a5a5 25%, #aaadaf 36%);
+  animation: shimmer-animation 3s infinite linear;
+  background: linear-gradient(270deg, #333 4%, #111 25%, #333 36%);
+  background-size: 1000px 100%;
+}
+@keyframes shimmer-animation {
+  0% {
+    // background-position: top left;
+    background-position: -1000px 0;
+    // background-position: -1000px 0;
+  }
+  100% {
+    // background-position: top right;
+    background-position: 1000px 0;
+  }
+}
+
+.spin-animate {
+  animation: spin 0.8s infinite linear;
+}
+@keyframes spin {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  40% {
+    transform: scale(1) rotate(160deg);
+  }
+  60% {
+    transform: scale(1) rotate(200deg);
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+  }
+}
+
+.PlaybarSliderParent {
+  &:hover {
+    .PlaybarSlider {
+      height: 12px;
+
+      .thumb {
+        margin-top: -3px;
+        height: 18px;
+        width: 18px;
+      }
+
+      .mark {
+        margin-top: 0px;
+        width: 12px;
+        height: 12px;
+        margin-left: 6px;
+      }
+    }
+  }
+
+  .PlaybarSlider {
+    transition: height 0.2s ease-in-out;
+    height: 6px;
+
+    .thumb {
+      transition: all 0.2s ease-in-out;
+
+      margin-top: -5px;
+      height: 16px;
+      width: 16px;
+    }
+
+    .mark {
+      transition: all 0.2s ease-in-out;
+
+      width: 8px;
+      height: 8px;
+      margin-top: -1px;
+      margin-left: -4px;
+    }
+  }
+}
+
+// Just for the price slider
+.PricingSlider {
+  height: 25px;
+  .thumb {
+    margin-top: -6px;
+  }
+}
+
+.TimelineView {
+  svg {
+    overflow: visible;
+  }
+}
+
+.TimelineEventTooltip {
+  .tooltip {
+    z-index: 9999 !important;
+  }
+  .tooltip-inner {
+    max-width: 300px;
+    background: $bg-purple-active;
+  }
+  .tooltip-arrow::before {
+    border-top-color: $bg-purple-active;
+  }
+}
+
+@keyframes animatedglow {
+  0% {
+    opacity: 0.1;
+  }
+  33% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+.backgroundGlow {
+  filter: blur(125px);
+  grid-area: 1/1/1/1;
+  animation-name: animatedglow;
+  animation-duration: 1.75s;
+  opacity: 0.3;
+  background: linear-gradient(
+    90deg,
+    rgba(80, 250, 219) 0.39%,
+    rgba(164, 42, 238, 0.8) 70%
+  );
+}
+
+.ds-table.table-hover {
+  tr.data-row:hover {
+    background-color: #151515af;
+  }
+}
+
+// Backend logs debugger UI
+.LogEvent {
+  code {
+    color: $text-muted;
+  }
+}
+
+.parent-hover-trigger {
+  .child-hover-trigger {
+    visibility: hidden;
+  }
+  &:hover .child-hover-trigger {
+    visibility: visible;
+  }
+}
+
+// Overwrite react-datepicker component
+div.react-datepicker {
+  border-radius: 5px;
+  // border: 2px solid $text-muted;
+  border: 0;
+  // box-shadow: 0px 5px 7px -4px $dark;
+  // background-color: $bg-dark;
+  background-color: $body-bg;
+
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+
+  // Calendar Month Header
+  .react-datepicker__header {
+    background-color: $bg-hdx-dark;
+  }
+
+  // Calendar Month Header Text
+  .react-datepicker__current-month {
+    color: $text-light;
+  }
+
+  // Calendar Day of the Week Header
+  .react-datepicker__day-name {
+    color: $text-muted;
+  }
+
+  // Calendar Day
+  .react-datepicker__day,
+  .react-datepicker__time-name {
+    color: $text-light;
+  }
+
+  // Selected Day
+  .react-datepicker__day--range-start,
+  .react-datepicker__day--keyboard-selected,
+  .react-datepicker__month-text--keyboard-selected,
+  .react-datepicker__quarter-text--keyboard-selected,
+  .react-datepicker__year-text--keyboard-selected {
+    background-color: $light !important;
+    color: $dark !important;
+  }
+
+  // Hovered Day
+  .react-datepicker__day:hover,
+  .react-datepicker__month-text:hover,
+  .react-datepicker__quarter-text:hover,
+  .react-datepicker__year-text:hover {
+    box-shadow: inset 0px 0px 0px 1px $light;
+    background-color: transparent;
+    color: $text-light;
+  }
+
+  // Inbetween Selected Date Range Dates
+  .react-datepicker__day--selected,
+  .react-datepicker__day--in-selecting-range,
+  .react-datepicker__day--in-range,
+  .react-datepicker__month-text--selected,
+  .react-datepicker__month-text--in-selecting-range,
+  .react-datepicker__month-text--in-range,
+  .react-datepicker__quarter-text--selected,
+  .react-datepicker__quarter-text--in-selecting-range,
+  .react-datepicker__quarter-text--in-range,
+  .react-datepicker__year-text--selected,
+  .react-datepicker__year-text--in-selecting-range,
+  .react-datepicker__year-text--in-range {
+    background-color: $bg-grey;
+  }
+
+  .react-datepicker__day--today {
+    color: $green;
+  }
+
+  // Disabled dates
+  .react-datepicker__day--disabled {
+    color: $text-muted;
+    &:hover {
+      color: $text-muted;
+      box-shadow: none;
+    }
+  }
+
+  // Better center month navigation arrows
+  .react-datepicker__navigation-icon {
+    font-size: 12px;
+  }
+}
+
+.ds-select {
+  &.input-bg .ds-react-select__control {
+    background: $input-bg;
+  }
+
+  .ds-react-select__control {
+    // background: $bg-dark;
+    background: transparent;
+    border: 1px solid #212223;
+    // @apply bg-white dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500;
+  }
+
+  .ds-react-select__control--is-focused {
+    // @apply border-neutral-500 hover:border-neutral-500 dark:border-neutral-400 dark:hover:border-neutral-400 shadow-none;
+  }
+
+  .ds-react-select__menu {
+    background: $bg-hdx-dark;
+    border: 1px solid $text-muted;
+    // @apply bg-neutral-100 dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-600;
+  }
+
+  .ds-react-select__option {
+    color: $text-light;
+    // background: $bg-dark;
+    // @apply text-neutral-600 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:hover:bg-neutral-800;
+  }
+  .ds-react-select__option--is-focused {
+    background: $gray-900;
+  }
+  .ds-react-select__multi-value {
+    background: $gray-900;
+
+    .ds-react-select__multi-value__label {
+      color: $text-light;
+    }
+  }
+
+  .ds-react-select__indicator-separator {
+    width: 0;
+  }
+  .ds-react-select__indicator {
+    color: $text-muted;
+  }
+
+  .ds-react-select__input-container,
+  .ds-react-select__placeholder,
+  .ds-react-select__single-value {
+    // @apply text-neutral-600 dark:text-neutral-200;
+    color: $text-muted;
+    // background: $bg-dark;
+    background: transparent;
+  }
+}
+
+// React Grid for Dashboarding
+.react-grid-item.react-grid-placeholder {
+  // Override the default placeholder color from red
+  background: $green !important;
+  opacity: 0.1 !important;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-color: rgba($green, 0.4) !important;
+  width: 7px;
+  height: 7px;
+}
+
+// Nextra Overrides
+.nextra-toc,
+.nextra-sidebar-container {
+  font-family: 'Roboto', sans-serif;
+}
+
+// custom overrides for jsontree
+.react-json-tree {
+  & > ul {
+    width: 100%;
+    word-break: break-all;
+  }
+}
+
+// recharts overrides
+.recharts-default-legend {
+  text-align: left !important;
+}
+.recharts-legend-item {
+  font-size: 0.75rem;
+}
+
+.white-text-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #c1c1c1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-fill-color: transparent;
+}
+// For the landing green->purple bg gradient card
+.fancy-card-bg {
+  background: radial-gradient(
+        79.84% 219.18% at 89.97% 87.4%,
+        rgba(80, 250, 219, 0.06) 0%,
+        rgba(164, 42, 238, 0.051) 100%
+      )
+      /* warning: gradient uses a rotation that is not supported by CSS and may not behave as expected */,
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.075) 0%,
+      rgba(255, 255, 255, 0.045) 100%
+    );
+  border-radius: 4px;
+}

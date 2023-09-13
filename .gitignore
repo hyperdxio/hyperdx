@@ -1,0 +1,56 @@
+# misc
+**/.DS_Store
+**/*.pem
+**/keys
+
+# logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/lerna-debug.log*
+
+# dotenv environment variable files
+**/.env
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/.env.local
+
+# Next.js build output
+packages/app/.next
+packages/app/.pnp
+packages/app/.pnp.js
+packages/app/.vercel
+packages/app/coverage
+packages/app/out
+
+# optional npm cache directory
+**/.npm
+
+# dependency directories
+**/node_modules
+
+# build output
+**/dist
+**/build
+**/tsconfig.tsbuildinfo
+
+# jest coverage report
+**/coverage
+
+# e2e
+e2e/cypress/screenshots/
+e2e/cypress/videos/
+e2e/cypress/results
+
+# scripts
+scripts/*.csv
+**/venv
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# docker
+docker-compose.prod.yml
+.volumes
