@@ -99,14 +99,14 @@ services:
     networks:
       - internal
   aggregator:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-aggregator
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     container_name: hdx-oss-dev-aggregator
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
       cache_from:
-        - ${IMAGE_NAME}:${IMAGE_VERSION}-aggregator
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-api
     ports:
       - 8001:8001
     environment:
@@ -129,14 +129,14 @@ services:
       - redis
       - ch-server
   task-check-alerts:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-task-check-alerts
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     container_name: hdx-oss-dev-task-check-alerts
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
       cache_from:
-        - ${IMAGE_NAME}:${IMAGE_VERSION}-task-check-alerts
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-api
     entrypoint: 'yarn'
     command: 'dev:task check-alerts'
     environment:

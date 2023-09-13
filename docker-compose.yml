@@ -78,7 +78,7 @@ services:
     networks:
       - internal
   aggregator:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-aggregator
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     container_name: hdx-oss-aggregator
     ports:
       - 8001:8001
@@ -102,7 +102,7 @@ services:
       - redis
       - ch-server
   task-check-alerts:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-task-check-alerts
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     container_name: hdx-oss-task-check-alerts
     entrypoint: 'yarn'
     command: 'dev:task check-alerts'
