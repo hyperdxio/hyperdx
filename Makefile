@@ -1,5 +1,13 @@
 LATEST_VERSION = $$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json)
 
+.PHONY: all
+all: install-tools
+
+.PHONY: install-tools
+install-tools:
+	yarn install
+	@echo "All tools installed"
+
 .PHONY: dev-lint
 dev-lint:
 	./docker/ingestor/run_linting.sh && yarn workspaces run lint
