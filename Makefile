@@ -1,11 +1,5 @@
 LATEST_VERSION = $$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json)
 
-.PHONY: install
-install:
-	yarn install
-	cp .shared.env .env
-	echo "IMAGE_VERSION=${LATEST_VERSION}" >> .env
-
 .PHONY: dev-lint
 dev-lint:
 	./docker/ingestor/run_linting.sh && yarn workspaces run lint
@@ -26,5 +20,5 @@ ci-int:
 build-and-push-ghcr:
 	cp .shared.env .ghcr.env
 	echo "IMAGE_VERSION=${LATEST_VERSION}" >> .ghcr.env
-	docker compose --env-file .ghcr.env -f docker-compose.yml build
-	docker compose --env-file .ghcr.env -f docker-compose.yml push
+	DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose --env-file .ghcr.env -f docker-compose.yml build
+	DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose --env-file .ghcr.env -f docker-compose.yml push

@@ -57,12 +57,6 @@ cloning this repository, simply start the stack with:
 docker compose up
 ```
 
-Or start with pre-built images:
-
-```bash
-make install && docker compose up --no-build
-```
-
 Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.
 
 > If your server is behind a firewall, you'll need to open/forward port 8080,
