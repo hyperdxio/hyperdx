@@ -31,7 +31,6 @@ COPY ./packages/app/src ./src
 COPY ./packages/app/pages ./pages 
 COPY ./packages/app/public ./public 
 COPY ./packages/app/styles ./styles
-COPY ./packages/app/json ./json
 COPY --from=base /app/node_modules ./node_modules
 RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
 
@@ -48,7 +47,6 @@ RUN adduser -S nextjs -u 1001
 # You only need to copy next.config.js if you are NOT using the default configuration
 # COPY --from=builder /app/next.config.js ./
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/json ./json
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
