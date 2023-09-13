@@ -28,7 +28,7 @@ jobs:
           ~/.vector/bin/vector --version
           ln -s ~/.vector/bin/vector /usr/local/bin/vector
       - name: Run lint + type check
-        run: yarn ci:lint
+        run: make ci-lint
   integration:
     timeout-minutes: 8
     runs-on: ubuntu-20.04
@@ -46,4 +46,4 @@ jobs:
           docker buildx create --use --driver=docker-container
           docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
       - name: Run integration tests
-        run: yarn ci:int
+        run: make ci-int

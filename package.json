@@ -1,6 +1,6 @@
 {
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.3",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -13,11 +13,7 @@
     "prettier": "2.8.4"
   },
   "scripts": {
-    "prepare": "husky install",
-    "dev:lint": "./docker/ingestor/run_linting.sh && yarn workspaces run ci:lint",
-    "ci:lint": "./docker/ingestor/run_linting.sh && yarn workspaces run ci:lint",
-    "dev:int": "docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int",
-    "ci:int": "docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int"
+    "prepare": "husky install"
   },
   "lint-staged": {
     "**/*": "prettier --write --ignore-unknown"

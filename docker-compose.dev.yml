@@ -1,14 +1,17 @@
 version: '3'
 services:
   miner:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
-    container_name: hdx-oss-miner
+    container_name: hdx-oss-dev-miner
+    build:
+      context: .
+      dockerfile: ./packages/miner/Dockerfile
+      target: dev
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_LOG_LEVEL: ERROR
-      OTEL_SERVICE_NAME: hdx-oss-miner
+      OTEL_SERVICE_NAME: hdx-oss-dev-miner
     volumes:
       - ./packages/miner/src:/app/src
     ports:
@@ -16,8 +19,10 @@ services:
     networks:
       - internal
   hostmetrics:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
-    container_name: hdx-oss-hostmetrics
+    container_name: hdx-oss-dev-hostmetrics
+    build:
+      context: ./docker/hostmetrics
+      target: dev
     volumes:
       - ./docker/hostmetrics/config.dev.yaml:/etc/otelcol-contrib/config.yaml
     environment:
@@ -27,8 +32,10 @@ services:
     networks:
       - internal
   ingestor:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
-    container_name: hdx-oss-ingestor
+    container_name: hdx-oss-dev-ingestor
+    build:
+      context: ./docker/ingestor
+      target: dev
     volumes:
       - ./docker/ingestor:/app
       - .volumes/ingestor_data:/var/lib/vector
@@ -44,7 +51,7 @@ services:
       - internal
   redis:
     image: redis:7.0.11-alpine
-    container_name: hdx-oss-redis
+    container_name: hdx-oss-dev-redis
     volumes:
       - .volumes/redis:/data
     ports:
@@ -53,7 +60,7 @@ services:
       - internal
   db:
     image: mongo:5.0.14-focal
-    container_name: hdx-oss-db
+    container_name: hdx-oss-dev-db
     volumes:
       - .volumes/db:/data/db
     ports:
@@ -61,8 +68,10 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
-    container_name: hdx-oss-otel-collector
+    container_name: hdx-oss-dev-otel-collector
+    build:
+      context: ./docker/otel-collector
+      target: dev
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -78,8 +87,11 @@ services:
     networks:
       - internal
   aggregator:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
-    container_name: hdx-oss-aggregator
+    container_name: hdx-oss-dev-aggregator
+    build:
+      context: .
+      dockerfile: ./packages/api/Dockerfile
+      target: dev
     ports:
       - 8001:8001
     environment:
@@ -102,8 +114,11 @@ services:
       - redis
       - ch-server
   task-check-alerts:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
-    container_name: hdx-oss-task-check-alerts
+    container_name: hdx-oss-dev-task-check-alerts
+    build:
+      context: .
+      dockerfile: ./packages/api/Dockerfile
+      target: dev
     entrypoint: 'yarn'
     command: 'dev:task check-alerts'
     environment:
@@ -122,7 +137,7 @@ services:
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-task-check-alerts'
       REDIS_URL: redis://redis:6379
     volumes:
       - ./packages/api/src:/app/src
@@ -134,8 +149,11 @@ services:
       - db
       - redis
   api:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
-    container_name: hdx-oss-api
+    container_name: hdx-oss-dev-api
+    build:
+      context: .
+      dockerfile: ./packages/api/Dockerfile
+      target: dev
     ports:
       - 8000:8000
     environment:
@@ -156,11 +174,11 @@ services:
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-api'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-api'
       PORT: 8000
       REDIS_URL: redis://redis:6379
       SERVER_URL: 'http://localhost:8000'
-      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
+      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-false}
     volumes:
       - ./packages/api/src:/app/src
     networks:
@@ -170,15 +188,18 @@ services:
       - db
       - redis
   app:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-app
-    container_name: hdx-oss-app
+    container_name: hdx-oss-dev-app
+    build:
+      context: .
+      dockerfile: ./packages/app/Dockerfile
+      target: dev
     ports:
       - 8080:8080
     environment:
       NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
       NEXT_PUBLIC_HDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
-      NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-app'
+      NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
       NODE_ENV: development
       PORT: 8080
     volumes:
@@ -195,7 +216,7 @@ services:
       - api
   ch-server:
     image: clickhouse/clickhouse-server:23.7.1-alpine
-    container_name: hdx-oss-ch-server
+    container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native
