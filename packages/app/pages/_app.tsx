@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import React from 'react';
+import React, { useEffect } from 'react';
 import SSRProvider from 'react-bootstrap/SSRProvider';
 import type { AppProps } from 'next/app';
 import { QueryClient, QueryClientProvider } from 'react-query';
@@ -22,23 +22,39 @@ const queryClient = new QueryClient();
 
 import HyperDX from '@hyperdx/browser';
 
-if (config.HDX_API_KEY != null) {
+const HyperDXInitDefaultConfig = {
+  ...(config.HDX_COLLECTOR_URL != null
+    ? {
+        url: config.HDX_COLLECTOR_URL,
+      }
+    : {}),
+  consoleCapture: true,
+  maskAllInputs: true,
+  maskAllText: true,
+  service: config.HDX_SERVICE_NAME,
+  tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
+};
+
+if (config.HDX_API_KEY) {
   HyperDX.init({
-    ...(config.HDX_COLLECTOR_URL != null
-      ? {
-          url: config.HDX_COLLECTOR_URL,
-        }
-      : {}),
+    ...HyperDXInitDefaultConfig,
     apiKey: config.HDX_API_KEY,
-    consoleCapture: true,
-    maskAllInputs: true,
-    maskAllText: true,
-    service: config.HDX_SERVICE_NAME,
-    tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
   });
 }
 
 export default function MyApp({ Component, pageProps }: AppProps) {
+  useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(config => {
+        if (config?.apiKey) {
+          HyperDX.init({
+            ...HyperDXInitDefaultConfig,
+            apiKey: config.apiKey,
+          });
+        }
+      });
+  });
   return (
     <React.Fragment>
       <Head>
