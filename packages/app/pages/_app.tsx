@@ -43,6 +43,7 @@ if (config.HDX_API_KEY) {
 }
 
 export default function MyApp({ Component, pageProps }: AppProps) {
+  // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     fetch('/api/config')
       .then(res => res.json())
@@ -53,6 +54,9 @@ export default function MyApp({ Component, pageProps }: AppProps) {
             apiKey: config.apiKey,
           });
         }
+      })
+      .catch(err => {
+        // ignore
       });
   });
   return (
