@@ -23,7 +23,7 @@ exporters:
   logging:
     loglevel: debug
   otlphttp:
-    endpoint: 'http://otel:4318'
+    endpoint: 'http://otel-collector:4318'
     headers:
       authorization: ${HYPERDX_API_KEY}
     compression: gzip

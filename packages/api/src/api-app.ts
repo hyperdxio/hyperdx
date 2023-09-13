@@ -1,13 +1,15 @@
 import MongoStore from 'connect-mongo';
 import compression from 'compression';
 import express from 'express';
-import session from 'express-session';
+import ms from 'ms';
 import onHeaders from 'on-headers';
+import session from 'express-session';
 
 import * as config from './config';
 import defaultCors from './middleware/cors';
 import passport from './utils/passport';
 import routers from './routers/api';
+import usageStats from './tasks/usageStats';
 import { appErrorHandler } from './middleware/error';
 import { expressLogger } from './utils/logger';
 
@@ -54,6 +56,17 @@ app.use(function (req, res, next) {
   next();
 });
 app.use(defaultCors);
+
+// ---------------------------------------------------------------------
+// ----------------------- Background Jobs -----------------------------
+// ---------------------------------------------------------------------
+if (config.USAGE_STATS_ENABLED) {
+  void usageStats();
+  setInterval(() => {
+    void usageStats();
+  }, ms('4h'));
+}
+// ---------------------------------------------------------------------
 
 // ---------------------------------------------------------------------
 // ----------------------- Internal Routers ----------------------------

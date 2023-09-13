@@ -54,7 +54,7 @@ You can get started by deploying a complete stack via Docker Compose. After
 cloning this repository, simply start the stack with:
 
 ```bash
-docker compose up
+docker compose up -d
 ```
 
 Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.
