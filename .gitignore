@@ -16,6 +16,8 @@
 **/.env.test.local
 **/.env.production.local
 **/.env.local
+**/.dockerhub.env
+**/.ghcr.env
 
 # Next.js build output
 packages/app/.next

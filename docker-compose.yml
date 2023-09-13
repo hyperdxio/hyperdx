@@ -1,11 +1,14 @@
 version: '3'
 services:
   miner:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
     container_name: hdx-oss-dev-miner
     build:
       context: .
       dockerfile: ./packages/miner/Dockerfile
       target: dev
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-miner
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
@@ -19,10 +22,13 @@ services:
     networks:
       - internal
   hostmetrics:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
     container_name: hdx-oss-dev-hostmetrics
     build:
       context: ./docker/hostmetrics
       target: dev
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
     volumes:
       - ./docker/hostmetrics/config.dev.yaml:/etc/otelcol-contrib/config.yaml
     environment:
@@ -32,10 +38,13 @@ services:
     networks:
       - internal
   ingestor:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
     container_name: hdx-oss-dev-ingestor
     build:
       context: ./docker/ingestor
       target: dev
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
     volumes:
       - ./docker/ingestor:/app
       - .volumes/ingestor_data:/var/lib/vector
@@ -50,8 +59,8 @@ services:
     networks:
       - internal
   redis:
-    container_name: hdx-oss-dev-redis
     image: redis:7.0.11-alpine
+    container_name: hdx-oss-dev-redis
     volumes:
       - .volumes/redis:/data
     ports:
@@ -59,19 +68,22 @@ services:
     networks:
       - internal
   db:
-    container_name: hdx-oss-dev-db
     image: mongo:5.0.14-focal
+    container_name: hdx-oss-dev-db
     volumes:
       - .volumes/db:/data/db
     ports:
       - 27017:27017
     networks:
       - internal
-  otel:
-    container_name: hdx-oss-dev-otel
+  otel-collector:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
+    container_name: hdx-oss-dev-otel-collector
     build:
       context: ./docker/otel-collector
       target: dev
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -87,12 +99,14 @@ services:
     networks:
       - internal
   aggregator:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-aggregator
     container_name: hdx-oss-dev-aggregator
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
-    image: hyperdx/dev/api
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-aggregator
     ports:
       - 8001:8001
     environment:
@@ -115,12 +129,14 @@ services:
       - redis
       - ch-server
   task-check-alerts:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-task-check-alerts
     container_name: hdx-oss-dev-task-check-alerts
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
-    image: hyperdx/dev/api
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-task-check-alerts
     entrypoint: 'yarn'
     command: 'dev:task check-alerts'
     environment:
@@ -151,12 +167,14 @@ services:
       - db
       - redis
   api:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     container_name: hdx-oss-dev-api
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
-    image: hyperdx/dev/api
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-api
     ports:
       - 8000:8000
     environment:
@@ -189,12 +207,14 @@ services:
       - db
       - redis
   app:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-app
     container_name: hdx-oss-dev-app
     build:
       context: .
       dockerfile: ./packages/app/Dockerfile
       target: dev
-    image: hyperdx/dev/app
+      cache_from:
+        - ${IMAGE_NAME}:${IMAGE_VERSION}-app
     ports:
       - 8080:8080
     environment:
@@ -217,8 +237,8 @@ services:
     depends_on:
       - api
   ch-server:
-    container_name: hdx-oss-dev-ch-server
     image: clickhouse/clickhouse-server:23.7.1-alpine
+    container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native

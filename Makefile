@@ -1,6 +1,10 @@
+LATEST_VERSION ?= $$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json)
+
 .PHONY: install
 install:
 	yarn install
+	cp .shared.env .env
+	echo "IMAGE_VERSION=${LATEST_VERSION}" >> .env
 
 .PHONY: dev-lint
 dev-lint:
@@ -20,8 +24,10 @@ ci-int:
 
 .PHONY: build-env-file
 build-env-file:
-	cp .env .ghcr.env
-	sed -i '/IMAGE_VERSION=.*/c\IMAGE_VERSION=${RELEASE_VERSION}' .ghcr.env
-	sed -i '/IMAGE_NAME=.*/c\IMAGE_NAME=${GHCR_REPO}' .ghcr.env
+	cp .shared.env .ghcr.env
+	echo "IMAGE_VERSION=${LATEST_VERSION}" >> .ghcr.env
 
-
+.PHONY: build-and-push-ghcr
+build-and-push-ghcr:
+	docker compose --env-file .ghcr.env -f docker-compose.yml build
+	docker compose --env-file .ghcr.env -f docker-compose.yml push
