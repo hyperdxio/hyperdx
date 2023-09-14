@@ -11,6 +11,18 @@ install-tools:
 	yarn install
 	@echo "All tools installed"
 
+.PHONY: dev-build
+dev-build:
+	docker compose -f docker-compose.dev.yml build
+
+.PHONY: dev-up
+dev-up:
+	docker compose -f docker-compose.dev.yml up -d
+
+.PHONY: dev-down
+dev-down:
+	docker compose -f docker-compose.dev.yml down
+
 .PHONY: dev-lint
 dev-lint:
 	./docker/ingestor/run_linting.sh && yarn workspaces run lint
