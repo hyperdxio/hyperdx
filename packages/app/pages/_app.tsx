@@ -22,19 +22,6 @@ const queryClient = new QueryClient();
 
 import HyperDX from '@hyperdx/browser';
 
-const HyperDXInitDefaultConfig = {
-  ...(config.HDX_COLLECTOR_URL != null
-    ? {
-        url: config.HDX_COLLECTOR_URL,
-      }
-    : {}),
-  consoleCapture: true,
-  maskAllInputs: true,
-  maskAllText: true,
-  service: config.HDX_SERVICE_NAME,
-  tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
-};
-
 export default function MyApp({ Component, pageProps }: AppProps) {
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -43,8 +30,13 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       .then(_jsonData => {
         if (_jsonData?.apiKey) {
           HyperDX.init({
-            ...HyperDXInitDefaultConfig,
             apiKey: _jsonData.apiKey,
+            consoleCapture: true,
+            maskAllInputs: true,
+            maskAllText: true,
+            service: _jsonData.serviceName,
+            tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
+            url: _jsonData.collectorUrl,
           });
         }
       })
