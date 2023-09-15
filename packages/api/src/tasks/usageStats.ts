@@ -65,7 +65,7 @@ const healthChecks = async () => {
   };
 
   const ingestorUrl = url.parse(config.INGESTOR_API_URL ?? '');
-  const otelCollectorUrl = url.parse(config.OTEL_COLLECTOR_API_URL ?? '');
+  const otelCollectorUrl = url.parse(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
   const aggregatorUrl = url.parse(config.AGGREGATOR_API_URL ?? '');
 
   const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =

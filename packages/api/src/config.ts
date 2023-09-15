@@ -19,7 +19,8 @@ export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';
 export const MINER_API_URL = env.MINER_API_URL as string;
 export const MONGO_URI = env.MONGO_URI as string;
-export const OTEL_COLLECTOR_API_URL = env.OTEL_COLLECTOR_API_URL as string;
+export const OTEL_EXPORTER_OTLP_ENDPOINT =
+  env.OTEL_EXPORTER_OTLP_ENDPOINT as string;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
