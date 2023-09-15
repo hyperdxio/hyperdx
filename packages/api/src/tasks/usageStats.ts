@@ -102,9 +102,7 @@ export default async () => {
       Team.find(
         {},
         {
-          createdAt: 1,
-          name: 1,
-          updatedAt: 1,
+          _id: 1,
         },
       ).limit(1),
       getClickhouseTableSize(),
@@ -116,7 +114,6 @@ export default async () => {
       clusterId,
       version: config.CODE_VERSION,
       userCounts,
-      team: team[0]?.toJSON(),
       servicesHealth,
       os: {
         arch: os.arch(),
