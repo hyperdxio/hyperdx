@@ -33,6 +33,7 @@ const getClickhouseTableSize = async () => {
           sum(rows) AS rows,
           min(min_time) AS min_time,
           max(max_time) AS max_time,
+          max(modification_time) AS latestModification,
           toUInt32((max_time - min_time) / 86400) AS days,
           size / ((max_time - min_time) / 86400) AS avgDaySize
       FROM system.parts
@@ -127,7 +128,11 @@ export default async () => {
           (acc, curr) => ({
             ...acc,
             [curr.table]: {
-              ...curr,
+              avgDaySize: parseInt(curr.avgDaySize),
+              days: parseInt(curr.days),
+              lastModified: new Date(curr.latestModification).getTime(),
+              maxTime: new Date(curr.max_time).getTime(),
+              minTime: new Date(curr.min_time).getTime(),
               rows: parseInt(curr.rows),
               size: parseInt(curr.size),
             },
