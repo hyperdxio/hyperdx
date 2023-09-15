@@ -64,14 +64,22 @@ const healthChecks = async () => {
   };
 
   const ingestorUrl = url.parse(config.INGESTOR_API_URL ?? '');
+  const otelCollectorUrl = url.parse(config.OTEL_COLLECTOR_API_URL ?? '');
+  const aggregatorUrl = url.parse(config.AGGREGATOR_API_URL ?? '');
 
   const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
     await Promise.all([
-      ingestorUrl.host && ingestorUrl.protocol
+      ingestorUrl.hostname && ingestorUrl.protocol
         ? ping(`${ingestorUrl.protocol}//${ingestorUrl.hostname}:8686/health`)
-        : Promise.resolve(0),
-      ping('http://otel-collector:13133'),
-      ping('http://aggregator:8001/health'),
+        : Promise.resolve(null),
+      otelCollectorUrl.hostname && otelCollectorUrl.protocol
+        ? ping(
+            `${otelCollectorUrl.protocol}//${otelCollectorUrl.hostname}:13133`,
+          )
+        : Promise.resolve(null),
+      aggregatorUrl.href
+        ? ping(`${aggregatorUrl.href}health`)
+        : Promise.resolve(null),
       ping(`${config.MINER_API_URL}/health`),
       ping(`${config.CLICKHOUSE_HOST}/ping`),
     ]);

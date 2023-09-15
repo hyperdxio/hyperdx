@@ -139,6 +139,7 @@ services:
     ports:
       - 8000:8000
     environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_LOG_LEVEL: trace
@@ -154,6 +155,7 @@ services:
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
+      OTEL_COLLECTOR_API_URL: 'http://otel-collector:4318'
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       PORT: 8000
