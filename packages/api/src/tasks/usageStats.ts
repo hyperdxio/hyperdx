@@ -55,11 +55,14 @@ const healthChecks = async () => {
     }
   };
 
-  const pingIngestor = await ping('http://ingestor:8686/health');
-  const pingOtelCollector = await ping('http://otel-collector:13133');
-  const pingAggregator = await ping('http://aggregator:8001/health');
-  const pingMiner = await ping('http://miner:5123/health');
-  const pingCH = await ping('http://ch-server:8123/ping');
+  const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
+    await Promise.all([
+      ping('http://ingestor:8686/health'),
+      ping('http://otel-collector:13133'),
+      ping('http://aggregator:8001/health'),
+      ping('http://miner:5123/health'),
+      ping('http://ch-server:8123/ping'),
+    ]);
 
   return {
     pingIngestor,
