@@ -2,7 +2,7 @@ import { version } from '../package.json';
 
 const env = process.env;
 
-export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED === 'true';
+export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 
 export const CODE_VERSION = version;
 
