@@ -25,19 +25,10 @@ addColors({
 });
 
 const MAX_LEVEL = IS_PROD ? 'debug' : 'debug';
-const DEFAULT_FORMAT = IS_DEV
-  ? winston.format.combine(
-      winston.format.errors({ stack: true }),
-      winston.format.colorize({ all: true }),
-      winston.format.timestamp({ format: 'MM/DD/YY HH:MM:SS' }),
-      winston.format.printf(
-        info => `[${info.level}] ${info.timestamp} ${info.message}`,
-      ),
-    )
-  : winston.format.combine(
-      winston.format.errors({ stack: true }),
-      winston.format.json(),
-    );
+const DEFAULT_FORMAT = winston.format.combine(
+  winston.format.errors({ stack: true }),
+  winston.format.json(),
+);
 
 const hyperdxTransport = HYPERDX_API_KEY
   ? getWinsonTransport(MAX_LEVEL, {
