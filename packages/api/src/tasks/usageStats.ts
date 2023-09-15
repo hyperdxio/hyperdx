@@ -123,9 +123,19 @@ export default async () => {
         uptime: os.uptime(),
       },
       chStats: {
-        tables: chTables,
+        tables: chTables.reduce(
+          (acc, curr) => ({
+            ...acc,
+            [curr.table]: {
+              ...curr,
+              rows: parseInt(curr.rows),
+              size: parseInt(curr.size),
+            },
+          }),
+          {},
+        ),
         rows: chTables.reduce((acc, curr) => acc + parseInt(curr.rows), 0),
-        bytes: chTables.reduce((acc, curr) => acc + parseInt(curr.size), 0),
+        size: chTables.reduce((acc, curr) => acc + parseInt(curr.size), 0),
       },
       timestamp: nowInMs,
     });
