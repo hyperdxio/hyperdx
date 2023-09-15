@@ -64,7 +64,7 @@ if (config.USAGE_STATS_ENABLED) {
   void usageStats();
   setInterval(() => {
     void usageStats();
-  }, ms('1m'));
+  }, ms('4h'));
 }
 // ---------------------------------------------------------------------
 

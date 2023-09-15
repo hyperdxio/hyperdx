@@ -6,7 +6,7 @@ import { HyperDXWinston } from '@hyperdx/node-logger';
 import * as clickhouse from '../clickhouse';
 import Team from '../models/team';
 import User from '../models/user';
-import { CODE_VERSION } from '../config';
+import { CODE_VERSION, CLICKHOUSE_HOST } from '../config';
 
 import type { ResponseJSON } from '@clickhouse/client';
 
@@ -36,10 +36,17 @@ const getClickhouseTableSize = async () => {
           size / ((max_time - min_time) / 86400) AS avgDaySize
       FROM system.parts
       WHERE active
+      AND database = 'default'
+      AND (table = {table1: String} OR table = {table2: String} OR table = {table3: String})
       GROUP BY table
       ORDER BY rows DESC
     `,
     format: 'JSON',
+    query_params: {
+      table1: clickhouse.TableName.LogStream,
+      table2: clickhouse.TableName.Rrweb,
+      table3: clickhouse.TableName.Metric,
+    },
   });
   const result = await rows.json<ResponseJSON<any>>();
   return result.data;
@@ -61,7 +68,7 @@ const healthChecks = async () => {
       ping('http://otel-collector:13133'),
       ping('http://aggregator:8001/health'),
       ping('http://miner:5123/health'),
-      ping('http://ch-server:8123/ping'),
+      ping(`${CLICKHOUSE_HOST}/ping`),
     ]);
 
   return {
