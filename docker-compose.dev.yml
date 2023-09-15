@@ -177,6 +177,7 @@ services:
       PORT: 8000
       REDIS_URL: redis://redis:6379
       SERVER_URL: 'http://localhost:8000'
+      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-false}
     volumes:
       - ./packages/api/src:/app/src
     networks:

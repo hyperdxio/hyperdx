@@ -2,6 +2,8 @@ import { version } from '../package.json';
 
 const env = process.env;
 
+export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED === 'true';
+
 export const CODE_VERSION = version;
 
 export const APP_TYPE = env.APP_TYPE as 'api' | 'aggregator' | 'scheduled-task';
