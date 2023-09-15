@@ -6,7 +6,7 @@ import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
 import {
   APP_TYPE,
   HYPERDX_API_KEY,
-  HYPERDX_INGESTOR_ENDPOINT,
+  INGESTOR_API_URL,
   IS_DEV,
   IS_PROD,
 } from '../config';
@@ -33,7 +33,7 @@ const DEFAULT_FORMAT = winston.format.combine(
 const hyperdxTransport = HYPERDX_API_KEY
   ? getWinsonTransport(MAX_LEVEL, {
       bufferSize: APP_TYPE === 'scheduled-task' ? 1 : 100,
-      ...(HYPERDX_INGESTOR_ENDPOINT && { baseUrl: HYPERDX_INGESTOR_ENDPOINT }),
+      ...(INGESTOR_API_URL && { baseUrl: INGESTOR_API_URL }),
     })
   : null;
 

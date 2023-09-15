@@ -1,12 +1,13 @@
 import os from 'os';
+import url from 'url';
 
 import winston from 'winston';
 import { HyperDXWinston } from '@hyperdx/node-logger';
 
 import * as clickhouse from '../clickhouse';
+import * as config from '../config';
 import Team from '../models/team';
 import User from '../models/user';
-import { CODE_VERSION, CLICKHOUSE_HOST } from '../config';
 
 import type { ResponseJSON } from '@clickhouse/client';
 
@@ -62,13 +63,17 @@ const healthChecks = async () => {
     }
   };
 
+  const ingestorUrl = url.parse(config.INGESTOR_API_URL ?? '');
+
   const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
     await Promise.all([
-      ping('http://ingestor:8686/health'),
+      ingestorUrl.host && ingestorUrl.protocol
+        ? ping(`${ingestorUrl.protocol}//${ingestorUrl.hostname}:8686/health`)
+        : Promise.resolve(0),
       ping('http://otel-collector:13133'),
       ping('http://aggregator:8001/health'),
-      ping('http://miner:5123/health'),
-      ping(`${CLICKHOUSE_HOST}/ping`),
+      ping(`${config.MINER_API_URL}/health`),
+      ping(`${config.CLICKHOUSE_HOST}/ping`),
     ]);
 
   return {
@@ -100,7 +105,7 @@ export default async () => {
     logger.info({
       message: 'track-hyperdx-oss-usage-stats',
       clusterId,
-      version: CODE_VERSION,
+      version: config.CODE_VERSION,
       userCounts,
       team: team[0]?.toJSON(),
       servicesHealth,

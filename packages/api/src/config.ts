@@ -25,8 +25,7 @@ export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
 
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
-export const HYPERDX_INGESTOR_ENDPOINT =
-  env.HYPERDX_INGESTOR_ENDPOINT as string;
+export const INGESTOR_API_URL = env.INGESTOR_API_URL as string;
 
 export const EXPRESS_SESSION_SECRET = env.EXPRESS_SESSION_SECRET as string;
 
