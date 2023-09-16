@@ -16,3 +16,31 @@ EXPOSE 8000
 
 ENTRYPOINT ["yarn"]
 CMD ["dev"]
+
+
+## builder #########################################################################################
+
+FROM base AS builder
+
+COPY ./packages/api/src ./src
+RUN yarn run build
+
+
+## prod ############################################################################################
+
+FROM node:18.15.0-alpine AS prod
+
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
+
+EXPOSE 8000
+
+USER node
+
+WORKDIR /app
+
+COPY --chown=node:node --from=builder /app/build ./build
+COPY --chown=node:node --from=base /app/node_modules ./node_modules
+
+ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./build/index.js"]
