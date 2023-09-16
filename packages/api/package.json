@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -9,8 +9,8 @@
   "dependencies": {
     "@clickhouse/client": "^0.1.1",
     "@hyperdx/lucene": "^3.1.1",
-    "@hyperdx/node-logger": "^0.2.7",
-    "@hyperdx/node-opentelemetry": "^0.2.2",
+    "@hyperdx/node-logger": "^0.2.8",
+    "@hyperdx/node-opentelemetry": "^0.2.3",
     "@slack/webhook": "^6.1.0",
     "compression": "^1.7.4",
     "connect-mongo": "^4.6.0",
