@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "devDependencies": {
+    "@changesets/cli": "^2.26.2",
     "@nx/workspace": "16.8.1",
     "husky": "^8.0.3",
     "lint-staged": "^13.1.2",
