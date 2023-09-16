@@ -30,16 +30,17 @@ RUN yarn run build
 
 FROM node:18.15.0-alpine AS prod
 
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
+
 EXPOSE 8000
 
 USER node
 
 WORKDIR /app
 
-COPY --chown=node:node --from=builder /app/package.json ./
 COPY --chown=node:node --from=builder /app/build ./build
 COPY --chown=node:node --from=base /app/node_modules ./node_modules
-
-RUN export CODE_VERSION=$(npm pkg get version)
 
 ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./build/index.js"]
