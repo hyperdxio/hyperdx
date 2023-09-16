@@ -1629,10 +1629,10 @@
   resolved "https://registry.yarnpkg.com/@hyperdx/lucene/-/lucene-3.1.1.tgz#b860fc26547628de1185e175a47d7909d3d77f37"
   integrity sha512-Kx3WgUI1FUeHOQB0nPtijc7L2Po9QaKTMSj4P1B3Qt6UNHJuJ0x04G+BfNYeCBy6c0LSkOlsyhFtzwXVkSIv6Q==
 
-"@hyperdx/node-logger@^0.2.7":
-  version "0.2.7"
-  resolved "https://registry.yarnpkg.com/@hyperdx/node-logger/-/node-logger-0.2.7.tgz#482280a0ceed308269b7a7844f364b201a27f0f0"
-  integrity sha512-75t775MnWgC79mZcnCUPzqrKQxFed8iYmpN58+mE6ygxYjyRdmCl8NUs/emoPw000w8zV1vMEV4Ee1AUgNcHfw==
+"@hyperdx/node-logger@^0.2.8":
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/@hyperdx/node-logger/-/node-logger-0.2.8.tgz#7233da237317dee7ea40135438204d669bf4326a"
+  integrity sha512-28XGm/tn7bORvHH69iouO6Uq6tEwYpMPH8PWc7ROje2RmUE0/Hlg/TfH0l2YJojb/hRbx/M6yP/Yn+J9AsOoCA==
   dependencies:
     "@nestjs/common" "^9.4.2"
     axios "^0.27.2"
@@ -1648,12 +1648,12 @@
     winston "^3.9.0"
     winston-transport "^4.5.0"
 
-"@hyperdx/node-opentelemetry@^0.2.2":
-  version "0.2.2"
-  resolved "https://registry.yarnpkg.com/@hyperdx/node-opentelemetry/-/node-opentelemetry-0.2.2.tgz#ea71db69fbd6166136850c31dd1b648f8a5c1447"
-  integrity sha512-kOjhGr9hZ12xc6ulcrpXXHUzCXrimYLdNDptZctSJRp+3SrEzt+BuXR6HsszVVJdi+rlm4q+7HIthMWfPdZkgQ==
+"@hyperdx/node-opentelemetry@^0.2.3":
+  version "0.2.3"
+  resolved "https://registry.yarnpkg.com/@hyperdx/node-opentelemetry/-/node-opentelemetry-0.2.3.tgz#58102046f9db8f39d7ffa3201ea93d9b836ee612"
+  integrity sha512-x1yK3rdH/0s+gIL/YJtq2WULUpmmD3fHtlqYqqBWSZhdTMtUnAclZ+aVVG4bONSTaBkmF+QVquNHCEFI5Ljn/w==
   dependencies:
-    "@hyperdx/node-logger" "^0.2.7"
+    "@hyperdx/node-logger" "^0.2.8"
     "@opentelemetry/api" "^1.4.1"
     "@opentelemetry/auto-instrumentations-node" "^0.38.0"
     "@opentelemetry/exporter-metrics-otlp-proto" "^0.41.2"
