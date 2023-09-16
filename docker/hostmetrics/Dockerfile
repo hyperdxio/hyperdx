@@ -6,3 +6,9 @@ FROM otel/opentelemetry-collector-contrib:0.83.0 AS base
 FROM base as dev
 
 COPY ./config.dev.yaml /etc/otelcol-contrib/config.yaml
+
+
+## prod #############################################################################################
+FROM base as prod
+
+COPY ./config.dev.yaml /etc/otelcol-contrib/config.yaml

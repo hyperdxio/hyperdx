@@ -1,5 +1,3 @@
-import { version } from '../package.json';
-
 const env = process.env;
 export const NODE_ENV = env.NODE_ENV as string;
 
@@ -8,7 +6,7 @@ export const APP_TYPE = env.APP_TYPE as 'api' | 'aggregator' | 'scheduled-task';
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
-export const CODE_VERSION = version;
+export const CODE_VERSION = env.CODE_VERSION as string;
 export const COOKIE_DOMAIN = env.COOKIE_DOMAIN as string; // prod ONLY
 export const EXPRESS_SESSION_SECRET = env.EXPRESS_SESSION_SECRET as string;
 export const FRONTEND_URL = env.FRONTEND_URL as string;
