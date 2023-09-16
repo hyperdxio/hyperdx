@@ -58,8 +58,6 @@ services:
   otel-collector:
     image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
     container_name: hdx-oss-otel-collector
-    volumes:
-      - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - '13133:13133' # health_check extension
       - '1888:1888' # pprof extension
