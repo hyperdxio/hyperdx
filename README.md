@@ -141,8 +141,8 @@ including but not limited to:
 ## Motivation
 
 Our mission is to help engineers ship reliable software. To enable that, we
-believe every engineer needs to be able to easily leverage productio telemetry
-to quickly solve burning productio issues.
+believe every engineer needs to be able to easily leverage production telemetry
+to quickly solve burning production issues.
 
 However, in our experience, the existing tools we've used tend to fall short in
 a few ways:
