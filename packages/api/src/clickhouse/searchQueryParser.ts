@@ -588,13 +588,15 @@ export class SearchQueryBuilder {
     return this;
   }
 
+  static timestampInBetween(startTime: number, endTime: number) {
+    return `_timestamp_sort_key >= ${msToBigIntNs(
+      startTime,
+    )} AND _timestamp_sort_key < ${msToBigIntNs(endTime)}`;
+  }
+
   // startTime and endTime are unix in ms
   timestampInBetween(startTime: number, endTime: number) {
-    this.and(
-      `_timestamp_sort_key >= ${msToBigIntNs(
-        startTime,
-      )} AND _timestamp_sort_key < ${msToBigIntNs(endTime)}`,
-    );
+    this.and(SearchQueryBuilder.timestampInBetween(startTime, endTime));
     return this;
   }
 
