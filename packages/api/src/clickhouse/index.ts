@@ -23,6 +23,7 @@ import {
 } from './propertyTypeMappingsModel';
 import {
   SQLSerializer,
+  SearchQueryBuilder,
   buildSearchColumnName,
   buildSearchColumnName_OLD,
   buildSearchQueryWhereCondition,
@@ -1057,27 +1058,25 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
-  const query = SqlString.format(
-    `
-        SELECT
-          MAX(timestamp) AS maxTimestamp,
-          MIN(timestamp) AS minTimestamp,
-          count() AS sessionCount,
-          countIf(?='user-interaction') AS interactionCount,
-          countIf(severity_text = 'error') AS errorCount,
-          ? AS sessionId,
-          ?
-        FROM ??
-        WHERE ? AND (?)
-        GROUP BY sessionId
-        ${
-          // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
-          // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-          q.length === 0 ? 'HAVING interactionCount > 0' : ''
-        }
-        ORDER BY maxTimestamp DESC
-        LIMIT ?, ?
-      `,
+  const sessionsWithSearchQuery = SqlString.format(
+    `SELECT
+      MAX(timestamp) AS maxTimestamp,
+      MIN(timestamp) AS minTimestamp,
+      count() AS sessionCount,
+      countIf(?='user-interaction') AS interactionCount,
+      countIf(severity_text = 'error') AS errorCount,
+      ? AS sessionId,
+      ?
+    FROM ??
+    WHERE ? AND (?)
+    GROUP BY sessionId
+    ${
+      // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
+      // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
+      q.length === 0 ? 'HAVING interactionCount > 0' : ''
+    }
+    ORDER BY maxTimestamp DESC
+    LIMIT ?, ?`,
     [
       SqlString.raw(buildSearchColumnName('string', 'component')),
       SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
@@ -1090,9 +1089,36 @@ export const getSessions = async ({
     ],
   );
 
+  const sessionsWithRecordingsQuery = SqlString.format(
+    `WITH sessions AS (${sessionsWithSearchQuery}),
+sessionIdsWithRecordings AS (
+  SELECT DISTINCT _rum_session_id as sessionId
+  FROM ??
+  WHERE span_name='record init' 
+    AND (_rum_session_id IN (SELECT sessions.sessionId FROM sessions))
+    AND (?)
+)
+SELECT * 
+FROM sessions 
+WHERE sessions.sessionId IN (
+    SELECT sessionIdsWithRecordings.sessionId FROM sessionIdsWithRecordings
+  )`,
+    [
+      tableName,
+      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+    ],
+  );
+
+  // If the user specifes a query, we need to filter out returned sessions
+  // by the 'record init' event being included so we don't return "blank"
+  // sessions, this can be optimized once we record background status
+  // of all events in the RUM package
+  const executedQuery =
+    q.length === 0 ? sessionsWithSearchQuery : sessionsWithRecordingsQuery;
+
   const ts = Date.now();
   const rows = await client.query({
-    query,
+    query: executedQuery,
     format: 'JSON',
     clickhouse_settings: {
       additional_table_filters: buildLogStreamAdditionalFilters(
@@ -1104,7 +1130,7 @@ export const getSessions = async ({
   const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
   logger.info({
     message: 'getSessions',
-    query,
+    query: executedQuery,
     teamId,
     took: Date.now() - ts,
   });
