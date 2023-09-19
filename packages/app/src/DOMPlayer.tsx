@@ -384,6 +384,12 @@ export default function DOMPlayer({
           </div>
         </div>
       )}
+      {isReplayFullyLoaded && replayer.current == null && (
+        <div className="d-flex align-items-center justify-content-center bg-hdx-dark p-4 text-center text-muted">
+          No replay available for this session, most likely due to this session
+          starting and ending in a background tab.
+        </div>
+      )}
       <div
         ref={wrapper}
         className={`player-wrapper overflow-hidden ${

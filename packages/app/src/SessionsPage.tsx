@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import { Button } from 'react-bootstrap';
+import { Button, Form } from 'react-bootstrap';
 import {
   useQueryParam,
   StringParam,
@@ -8,10 +8,12 @@ import {
 } from 'use-query-params';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NumberParam } from 'serialize-query-params';
+import { toast } from 'react-toastify';
 
 import api from './api';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import AppNav from './AppNav';
+import Dropdown from './Dropdown';
 import {
   formatDistanceToNowStrictShort,
   formatHumanReadableDate,
@@ -327,6 +329,8 @@ export default function SessionsPage() {
     )}`;
   }, []);
 
+  const [isEmailFilterExpanded, setIsEmailFilterExpanded] = useState(true);
+
   return (
     <div className="SessionsPage d-flex" style={{ height: '100vh' }}>
       <Head>
@@ -382,30 +386,131 @@ export default function SessionsPage() {
             </form>
           </div>
         </div>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            setSearchedQuery(inputQuery);
-          }}
-        >
-          <SearchInput
-            inputRef={inputRef}
-            value={inputQuery}
-            onChange={value => setInputQuery(value)}
-            onSearch={() => {}}
-            placeholder="Search for a session by email, id..."
-          />
-          <button
-            type="submit"
-            style={{
-              width: 0,
-              height: 0,
-              border: 0,
-              padding: 0,
+        <div className="d-flex align-items-center">
+          <div className="d-flex align-items-center me-2">
+            <span
+              className="rounded fs-8 text-nowrap border border-dark p-2"
+              style={{
+                borderTopRightRadius: '0 !important',
+                borderBottomRightRadius: '0 !important',
+              }}
+              title="Filters"
+            >
+              <i className="bi bi-funnel"></i>
+            </span>{' '}
+            <div className="d-flex align-items-center w-100 flex-grow-1">
+              <Button
+                variant="dark"
+                type="button"
+                className="text-muted-hover d-flex align-items-center fs-8 p-2"
+                onClick={() => setIsEmailFilterExpanded(v => !v)}
+                style={
+                  isEmailFilterExpanded
+                    ? {
+                        borderRadius: 0,
+                      }
+                    : {
+                        borderTopLeftRadius: 0,
+                        borderBottomLeftRadius: 0,
+                      }
+                }
+              >
+                Email
+              </Button>
+              {isEmailFilterExpanded && (
+                <form
+                  className="d-flex"
+                  onSubmit={e => {
+                    e.preventDefault();
+
+                    // TODO: Transition to react-hook-form or controlled state
+                    // @ts-ignore
+                    const value = e.target.value.value;
+                    // @ts-ignore
+                    const op = e.target.op.value;
+
+                    setSearchedQuery(
+                      (
+                        inputQuery +
+                        (op === 'is'
+                          ? ` userEmail:"${value}"`
+                          : op === 'is_not'
+                          ? ` -userEmail:"${value}"`
+                          : ` userEmail:${value}`)
+                      ).trim(),
+                    );
+
+                    toast.success('Added filter to search query');
+                    inputRef.current?.focus();
+
+                    // @ts-ignore
+                    e.target.value.value = '';
+                  }}
+                >
+                  <Dropdown
+                    name="op"
+                    className="border border-dark fw-normal fs-8 p-2"
+                    style={{ borderRadius: 0, minWidth: 100 }}
+                    options={[
+                      {
+                        value: 'contains',
+                        text: 'contains',
+                      },
+                      { value: 'is', text: 'is' },
+                      { value: 'is_not', text: 'is not' },
+                    ]}
+                    value={undefined}
+                    onChange={() => {}}
+                  />
+                  <Form.Control
+                    type="text"
+                    id="value"
+                    name="value"
+                    className="fs-8 p-2 w-100"
+                    style={{ borderRadius: 0 }}
+                    placeholder="value"
+                  />
+                  <Button
+                    type="submit"
+                    variant="dark"
+                    className="text-muted-hover d-flex align-items-center fs-8 p-2"
+                    style={{
+                      borderTopLeftRadius: 0,
+                      borderBottomLeftRadius: 0,
+                    }}
+                  >
+                    Add
+                  </Button>
+                </form>
+              )}
+            </div>
+          </div>
+          <form
+            className="d-flex align-items-center flex-grow-1"
+            onSubmit={e => {
+              e.preventDefault();
+              setSearchedQuery(inputQuery);
             }}
-          />
-        </form>
-        <div style={{ minHeight: 0 }}>
+          >
+            <SearchInput
+              inputRef={inputRef}
+              value={inputQuery}
+              onChange={value => setInputQuery(value)}
+              onSearch={() => {}}
+              placeholder="Search for a session by email, id..."
+            />
+            <button
+              type="submit"
+              style={{
+                width: 0,
+                height: 0,
+                border: 0,
+                padding: 0,
+              }}
+            />
+          </form>
+        </div>
+        <div style={{ minHeight: 0 }} className="mt-4">
           <SessionCardList
             onClick={(sessionId, dateRange) => {
               setSelectedSession({ id: sessionId, dateRange });

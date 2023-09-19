@@ -1,6 +1,7 @@
 import { Form } from 'react-bootstrap';
 
 export default function Dropdown<T extends string | number>({
+  name,
   className,
   disabled,
   onChange,
@@ -8,6 +9,7 @@ export default function Dropdown<T extends string | number>({
   style,
   value,
 }: {
+  name?: string;
   className?: string;
   disabled?: boolean;
   onChange: (value: T) => any;
@@ -17,6 +19,7 @@ export default function Dropdown<T extends string | number>({
 }) {
   return (
     <Form.Select
+      name={name}
       disabled={disabled}
       role="button"
       className={`shadow-none fw-bold ${
