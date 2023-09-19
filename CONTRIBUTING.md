@@ -16,15 +16,33 @@ Service Descriptions:
 - clickhouse: Clickhouse database, stores all events.
 - db: MongoDB, stores user/alert/dashboard data.
 - api: Node.js API, executes Clickhouse queries on behalf of the frontend.
+- miner: FastAPI app serving the drain3 clustering model.
 - app: Next.js frontend, serves the UI.
 - task-check-alerts: Checks for alert criteria and fires off any alerts as
   needed.
 
 ## Development
 
-You can get started by deploying a complete stack via Docker Compose. The core
-services are all hot-reloaded, so you can make changes to the code and see them
-reflected in real-time.
+You can get started by deploying a complete development stack via Docker Compose
+in dev mode.
+
+```bash
+docker compose -f ./docker-compose.dev.yml up -d
+```
+
+To enable self-instrumentation and demo logs, you can set the `HYPERDX_API_KEY`
+to your ingestion key (go to
+[http://localhost:8080/team](http://localhost:8080/team) after creating your
+account) and then restart the stack.
+
+ex.
+
+```sh
+HYPERDX_API_KEY=<YOUR_INGESTION_API_KEY_HERE> docker compose -f ./docker-compose.dev.yml up -d
+```
+
+The core services are all hot-reloaded, so you can make changes to the code and
+see them reflected in real-time.
 
 If you need help getting started,
 [join our Discord](https://discord.gg/FErRRKU78j) and we're more than happy to
