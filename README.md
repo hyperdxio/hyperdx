@@ -1,6 +1,10 @@
 <p align="center">
-  <img alt="hyperdx logo dark" src="./.github/images/logo_dark.png#gh-dark-mode-only">
-  <img alt="hyperdx logo light" src="./.github/images/logo_light.png#gh-light-mode-only">
+  <a href="https://hyperdx.io">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./.github/images/logo_dark.png#gh-dark-mode-only">
+      <img alt="hyperdx logo" src="./.github/images/logo_light.png#gh-light-mode-only">
+    </picture>
+  </a>
 </p>
 
 ---
