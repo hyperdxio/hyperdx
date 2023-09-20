@@ -259,7 +259,7 @@ export default function CreateLogAlertModal({
         },
         onError: () => {
           toast.error(
-            'An error occured. Please contact support for more details.',
+            'An error occurred. Please contact support for more details.',
           );
         },
       });
@@ -354,7 +354,7 @@ export default function CreateLogAlertModal({
                   onSavedSearchCreateSuccess(savedSearch.data);
                 } catch (e) {
                   toast.error(
-                    'An error occured while saving the search for this alert. Please contact support for more details.',
+                    'An error occurred while saving the search for this alert. Please contact support for more details.',
                   );
                   return;
                 }
@@ -381,14 +381,14 @@ export default function CreateLogAlertModal({
                     },
                     onError: () => {
                       toast.error(
-                        'An error occured. Please contact support for more details.',
+                        'An error occurred. Please contact support for more details.',
                       );
                     },
                   },
                 );
               } else {
                 toast.error(
-                  'An error occured while saving the search for this alert. Please contact support for more details.',
+                  'An error occurred while saving the search for this alert. Please contact support for more details.',
                 );
               }
             }}
@@ -433,7 +433,7 @@ export default function CreateLogAlertModal({
                     },
                     onError: () => {
                       toast.error(
-                        'An error occured. Please contact support for more details.',
+                        'An error occurred. Please contact support for more details.',
                       );
                     },
                   },
