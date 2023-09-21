@@ -44,6 +44,14 @@ HYPERDX_API_KEY=<YOUR_INGESTION_API_KEY_HERE> docker compose -f ./docker-compose
 The core services are all hot-reloaded, so you can make changes to the code and
 see them reflected in real-time.
 
+### Windows
+
+If you are running WSL 2, Hot module reload on Nextjs (Frontend) does not work out of the box on windows when run natively on docker. The fix here is to open project directory in WSL and run the above docker compose commands directly in WSL. Note that the project directory should not be under /mnt/c/ directory. You can clone the git repo in /home/{username} for example.
+
+To develop from WSL, follow instructions [here](https://code.visualstudio.com/docs/remote/wsl).
+
+## Additional support
+
 If you need help getting started,
 [join our Discord](https://discord.gg/FErRRKU78j) and we're more than happy to
 get you set up!
