@@ -11,8 +11,8 @@
 
 # HyperDX
 
-[HyperDX](https://hyperdx.io) helps engineers figure out why production is
-broken faster by centralizing and correlating logs, metrics, traces, exceptions
+[HyperDX](https://hyperdx.io) helps engineers figure out faster why production is
+broken by centralizing and correlating logs, metrics, traces, exceptions
 and session replays in one place. An open source and developer-friendly
 alternative to Datadog and New Relic.
 
