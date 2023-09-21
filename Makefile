@@ -48,7 +48,6 @@ build-local:
 		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg HYPERDX_API_KEY=${HYPERDX_API_KEY} \
 		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
 		--build-arg PORT=${HYPERDX_APP_PORT} \
@@ -67,7 +66,6 @@ build-and-push-ghcr:
 		--platform ${BUILD_PLATFORMS} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod --push &
 	docker buildx build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg HYPERDX_API_KEY=${HYPERDX_API_KEY} \
 		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
 		--build-arg PORT=${HYPERDX_APP_PORT} \
