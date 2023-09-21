@@ -39,12 +39,13 @@ dev-int:
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
 
-.PHONY: build-local-app
+# api + app services only
+.PHONY: build-local
 build-local:
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
-		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod
+		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg HYPERDX_API_KEY=${HYPERDX_API_KEY} \

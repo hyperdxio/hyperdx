@@ -161,13 +161,9 @@ services:
     container_name: hdx-oss-app
     ports:
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
-    # environment:
-    # NEXT_PUBLIC_SERVER_URL: ${HYPERDX_API_URL}:${HYPERDX_API_PORT} # need to be localhost (CORS)
-    # NEXT_PUBLIC_HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-    # NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318'
-    # NEXT_PUBLIC_OTEL_SERVICE_NAME: 'hdx-oss-app'
-    # NODE_ENV: development
-    # PORT: ${HYPERDX_APP_PORT}
+    environment:
+      NODE_ENV: development
+      PORT: ${HYPERDX_APP_PORT}
     networks:
       - internal
     depends_on:
