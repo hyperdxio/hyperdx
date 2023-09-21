@@ -24,11 +24,9 @@ FROM base AS builder
 
 # Expose custom env variables to the browser (needs NEXT_PUBLIC_ prefix)
 # doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
-ARG HYPERDX_API_KEY
 ARG OTEL_EXPORTER_OTLP_ENDPOINT
 ARG OTEL_SERVICE_NAME
 ARG SERVER_URL
-ENV NEXT_PUBLIC_HYPERDX_API_KEY $HYPERDX_API_KEY
 ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
