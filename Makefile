@@ -39,6 +39,14 @@ dev-int:
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
 
+.PHONY: build
+build:
+	docker buildx build ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod &
+	docker buildx build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
+	docker buildx build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
+	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
+	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod &
+	docker buildx build --build-arg NEXT_PUBLIC_API_SERVER_URL='/api' --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod 
 
 .PHONY: build-and-push-ghcr
 build-and-push-ghcr:
