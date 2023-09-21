@@ -22,9 +22,16 @@ CMD ["dev"]
 # Rebuild the source code only when needed
 FROM base AS builder
 
-# Expose NEXT_PUBLIC_API_SERVER_URL during build time if needed
-ARG NEXT_PUBLIC_API_SERVER_URL
-ENV NEXT_PUBLIC_API_SERVER_URL $NEXT_PUBLIC_API_SERVER_URL
+# Expose custom env variables to the browser (needs NEXT_PUBLIC_ prefix)
+# doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
+ARG HYPERDX_API_KEY
+ARG OTEL_EXPORTER_OTLP_ENDPOINT
+ARG OTEL_SERVICE_NAME
+ARG SERVER_URL
+ENV NEXT_PUBLIC_HYPERDX_API_KEY $HYPERDX_API_KEY
+ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
+ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
+ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
 
 COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
 COPY ./packages/app/src ./src 
@@ -64,4 +71,4 @@ EXPOSE ${PORT}
 # Uncomment the following line in case you want to disable telemetry.
 ENV NEXT_TELEMETRY_DISABLED 1
 
-CMD ["node_modules/.bin/next", "start"]
+CMD ["node_modules/.bin/next", "start", "-p", "${PORT}"]

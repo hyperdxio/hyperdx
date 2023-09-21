@@ -39,6 +39,20 @@ dev-int:
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
 
+.PHONY: build-local-app
+build-local:
+	docker build \
+		--build-arg CODE_VERSION=${LATEST_VERSION} \
+		--build-arg PORT=${HYPERDX_API_PORT} \
+		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod
+	docker build \
+		--build-arg CODE_VERSION=${LATEST_VERSION} \
+		--build-arg HYPERDX_API_KEY=${HYPERDX_API_KEY} \
+		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
+		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
+		--build-arg PORT=${HYPERDX_APP_PORT} \
+		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
+		. -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod
 
 .PHONY: build-and-push-ghcr
 build-and-push-ghcr:
@@ -46,7 +60,16 @@ build-and-push-ghcr:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod --push &
 	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod --push &
-	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod --push &
-	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push
-
+	docker buildx build \
+		--build-arg CODE_VERSION=${LATEST_VERSION} \
+		--build-arg PORT=${HYPERDX_API_PORT} \
+		--platform ${BUILD_PLATFORMS} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod --push &
+	docker buildx build \
+		--build-arg CODE_VERSION=${LATEST_VERSION} \
+		--build-arg HYPERDX_API_KEY=${HYPERDX_API_KEY} \
+		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
+		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
+		--build-arg PORT=${HYPERDX_APP_PORT} \
+		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
+		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push
 
