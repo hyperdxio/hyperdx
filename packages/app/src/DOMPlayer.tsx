@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
 import { throttle } from 'lodash';
+import cn from 'classnames';
 
 import { useSearchEventStream } from './search';
 import { useRouter } from 'next/router';
@@ -392,9 +393,10 @@ export default function DOMPlayer({
       )}
       <div
         ref={wrapper}
-        className={`player-wrapper overflow-hidden ${
-          isBuffering ? 'd-none' : ''
-        }`}
+        className={cn('player-wrapper overflow-hidden', {
+          'd-none': isLoading || isBuffering,
+          started: (replayer.current?.getCurrentTime() ?? 0) > 0,
+        })}
       >
         <div
           className="player rr-block"
