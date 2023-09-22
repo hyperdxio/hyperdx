@@ -486,6 +486,7 @@ source = '''
 if is_object(.b) {
   .s_id = string(del(.b.span_id)) ?? string(del(.b.spanID)) ?? null
   .t_id = string(del(.b.trace_id)) ?? string(del(.b.traceID)) ?? null
+  .et = .ts # to make duration 0
   .tso = to_unix_timestamp(now(), unit: "nanoseconds")
 
   if is_nullish(.st) {
