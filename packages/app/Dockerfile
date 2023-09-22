@@ -22,9 +22,14 @@ CMD ["dev"]
 # Rebuild the source code only when needed
 FROM base AS builder
 
-# Expose NEXT_PUBLIC_API_SERVER_URL during build time if needed
-ARG NEXT_PUBLIC_API_SERVER_URL
-ENV NEXT_PUBLIC_API_SERVER_URL $NEXT_PUBLIC_API_SERVER_URL
+# Expose custom env variables to the browser (needs NEXT_PUBLIC_ prefix)
+# doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
+ARG OTEL_EXPORTER_OTLP_ENDPOINT
+ARG OTEL_SERVICE_NAME
+ARG SERVER_URL
+ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
+ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
+ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
 
 COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
 COPY ./packages/app/src ./src 
@@ -53,13 +58,15 @@ COPY --from=builder /app/package.json ./package.json
 
 USER nextjs
 
-EXPOSE 8080
+ARG PORT
 
-ENV PORT 8080
+ENV PORT=$PORT
+
+EXPOSE ${PORT}
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry.
 ENV NEXT_TELEMETRY_DISABLED 1
 
-CMD ["node_modules/.bin/next", "start"]
+CMD ["sh", "-c", "node_modules/.bin/next start -p ${PORT}"]
