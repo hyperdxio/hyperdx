@@ -15,7 +15,7 @@
     "ci:unit": "jest --coverage"
   },
   "dependencies": {
-    "@hyperdx/browser": "^0.18.3",
+    "@hyperdx/browser": "^0.18.4",
     "@hyperdx/lucene": "^3.1.1",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@monaco-editor/react": "^4.3.1",
