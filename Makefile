@@ -39,9 +39,12 @@ dev-int:
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
 
-# api + app services only
 .PHONY: build-local
 build-local:
+	docker build ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod &
+	docker build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
+	docker build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
+	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
