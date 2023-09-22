@@ -57,6 +57,10 @@ build-local:
 		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
 		. -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod
 
+.PHONY: version
+version:
+	sh ./version.sh
+
 .PHONY: build-and-push-ghcr
 build-and-push-ghcr:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod --push &
