@@ -29,15 +29,24 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       .then(res => res.json())
       .then(_jsonData => {
         if (_jsonData?.apiKey) {
+          let hostname;
+          try {
+            const url = new URL(_jsonData.apiServerUrl);
+            hostname = url.hostname;
+          } catch (err) {
+            // console.log(err);
+          }
           HyperDX.init({
             apiKey: _jsonData.apiKey,
             consoleCapture: true,
             maskAllInputs: true,
             maskAllText: true,
             service: _jsonData.serviceName,
-            tracePropagationTargets: [/localhost/i, /hyperdx\.io/i],
+            tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
           });
+        } else {
+          console.warn('No API key found');
         }
       })
       .catch(err => {
