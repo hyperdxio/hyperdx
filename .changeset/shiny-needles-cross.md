@@ -2,7 +2,7 @@
 '@hyperdx/app': patch
 ---
 
-Fixes negative duration display in search.
+fix(app): negative duration in search
 
 Duration column in the search interface displayed negative numbers when only a
 timestamp was present. This fix changes the behavior to display "N/A" for such
