@@ -13,7 +13,7 @@ import cx from 'classnames';
 import { Button, Modal } from 'react-bootstrap';
 import stripAnsi from 'strip-ansi';
 import { CSVLink } from 'react-csv';
-import { curry } from 'lodash';
+import curry from 'lodash/curry';
 
 import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
