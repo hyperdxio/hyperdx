@@ -89,3 +89,7 @@ export type Session = {
   userEmail: string;
   userName: string;
 };
+
+export type Dictionary<T> = {
+  [key: string]: T;
+};

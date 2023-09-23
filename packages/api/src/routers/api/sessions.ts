@@ -1,6 +1,7 @@
 import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import { isNumber, parseInt } from 'lodash';
+import isNumber from 'lodash/isNumber';
+import parseInt from 'lodash/parseInt';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from '../../clickhouse';

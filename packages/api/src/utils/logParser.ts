@@ -1,4 +1,9 @@
-import _ from 'lodash';
+import isArray from 'lodash/isArray';
+import isBoolean from 'lodash/isBoolean';
+import isNumber from 'lodash/isNumber';
+import isObject from 'lodash/isObject';
+import isPlainObject from 'lodash/isPlainObject';
+import isString from 'lodash/isString';
 
 import { tryJSONStringify } from './common';
 
@@ -83,9 +88,9 @@ export function* traverseJson(
 
     yield [keyPath, value];
 
-    if (_.isObject(value) && Object.keys(value).length && depth < MAX_DEPTH) {
+    if (isObject(value) && Object.keys(value).length && depth < MAX_DEPTH) {
       // TODO: limit array length ??
-      if (_.isArray(value)) {
+      if (isArray(value)) {
         yield [keyPath, tryJSONStringify(value)];
       } else {
         yield* traverseJson(value, depth + 1, keyPath);
@@ -127,22 +132,22 @@ export const mapObjectToKeyValuePairs = (
   let reachedNumberMaxLength = false;
   let reachedStringMaxLength = false;
 
-  if (_.isPlainObject(blob)) {
+  if (isPlainObject(blob)) {
     const jsonIt = traverseJson(blob);
     let pushed = true;
     for (const [key, value] of jsonIt) {
       const compoundKeyPath = key.join('.');
-      if (!reachedNumberMaxLength && _.isNumber(value)) {
+      if (!reachedNumberMaxLength && isNumber(value)) {
         pushed = pushArray('number', compoundKeyPath, value);
         if (!pushed) {
           reachedNumberMaxLength = true;
         }
-      } else if (!reachedBoolMaxLength && _.isBoolean(value)) {
+      } else if (!reachedBoolMaxLength && isBoolean(value)) {
         pushed = pushArray('bool', compoundKeyPath, value ? 1 : 0);
         if (!pushed) {
           reachedBoolMaxLength = true;
         }
-      } else if (!reachedStringMaxLength && _.isString(value)) {
+      } else if (!reachedStringMaxLength && isString(value)) {
         pushed = pushArray('string', compoundKeyPath, value);
         if (!pushed) {
           reachedStringMaxLength = true;

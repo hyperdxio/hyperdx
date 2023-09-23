@@ -1,6 +1,6 @@
 import * as fns from 'date-fns';
 import SqlString from 'sqlstring';
-import _ from 'lodash';
+import map from 'lodash/map';
 import ms from 'ms';
 import opentelemetry from '@opentelemetry/api';
 import {
@@ -1454,7 +1454,7 @@ const buildLogQuery = async ({
     })
     .filter(f => f);
 
-  const columns = _.map([...defaultFields, ...extraColumns], SqlString.raw);
+  const columns = map([...defaultFields, ...extraColumns], SqlString.raw);
   const query = SqlString.format(
     `
       SELECT ?

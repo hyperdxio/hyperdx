@@ -1,40 +1,44 @@
+import cx from 'classnames';
+import { add, format } from 'date-fns';
+import Fuse from 'fuse.js';
+import get from 'lodash/get';
+import isPlainObject from 'lodash/isPlainObject';
+import mapValues from 'lodash/mapValues';
+import omit from 'lodash/omit';
+import pickBy from 'lodash/pickBy';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
 import CopyToClipboard from 'react-copy-to-clipboard';
-import Drawer from 'react-modern-drawer';
-import Fuse from 'fuse.js';
-import Link from 'next/link';
-import Timestamp from 'timestamp-nano';
-import cx from 'classnames';
-import mapValues from 'lodash/mapValues';
-import stripAnsi from 'strip-ansi';
-import { Dictionary, get, isPlainObject, omit, pickBy } from 'lodash';
 import { ErrorBoundary } from 'react-error-boundary';
-import { Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
-import { JSONTree } from 'react-json-tree';
-import { StringParam, withDefault } from 'serialize-query-params';
-import { add, format } from 'date-fns';
-import { toast } from 'react-toastify';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { JSONTree } from 'react-json-tree';
+import Drawer from 'react-modern-drawer';
+import { toast } from 'react-toastify';
+import { StringParam, withDefault } from 'serialize-query-params';
+import stripAnsi from 'strip-ansi';
+import Timestamp from 'timestamp-nano';
 import { useQueryParam } from 'use-query-params';
 
-import api from './api';
 import LogLevel from './LogLevel';
 import SearchInput from './SearchInput';
+import SessionSubpanel from './SessionSubpanel';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
-import SessionSubpanel from './SessionSubpanel';
+import api from './api';
+import { dateRangeToString } from './timeQuery';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
   useLocalStorage,
   useWindowSize,
 } from './utils';
-import { dateRangeToString } from './timeQuery';
 
 import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
 import 'react-modern-drawer/dist/index.css';
 import { CurlGenerator } from './curlGenerator';
+import { Dictionary } from './types';
 import { ZIndexContext, useZIndex } from './zIndex';
 
 const HDX_BODY_FIELD = '_hdx_body';

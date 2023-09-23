@@ -1,13 +1,12 @@
-import _ from 'lodash';
-
+import omit from 'lodash/omit';
+import { getTeam } from '../../../controllers/team';
+import { findUserByEmail } from '../../../controllers/user';
 import {
   clearDBCollections,
   closeDB,
   getAgent,
   getServer,
 } from '../../../fixtures';
-import { getTeam } from '../../../controllers/team';
-import { findUserByEmail } from '../../../controllers/user';
 
 describe('team router', () => {
   const server = getServer();
@@ -66,7 +65,7 @@ describe('team router', () => {
 
     const resp = await agent.get('/team').expect(200);
 
-    expect(_.omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
+    expect(omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",

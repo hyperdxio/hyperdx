@@ -1,19 +1,18 @@
-import ReactDOM from 'react-dom';
-import { format } from 'date-fns';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryParam } from 'use-query-params';
-import { throttle } from 'lodash';
-import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { format } from 'date-fns';
+import throttle from 'lodash/throttle';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
+import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
+import { useQueryParam } from 'use-query-params';
 
 import DOMPlayer from './DOMPlayer';
 import LogSidePanel from './LogSidePanel';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
 import TabBar from './TabBar';
-import { getShortUrl, usePrevious } from './utils';
 import { useSessionEvents } from './sessionUtils';
-import { ZIndexContext } from './zIndex';
+import { getShortUrl, usePrevious } from './utils';
 
 function SessionEventList({
   config: { where, dateRange },
