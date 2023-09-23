@@ -13134,6 +13134,11 @@ react-hotkeys-hook@^4.3.7:
   resolved "https://registry.yarnpkg.com/react-hotkeys-hook/-/react-hotkeys-hook-4.3.7.tgz#87d4c2c939d190643acb66de84cdf586a8743dce"
   integrity sha512-qUcA5vl/liGWr9wLYI5/8oppHLa6nExFqOAMC6CyZhpj7C56PIzYZ76xAtJ+5lgxObgl4A4pQz8upy+nq7orSQ==
 
+react-icons@^4.11.0:
+  version "4.11.0"
+  resolved "https://registry.yarnpkg.com/react-icons/-/react-icons-4.11.0.tgz#4b0e31c9bfc919608095cc429c4f1846f4d66c65"
+  integrity sha512-V+4khzYcE5EBk/BvcuYRq6V/osf11ODUM2J8hg2FDSswRrGvqiYUYPRy4OdrWaQOBj4NcpJfmHZLNaD+VH0TyA==
+
 react-intersection-observer@^9.3.4:
   version "9.4.3"
   resolved "https://registry.yarnpkg.com/react-intersection-observer/-/react-intersection-observer-9.4.3.tgz#ec84ce0c25cad548075130ea045ac5c7adf908f3"

@@ -2,12 +2,12 @@ import { Button, Form } from 'react-bootstrap';
 import { NextSeo } from 'next-seo';
 import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
 import LandingHeader from './LandingHeader';
 import * as config from './config';
 import api from './api';
+import { Eye, EyeSlash } from './SVGIcons';
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const router = useRouter();
@@ -18,6 +18,8 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const verificationSent = msg === 'verify';
 
   const title = `HyperDX - ${action === 'register' ? 'Sign up' : 'Login'}`;
+
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     // If an OSS user accidentally lands on /register after already creating a team
@@ -87,13 +89,26 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                 >
                   Password
                 </Form.Label>
-                <Form.Control
-                  data-test-id="form-password"
-                  id="password"
-                  name="password"
-                  type="password"
-                  className="border-0"
-                />
+                <div className="d-flex position-relative">
+                  <Form.Control
+                    data-test-id="form-password"
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    className="border-0"
+                    placeholder="********"
+                  />
+                  <Button
+                    onClick={e => {
+                      e.preventDefault();
+                      setShowPassword(prev => !prev);
+                    }}
+                    variant="dark"
+                    className="border-0 text-muted position-absolute end-0 bg-transparent"
+                  >
+                    {showPassword ? <EyeSlash /> : <Eye />}
+                  </Button>
+                </div>
                 {err != null && (
                   <div
                     className="text-danger mt-2"
