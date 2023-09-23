@@ -256,7 +256,7 @@ export const RawLogTable = memo(
     const isSmallScreen = (width ?? 1000) < 900;
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<Record<string, number>>(
-      'column-sizes', {}
+      `${tableId}-column-sizes`, {}
     );
 
     const tsFormat = 'MMM d HH:mm:ss.SSS';
@@ -345,7 +345,7 @@ export const RawLogTable = memo(
               <LogLevel level={info.getValue<string>()} />
             </span>
           ),
-          size: isSmallScreen ? 50 : 100,
+          size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
         },
         {
           accessorKey: '_service',
@@ -360,7 +360,7 @@ export const RawLogTable = memo(
               {info.getValue<string>()}
             </span>
           ),
-          size: isSmallScreen ? 70 : 100,
+          size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
         },
         ...(displayedColumns.map(column => ({
           accessorFn: row => row[column], // Columns can contain '.' and will not work with accessorKey
@@ -375,7 +375,7 @@ export const RawLogTable = memo(
               {info.getValue<string>()}
             </span>
           ),
-          size: 150,
+          size: columnSizeStorage[column] ?? 150,
         })) as ColumnDef<any>[]),
         {
           accessorKey: 'body',
@@ -436,18 +436,12 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
-    useEffect(() => {
-
-    }, )
-
     //TODO: fix any
     const onColumnSizingChange = (updaterOrValue : any) => {
       const state = updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
       setColumnSizeStorage({ ...columnSizeStorage, ...state})
       setColumnSize(updaterOrValue)
-     
     }
-
 
     const table = useReactTable({
       data: dedupLogs,
