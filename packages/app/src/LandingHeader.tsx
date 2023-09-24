@@ -1,8 +1,7 @@
 import Link from 'next/link';
-import { Button, Container, Navbar, Nav, NavDropdown } from 'react-bootstrap';
+import { Button, Container, Navbar, Nav } from 'react-bootstrap';
 
 import Logo from './Logo';
-import NavHoverDropdown from './NavHoverDropdown';
 import api from './api';
 
 export default function LandingHeader({ activeKey }: { activeKey: string }) {

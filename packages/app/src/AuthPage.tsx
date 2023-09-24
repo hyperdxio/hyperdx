@@ -34,10 +34,10 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   }, [installation, action, router]);
 
   return (
-    <div className="AuthPage">
+    <div className="AuthPage min-vh-100 d-flex align-items-center justify-content-center">
       <NextSeo title={title} />
       <LandingHeader activeKey={`/${action}`} />
-      <div className="d-flex align-items-center justify-content-center vh-100 p-2">
+      <div className="d-flex align-items-center justify-content-center p-2 my-auto">
         <div>
           <div className="text-center mb-4 fs-5">
             {config.IS_OSS && action === 'register'
