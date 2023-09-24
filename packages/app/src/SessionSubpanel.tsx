@@ -11,8 +11,8 @@ import LogSidePanel from './LogSidePanel';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
 import TabBar from './TabBar';
-import { useSessionEvents } from './sessionUtils';
 import { getShortUrl, usePrevious } from './utils';
+import { useSessionEvents } from './sessionUtils';
 
 function SessionEventList({
   config: { where, dateRange },
