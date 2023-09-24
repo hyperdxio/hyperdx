@@ -421,9 +421,23 @@ body {
 
 /* Custom Components */
 
-// Make sure the rrweb mouse doesn't obscure elements below it for the inspector
-.replayer-mouse {
-  pointer-events: none;
+.player-wrapper {
+  position: relative;
+
+  .replayer-mouse {
+    width: 15px;
+    height: 15px;
+    background-color: rgba(#fff, 0.5);
+    border: 2px solid rgba($gray-100, 0.75);
+    border-radius: 50%;
+    position: absolute;
+    pointer-events: none; // Make sure the rrweb mouse doesn't obscure elements below it for the inspector
+    display: none;
+  }
+
+  &.started .replayer-mouse {
+    display: block;
+  }
 }
 
 .shimmer {
