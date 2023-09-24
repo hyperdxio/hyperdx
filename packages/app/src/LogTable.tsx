@@ -13,6 +13,7 @@ import cx from 'classnames';
 import { Button, Modal } from 'react-bootstrap';
 import stripAnsi from 'strip-ansi';
 import { CSVLink } from 'react-csv';
+import curry from 'lodash/curry';
 
 import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
@@ -22,6 +23,19 @@ import api from './api';
 import { usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
+
+type Row = Record<string, any> & { duration: number };
+type AccessorFn = (row: Row, column: string) => any;
+
+const ACCESSOR_MAP: Record<string, AccessorFn> = {
+  duration: row => (row.duration >= 0 ? row.duration : 'N/A'),
+  default: (row, column) => row[column],
+};
+
+function retrieveColumnValue(column: string, row: Row): any {
+  const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
+  return accessor(row, column);
+}
 
 function DownloadCSVButton({
   config: { where, dateRange },
@@ -351,7 +365,7 @@ export const RawLogTable = memo(
           size: isSmallScreen ? 70 : 100,
         },
         ...(displayedColumns.map(column => ({
-          accessorFn: row => row[column], // Columns can contain '.' and will not work with accessorKey
+          accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
           header: column,
           cell: info => (
             <span
