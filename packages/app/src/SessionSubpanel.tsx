@@ -1,9 +1,9 @@
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { format } from 'date-fns';
-import throttle from 'lodash/throttle';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
+import throttle from 'lodash/throttle';
 import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
+import { format } from 'date-fns';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useQueryParam } from 'use-query-params';
 
 import DOMPlayer from './DOMPlayer';

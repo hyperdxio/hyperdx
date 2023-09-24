@@ -1,12 +1,13 @@
 import omit from 'lodash/omit';
-import { getTeam } from '../../../controllers/team';
-import { findUserByEmail } from '../../../controllers/user';
+
 import {
   clearDBCollections,
   closeDB,
   getAgent,
   getServer,
 } from '../../../fixtures';
+import { getTeam } from '../../../controllers/team';
+import { findUserByEmail } from '../../../controllers/user';
 
 describe('team router', () => {
   const server = getServer();
