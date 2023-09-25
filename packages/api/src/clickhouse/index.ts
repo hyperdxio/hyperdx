@@ -147,8 +147,9 @@ export const client = createClient({
   },
   clickhouse_settings: {
     connect_timeout: ms('1m') / 1000,
-    max_download_threads: 32,
+    date_time_output_format: 'iso',
     max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
+    max_download_threads: 32,
     max_execution_time: ms('2m') / 1000,
   },
   log: {

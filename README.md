@@ -89,6 +89,13 @@ HYPERDX_API_KEY=<YOUR_INGESTION_KEY> docker compose up -d
 > variable with the `-E` flag:
 > `HYPERDX_API_KEY=<YOUR_KEY> sudo -E docker compose up -d`
 
+**Changing Hostname and Port**
+
+By default, HyperDX app/api will run on localhost with port `8080`/`8000`. You
+can change this by updating `HYPERDX_APP_**` and `HYPERDX_API_**` variables in
+the `.env` file. After making your changes, rebuild images with
+`make build-local`.
+
 ### Hosted Cloud
 
 HyperDX is also available as a hosted cloud service at
@@ -140,7 +147,8 @@ including but not limited to:
 - Opening a PR ([Contribution Guide](./CONTRIBUTING.md))
 - [Submitting feature requests or bugs](https://github.com/hyperdxio/hyperdx/issues/new)
 - Improving our product or contribution documentation
-- Voting on [open issues](https://github.com/hyperdxio/hyperdx/issues) or contributing use cases to a feature request
+- Voting on [open issues](https://github.com/hyperdxio/hyperdx/issues) or
+  contributing use cases to a feature request
 
 ## Motivation
 
@@ -167,7 +175,8 @@ we're doing!
 
 HyperDX is open core, with most of our features available here under an MIT
 license. We have a cloud-hosted version available at
-[hyperdx.io](https://hyperdx.io) with a few [additional features](https://www.hyperdx.io/docs/oss-vs-cloud) beyond what's
+[hyperdx.io](https://hyperdx.io) with a few
+[additional features](https://www.hyperdx.io/docs/oss-vs-cloud) beyond what's
 offered in the open source version.
 
 Our cloud hosted version exists so that we can build a sustainable business and
