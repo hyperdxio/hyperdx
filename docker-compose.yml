@@ -78,8 +78,8 @@ services:
     environment:
       APP_TYPE: 'aggregator'
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_PASSWORD: aggregator
-      CLICKHOUSE_USER: aggregator
+      CLICKHOUSE_PASSWORD: toor
+      CLICKHOUSE_USER: root
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
@@ -101,8 +101,8 @@ services:
       APP_TYPE: 'scheduled-task'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_LOG_LEVEL: trace
-      CLICKHOUSE_PASSWORD: worker
-      CLICKHOUSE_USER: worker
+      CLICKHOUSE_PASSWORD: toor
+      CLICKHOUSE_USER: root
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 0
@@ -132,8 +132,8 @@ services:
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_LOG_LEVEL: trace
-      CLICKHOUSE_PASSWORD: api
-      CLICKHOUSE_USER: api
+      CLICKHOUSE_PASSWORD: toor
+      CLICKHOUSE_USER: root
       EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
@@ -178,9 +178,10 @@ services:
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_DEFAULT_DATABASE: default
+      CLICKHOUSE_USER: root
+      CLICKHOUSE_PASSWORD: toor
     volumes:
-      - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
-      - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
       - .volumes/ch_data:/var/lib/clickhouse
       - .volumes/ch_logs:/var/log/clickhouse-server
     restart: on-failure
