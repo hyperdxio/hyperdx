@@ -178,7 +178,7 @@ services:
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-      CLICKHOUSE_DEFAULT_DATABASE: default
+      CLICKHOUSE_DB: default
       CLICKHOUSE_USER: root
       CLICKHOUSE_PASSWORD: toor
     volumes:

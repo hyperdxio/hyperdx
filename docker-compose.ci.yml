@@ -4,11 +4,10 @@ services:
     container_name: hdx-ci-ch-server
     image: clickhouse/clickhouse-server:23.5.2-alpine
     environment:
-      # default settings
+      CLICKHOUSE_DB: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-      CLICKHOUSE_DEFAULT_DATABASE: default
-      CLICKHOUSE_USER: root
       CLICKHOUSE_PASSWORD: toor
+      CLICKHOUSE_USER: root
     volumes:
       - ./docker/clickhouse/local/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     restart: on-failure

@@ -221,11 +221,10 @@ services:
       - 8123:8123 # http api
       - 9000:9000 # native
     environment:
-      # default settings
+      CLICKHOUSE_DB: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-      CLICKHOUSE_DEFAULT_DATABASE: default
-      CLICKHOUSE_USER: root
       CLICKHOUSE_PASSWORD: toor
+      CLICKHOUSE_USER: root
     volumes:
       - .volumes/ch_data:/var/lib/clickhouse
       - .volumes/ch_logs:/var/log/clickhouse-server
