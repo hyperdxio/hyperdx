@@ -416,7 +416,7 @@ export const RawLogTable = memo(
                   className="text-muted-hover fw-normal text-decoration-underline"
                   onClick={() => setColumnSizeStorage({})}
                 >
-                  reset column size
+                  Reset Column Sizes
                 </span>
               </span>
             </span>
