@@ -1,8 +1,15 @@
 import {
   ColumnDef,
+  ColumnResizeMode,
+  ColumnSizingDefaultOptions,
+  ColumnSizingState,
   flexRender,
   getCoreRowModel,
+  OnChangeFn,
+  RowData,
+  TableOptions,
   Row as TableRow,
+  Updater,
   useReactTable,
 } from '@tanstack/react-table';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -20,7 +27,7 @@ import FieldMultiSelect from './FieldMultiSelect';
 import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
 import api from './api';
-import { usePrevious, useWindowSize } from './utils';
+import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
 
@@ -207,6 +214,7 @@ function LogTableSettingsModal({
 
 export const RawLogTable = memo(
   ({
+    tableId,
     displayedColumns,
     fetchNextPage,
     formatUTC,
@@ -223,6 +231,7 @@ export const RawLogTable = memo(
     onShowPatternsClick,
     wrapLines,
   }: {
+    
     wrapLines: boolean;
     displayedColumns: string[];
     onSettingsClick?: () => void;
@@ -248,6 +257,7 @@ export const RawLogTable = memo(
     onScroll: (scrollTop: number) => void;
     isLive: boolean;
     onShowPatternsClick?: () => void;
+    tableId?: string;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -262,6 +272,11 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
+
+    const [columnSize, setColumnSize] = useState({});
+    const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<Record<string, number>>(
+      `${tableId}-column-sizes`, {}
+    );
 
     const tsFormat = 'MMM d HH:mm:ss.SSS';
     const tsShortFormat = 'HH:mm:ss';
@@ -332,7 +347,7 @@ export const RawLogTable = memo(
               </span>
             );
           },
-          size: isSmallScreen ? 75 : 180,
+          size: columnSizeStorage.timestamp ?? (isSmallScreen ? 75 : 180),
         },
         {
           accessorKey: 'severity_text',
@@ -347,7 +362,7 @@ export const RawLogTable = memo(
               <LogLevel level={info.getValue<string>()} />
             </span>
           ),
-          size: isSmallScreen ? 50 : 100,
+          size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
         },
         {
           accessorKey: '_service',
@@ -362,7 +377,7 @@ export const RawLogTable = memo(
               {info.getValue<string>()}
             </span>
           ),
-          size: isSmallScreen ? 70 : 100,
+          size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
         },
         ...(displayedColumns.map(column => ({
           accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
@@ -377,7 +392,7 @@ export const RawLogTable = memo(
               {info.getValue<string>()}
             </span>
           ),
-          size: 150,
+          size: columnSizeStorage[column] ?? 150,
         })) as ColumnDef<any>[]),
         {
           accessorKey: 'body',
@@ -435,14 +450,35 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
-    const table = useReactTable({
+    //TODO: fix any
+    const onColumnSizingChange = (updaterOrValue : any) => {
+      const state = updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
+      setColumnSizeStorage({ ...columnSizeStorage, ...state})
+      setColumnSize(updaterOrValue)
+    }
+
+
+    const reactTableProps = () : TableOptions<any> => {
+      const initReactTableProps = {
       data: dedupLogs,
       columns,
       getCoreRowModel: getCoreRowModel(),
       // debugTable: true,
       enableColumnResizing: true,
-      columnResizeMode: 'onChange',
-    });
+      columnResizeMode: 'onChange' as ColumnResizeMode
+      }
+
+      const columnSizeProps = {
+        state: {
+          columnSizing: columnSize
+        },
+        onColumnSizingChange : onColumnSizingChange,
+      }
+
+      return tableId ? {...initReactTableProps, ...columnSizeProps} :  initReactTableProps; 
+    };
+
+    const table = useReactTable(reactTableProps());
 
     const { rows } = table.getRowModel();
 
@@ -538,7 +574,7 @@ export const RawLogTable = memo(
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}
       >
-        <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>
+        <table className="w-100 bg-inherit" id={tableId} style={{ tableLayout: 'fixed' }}>
           <thead
             className="bg-inherit"
             style={{
@@ -724,6 +760,7 @@ export default function LogTable({
   setIsUTC,
   onEnd,
   onShowPatternsClick,
+  tableId,
 }: {
   config: {
     where: string;
@@ -741,6 +778,7 @@ export default function LogTable({
   setIsUTC: (isUTC: boolean) => void;
   onEnd?: () => void;
   onShowPatternsClick?: () => void;
+  tableId? : string;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -827,6 +865,7 @@ export default function LogTable({
         }
       />
       <RawLogTable
+        tableId={tableId}
         isLive={isLive}
         wrapLines={wrapLines}
         displayedColumns={displayedColumns}
