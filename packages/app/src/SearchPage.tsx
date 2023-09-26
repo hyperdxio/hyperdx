@@ -349,7 +349,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
         />
       </ErrorBoundary>
       <LogTable
-        tableId='search-table'
+        tableId="search-table"
         isLive={isLive}
         setIsUTC={setIsUTC}
         onScroll={useCallback(

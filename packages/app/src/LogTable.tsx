@@ -231,7 +231,6 @@ export const RawLogTable = memo(
     onShowPatternsClick,
     wrapLines,
   }: {
-    
     wrapLines: boolean;
     displayedColumns: string[];
     onSettingsClick?: () => void;
@@ -274,9 +273,9 @@ export const RawLogTable = memo(
     const isSmallScreen = (width ?? 1000) < 900;
 
     const [columnSize, setColumnSize] = useState({});
-    const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<Record<string, number>>(
-      `${tableId}-column-sizes`, {}
-    );
+    const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
+      Record<string, number>
+    >(`${tableId}-column-sizes`, {});
 
     const tsFormat = 'MMM d HH:mm:ss.SSS';
     const tsShortFormat = 'HH:mm:ss';
@@ -451,31 +450,33 @@ export const RawLogTable = memo(
     }, [fetchMoreOnBottomReached]);
 
     //TODO: fix any
-    const onColumnSizingChange = (updaterOrValue : any) => {
-      const state = updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
-      setColumnSizeStorage({ ...columnSizeStorage, ...state})
-      setColumnSize(updaterOrValue)
-    }
+    const onColumnSizingChange = (updaterOrValue: any) => {
+      const state =
+        updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
+      setColumnSizeStorage({ ...columnSizeStorage, ...state });
+      setColumnSize(updaterOrValue);
+    };
 
-
-    const reactTableProps = () : TableOptions<any> => {
+    const reactTableProps = (): TableOptions<any> => {
       const initReactTableProps = {
-      data: dedupLogs,
-      columns,
-      getCoreRowModel: getCoreRowModel(),
-      // debugTable: true,
-      enableColumnResizing: true,
-      columnResizeMode: 'onChange' as ColumnResizeMode
-      }
+        data: dedupLogs,
+        columns,
+        getCoreRowModel: getCoreRowModel(),
+        // debugTable: true,
+        enableColumnResizing: true,
+        columnResizeMode: 'onChange' as ColumnResizeMode,
+      };
 
       const columnSizeProps = {
         state: {
-          columnSizing: columnSize
+          columnSizing: columnSize,
         },
-        onColumnSizingChange : onColumnSizingChange,
-      }
+        onColumnSizingChange: onColumnSizingChange,
+      };
 
-      return tableId ? {...initReactTableProps, ...columnSizeProps} :  initReactTableProps; 
+      return tableId
+        ? { ...initReactTableProps, ...columnSizeProps }
+        : initReactTableProps;
     };
 
     const table = useReactTable(reactTableProps());
@@ -574,7 +575,11 @@ export const RawLogTable = memo(
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}
       >
-        <table className="w-100 bg-inherit" id={tableId} style={{ tableLayout: 'fixed' }}>
+        <table
+          className="w-100 bg-inherit"
+          id={tableId}
+          style={{ tableLayout: 'fixed' }}
+        >
           <thead
             className="bg-inherit"
             style={{
@@ -778,7 +783,7 @@ export default function LogTable({
   setIsUTC: (isUTC: boolean) => void;
   onEnd?: () => void;
   onShowPatternsClick?: () => void;
-  tableId? : string;
+  tableId?: string;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
