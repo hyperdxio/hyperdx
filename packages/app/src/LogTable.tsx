@@ -1,9 +1,13 @@
 import {
   ColumnDef,
+  ColumnResizeMode,
+  ColumnSizingDefaultOptions,
   ColumnSizingState,
   flexRender,
   getCoreRowModel,
   OnChangeFn,
+  RowData,
+  TableOptions,
   Row as TableRow,
   Updater,
   useReactTable,
@@ -255,6 +259,7 @@ export const RawLogTable = memo(
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
 
+    const [columnSize, setColumnSize] = useState({});
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<Record<string, number>>(
       `${tableId}-column-sizes`, {}
     );
@@ -276,8 +281,6 @@ export const RawLogTable = memo(
         tableContainerRef.current.scrollTop = 0;
       }
     }, [isLive, prevIsLive]);
-
-    
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -428,9 +431,6 @@ export const RawLogTable = memo(
       [fetchNextPage, isLoading, hasNextPage],
     );
 
-    const [columnSize, setColumnSize] = useState({});
-
-
     //a check on mount and after a fetch to see if the table is already scrolled to the bottom and immediately needs to fetch more data
     useEffect(() => {
       fetchMoreOnBottomReached(tableContainerRef.current);
@@ -443,18 +443,28 @@ export const RawLogTable = memo(
       setColumnSize(updaterOrValue)
     }
 
-    const table = useReactTable({
+
+    const reactTableProps = () : TableOptions<any> => {
+      const initReactTableProps = {
       data: dedupLogs,
       columns,
       getCoreRowModel: getCoreRowModel(),
       // debugTable: true,
       enableColumnResizing: true,
-      columnResizeMode: 'onChange',
-      state: {
-        columnSizing: columnSize
-      },
-      onColumnSizingChange : onColumnSizingChange
-    });
+      columnResizeMode: 'onChange' as ColumnResizeMode
+      }
+
+      const columnSizeProps = {
+        state: {
+          columnSizing: columnSize
+        },
+        onColumnSizingChange : onColumnSizingChange,
+      }
+
+      return tableId ? {...initReactTableProps, ...columnSizeProps} :  initReactTableProps; 
+    };
+
+    const table = useReactTable(reactTableProps());
 
     const { rows } = table.getRowModel();
 
