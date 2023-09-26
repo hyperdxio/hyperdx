@@ -272,7 +272,6 @@ export const RawLogTable = memo(
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
 
-    const [columnSize, setColumnSize] = useState({});
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
     >(`${tableId}-column-sizes`, {});
@@ -410,6 +409,16 @@ export const RawLogTable = memo(
                   </span>
                 </span>
               )}
+              <span>
+                {' '}
+                <span
+                  role="button"
+                  className="text-muted-hover fw-normal text-decoration-underline"
+                  onClick={() => setColumnSizeStorage({})}
+                >
+                  reset column size
+                </span>
+              </span>
             </span>
           ),
           cell: info => <div>{stripAnsi(info.getValue<string>())}</div>,
@@ -454,7 +463,6 @@ export const RawLogTable = memo(
       const state =
         updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
       setColumnSizeStorage({ ...columnSizeStorage, ...state });
-      setColumnSize(updaterOrValue);
     };
 
     const reactTableProps = (): TableOptions<any> => {
@@ -469,7 +477,7 @@ export const RawLogTable = memo(
 
       const columnSizeProps = {
         state: {
-          columnSizing: columnSize,
+          columnSizing: columnSizeStorage,
         },
         onColumnSizingChange: onColumnSizingChange,
       };
