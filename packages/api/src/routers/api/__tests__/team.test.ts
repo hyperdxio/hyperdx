@@ -1,4 +1,4 @@
-import omit from 'lodash/omit';
+import _ from 'lodash';
 
 import {
   clearDBCollections,
@@ -66,7 +66,7 @@ describe('team router', () => {
 
     const resp = await agent.get('/team').expect(200);
 
-    expect(omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
+    expect(_.omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",

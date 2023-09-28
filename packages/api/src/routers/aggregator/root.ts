@@ -1,5 +1,5 @@
 import express from 'express';
-import groupBy from 'lodash/groupBy';
+import _ from 'lodash';
 
 import * as config from '../../config';
 import logger from '../../utils/logger';
@@ -112,7 +112,7 @@ router.post('/', async (req, res, next) => {
     }
 
     if (filteredLogs.length > 0) {
-      const groupedLogs = groupBy(filteredLogs, 'hdx_apiKey');
+      const groupedLogs = _.groupBy(filteredLogs, 'hdx_apiKey');
       await Promise.all(
         Object.entries(groupedLogs).map(([apiKey, logs]) =>
           bulkInsert(hdxTelemetry, apiKey, logs),

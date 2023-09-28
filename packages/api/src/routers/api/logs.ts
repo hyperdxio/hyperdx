@@ -1,9 +1,7 @@
 import express from 'express';
 import ms from 'ms';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import omit from 'lodash/omit';
-import isNumber from 'lodash/isNumber';
-import parseInt from 'lodash/parseInt';
+import { isNumber, omit, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
