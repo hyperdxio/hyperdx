@@ -1,11 +1,10 @@
+import throttle from 'lodash/throttle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
-import { throttle } from 'lodash';
 import cx from 'classnames';
 
 import { useSearchEventStream } from './search';
-import { useRouter } from 'next/router';
 import { useDebugMode } from './utils';
 
 function getPlayerCurrentTime(player: Replayer) {
