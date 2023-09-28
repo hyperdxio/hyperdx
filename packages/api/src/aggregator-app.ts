@@ -5,7 +5,6 @@ import { serializeError } from 'serialize-error';
 import * as clickhouse from './clickhouse';
 import logger, { expressLogger } from './utils/logger';
 import routers from './routers/aggregator';
-
 import { BaseError } from './utils/errors';
 import { mongooseConnection } from './models';
 
