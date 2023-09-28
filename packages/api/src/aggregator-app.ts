@@ -5,7 +5,7 @@ import { serializeError } from 'serialize-error';
 import * as clickhouse from './clickhouse';
 import logger, { expressLogger } from './utils/logger';
 import routers from './routers/aggregator';
-import { BaseError } from './utils/errors';
+import { BaseError, StatusCode } from './utils/errors';
 import { mongooseConnection } from './models';
 
 import type { Request, Response, NextFunction } from 'express';
@@ -19,14 +19,14 @@ const healthCheckMiddleware = async (
 ) => {
   if (mongooseConnection.readyState !== 1) {
     logger.error('MongoDB is down!');
-    return res.status(500).send('MongoDB is down!');
+    return res.status(StatusCode.INTERNAL_SERVER).send('MongoDB is down!');
   }
 
   try {
     await clickhouse.healthCheck();
   } catch (e) {
     logger.error('Clickhouse is down!');
-    return res.status(500).send('Clickhouse is down!');
+    return res.status(StatusCode.INTERNAL_SERVER).send('Clickhouse is down!');
   }
   next();
 };
@@ -52,7 +52,7 @@ app.use((err: BaseError, _: Request, res: Response, next: NextFunction) => {
     error: serializeError(err),
   });
   // WARNING: should always return 500 so the ingestor will queue logs
-  res.status(500).send('Something broke!');
+  res.status(StatusCode.INTERNAL_SERVER).send('Something broke!');
 });
 
 export default app;
