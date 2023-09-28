@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import { IncomingWebhook } from '@slack/webhook';
 
 export function postMessageToWebhook(webhookUrl: string, message: any) {
