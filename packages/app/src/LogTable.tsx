@@ -27,8 +27,12 @@ import { useHotkeys } from 'react-hotkeys-hook';
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
 
+const SPECIAL_VALUES = {
+  not_available: 'NULL',
+};
 const ACCESSOR_MAP: Record<string, AccessorFn> = {
-  duration: row => (row.duration >= 0 ? row.duration : 'N/A'),
+  duration: row =>
+    row.duration >= 0 ? row.duration : SPECIAL_VALUES.not_available,
   default: (row, column) => row[column],
 };
 
@@ -367,16 +371,18 @@ export const RawLogTable = memo(
         ...(displayedColumns.map(column => ({
           accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
           header: column,
-          cell: info => (
-            <span
-            // role="button"
-            // onClick={() =>
-            //   onPropertySearchClick(column, info.getValue<string>())
-            // }
-            >
-              {info.getValue<string>()}
-            </span>
-          ),
+          cell: info => {
+            const value = info.getValue<string>();
+            return (
+              <span
+                className={cx({
+                  'text-muted': value === SPECIAL_VALUES.not_available,
+                })}
+              >
+                {value}
+              </span>
+            );
+          },
           size: 150,
         })) as ColumnDef<any>[]),
         {
