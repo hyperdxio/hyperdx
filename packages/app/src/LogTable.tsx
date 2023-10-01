@@ -3,11 +3,8 @@ import {
   ColumnResizeMode,
   flexRender,
   getCoreRowModel,
-  OnChangeFn,
-  RowData,
   TableOptions,
   Row as TableRow,
-  Updater,
   useReactTable,
 } from '@tanstack/react-table';
 import { formatInTimeZone } from 'date-fns-tz';
