@@ -1,17 +1,13 @@
-import _ from 'lodash';
+import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
 import expressWinston from 'express-winston';
 import winston, { addColors } from 'winston';
-import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
 
 import {
   APP_TYPE,
   HYPERDX_API_KEY,
   INGESTOR_API_URL,
-  IS_DEV,
   IS_PROD,
 } from '../config';
-
-import type { IUser } from '../models/user';
 
 // LOCAL DEV ONLY
 addColors({
