@@ -455,13 +455,6 @@ export const RawLogTable = memo(
 
     const test = useMemo(() => {}, []);
 
-    //TODO: fix any
-    const onColumnSizingChange = (updaterOrValue: any) => {
-      const state =
-        updaterOrValue instanceof Function ? updaterOrValue() : updaterOrValue;
-      setColumnSizeStorage({ ...columnSizeStorage, ...state });
-    };
-
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
       const onColumnSizingChange = (updaterOrValue: any) => {
