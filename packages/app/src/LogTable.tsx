@@ -1,8 +1,6 @@
 import {
   ColumnDef,
   ColumnResizeMode,
-  ColumnSizingDefaultOptions,
-  ColumnSizingState,
   flexRender,
   getCoreRowModel,
   OnChangeFn,
@@ -409,16 +407,6 @@ export const RawLogTable = memo(
                   </span>
                 </span>
               )}
-              <span>
-                {' '}
-                <span
-                  role="button"
-                  className="text-muted-hover fw-normal text-decoration-underline"
-                  onClick={() => setColumnSizeStorage({})}
-                >
-                  Reset Column Sizes
-                </span>
-              </span>
             </span>
           ),
           cell: info => <div>{stripAnsi(info.getValue<string>())}</div>,
@@ -433,6 +421,7 @@ export const RawLogTable = memo(
         displayedColumns,
         onShowPatternsClick,
         isSmallScreen,
+        columnSizeStorage,
       ],
     );
 
@@ -458,6 +447,8 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
+    const test = useMemo(() => {}, []);
+
     //TODO: fix any
     const onColumnSizingChange = (updaterOrValue: any) => {
       const state =
@@ -465,7 +456,16 @@ export const RawLogTable = memo(
       setColumnSizeStorage({ ...columnSizeStorage, ...state });
     };
 
-    const reactTableProps = (): TableOptions<any> => {
+    const reactTableProps = useMemo((): TableOptions<any> => {
+      //TODO: fix any
+      const onColumnSizingChange = (updaterOrValue: any) => {
+        const state =
+          updaterOrValue instanceof Function
+            ? updaterOrValue()
+            : updaterOrValue;
+        setColumnSizeStorage({ ...columnSizeStorage, ...state });
+      };
+
       const initReactTableProps = {
         data: dedupLogs,
         columns,
@@ -485,9 +485,9 @@ export const RawLogTable = memo(
       return tableId
         ? { ...initReactTableProps, ...columnSizeProps }
         : initReactTableProps;
-    };
+    }, [columns, dedupLogs, tableId, columnSizeStorage, setColumnSizeStorage]);
 
-    const table = useReactTable(reactTableProps());
+    const table = useReactTable(reactTableProps);
 
     const { rows } = table.getRowModel();
 
@@ -570,7 +570,7 @@ export const RawLogTable = memo(
 
     return (
       <div
-        className="overflow-auto h-100 fs-8 bg-inherit"
+        className="overflow-auto h-100 fs-8 bg-inherit py-2"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -643,22 +643,38 @@ export const RawLogTable = memo(
                           <i className="bi bi-three-dots-vertical" />
                         </div>
                       )}
-                      {headerIndex === headerGroup.headers.length - 1 &&
-                      onSettingsClick != null ? (
+                      {headerIndex === headerGroup.headers.length - 1 && (
                         <div
-                          className="fs-8 text-muted-hover"
+                          className="d-flex align-items-center"
                           style={{
                             position: 'absolute',
                             right: 8,
                             top: 0,
                             bottom: 0,
                           }}
-                          role="button"
-                          onClick={() => onSettingsClick()}
                         >
-                          <i className="bi bi-gear-fill" />
+                          {tableId != null &&
+                            Object.keys(columnSizeStorage).length > 0 && (
+                              <div
+                                className="fs-8 text-muted-hover disabled"
+                                role="button"
+                                onClick={() => setColumnSizeStorage({})}
+                                title="Reset Column Widths"
+                              >
+                                <i className="bi bi-arrow-clockwise" />
+                              </div>
+                            )}
+                          {onSettingsClick != null && (
+                            <div
+                              className="fs-8 text-muted-hover ms-2"
+                              role="button"
+                              onClick={() => onSettingsClick()}
+                            >
+                              <i className="bi bi-gear-fill" />
+                            </div>
+                          )}
                         </div>
-                      ) : null}
+                      )}
                     </th>
                   );
                 })}
