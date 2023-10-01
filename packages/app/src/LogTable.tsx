@@ -453,8 +453,6 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
-    const test = useMemo(() => {}, []);
-
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
       const onColumnSizingChange = (updaterOrValue: any) => {
