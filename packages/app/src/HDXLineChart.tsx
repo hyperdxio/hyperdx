@@ -16,6 +16,7 @@ import pick from 'lodash/pick';
 
 import api from './api';
 import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
+import useUserPreferences, { TimeFormat, TIME_TOKENS } from './useUserPreferences';
 
 import { semanticKeyedColor, truncateMiddle } from './utils';
 import Link from 'next/link';
@@ -72,6 +73,8 @@ const MemoChart = memo(function MemoChart({
   }, [groupKeys]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat
+  const tsFormat = TIME_TOKENS[timeFormat]
 
   return (
     <ResponsiveContainer
@@ -120,7 +123,7 @@ const MemoChart = memo(function MemoChart({
           interval="preserveStartEnd"
           scale="time"
           type="number"
-          tickFormatter={tick => format(new Date(tick * 1000), 'MMM d HH:mm')}
+          tickFormatter={tick => format(new Date(tick * 1000), tsFormat)}
           minTickGap={50}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
@@ -177,7 +180,8 @@ const MemoChart = memo(function MemoChart({
 });
 
 const HDXLineChartTooltip = (props: any) => {
-  const tsFormat = 'MMM d HH:mm:ss.SSS';
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat
+  const tsFormat = TIME_TOKENS[timeFormat]
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
     return (

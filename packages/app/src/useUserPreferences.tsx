@@ -1,10 +1,14 @@
 import React, { useContext, useState } from 'react';
 
 export type TimeFormat = '12h' | '24h';
+export const TIME_TOKENS = {
+  '12h' : 'MMM d h:mm:ss a',
+  '24h' : 'MMM d HH:mm:ss.SSS',
+}
 
 export const UserPreferences = React.createContext({
   isUTC: false,
-  timeFormat: '24h' as TimeFormat,
+  timeFormat: '12h' as TimeFormat,
   setTimeFormat: (timeFormat: TimeFormat) => {},
   setIsUTC: (isUTC: boolean) => {},
 });
