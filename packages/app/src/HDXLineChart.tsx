@@ -16,10 +16,12 @@ import pick from 'lodash/pick';
 
 import api from './api';
 import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
-import useUserPreferences, { TimeFormat, TIME_TOKENS } from './useUserPreferences';
+import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { TIME_TOKENS } from './utils';
 
 import { semanticKeyedColor, truncateMiddle } from './utils';
 import Link from 'next/link';
+
 
 function ExpandableLegendItem({ value, entry }: any) {
   const [expanded, setExpanded] = useState(false);
@@ -75,6 +77,7 @@ const MemoChart = memo(function MemoChart({
   const sizeRef = useRef<[number, number]>([0, 0]);
   const timeFormat: TimeFormat = useUserPreferences().timeFormat
   const tsFormat = TIME_TOKENS[timeFormat]
+  // Gets the preffered time format from User Preferences, then converts it to a formattable token
 
   return (
     <ResponsiveContainer

@@ -23,6 +23,9 @@ import api from './api';
 import { usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { TIME_TOKENS } from './utils';
+import useUserPreferences from './useUserPreferences';
+import type { TimeFormat } from './useUserPreferences';
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -262,8 +265,8 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
-
-    const tsFormat = 'MMM d HH:mm:ss.SSS';
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat
+    const tsFormat = TIME_TOKENS[timeFormat]
     const tsShortFormat = 'HH:mm:ss';
     // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
     const UNDEFINED_WIDTH = 99999;

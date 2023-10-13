@@ -152,6 +152,11 @@ export const useDebounce = <T,>(
   return debouncedValue;
 };
 
+export const TIME_TOKENS = {
+  '12h' : 'MMM d h:mm:ss a',
+  '24h' : 'MMM d HH:mm:ss.SSS',
+}
+
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State to store our value
   // Pass initial state function to useState so logic is only executed once
