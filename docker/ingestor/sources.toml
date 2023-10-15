@@ -1,0 +1,12 @@
+[sources.http_server]
+type = "http_server"
+address = "0.0.0.0:8002"
+headers = ["authorization", "Content-Type", "Traceparent"]
+strict_path = false
+path = ""
+query_parameters = [
+  "hdx_platform",
+  "hdx_token",
+  "sentry_key",
+  "sentry_version"
+]
