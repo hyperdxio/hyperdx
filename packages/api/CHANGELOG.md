@@ -1,5 +1,12 @@
 # @hyperdx/api
 
+## 1.1.3
+
+### Patch Changes
+
+- 389bb3a: feat: support HYPERDX_LOG_LEVEL env var
+- 1ec122c: fix: aggregator errors handler status code
+
 ## 1.1.2
 
 ### Patch Changes
