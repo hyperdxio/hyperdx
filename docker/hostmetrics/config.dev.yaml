@@ -21,7 +21,7 @@ receivers:
       network:
 exporters:
   logging:
-    loglevel: debug
+    loglevel: ${env:HYPERDX_LOG_LEVEL}
   otlphttp:
     endpoint: 'http://otel-collector:4318'
     headers:

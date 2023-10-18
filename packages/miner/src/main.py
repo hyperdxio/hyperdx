@@ -2,6 +2,7 @@ from typing import List
 import hashlib
 import json
 import logging
+import os
 import time
 
 from drain3 import TemplateMiner
@@ -16,8 +17,16 @@ API_VERSION = "0.0.1"
 
 app = FastAPI()
 
+
+def get_logging_level():
+    try:
+        return getattr(logging, os.environ.get("HYPERDX_LOG_LEVEL", "DEBUG").upper())
+    except Exception:
+        return logging.DEBUG
+
+
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(get_logging_level())
 
 
 def get_template_miner():
