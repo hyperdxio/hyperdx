@@ -35,6 +35,7 @@ const hyperdxTransport = HYPERDX_API_KEY
   : null;
 
 export const expressLogger = expressWinston.logger({
+  level: MAX_LEVEL,
   format: DEFAULT_FORMAT,
   msg: IS_PROD
     ? undefined
