@@ -10,7 +10,7 @@ services:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_LOG_LEVEL: ERROR
+      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OTEL_SERVICE_NAME: hdx-oss-dev-miner
     volumes:
       - ./packages/miner/src:/app/src
@@ -27,6 +27,7 @@ services:
       - ./docker/hostmetrics/config.dev.yaml:/etc/otelcol-contrib/config.yaml
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OTEL_SERVICE_NAME: hostmetrics
     restart: always
     networks:
@@ -44,7 +45,7 @@ services:
       - 8686:8686 # healthcheck
     environment:
       RUST_BACKTRACE: full
-      VECTOR_LOG: debug
+      VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
       VECTOR_OPENSSL_LEGACY_PROVIDER: false
     restart: always
     networks:
@@ -72,6 +73,8 @@ services:
     build:
       context: ./docker/otel-collector
       target: dev
+    environment:
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -100,6 +103,7 @@ services:
       CLICKHOUSE_PASSWORD: aggregator
       CLICKHOUSE_USER: aggregator
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       PORT: 8001
@@ -132,6 +136,7 @@ services:
       HDX_NODE_BETA_MODE: 0
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
@@ -169,6 +174,7 @@ services:
       HDX_NODE_BETA_MODE: 1
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
