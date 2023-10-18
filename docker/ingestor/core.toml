@@ -403,7 +403,6 @@ if .hdx_platform == "vector-internal" {
       .b.timestamp = tmp_timestamp
 
       .h = .b.host
-      .st = downcase(.b.level) ?? null
       .sv = .b."service.name"
       .ts = to_unix_timestamp(from_unix_timestamp(.b.timestamp, unit: "milliseconds") ?? now(), unit: "nanoseconds")
       .b._hdx_body = .b.message
@@ -411,6 +410,9 @@ if .hdx_platform == "vector-internal" {
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
       }
+
+      # set severity after merging structured message (to avoid conflict)
+      .st = downcase(.b.level) ?? null
 
       if exists(.b."rr-web.event") {
         .hdx_platform = "rrweb"
@@ -477,6 +479,11 @@ if is_object(.b) {
 
   if is_nullish(.st) {
     .st = downcase(.b.level) ?? downcase(.b.severity) ?? downcase(.b.LEVEL) ?? downcase(.b.SEVERITY) ?? null
+  }
+
+  # address .b.level and .st conflict
+  if !is_nullish(.b.level) && .b.level != .st {
+    .b.level = .st
   }
 
   # merge vercel logs
