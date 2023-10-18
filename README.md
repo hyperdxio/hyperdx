@@ -185,6 +185,15 @@ comprehensive documentation on how we balance between cloud-only and open source
 features in the future. In the meantime, we're highly aligned with Gitlab's
 [stewardship model](https://handbook.gitlab.com/handbook/company/stewardship/).
 
+## Frequently Asked Questions
+
+#### How to suppress all logs from HyperDX itself ?
+
+To suppress logs of a service, you can comment out the 'HYPERDX_API_KEY'
+environment variable in the docker-compose.yml file. Logs mainly come from
+`app`, `api` and `miner` services. The alternative is to set the
+`HYPERDX_LOG_LEVEL` environment variable to `error` to only log errors.
+
 ## Contact
 
 - [Open an Issue](https://github.com/hyperdxio/hyperdx/issues/new)
