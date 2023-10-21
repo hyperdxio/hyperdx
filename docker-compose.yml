@@ -35,7 +35,7 @@ services:
     environment:
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
-      VECTOR_OPENSSL_LEGACY_PROVIDER: false
+      VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
     restart: always
     networks:
       - internal
