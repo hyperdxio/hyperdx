@@ -106,7 +106,18 @@ describe('useTimeQuery tests', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
     testRouter.replace('/search?tq=Last+4H');
 
-    render(
+    const { rerender } = render(
+      <TestWrapper>
+        <TestComponent
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+    jest.runAllTimers();
+
+    rerender(
       <TestWrapper>
         <TestComponent
           isUTC={false}
@@ -127,6 +138,125 @@ describe('useTimeQuery tests', () => {
     expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
       `"Oct 3 08:00:00 - Oct 3 12:00:00"`,
     );
+  });
+
+  it('browser navigation of from/to qparmas updates the searched time range', async () => {
+    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
+    testRouter.setIsReady(false);
+    testRouter.replace('/search');
+
+    const result = render(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+    jest.runAllTimers();
+
+    testRouter.setIsReady(true);
+
+    result.rerender(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+
+    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+      `"Past 1h"`,
+    );
+    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
+      Array [
+        2023-10-03T15:45:00.000Z,
+        2023-10-03T16:00:00.000Z,
+      ]
+    `);
+
+    // 10/03/23 from 04:00am EDT to 08:00am EDT
+    testRouter.replace('/search?from=1696320000000&to=1696334400000');
+
+    result.rerender(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+
+    result.rerender(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+
+    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+      `"Oct 3 04:00:00 - Oct 3 08:00:00"`,
+    );
+    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
+      Array [
+        2023-10-03T08:00:00.000Z,
+        2023-10-03T12:00:00.000Z,
+      ]
+    `);
+  });
+
+  it('overrides initial value with async updated `from` and `to` params', async () => {
+    const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
+    // 10/03/23 from 04:00am EDT to 08:00am EDT
+    testRouter.setIsReady(false);
+    testRouter.replace('/search');
+
+    const result = render(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+    jest.runAllTimers();
+
+    testRouter.replace('/search?from=1696320000000&to=1696334400000');
+    testRouter.setIsReady(true);
+
+    result.rerender(
+      <TestWrapper>
+        <TestComponent
+          initialDisplayValue="Past 1h"
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+
+    expect(timeQueryRef.current?.displayedTimeInputValue).toMatchInlineSnapshot(
+      `"Oct 3 04:00:00 - Oct 3 08:00:00"`,
+    );
+    expect(timeQueryRef.current?.searchedTimeRange).toMatchInlineSnapshot(`
+      Array [
+        2023-10-03T08:00:00.000Z,
+        2023-10-03T12:00:00.000Z,
+      ]
+    `);
   });
 
   it('accepts `from` and `to` url params', async () => {
@@ -178,7 +308,18 @@ describe('useTimeQuery tests', () => {
       '/search?from=1696320000000&to=1696334400000&tq=Past+1h',
     );
 
-    render(
+    const result = render(
+      <TestWrapper>
+        <TestComponent
+          isUTC={false}
+          initialTimeRange={getLiveTailTimeRange()}
+          ref={timeQueryRef}
+        />
+      </TestWrapper>,
+    );
+    jest.runAllTimers();
+
+    result.rerender(
       <TestWrapper>
         <TestComponent
           isUTC={false}
