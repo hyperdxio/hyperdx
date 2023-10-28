@@ -459,45 +459,45 @@ export function useNewTimeQuery({
     },
   );
 
-  const initialFrom = useRef(from);
-  const initialTo = useRef(to);
-  const initialInputTimeQuery = useRef(inputTimeQuery);
-  const initializedTimeRange = useRef(false);
-
   const onSearch = useCallback(
     (timeQuery: string) => {
       const [start, end] = parseTimeQuery(timeQuery, isUTC);
       // TODO: Add validation UI
       if (start != null && end != null) {
-        setSearchedTimeRange([start, end]);
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
-        setDisplayedTimeInputValue(dateRangeStr);
       }
     },
-    [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue],
+    [isUTC, setTimeRangeQuery],
   );
 
   useEffect(() => {
-    // On mount, we check if there is a `from` and `to` that we should use
-    // and if there isn't an inputTimeQuery
-    if (
-      initialFrom.current &&
-      initialTo.current &&
-      !initialInputTimeQuery.current &&
-      !initializedTimeRange.current
-    ) {
-      initializedTimeRange.current = true;
-      const start = new Date(initialFrom.current);
-      const end = new Date(initialTo.current);
+    if (from != null && to != null && inputTimeQuery == null && isReady) {
+      const start = new Date(from);
+      const end = new Date(to);
       if (isValid(start) && isValid(end)) {
         setSearchedTimeRange([start, end]);
-        setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         const dateRangeStr = dateRangeToString([start, end], isUTC);
         setDisplayedTimeInputValue(dateRangeStr);
       }
+    } else if (
+      from == null &&
+      to == null &&
+      inputTimeQuery == null &&
+      isReady
+    ) {
+      setSearchedTimeRange(initialTimeRange);
+      const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
+      setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
     }
-  }, [isUTC, setTimeRangeQuery]);
+  }, [
+    isReady,
+    inputTimeQuery,
+    isUTC,
+    from,
+    to,
+    initialDisplayValue,
+    initialTimeRange,
+  ]);
 
   useEffect(() => {
     // If there is a `tq` param passed in, use it to set the time range and
