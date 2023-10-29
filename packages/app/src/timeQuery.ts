@@ -7,8 +7,16 @@ import {
   NumberParam,
   useQueryParams,
 } from 'use-query-params';
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { format, sub, startOfSecond } from 'date-fns';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  Dispatch,
+  SetStateAction,
+} from 'react';
+import { format, sub, startOfSecond, isValid } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { usePrevious } from './utils';
 
@@ -389,4 +397,136 @@ export function useTimeQuery({
     ),
     setIsLive,
   };
+}
+
+export type UseTimeQueryInputType = {
+  /** Whether the displayed value should be in UTC */
+  isUTC: boolean;
+  /**
+   * Optional initial value to be set as the `displayedTimeInputValue`.
+   * If no value is provided it will return a date string for the initial
+   * time range.
+   */
+  initialDisplayValue?: string;
+  /** The initial time range to get values for */
+  initialTimeRange: [Date, Date];
+};
+
+export type UseTimeQueryReturnType = {
+  isReady: boolean;
+  displayedTimeInputValue: string;
+  setDisplayedTimeInputValue: Dispatch<SetStateAction<string>>;
+  searchedTimeRange: [Date, Date];
+  onSearch: (timeQuery: string) => void;
+  onTimeRangeSelect: (start: Date, end: Date) => void;
+};
+
+export function useNewTimeQuery({
+  isUTC,
+  initialDisplayValue,
+  initialTimeRange,
+}: UseTimeQueryInputType): UseTimeQueryReturnType {
+  const router = useRouter();
+  // We need to return true in SSR to prevent mismatch issues
+  const isReady = typeof window === 'undefined' ? true : router.isReady;
+
+  const [displayedTimeInputValue, setDisplayedTimeInputValue] =
+    useState<string>(() => {
+      return initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC);
+    });
+
+  const [{ from, to }, setTimeRangeQuery] = useQueryParams(
+    {
+      from: withDefault(NumberParam, undefined),
+      to: withDefault(NumberParam, undefined),
+    },
+    {
+      updateType: 'pushIn',
+      enableBatching: true,
+    },
+  );
+
+  const [searchedTimeRange, setSearchedTimeRange] =
+    useState<[Date, Date]>(initialTimeRange);
+
+  // Allow browser back/fwd button to modify the displayed time input value
+  const [inputTimeQuery, setInputTimeQuery] = useQueryParam(
+    'tq',
+    withDefault(StringParam, undefined),
+    {
+      updateType: 'pushIn',
+      enableBatching: true,
+    },
+  );
+
+  const onSearch = useCallback(
+    (timeQuery: string) => {
+      const [start, end] = parseTimeQuery(timeQuery, isUTC);
+      // TODO: Add validation UI
+      if (start != null && end != null) {
+        setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
+      }
+    },
+    [isUTC, setTimeRangeQuery],
+  );
+
+  useEffect(() => {
+    if (from != null && to != null && inputTimeQuery == null && isReady) {
+      const start = new Date(from);
+      const end = new Date(to);
+      if (isValid(start) && isValid(end)) {
+        setSearchedTimeRange([start, end]);
+        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        setDisplayedTimeInputValue(dateRangeStr);
+      }
+    } else if (
+      from == null &&
+      to == null &&
+      inputTimeQuery == null &&
+      isReady
+    ) {
+      setSearchedTimeRange(initialTimeRange);
+      const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
+      setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
+    }
+  }, [
+    isReady,
+    inputTimeQuery,
+    isUTC,
+    from,
+    to,
+    initialDisplayValue,
+    initialTimeRange,
+  ]);
+
+  useEffect(() => {
+    // If there is a `tq` param passed in, use it to set the time range and
+    // then clear the param.
+    if (inputTimeQuery) {
+      onSearch(inputTimeQuery);
+      setInputTimeQuery(undefined);
+    }
+  }, [inputTimeQuery, onSearch, setInputTimeQuery]);
+
+  return {
+    isReady,
+    displayedTimeInputValue,
+    setDisplayedTimeInputValue: () => {},
+    searchedTimeRange,
+    onSearch,
+    onTimeRangeSelect: useCallback(
+      (start: Date, end: Date) => {
+        setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
+        setSearchedTimeRange([start, end]);
+        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        setDisplayedTimeInputValue(dateRangeStr);
+      },
+      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue],
+    ),
+  };
+}
+
+export function getLiveTailTimeRange(): [Date, Date] {
+  const end = startOfSecond(new Date());
+  return [sub(end, { minutes: 15 }), end];
 }

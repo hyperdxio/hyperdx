@@ -34,7 +34,7 @@ import TabBar from './TabBar';
 import HDXHistogramChart from './HDXHistogramChart';
 import api from './api';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
 import {
   EditSearchChartForm,
   EditMarkdownChartForm,
@@ -535,7 +535,7 @@ function DashboardFilter({
 }
 
 // TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 export default function DashboardPage() {
   const { data: dashboardsData, isLoading: isDashboardsLoading } =
     api.useDashboards();
@@ -622,19 +622,17 @@ export default function DashboardPage() {
 
   const [editedChart, setEditedChart] = useState<undefined | Chart>();
 
-  const {
-    searchedTimeRange,
-    displayedTimeInputValue,
-    setDisplayedTimeInputValue,
-    onSearch,
-  } = useTimeQuery({
-    isUTC: false,
-    defaultValue: 'Past 1h',
-    defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
-    ],
-  });
+  const { searchedTimeRange, displayedTimeInputValue, onSearch } =
+    useNewTimeQuery({
+      isUTC: false,
+      initialDisplayValue: 'Past 1h',
+      initialTimeRange: defaultTimeRange,
+    });
+
+  const [input, setInput] = useState<string>(displayedTimeInputValue);
+  useEffect(() => {
+    setInput(displayedTimeInputValue);
+  }, [displayedTimeInputValue]);
 
   const onAddChart = () => {
     setEditedChart({
@@ -766,13 +764,13 @@ export default function DashboardPage() {
                 className="d-flex align-items-center"
                 onSubmit={e => {
                   e.preventDefault();
-                  onSearch(displayedTimeInputValue);
+                  onSearch(input);
                 }}
                 style={{ height: 33 }}
               >
                 <SearchTimeRangePicker
-                  inputValue={displayedTimeInputValue}
-                  setInputValue={setDisplayedTimeInputValue}
+                  inputValue={input}
+                  setInputValue={setInput}
                   onSearch={range => {
                     onSearch(range);
                   }}

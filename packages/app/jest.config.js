@@ -2,7 +2,7 @@ module.exports = {
   preset: 'ts-jest/presets/js-with-ts',
   testEnvironment: '@deploysentinel/jest-rtl-debugger/environment',
   setupFilesAfterEnv: ['<rootDir>/setup-jest.ts'],
-  globalSetup: '@deploysentinel/jest-rtl-debugger/globalSetup',
+  globalSetup: '<rootDir>/global-setup.js',
   roots: ['<rootDir>/src'],
   transform: {
     '^.+\\.tsx?$': 'ts-jest',
