@@ -85,6 +85,7 @@
   },
   "devDependencies": {
     "@deploysentinel/jest-rtl-debugger": "^0.2.3",
+    "@jedmao/location": "^3.0.0",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^12.1.4",
     "@testing-library/user-event": "^14.4.3",
