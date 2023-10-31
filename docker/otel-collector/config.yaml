@@ -69,7 +69,7 @@ service:
     metrics:
       address: ':8888'
     logs:
-      level: 'debug'
+      level: ${env:HYPERDX_LOG_LEVEL}
   extensions: [health_check, zpages, memory_ballast]
   pipelines:
     traces:
