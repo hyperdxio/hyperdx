@@ -548,6 +548,16 @@ export const EditTableChartForm = ({
             }),
           )
         }
+        setTableAndAggFn={(table, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].table = table;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
         setWhere={where =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -579,6 +589,16 @@ export const EditTableChartForm = ({
             }),
           )
         }
+        setFieldAndAggFn={(field, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].field = field;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
         setSortOrder={sortOrder =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -795,11 +815,13 @@ export const EditLineChartForm = ({
   onSave: (chart: Chart) => void;
   onClose: () => void;
 }) => {
+  const CHART_TYPE = 'time';
+
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
 
   const chartConfig = useMemo(
     () =>
-      editedChart != null && editedChart.series?.[0]?.type === 'time'
+      editedChart != null && editedChart.series?.[0]?.type === CHART_TYPE
         ? {
             table: editedChart.series[0].table ?? 'logs',
             aggFn: editedChart.series[0].aggFn,
@@ -855,7 +877,7 @@ export const EditLineChartForm = ({
         setTable={table =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].table = table;
               }
             }),
@@ -864,7 +886,7 @@ export const EditLineChartForm = ({
         setAggFn={aggFn =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].aggFn = aggFn;
               }
             }),
@@ -873,7 +895,7 @@ export const EditLineChartForm = ({
         setWhere={where =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].where = where;
               }
             }),
@@ -882,7 +904,7 @@ export const EditLineChartForm = ({
         setGroupBy={groupBy =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 if (groupBy != undefined) {
                   draft.series[0].groupBy[0] = groupBy;
                 } else {
@@ -895,12 +917,32 @@ export const EditLineChartForm = ({
         setField={field =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].field = field;
               }
             }),
           )
         }
+        setTableAndAggFn={(table, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].table = table;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
+        setFieldAndAggFn={(field, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].field = field;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
       />
       <div className="d-flex justify-content-between my-3 ps-2">
         <Button

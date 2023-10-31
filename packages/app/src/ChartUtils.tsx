@@ -1,4 +1,3 @@
-import { Form, InputGroup } from 'react-bootstrap';
 import { useMemo, useRef } from 'react';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
@@ -7,6 +6,7 @@ import api from './api';
 import { add } from 'date-fns';
 import SearchInput from './SearchInput';
 import MetricTagFilterInput from './MetricTagFilterInput';
+import Checkbox from './Checkbox';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -160,6 +160,102 @@ export function MetricTagSelect({
   );
 }
 
+export function MetricSelect({
+  aggFn,
+  isRate,
+  metricName,
+  setAggFn,
+  setFieldAndAggFn,
+  setMetricName,
+}: {
+  aggFn: AggFn;
+  isRate: boolean;
+  metricName: string | undefined | null;
+  setAggFn: (fn: AggFn) => void;
+  setFieldAndAggFn: (field: string | undefined, fn: AggFn) => void;
+  setMetricName: (value: string | undefined) => void;
+}) {
+  // TODO: Dedup with metric rate checkbox
+  const { data: metricTagsData } = api.useMetricsTags();
+
+  const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
+    if (isRate) {
+      if (aggFn.includes('_rate')) {
+        return aggFn;
+      } else {
+        return `${aggFn}_rate` as AggFn;
+      }
+    } else {
+      if (aggFn.includes('_rate')) {
+        return aggFn.replace('_rate', '') as AggFn;
+      } else {
+        return aggFn;
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="ms-3 flex-grow-1">
+        <MetricNameSelect
+          value={metricName}
+          setValue={name => {
+            const metricType = metricTagsData?.data?.find(
+              metric => metric.name === name,
+            )?.data_type;
+
+            const newAggFn = aggFnWithMaybeRate(aggFn, metricType === 'Sum');
+
+            setFieldAndAggFn(name, newAggFn);
+          }}
+        />
+      </div>
+      <div className="ms-3 flex-shrink-1">
+        <MetricRateSelect
+          metricName={metricName}
+          isRate={isRate}
+          setIsRate={(isRate: boolean) => {
+            setAggFn(aggFnWithMaybeRate(aggFn, isRate));
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
+export function MetricRateSelect({
+  metricName,
+  isRate,
+  setIsRate,
+}: {
+  isRate: boolean;
+  setIsRate: (isRate: boolean) => void;
+  metricName: string | undefined | null;
+}) {
+  const { data: metricTagsData } = api.useMetricsTags();
+
+  const metricType = useMemo(() => {
+    return metricTagsData?.data?.find(metric => metric.name === metricName)
+      ?.data_type;
+  }, [metricTagsData, metricName]);
+
+  return (
+    <>
+      {metricType === 'Sum' ? (
+        <Checkbox
+          title="Convert the sum metric into change over time (rate)"
+          id="metric-use-rate"
+          className="text-nowrap"
+          labelClassName="fs-7"
+          checked={isRate}
+          onChange={() => setIsRate(!isRate)}
+          label="Use Rate"
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function MetricNameSelect({
   value,
   setValue,
@@ -248,37 +344,78 @@ export function FieldSelect({
   );
 }
 
-export type AggFn = (typeof AGG_FNS)[number]['value'];
+export type AggFn =
+  | 'avg_rate'
+  | 'avg'
+  | 'count_distinct'
+  | 'count'
+  | 'max_rate'
+  | 'max'
+  | 'min_rate'
+  | 'min'
+  | 'p50_rate'
+  | 'p50'
+  | 'p90_rate'
+  | 'p90'
+  | 'p95_rate'
+  | 'p95'
+  | 'p99_rate'
+  | 'p99'
+  | 'sum_rate'
+  | 'sum';
 
 export function ChartSeriesForm({
-  sortOrder,
-  table,
   aggFn,
-  where,
   field,
   groupBy,
+  setAggFn,
+  setField,
+  setFieldAndAggFn,
+  setTableAndAggFn,
+  setGroupBy,
   setSortOrder,
   setTable,
-  setAggFn,
   setWhere,
-  setField,
-  setGroupBy,
+  sortOrder,
+  table,
+  where,
 }: {
-  sortOrder?: string;
-  table: string;
   aggFn: AggFn;
-  where: string;
   field: string | undefined;
   groupBy: string | undefined;
-  setTable: (table: string) => void;
   setAggFn: (fn: AggFn) => void;
-  setWhere: (where: string) => void;
   setField: (field: string | undefined) => void;
+  setFieldAndAggFn: (field: string | undefined, fn: AggFn) => void;
+  setTableAndAggFn: (table: string, fn: AggFn) => void;
   setGroupBy: (groupBy: string | undefined) => void;
   setSortOrder?: (sortOrder: SortOrder) => void;
+  setTable: (table: string) => void;
+  setWhere: (where: string) => void;
+  sortOrder?: string;
+  table: string;
+  where: string;
 }) {
   const labelWidth = 350;
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const isRate = useMemo(() => {
+    return aggFn.includes('_rate');
+  }, [aggFn]);
+  const _setAggFn = (fn: AggFn, _isRate?: boolean) => {
+    if (_isRate ?? isRate) {
+      if (fn.includes('_rate')) {
+        setAggFn(fn);
+      } else {
+        setAggFn(`${fn}_rate` as AggFn);
+      }
+    } else {
+      if (fn.includes('_rate')) {
+        setAggFn(fn.replace('_rate', '') as AggFn);
+      } else {
+        setAggFn(fn);
+      }
+    }
+  };
 
   return (
     <div>
@@ -288,7 +425,16 @@ export function ChartSeriesForm({
             options={TABLES}
             className="ds-select"
             value={TABLES.find(v => v.value === table)}
-            onChange={opt => setTable(opt?.value ?? 'logs')}
+            onChange={opt => {
+              const val = opt?.value ?? 'logs';
+              if (val === 'logs') {
+                setTableAndAggFn('logs', 'count');
+              } else if (val === 'metrics') {
+                // TODO: This should set rate if metric field is a sum
+                // or we should just reset the field if changing tables
+                setTableAndAggFn('metrics', 'max');
+              }
+            }}
             classNamePrefix="ds-react-select"
           />
         </div>
@@ -298,15 +444,17 @@ export function ChartSeriesForm({
               options={AGG_FNS}
               className="ds-select"
               value={AGG_FNS.find(v => v.value === aggFn)}
-              onChange={opt => setAggFn(opt?.value ?? 'count')}
+              onChange={opt => _setAggFn(opt?.value ?? 'count')}
               classNamePrefix="ds-react-select"
             />
           ) : (
             <Select
               options={METRIC_AGG_FNS}
               className="ds-select"
-              value={METRIC_AGG_FNS.find(v => v.value === aggFn)}
-              onChange={opt => setAggFn(opt?.value ?? 'sum')}
+              value={METRIC_AGG_FNS.find(
+                v => v.value === aggFn.replace('_rate', ''),
+              )}
+              onChange={opt => _setAggFn(opt?.value ?? 'sum')}
               classNamePrefix="ds-react-select"
             />
           )}
@@ -326,8 +474,15 @@ export function ChartSeriesForm({
           </div>
         ) : null}
         {table === 'metrics' ? (
-          <div className="ms-3 flex-grow-1">
-            <MetricNameSelect value={field} setValue={setField} />
+          <div className="d-flex align-items-center align-middle flex-grow-1">
+            <MetricSelect
+              metricName={field}
+              setMetricName={setField}
+              isRate={isRate}
+              setAggFn={setAggFn}
+              setFieldAndAggFn={setFieldAndAggFn}
+              aggFn={aggFn}
+            />
           </div>
         ) : null}
       </div>

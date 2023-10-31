@@ -6,6 +6,7 @@ export default function Checkbox({
   onChange,
   label,
   disabled,
+  title,
 }: {
   id: string;
   className?: string;
@@ -14,6 +15,7 @@ export default function Checkbox({
   onChange: () => void;
   label: React.ReactNode;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <span className={`d-flex align-items-center ${className ?? ''}`}>
@@ -26,6 +28,7 @@ export default function Checkbox({
         disabled={disabled}
       />
       <label
+        title={title}
         htmlFor={id}
         className={`fs-7 cursor-pointer ${labelClassName ?? ''}`}
       >

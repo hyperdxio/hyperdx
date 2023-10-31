@@ -44,15 +44,23 @@ export type SortOrder = 'asc' | 'desc' | null;
 
 export enum AggFn {
   Avg = 'avg',
+  AvgRate = 'avg_rate',
   Count = 'count',
   CountDistinct = 'count_distinct',
   Max = 'max',
+  MaxRate = 'max_rate',
   Min = 'min',
+  MinRate = 'min_rate',
   P50 = 'p50',
+  P50Rate = 'p50_rate',
   P90 = 'p90',
+  P90Rate = 'p90_rate',
   P95 = 'p95',
+  P95Rate = 'p95_rate',
   P99 = 'p99',
+  P99Rate = 'p99_rate',
   Sum = 'sum',
+  SumRate = 'sum_rate',
 }
 
 export enum Granularity {
@@ -621,6 +629,19 @@ export const getMetricsTags = async (teamId: string) => {
   return result;
 };
 
+const isRateAggFn = (aggFn: AggFn) => {
+  return (
+    aggFn === AggFn.SumRate ||
+    aggFn === AggFn.AvgRate ||
+    aggFn === AggFn.MaxRate ||
+    aggFn === AggFn.MinRate ||
+    aggFn === AggFn.P50Rate ||
+    aggFn === AggFn.P90Rate ||
+    aggFn === AggFn.P95Rate ||
+    aggFn === AggFn.P99Rate
+  );
+};
+
 export const getMetricsChart = async ({
   aggFn,
   dataType,
@@ -663,78 +684,100 @@ export const getMetricsChart = async ({
       : 'name AS group',
   ];
 
-  switch (dataType) {
-    case 'Gauge':
-      selectClause.push(
-        aggFn === AggFn.Count
-          ? 'COUNT(value) as data'
-          : aggFn === AggFn.Sum
-          ? `SUM(value) as data`
-          : aggFn === AggFn.Avg
-          ? `AVG(value) as data`
-          : aggFn === AggFn.Max
-          ? `MAX(value) as data`
-          : aggFn === AggFn.Min
-          ? `MIN(value) as data`
-          : `quantile(${
-              aggFn === AggFn.P50
-                ? '0.5'
-                : aggFn === AggFn.P90
-                ? '0.90'
-                : aggFn === AggFn.P95
-                ? '0.95'
-                : '0.99'
-            })(value) as data`,
-      );
-      break;
-    case 'Sum':
-      selectClause.push(
-        aggFn === AggFn.Count
-          ? 'COUNT(delta) as data'
-          : aggFn === AggFn.Sum
-          ? `SUM(delta) as data`
-          : aggFn === AggFn.Avg
-          ? `AVG(delta) as data`
-          : aggFn === AggFn.Max
-          ? `MAX(delta) as data`
-          : aggFn === AggFn.Min
-          ? `MIN(delta) as data`
-          : `quantile(${
-              aggFn === AggFn.P50
-                ? '0.5'
-                : aggFn === AggFn.P90
-                ? '0.90'
-                : aggFn === AggFn.P95
-                ? '0.95'
-                : '0.99'
-            })(delta) as data`,
-      );
-      break;
-    default:
-      logger.error(`Unsupported data type: ${dataType}`);
-      break;
+  const isRate = isRateAggFn(aggFn);
+
+  if (dataType === 'Gauge' || dataType === 'Sum') {
+    selectClause.push(
+      aggFn === AggFn.Count
+        ? 'COUNT(value) as data'
+        : aggFn === AggFn.Sum
+        ? `SUM(value) as data`
+        : aggFn === AggFn.Avg
+        ? `AVG(value) as data`
+        : aggFn === AggFn.Max
+        ? `MAX(value) as data`
+        : aggFn === AggFn.Min
+        ? `MIN(value) as data`
+        : aggFn === AggFn.SumRate
+        ? `SUM(rate) as data`
+        : aggFn === AggFn.AvgRate
+        ? `AVG(rate) as data`
+        : aggFn === AggFn.MaxRate
+        ? `MAX(rate) as data`
+        : aggFn === AggFn.MinRate
+        ? `MIN(rate) as data`
+        : `quantile(${
+            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+              ? '0.5'
+              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+              ? '0.90'
+              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
+              ? '0.95'
+              : '0.99'
+          })(${isRate ? 'rate' : 'value'}) as data`,
+    );
+  } else {
+    logger.error(`Unsupported data type: ${dataType}`);
   }
+
+  const rateMetricSource = SqlString.format(
+    `
+SELECT
+  if(
+    runningDifference(value) < 0
+    OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+    nan,
+    runningDifference(value)
+  ) AS rate,
+  ts_bucket as timestamp,
+  _string_attributes,
+  min_name as name
+FROM
+  (
+    SELECT
+      toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket,
+      min(value) as value,
+      _string_attributes,
+      min(name) as min_name
+    FROM
+      ??
+    WHERE
+      name = ?
+      AND data_type = ?
+      AND (?)
+    GROUP BY
+      _string_attributes,
+      ts_bucket
+    ORDER BY
+      _string_attributes,
+      ts_bucket ASC
+  )
+`.trim(),
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+  );
+
+  const gaugeMetricSource = SqlString.format(
+    `
+SELECT 
+  timestamp,
+  name,
+  value,
+  _string_attributes
+FROM ??
+WHERE name = ?
+AND data_type = ?
+AND (?)
+ORDER BY _timestamp_sort_key ASC
+`.trim(),
+    [tableName, name, dataType, SqlString.raw(whereClause)],
+  );
 
   // TODO: support other data types like Sum, Histogram, etc.
   const query = SqlString.format(
     `
-      WITH metrcis AS (
-        SELECT *, runningDifference(value) AS delta
-        FROM (
-          SELECT 
-            timestamp,
-            name,
-            value,
-            _string_attributes
-          FROM ??
-          WHERE name = ?
-          AND data_type = ?
-          AND (?)
-          ORDER BY _timestamp_sort_key ASC
-        )
-      )
+      WITH metrics AS (?)
       SELECT ?
-      FROM metrcis
+      FROM metrics
       GROUP BY group, ts_bucket
       ORDER BY ts_bucket ASC
       WITH FILL
@@ -743,10 +786,7 @@ export const getMetricsChart = async ({
         STEP ?
     `,
     [
-      tableName,
-      name,
-      dataType,
-      SqlString.raw(whereClause),
+      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
       SqlString.raw(selectClause.join(',')),
       startTime / 1000,
       granularity,
@@ -798,6 +838,10 @@ export const getLogsChart = async ({
   tableVersion: number | undefined;
   teamId: string;
 }) => {
+  if (isRateAggFn(aggFn)) {
+    throw new Error('Rate is not supported in logs chart');
+  }
+
   const tableName = getLogStreamTableName(tableVersion, teamId);
   const whereClause = await buildSearchQueryWhereCondition({
     endTime,
