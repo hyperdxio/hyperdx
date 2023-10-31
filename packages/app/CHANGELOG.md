@@ -1,5 +1,14 @@
 # @hyperdx/app
 
+## 1.1.4
+
+### Patch Changes
+
+- 8cb0eac: Add rate function for sum metrics
+- 4d24bfa: Add new version of the useTimeQuery hook along with a testing suite
+- 8591aee: fix: control otel related services logs telemetry using
+  HYPERDX_LOG_LEVEL
+
 ## 1.1.3
 
 ### Patch Changes
