@@ -16,4 +16,4 @@ fi
 sed -i '' -e "s/\"version\": \".*\"/\"version\": \"$API_LATEST_VERSION\"/g" ./package.json
 
 echo "Updated root package.json version to $API_LATEST_VERSION"
-echo "Run 'make build-and-push-ghcr' to publish new version to GHCR"
+echo "Run 'make release' to publish new version to GHCR"

@@ -1,5 +1,13 @@
 # @hyperdx/api
 
+## 1.1.4
+
+### Patch Changes
+
+- 8cb0eac: Add rate function for sum metrics
+- 8591aee: fix: control otel related services logs telemetry using
+  HYPERDX_LOG_LEVEL
+
 ## 1.1.3
 
 ### Patch Changes
