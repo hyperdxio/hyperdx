@@ -1,10 +1,10 @@
-## Deploying Docker Compose to AWS ECS Fargate
+# Deploying Docker Compose to AWS ECS Fargate
 
-### Introduction
+## Introduction
 
 Docker Compose is a powerful tool for defining and managing multi-container Docker applications. AWS ECS Fargate is a serverless compute engine for containers that allows you to run Docker containers without managing the underlying infrastructure. In this guide, we will walk through the process of deploying a Docker Compose application to AWS ECS Fargate.
 
-### Prerequisites
+## Prerequisites
 
 Before getting started, make sure you have the following:
 
@@ -12,9 +12,8 @@ Before getting started, make sure you have the following:
 - Docker installed on your local machine
 - A Docker Compose file that defines your application's services and dependencies
 
-### Step 0: Description .env file
+## Step 0: Description `.env` file
 
-### 
 ```env
 # AWS configuration
 ECS_PROFILE_NAME=hyperdx
@@ -26,15 +25,24 @@ HYPERDX_APP_ALB_PORT=443
 HYPERDX_APP_ALB_URL=https://localhost
 ```
 
-### Step 1: Set up an ECS Cluster
+## Step 1: Set up an ECS Cluster
 
-First, we need to create an ECS cluster to host our containers. Follow the AWS documentation to create an ECS cluster in your desired region.
+First, we need to create an ECS cluster to host our containers. Follow the [AWS documentation](https://docs.aws.amazon.com/AmazonECS/latest/userguide/ECS_CLI.html#ECS_CLI_Configuration) to create an ECS cluster in your desired region.
+
+```bash
+$ ecs-cli configure profile --profile-name profile_name --access-key $AWS_ACCESS_KEY_ID --secret-key $AWS_SECRET_ACCESS_KEY
+```
+```bash
+$ ecs-cli configure --cluster cluster_name --default-launch-type launch_type --region region_name --config-name configuration_name
+```
+
+Or commands based on env variables in the `.env` file
 
 ```bash
 $ make aws-ecs
 ```
 
-### Step 2: Create a Task Definition
+## Step 2: Create a Task Definition
 
 A task definition is a blueprint that describes how to run a Docker container in ECS. In this step, we will create a task definition for our Docker Compose application. Make sure to specify the required CPU and memory resources for each container.
 
@@ -43,28 +51,90 @@ $ make aws-compose
 INFO[0003] Using ECS task definition                     TaskDefinition="hyperdx:1"
 ```
 
-### Step 3: Configure Load Balancing (Optional)
+## Step 3: Configure Load Balancing (Optional)
 
 If your application requires load balancing, you can configure an Application Load Balancer (ALB) to distribute traffic across your containers. Follow the AWS documentation to set up an ALB and associate it with your ECS service.
 
-### Step 4: Create an ECS Service
+```
+Container <-> Target group <-> Application Load Balancer
+```
+
+|Container|Container Port|Target group|Target group Port - ALB Port|
+|-|-|-|-|
+|api|8000|hyperdx-api|80:443|
+|app|8080|hyperdx-app|80:443|
+|otel-collector|4318|hyperdx-otel|80:443|
+
+### Create Target groups
+
+Create an empty target group first, then associate that target group with ALB.
+Copy the target group ARN and save it to `service-definition.json` for each item `"loadBalancers"`.
+
+```json
+  ...
+  "loadBalancers": [
+      {
+        "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:aws_account_id:targetgroup/hyperdx-app/targetgroup_id",
+        "containerName": "app",
+        "containerPort": 8080
+      },
+      {
+        "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:aws_account_id:targetgroup/hyperdx-api/targetgroup_id",
+        "containerName": "api",
+        "containerPort": 8000
+      },
+      {
+        "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:aws_account_id:targetgroup/hyperdx-otel/targetgroup_id",
+        "containerName": "otel-collector",
+        "containerPort": 4318
+      }
+  ],
+  ...
+```
+
+## Step 4: Create an ECS Service
 
 An ECS service allows you to run and maintain a specified number of instances of a task definition. In this step, we will create an ECS service that runs our Docker Compose application. Specify the desired number of tasks and the task definition created in the previous step.
+
+Copy the settings of the ECS cluster and save them to `service-definition.json` for each item of `"awsvpcConfiguration"`.
+
+```json
+  ...
+  "networkConfiguration": {
+      "awsvpcConfiguration": {
+          "subnets": [
+              "subnet-00000000000000000"
+          ],
+          "securityGroups": [
+              "sg-00000000000000000"
+          ],
+          "assignPublicIp": "ENABLED"
+      }
+  },
+  ...
+```
+
+and
 
 ```bash
 $ make aws-create-service
 ```
 
-### Step 5: Deploy your Docker Compose Application
+## Step 5: Deploy your Docker Compose Application
 
 Now it's time to deploy your Docker Compose application to ECS Fargate. Use the ECS CLI or AWS Management Console to deploy your application. Make sure to provide the necessary environment variables and volumes if specified in your Docker Compose file.
 
-### Conclusion
+## Conclusion
 
 By following these steps, you can deploy your Docker Compose application to AWS ECS Fargate. This serverless compute engine provides a scalable and managed environment for running your containers without the need to manage the underlying infrastructure.
 
-## Troubleshooting
-### default-user.xml: No such file or directory
+> [!NOTE]
+> Try [hyperdx cloud](https://www.hyperdx.io/) to configure services without complicated settings!
+
+# Troubleshooting
+
+## default-user.xml: No such file or directory
+
 ![default-user.xml](https://github.com/hyperdxio/hyperdx/assets/59823089/d8c39942-b7cc-457a-a27e-f9dddc6aab71)
 
 To explain how to put a config file from S3 into AWS EFS using DataSync, follow these steps:
