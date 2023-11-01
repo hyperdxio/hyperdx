@@ -133,7 +133,7 @@ To explain how to put a config file from S3 into AWS EFS using DataSync, follow 
 4. Monitor the progress of the DataSync task to ensure the successful completion of the file transfer.
 5. Once the transfer is complete, the config file will be available in the designated location within the AWS EFS file system.
 
-Please note that this is a high-level overview of the process, and it is recommended to refer to the AWS documentation for detailed instructions and best practices when using DataSync for transferring files between S3 and EFS.
+Please note that this is a high-level overview of the process, and it is recommended to refer to the [AWS documentation](https://docs.aws.amazon.com/efs/latest/ug/gs-step-four-sync-files.html) for detailed instructions and best practices when using DataSync for transferring files between S3 and EFS.
 
 
 ## Step 6: Create an ECS Service
