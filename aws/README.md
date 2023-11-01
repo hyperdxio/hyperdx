@@ -36,13 +36,28 @@ $ ecs-cli configure profile --profile-name profile_name --access-key $AWS_ACCESS
 $ ecs-cli configure --cluster cluster_name --default-launch-type launch_type --region region_name --config-name configuration_name
 ```
 
-Or commands based on env variables in the `.env` file
+or commands based on env variables in the `.env` file
 
 ```bash
 $ make aws-ecs
 ```
 
-## Step 2: Create a Task Definition
+## Step 2: Deploy your Docker image to ECR
+
+Prepare to push personal images by referring to [AWS documentation](https://docs.aws.amazon.com/AmazonECR/latest/userguide/docker-push-ecr-image.html). Modify the '.env' file and deploy the built docker image to the ECR.
+
+```env
+# Used by docker-compose.yml
+IMAGE_NAME=aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx
+```
+
+and
+
+```bash
+$ make release
+```
+
+## Step 3: Create a Task Definition
 
 A task definition is a blueprint that describes how to run a Docker container in ECS. In this step, we will create a task definition for our Docker Compose application. Make sure to specify the required CPU and memory resources for each container.
 
@@ -51,7 +66,7 @@ $ make aws-compose
 INFO[0003] Using ECS task definition                     TaskDefinition="hyperdx:1"
 ```
 
-## Step 3: Configure Load Balancing (Optional)
+## Step 4: Configure Load Balancing (Optional)
 
 If your application requires load balancing, you can configure an Application Load Balancer (ALB) to distribute traffic across your containers. Follow the AWS documentation to set up an ALB and associate it with your ECS service.
 
@@ -66,6 +81,9 @@ Container <-> Target group <-> Application Load Balancer
 |otel-collector|4318|hyperdx-otel|80:443|
 
 ### Create Target groups
+
+> [!IMPORTANT]
+> As of the end of 2023, AWS Web Console could not refer multiple loadBalancers to ECS services. [Set up via cli](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/register-multiple-targetgroups.html) to resolve [this issue](https://github.com/aws/containers-roadmap/issues/104).
 
 Create an empty target group first, then associate that target group with ALB.
 Copy the target group ARN and save it to `service-definition.json` for each item `"loadBalancers"`.
@@ -92,7 +110,7 @@ Copy the target group ARN and save it to `service-definition.json` for each item
   ...
 ```
 
-## Step 4: Create an ECS Service
+## Step 5: Create an ECS Service
 
 An ECS service allows you to run and maintain a specified number of instances of a task definition. In this step, we will create an ECS service that runs our Docker Compose application. Specify the desired number of tasks and the task definition created in the previous step.
 
@@ -119,10 +137,6 @@ and
 ```bash
 $ make aws-create-service
 ```
-
-## Step 5: Deploy your Docker Compose Application
-
-Now it's time to deploy your Docker Compose application to ECS Fargate. Use the ECS CLI or AWS Management Console to deploy your application. Make sure to provide the necessary environment variables and volumes if specified in your Docker Compose file.
 
 ## Conclusion
 
