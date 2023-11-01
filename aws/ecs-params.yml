@@ -1,0 +1,28 @@
+# https://github.com/aws/amazon-ecs-cli/blob/mainline/README.md#using-ecs-parameters
+version: 1
+task_definition:
+  task_execution_role: ecsTaskExecutionRole
+  ecs_network_mode: awsvpc
+  task_size:
+    mem_limit: 4GB
+    cpu_limit: 2048
+  efs_volumes:
+    - name: efs_config
+      filesystem_id: fs-id # EFS_FILESYSTEM_ID
+      root_directory: /efs_config
+    - name: efs_mongodb
+      filesystem_id: fs-id # EFS_FILESYSTEM_ID
+      root_directory: /efs_mongodb
+    - name: efs_ch_data
+      filesystem_id: fs-id # EFS_FILESYSTEM_ID
+      root_directory: /efs_ch_data
+    ### Exclude the volume below as it does not significantly affect the maintenance of the service.
+    # - name: efs_redis
+    #   filesystem_id: # EFS_FILESYSTEM_ID
+    #   root_directory: /efs_redis
+    # - name: efs_ingestor_data
+    #   filesystem_id: # EFS_FILESYSTEM_ID
+    #   root_directory: /efs_ingestor_data
+    # - name: efs_ch_logs
+    #   filesystem_id: # EFS_FILESYSTEM_ID
+    #   root_directory: /efs_ch_logs

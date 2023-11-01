@@ -1,0 +1,208 @@
+version: '3'
+
+volumes:
+  efs_config:
+  efs_mongodb:
+  efs_ch_data:
+  ### Exclude the volume below as it does not significantly affect the maintenance of the service.
+  # redis:
+  # ch_logs:
+  # ingestor_data:
+
+services:
+  miner:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
+    container_name: hdx-oss-miner
+    environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_SERVICE_NAME: hdx-oss-miner
+    ports:
+      - 5123:5123
+    networks:
+      - internal
+  ### NOTE: aws ecs excludes hostmetrics because you can set up up to 10 containers in the target.
+  ### alternatively, you can configure and set the clickhouse-server as a separate instance in aws.
+  # hostmetrics:
+  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
+  #   container_name: hdx-oss-hostmetrics
+  #   environment:
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_SERVICE_NAME: hostmetrics
+  #   restart: always
+  #   networks:
+  #     - internal
+  ingestor:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
+    container_name: hdx-oss-ingestor
+    # volumes:
+    #   - ingestor_data:/var/lib/vector
+    ports:
+      - 8002:8002 # http-generic
+      - 8686:8686 # healthcheck
+    environment:
+      RUST_BACKTRACE: full
+      VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
+      VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
+    restart: always
+    networks:
+      - internal
+  redis:
+    image: redis:7.2.2-alpine
+    container_name: hdx-oss-redis
+    # volumes:
+    #   - redis:/data
+    ports:
+      - 6379:6379
+    networks:
+      - internal
+  db:
+    image: mongo:7.0.2-jammy
+    container_name: hdx-oss-db
+    volumes:
+      - efs_mongodb:/data/db
+    ports:
+      - 27017:27017
+    networks:
+      - internal
+  otel-collector:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
+    container_name: hdx-oss-otel-collector
+    environment:
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+    ports:
+      - '13133:13133' # health_check extension
+      - '1888:1888' # pprof extension
+      - '24225:24225' # fluentd receiver
+      - '4317:4317' # OTLP gRPC receiver
+      - '4318:4318' # OTLP http receiver
+      - '55679:55679' # zpages extension
+      - '8888:8888' # metrics extension
+      - '9411:9411' # zipkin
+    restart: always
+    networks:
+      - internal
+  aggregator:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    container_name: hdx-oss-aggregator
+    ports:
+      - 8001:8001
+    environment:
+      APP_TYPE: 'aggregator'
+      CLICKHOUSE_HOST: http://localhost:8123
+      CLICKHOUSE_PASSWORD: aggregator
+      CLICKHOUSE_USER: aggregator
+      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      MONGO_URI: 'mongodb://localhost:27017/hyperdx'
+      NODE_ENV: development
+      PORT: 8001
+      REDIS_URL: redis://localhost:6379
+      SERVER_URL: ${HYPERDX_API_URL}:${HYPERDX_API_PORT}
+    networks:
+      - internal
+    depends_on:
+      - db
+      - redis
+      - ch-server
+  task-check-alerts:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    container_name: hdx-oss-task-check-alerts
+    entrypoint: 'node'
+    command: './build/tasks/index.js check-alerts'
+    environment:
+      APP_TYPE: 'scheduled-task'
+      CLICKHOUSE_HOST: http://localhost:8123
+      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_PASSWORD: worker
+      CLICKHOUSE_USER: worker
+      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
+      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+      HDX_NODE_BETA_MODE: 0
+      HDX_NODE_CONSOLE_CAPTURE: 1
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://localhost:8002'
+      MINER_API_URL: 'http://localhost:5123'
+      MONGO_URI: 'mongodb://localhost:27017/hyperdx'
+      NODE_ENV: development
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
+      REDIS_URL: redis://localhost:6379
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      - ch-server
+      - db
+      - redis
+  api:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    container_name: hdx-oss-api
+    ports:
+      - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
+    environment:
+      AGGREGATOR_API_URL: 'http://localhost:8001'
+      APP_TYPE: 'api'
+      CLICKHOUSE_HOST: http://localhost:8123
+      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_PASSWORD: api
+      CLICKHOUSE_USER: api
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
+      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+      HDX_NODE_BETA_MODE: 1
+      HDX_NODE_CONSOLE_CAPTURE: 1
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://localhost:8002'
+      MINER_API_URL: 'http://localhost:5123'
+      MONGO_URI: 'mongodb://localhost:27017/hyperdx'
+      NODE_ENV: development
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-api'
+      PORT: ${HYPERDX_API_PORT}
+      REDIS_URL: redis://localhost:6379
+      SERVER_URL: ${HYPERDX_API_URL}:${HYPERDX_API_PORT}
+      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
+    networks:
+      - internal
+    depends_on:
+      - ch-server
+      - db
+      - redis
+  app:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-app
+    container_name: hdx-oss-app
+    ports:
+      - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
+    environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      NODE_ENV: development
+      PORT: ${HYPERDX_APP_PORT}
+    networks:
+      - internal
+    depends_on:
+      - api
+  ch-server:
+    image: clickhouse/clickhouse-server:23.7.1-alpine
+    container_name: hdx-oss-ch-server
+    ports:
+      - 8123:8123 # http api
+      - 9000:9000 # native
+    environment:
+      # default settings
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - efs_config:/etc/clickhouse-server
+      - efs_ch_data:/var/lib/clickhouse
+      # - ch_logs:/var/log/clickhouse-server
+    restart: on-failure
+    networks:
+      - internal
+networks:
+  internal:
