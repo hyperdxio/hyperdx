@@ -24,10 +24,10 @@
   "networkConfiguration": {
       "awsvpcConfiguration": {
           "subnets": [
-              "subnet-id"
+              "subnet-00000000000000000"
           ],
           "securityGroups": [
-              "sg-id"
+              "sg-00000000000000000"
           ],
           "assignPublicIp": "ENABLED"
       }

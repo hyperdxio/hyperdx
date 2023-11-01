@@ -12,13 +12,36 @@ Before getting started, make sure you have the following:
 - Docker installed on your local machine
 - A Docker Compose file that defines your application's services and dependencies
 
+### Step 0: Description .env file
+
+### 
+```env
+# AWS configuration
+ECS_PROFILE_NAME=hyperdx
+ECS_SERVICE_NAME=hyperdx
+ECS_CLUSTER_NAME=hyperdx
+AWS_REGION=us-east-1
+ECS_LAUNCH_TYPE=FARGATE
+HYPERDX_APP_ALB_PORT=443
+HYPERDX_APP_ALB_URL=https://localhost
+```
+
 ### Step 1: Set up an ECS Cluster
 
 First, we need to create an ECS cluster to host our containers. Follow the AWS documentation to create an ECS cluster in your desired region.
 
+```bash
+$ make aws-ecs
+```
+
 ### Step 2: Create a Task Definition
 
 A task definition is a blueprint that describes how to run a Docker container in ECS. In this step, we will create a task definition for our Docker Compose application. Make sure to specify the required CPU and memory resources for each container.
+
+```bash
+$ make aws-compose
+INFO[0003] Using ECS task definition                     TaskDefinition="hyperdx:1"
+```
 
 ### Step 3: Configure Load Balancing (Optional)
 
@@ -27,6 +50,10 @@ If your application requires load balancing, you can configure an Application Lo
 ### Step 4: Create an ECS Service
 
 An ECS service allows you to run and maintain a specified number of instances of a task definition. In this step, we will create an ECS service that runs our Docker Compose application. Specify the desired number of tasks and the task definition created in the previous step.
+
+```bash
+$ make aws-create-service
+```
 
 ### Step 5: Deploy your Docker Compose Application
 
