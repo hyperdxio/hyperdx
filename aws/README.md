@@ -135,8 +135,20 @@ To explain how to put a config file from S3 into AWS EFS using DataSync, follow 
 
 Please note that this is a high-level overview of the process, and it is recommended to refer to the [AWS documentation](https://docs.aws.amazon.com/efs/latest/ug/gs-step-four-sync-files.html) for detailed instructions and best practices when using DataSync for transferring files between S3 and EFS.
 
+## Step 6: Working with ARM (Optional)
 
-## Step 6: Create an ECS Service
+Revised `task-definition.json` for 20% lower cost with ARM-based ECS Fargo compared to x86. This part is optional and must be revised manually because it is a property not supported by ecs-cli. See [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/userguide/ecs-arm64.html) for more information
+
+```json
+  ...
+  "runtimePlatform": {
+        "operatingSystemFamily": "LINUX",
+        "cpuArchitecture": "ARM64"
+  },
+  ...
+```
+
+## Step 7: Create an ECS Service
 
 An ECS service allows you to run and maintain a specified number of instances of a task definition. In this step, we will create an ECS service that runs our Docker Compose application. Specify the desired number of tasks and the task definition created in the previous step.
 
