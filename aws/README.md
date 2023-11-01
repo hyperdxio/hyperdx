@@ -110,7 +110,33 @@ Copy the target group ARN and save it to `service-definition.json` for each item
   ...
 ```
 
-## Step 5: Create an ECS Service
+## Step 5: DataSync S3 to EFS
+
+Below is the process of synchronizing the config file containing user information to the clickhouse data volume.
+Since target cannot mount S3 directly, explain how to use EFS.
+
+To explain how to put a config file from S3 into AWS EFS using DataSync, follow these steps:
+
+0. Configure the S3 bucket by referring to the structure below or the `aws/bucket` folder. This setting is the same as the setting in `docker/clickhouse/local`.
+    ```sh
+    └── /
+        ├── efs_config/
+        │   ├── config.xml
+        │   └── users.d/
+        │       └── default-user.xml
+        ├── efs_mongodb/
+        └── efs_ch_data/
+    ```
+1. Set up an AWS DataSync task. Configure the source location as the S3 bucket containing the config file and the destination location as the target EFS file system.
+2. Specify the appropriate settings for the DataSync task, such as scheduling, filtering, and transfer options.
+3. Start the DataSync task to initiate the transfer of the config file from S3 to EFS.
+4. Monitor the progress of the DataSync task to ensure the successful completion of the file transfer.
+5. Once the transfer is complete, the config file will be available in the designated location within the AWS EFS file system.
+
+Please note that this is a high-level overview of the process, and it is recommended to refer to the AWS documentation for detailed instructions and best practices when using DataSync for transferring files between S3 and EFS.
+
+
+## Step 6: Create an ECS Service
 
 An ECS service allows you to run and maintain a specified number of instances of a task definition. In this step, we will create an ECS service that runs our Docker Compose application. Specify the desired number of tasks and the task definition created in the previous step.
 
@@ -151,12 +177,4 @@ By following these steps, you can deploy your Docker Compose application to AWS 
 
 ![default-user.xml](https://github.com/hyperdxio/hyperdx/assets/59823089/d8c39942-b7cc-457a-a27e-f9dddc6aab71)
 
-To explain how to put a config file from S3 into AWS EFS using DataSync, follow these steps:
-
-1. Set up an AWS DataSync task. Configure the source location as the S3 bucket containing the config file and the destination location as the target EFS file system.
-2. Specify the appropriate settings for the DataSync task, such as scheduling, filtering, and transfer options.
-3. Start the DataSync task to initiate the transfer of the config file from S3 to EFS.
-4. Monitor the progress of the DataSync task to ensure the successful completion of the file transfer.
-5. Once the transfer is complete, the config file will be available in the designated location within the AWS EFS file system.
-
-Please note that this is a high-level overview of the process, and it is recommended to refer to the AWS documentation for detailed instructions and best practices when using DataSync for transferring files between S3 and EFS.
+EFS internal files or DataSync settings may not be correct. Please check [this procedure](#step-5-datasync-s3-to-efs).
