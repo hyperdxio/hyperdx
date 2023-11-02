@@ -137,7 +137,7 @@ Please note that this is a high-level overview of the process, and it is recomme
 
 ## Step 6: Working with ARM (Optional)
 
-Revised `task-definition.json` for 20% lower cost with ARM-based ECS Fargo compared to x86. This part is optional and must be revised manually because it is a property not supported by ecs-cli. See [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/userguide/ecs-arm64.html) for more information
+Revised `task-definition.json` for 20% lower cost with ARM-based ECS Fargate compared to x86. This part is optional and must be revised manually because it is a property not supported by ecs-cli. See [AWS Documentation](https://docs.aws.amazon.com/AmazonECS/latest/userguide/ecs-arm64.html) for more information
 
 ```json
   ...
