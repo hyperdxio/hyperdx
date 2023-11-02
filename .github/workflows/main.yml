@@ -24,9 +24,10 @@ jobs:
         run: sudo apt-get install --yes curl bc
       - name: Install vector
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | bash -s -- -y
-          ~/.vector/bin/vector --version
-          ln -s ~/.vector/bin/vector /usr/local/bin/vector
+          mkdir -p vector
+          curl -sSfL --proto '=https' --tlsv1.2 https://packages.timber.io/vector/0.33.1/vector-0.33.1-x86_64-unknown-linux-musl.tar.gz | tar xzf - -C vector --strip-components=2
+          cp ./vector/bin/vector /usr/local/bin/vector
+          vector --version
       - name: Run lint + type check
         run: make ci-lint
   integration:
