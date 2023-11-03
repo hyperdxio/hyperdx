@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { Button } from 'react-bootstrap';
 import { useQueryParam, StringParam, withDefault } from 'use-query-params';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { encodeArray, decodeArray } from 'serialize-query-params';
 import produce from 'immer';
 
@@ -86,6 +86,20 @@ export default function GraphPage() {
       }),
     );
   };
+  const setFieldAndAggFn = (
+    index: number,
+    field: string | undefined,
+    fn: AggFn,
+  ) => {
+    setChartSeries(
+      produce(chartSeries, series => {
+        if (series?.[index] != null) {
+          series[index].field = field;
+          series[index].aggFn = fn;
+        }
+      }),
+    );
+  };
   const setWhere = (index: number, where: string) => {
     setChartSeries(
       produce(chartSeries, series => {
@@ -132,7 +146,7 @@ export default function GraphPage() {
       ],
     });
 
-  const onRunQuery = () => {
+  const onRunQuery = useCallback(() => {
     onSearch(displayedTimeInputValue);
     const dateRange = parseTimeRangeInput(displayedTimeInputValue);
 
@@ -150,7 +164,7 @@ export default function GraphPage() {
     } else {
       toast.error('Invalid time range');
     }
-  };
+  }, [chartSeries, displayedTimeInputValue, granularity, onSearch]);
 
   return (
     <div className="LogViewerPage d-flex" style={{ height: '100vh' }}>
@@ -173,6 +187,19 @@ export default function GraphPage() {
                 where={series.where}
                 groupBy={series.groupBy[0]}
                 field={series.field}
+                setFieldAndAggFn={(field, aggFn) =>
+                  setFieldAndAggFn(index, field, aggFn)
+                }
+                setTableAndAggFn={(table, aggFn) => {
+                  setChartSeries(
+                    produce(chartSeries, series => {
+                      if (series?.[index] != null) {
+                        series[index].table = table;
+                        series[index].aggFn = aggFn;
+                      }
+                    }),
+                  );
+                }}
                 setTable={table => setTable(index, table)}
                 setWhere={where => setWhere(index, where)}
                 setAggFn={fn => setAggFn(index, fn)}

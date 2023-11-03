@@ -39,7 +39,7 @@ processors:
     check_interval: 5s
 exporters:
   logging:
-    loglevel: debug
+    loglevel: ${env:HYPERDX_LOG_LEVEL}
   logzio/traces:
     account_token: 'X' # required but we don't use it
     endpoint: 'http://ingestor:8002?hdx_platform=otel-traces'
@@ -69,7 +69,7 @@ service:
     metrics:
       address: ':8888'
     logs:
-      level: 'debug'
+      level: ${env:HYPERDX_LOG_LEVEL}
   extensions: [health_check, zpages, memory_ballast]
   pipelines:
     traces:

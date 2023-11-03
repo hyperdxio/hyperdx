@@ -5,6 +5,7 @@ import winston, { addColors } from 'winston';
 import {
   APP_TYPE,
   HYPERDX_API_KEY,
+  HYPERDX_LOG_LEVEL,
   INGESTOR_API_URL,
   IS_PROD,
 } from '../config';
@@ -20,7 +21,7 @@ addColors({
   silly: 'cyan',
 });
 
-const MAX_LEVEL = IS_PROD ? 'debug' : 'debug';
+const MAX_LEVEL = HYPERDX_LOG_LEVEL ?? 'debug';
 const DEFAULT_FORMAT = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.json(),
@@ -34,6 +35,7 @@ const hyperdxTransport = HYPERDX_API_KEY
   : null;
 
 export const expressLogger = expressWinston.logger({
+  level: MAX_LEVEL,
   format: DEFAULT_FORMAT,
   msg: IS_PROD
     ? undefined
