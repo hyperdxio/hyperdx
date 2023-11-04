@@ -495,8 +495,8 @@ function TraceSubpanel({
   }) => string;
 
   onPropertyAddClick?: (name: string, value: string) => void;
-  displayedColumns: string[];
-  toggleColumn: (column: string) => void;
+  displayedColumns?: string[];
+  toggleColumn?: (column: string) => void;
 }) {
   const date = new Date(logData.timestamp);
   const start = add(date, { minutes: -240 });
@@ -1666,11 +1666,11 @@ function PropertySubpanel({
                     className="fs-8 text-muted-hover child-hover-trigger p-0"
                     variant="link"
                     as="a"
-                    title={`${
+                    title={
                       displayedColumns?.includes(keyPathString)
-                        ? 'Remove'
-                        : 'Add'
-                    } ${keyPathString} column`}
+                        ? `Remove ${keyPathString} column from results table`
+                        : `Add ${keyPathString} column to results table`
+                    }
                     style={{ width: 20 }}
                     onClick={() => toggleColumn(keyPathString)}
                   >
@@ -2080,8 +2080,8 @@ export default function LogSidePanel({
   }) => string;
   sortKey: string | undefined;
   isNestedPanel?: boolean;
-  displayedColumns: string[];
-  toggleColumn: (column: string) => void;
+  displayedColumns?: string[];
+  toggleColumn?: (column: string) => void;
 }) {
   const contextZIndex = useZIndex();
 

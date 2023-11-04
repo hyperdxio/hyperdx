@@ -45,7 +45,7 @@ import SearchPageActionBar from './SearchPageActionBar';
 import { useTimeQuery } from './timeQuery';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import { ErrorBoundary } from 'react-error-boundary';
-import { useDisplayedColumns } from './hooks/useDisplayedColumns';
+import { useDisplayedColumns } from './useDisplayedColumns';
 
 const formatDate = (
   date: Date,

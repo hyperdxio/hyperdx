@@ -4,7 +4,7 @@ import usePortal from 'react-useportal';
 import type { LogView } from './types';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
-import { useDisplayedColumns } from './hooks/useDisplayedColumns';
+import { useDisplayedColumns } from './useDisplayedColumns';
 
 export function LogTableWithSidePanel({
   config,
