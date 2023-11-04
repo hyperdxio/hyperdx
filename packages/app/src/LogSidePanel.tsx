@@ -482,6 +482,8 @@ function TraceSubpanel({
   onPropertyAddClick,
   generateChartUrl,
   generateSearchUrl,
+  displayedColumns,
+  toggleColumn,
 }: {
   logData: any;
   onClose: () => void;
@@ -493,6 +495,8 @@ function TraceSubpanel({
   }) => string;
 
   onPropertyAddClick?: (name: string, value: string) => void;
+  displayedColumns: string[];
+  toggleColumn: (column: string) => void;
 }) {
   const date = new Date(logData.timestamp);
   const start = add(date, { minutes: -240 });
@@ -681,6 +685,8 @@ function TraceSubpanel({
                     generateSearchUrl={generateSearchUrl}
                     onClose={onClose}
                     generateChartUrl={generateChartUrl}
+                    displayedColumns={displayedColumns}
+                    toggleColumn={toggleColumn}
                   />
                 </ErrorBoundary>
               </>
@@ -1300,6 +1306,8 @@ function PropertySubpanel({
   generateSearchUrl,
   onClose,
   generateChartUrl,
+  displayedColumns,
+  toggleColumn,
 }: {
   logData: any;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
@@ -1312,6 +1320,8 @@ function PropertySubpanel({
   }) => string;
 
   onPropertyAddClick?: (key: string, value: string) => void;
+  displayedColumns?: string[];
+  toggleColumn?: (column: string) => void;
 }) {
   const [propertySearchValue, setPropertySearchValue] = useState('');
   const [isNestedView, setIsNestedView] = useLocalStorage(
@@ -1582,6 +1592,8 @@ function PropertySubpanel({
           }}
           valueRenderer={(raw, value, ...rawKeyPath) => {
             const keyPath = rawKeyPath.slice().reverse();
+            const keyPathString = keyPath.join('.');
+
             return (
               <div className="parent-hover-trigger d-inline-block px-2">
                 <pre
@@ -1648,6 +1660,24 @@ function PropertySubpanel({
                     </Button>
                   </Link>
                 ) : null}
+
+                {!!toggleColumn && keyPath.length === 1 ? (
+                  <Button
+                    className="fs-8 text-muted-hover child-hover-trigger p-0"
+                    variant="link"
+                    as="a"
+                    title={`${
+                      displayedColumns?.includes(keyPathString)
+                        ? 'Remove'
+                        : 'Add'
+                    } ${keyPathString} column`}
+                    style={{ width: 20 }}
+                    onClick={() => toggleColumn(keyPathString)}
+                  >
+                    <i className="bi bi-table" />
+                  </Button>
+                ) : null}
+
                 <CopyToClipboard
                   text={value}
                   onCopy={() => {
@@ -2032,6 +2062,8 @@ export default function LogSidePanel({
   generateChartUrl,
   sortKey,
   isNestedPanel = false,
+  displayedColumns,
+  toggleColumn,
 }: {
   logId: string | undefined;
   onClose: () => void;
@@ -2048,6 +2080,8 @@ export default function LogSidePanel({
   }) => string;
   sortKey: string | undefined;
   isNestedPanel?: boolean;
+  displayedColumns: string[];
+  toggleColumn: (column: string) => void;
 }) {
   const contextZIndex = useZIndex();
 
@@ -2222,6 +2256,8 @@ export default function LogSidePanel({
                       generateSearchUrl={generateSearchUrl}
                       generateChartUrl={generateChartUrl}
                       onClose={_onClose}
+                      displayedColumns={displayedColumns}
+                      toggleColumn={toggleColumn}
                     />
                     <EventTagSubpanel
                       logData={logData}
@@ -2251,6 +2287,8 @@ export default function LogSidePanel({
                       generateSearchUrl={generateSearchUrl}
                       generateChartUrl={generateChartUrl}
                       onClose={_onClose}
+                      displayedColumns={displayedColumns}
+                      toggleColumn={toggleColumn}
                     />
                   </div>
                 ) : null}

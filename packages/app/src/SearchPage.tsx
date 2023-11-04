@@ -45,6 +45,7 @@ import SearchPageActionBar from './SearchPageActionBar';
 import { useTimeQuery } from './timeQuery';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useDisplayedColumns } from './hooks/useDisplayedColumns';
 
 const formatDate = (
   date: Date,
@@ -323,6 +324,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
     [setOpenedLogQuery],
   );
 
+  const { displayedColumns, setDisplayedColumns, toggleColumn } =
+    useDisplayedColumns();
+
   return (
     <>
       <ErrorBoundary
@@ -346,6 +350,8 @@ const LogViewerContainer = memo(function LogViewerContainer({
           onPropertyAddClick={onPropertyAddClick}
           generateSearchUrl={generateSearchUrl}
           generateChartUrl={generateChartUrl}
+          displayedColumns={displayedColumns}
+          toggleColumn={toggleColumn}
         />
       </ErrorBoundary>
       <LogTable
@@ -373,6 +379,8 @@ const LogViewerContainer = memo(function LogViewerContainer({
           [setOpenedLog, setIsLive],
         )}
         onShowPatternsClick={onShowPatternsClick}
+        displayedColumns={displayedColumns}
+        setDisplayedColumns={setDisplayedColumns}
       />
     </>
   );
