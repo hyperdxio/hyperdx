@@ -203,6 +203,7 @@ services:
     ports:
       - 8080:8080
     environment:
+      NEXT_PUBLIC_INGESTOR_API_URL: 'http://ingestor:8002'
       NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
       NEXT_PUBLIC_HDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
