@@ -55,3 +55,6 @@ scripts/*.csv
 # docker
 docker-compose.prod.yml
 .volumes
+
+# jetbrains ide
+.idea
