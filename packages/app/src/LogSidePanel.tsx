@@ -1,4 +1,4 @@
-import { Children } from 'react'
+import { Children } from 'react';
 import Button from 'react-bootstrap/Button';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import Drawer from 'react-modern-drawer';
@@ -41,7 +41,7 @@ import 'react-modern-drawer/dist/index.css';
 import { CurlGenerator } from './curlGenerator';
 import { Dictionary } from './types';
 import { ZIndexContext, useZIndex } from './zIndex';
-import joinTeam from "../pages/join-team";
+import joinTeam from '../pages/join-team';
 
 const HDX_BODY_FIELD = '_hdx_body';
 
@@ -809,9 +809,8 @@ function EventTagSubpanel({
         key.startsWith('contexts.runtime.') ||
         key.startsWith('contexts.device.') ||
         key.startsWith('contexts.app.') ||
-
-          // generic tags
-          key.startsWith('tags.')
+        // generic tags
+        key.startsWith('tags.')
       );
     }),
   };
@@ -835,7 +834,7 @@ function EventTagSubpanel({
             .replace('process.tag.', '')
             .replace('otel.library.', 'library.')
             .replace('process.pid', 'pid')
-              .replace('tags.', '')
+            .replace('tags.', '')
             .replace('contexts.', '');
 
           return (
@@ -1993,38 +1992,37 @@ const ExceptionSubpanel = ({
       <CollapsibleSection title="Breadcrumbs" initiallyCollapsed>
         <Table striped bordered hover>
           <thead>
-          <tr>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Description</th>
-            <th>Level</th>
-            <th>Time</th>
-          </tr>
+            <tr>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Description</th>
+              <th>Level</th>
+              <th>Time</th>
+            </tr>
           </thead>
           <tbody>
-          {
-            Children.toArray(
-                [...breadcrumbs].reverse().map((event, i) => (
-                    <tr>
-                      <td>
-                        <BreadcrumbType breadcrumb={event} />
-                      </td>
-                      <td>
-                        {event.category}
-                      </td>
-                      <td>
-                        <BreadcrumbDescription breadcrumb={event} />
-                      </td>
-                      <td>
-                        <BreadcrumbLevel breadcrumb={event} />
-                      </td>
-                      <td>
-                        {format(new Date(event.timestamp * 1000), 'MMM d HH:mm:ss.SSS')}
-                      </td>
-                    </tr>
-                ))
-            )
-          }
+            {Children.toArray(
+              [...breadcrumbs].reverse().map((event, i) => (
+                <tr>
+                  <td>
+                    <BreadcrumbType breadcrumb={event} />
+                  </td>
+                  <td>{event.category}</td>
+                  <td>
+                    <BreadcrumbDescription breadcrumb={event} />
+                  </td>
+                  <td>
+                    <BreadcrumbLevel breadcrumb={event} />
+                  </td>
+                  <td>
+                    {format(
+                      new Date(event.timestamp * 1000),
+                      'MMM d HH:mm:ss.SSS',
+                    )}
+                  </td>
+                </tr>
+              )),
+            )}
           </tbody>
         </Table>
         {breadcrumbs.length > 0 ? (
@@ -2346,39 +2344,27 @@ interface BreadcrumbTableItemProps {
  * @constructor
  */
 function BreadcrumbType({ breadcrumb }: BreadcrumbTableItemProps) {
-  let icon = <i className="bi bi-info-circle" />
+  let icon = <i className="bi bi-info-circle" />;
 
   switch (breadcrumb.category) {
     case 'fetch': {
-      icon = (
-          <i className={"bi bi-arrow-left-right"} />
-      )
-      break
+      icon = <i className={'bi bi-arrow-left-right'} />;
+      break;
     }
     case 'ui.click': {
-      icon = (
-          <i className="bi bi-mouse"/>
-      )
-      break
+      icon = <i className="bi bi-mouse" />;
+      break;
     }
     case 'navigation': {
-      icon = (
-          <i className="bi bi-geo-alt" />
-      )
-      break
+      icon = <i className="bi bi-geo-alt" />;
+      break;
     }
     case 'sentry.transaction': {
-      icon = (
-          <i className="bi bi-gear" />
-      )
+      icon = <i className="bi bi-gear" />;
     }
   }
 
-  return (
-      <span className="me-2">
-          {icon}
-        </span>
-  )
+  return <span className="me-2">{icon}</span>;
 }
 
 /**
@@ -2388,61 +2374,54 @@ function BreadcrumbType({ breadcrumb }: BreadcrumbTableItemProps) {
  */
 function BreadcrumbDescription({ breadcrumb }: BreadcrumbTableItemProps) {
   if (breadcrumb.type === 'http') {
-    const { method, status_code, url, ...rest } = breadcrumb.data ?? {}
+    const { method, status_code, url, ...rest } = breadcrumb.data ?? {};
 
     return (
-        <div>
-            {method} {status_code} {url}
-            <pre className="p-2 bg-grey mt-1">
-              <code>
-                {JSON.stringify(rest, null, 2)}
-              </code>
-            </pre>
-        </div>
-    )
+      <div>
+        {method} {status_code} {url}
+        <pre className="p-2 bg-grey mt-1">
+          <code>{JSON.stringify(rest, null, 2)}</code>
+        </pre>
+      </div>
+    );
   }
 
-  if (breadcrumb.category === 'navigation' || breadcrumb.category === 'console') {
+  if (
+    breadcrumb.category === 'navigation' ||
+    breadcrumb.category === 'console'
+  ) {
     return (
-       <pre className="p-2 bg-grey">
-         <code>
-           {JSON.stringify(breadcrumb.data, null, 2)}
-         </code>
-       </pre>
-    )
+      <pre className="p-2 bg-grey">
+        <code>{JSON.stringify(breadcrumb.data, null, 2)}</code>
+      </pre>
+    );
   }
 
-  return (
-      <>{breadcrumb.message}</>
-  )
+  return <>{breadcrumb.message}</>;
 }
 
 /**
  * Renders the log level of a breadcrumb
  */
 function BreadcrumbLevel({ breadcrumb }: BreadcrumbTableItemProps) {
-  const level = breadcrumb.level || 'info'
+  const level = breadcrumb.level || 'info';
 
   const getBreadcrumbLogClass = (level: string) => {
-  switch (level) {
-        case 'info': {
-          return 'text-info'
-        }
-        case 'warning': {
-          return 'text-warning'
-        }
-        case 'error': {
-          return 'text-danger'
-        }
-        default: {
-          return 'text-muted'
-        }
+    switch (level) {
+      case 'info': {
+        return 'text-info';
+      }
+      case 'warning': {
+        return 'text-warning';
+      }
+      case 'error': {
+        return 'text-danger';
+      }
+      default: {
+        return 'text-muted';
       }
     }
+  };
 
-    return (
-        <span className={getBreadcrumbLogClass(level)}>
-          {level}
-        </span>
-    )
+  return <span className={getBreadcrumbLogClass(level)}>{level}</span>;
 }

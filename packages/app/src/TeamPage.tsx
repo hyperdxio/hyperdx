@@ -43,15 +43,22 @@ export default function TeamPage() {
     }
 
     try {
-      const ingestorUrl = new URL(process.env.NEXT_PUBLIC_INGESTOR_API_URL)
+      const ingestorUrl = new URL(process.env.NEXT_PUBLIC_INGESTOR_API_URL);
 
-      const sentryDsnParts = [ingestorUrl.protocol, '//', team.apiKey.replace('-', ''), '@', ingestorUrl.host, ingestorUrl.port ? `:${ingestorUrl.port}` : '']
+      const sentryDsnParts = [
+        ingestorUrl.protocol,
+        '//',
+        team.apiKey.replace('-', ''),
+        '@',
+        ingestorUrl.host,
+        ingestorUrl.port ? `:${ingestorUrl.port}` : '',
+      ];
 
-      return sentryDsnParts.join("")
+      return sentryDsnParts.join('');
     } catch (err) {
-      return ''
+      return '';
     }
-  }, [team])
+  }, [team]);
 
   const rotateTeamApiKeyAction = () => {
     rotateTeamApiKey.mutate(undefined, {
@@ -379,14 +386,13 @@ export default function TeamPage() {
                   {sentryDsn}
                 </Badge>
                 <CopyToClipboard text={sentryDsn}>
-                    <Button
-                        variant="link"
-                        className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
-                    >
-                      📋 Copy URL
-                    </Button>
+                  <Button
+                    variant="link"
+                    className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
+                  >
+                    📋 Copy URL
+                  </Button>
                 </CopyToClipboard>
-
               </div>
               <h2 className="mt-5">Team Members</h2>
               {team.users.map((user: any) => (
