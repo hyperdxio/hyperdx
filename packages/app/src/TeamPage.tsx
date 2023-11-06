@@ -3,6 +3,8 @@ import Link from 'next/link';
 import {
   Badge,
   Button,
+  ToggleButton,
+  ButtonGroup,
   Container,
   Form,
   Modal,
@@ -17,6 +19,11 @@ import AppNav from './AppNav';
 import api from './api';
 import { isValidUrl } from './utils';
 
+const timeFormats = [
+  { name: '24h', value: '1'},
+  { name: '12h', value: '2'}
+]
+
 export default function TeamPage() {
   const [
     rotateApiKeyConfirmationModalShow,
@@ -24,6 +31,7 @@ export default function TeamPage() {
   ] = useState(false);
   const [teamInviteModalShow, setTeamInviteModalShow] = useState(false);
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
+  const [timeFormatValue, setTimeFormatValue] = useState('1')
   const [addSlackWebhookModalShow, setAddSlackWebhookModalShow] =
     useState(false);
   const { data: me, isLoading: isLoadingMe } = api.useMe();
@@ -420,6 +428,25 @@ export default function TeamPage() {
                     </Form>
                   </Modal.Body>
                 </Modal>
+              </div>
+              <div>
+                <h2 className="mt-5">Time Format</h2>
+                <ButtonGroup className="mb-2">
+                  {timeFormats.map((timeFormat, idx) => (
+                    <ToggleButton
+                      key={idx}
+                      id={`timeFormat-${idx}`}
+                      type="timeFormat"
+                      variant={idx % 2 ? 'outline-success' : 'outline-danger'}
+                      name="timeFormat"
+                      value={timeFormat.value}
+                      checked={timeFormatValue === timeFormat.value}
+                      onChange={(e: any) => setTimeFormatValue(e.currentTarget.value)}
+                    >
+                      {timeFormat.name}
+                    </ToggleButton>
+                  ))}
+                </ButtonGroup>
               </div>
             </>
           )}
