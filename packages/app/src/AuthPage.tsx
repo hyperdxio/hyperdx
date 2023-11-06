@@ -29,6 +29,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const { err, msg } = router.query;
 
   const { data: installation } = api.useInstallation();
+  const registerPassword = api.useRegisterPassword();
 
   const verificationSent = msg === 'verify';
 
@@ -43,40 +44,29 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   }, [installation, isRegister, router]);
 
   const onSubmit: SubmitHandler<FormData> = async data => {
-    try {
-      const response = await fetch(`${API_SERVER_URL}/register/password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-      const jsonData = await response.json();
+    registerPassword.mutate(
+      { email: data.email, password: data.password },
+      {
+        onSuccess: () => router.push('/search'),
+        onError: async error => {
+          const jsonData = await error.response.json();
 
-      if (response.ok) {
-        return router.push('/search');
-      }
+          if (Array.isArray(jsonData) && jsonData[0]?.errors?.issues) {
+            return jsonData[0].errors.issues.forEach((issue: any) => {
+              setError(issue.path[0], {
+                type: issue.code,
+                message: issue.message,
+              });
+            });
+          }
 
-      if (Array.isArray(jsonData) && jsonData[0]?.errors?.issues) {
-        return jsonData[0].errors.issues.forEach((issue: any) => {
-          setError(issue.path[0], {
-            type: issue.code,
-            message: issue.message,
+          setError('root', {
+            type: 'manual',
+            message: 'An unexpected error occurred, please try again later.',
           });
-        });
-      }
-
-      setError('root', {
-        type: 'manual',
-        message: 'An unexpected error occurred, please try again later.',
-      });
-    } catch (error) {
-      console.error('Registration failed:', error);
-      setError('root', {
-        type: 'manual',
-        message: 'An unexpected error occurred, please try again later.',
-      });
-    }
+        },
+      },
+    );
   };
 
   const form = isRegister

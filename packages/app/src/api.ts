@@ -544,5 +544,17 @@ const api = {
       }).json(),
     );
   },
+  useRegisterPassword() {
+    return useMutation<any, HTTPError, { email: string; password: string }>(
+      async ({ email, password }) =>
+        server(`register/password`, {
+          method: 'POST',
+          json: {
+            email,
+            password,
+          },
+        }).json(),
+    );
+  },
 };
 export default api;
