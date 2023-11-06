@@ -4,7 +4,7 @@ export type TimeFormat = '12h' | '24h';
 
 export const UserPreferences = React.createContext({
   isUTC: false,
-  timeFormat: '12h' as TimeFormat,
+  timeFormat: '24h' as TimeFormat,
   setTimeFormat: (timeFormat: TimeFormat) => {},
   setIsUTC: (isUTC: boolean) => {},
 });
@@ -16,7 +16,7 @@ export const UserPreferencesProvider = ({
 }) => {
   const initState = {
     isUTC: false,
-    timeFormat: '12h' as TimeFormat,
+    timeFormat: '24h' as TimeFormat,
     setTimeFormat: (timeFormat: TimeFormat) =>
       setState(state => ({ ...state, timeFormat })),
     setIsUTC: (isUTC: boolean) => setState(state => ({ ...state, isUTC })),
