@@ -43,7 +43,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     }
   }, [installation, isRegister, router]);
 
-  const onSubmit: SubmitHandler<FormData> = async data => {
+  const onSubmit: SubmitHandler<FormData> = data =>
     registerPassword.mutate(
       { email: data.email, password: data.password },
       {
@@ -67,7 +67,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
         },
       },
     );
-  };
 
   const form = isRegister
     ? {
