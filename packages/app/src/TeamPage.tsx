@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   ToggleButton,
+  ToggleButtonGroup,
   ButtonGroup,
   Container,
   Form,
@@ -14,15 +15,11 @@ import {
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useState } from 'react';
-
+import useUserPreferences from './useUserPreferences';
+import { TimeFormat } from './useUserPreferences';
 import AppNav from './AppNav';
 import api from './api';
 import { isValidUrl } from './utils';
-
-const timeFormats = [
-  { name: '24h', value: '1'},
-  { name: '12h', value: '2'}
-]
 
 export default function TeamPage() {
   const [
@@ -31,7 +28,7 @@ export default function TeamPage() {
   ] = useState(false);
   const [teamInviteModalShow, setTeamInviteModalShow] = useState(false);
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
-  const [timeFormatValue, setTimeFormatValue] = useState('1')
+  const [timeFormatValue, setTimeFormatValue] = useState('24h')
   const [addSlackWebhookModalShow, setAddSlackWebhookModalShow] =
     useState(false);
   const { data: me, isLoading: isLoadingMe } = api.useMe();
@@ -42,6 +39,17 @@ export default function TeamPage() {
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
+  const setTimeFormat = useUserPreferences().setTimeFormat
+  const timeFormat = useUserPreferences().timeFormat
+  // const [buttonValue, setButtonValue] = useState(timeFormat);
+  /*
+   * The second argument that will be passed to
+   * `handleChange` from `ToggleButtonGroup`
+   * is the SyntheticEvent object, but we are
+   * not using it in this example so we will omit it.
+   */
+
+  const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val)
 
   const hasAllowedAuthMethods =
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
@@ -185,6 +193,13 @@ export default function TeamPage() {
       },
     );
   };
+
+  const handleTimeFormatChange = (e: any) => {
+    // console.log("STST")
+    e.preventDefault()
+    setTimeFormatValue(e.currentTarget.value)
+    // setTimeFormat(e.currentTarget.value === '1' ? '24h' : '12h')
+  }
 
   return (
     <div className="TeamPage">
@@ -431,22 +446,14 @@ export default function TeamPage() {
               </div>
               <div>
                 <h2 className="mt-5">Time Format</h2>
-                <ButtonGroup className="mb-2">
-                  {timeFormats.map((timeFormat, idx) => (
-                    <ToggleButton
-                      key={idx}
-                      id={`timeFormat-${idx}`}
-                      type="timeFormat"
-                      variant={idx % 2 ? 'outline-success' : 'outline-danger'}
-                      name="timeFormat"
-                      value={timeFormat.value}
-                      checked={timeFormatValue === timeFormat.value}
-                      onChange={(e: any) => setTimeFormatValue(e.currentTarget.value)}
-                    >
-                      {timeFormat.name}
+                  <ToggleButtonGroup type="radio" value={timeFormat} onChange={handleTimeButtonClick} name="buttons">
+                    <ToggleButton id="tbg-btn-1" value='24h'>
+                      24h
                     </ToggleButton>
-                  ))}
-                </ButtonGroup>
+                    <ToggleButton id="tbg-btn-2" value='12h'>
+                      12h
+                    </ToggleButton>
+                  </ToggleButtonGroup>
               </div>
             </>
           )}

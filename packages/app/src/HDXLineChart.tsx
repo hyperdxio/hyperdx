@@ -76,6 +76,7 @@ const MemoChart = memo(function MemoChart({
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const timeFormat: TimeFormat = useUserPreferences().timeFormat
+  console.log(timeFormat)
   const tsFormat = TIME_TOKENS[timeFormat]
   // Gets the preffered time format from User Preferences, then converts it to a formattable token
 
