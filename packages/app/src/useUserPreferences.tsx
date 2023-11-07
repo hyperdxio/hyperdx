@@ -14,11 +14,15 @@ export const UserPreferencesProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
+  const setTimeFormat = (timeFormat: TimeFormat) => {
+    setState(state => ({ ...state, timeFormat }))
+    setValue(timeFormat)
+  }
+
   const initState = {
     isUTC: false,
-    timeFormat: '24h' as TimeFormat,
-    setTimeFormat: (timeFormat: TimeFormat) =>
-      setState(state => ({ ...state, timeFormat })),
+    timeFormat: '24h',
+    setTimeFormat,
     setIsUTC: (isUTC: boolean) => setState(state => ({ ...state, isUTC })),
   };
 

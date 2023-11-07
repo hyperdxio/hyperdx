@@ -194,13 +194,6 @@ export default function TeamPage() {
     );
   };
 
-  const handleTimeFormatChange = (e: any) => {
-    // console.log("STST")
-    e.preventDefault()
-    setTimeFormatValue(e.currentTarget.value)
-    // setTimeFormat(e.currentTarget.value === '1' ? '24h' : '12h')
-  }
-
   return (
     <div className="TeamPage">
       <Head>
