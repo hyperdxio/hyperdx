@@ -9,21 +9,20 @@ import {
 import { getTeam } from '../../../controllers/team';
 import { findUserByEmail } from '../../../controllers/user';
 
+const MOCK_USER = {
+  email: 'fake@deploysentinel.com',
+  password: 'TacoCat!2#4X',
+};
+
 describe('team router', () => {
   const server = getServer();
 
   const login = async () => {
     const agent = getAgent(server);
 
-    await agent
-      .post('/register/password')
-      .send({
-        email: 'fake@deploysentinel.com',
-        password: 'tacocat1234',
-      })
-      .expect(302);
+    await agent.post('/register/password').send(MOCK_USER).expect(200);
 
-    const user = await findUserByEmail('fake@deploysentinel.com');
+    const user = await findUserByEmail(MOCK_USER.email);
     const team = await getTeam(user?.team as any);
 
     if (team === null || user === null) {
@@ -33,13 +32,7 @@ describe('team router', () => {
     await user.save();
 
     // login app
-    await agent
-      .post('/login/password')
-      .send({
-        email: 'fake@deploysentinel.com',
-        password: 'tacocat1234',
-      })
-      .expect(302);
+    await agent.post('/login/password').send(MOCK_USER).expect(302);
 
     return {
       agent,

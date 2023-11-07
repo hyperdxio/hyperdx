@@ -1,3 +1,4 @@
+import { useForm, SubmitHandler } from 'react-hook-form';
 import { Button, Form } from 'react-bootstrap';
 import { NextSeo } from 'next-seo';
 import { API_SERVER_URL } from './config';
@@ -9,27 +10,78 @@ import LandingHeader from './LandingHeader';
 import * as config from './config';
 import api from './api';
 
+type FormData = {
+  email: string;
+  password: string;
+};
+
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
+  const isRegister = action === 'register';
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    setError,
+  } = useForm<FormData>({
+    reValidateMode: 'onSubmit',
+  });
   const router = useRouter();
   const { err, msg } = router.query;
 
   const { data: installation } = api.useInstallation();
+  const registerPassword = api.useRegisterPassword();
 
   const verificationSent = msg === 'verify';
 
-  const title = `HyperDX - ${action === 'register' ? 'Sign up' : 'Login'}`;
+  const title = `HyperDX - ${isRegister ? 'Sign up' : 'Login'}`;
 
   useEffect(() => {
     // If an OSS user accidentally lands on /register after already creating a team
     // redirect them to login instead
-    if (
-      config.IS_OSS &&
-      installation?.isTeamExisting === true &&
-      action === 'register'
-    ) {
+    if (config.IS_OSS && installation?.isTeamExisting === true && isRegister) {
       router.push('/login');
     }
-  }, [installation, action, router]);
+  }, [installation, isRegister, router]);
+
+  const onSubmit: SubmitHandler<FormData> = data =>
+    registerPassword.mutate(
+      { email: data.email, password: data.password },
+      {
+        onSuccess: () => router.push('/search'),
+        onError: async error => {
+          const jsonData = await error.response.json();
+
+          if (Array.isArray(jsonData) && jsonData[0]?.errors?.issues) {
+            return jsonData[0].errors.issues.forEach((issue: any) => {
+              setError(issue.path[0], {
+                type: issue.code,
+                message: issue.message,
+              });
+            });
+          }
+
+          setError('root', {
+            type: 'manual',
+            message: 'An unexpected error occurred, please try again later.',
+          });
+        },
+      },
+    );
+
+  const form = isRegister
+    ? {
+        controller: { onSubmit: handleSubmit(onSubmit) },
+        email: register('email', { required: true }),
+        password: register('password', { required: true }),
+      }
+    : {
+        controller: {
+          action: `${API_SERVER_URL}/login/password`,
+          method: 'POST',
+        },
+        email: { name: 'email' },
+        password: { name: 'password' },
+      };
 
   return (
     <div className="AuthPage">
@@ -38,9 +90,9 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
         <div>
           <div className="text-center mb-4 fs-5">
-            {config.IS_OSS && action === 'register'
+            {config.IS_OSS && isRegister
               ? 'Setup '
-              : action === 'register'
+              : isRegister
               ? 'Register for '
               : 'Login to '}
             <span className="text-success fw-bold">HyperDX</span>
@@ -48,7 +100,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
           {action === 'login' && (
             <div className="text-center mb-4 text-muted">Welcome back!</div>
           )}
-          {action === 'register' && config.IS_OSS === true && (
+          {isRegister && config.IS_OSS === true && (
             <div className="text-center mb-4 text-muted">
               Let{"'"}s create your user account.
             </div>
@@ -58,15 +110,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             style={{ maxWidth: 400, minWidth: 400, width: '100%' }}
           >
             <div className="text-center">
-              <Form
-                className="text-start"
-                action={
-                  action === 'register'
-                    ? `${API_SERVER_URL}/register/password`
-                    : `${API_SERVER_URL}/login/password`
-                }
-                method="POST"
-              >
+              <Form className="text-start" {...form.controller}>
                 <Form.Label
                   htmlFor="email"
                   className="text-start text-muted fs-7.5 mb-1"
@@ -76,10 +120,10 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                 <Form.Control
                   data-test-id="form-email"
                   id="email"
-                  name="email"
                   type="email"
                   placeholder="you@company.com"
                   className="border-0 mb-3"
+                  {...form.email}
                 />
                 <Form.Label
                   htmlFor="password"
@@ -90,10 +134,17 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                 <Form.Control
                   data-test-id="form-password"
                   id="password"
-                  name="password"
                   type="password"
                   className="border-0"
+                  {...form.password}
                 />
+                {isRegister && Object.keys(errors).length > 0 && (
+                  <div className="text-danger mt-2">
+                    {Object.values(errors).map((error, index) => (
+                      <div key={index}>{error.message}</div>
+                    ))}
+                  </div>
+                )}
                 {err != null && (
                   <div
                     className="text-danger mt-2"
@@ -123,13 +174,13 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     className="px-6"
                     type="submit"
                     data-test-id="submit"
-                    disabled={verificationSent}
+                    disabled={isSubmitting || verificationSent}
                   >
-                    {action === 'register' ? 'Register' : 'Login'}
+                    {isRegister ? 'Register' : 'Login'}
                   </Button>
                 </div>
               </Form>
-              {action === 'register' && config.IS_OSS === false && (
+              {isRegister && config.IS_OSS === false && (
                 <div data-test-id="login-link" className="mt-4 text-muted">
                   Already have an account? <Link href="/login">Log in</Link>{' '}
                   instead.

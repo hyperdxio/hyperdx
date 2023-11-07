@@ -1,6 +1,7 @@
 import express from 'express';
-import isemail from 'isemail';
 import { serializeError } from 'serialize-error';
+import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '../../config';
 import User from '../../models/user'; // TODO -> do not import model directly
@@ -8,12 +9,30 @@ import logger from '../../utils/logger';
 import passport from '../../utils/passport';
 import { Api404Error } from '../../utils/errors';
 import { isTeamExisting, createTeam, getTeam } from '../../controllers/team';
-import { validatePassword } from '../../utils/validators';
 import {
   isUserAuthenticated,
   redirectToDashboard,
   handleAuthError,
 } from '../../middleware/auth';
+
+const registrationSchema = z.object({
+  email: z.string().email(),
+  password: z
+    .string()
+    .min(12, 'Password must have at least 12 characters')
+    .refine(
+      pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
+      'Password must include both lower and upper case characters',
+    )
+    .refine(
+      pass => /\d/.test(pass),
+      'Password must include at least one number',
+    )
+    .refine(
+      pass => /[!@#$%^&*(),.?":{}|<>]/.test(pass),
+      'Password must include at least one special character',
+    ),
+});
 
 const router = express.Router();
 
@@ -64,49 +83,50 @@ router.post(
   handleAuthError,
 );
 
-router.post('/register/password', async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+router.post(
+  '/register/password',
+  validateRequest({ body: registrationSchema }),
+  async (req, res, next) => {
+    try {
+      const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.redirect(`${config.FRONTEND_URL}/register?err=missing`);
-    }
+      if (await isTeamExisting()) {
+        return res.status(409).json({ error: 'teamAlreadyExists' });
+      }
 
-    if (!isemail.validate(email) || !validatePassword(password)) {
-      return res.redirect(`${config.FRONTEND_URL}/register?err=invalid`);
-    }
+      (User as any).register(
+        new User({ email }),
+        password,
+        async (err: Error, user: any) => {
+          if (err) {
+            logger.error(serializeError(err));
+            return res.status(400).json({ error: 'invalid' });
+          }
 
-    if (await isTeamExisting()) {
-      return res.redirect(
-        `${config.FRONTEND_URL}/register?err=teamAlreadyExists`,
+          const team = await createTeam({
+            name: `${email}'s Team`,
+          });
+          user.team = team._id;
+          user.name = email;
+          await user.save();
+
+          return passport.authenticate('local')(req, res, () => {
+            if (req?.user?.team) {
+              return res.status(200).json({ status: 'success' });
+            }
+
+            logger.error(
+              `Password login for user failed, user or team not found ${req?.user?._id}`,
+            );
+            return res.status(400).json({ error: 'invalid' });
+          });
+        },
       );
+    } catch (e) {
+      next(e);
     }
-
-    (User as any).register(
-      new User({ email }),
-      password,
-      async (err: Error, user: any) => {
-        if (err) {
-          logger.error(serializeError(err));
-          return res.redirect(`${config.FRONTEND_URL}/register?err=invalid`);
-        }
-
-        const team = await createTeam({
-          name: `${email}'s Team`,
-        });
-        user.team = team._id;
-        user.name = email;
-        await user.save();
-
-        return passport.authenticate('local')(req, res, () => {
-          redirectToDashboard(req, res);
-        });
-      },
-    );
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 router.get('/logout', (req, res) => {
   // @ts-ignore
