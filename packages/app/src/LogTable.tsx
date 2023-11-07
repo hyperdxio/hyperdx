@@ -784,6 +784,8 @@ export default function LogTable({
   onEnd,
   onShowPatternsClick,
   tableId,
+  displayedColumns,
+  setDisplayedColumns,
 }: {
   config: {
     where: string;
@@ -802,10 +804,11 @@ export default function LogTable({
   onEnd?: () => void;
   onShowPatternsClick?: () => void;
   tableId?: string;
+  displayedColumns: string[];
+  setDisplayedColumns: (columns: string[]) => void;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [displayedColumns, setDisplayedColumns] = useState<string[]>([]);
   const [wrapLines, setWrapLines] = useState(false);
 
   const prevQueryConfig = usePrevious({ searchedQuery, isLive });
