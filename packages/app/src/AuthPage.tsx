@@ -5,6 +5,7 @@ import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import Link from 'next/link';
+import cx from 'classnames';
 
 import LandingHeader from './LandingHeader';
 import * as config from './config';
@@ -13,6 +14,7 @@ import api from './api';
 type FormData = {
   email: string;
   password: string;
+  confirmPassword: string;
 };
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
@@ -45,7 +47,11 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
 
   const onSubmit: SubmitHandler<FormData> = data =>
     registerPassword.mutate(
-      { email: data.email, password: data.password },
+      {
+        email: data.email,
+        password: data.password,
+        confirmPassword: data.confirmPassword,
+      },
       {
         onSuccess: () => router.push('/search'),
         onError: async error => {
@@ -73,6 +79,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
         controller: { onSubmit: handleSubmit(onSubmit) },
         email: register('email', { required: true }),
         password: register('password', { required: true }),
+        confirmPassword: register('confirmPassword', { required: true }),
       }
     : {
         controller: {
@@ -135,9 +142,28 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   data-test-id="form-password"
                   id="password"
                   type="password"
-                  className="border-0"
+                  className={cx('border-0', {
+                    'mb-3': isRegister,
+                  })}
                   {...form.password}
                 />
+                {isRegister && (
+                  <>
+                    <Form.Label
+                      htmlFor="password"
+                      className="text-start text-muted fs-7.5 mb-1"
+                    >
+                      Confirm Password
+                    </Form.Label>
+                    <Form.Control
+                      data-test-id="form-confirm-password"
+                      id="confirmPassword"
+                      type="password"
+                      className="border-0"
+                      {...form.confirmPassword}
+                    />
+                  </>
+                )}
                 {isRegister && Object.keys(errors).length > 0 && (
                   <div className="text-danger mt-2">
                     {Object.values(errors).map((error, index) => (
