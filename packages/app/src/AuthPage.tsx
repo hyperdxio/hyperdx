@@ -150,7 +150,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                 {isRegister && (
                   <>
                     <Form.Label
-                      htmlFor="password"
+                      htmlFor="confirmPassword"
                       className="text-start text-muted fs-7.5 mb-1"
                     >
                       Confirm Password
