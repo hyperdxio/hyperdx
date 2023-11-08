@@ -2,6 +2,8 @@
 
 HyperDX comes with simple to use out-of-the box Remix support via out browser SDK. The browser SDK allows you to intrument your frontend application to send events, route logs, and session data to HyperDX. We also have multiple backend integrations depending on your Remix Stack, for example when using [Node.js](https://www.hyperdx.io/docs/install/javascript) servers like Express, Vercel, Netlify, Architect, etc.
 
+#### (Optional) Use [opentelemetry-instrumentation-remix](https://github.com/justindsmith/opentelemetry-instrumentations-js/tree/main/packages/instrumentation-remix) package for Node.js servers.
+
 ## Getting Started
 
 ### Install
@@ -10,7 +12,7 @@ HyperDX comes with simple to use out-of-the box Remix support via out browser SD
 npm install @hyperdx/browser
 ```
 
-### Initialize HyperDX
+### Initialize HyperDX in root.tsx
 
 ```js
 import HyperDX from '@hyperdx/browser';
@@ -57,13 +59,6 @@ HyperDX.addAction('Form-Completed', {
 
 To explicitly track a routes we recommend using custom actions per routes.
 
-Example:
-
-```js
-HyperDX.addAction('/form-page', {
-  endpoint: 'form-page'
-});
-```
 
 ### (Optional) Enable Network Capture Dynamically
 
