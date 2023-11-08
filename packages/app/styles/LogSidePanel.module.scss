@@ -1,0 +1,48 @@
+@import './variables';
+
+// TODO: Use variables for spacings
+$padding-x: 24px;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  height: 100%;
+  background-color: $body-bg;
+  box-shadow: 0 0 100px 40px rgba(0, 0, 0, 0.7);
+  border-left: 1px solid $slate-900;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid $slate-900;
+  padding: 12px $padding-x;
+}
+
+.panelDetails {
+  padding: $padding-x;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panelContent {
+  padding: 0 $padding-x;
+}
+
+.severityChip {
+  background: $slate-800;
+  padding: 4px 12px;
+  border-radius: 16px;
+  margin-right: 8px;
+}
+
+.loadingState {
+  color: $slate-600;
+  width: 100%;
+  margin: $padding-x;
+  font-size: 16px;
+  text-align: center;
+}
