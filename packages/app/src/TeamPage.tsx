@@ -14,11 +14,13 @@ import {
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useState } from 'react';
+
 import useUserPreferences from './useUserPreferences';
 import { TimeFormat } from './useUserPreferences';
 import AppNav from './AppNav';
 import api from './api';
 import { isValidUrl } from './utils';
+
 export default function TeamPage() {
   const [
     rotateApiKeyConfirmationModalShow,
@@ -38,8 +40,8 @@ export default function TeamPage() {
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat
   const timeFormat = useUserPreferences().timeFormat
-  
-  console.log(`timeFormat: ${timeFormat}`)
+
+
   const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val)
 
   const hasAllowedAuthMethods =

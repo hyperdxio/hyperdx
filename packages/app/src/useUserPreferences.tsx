@@ -19,7 +19,6 @@ export const UserPreferencesProvider = ({
     setState(state => ({ ...state, timeFormat }))
     setValue(timeFormat)
   }
-
   const initState = {
     isUTC: false,
     timeFormat: '24h',
@@ -29,25 +28,23 @@ export const UserPreferencesProvider = ({
 
   const [state, setState] = useState(initState);
 
+  // This only runs once in order to grab and set the initial timeFormat from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
     try {
-      // Get from local storage by key
       let timeFormat =  window.localStorage.getItem('timeFormat');
       if (timeFormat !== null) timeFormat = JSON.parse(timeFormat)
 
-      // Parse stored json or if none return initialValue
       if (timeFormat != null) {
         setState(state => ({ ...state, timeFormat}));
       }
     } catch (error) {
-      // If error also return initialValue
       console.log(error);
     }
   }, []);
-  
+
   return (
     <UserPreferences.Provider value={state}>
       {children}
