@@ -5,7 +5,6 @@ import {
   Button,
   ToggleButton,
   ToggleButtonGroup,
-  ButtonGroup,
   Container,
   Form,
   Modal,
@@ -432,10 +431,10 @@ export default function TeamPage() {
               <div>
                 <h2 className="mt-5">Time Format</h2>
                   <ToggleButtonGroup type="radio" value={timeFormat} onChange={handleTimeButtonClick} name="buttons">
-                    <ToggleButton id="tbg-btn-1" value='24h'>
+                    <ToggleButton id="tbg-btn-1" value='24h' variant={timeFormat === '24h' ? 'outline-success' : 'outline-secondary'}>
                       24h
                     </ToggleButton>
-                    <ToggleButton id="tbg-btn-2" value='12h'>
+                    <ToggleButton id="tbg-btn-2" value='12h' variant={timeFormat === '12h' ? 'outline-success' : 'outline-secondary'}>
                       12h
                     </ToggleButton>
                   </ToggleButtonGroup>
