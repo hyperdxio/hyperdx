@@ -15,24 +15,30 @@ import {
   handleAuthError,
 } from '../../middleware/auth';
 
-const registrationSchema = z.object({
-  email: z.string().email(),
-  password: z
-    .string()
-    .min(12, 'Password must have at least 12 characters')
-    .refine(
-      pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
-      'Password must include both lower and upper case characters',
-    )
-    .refine(
-      pass => /\d/.test(pass),
-      'Password must include at least one number',
-    )
-    .refine(
-      pass => /[!@#$%^&*(),.?":{}|<>]/.test(pass),
-      'Password must include at least one special character',
-    ),
-});
+const registrationSchema = z
+  .object({
+    email: z.string().email(),
+    password: z
+      .string()
+      .min(12, 'Password must have at least 12 characters')
+      .refine(
+        pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
+        'Password must include both lower and upper case characters',
+      )
+      .refine(
+        pass => /\d/.test(pass),
+        'Password must include at least one number',
+      )
+      .refine(
+        pass => /[!@#$%^&*(),.?":{}|<>]/.test(pass),
+        'Password must include at least one special character',
+      ),
+    confirmPassword: z.string(),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
 
 const router = express.Router();
 
