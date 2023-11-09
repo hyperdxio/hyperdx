@@ -27,6 +27,7 @@ import SearchInput from './SearchInput';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
 import SessionSubpanel from './SessionSubpanel';
+import LogSidePanelKbdShortcuts from './LogSidePanelKbdShortcuts';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
@@ -2319,9 +2320,9 @@ export default function LogSidePanel({
                   </div>
                 ) : null}
 
-                {/* Replay */}
+                {/* Session Replay */}
                 {displayedTab === 'replay' ? (
-                  <div className="px-4 overflow-hidden">
+                  <div className="px-4 overflow-hidden flex-grow-1">
                     {rumSessionId != null ? (
                       <SessionSubpanel
                         start={start}
@@ -2341,6 +2342,7 @@ export default function LogSidePanel({
                   </div>
                 ) : null}
               </ErrorBoundary>
+              <LogSidePanelKbdShortcuts />
             </>
           ) : null}
         </div>

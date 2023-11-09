@@ -45,4 +45,29 @@ $padding-x: 24px;
   margin: $padding-x;
   font-size: 16px;
   text-align: center;
+  flex-grow: 1;
+}
+
+.kbdShortcuts {
+  background: $slate-950;
+  border-top: 1px solid $slate-900;
+  padding: 12px $padding-x;
+  color: $slate-300;
+  font-size: 11px;
+}
+
+.kbd {
+  display: inline-block;
+  background: $slate-900;
+  letter-spacing: 0.5px;
+  border: 1px solid $slate-500;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 0 2px;
+}
+
+.kbdDivider {
+  height: 21px;
+  width: 1px;
+  background: $slate-800;
 }
