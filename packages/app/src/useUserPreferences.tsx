@@ -14,10 +14,10 @@ export const UserPreferencesProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const [tF, setTF] = useLocalStorage('timeFormat', '24h')
+  const [storedValue, setValue] = useLocalStorage('timeFormat', '24h')
   const setTimeFormat = (timeFormat: TimeFormat) => {
     setState(state => ({ ...state, timeFormat }))
-    setTF(timeFormat)
+    setValue(timeFormat)
   }
 
   const initState = {
