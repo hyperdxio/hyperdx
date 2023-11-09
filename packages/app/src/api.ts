@@ -545,15 +545,19 @@ const api = {
     );
   },
   useRegisterPassword() {
-    return useMutation<any, HTTPError, { email: string; password: string }>(
-      async ({ email, password }) =>
-        server(`register/password`, {
-          method: 'POST',
-          json: {
-            email,
-            password,
-          },
-        }).json(),
+    return useMutation<
+      any,
+      HTTPError,
+      { email: string; password: string; confirmPassword: string }
+    >(async ({ email, password, confirmPassword }) =>
+      server(`register/password`, {
+        method: 'POST',
+        json: {
+          email,
+          password,
+          confirmPassword,
+        },
+      }).json(),
     );
   },
 };
