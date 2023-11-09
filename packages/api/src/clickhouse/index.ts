@@ -30,6 +30,7 @@ import {
   isCustomColumn,
   msToBigIntNs,
 } from './searchQueryParser';
+import { redisClient } from '../utils/redis';
 
 import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import type {
@@ -601,6 +602,24 @@ export const getCHServerMetrics = async () => {
 };
 
 export const getMetricsTags = async (teamId: string) => {
+  if (config.CACHE_METRICS_TAGS) {
+    logger.info({
+      message: 'getMetricsTags: attempting cached fetch',
+      teamId: teamId,
+    });
+    return getMetricsTagsCached(teamId);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: skipping cache, direct query',
+      teamId: teamId,
+    });
+    return getMetricsTagsUncached(teamId);
+  }
+};
+
+// NB preserving this exactly as in original for this ticket
+// but looks like a good candidate for a query refactor baed on comment
+const getMetricsTagsUncached = async (teamId: string) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
@@ -627,6 +646,32 @@ export const getMetricsTags = async (teamId: string) => {
     took: Date.now() - ts,
   });
   return result;
+};
+
+const getMetricsTagsCached = async (teamId: string) => {
+  const redisKey = `metrics-tags-${teamId}`;
+  const cached = await redisClient.get(redisKey);
+  if (cached) {
+    logger.info({
+      message: 'getMetricsTags: cache hit',
+      teamId: teamId,
+    });
+    return JSON.parse(cached);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: cache miss',
+      teamId: teamId,
+    });
+    const result = await getMetricsTagsUncached(teamId);
+    await redisClient.set(
+      redisKey,
+        JSON.stringify(result),
+        {
+          PX: ms(config.CACHE_METRICS_EXPIRATION.toString() + 's'),
+        },
+      );
+    return result;
+  }
 };
 
 const isRateAggFn = (aggFn: AggFn) => {

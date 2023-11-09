@@ -13,7 +13,6 @@ router.get('/tags', isUserAuthenticated, async (req, res, next) => {
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    // TODO: use cache
     res.json(await clickhouse.getMetricsTags(teamId.toString()));
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
