@@ -20,7 +20,6 @@ import { TimeFormat } from './useUserPreferences';
 import AppNav from './AppNav';
 import api from './api';
 import { isValidUrl } from './utils';
-
 export default function TeamPage() {
   const [
     rotateApiKeyConfirmationModalShow,
@@ -28,7 +27,6 @@ export default function TeamPage() {
   ] = useState(false);
   const [teamInviteModalShow, setTeamInviteModalShow] = useState(false);
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
-  const [timeFormatValue, setTimeFormatValue] = useState('24h')
   const [addSlackWebhookModalShow, setAddSlackWebhookModalShow] =
     useState(false);
   const { data: me, isLoading: isLoadingMe } = api.useMe();
@@ -41,14 +39,8 @@ export default function TeamPage() {
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat
   const timeFormat = useUserPreferences().timeFormat
-  // const [buttonValue, setButtonValue] = useState(timeFormat);
-  /*
-   * The second argument that will be passed to
-   * `handleChange` from `ToggleButtonGroup`
-   * is the SyntheticEvent object, but we are
-   * not using it in this example so we will omit it.
-   */
-
+  
+  console.log(`timeFormat: ${timeFormat}`)
   const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val)
 
   const hasAllowedAuthMethods =
