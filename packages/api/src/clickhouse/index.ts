@@ -720,6 +720,32 @@ export const getMetricsChart = async ({
     logger.error(`Unsupported data type: ${dataType}`);
   }
 
+  // used to sum/avg/percentile Sum metrics
+  // max/min don't require pre-bucketing the Sum timeseries
+  const sumMetricSource = SqlString.format(
+    `
+    SELECT
+      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+      min(value) as value,
+      _string_attributes,
+      name
+    FROM
+      ??
+    WHERE
+      name = ?
+      AND data_type = ?
+      AND (?)
+    GROUP BY
+      name,
+      _string_attributes,
+      timestamp
+    ORDER BY
+      _string_attributes,
+      timestamp ASC
+  `.trim(),
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+  );
+
   const rateMetricSource = SqlString.format(
     `
 SELECT
@@ -729,31 +755,15 @@ SELECT
     nan,
     runningDifference(value)
   ) AS rate,
-  ts_bucket as timestamp,
+  timestamp,
   _string_attributes,
-  min_name as name
+  name
 FROM
   (
-    SELECT
-      toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket,
-      min(value) as value,
-      _string_attributes,
-      min(name) as min_name
-    FROM
-      ??
-    WHERE
-      name = ?
-      AND data_type = ?
-      AND (?)
-    GROUP BY
-      _string_attributes,
-      ts_bucket
-    ORDER BY
-      _string_attributes,
-      ts_bucket ASC
+    ?
   )
 `.trim(),
-    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+    [SqlString.raw(sumMetricSource)],
   );
 
   const gaugeMetricSource = SqlString.format(
@@ -772,7 +782,6 @@ ORDER BY _timestamp_sort_key ASC
     [tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
-  // TODO: support other data types like Sum, Histogram, etc.
   const query = SqlString.format(
     `
       WITH metrics AS (?)
@@ -786,7 +795,14 @@ ORDER BY _timestamp_sort_key ASC
         STEP ?
     `,
     [
-      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
+      SqlString.raw(
+        isRate
+          ? rateMetricSource
+          : // Max/Min aggs are the same for both Sum and Gauge metrics
+          dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
+          ? sumMetricSource
+          : gaugeMetricSource,
+      ),
       SqlString.raw(selectClause.join(',')),
       startTime / 1000,
       granularity,
