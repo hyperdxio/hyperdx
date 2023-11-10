@@ -1,5 +1,49 @@
 # Remix
 
-HyperDX comes with simple to use out-of-the box Remix support via out [browser SDK](https://www.hyperdx.io/docs/install/browser). The [browser SDK](https://www.hyperdx.io/docs/install/browser) allows you to intrument your frontend application to send events, route logs, and session data to HyperDX. We also have multiple backend integrations depending on your Remix Stack, for example when using [Node.js](https://www.hyperdx.io/docs/install/javascript) servers like Express, Vercel, Netlify, Architect, etc.
+HyperDX comes with simple to use out-of-the box Remix support via our [browser SDK](https://www.hyperdx.io/docs/install/browser). The [browser SDK](https://www.hyperdx.io/docs/install/browser) allows you to intrument your frontend application to send events, route logs, and session data to HyperDX. We also have multiple backend integrations depending on your Remix Stack, for example when using [Node.js](https://www.hyperdx.io/docs/install/javascript) servers like Express, Vercel, Netlify, Architect, etc.
 
-#### (Optional) Use [opentelemetry-instrumentation-remix](https://github.com/justindsmith/opentelemetry-instrumentations-js/tree/main/packages/instrumentation-remix) package for Node.js servers.
+## Getting Started
+
+### Install
+
+```bash
+npm install @hyperdx/browser
+```
+
+### Initialize HyperDX
+
+```js
+import HyperDX from '@hyperdx/browser';
+
+HyperDX.init({
+  apiKey: '<YOUR_API_KEY_HERE>',
+  service: 'my-frontend-app',
+  tracePropagationTargets: [/api.myapp.domain/i], // Set to link traces from frontend to backend requests
+  consoleCapture: true, // Capture console logs (default false)
+  advancedNetworkCapture: true, // Capture full HTTP request/response headers and bodies (default false)
+});
+```
+
+## (Optional) Use [opentelemetry-instrumentation-remix](https://github.com/justindsmith/opentelemetry-instrumentations-js/tree/main/packages/instrumentation-remix) package for Node.js servers.
+
+### Install
+
+```bash
+npm install opentelemetry-instrumentation-remix
+```
+
+#### Create tracing.js file in application folder
+
+### Initilize SDK
+
+```js
+const { initSDK } = require('@hyperdx/node-opentelemetry');
+const { RemixInstrumentation } = require('opentelemetry-instrumentation-remix');
+
+
+initSDK({
+    consoleCapture: true, // optional, default: true
+    advancedNetworkCapture: true, // optional, default: false
+    additionalInstrumentations: [new RemixInstrumentation()]
+});
+```
