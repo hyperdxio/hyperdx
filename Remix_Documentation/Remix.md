@@ -32,7 +32,7 @@ HyperDX.init({
 npm install opentelemetry-instrumentation-remix
 ```
 
-#### Create tracing.js file in application folder
+#### Create instrument.js file in application folder
 
 ```js
 const { initSDK } = require('@hyperdx/node-opentelemetry');
