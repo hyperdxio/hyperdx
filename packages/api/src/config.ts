@@ -28,4 +28,5 @@ export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 export const CACHE_METRICS_TAGS = env.CACHE_METRICS_TAGS !== 'false';
 // deliberately using '||' instead of '??' to avoid empty/falsey values
 // returning as a string since all env values are stringish (to be parsed using ms())
-export const CACHE_METRICS_EXPIRATION = env.CACHE_METRICS_EXPIRATION as string || '600s'
+export const CACHE_METRICS_EXPIRATION =
+  (env.CACHE_METRICS_EXPIRATION as string) || '600s';
