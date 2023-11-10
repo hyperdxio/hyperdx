@@ -20,7 +20,14 @@ describe('team router', () => {
   const login = async () => {
     const agent = getAgent(server);
 
-    await agent.post('/register/password').send(MOCK_USER).expect(200);
+    await agent
+      .post('/register/password')
+      .send({ ...MOCK_USER, confirmPassword: 'wrong-password' })
+      .expect(400);
+    await agent
+      .post('/register/password')
+      .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
+      .expect(200);
 
     const user = await findUserByEmail(MOCK_USER.email);
     const team = await getTeam(user?.team as any);
