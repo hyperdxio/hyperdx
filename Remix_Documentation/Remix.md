@@ -10,7 +10,7 @@ HyperDX comes with simple to use out-of-the box Remix support via our [browser S
 npm install @hyperdx/browser
 ```
 
-### Initialize HyperDX
+### Initialize HyperDX in root.tsx file
 
 ```js
 import HyperDX from '@hyperdx/browser';
