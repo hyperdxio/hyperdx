@@ -34,8 +34,6 @@ npm install opentelemetry-instrumentation-remix
 
 #### Create tracing.js file in application folder
 
-### Initilize SDK
-
 ```js
 const { initSDK } = require('@hyperdx/node-opentelemetry');
 const { RemixInstrumentation } = require('opentelemetry-instrumentation-remix');
@@ -47,3 +45,14 @@ initSDK({
     additionalInstrumentations: [new RemixInstrumentation()]
 });
 ```
+
+### Run the Application with HyperDX 
+
+#### Using NPX
+
+```bash
+HYPERDX_API_KEY='<YOUR_HYPERDX_API_KEY>' OTEL_SERVICE_NAME='<YOUR_APP_NAME>' NODE_OPTIONS='-r <REALATIVE_TRACKING.JS_PATH>' remix dev
+```
+
+
+
