@@ -35,6 +35,10 @@ import {
   useWindowSize,
 } from './utils';
 import { dateRangeToString } from './timeQuery';
+import {
+  useDrawerWithInteractiveBg,
+  KEEP_DRAWER_OPEN_DATA_ATTRIBUTE,
+} from './useDrawerWithInteractiveBg';
 
 import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
 import 'react-modern-drawer/dist/index.css';
@@ -2184,10 +2188,16 @@ export default function LogSidePanel({
 
   const drawerZIndex = contextZIndex + 1;
 
+  // TODO: Clicking outside of sub-drawer closes the root drawer,
+  // need to figure out how to prevent it
+  useDrawerWithInteractiveBg({
+    disabled: isNestedPanel || subDrawerOpen,
+    onClose: _onClose,
+  });
+
   return (
     <Drawer
-      enableOverlay
-      overlayOpacity={0.1}
+      overlayOpacity={0.4}
       customIdSuffix={`log-side-panel-${logId}`}
       duration={0}
       open={logId != null}
@@ -2199,10 +2209,13 @@ export default function LogSidePanel({
       direction="right"
       size={displayedTab === 'replay' || isSmallScreen ? '80vw' : '60vw'}
       zIndex={drawerZIndex}
-      // enableOverlay={subDrawerOpen}
+      enableOverlay={isNestedPanel}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div
+          className={styles.panel}
+          {...{ [KEEP_DRAWER_OPEN_DATA_ATTRIBUTE]: true }}
+        >
           {isLoading && <div className={styles.loadingState}>Loading...</div>}
           {logData != null && !isLoading ? (
             <>

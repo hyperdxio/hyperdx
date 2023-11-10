@@ -277,6 +277,12 @@ function useSearchEventStream(
     [fetchResults, results.data.length, hasNextPage],
   );
 
+  useEffect(() => {
+    return () => {
+      lastAbortController.current?.abort();
+    };
+  }, []);
+
   return {
     hasNextPage,
     isFetching,

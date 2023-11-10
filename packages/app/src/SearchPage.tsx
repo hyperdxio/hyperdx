@@ -340,19 +340,21 @@ const LogViewerContainer = memo(function LogViewerContainer({
           </div>
         )}
       >
-        <LogSidePanel
-          key={openedLog?.id}
-          logId={openedLog?.id}
-          sortKey={openedLog?.sortKey}
-          onClose={() => {
-            setOpenedLog(undefined);
-          }}
-          onPropertyAddClick={onPropertyAddClick}
-          generateSearchUrl={generateSearchUrl}
-          generateChartUrl={generateChartUrl}
-          displayedColumns={displayedColumns}
-          toggleColumn={toggleColumn}
-        />
+        {openedLog?.id ? (
+          <LogSidePanel
+            key={openedLog?.id}
+            logId={openedLog?.id}
+            sortKey={openedLog?.sortKey}
+            onClose={() => {
+              setOpenedLog(undefined);
+            }}
+            onPropertyAddClick={onPropertyAddClick}
+            generateSearchUrl={generateSearchUrl}
+            generateChartUrl={generateChartUrl}
+            displayedColumns={displayedColumns}
+            toggleColumn={toggleColumn}
+          />
+        ) : null}
       </ErrorBoundary>
       <LogTable
         tableId="search-table"
@@ -373,10 +375,15 @@ const LogViewerContainer = memo(function LogViewerContainer({
         formatUTC={isUTC}
         onRowExpandClick={useCallback(
           (id: string, sortKey: string) => {
-            setOpenedLog({ id, sortKey });
-            setIsLive(false);
+            if (openedLog?.id === id) {
+              // If the user clicks the same log, close it
+              setOpenedLog(undefined);
+            } else {
+              setOpenedLog({ id, sortKey });
+              setIsLive(false);
+            }
           },
-          [setOpenedLog, setIsLive],
+          [openedLog?.id, setOpenedLog, setIsLive],
         )}
         onShowPatternsClick={onShowPatternsClick}
         displayedColumns={displayedColumns}
