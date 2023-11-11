@@ -26,7 +26,7 @@ HyperDX.init({
 
 ## (Optional) Use [opentelemetry-instrumentation-remix](https://github.com/justindsmith/opentelemetry-instrumentations-js/tree/main/packages/instrumentation-remix) package for Node.js servers.
 
-This will enable additional Remix specific spans.
+This will enable additional remix.request specific spans.
 
 ### Install
 
