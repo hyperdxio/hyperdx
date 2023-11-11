@@ -1,6 +1,5 @@
 import { Button, Form, Modal } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
-import { sub } from 'date-fns';
 import { toast } from 'react-toastify';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -12,31 +11,14 @@ import { capitalizeFirstLetter } from './utils';
 import { genEnglishExplanation } from './queryv2';
 
 import type { AlertChannelType, AlertInterval, LogView } from './types';
-
-function intervalToGranularity(interval: AlertInterval) {
-  if (interval === '1m') return '1 minute' as const;
-  if (interval === '5m') return '5 minute' as const;
-  if (interval === '15m') return '15 minute' as const;
-  if (interval === '30m') return '30 minute' as const;
-  if (interval === '1h') return '1 hour' as const;
-  if (interval === '6h') return '6 hour' as const;
-  if (interval === '12h') return '12 hour' as const;
-  if (interval === '1d') return '1 day' as const;
-  return '1 day';
-}
-
-function intervalToDateRange(interval: AlertInterval): [Date, Date] {
-  const now = new Date();
-  if (interval === '1m') return [sub(now, { minutes: 15 }), now];
-  if (interval === '5m') return [sub(now, { hours: 1 }), now];
-  if (interval === '15m') return [sub(now, { hours: 4 }), now];
-  if (interval === '30m') return [sub(now, { hours: 8 }), now];
-  if (interval === '1h') return [sub(now, { hours: 16 }), now];
-  if (interval === '6h') return [sub(now, { days: 4 }), now];
-  if (interval === '12h') return [sub(now, { days: 7 }), now];
-  if (interval === '1d') return [sub(now, { days: 7 }), now];
-  return [now, now];
-}
+import {
+  intervalToGranularity,
+  intervalToDateRange,
+  ALERT_INTERVAL_OPTIONS,
+  ALERT_TYPE_OPTIONS,
+  ALERT_CHANNEL_OPTIONS,
+  SlackChannelForm,
+} from './Alert';
 
 function AlertForm({
   alertId,
@@ -86,7 +68,6 @@ function AlertForm({
           }
         : undefined,
   });
-  const { data: slackWebhooks } = api.useWebhooks('slack');
   const { data: team } = api.useTeam();
 
   const channel = watch('channelType');
@@ -113,8 +94,11 @@ function AlertForm({
         <div className="me-2 mb-2">Alert when</div>
         <div className="me-2 mb-2">
           <Form.Select id="type" size="sm" {...register('type')}>
-            <option value="presence">More Than</option>
-            <option value="absence">Less Than</option>
+            {Object.entries(ALERT_TYPE_OPTIONS).map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
+            ))}
           </Form.Select>
         </div>
         <Form.Control
@@ -129,14 +113,11 @@ function AlertForm({
         <div className="me-2 mb-2">lines appear within</div>
         <div className="me-2 mb-2">
           <Form.Select id="interval" size="sm" {...register('interval')}>
-            <option value="1m">1 minute</option>
-            <option value="5m">5 minutes</option>
-            <option value="15m">15 minutes</option>
-            <option value="30m">30 minutes</option>
-            <option value="1h">1 hour</option>
-            <option value="6h">6 hours</option>
-            <option value="12h">12 hours</option>
-            <option value="1d">1 day</option>
+            {Object.entries(ALERT_INTERVAL_OPTIONS).map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
+            ))}
           </Form.Select>
         </div>
         <div className="d-flex align-items-center">
@@ -160,39 +141,21 @@ function AlertForm({
           <div className="me-2 mb-2">via</div>
           <div className="me-2 mb-2">
             <Form.Select id="channel" size="sm" {...register('channelType')}>
-              <option value="webhook">Slack Webhook</option>
+              {Object.entries(ALERT_CHANNEL_OPTIONS).map(([value, text]) => (
+                <option key={value} value={value}>
+                  {text}
+                </option>
+              ))}
             </Form.Select>
           </div>
         </div>
       </div>
       <div className="d-flex align-items-center mb-2"></div>
-      {channel === 'webhook' &&
-        Array.isArray(slackWebhooks?.data) &&
-        slackWebhooks.data.length > 0 && (
-          <div className="mt-3">
-            <Form.Label>Slack Webhook</Form.Label>
-            <Form.Select
-              className="bg-black border-0 mb-4 px-3"
-              id="webhookId"
-              size="sm"
-              {...register('webhookId')}
-            >
-              {slackWebhooks.data.map((sw: any) => (
-                <option key={sw._id} value={sw._id}>
-                  {sw.name}
-                </option>
-              ))}
-            </Form.Select>
-          </div>
-        )}
+
       {channel === 'webhook' && (
-        <div className="mb-4">
-          <a href="/team" target="_blank">
-            <i className="bi bi-plus me-1" />
-            Add New Slack Incoming Webhook
-          </a>
-        </div>
+        <SlackChannelForm webhookSelectProps={register('webhookId')} />
       )}
+
       <div className="d-flex justify-content-between mt-4">
         <Button
           variant="outline-success"
@@ -207,6 +170,7 @@ function AlertForm({
           </Button>
         ) : null}
       </div>
+
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Alert Threshold Preview</div>
         <div style={{ height: 400 }}>
@@ -287,7 +251,7 @@ export default function CreateLogAlertModal({
       size="xl"
     >
       <Modal.Body className="bg-hdx-dark rounded">
-        <div className="d-flex align-items-center mt-3 mb-2">
+        <div className="d-flex align-items-center mt-3 flex-wrap mb-4">
           <h5 className="text-nowrap me-3 my-0">Alerts for</h5>
           {savedSearch == null ? (
             <Form.Control
@@ -424,6 +388,7 @@ export default function CreateLogAlertModal({
                     groupBy,
                     channel: { type: 'webhook', webhookId },
                     logViewId: savedSearch._id,
+                    source: 'LOG',
                   },
                   {
                     onSuccess: response => {

@@ -129,6 +129,8 @@ router.put(
 
       const { name, charts, query } = req.body ?? {};
       // Update dashboard from name and charts
+
+      const dashboard = await Dashboard.findById(dashboardId);
       const updatedDashboard = await Dashboard.findByIdAndUpdate(
         dashboardId,
         {
@@ -138,6 +140,18 @@ router.put(
         },
         { new: true },
       );
+
+      // Delete related alerts
+      const deletedChartIds = dashboard.charts
+        .filter(chart => !charts.map(c => c.id).includes(chart.id))
+        .map(chart => chart.id);
+
+      if (deletedChartIds?.length > 0) {
+        await Alert.deleteMany({
+          dashboardId: dashboardId,
+          chartId: { $in: deletedChartIds },
+        });
+      }
 
       res.json({
         data: updatedDashboard,

@@ -264,15 +264,19 @@ const Tile = forwardRef(
 );
 
 const EditChartModal = ({
+  isLocalDashboard,
   chart,
+  alert,
   dateRange,
   onSave,
   show,
   onClose,
 }: {
+  isLocalDashboard?: boolean;
   chart: Chart | undefined;
+  alert?: Alert;
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alert?: Alert) => void;
   onClose: () => void;
   show: boolean;
 }) => {
@@ -356,6 +360,8 @@ const EditChartModal = ({
           />
           {displayedTab === 'time' && chart != null && (
             <EditLineChartForm
+              isLocalDashboard={isLocalDashboard}
+              alert={alert}
               chart={produce(chart, draft => {
                 draft.series[0].type = 'time';
               })}
@@ -553,6 +559,10 @@ export default function DashboardPage() {
     api.useDashboards();
   const updateDashboard = api.useUpdateDashboard();
   const createDashboard = api.useCreateDashboard();
+  const saveAlert = api.useSaveAlert();
+  const deleteAlert = api.useDeleteAlert();
+  const updateAlert = api.useUpdateAlert();
+
   const router = useRouter();
   const { dashboardId, config } = router.query;
   const queryClient = useQueryClient();
@@ -563,6 +573,7 @@ export default function DashboardPage() {
       id: '',
       name: 'My New Dashboard',
       charts: [],
+      alerts: [],
       query: '',
     }),
     { updateType: 'pushIn', enableBatching: true },
@@ -580,6 +591,9 @@ export default function DashboardPage() {
       const matchedDashboard = dashboardsData.data.find(
         (d: any) => d._id === dashboardId,
       );
+      if (!matchedDashboard.alerts) {
+        matchedDashboard.alerts = [];
+      }
       return matchedDashboard;
     }
   }, [dashboardsData, dashboardId, isLocalDashboard, localDashboard]);
@@ -633,6 +647,9 @@ export default function DashboardPage() {
   const deleteDashboard = api.useDeleteDashboard();
 
   const [editedChart, setEditedChart] = useState<undefined | Chart>();
+  const editedChartAlert = useMemo(() => {
+    return dashboard?.alerts?.find(a => a.chartId === editedChart?.id);
+  }, [dashboard?.alerts, editedChart?.id]);
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
@@ -699,10 +716,77 @@ export default function DashboardPage() {
       }),
     [
       dashboard,
-      searchedTimeRange,
-      setDashboard,
       dashboardQuery,
+      searchedTimeRange,
       granularityQuery,
+      setDashboard,
+    ],
+  );
+
+  const handleSaveChart = useCallback(
+    (newChart: Chart, newAlert?: Alert) => {
+      if (dashboard == null) {
+        return;
+      }
+
+      setDashboard(
+        produce(dashboard, draft => {
+          // Charts
+          const chartIndex = draft.charts.findIndex(
+            chart => chart.id === newChart.id,
+          );
+          if (chartIndex === -1) {
+            // This is a new chart (probably?)
+            draft.charts.push({
+              ...newChart,
+              id: Math.floor(100000000 * Math.random()).toString(36),
+            });
+          } else {
+            draft.charts[chartIndex] = newChart;
+          }
+        }),
+      );
+
+      // Unable to save alerts for saved dashboards, since chart data is not stored on
+      if (isLocalDashboard) {
+        return;
+      }
+
+      if (editedChartAlert?._id) {
+        // Update or delete
+        if (newAlert != null) {
+          updateAlert.mutate({
+            ...newAlert,
+            id: editedChartAlert._id,
+            dashboardId: dashboardId as string,
+            chartId: editedChart?.id,
+          });
+          // TODO: Add error handling
+        } else {
+          // TODO: Add error handling
+          deleteAlert.mutate(editedChartAlert._id);
+        }
+      } else if (newAlert) {
+        // Create
+        saveAlert.mutate({
+          ...newAlert,
+          dashboardId: dashboardId as string,
+          chartId: editedChart?.id,
+        }); // TODO: Add error handling
+      }
+
+      setEditedChart(undefined);
+    },
+    [
+      dashboard,
+      dashboardId,
+      deleteAlert,
+      editedChart,
+      editedChartAlert,
+      isLocalDashboard,
+      saveAlert,
+      setDashboard,
+      updateAlert,
     ],
   );
 
@@ -726,30 +810,14 @@ export default function DashboardPage() {
       <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
+          isLocalDashboard={isLocalDashboard}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}
+          alert={editedChartAlert}
           show={!!editedChart}
           onClose={() => setEditedChart(undefined)}
-          onSave={newChart => {
-            setDashboard(
-              produce(dashboard, draft => {
-                const chartIndex = draft.charts.findIndex(
-                  chart => chart.id === newChart.id,
-                );
-                if (chartIndex === -1) {
-                  // This is a new chart (probably?)
-                  draft.charts.push({
-                    ...newChart,
-                    id: Math.floor(100000000 * Math.random()).toString(36),
-                  });
-                } else {
-                  draft.charts[chartIndex] = newChart;
-                }
-              }),
-            );
-            setEditedChart(undefined);
-          }}
+          onSave={handleSaveChart}
         />
       ) : null}
       <div className="flex-grow-1">

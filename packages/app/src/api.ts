@@ -365,11 +365,14 @@ const api = {
       Error,
       {
         channel: AlertChannel;
-        groupBy: string | undefined;
+        groupBy?: string;
         interval: AlertInterval;
-        logViewId: string;
+        logViewId?: string;
         threshold: number;
         type: string;
+        source?: string;
+        dashboardId?: string;
+        chartId?: string;
       }
     >(`alerts`, async alert =>
       server('alerts', {
@@ -384,12 +387,15 @@ const api = {
       Error,
       {
         channel: AlertChannel;
-        groupBy: string | undefined;
+        groupBy?: string;
         id: string;
         interval: AlertInterval;
-        logViewId: string;
+        logViewId?: string;
         threshold: number;
         type: string;
+        source?: string;
+        dashboardId?: string;
+        chartId?: string;
       }
     >(`alerts`, async alert =>
       server(`alerts/${alert.id}`, {

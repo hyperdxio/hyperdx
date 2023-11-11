@@ -47,6 +47,9 @@ const createAlert = async ({
   logViewId,
   threshold,
   type,
+  source,
+  dashboardId,
+  chartId,
 }: {
   channel: AlertChannel;
   groupBy?: string;
@@ -54,17 +57,22 @@ const createAlert = async ({
   logViewId: string;
   threshold: number;
   type: AlertType;
+  source: AlertSource;
+  dashboardId?: string;
+  chartId?: string;
 }) => {
   return new Alert({
     channel,
     cron: getCron(interval),
     groupBy,
     interval,
-    source: AlertSource.LOG,
+    source: source ?? AlertSource.LOG,
     logView: logViewId,
     threshold,
     timezone: 'UTC', // TODO: support different timezone
     type,
+    dashboardId,
+    chartId,
   }).save();
 };
 
@@ -108,15 +116,29 @@ const updateAlert = async ({
 router.post('/', isUserAuthenticated, async (req, res, next) => {
   try {
     const teamId = req.user?.team;
-    const { channel, groupBy, interval, logViewId, threshold, type } = req.body;
+    const {
+      channel,
+      groupBy,
+      interval,
+      logViewId,
+      threshold,
+      type,
+      source = 'LOG',
+      dashboardId,
+      chartId,
+    } = req.body;
     if (teamId == null) {
       return res.sendStatus(403);
     }
     if (!channel || !threshold || !interval || !type) {
-      return res.sendStatus(400);
+      return res.status(400).send({
+        error: 'channel, threshold, interval, and type are required',
+      });
     }
     if (!['slack', 'email', 'pagerduty', 'webhook'].includes(channel.type)) {
-      return res.sendStatus(400);
+      return res.status(400).send({
+        error: 'invalid channel type',
+      });
     }
 
     const team = await getTeam(teamId);
@@ -125,7 +147,7 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
     }
 
     // validate groupBy property
-    if (groupBy) {
+    if (source === 'LOG' && groupBy) {
       const nowInMs = Date.now();
       const propertyTypeMappingsModel =
         await clickhouse.buildLogsPropertyTypeMappingsModel(
@@ -137,8 +159,17 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
       const serializer = new SQLSerializer(propertyTypeMappingsModel);
       const { found } = await serializer.getColumnForField(groupBy);
       if (!found) {
-        return res.sendStatus(400);
+        return res.status(400).send({
+          error: 'invalid groupBy property',
+        });
       }
+    }
+
+    // validate chart opts
+    if (source === 'CHART' && (!dashboardId || !chartId)) {
+      return res.status(400).send({
+        error: 'dashboardId and chartId are required',
+      });
     }
 
     res.json({
@@ -149,6 +180,9 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
         logViewId,
         threshold,
         type,
+        source,
+        dashboardId,
+        chartId,
       }),
     });
   } catch (e) {
@@ -216,6 +250,7 @@ router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
     if (!alertId) {
       return res.sendStatus(400);
     }
+    // TODO: Add team verification?
     await Alert.findByIdAndDelete(alertId);
     res.sendStatus(200);
   } catch (e) {
