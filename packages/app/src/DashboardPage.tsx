@@ -35,6 +35,7 @@ import HDXHistogramChart from './HDXHistogramChart';
 import api from './api';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
+import type { Alert } from './types';
 import {
   EditSearchChartForm,
   EditMarkdownChartForm,
@@ -59,6 +60,7 @@ type Dashboard = {
   id: string;
   name: string;
   charts: Chart[];
+  alerts?: Alert[];
   query?: string;
 };
 
@@ -85,6 +87,7 @@ const Tile = forwardRef(
       queued,
       onSettled,
       granularity,
+      hasAlert,
 
       // Properties forwarded by grid layout
       className,
@@ -102,6 +105,7 @@ const Tile = forwardRef(
       onSettled?: () => void;
       queued?: boolean;
       granularity: Granularity | undefined;
+      hasAlert?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -190,10 +194,18 @@ const Tile = forwardRef(
         <div className="d-flex justify-content-between align-items-center mb-3 cursor-grab">
           <div className="fs-7 text-muted">{chart.name}</div>
           <i className="bi bi-grip-horizontal text-muted" />
-          <div className="fs-7 text-muted cursor-pointer">
+          <div className="fs-7 text-muted d-flex gap-2 align-items-center">
+            {hasAlert && (
+              <div
+                className="rounded px-1 text-muted bg-grey opacity-90 cursor-default"
+                title="Has alert"
+              >
+                <span className="bi bi-bell" />
+              </div>
+            )}
             <Button
               variant="link"
-              className="text-muted-hover p-0 me-2"
+              className="text-muted-hover p-0"
               size="sm"
               onClick={onEditClick}
             >
@@ -673,6 +685,7 @@ export default function DashboardPage() {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
+            hasAlert={dashboard?.alerts?.some(a => a.chartId === chart.id)}
             onDeleteClick={() => {
               if (dashboard != null) {
                 setDashboard({

@@ -67,14 +67,21 @@ export type Alert = {
   _id: string;
   channel: AlertChannel;
   cron: string;
-  groupBy?: string;
   interval: AlertInterval;
-  logView: string;
-  message?: string;
   state: 'ALERT' | 'OK';
   threshold: number;
   timezone: string;
   type: 'presence' | 'absence';
+  source: 'LOG' | 'CHART';
+
+  // Log alerts
+  logView?: string;
+  message?: string;
+  groupBy?: string;
+
+  // Chart alerts
+  dashboardId?: string;
+  chartId?: string;
 };
 
 export type Session = {
