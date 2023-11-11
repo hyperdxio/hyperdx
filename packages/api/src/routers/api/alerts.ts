@@ -6,6 +6,7 @@ import Alert, {
   AlertChannel,
   AlertInterval,
   AlertType,
+  AlertSource,
 } from '../../models/alert';
 import * as clickhouse from '../../clickhouse';
 import { SQLSerializer } from '../../clickhouse/searchQueryParser';
@@ -59,6 +60,7 @@ const createAlert = async ({
     cron: getCron(interval),
     groupBy,
     interval,
+    source: AlertSource.LOG,
     logView: logViewId,
     threshold,
     timezone: 'UTC', // TODO: support different timezone
@@ -91,6 +93,7 @@ const updateAlert = async ({
       cron: getCron(interval),
       groupBy: groupBy ?? null,
       interval,
+      source: AlertSource.LOG,
       logView: logViewId,
       threshold,
       timezone: 'UTC', // TODO: support different timezone
