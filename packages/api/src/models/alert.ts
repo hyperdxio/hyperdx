@@ -27,10 +27,7 @@ export type AlertChannel = {
   webhookId: string;
 };
 
-export enum AlertSource {
-  LOG = 'LOG',
-  CHART = 'CHART',
-}
+export type AlertSource = 'LOG' | 'CHART';
 
 export interface IAlert {
   _id: ObjectId;
@@ -83,9 +80,8 @@ const AlertSchema = new Schema<IAlert>(
     },
     source: {
       type: String,
-      enum: AlertSource,
       required: false,
-      default: AlertSource.LOG,
+      default: 'LOG',
     },
 
     // Log alerts

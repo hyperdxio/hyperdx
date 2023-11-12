@@ -114,7 +114,7 @@ function AlertForm({
           id="threshold"
           size="sm"
           defaultValue={1}
-          {...register('threshold')}
+          {...register('threshold', { valueAsNumber: true })}
         />
         <div className="me-2 mb-2">lines appear within</div>
         <div className="me-2 mb-2">
@@ -332,6 +332,7 @@ export default function CreateLogAlertModal({
               if (savedSearchId != null) {
                 saveAlert.mutate(
                   {
+                    source: 'LOG',
                     type,
                     threshold,
                     interval,
@@ -388,6 +389,7 @@ export default function CreateLogAlertModal({
                 updateAlert.mutate(
                   {
                     id: selectedAlertId,
+                    source: 'LOG',
                     type,
                     threshold,
                     interval,

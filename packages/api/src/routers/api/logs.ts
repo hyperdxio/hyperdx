@@ -60,8 +60,8 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -109,10 +109,12 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
       teamId: teamId.toString(),
     });
 
+    // @ts-expect-error
     if (logs.data.length === 0) {
       return res.json({ data: [] });
     }
 
+    // @ts-expect-error
     // use the 1st id as the representative id
     const lines = logs.data.map(log => [log.ids[0], log.body]);
     // TODO: separate patterns by service
@@ -134,6 +136,7 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
         trends: Record<string, number>;
       }
     > = {};
+    // @ts-expect-error
     for (const log of logs.data) {
       const patternId = logsPatternsData.result[log.ids[0]];
       if (patternId) {
@@ -200,8 +203,8 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -276,8 +279,8 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
     }
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error streaming logs',
@@ -321,8 +324,8 @@ router.get(
       });
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
       next(e);
     }
   },
@@ -359,8 +362,8 @@ router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });
@@ -433,11 +436,14 @@ router.get(
         await clickhouse.getLogsChart({
           aggFn,
           endTime: endTimeNum,
+          // @ts-expect-error
           field,
           granularity,
+          // @ts-expect-error
           groupBy,
           maxNumGroups: MAX_NUM_GROUPS,
           propertyTypeMappingsModel,
+          // @ts-expect-error
           q,
           sortOrder,
           startTime: startTimeNum,
@@ -447,8 +453,8 @@ router.get(
       );
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
       next(e);
     }
   },
@@ -483,8 +489,8 @@ router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -517,8 +523,8 @@ router.get('/:id', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
