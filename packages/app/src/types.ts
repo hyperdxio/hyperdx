@@ -43,6 +43,8 @@ export type LogView = {
   alerts?: Alert[];
 };
 
+export type AlertType = 'presence' | 'absence';
+
 export type AlertInterval =
   | '1m'
   | '5m'
@@ -71,7 +73,7 @@ export type Alert = {
   state: 'ALERT' | 'OK';
   threshold: number;
   timezone: string;
-  type: 'presence' | 'absence';
+  type: AlertType;
   source: 'LOG' | 'CHART';
 
   // Log alerts
