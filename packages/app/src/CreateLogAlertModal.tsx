@@ -47,7 +47,7 @@ function AlertForm({
     groupBy: string | undefined;
     interval: AlertInterval;
     threshold: number;
-    type: string;
+    type: AlertType;
     webhookId: string | undefined;
   }) => void;
   onDeleteClick: () => void;
