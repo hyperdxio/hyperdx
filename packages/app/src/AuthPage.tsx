@@ -137,6 +137,12 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   className="text-start text-muted fs-7.5 mb-1"
                 >
                   Password
+                  {isRegister && (
+                    <>
+                      (min. 12 characters, 1 uppercase, 1 lowercase, 1 number, 1
+                      special character)
+                    </>
+                  )}
                 </Form.Label>
                 <Form.Control
                   data-test-id="form-password"
