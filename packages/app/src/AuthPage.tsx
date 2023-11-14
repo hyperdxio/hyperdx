@@ -3,7 +3,7 @@ import { Button, Form } from 'react-bootstrap';
 import { NextSeo } from 'next-seo';
 import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { KeyboardEventHandler, useState, useEffect } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 
@@ -17,6 +17,8 @@ type FormData = {
   password: string;
   confirmPassword: string;
 };
+
+type FormControlElement = HTMLInputElement | HTMLTextAreaElement;
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const isRegister = action === 'register';
@@ -49,20 +51,17 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
 
-  const updateCurrentPassword = () => {
-    const val = (document.getElementById('password') as HTMLInputElement).value;
-    console.log(val);
+  const updateCurrentPassword: KeyboardEventHandler<FormControlElement> = e => {
+    const val = (e.target as HTMLInputElement).value;
     setCurrentPassword(val);
   };
 
-  const updateConfirmPassword = () => {
-    const val = (document.getElementById('confirmPassword') as HTMLInputElement)
-      .value;
-    console.log(val);
+  const updateConfirmPassword: KeyboardEventHandler<FormControlElement> = e => {
+    const val = (e.target as HTMLInputElement).value;
     setConfirmPassword(val);
   };
 
-  const confirmPass = (password: string) => {
+  const confirmPass = () => {
     return currentPassword === confirmPassword;
   };
 
@@ -166,7 +165,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   className={cx('border-0', {
                     'mb-3': isRegister,
                   })}
-                  onKeyUp={isRegister ? updateCurrentPassword : () => {}}
+                  onKeyUp={updateCurrentPassword}
                   {...form.password}
                 />
                 {isRegister && (
