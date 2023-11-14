@@ -66,13 +66,13 @@ export type AlertChannel = {
 };
 
 export type Alert = {
-  _id: string;
+  _id?: string;
   channel: AlertChannel;
-  cron: string;
+  cron?: string;
   interval: AlertInterval;
-  state: 'ALERT' | 'OK';
+  state?: 'ALERT' | 'OK';
   threshold: number;
-  timezone: string;
+  timezone?: string;
   type: AlertType;
   source: 'LOG' | 'CHART';
 
