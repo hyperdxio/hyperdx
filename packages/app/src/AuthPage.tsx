@@ -3,10 +3,11 @@ import { Button, Form } from 'react-bootstrap';
 import { NextSeo } from 'next-seo';
 import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 
+import { PasswordCheck, CheckOrX } from './PasswordCheck';
 import LandingHeader from './LandingHeader';
 import * as config from './config';
 import api from './api';
@@ -44,6 +45,26 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       router.push('/login');
     }
   }, [installation, isRegister, router]);
+
+  const [currentPassword, setCurrentPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+
+  const updateCurrentPassword = () => {
+    const val = (document.getElementById('password') as HTMLInputElement).value;
+    console.log(val);
+    setCurrentPassword(val);
+  };
+
+  const updateConfirmPassword = () => {
+    const val = (document.getElementById('confirmPassword') as HTMLInputElement)
+      .value;
+    console.log(val);
+    setConfirmPassword(val);
+  };
+
+  const confirmPass = (password: string) => {
+    return currentPassword === confirmPassword;
+  };
 
   const onSubmit: SubmitHandler<FormData> = data =>
     registerPassword.mutate(
@@ -137,12 +158,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   className="text-start text-muted fs-7.5 mb-1"
                 >
                   Password
-                  {isRegister && (
-                    <>
-                      (min. 12 characters, 1 uppercase, 1 lowercase, 1 number, 1
-                      special character)
-                    </>
-                  )}
                 </Form.Label>
                 <Form.Control
                   data-test-id="form-password"
@@ -151,6 +166,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   className={cx('border-0', {
                     'mb-3': isRegister,
                   })}
+                  onKeyUp={isRegister ? updateCurrentPassword : () => {}}
                   {...form.password}
                 />
                 {isRegister && (
@@ -159,15 +175,22 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                       htmlFor="confirmPassword"
                       className="text-start text-muted fs-7.5 mb-1"
                     >
-                      Confirm Password
+                      <CheckOrX
+                        handler={confirmPass}
+                        password={currentPassword}
+                      >
+                        Confirm Password
+                      </CheckOrX>
                     </Form.Label>
                     <Form.Control
                       data-test-id="form-confirm-password"
                       id="confirmPassword"
                       type="password"
                       className="border-0"
+                      onKeyUp={updateConfirmPassword}
                       {...form.confirmPassword}
                     />
+                    <PasswordCheck password={currentPassword} />
                   </>
                 )}
                 {isRegister && Object.keys(errors).length > 0 && (
