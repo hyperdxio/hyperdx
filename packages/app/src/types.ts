@@ -43,6 +43,8 @@ export type LogView = {
   alerts?: Alert[];
 };
 
+export type AlertType = 'presence' | 'absence';
+
 export type AlertInterval =
   | '1m'
   | '5m'
@@ -64,17 +66,24 @@ export type AlertChannel = {
 };
 
 export type Alert = {
-  _id: string;
+  _id?: string;
   channel: AlertChannel;
-  cron: string;
-  groupBy?: string;
+  cron?: string;
   interval: AlertInterval;
-  logView: string;
-  message?: string;
-  state: 'ALERT' | 'OK';
+  state?: 'ALERT' | 'OK';
   threshold: number;
-  timezone: string;
-  type: 'presence' | 'absence';
+  timezone?: string;
+  type: AlertType;
+  source: 'LOG' | 'CHART';
+
+  // Log alerts
+  logView?: string;
+  message?: string;
+  groupBy?: string;
+
+  // Chart alerts
+  dashboardId?: string;
+  chartId?: string;
 };
 
 export type Session = {

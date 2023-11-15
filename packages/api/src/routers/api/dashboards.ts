@@ -1,9 +1,11 @@
 import express from 'express';
 
 import Dashboard from '../../models/dashboard';
+import Alert from '../../models/alert';
 import { isUserAuthenticated } from '../../middleware/auth';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
+import { groupBy } from 'lodash';
 
 // create routes that will get and update dashboards
 const router = express.Router();
@@ -51,8 +53,18 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
       { _id: 1, name: 1, createdAt: 1, updatedAt: 1, charts: 1, query: 1 },
     ).sort({ name: -1 });
 
+    const alertsByDashboard = groupBy(
+      await Alert.find({
+        dashboardId: { $in: dashboards.map(d => d._id) },
+      }),
+      'dashboardId',
+    );
+
     res.json({
-      data: dashboards,
+      data: dashboards.map(d => ({
+        ...d.toJSON(),
+        alerts: alertsByDashboard[d._id.toString()],
+      })),
     });
   } catch (e) {
     next(e);
@@ -147,6 +159,7 @@ router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
       return res.sendStatus(400);
     }
     await Dashboard.findByIdAndDelete(dashboardId);
+    await Alert.deleteMany({ dashboardId: dashboardId });
     res.json({});
   } catch (e) {
     next(e);
