@@ -22,7 +22,6 @@ import { TIME_TOKENS } from './utils';
 import { semanticKeyedColor, truncateMiddle } from './utils';
 import Link from 'next/link';
 
-
 function ExpandableLegendItem({ value, entry }: any) {
   const [expanded, setExpanded] = useState(false);
   const { color } = entry;
