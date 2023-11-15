@@ -40,8 +40,6 @@ export default function TeamPage() {
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat
   const timeFormat = useUserPreferences().timeFormat
-
-
   const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val)
 
   const hasAllowedAuthMethods =

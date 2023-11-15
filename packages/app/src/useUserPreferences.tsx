@@ -14,10 +14,10 @@ export const UserPreferencesProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const [storedValue, setValue] = useLocalStorage('timeFormat', '24h')
+  const [storedTF, setTF] = useLocalStorage('timeFormat', '24h')
   const setTimeFormat = (timeFormat: TimeFormat) => {
     setState(state => ({ ...state, timeFormat }))
-    setValue(timeFormat)
+    setTF(timeFormat)
   }
   const initState = {
     isUTC: false,
@@ -34,10 +34,10 @@ export const UserPreferencesProvider = ({
       return;
     }
     try {
-      let timeFormat =  window.localStorage.getItem('timeFormat');
-      if (timeFormat !== null) timeFormat = JSON.parse(timeFormat)
+      let timeFormat = window.localStorage.getItem('timeFormat');
+      if (timeFormat !== null) timeFormat = JSON.parse(timeFormat);
 
-      if (timeFormat != null) {
+      if (timeFormat !== null) {
         setState(state => ({ ...state, timeFormat}));
       }
     } catch (error) {
