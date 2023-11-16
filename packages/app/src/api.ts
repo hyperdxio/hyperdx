@@ -370,6 +370,7 @@ const api = {
         logViewId: string;
         threshold: number;
         type: string;
+        source: 'LOG' | 'CHART';
       }
     >(`alerts`, async alert =>
       server('alerts', {
@@ -390,6 +391,7 @@ const api = {
         logViewId: string;
         threshold: number;
         type: string;
+        source: 'LOG' | 'CHART';
       }
     >(`alerts`, async alert =>
       server(`alerts/${alert.id}`, {

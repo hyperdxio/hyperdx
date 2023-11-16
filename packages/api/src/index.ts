@@ -18,7 +18,7 @@ process.on('uncaughtException', (err: Error) => {
   }
 });
 
-process.on('unhandledRejection', (err: Error) => {
+process.on('unhandledRejection', (err: any) => {
   // TODO: do we want to throw here ?
   logger.error(serializeError(err));
 });

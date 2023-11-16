@@ -15,7 +15,7 @@ export default async () => {
   const nowInMs = Date.now();
   const teams = await Team.find({});
   let c = 0;
-  const promises = [];
+  const promises: Promise<any>[] = [];
   for (const team of teams) {
     if (c >= MAX_PROCESS_TEAMS) {
       logger.info(`${LOG_PREFIX} Processed ${c} teams, exiting...`);

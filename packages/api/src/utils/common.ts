@@ -1,6 +1,6 @@
 export const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
-  let output = null;
-  let error = null;
+  let output: T | null = null;
+  let error: any = null;
   try {
     output = fn();
     return [error, output];

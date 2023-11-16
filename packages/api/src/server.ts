@@ -9,7 +9,7 @@ import redisClient from './utils/redis';
 import { connectDB, mongooseConnection } from './models';
 
 export default class Server {
-  protected httpServer: http.Server;
+  protected httpServer!: http.Server;
 
   private async createServer() {
     switch (config.APP_TYPE) {

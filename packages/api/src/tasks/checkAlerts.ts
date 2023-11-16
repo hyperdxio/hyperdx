@@ -161,7 +161,7 @@ const fireChannelEvent = async ({
         _id: alert.channel.webhookId,
       });
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
-      if (webhook.service === 'slack') {
+      if (webhook?.service === 'slack') {
         await slack.postMessageToWebhook(
           webhook.url,
           buildEventSlackMessage({
@@ -200,7 +200,7 @@ export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
 const processAlert = async (now: Date, alert: IAlert) => {
   try {
-    if (alert.source === AlertSource.CHART || !alert.logView) {
+    if (alert.source === 'CHART' || !alert.logView) {
       logger.info({
         message: `[Not implemented] Skipping Chart alert processing`,
         alert,

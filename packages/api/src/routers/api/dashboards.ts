@@ -5,7 +5,7 @@ import Alert from '../../models/alert';
 import { isUserAuthenticated } from '../../middleware/auth';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
-import { groupBy } from 'lodash';
+import { groupBy, differenceBy } from 'lodash';
 
 // create routes that will get and update dashboards
 const router = express.Router();
@@ -129,6 +129,7 @@ router.put(
 
       const { name, charts, query } = req.body ?? {};
       // Update dashboard from name and charts
+      const oldDashboard = await Dashboard.findById(dashboardId);
       const updatedDashboard = await Dashboard.findByIdAndUpdate(
         dashboardId,
         {
@@ -138,6 +139,20 @@ router.put(
         },
         { new: true },
       );
+
+      // Delete related alerts
+      const deletedChartIds = differenceBy(
+        oldDashboard?.charts || [],
+        updatedDashboard?.charts || [],
+        'id',
+      ).map(c => c.id);
+
+      if (deletedChartIds?.length > 0) {
+        await Alert.deleteMany({
+          dashboardId: dashboardId,
+          chartId: { $in: deletedChartIds },
+        });
+      }
 
       res.json({
         data: updatedDashboard,
