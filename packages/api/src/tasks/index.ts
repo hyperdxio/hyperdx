@@ -77,7 +77,7 @@ process.on('uncaughtException', (err: Error) => {
   process.exit(1);
 });
 
-process.on('unhandledRejection', (err: Error) => {
+process.on('unhandledRejection', (err: any) => {
   console.log(err);
   logger.error(serializeError(err));
   process.exit(1);

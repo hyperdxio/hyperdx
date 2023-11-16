@@ -164,7 +164,7 @@ export class SQLSerializer implements Serializer {
 
     let propertyType = this.propertyTypeMapModel.get(field);
     // TODO: Deal with ambiguous fields
-    let column: string = field;
+    let column: string | null = field;
     // refresh cache if property not found
     if (propertyType == null && !this.alreadyRefrehPropertyTypeMapModel) {
       this.alreadyRefrehPropertyTypeMapModel = true;

@@ -34,9 +34,9 @@ const bulkInsert = async (
         );
         break;
       default: {
-        const rrwebEvents = [];
-        const logs = [];
-        for (const log of data) {
+        const rrwebEvents: VectorLog[] = [];
+        const logs: VectorLog[] = [];
+        for (const log of data as VectorLog[]) {
           if (log.hdx_platform === 'rrweb') {
             rrwebEvents.push(log);
           } else {
@@ -47,14 +47,12 @@ const bulkInsert = async (
           bulkInsertTeamLogStream(
             team.logStreamTableVersion,
             team._id.toString(),
-            vectorLogParser.parse(logs as VectorLog[]),
+            vectorLogParser.parse(logs),
           ),
         ];
         if (rrwebEvents.length > 0) {
           promises.push(
-            bulkInsertRrwebEvents(
-              vectorRrwebParser.parse(rrwebEvents as VectorLog[]),
-            ),
+            bulkInsertRrwebEvents(vectorRrwebParser.parse(rrwebEvents)),
           );
         }
         await Promise.all(promises);
