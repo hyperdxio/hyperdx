@@ -11,7 +11,7 @@ import { serializeError } from 'serialize-error';
 import * as clickhouse from '../clickhouse';
 import * as config from '../config';
 import * as slack from '../utils/slack';
-import Alert, { AlertState, IAlert, AlertSource } from '../models/alert';
+import Alert, { AlertState, AlertDocument } from '../models/alert';
 import AlertHistory, { IAlertHistory } from '../models/alertHistory';
 import LogView from '../models/logView';
 import Webhook from '../models/webhook';
@@ -68,7 +68,7 @@ const buildEventSlackMessage = ({
   startTime,
   totalCount,
 }: {
-  alert: IAlert;
+  alert: AlertDocument;
   endTime: Date;
   group?: string;
   logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
@@ -133,7 +133,7 @@ const fireChannelEvent = async ({
   startTime,
   endTime,
 }: {
-  alert: IAlert;
+  alert: AlertDocument;
   logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
   totalCount: number;
   group?: string;
@@ -185,7 +185,7 @@ const fireChannelEvent = async ({
   }
 };
 
-const doesExceedThreshold = (alert: IAlert, totalCount: number) => {
+const doesExceedThreshold = (alert: AlertDocument, totalCount: number) => {
   if (alert.type === 'presence' && totalCount >= alert.threshold) {
     return true;
   } else if (alert.type === 'absence' && totalCount < alert.threshold) {
@@ -198,7 +198,7 @@ export const roundDownTo = (roundTo: number) => (x: Date) =>
   new Date(Math.floor(x.getTime() / roundTo) * roundTo);
 export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
-const processAlert = async (now: Date, alert: IAlert) => {
+const processAlert = async (now: Date, alert: AlertDocument) => {
   try {
     if (alert.source === 'CHART' || !alert.logView) {
       logger.info({
@@ -289,7 +289,7 @@ const processAlert = async (now: Date, alert: IAlert) => {
       await history.save();
     }
     alert.state = alertState;
-    await (alert as any).save();
+    await alert.save();
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
