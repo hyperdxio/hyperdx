@@ -41,8 +41,8 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -96,8 +96,8 @@ router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error while streaming rrweb events',
