@@ -122,15 +122,22 @@ describe('checkAlerts', () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
-      jest.spyOn(clickhouse, 'checkAlert').mockResolvedValueOnce({
-        rows: 1,
-        data: [
-          {
-            count: 11,
-            ts_bucket: '2023-11-16T22:10:00.000Z',
-          },
-        ],
-      } as any);
+      jest
+        .spyOn(clickhouse, 'checkAlert')
+        .mockResolvedValueOnce({
+          rows: 1,
+          data: [
+            {
+              count: 11,
+              ts_bucket: '2023-11-16T22:10:00.000Z',
+            },
+          ],
+        } as any)
+        // no logs found in the next window
+        .mockResolvedValueOnce({
+          rows: 0,
+          data: [],
+        } as any);
       jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
         rows: 1,
         data: [
@@ -180,10 +187,18 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
       );
+      expect(alert.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
       await processAlert(later, alert);
+      // alert should still be in alert state
+      expect(alert.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlert(nextWindow, alert);
+      // alert should be in ok state
+      expect(alert.state).toBe('OK');
 
       // check if checkAlert query + webhook were triggered
       expect(clickhouse.checkAlert).toHaveBeenNthCalledWith(1, {
