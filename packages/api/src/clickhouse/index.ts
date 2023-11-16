@@ -563,7 +563,7 @@ export const buildMetricsPropertyTypeMappingsModel = async (
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
-  property: string,
+  property: string | undefined,
   model: LogsPropertyTypeMappingsModel,
 ) => {
   if (!property) {
@@ -1119,6 +1119,12 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
+  const componentField = buildSearchColumnName('string', 'component');
+  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
+  if (!componentField || !sessionIdField) {
+    throw new Error('component or sessionId is null');
+  }
+
   const sessionsWithSearchQuery = SqlString.format(
     `SELECT
       MAX(timestamp) AS maxTimestamp,
@@ -1139,8 +1145,8 @@ export const getSessions = async ({
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
     [
-      SqlString.raw(buildSearchColumnName('string', 'component')),
-      SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
+      SqlString.raw(componentField),
+      SqlString.raw(sessionIdField),
       columns,
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
@@ -1639,8 +1645,6 @@ export const getLogBatchGroupedByBody = async ({
       span.end();
     },
   );
-
-  return result;
 };
 
 export const getLogBatch = async ({
@@ -1711,6 +1715,7 @@ export const getLogBatch = async ({
     span.end();
   });
 
+  // @ts-ignore
   return result;
 };
 
@@ -1769,6 +1774,7 @@ export const getRrwebEvents = async ({
     span.end();
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };
 
@@ -1839,5 +1845,6 @@ export const getLogStream = async ({
     }
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };

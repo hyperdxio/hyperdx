@@ -225,7 +225,7 @@ abstract class ParsingInterface<T> {
   ): LogStreamModel | MetricModel | RrwebEventModel;
 
   parse(logs: T[], ...args: any[]) {
-    const parsedLogs = [];
+    const parsedLogs: any[] = [];
     for (const log of logs) {
       try {
         parsedLogs.push(this._parse(log, ...args));
