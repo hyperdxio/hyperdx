@@ -201,9 +201,6 @@ export const roundDownTo = (roundTo: number) => (x: Date) =>
   new Date(Math.floor(x.getTime() / roundTo) * roundTo);
 export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
-// *****************************************************************************
-// ************************ Process Alert Helpers ******************************
-// *****************************************************************************
 export const processAlert = async (now: Date, alert: AlertDocument) => {
   try {
     if (alert.source === 'CHART' || !alert.logView) {
