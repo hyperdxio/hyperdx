@@ -77,12 +77,13 @@
     "supertest": "^6.3.1",
     "ts-jest": "^28.0.5",
     "ts-node": "^10.8.1",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^4.9.5"
   },
   "scripts": {
     "start": "node ./build/index.js",
-    "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
-    "dev:task": "ts-node -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
+    "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
+    "dev:task": "ts-node -r tsconfig-paths/register -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc",
     "lint": "eslint . --ext .ts",
     "ci:lint": "yarn lint && yarn tsc --noEmit",

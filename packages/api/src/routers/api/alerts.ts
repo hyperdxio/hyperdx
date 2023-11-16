@@ -2,14 +2,14 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import Alert from '../../models/alert';
-import { getTeam } from '../../controllers/team';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Alert from '@/models/alert';
+import { getTeam } from '@/controllers/team';
+import { isUserAuthenticated } from '@/middleware/auth';
 import {
   createAlert,
   updateAlert,
   validateGroupByProperty,
-} from '../../controllers/alerts';
+} from '@/controllers/alerts';
 
 const router = express.Router();
 

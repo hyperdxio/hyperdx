@@ -2,7 +2,7 @@ import SqlString from 'sqlstring';
 import lucene from '@hyperdx/lucene';
 import { serializeError } from 'serialize-error';
 
-import { LogPlatform, LogType } from '../utils/logParser';
+import { LogPlatform, LogType } from '@/utils/logParser';
 import { PropertyTypeMappingsModel } from './propertyTypeMappingsModel';
 
 function encodeSpecialTokens(query: string): string {

@@ -2,8 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 
 import { serializeError } from 'serialize-error';
 
-import logger from '../utils/logger';
-import { BaseError, StatusCode, isOperationalError } from '../utils/errors';
+import logger from '@/utils/logger';
+import { BaseError, StatusCode, isOperationalError } from '@/utils/errors';
 
 // WARNING: need to keep the 4th arg for express to identify it as an error-handling middleware function
 export const appErrorHandler = (
