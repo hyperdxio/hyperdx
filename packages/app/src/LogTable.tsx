@@ -26,6 +26,8 @@ import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
 
+import styles from '../styles/LogTable.module.scss';
+
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
 
@@ -316,7 +318,7 @@ export const RawLogTable = memo(
                   onRowExpandClick(id, sort_key);
                 }}
               >
-                {'> '}
+                <span className="bi bi-chevron-right" />
               </div>
             );
           },
@@ -564,7 +566,7 @@ export const RawLogTable = memo(
 
     return (
       <div
-        className="overflow-auto h-100 fs-8 bg-inherit py-2"
+        className="overflow-auto h-100 fs-8 bg-inherit"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -582,14 +584,7 @@ export const RawLogTable = memo(
           id={tableId}
           style={{ tableLayout: 'fixed' }}
         >
-          <thead
-            className="bg-inherit"
-            style={{
-              background: 'inherit',
-              position: 'sticky',
-              top: 0,
-            }}
-          >
+          <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, headerIndex) => {
@@ -623,7 +618,7 @@ export const RawLogTable = memo(
                         <div
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className={`resizer text-gray-600 cursor-grab ${
+                          className={`resizer text-gray-600 cursor-col-resize ${
                             header.column.getIsResizing() ? 'isResizing' : ''
                           }`}
                           style={{
@@ -690,8 +685,9 @@ export const RawLogTable = memo(
                   }}
                   role="button"
                   key={virtualRow.key}
-                  className={cx('bg-default-dark-grey-hover', {
-                    'bg-dark-grey': highlightedLineId === row.original.id,
+                  className={cx(styles.tableRow, {
+                    [styles.tableRow__selected]:
+                      highlightedLineId === row.original.id,
                   })}
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}

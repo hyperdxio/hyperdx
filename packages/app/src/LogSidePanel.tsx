@@ -27,6 +27,7 @@ import SearchInput from './SearchInput';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
 import SessionSubpanel from './SessionSubpanel';
+import LogSidePanelKbdShortcuts from './LogSidePanelKbdShortcuts';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
@@ -40,6 +41,8 @@ import 'react-modern-drawer/dist/index.css';
 import { CurlGenerator } from './curlGenerator';
 import { Dictionary } from './types';
 import { ZIndexContext, useZIndex } from './zIndex';
+
+import styles from '../styles/LogSidePanel.module.scss';
 
 const HDX_BODY_FIELD = '_hdx_body';
 
@@ -1765,8 +1768,10 @@ function SidePanelHeader({
   logData,
   onPropertyAddClick,
   generateSearchUrl,
+  onClose,
 }: {
   logData: any;
+  onClose: VoidFunction;
   onPropertyAddClick?: (name: string, value: string) => void;
   generateSearchUrl: (
     query?: string,
@@ -1800,10 +1805,10 @@ function SidePanelHeader({
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center">
+      <div className={styles.panelHeader}>
         <div>
           {logData.severity_text != null ? (
-            <span className="me-2">
+            <span className={styles.severityChip}>
               <LogLevel level={logData?.severity_text ?? ''} />
             </span>
           ) : null}
@@ -1817,8 +1822,8 @@ function SidePanelHeader({
             <span className="text-muted">at</span>{' '}
             {format(new Date(logData.timestamp), 'MMM d HH:mm:ss.SSS')}{' '}
             <span className="text-muted">
-              ({formatDistanceToNowStrictShort(new Date(logData.timestamp))}{' '}
-              ago)
+              &middot;{' '}
+              {formatDistanceToNowStrictShort(new Date(logData.timestamp))} ago
             </span>
           </span>
         </div>
@@ -1864,57 +1869,67 @@ function SidePanelHeader({
               Share Event
             </Button>
           </CopyToClipboard>
+          <Button
+            variant="dark"
+            className="text-muted-hover d-flex align-items-center"
+            size="sm"
+            onClick={onClose}
+          >
+            <i className="bi bi-x-lg" />
+          </Button>
         </div>
       </div>
-      <div className="mt-3">
-        <div
-          className="bg-hdx-dark p-3 overflow-auto"
-          style={{ maxHeight: 300 }}
-        >
-          {stripAnsi(logData.body)}
+      <div className={styles.panelDetails}>
+        <div>
+          <div
+            className="bg-hdx-dark p-3 overflow-auto"
+            style={{ maxHeight: 300 }}
+          >
+            {stripAnsi(logData.body)}
+          </div>
         </div>
-      </div>
-      <div className="d-flex mt-2">
-        {logData._service ? (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={generateSearchUrl}
-            name="service"
-            value={logData._service}
-          />
-        ) : null}
-        {logData._host ? (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={generateSearchUrl}
-            name="host"
-            value={logData._host}
-          />
-        ) : null}
-        {userEmail ? (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={generateSearchUrl}
-            name="userEmail"
-            value={userEmail}
-          />
-        ) : null}
-        {userName ? (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={generateSearchUrl}
-            name="userName"
-            value={userName}
-          />
-        ) : null}
-        {teamName ? (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={generateSearchUrl}
-            name="teamName"
-            value={teamName}
-          />
-        ) : null}
+        <div className="d-flex flex-wrap">
+          {logData._service ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              name="service"
+              value={logData._service}
+            />
+          ) : null}
+          {logData._host ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              name="host"
+              value={logData._host}
+            />
+          ) : null}
+          {userEmail ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              name="userEmail"
+              value={userEmail}
+            />
+          ) : null}
+          {userName ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              name="userName"
+              value={userName}
+            />
+          ) : null}
+          {teamName ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              name="teamName"
+              value={teamName}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -2109,6 +2124,7 @@ export default function LogSidePanel({
   // We'll need to handle this properly eventually...
   const tab = isNestedPanel ? stateTab : queryTab;
   const setTab = isNestedPanel ? setStateTab : setQueryTab;
+
   const _onClose = useCallback(() => {
     // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
     // (which might not be valid, ex session replay)
@@ -2170,9 +2186,10 @@ export default function LogSidePanel({
 
   return (
     <Drawer
+      enableOverlay
+      overlayOpacity={0.1}
       customIdSuffix={`log-side-panel-${logId}`}
       duration={0}
-      overlayOpacity={0.2}
       open={logId != null}
       onClose={() => {
         if (!subDrawerOpen) {
@@ -2181,26 +2198,22 @@ export default function LogSidePanel({
       }}
       direction="right"
       size={displayedTab === 'replay' || isSmallScreen ? '80vw' : '60vw'}
-      style={{ background: '#0F1216' }}
-      className="border-start border-dark"
       zIndex={drawerZIndex}
       // enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div
-          className="p-3 h-100 d-flex flex-column fs-8"
-          style={{ marginTop: 20 }}
-        >
-          {isLoading && <h3>Loading...</h3>}
+        <div className={styles.panel}>
+          {isLoading && <div className={styles.loadingState}>Loading...</div>}
           {logData != null && !isLoading ? (
             <>
               <SidePanelHeader
                 logData={logData}
                 onPropertyAddClick={onPropertyAddClick}
                 generateSearchUrl={generateSearchUrl}
+                onClose={_onClose}
               />
               <TabBar
-                className="fs-8 mb-2 mt-4"
+                className="fs-8 mb-2 mt-2"
                 items={[
                   {
                     text: 'Parsed Properties',
@@ -2243,13 +2256,14 @@ export default function LogSidePanel({
                   console.error(err);
                 }}
                 fallbackRender={() => (
-                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
                     An error occurred while rendering this event.
                   </div>
                 )}
               >
+                {/* Parsed Properties */}
                 {displayedTab === 'parsed' ? (
-                  <div className="flex-grow-1 mt-1 pt-2 bg-body overflow-auto">
+                  <div className="flex-grow-1 px-4 bg-body overflow-auto">
                     <PropertySubpanel
                       logData={logData}
                       onPropertyAddClick={onPropertyAddClick}
@@ -2266,9 +2280,11 @@ export default function LogSidePanel({
                     />
                   </div>
                 ) : null}
+
+                {/* Original Line */}
                 {displayedTab === 'original' ? (
                   <div
-                    className="mt-3 flex-grow-1 overflow-auto"
+                    className="flex-grow-1 px-4 overflow-auto"
                     style={{ minHeight: 0 }}
                   >
                     <div className="my-2">
@@ -2276,9 +2292,11 @@ export default function LogSidePanel({
                     </div>
                   </div>
                 ) : null}
+
+                {/* Trace */}
                 {displayedTab === 'trace' ? (
                   <div
-                    className="flex-grow-1 mt-3 bg-body overflow-auto"
+                    className="flex-grow-1 px-4 mt-3 bg-body overflow-auto"
                     style={{ minHeight: 0 }}
                   >
                     <TraceSubpanel
@@ -2292,15 +2310,19 @@ export default function LogSidePanel({
                     />
                   </div>
                 ) : null}
+
+                {/* Debug */}
                 {displayedTab === 'debug' ? (
-                  <div className="mt-3 overflow-auto">
+                  <div className="px-4 overflow-auto">
                     <code>
                       <pre>{JSON.stringify(logData, undefined, 4)}</pre>
                     </code>
                   </div>
                 ) : null}
+
+                {/* Session Replay */}
                 {displayedTab === 'replay' ? (
-                  <div className="mt-3 overflow-hidden">
+                  <div className="px-4 overflow-hidden flex-grow-1">
                     {rumSessionId != null ? (
                       <SessionSubpanel
                         start={start}
@@ -2320,6 +2342,7 @@ export default function LogSidePanel({
                   </div>
                 ) : null}
               </ErrorBoundary>
+              <LogSidePanelKbdShortcuts />
             </>
           ) : null}
         </div>
