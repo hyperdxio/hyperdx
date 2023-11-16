@@ -185,7 +185,10 @@ const fireChannelEvent = async ({
   }
 };
 
-const doesExceedThreshold = (alert: AlertDocument, totalCount: number) => {
+export const doesExceedThreshold = (
+  alert: AlertDocument,
+  totalCount: number,
+) => {
   if (alert.type === 'presence' && totalCount >= alert.threshold) {
     return true;
   } else if (alert.type === 'absence' && totalCount < alert.threshold) {
@@ -198,7 +201,10 @@ export const roundDownTo = (roundTo: number) => (x: Date) =>
   new Date(Math.floor(x.getTime() / roundTo) * roundTo);
 export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
-const processAlert = async (now: Date, alert: AlertDocument) => {
+// *****************************************************************************
+// ************************ Process Alert Helpers ******************************
+// *****************************************************************************
+export const processAlert = async (now: Date, alert: AlertDocument) => {
   try {
     if (alert.source === 'CHART' || !alert.logView) {
       logger.info({
