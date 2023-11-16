@@ -57,6 +57,8 @@ export type AlertInterval =
 
 export type AlertChannelType = 'webhook';
 
+export type AlertSource = 'LOG' | 'CHART';
+
 export type AlertChannel = {
   channelId?: string;
   recipients?: string[];
@@ -74,7 +76,7 @@ export type Alert = {
   threshold: number;
   timezone?: string;
   type: AlertType;
-  source: 'LOG' | 'CHART';
+  source: AlertSource;
 
   // Log alerts
   logView?: string;

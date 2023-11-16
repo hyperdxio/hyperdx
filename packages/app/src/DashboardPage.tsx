@@ -264,15 +264,19 @@ const Tile = forwardRef(
 );
 
 const EditChartModal = ({
+  isLocalDashboard,
   chart,
+  alerts,
   dateRange,
   onSave,
   show,
   onClose,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
   show: boolean;
 }) => {
@@ -356,9 +360,11 @@ const EditChartModal = ({
           />
           {displayedTab === 'time' && chart != null && (
             <EditLineChartForm
+              isLocalDashboard={isLocalDashboard}
               chart={produce(chart, draft => {
                 draft.series[0].type = 'time';
               })}
+              alerts={alerts}
               onSave={onSave}
               onClose={onClose}
               dateRange={dateRange}
@@ -553,6 +559,9 @@ export default function DashboardPage() {
     api.useDashboards();
   const updateDashboard = api.useUpdateDashboard();
   const createDashboard = api.useCreateDashboard();
+  const saveAlert = api.useSaveAlert();
+  const deleteAlert = api.useDeleteAlert();
+  const updateAlert = api.useUpdateAlert();
   const router = useRouter();
   const { dashboardId, config } = router.query;
   const queryClient = useQueryClient();
@@ -563,6 +572,7 @@ export default function DashboardPage() {
       id: '',
       name: 'My New Dashboard',
       charts: [],
+      alerts: [],
       query: '',
     }),
     { updateType: 'pushIn', enableBatching: true },
@@ -633,6 +643,10 @@ export default function DashboardPage() {
   const deleteDashboard = api.useDeleteDashboard();
 
   const [editedChart, setEditedChart] = useState<undefined | Chart>();
+  const editedChartAlerts = useMemo<Alert[]>(
+    () => dashboard?.alerts?.filter(a => a.chartId === editedChart?.id) || [],
+    [dashboard?.alerts, editedChart?.id],
+  );
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
@@ -648,7 +662,7 @@ export default function DashboardPage() {
 
   const onAddChart = () => {
     setEditedChart({
-      id: '',
+      id: Math.floor(100000000 * Math.random()).toString(36),
       name: 'My New Chart',
       x: 0,
       y: 0,
@@ -706,6 +720,86 @@ export default function DashboardPage() {
     ],
   );
 
+  const handleSaveChart = useCallback(
+    (newChart: Chart, newAlerts?: Alert[]) => {
+      if (dashboard == null) {
+        return;
+      }
+
+      setDashboard(
+        produce(dashboard, draft => {
+          const chartIndex = draft.charts.findIndex(
+            chart => chart.id === newChart.id,
+          );
+          // This is a new chart (probably?)
+          if (chartIndex === -1) {
+            draft.charts.push(newChart);
+          } else {
+            draft.charts[chartIndex] = newChart;
+          }
+        }),
+      );
+
+      // Using only the first alert for now
+      const [editedChartAlert] = editedChartAlerts;
+      const newAlert = newAlerts?.[0];
+
+      if (editedChartAlert?._id) {
+        // Update or delete
+        if (newAlert != null) {
+          updateAlert.mutate(
+            {
+              ...newAlert,
+              id: editedChartAlert._id,
+              dashboardId: dashboardId as string,
+              chartId: editedChart?.id,
+            },
+            {
+              onError: err => {
+                console.error(err);
+                toast.error('Failed to update alert.');
+              },
+            },
+          );
+        } else {
+          deleteAlert.mutate(editedChartAlert._id, {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to delete alert.');
+            },
+          });
+        }
+      } else if (newAlert) {
+        // Create
+        saveAlert.mutate(
+          {
+            ...newAlert,
+            dashboardId: dashboardId as string,
+            chartId: editedChart?.id,
+          },
+          {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to save alert.');
+            },
+          },
+        );
+      }
+
+      setEditedChart(undefined);
+    },
+    [
+      dashboard,
+      dashboardId,
+      deleteAlert,
+      editedChart?.id,
+      editedChartAlerts,
+      saveAlert,
+      setDashboard,
+      updateAlert,
+    ],
+  );
+
   const layout = (dashboard?.charts ?? []).map(chart => {
     return {
       i: chart.id,
@@ -726,30 +820,14 @@ export default function DashboardPage() {
       <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
+          isLocalDashboard={isLocalDashboard}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}
+          alerts={editedChartAlerts}
           show={!!editedChart}
           onClose={() => setEditedChart(undefined)}
-          onSave={newChart => {
-            setDashboard(
-              produce(dashboard, draft => {
-                const chartIndex = draft.charts.findIndex(
-                  chart => chart.id === newChart.id,
-                );
-                if (chartIndex === -1) {
-                  // This is a new chart (probably?)
-                  draft.charts.push({
-                    ...newChart,
-                    id: Math.floor(100000000 * Math.random()).toString(36),
-                  });
-                } else {
-                  draft.charts[chartIndex] = newChart;
-                }
-              }),
-            );
-            setEditedChart(undefined);
-          }}
+          onSave={handleSaveChart}
         />
       ) : null}
       <div className="flex-grow-1">
