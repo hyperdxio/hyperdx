@@ -1392,7 +1392,7 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
+        count(*) as data,
         toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
       FROM ??
       WHERE ? AND (?)
@@ -1438,7 +1438,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: string }>
   >();
   logger.info({
     message: 'checkAlert',

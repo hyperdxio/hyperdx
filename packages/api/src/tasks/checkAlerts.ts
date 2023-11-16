@@ -270,7 +270,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     let alertState = AlertState.OK;
     if (check?.rows && check?.rows > 0) {
       for (const checkData of check.data) {
-        const totalCount = parseInt(checkData.count);
+        const totalCount = parseInt(checkData.data);
         if (doesExceedThreshold(alert, totalCount)) {
           alertState = AlertState.ALERT;
           logger.info({

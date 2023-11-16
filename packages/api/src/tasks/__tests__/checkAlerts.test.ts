@@ -128,7 +128,7 @@ describe('checkAlerts', () => {
           rows: 1,
           data: [
             {
-              count: 11,
+              data: 11,
               ts_bucket: '2023-11-16T22:10:00.000Z',
             },
           ],
