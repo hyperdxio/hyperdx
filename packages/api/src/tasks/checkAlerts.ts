@@ -11,7 +11,7 @@ import { serializeError } from 'serialize-error';
 import * as clickhouse from '../clickhouse';
 import * as config from '../config';
 import * as slack from '../utils/slack';
-import Alert, { AlertState, IAlert } from '../models/alert';
+import Alert, { AlertState, IAlert, AlertSource } from '../models/alert';
 import AlertHistory, { IAlertHistory } from '../models/alertHistory';
 import LogView from '../models/logView';
 import Webhook from '../models/webhook';
@@ -161,7 +161,7 @@ const fireChannelEvent = async ({
         _id: alert.channel.webhookId,
       });
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
-      if (webhook.service === 'slack') {
+      if (webhook?.service === 'slack') {
         await slack.postMessageToWebhook(
           webhook.url,
           buildEventSlackMessage({
@@ -200,6 +200,14 @@ export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
 const processAlert = async (now: Date, alert: IAlert) => {
   try {
+    if (alert.source === 'CHART' || !alert.logView) {
+      logger.info({
+        message: `[Not implemented] Skipping Chart alert processing`,
+        alert,
+      });
+      return;
+    }
+
     const logView = await getLogViewEnhanced(alert.logView);
 
     const previous: IAlertHistory | undefined = (

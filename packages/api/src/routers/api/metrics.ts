@@ -16,8 +16,8 @@ router.get('/tags', isUserAuthenticated, async (req, res, next) => {
     res.json(await clickhouse.getMetricsTags(teamId.toString()));
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });
@@ -58,8 +58,8 @@ router.post('/chart', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });

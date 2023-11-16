@@ -27,18 +27,27 @@ export type AlertChannel = {
   webhookId: string;
 };
 
+export type AlertSource = 'LOG' | 'CHART';
+
 export interface IAlert {
   _id: ObjectId;
   channel: AlertChannel;
   cron: string;
-  groupBy?: string;
   interval: AlertInterval;
-  logView: ObjectId;
-  message?: string;
   state: AlertState;
   threshold: number;
   timezone: string;
   type: AlertType;
+  source?: AlertSource;
+
+  // Log alerts
+  groupBy?: string;
+  logView?: ObjectId;
+  message?: string;
+
+  // Chart alerts
+  dashboardId?: ObjectId;
+  chartId?: string;
 }
 
 const AlertSchema = new Schema<IAlert>(
@@ -46,10 +55,6 @@ const AlertSchema = new Schema<IAlert>(
     type: {
       type: String,
       required: true,
-    },
-    message: {
-      type: String,
-      required: false,
     },
     threshold: {
       type: Number,
@@ -68,13 +73,39 @@ const AlertSchema = new Schema<IAlert>(
       required: true,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
-    logView: { type: mongoose.Schema.Types.ObjectId, ref: 'Alert' },
     state: {
       type: String,
       enum: AlertState,
       default: AlertState.OK,
     },
+    source: {
+      type: String,
+      required: false,
+      default: 'LOG',
+    },
+
+    // Log alerts
+    logView: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Alert',
+      required: false,
+    },
     groupBy: {
+      type: String,
+      required: false,
+    },
+    message: {
+      type: String,
+      required: false,
+    },
+
+    // Chart alerts
+    dashboardId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Dashboard',
+      required: false,
+    },
+    chartId: {
       type: String,
       required: false,
     },
