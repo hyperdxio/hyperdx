@@ -118,7 +118,7 @@ describe('checkAlerts', () => {
       await closeDB();
     });
 
-    it('alert should be triggered and skipped if time diff is less than 1 window size', async () => {
+    it('logs alert', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
