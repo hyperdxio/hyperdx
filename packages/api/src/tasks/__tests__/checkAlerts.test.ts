@@ -1,4 +1,5 @@
 import * as clickhouse from '../../clickhouse';
+import * as slack from '../../utils/slack';
 import AlertHistory from '../../models/alertHistory';
 import LogView from '../../models/logView';
 import Webhook from '../../models/webhook';
@@ -118,8 +119,27 @@ describe('checkAlerts', () => {
     });
 
     it('alert should be triggered and skipped if time diff is less than 1 window size', async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
       jest.spyOn(clickhouse, 'checkAlert').mockResolvedValueOnce({
-        rows: 0,
+        rows: 1,
+        data: [
+          {
+            count: 11,
+            ts_bucket: '2023-11-16T22:10:00.000Z',
+          },
+        ],
+      } as any);
+      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
+        rows: 1,
+        data: [
+          {
+            timestamp: '2023-11-16T22:10:00.000Z',
+            severity_text: 'error',
+            body: 'Oh no! Something went wrong!',
+          },
+        ],
       } as any);
 
       const team = await createTeam({ name: 'My Team' });
@@ -156,7 +176,7 @@ describe('checkAlerts', () => {
         alertId: alert._id,
       });
       expect(alertHistories.length).toBe(1);
-      expect(alertHistories[0].counts).toBe(0);
+      expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
       );
@@ -165,6 +185,7 @@ describe('checkAlerts', () => {
       const later = new Date('2023-11-16T22:14:00.000Z');
       await processAlert(later, alert);
 
+      // check if checkAlert query + webhook were triggered
       expect(clickhouse.checkAlert).toHaveBeenNthCalledWith(1, {
         endTime: new Date('2023-11-16T22:10:00.000Z'),
         groupBy: alert.groupBy,
@@ -174,6 +195,14 @@ describe('checkAlerts', () => {
         teamId: logView.team._id.toString(),
         windowSizeInMins: 5,
       });
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: 'Alert for My Log View - 11 lines found',
+          blocks: expect.any(Array),
+        },
+      );
     });
   });
 });
