@@ -664,7 +664,7 @@ const getMetricsTagsCached = async (teamId: string) => {
     });
     const result = await getMetricsTagsUncached(teamId);
     await redisClient.set(redisKey, JSON.stringify(result), {
-      PX: ms(config.CACHE_METRICS_EXPIRATION.toString() + 's'),
+      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
     });
     return result;
   }
