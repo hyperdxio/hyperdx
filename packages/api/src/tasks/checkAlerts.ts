@@ -8,18 +8,18 @@ import * as fnsTz from 'date-fns-tz';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import * as clickhouse from '../clickhouse';
-import * as config from '../config';
-import * as slack from '../utils/slack';
-import Alert, { AlertState, AlertDocument } from '../models/alert';
-import AlertHistory, { IAlertHistory } from '../models/alertHistory';
-import Dashboard, { IDashboard } from '../models/dashboard';
-import LogView from '../models/logView';
-import Webhook from '../models/webhook';
-import logger from '../utils/logger';
-import { ITeam } from '../models/team';
-import { ObjectId } from '../models';
-import { truncateString } from '../utils/common';
+import * as clickhouse from '@/clickhouse';
+import * as config from '@/config';
+import * as slack from '@/utils/slack';
+import Alert, { AlertState, AlertDocument } from '@/models/alert';
+import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import LogView from '@/models/logView';
+import Webhook from '@/models/webhook';
+import logger from '@/utils/logger';
+import { ITeam } from '@/models/team';
+import { ObjectId } from '@/models';
+import { truncateString } from '@/utils/common';
 
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
