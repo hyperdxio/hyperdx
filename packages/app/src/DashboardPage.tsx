@@ -1019,7 +1019,7 @@ export default function DashboardPage() {
         )}
         {dashboard?.charts.length === 0 && (
           <div className="d-flex justify-content-center align-items-center mt-4 bg-hdx-dark p-4 rounded mx-3">
-            No charts added yet. Click the {'"'}Add Chart{'"'} button to get
+            No charts added yet. Click the {'"'}Add Tile{'"'} button to get
             started.
           </div>
         )}
