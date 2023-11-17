@@ -134,6 +134,7 @@ describe('checkAlerts', () => {
           data: [
             {
               data: '11',
+              group: 'HyperDX',
               ts_bucket: 1700172600,
             },
           ],
@@ -220,7 +221,22 @@ describe('checkAlerts', () => {
         'https://hooks.slack.com/services/123',
         {
           text: 'Alert for My Log View - 11 lines found',
-          blocks: expect.any(Array),
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for My Log View>*`,
+                  'Group: "HyperDX"',
+                  '11 lines found, expected less than 10 lines',
+                  '```',
+                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
+                  '```',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
         },
       );
     });
