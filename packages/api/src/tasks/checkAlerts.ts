@@ -260,6 +260,9 @@ const fireChannelEvent = async ({
             totalCount,
           });
         } else if (alert.source === 'CHART' && dashboard) {
+          console.log('@@@@@@@@@@@@@@@@@@@@@@@@2');
+          console.log(startTime, endTime);
+          console.log('@@@@@@@@@@@@@@@@@@@@@@@@2');
           message = buildChartEventSlackMessage({
             alert,
             dashboard,
@@ -458,7 +461,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             totalCount,
             checkData,
           });
-          const bucketStart = new Date(checkData.ts_bucket);
+          const bucketStart = new Date(checkData.ts_bucket * 1000);
 
           await fireChannelEvent({
             alert,

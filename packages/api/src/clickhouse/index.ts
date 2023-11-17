@@ -983,7 +983,7 @@ export const getLogsChart = async ({
       const result = await rows.json<
         ResponseJSON<{
           data: string;
-          ts_bucket: string;
+          ts_bucket: number;
           group: string;
           rank: string;
           rank_order_by_value: string;
@@ -1401,7 +1401,7 @@ export const checkAlert = async ({
       SELECT 
         ?
         count(*) as data,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1446,7 +1446,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ data: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',

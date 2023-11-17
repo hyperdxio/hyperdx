@@ -134,7 +134,7 @@ describe('checkAlerts', () => {
           data: [
             {
               data: '11',
-              ts_bucket: '2023-11-16T22:10:00.000Z',
+              ts_bucket: 1700172600,
             },
           ],
         } as any)
@@ -239,7 +239,7 @@ describe('checkAlerts', () => {
               group: 'HyperDX',
               rank: '1',
               rank_order_by_value: '11',
-              ts_bucket: '2023-11-16T22:10:00.000Z',
+              ts_bucket: 1700172600,
             },
           ],
         } as any)
