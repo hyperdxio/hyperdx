@@ -83,6 +83,7 @@ const buildChartEventSlackMessage = ({
   dashboard,
   endTime,
   granularity,
+  group,
   startTime,
   totalCount,
 }: {
@@ -98,6 +99,7 @@ const buildChartEventSlackMessage = ({
     };
   };
   granularity: string;
+  group?: string;
   startTime: Date;
   totalCount: number;
 }) => {
@@ -108,6 +110,7 @@ const buildChartEventSlackMessage = ({
       granularity,
       startTime,
     })} | Alert for "${dashboard.chart.name}" in "${dashboard.name}">*`,
+    ...(group != null ? [`Group: "${group}"`] : []),
     `${totalCount} lines found, expected ${
       alert.type === 'presence' ? 'less than' : 'greater than'
     } ${alert.threshold} lines`,
@@ -265,6 +268,7 @@ const fireChannelEvent = async ({
             dashboard,
             endTime,
             granularity: `${windowSizeInMins} minute`,
+            group,
             startTime,
             totalCount,
           });
