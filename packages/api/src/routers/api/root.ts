@@ -3,17 +3,17 @@ import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import * as config from '../../config';
-import User from '../../models/user'; // TODO -> do not import model directly
-import logger from '../../utils/logger';
-import passport from '../../utils/passport';
-import { Api404Error } from '../../utils/errors';
-import { isTeamExisting, createTeam, getTeam } from '../../controllers/team';
+import * as config from '@/config';
+import User from '@/models/user'; // TODO -> do not import model directly
+import logger from '@/utils/logger';
+import passport from '@/utils/passport';
+import { Api404Error } from '@/utils/errors';
+import { isTeamExisting, createTeam, getTeam } from '@/controllers/team';
 import {
   isUserAuthenticated,
   redirectToDashboard,
   handleAuthError,
-} from '../../middleware/auth';
+} from '@/middleware/auth';
 
 const registrationSchema = z
   .object({

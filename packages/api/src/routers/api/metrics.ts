@@ -2,8 +2,8 @@ import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import { isNumber, parseInt } from 'lodash';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
+import * as clickhouse from '@/clickhouse';
+import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 
