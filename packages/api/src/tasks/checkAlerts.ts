@@ -260,9 +260,6 @@ const fireChannelEvent = async ({
             totalCount,
           });
         } else if (alert.source === 'CHART' && dashboard) {
-          console.log('@@@@@@@@@@@@@@@@@@@@@@@@2');
-          console.log(startTime, endTime);
-          console.log('@@@@@@@@@@@@@@@@@@@@@@@@2');
           message = buildChartEventSlackMessage({
             alert,
             dashboard,
