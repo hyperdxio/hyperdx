@@ -47,12 +47,15 @@ import {
 import HDXNumberChart from './HDXNumberChart';
 import GranularityPicker from './GranularityPicker';
 import HDXTableChart from './HDXTableChart';
+import { useConfirm } from './useConfirm';
 
 import type { Chart } from './EditChartForm';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { ZIndexContext } from './zIndex';
+
+const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
 
@@ -81,6 +84,7 @@ const Tile = forwardRef(
     {
       chart,
       dateRange,
+      onDuplicateClick,
       onEditClick,
       onDeleteClick,
       query,
@@ -99,6 +103,7 @@ const Tile = forwardRef(
     }: {
       chart: Chart;
       dateRange: [Date, Date];
+      onDuplicateClick: () => void;
       onEditClick: () => void;
       onDeleteClick: () => void;
       query: string;
@@ -207,7 +212,17 @@ const Tile = forwardRef(
               variant="link"
               className="text-muted-hover p-0"
               size="sm"
+              onClick={onDuplicateClick}
+              title="Duplicate"
+            >
+              <i className="bi bi-copy fs-8"></i>
+            </Button>
+            <Button
+              variant="link"
+              className="text-muted-hover p-0"
+              size="sm"
               onClick={onEditClick}
+              title="Edit"
             >
               <i className="bi bi-pencil"></i>
             </Button>
@@ -216,6 +231,7 @@ const Tile = forwardRef(
               className="text-muted-hover p-0"
               size="sm"
               onClick={onDeleteClick}
+              title="Edit"
             >
               <i className="bi bi-trash"></i>
             </Button>
@@ -566,6 +582,8 @@ export default function DashboardPage() {
   const { dashboardId, config } = router.query;
   const queryClient = useQueryClient();
 
+  const confirm = useConfirm();
+
   const [localDashboard, setLocalDashboard] = useQueryParam<Dashboard>(
     'config',
     withDefault(JsonParam, {
@@ -662,7 +680,7 @@ export default function DashboardPage() {
 
   const onAddChart = () => {
     setEditedChart({
-      id: Math.floor(100000000 * Math.random()).toString(36),
+      id: makeId(),
       name: 'My New Chart',
       x: 0,
       y: 0,
@@ -700,8 +718,29 @@ export default function DashboardPage() {
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
             hasAlert={dashboard?.alerts?.some(a => a.chartId === chart.id)}
-            onDeleteClick={() => {
+            onDuplicateClick={async () => {
               if (dashboard != null) {
+                if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {
+                  return;
+                }
+                setDashboard({
+                  ...dashboard,
+                  charts: [
+                    ...dashboard.charts,
+                    {
+                      ...chart,
+                      id: makeId(),
+                      name: `${chart.name} (Copy)`,
+                    },
+                  ],
+                });
+              }
+            }}
+            onDeleteClick={async () => {
+              if (dashboard != null) {
+                if (!(await confirm(`Delete ${chart.name}?`, 'Delete'))) {
+                  return;
+                }
                 setDashboard({
                   ...dashboard,
                   charts: dashboard.charts.filter(c => c.id !== chart.id),
@@ -713,10 +752,11 @@ export default function DashboardPage() {
       }),
     [
       dashboard,
-      searchedTimeRange,
-      setDashboard,
       dashboardQuery,
+      searchedTimeRange,
       granularityQuery,
+      confirm,
+      setDashboard,
     ],
   );
 
@@ -920,7 +960,12 @@ export default function DashboardPage() {
                 variant="dark"
                 className="text-muted-hover text-nowrap"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
+                  if (
+                    !(await confirm(`Delete ${dashboard?.name}?`, 'Delete'))
+                  ) {
+                    return;
+                  }
                   deleteDashboard.mutate(
                     {
                       id: `${dashboardId}`,
@@ -974,7 +1019,7 @@ export default function DashboardPage() {
         )}
         {dashboard?.charts.length === 0 && (
           <div className="d-flex justify-content-center align-items-center mt-4 bg-hdx-dark p-4 rounded mx-3">
-            No charts added yet. Click the {'"'}Add Chart{'"'} button to get
+            No charts added yet. Click the {'"'}Add Tile{'"'} button to get
             started.
           </div>
         )}

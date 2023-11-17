@@ -14,9 +14,9 @@ import {
 } from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -37,7 +37,7 @@ import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
-} from '../utils/logParser';
+} from '@/utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
@@ -1021,7 +1021,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -1433,8 +1441,8 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        count(*) as data,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1479,7 +1487,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',

@@ -5,9 +5,9 @@ import Alert, {
   AlertInterval,
   AlertType,
   AlertSource,
-} from '../models/alert';
-import * as clickhouse from '../clickhouse';
-import { SQLSerializer } from '../clickhouse/searchQueryParser';
+} from '@/models/alert';
+import * as clickhouse from '@/clickhouse';
+import { SQLSerializer } from '@/clickhouse/searchQueryParser';
 import ms from 'ms';
 
 export type AlertInput = {

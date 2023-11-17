@@ -1,21 +1,12 @@
 version: '3'
 services:
-  ch_keeper:
-    container_name: hdx-ci-ch-keeper
-    image: zookeeper:3.7
-    volumes:
-      - ./docker/clickhouse/local/zoo.cfg:/conf/zoo.cfg
-    restart: on-failure
-    networks:
-      - internal
   ch_server:
     container_name: hdx-ci-ch-server
-    image: clickhouse/clickhouse-server:23.5.2-alpine
+    image: clickhouse/clickhouse-server:23.7.1-alpine
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
-      - ./docker/clickhouse/local/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
     restart: on-failure
@@ -24,8 +15,6 @@ services:
       - 9000:9000 # native
     networks:
       - internal
-    depends_on:
-      - ch_keeper
   db:
     container_name: hdx-ci-db
     image: mongo:5.0.14-focal

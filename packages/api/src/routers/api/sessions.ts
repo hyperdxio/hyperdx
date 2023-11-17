@@ -3,10 +3,10 @@ import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { isUserAuthenticated } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 
