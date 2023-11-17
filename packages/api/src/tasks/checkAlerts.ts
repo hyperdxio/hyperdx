@@ -231,11 +231,8 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     const checkEndTime = nowInMinsRoundDown;
 
     // Logs Source
-    let checksData: ResponseJSON<{
-      ts_bucket: string;
-      group?: string;
-      data: string;
-    }> | null = null;
+    let checksData: Awaited<ReturnType<typeof clickhouse.checkAlert>> | null =
+      null;
     let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
     if (alert.source === 'LOG' && alert.logView) {
       logView = await getLogViewEnhanced(alert.logView);
