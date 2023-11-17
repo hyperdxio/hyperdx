@@ -13,3 +13,5 @@ client.on('error', (err: any) => {
 });
 
 export default client;
+
+export { client as redisClient };
