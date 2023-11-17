@@ -203,16 +203,6 @@ export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
 export const processAlert = async (now: Date, alert: AlertDocument) => {
   try {
-    if (alert.source === 'CHART' || !alert.logView) {
-      logger.info({
-        message: `[Not implemented] Skipping Chart alert processing`,
-        alert,
-      });
-      return;
-    }
-
-    const logView = await getLogViewEnhanced(alert.logView);
-
     const previous: IAlertHistory | undefined = (
       await AlertHistory.find({ alert: alert._id })
         .sort({ createdAt: -1 })
@@ -232,60 +222,91 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
         previous,
         now,
         alert,
-        logView,
       });
       return;
     }
-    const history = await new AlertHistory({
-      alert: alert._id,
-      createdAt: nowInMinsRoundDown,
-    }).save();
     const checkStartTime = previous
       ? previous.createdAt
       : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins);
     const checkEndTime = nowInMinsRoundDown;
-    const check = await clickhouse.checkAlert({
-      endTime: checkEndTime,
-      groupBy: alert.groupBy,
-      q: logView.query,
-      startTime: checkStartTime,
-      tableVersion: logView.team.logStreamTableVersion,
-      teamId: logView.team._id.toString(),
-      windowSizeInMins,
-    });
 
-    logger.info({
-      message: 'Received alert metric',
-      alert,
-      logView,
-      check,
-      checkStartTime,
-      checkEndTime,
-    });
+    // Logs Source
+    let checksData: ResponseJSON<{
+      ts_bucket: string;
+      group?: string;
+      data: string;
+    }> | null = null;
+    let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
+    if (alert.source === 'LOG' && alert.logView) {
+      logView = await getLogViewEnhanced(alert.logView);
+      checksData = await clickhouse.checkAlert({
+        endTime: checkEndTime,
+        groupBy: alert.groupBy,
+        q: logView.query,
+        startTime: checkStartTime,
+        tableVersion: logView.team.logStreamTableVersion,
+        teamId: logView.team._id.toString(),
+        windowSizeInMins,
+      });
+      logger.info({
+        message: 'Received alert metric [LOG source]',
+        alert,
+        logView,
+        checksData,
+        checkStartTime,
+        checkEndTime,
+      });
+    }
+    // Chart Source
+    else if (alert.source === 'CHART' && alert.dashboardId && alert.chartId) {
+      logger.info({
+        message: 'Received alert metric [CHART source]',
+        alert,
+        checksData,
+        checkStartTime,
+        checkEndTime,
+      });
+    } else {
+      logger.error({
+        message: `Unsupported alert source: ${alert.source}`,
+        alert,
+      });
+      return;
+    }
 
+    const history = await new AlertHistory({
+      alert: alert._id,
+      createdAt: nowInMinsRoundDown,
+    }).save();
     // TODO: support INSUFFICIENT_DATA state
     let alertState = AlertState.OK;
-    if (check?.rows && check?.rows > 0) {
-      for (const checkData of check.data) {
+    if (checksData?.rows && checksData?.rows > 0) {
+      for (const checkData of checksData.data) {
         const totalCount = parseInt(checkData.data);
         if (doesExceedThreshold(alert, totalCount)) {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
             alert,
-            logView,
             totalCount,
             checkData,
           });
           const bucketStart = new Date(checkData.ts_bucket);
-          await fireChannelEvent({
-            alert,
-            logView,
-            totalCount,
-            group: checkData.group,
-            startTime: bucketStart,
-            endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-          });
+
+          // TODO: support CHART source
+          if (alert.source === 'LOG' && logView) {
+            await fireChannelEvent({
+              alert,
+              logView,
+              totalCount,
+              group: checkData.group,
+              startTime: bucketStart,
+              endTime: fns.addMinutes(bucketStart, windowSizeInMins),
+            });
+          } else {
+            // should never happen
+            throw new Error(`Unsupported alert source: ${alert.source}`);
+          }
           history.counts += 1;
         }
       }
