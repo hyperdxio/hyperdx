@@ -1,5 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
+import { AggFn } from '../clickhouse';
+
 import type { ObjectId } from '.';
 
 type Chart = {
@@ -9,14 +11,47 @@ type Chart = {
   y: number;
   w: number;
   h: number;
-  series: {
-    table: string;
-    type: 'time' | 'histogram' | 'search' | 'number' | 'table' | 'markdown';
-    aggFn: string;
-    field?: string;
-    where?: string;
-    groupBy?: string[];
-  }[];
+  series: (
+    | {
+        table: string;
+        type: 'time';
+        aggFn: AggFn; // TODO: Type
+        field: string | undefined;
+        where: string;
+        groupBy: string[];
+      }
+    | {
+        table: string;
+        type: 'histogram';
+        field: string | undefined;
+        where: string;
+      }
+    | {
+        type: 'search';
+        fields: string[];
+        where: string;
+      }
+    | {
+        type: 'number';
+        table: string;
+        aggFn: AggFn;
+        field: string | undefined;
+        where: string;
+      }
+    | {
+        type: 'table';
+        table: string;
+        aggFn: AggFn;
+        field: string | undefined;
+        where: string;
+        groupBy: string[];
+        sortOrder: 'desc' | 'asc';
+      }
+    | {
+        type: 'markdown';
+        content: string;
+      }
+  )[];
 };
 
 export interface IDashboard {
