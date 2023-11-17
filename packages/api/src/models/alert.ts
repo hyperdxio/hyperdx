@@ -50,6 +50,8 @@ export interface IAlert {
   chartId?: string;
 }
 
+export type AlertDocument = mongoose.HydratedDocument<IAlert>;
+
 const AlertSchema = new Schema<IAlert>(
   {
     type: {

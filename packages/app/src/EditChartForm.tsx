@@ -970,7 +970,7 @@ export const EditLineChartForm = ({
         }}
       />
 
-      {config.CHART_ALERTS_ENABLED && (
+      {editedChart.series[0].table === 'logs' && (
         <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
