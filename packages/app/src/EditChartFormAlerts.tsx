@@ -1,13 +1,17 @@
 import * as React from 'react';
 import { Form } from 'react-bootstrap';
-import type { Alert } from './types';
+import { omit } from 'lodash';
 import produce from 'immer';
+import type { Alert } from './types';
 
 import {
   ALERT_INTERVAL_OPTIONS,
   ALERT_CHANNEL_OPTIONS,
   SlackChannelForm,
 } from './Alert';
+
+// Don't allow 1 minute alerts for charts
+const CHART_ALERT_INTERVAL_OPTIONS = omit(ALERT_INTERVAL_OPTIONS, '1m');
 
 type ChartAlertFormProps = {
   alert: Alert;
@@ -77,7 +81,7 @@ export default function EditChartFormAlerts({
             );
           }}
         >
-          {Object.entries(ALERT_INTERVAL_OPTIONS).map(([value, text]) => (
+          {Object.entries(CHART_ALERT_INTERVAL_OPTIONS).map(([value, text]) => (
             <option key={value} value={value}>
               {text}
             </option>
@@ -110,7 +114,7 @@ export default function EditChartFormAlerts({
         {alert?.channel?.type === 'webhook' && (
           <SlackChannelForm
             webhookSelectProps={{
-              value: alert?.channel?.webhookId,
+              value: alert?.channel?.webhookId || '',
               onChange: e => {
                 setAlert(
                   produce(alert, draft => {

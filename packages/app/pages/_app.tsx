@@ -7,6 +7,7 @@ import { ReactQueryDevtools } from 'react-query/devtools';
 import { ToastContainer } from 'react-toastify';
 import { NextAdapter } from 'next-query-params';
 import { QueryParamProvider } from 'use-query-params';
+import { useConfirmModal } from '../src/useConfirm';
 
 import * as config from '../src/config';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
@@ -23,6 +24,8 @@ const queryClient = new QueryClient();
 import HyperDX from '@hyperdx/browser';
 
 export default function MyApp({ Component, pageProps }: AppProps) {
+  const confirmModal = useConfirmModal();
+
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     fetch('/api/config')
@@ -58,7 +61,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       <Head>
         <link
           rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.1/font/bootstrap-icons.css"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
         />
         <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -85,6 +88,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                 <ToastContainer position="bottom-right" theme="dark" />
                 <Component {...pageProps} />
                 <ReactQueryDevtools initialIsOpen={false} />
+                {confirmModal}
               </UserPreferencesProvider>
             </QueryClientProvider>
           </QueryParamProvider>

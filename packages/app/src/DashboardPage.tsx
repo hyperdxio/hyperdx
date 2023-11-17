@@ -47,12 +47,15 @@ import {
 import HDXNumberChart from './HDXNumberChart';
 import GranularityPicker from './GranularityPicker';
 import HDXTableChart from './HDXTableChart';
+import { useConfirm } from './useConfirm';
 
 import type { Chart } from './EditChartForm';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { ZIndexContext } from './zIndex';
+
+const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
 
@@ -81,6 +84,7 @@ const Tile = forwardRef(
     {
       chart,
       dateRange,
+      onDuplicateClick,
       onEditClick,
       onDeleteClick,
       query,
@@ -99,6 +103,7 @@ const Tile = forwardRef(
     }: {
       chart: Chart;
       dateRange: [Date, Date];
+      onDuplicateClick: () => void;
       onEditClick: () => void;
       onDeleteClick: () => void;
       query: string;
@@ -207,7 +212,17 @@ const Tile = forwardRef(
               variant="link"
               className="text-muted-hover p-0"
               size="sm"
+              onClick={onDuplicateClick}
+              title="Duplicate"
+            >
+              <i className="bi bi-copy fs-8"></i>
+            </Button>
+            <Button
+              variant="link"
+              className="text-muted-hover p-0"
+              size="sm"
               onClick={onEditClick}
+              title="Edit"
             >
               <i className="bi bi-pencil"></i>
             </Button>
@@ -216,6 +231,7 @@ const Tile = forwardRef(
               className="text-muted-hover p-0"
               size="sm"
               onClick={onDeleteClick}
+              title="Edit"
             >
               <i className="bi bi-trash"></i>
             </Button>
@@ -264,15 +280,19 @@ const Tile = forwardRef(
 );
 
 const EditChartModal = ({
+  isLocalDashboard,
   chart,
+  alerts,
   dateRange,
   onSave,
   show,
   onClose,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
   show: boolean;
 }) => {
@@ -356,9 +376,11 @@ const EditChartModal = ({
           />
           {displayedTab === 'time' && chart != null && (
             <EditLineChartForm
+              isLocalDashboard={isLocalDashboard}
               chart={produce(chart, draft => {
                 draft.series[0].type = 'time';
               })}
+              alerts={alerts}
               onSave={onSave}
               onClose={onClose}
               dateRange={dateRange}
@@ -553,9 +575,14 @@ export default function DashboardPage() {
     api.useDashboards();
   const updateDashboard = api.useUpdateDashboard();
   const createDashboard = api.useCreateDashboard();
+  const saveAlert = api.useSaveAlert();
+  const deleteAlert = api.useDeleteAlert();
+  const updateAlert = api.useUpdateAlert();
   const router = useRouter();
   const { dashboardId, config } = router.query;
   const queryClient = useQueryClient();
+
+  const confirm = useConfirm();
 
   const [localDashboard, setLocalDashboard] = useQueryParam<Dashboard>(
     'config',
@@ -563,6 +590,7 @@ export default function DashboardPage() {
       id: '',
       name: 'My New Dashboard',
       charts: [],
+      alerts: [],
       query: '',
     }),
     { updateType: 'pushIn', enableBatching: true },
@@ -633,6 +661,10 @@ export default function DashboardPage() {
   const deleteDashboard = api.useDeleteDashboard();
 
   const [editedChart, setEditedChart] = useState<undefined | Chart>();
+  const editedChartAlerts = useMemo<Alert[]>(
+    () => dashboard?.alerts?.filter(a => a.chartId === editedChart?.id) || [],
+    [dashboard?.alerts, editedChart?.id],
+  );
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
@@ -648,7 +680,7 @@ export default function DashboardPage() {
 
   const onAddChart = () => {
     setEditedChart({
-      id: '',
+      id: makeId(),
       name: 'My New Chart',
       x: 0,
       y: 0,
@@ -686,8 +718,29 @@ export default function DashboardPage() {
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
             hasAlert={dashboard?.alerts?.some(a => a.chartId === chart.id)}
-            onDeleteClick={() => {
+            onDuplicateClick={async () => {
               if (dashboard != null) {
+                if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {
+                  return;
+                }
+                setDashboard({
+                  ...dashboard,
+                  charts: [
+                    ...dashboard.charts,
+                    {
+                      ...chart,
+                      id: makeId(),
+                      name: `${chart.name} (Copy)`,
+                    },
+                  ],
+                });
+              }
+            }}
+            onDeleteClick={async () => {
+              if (dashboard != null) {
+                if (!(await confirm(`Delete ${chart.name}?`, 'Delete'))) {
+                  return;
+                }
                 setDashboard({
                   ...dashboard,
                   charts: dashboard.charts.filter(c => c.id !== chart.id),
@@ -699,10 +752,91 @@ export default function DashboardPage() {
       }),
     [
       dashboard,
-      searchedTimeRange,
-      setDashboard,
       dashboardQuery,
+      searchedTimeRange,
       granularityQuery,
+      confirm,
+      setDashboard,
+    ],
+  );
+
+  const handleSaveChart = useCallback(
+    (newChart: Chart, newAlerts?: Alert[]) => {
+      if (dashboard == null) {
+        return;
+      }
+
+      setDashboard(
+        produce(dashboard, draft => {
+          const chartIndex = draft.charts.findIndex(
+            chart => chart.id === newChart.id,
+          );
+          // This is a new chart (probably?)
+          if (chartIndex === -1) {
+            draft.charts.push(newChart);
+          } else {
+            draft.charts[chartIndex] = newChart;
+          }
+        }),
+      );
+
+      // Using only the first alert for now
+      const [editedChartAlert] = editedChartAlerts;
+      const newAlert = newAlerts?.[0];
+
+      if (editedChartAlert?._id) {
+        // Update or delete
+        if (newAlert != null) {
+          updateAlert.mutate(
+            {
+              ...newAlert,
+              id: editedChartAlert._id,
+              dashboardId: dashboardId as string,
+              chartId: editedChart?.id,
+            },
+            {
+              onError: err => {
+                console.error(err);
+                toast.error('Failed to update alert.');
+              },
+            },
+          );
+        } else {
+          deleteAlert.mutate(editedChartAlert._id, {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to delete alert.');
+            },
+          });
+        }
+      } else if (newAlert) {
+        // Create
+        saveAlert.mutate(
+          {
+            ...newAlert,
+            dashboardId: dashboardId as string,
+            chartId: editedChart?.id,
+          },
+          {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to save alert.');
+            },
+          },
+        );
+      }
+
+      setEditedChart(undefined);
+    },
+    [
+      dashboard,
+      dashboardId,
+      deleteAlert,
+      editedChart?.id,
+      editedChartAlerts,
+      saveAlert,
+      setDashboard,
+      updateAlert,
     ],
   );
 
@@ -726,30 +860,14 @@ export default function DashboardPage() {
       <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
+          isLocalDashboard={isLocalDashboard}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}
+          alerts={editedChartAlerts}
           show={!!editedChart}
           onClose={() => setEditedChart(undefined)}
-          onSave={newChart => {
-            setDashboard(
-              produce(dashboard, draft => {
-                const chartIndex = draft.charts.findIndex(
-                  chart => chart.id === newChart.id,
-                );
-                if (chartIndex === -1) {
-                  // This is a new chart (probably?)
-                  draft.charts.push({
-                    ...newChart,
-                    id: Math.floor(100000000 * Math.random()).toString(36),
-                  });
-                } else {
-                  draft.charts[chartIndex] = newChart;
-                }
-              }),
-            );
-            setEditedChart(undefined);
-          }}
+          onSave={handleSaveChart}
         />
       ) : null}
       <div className="flex-grow-1">
@@ -842,7 +960,12 @@ export default function DashboardPage() {
                 variant="dark"
                 className="text-muted-hover text-nowrap"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
+                  if (
+                    !(await confirm(`Delete ${dashboard?.name}?`, 'Delete'))
+                  ) {
+                    return;
+                  }
                   deleteDashboard.mutate(
                     {
                       id: `${dashboardId}`,
@@ -896,7 +1019,7 @@ export default function DashboardPage() {
         )}
         {dashboard?.charts.length === 0 && (
           <div className="d-flex justify-content-center align-items-center mt-4 bg-hdx-dark p-4 rounded mx-3">
-            No charts added yet. Click the {'"'}Add Chart{'"'} button to get
+            No charts added yet. Click the {'"'}Add Tile{'"'} button to get
             started.
           </div>
         )}
