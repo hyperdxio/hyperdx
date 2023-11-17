@@ -6,13 +6,13 @@ import { serializeError } from 'serialize-error';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { LimitedSizeQueue } from '../../utils/queue';
-import { customColumnMapType } from '../../clickhouse/searchQueryParser';
-import { getLogsPatterns } from '../../utils/miner';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { isUserAuthenticated } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import { LimitedSizeQueue } from '@/utils/queue';
+import { customColumnMapType } from '@/clickhouse/searchQueryParser';
+import { getLogsPatterns } from '@/utils/miner';
+import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 

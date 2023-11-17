@@ -1,5 +1,5 @@
 import cors from 'cors';
-import { FRONTEND_URL } from '../config';
+import { FRONTEND_URL } from '@/config';
 
 export const noCors = cors();
 

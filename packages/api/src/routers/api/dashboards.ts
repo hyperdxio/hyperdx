@@ -1,8 +1,8 @@
 import express from 'express';
 
-import Dashboard from '../../models/dashboard';
-import Alert from '../../models/alert';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Dashboard from '@/models/dashboard';
+import Alert from '@/models/alert';
+import { isUserAuthenticated } from '@/middleware/auth';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 import { groupBy, differenceBy } from 'lodash';

@@ -1,22 +1,22 @@
 import express from 'express';
 import groupBy from 'lodash/groupBy';
 
-import * as config from '../../config';
-import logger from '../../utils/logger';
+import * as config from '@/config';
+import logger from '@/utils/logger';
 import {
   bulkInsertRrwebEvents,
   bulkInsertTeamLogStream,
   bulkInsertTeamMetricStream,
-} from '../../clickhouse';
+} from '@/clickhouse';
 import {
   extractApiKey,
   vectorLogParser,
   vectorMetricParser,
   vectorRrwebParser,
-} from '../../utils/logParser';
-import { getTeamByApiKey } from '../../controllers/team';
+} from '@/utils/logParser';
+import { getTeamByApiKey } from '@/controllers/team';
 
-import type { VectorLog, VectorMetric } from '../../utils/logParser';
+import type { VectorLog, VectorMetric } from '@/utils/logParser';
 
 const router = express.Router();
 

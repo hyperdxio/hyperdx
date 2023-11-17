@@ -5,7 +5,7 @@ import {
   closeDB,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
+} from '@/fixtures';
 
 describe('team router', () => {
   const server = getServer();

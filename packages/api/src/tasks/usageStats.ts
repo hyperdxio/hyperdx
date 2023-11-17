@@ -4,10 +4,10 @@ import url from 'url';
 import winston from 'winston';
 import { HyperDXWinston } from '@hyperdx/node-logger';
 
-import * as clickhouse from '../clickhouse';
-import * as config from '../config';
-import Team from '../models/team';
-import User from '../models/user';
+import * as clickhouse from '@/clickhouse';
+import * as config from '@/config';
+import Team from '@/models/team';
+import User from '@/models/user';
 
 import type { ResponseJSON } from '@clickhouse/client';
 

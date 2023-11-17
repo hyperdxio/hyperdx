@@ -3,7 +3,7 @@ import {
   clearDBCollections,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
+} from '@/fixtures';
 
 const randomId = () => Math.random().toString(36).substring(7);
 

@@ -14,9 +14,9 @@ import {
 } from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -36,7 +36,7 @@ import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
-} from '../utils/logParser';
+} from '@/utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 

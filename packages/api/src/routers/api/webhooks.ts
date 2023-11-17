@@ -1,7 +1,7 @@
 import express from 'express';
 
-import Webhook from '../../models/webhook';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Webhook from '@/models/webhook';
+import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import ms from 'ms';
 
-import * as config from '../config';
+import * as config from '@/config';
 import logger from './logger';
 
 const MAX_LOG_LINES = 1e4;

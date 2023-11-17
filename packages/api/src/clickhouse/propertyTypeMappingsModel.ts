@@ -1,9 +1,9 @@
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import logger from '../utils/logger';
-import redisClient from '../utils/redis';
-import { IS_DEV } from '../config';
+import logger from '@/utils/logger';
+import redisClient from '@/utils/redis';
+import { IS_DEV } from '@/config';
 
 import type { ResponseJSON } from '@clickhouse/client';
 

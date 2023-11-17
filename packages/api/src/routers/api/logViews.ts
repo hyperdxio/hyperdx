@@ -1,8 +1,8 @@
 import express from 'express';
 
-import Alert from '../../models/alert';
-import LogView from '../../models/logView';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Alert from '@/models/alert';
+import LogView from '@/models/logView';
+import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 
