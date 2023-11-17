@@ -363,7 +363,6 @@ describe('checkAlerts', () => {
         maxNumGroups: 20,
         propertyTypeMappingsModel: expect.any(Object),
         q: 'level:error',
-        sortOrder: 'asc',
         startTime: 1700172300000,
         tableVersion: team.logStreamTableVersion,
         teamId: team._id.toString(),
@@ -372,14 +371,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Max Duration" in "My Dashboard" - 11 lines found',
+          text: 'Alert for "Max Duration" in "My Dashboard" - 11 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700172600000&granularity=5+minute&to=1700172900000 | Alert for "Max Duration" in "My Dashboard">*`,
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Max Duration" in "My Dashboard">*`,
                   'Group: "HyperDX"',
-                  '11 lines found, expected less than 10 lines',
+                  '11 less than 10',
                 ].join('\n'),
                 type: 'mrkdwn',
               },

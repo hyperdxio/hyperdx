@@ -71,10 +71,13 @@ export const buildChartLink = ({
   startTime: Date;
 }) => {
   const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
+  // extend both start and end time by 7x granularity
+  const from = (startTime.getTime() - ms(granularity) * 7).toString();
+  const to = (endTime.getTime() + ms(granularity) * 7).toString();
   const queryParams = new URLSearchParams({
-    from: startTime.getTime().toString(),
+    from,
     granularity,
-    to: endTime.getTime().toString(),
+    to,
   });
   url.search = queryParams.toString();
   return url.toString();
@@ -107,13 +110,15 @@ const buildChartEventSlackMessage = ({
       startTime,
     })} | Alert for "${chart.name}" in "${dashboard.name}">*`,
     ...(group != null ? [`Group: "${group}"`] : []),
-    `${totalCount} lines found, expected ${
+    `${totalCount} ${
       alert.type === 'presence' ? 'less than' : 'greater than'
-    } ${alert.threshold} lines`,
+    } ${alert.threshold}`,
   ].join('\n');
 
   return {
-    text: `Alert for "${chart.name}" in "${dashboard.name}" - ${totalCount} lines found`,
+    text: `Alert for "${chart.name}" in "${dashboard.name}" - ${totalCount} ${
+      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
+    } ${alert.threshold}`,
     blocks: [
       {
         type: 'section',
@@ -403,7 +408,6 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             maxNumGroups: MAX_NUM_GROUPS,
             propertyTypeMappingsModel,
             q: series.where,
-            sortOrder: 'asc',
             startTime: startTimeMs,
             tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
