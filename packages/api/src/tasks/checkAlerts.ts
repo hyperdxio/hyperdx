@@ -111,7 +111,7 @@ const buildChartEventSlackMessage = ({
     })} | Alert for "${chart.name}" in "${dashboard.name}">*`,
     ...(group != null ? [`Group: "${group}"`] : []),
     `${totalCount} ${
-      alert.type === 'presence' ? 'less than' : 'greater than'
+      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
     } ${alert.threshold}`,
   ].join('\n');
 

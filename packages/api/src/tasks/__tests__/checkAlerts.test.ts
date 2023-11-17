@@ -378,7 +378,7 @@ describe('checkAlerts', () => {
                 text: [
                   `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Max Duration" in "My Dashboard">*`,
                   'Group: "HyperDX"',
-                  '11 less than 10',
+                  '11 exceeds 10',
                 ].join('\n'),
                 type: 'mrkdwn',
               },
