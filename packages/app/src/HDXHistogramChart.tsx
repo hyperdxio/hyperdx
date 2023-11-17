@@ -189,7 +189,7 @@ const HDXHistogramChart = memo(
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } = api.useLogsChartHistogram(
+    const { data, isError, isLoading } = api.useLogsChartHistogram(
       {
         endDate: dateRange[1] ?? new Date(),
         field,
@@ -222,6 +222,10 @@ const HDXHistogramChart = memo(
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : buckets?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

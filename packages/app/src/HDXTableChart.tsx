@@ -209,7 +209,7 @@ const HDXTableChart = memo(
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -247,6 +247,10 @@ const HDXTableChart = memo(
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : data?.data?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

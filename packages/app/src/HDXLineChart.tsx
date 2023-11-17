@@ -9,16 +9,18 @@ import {
   ReferenceLine,
   ReferenceArea,
   Label,
+  Bar,
+  BarChart,
 } from 'recharts';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { format, add } from 'date-fns';
+import cx from 'classnames';
+import Link from 'next/link';
 import pick from 'lodash/pick';
 
-import api from './api';
 import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
-
 import { semanticKeyedColor, truncateMiddle } from './utils';
-import Link from 'next/link';
+import api from './api';
 
 function ExpandableLegendItem({ value, entry }: any) {
   const [expanded, setExpanded] = useState(false);
@@ -50,6 +52,7 @@ const MemoChart = memo(function MemoChart({
   groupKeys,
   alertThreshold,
   alertThresholdType,
+  displayType = 'line',
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -58,18 +61,31 @@ const MemoChart = memo(function MemoChart({
   groupKeys: string[];
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
+  displayType?: 'stacked_bar' | 'line';
 }) {
+  const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
+
   const lines = useMemo(() => {
-    return groupKeys.map(key => (
-      <Line
-        key={key}
-        type="monotone"
-        dataKey={key}
-        stroke={semanticKeyedColor(key)}
-        dot={false}
-      />
-    ));
-  }, [groupKeys]);
+    return groupKeys.map(key =>
+      displayType === 'stacked_bar' ? (
+        <Bar
+          key={key}
+          type="monotone"
+          dataKey={key}
+          fill={semanticKeyedColor(key)}
+          stackId="1"
+        />
+      ) : (
+        <Line
+          key={key}
+          type="monotone"
+          dataKey={key}
+          stroke={semanticKeyedColor(key)}
+          dot={false}
+        />
+      ),
+    );
+  }, [groupKeys, displayType]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 
@@ -82,7 +98,7 @@ const MemoChart = memo(function MemoChart({
         sizeRef.current = [width ?? 1, height ?? 1];
       }}
     >
-      <LineChart
+      <ChartComponent
         width={500}
         height={300}
         data={graphResults}
@@ -171,7 +187,7 @@ const MemoChart = memo(function MemoChart({
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
         ) : null}
-      </LineChart>
+      </ChartComponent>
     </ResponsiveContainer>
   );
 });
@@ -215,7 +231,7 @@ const HDXLineChart = memo(
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -345,9 +361,17 @@ const HDXLineChart = memo(
       });
     }
 
+    const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
+      'line',
+    );
+
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : graphResults.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -414,6 +438,42 @@ const HDXLineChart = memo(
               </span>
             </div>
           ) : null}
+          <div
+            className="bg-grey px-3 py-2 rounded fs-8"
+            style={{
+              zIndex: 5,
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              visibility: 'visible',
+            }}
+            title={`Only the top ${groupKeys.length} groups are shown, ${
+              totalGroups - groupKeys.length
+            } groups are hidden. Try grouping by a different field.`}
+          >
+            <span
+              className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
+                'text-success': displayType === 'line',
+                'text-muted-hover': displayType !== 'line',
+              })}
+              role="button"
+              title="Display as line chart"
+              onClick={() => setDisplayType('line')}
+            >
+              <i className="bi bi-graph-up"></i>
+            </span>
+            <span
+              className={cx('text-decoration-none fs-7 cursor-pointer', {
+                'text-success': displayType === 'stacked_bar',
+                'text-muted-hover': displayType !== 'stacked_bar',
+              })}
+              role="button"
+              title="Display as bar chart"
+              onClick={() => setDisplayType('stacked_bar')}
+            >
+              <i className="bi bi-bar-chart"></i>
+            </span>
+          </div>
           <MemoChart
             graphResults={graphResults}
             groupKeys={groupKeys}
@@ -422,6 +482,7 @@ const HDXLineChart = memo(
             dateRange={dateRange}
             alertThreshold={alertThreshold}
             alertThresholdType={alertThresholdType}
+            displayType={displayType}
           />
         </div>
       </div>
