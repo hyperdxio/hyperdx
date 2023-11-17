@@ -21,9 +21,6 @@ import { ITeam } from '../models/team';
 import { ObjectId } from '../models';
 import { truncateString } from '../utils/common';
 
-import type { ResponseJSON } from '@clickhouse/client';
-import type { LogSearchRow } from '../clickhouse';
-
 const MAX_MESSAGE_LENGTH = 500;
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
@@ -60,14 +57,32 @@ export const buildLogSearchLink = ({
 };
 
 // TODO: should link to the chart instead
-export const buildChartLink = (dashboardId: string) => {
-  return `${config.FRONTEND_URL}/dashboard/${dashboardId}`;
+export const buildChartLink = ({
+  dashboardId,
+  endTime,
+  granularity,
+  startTime,
+}: {
+  dashboardId: string;
+  endTime: Date;
+  granularity: string;
+  startTime: Date;
+}) => {
+  const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
+  const queryParams = new URLSearchParams({
+    from: startTime.getTime().toString(),
+    granularity,
+    to: endTime.getTime().toString(),
+  });
+  url.search = queryParams.toString();
+  return url.toString();
 };
 
 const buildChartEventSlackMessage = ({
   alert,
   dashboard,
   endTime,
+  granularity,
   startTime,
   totalCount,
 }: {
@@ -82,13 +97,17 @@ const buildChartEventSlackMessage = ({
       series: IDashboard['charts'][0]['series'][0];
     };
   };
+  granularity: string;
   startTime: Date;
   totalCount: number;
 }) => {
   const mrkdwn = [
-    `*<${buildChartLink(dashboard.id)} | Alert for "${
-      dashboard.chart.name
-    }" in "${dashboard.name}">*`,
+    `*<${buildChartLink({
+      dashboardId: dashboard.id,
+      endTime,
+      granularity,
+      startTime,
+    })} | Alert for "${dashboard.chart.name}" in "${dashboard.name}">*`,
     `${totalCount} lines found, expected ${
       alert.type === 'presence' ? 'less than' : 'greater than'
     } ${alert.threshold} lines`,
@@ -194,6 +213,7 @@ const fireChannelEvent = async ({
   logView,
   startTime,
   totalCount,
+  windowSizeInMins,
 }: {
   alert: AlertDocument;
   logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
@@ -206,10 +226,11 @@ const fireChannelEvent = async ({
       series: IDashboard['charts'][0]['series'][0];
     };
   } | null;
-  totalCount: number;
+  endTime: Date;
   group?: string;
   startTime: Date;
-  endTime: Date;
+  totalCount: number;
+  windowSizeInMins: number;
 }) => {
   switch (alert.channel.type) {
     case 'webhook': {
@@ -243,6 +264,7 @@ const fireChannelEvent = async ({
             alert,
             dashboard,
             endTime,
+            granularity: `${windowSizeInMins} minute`,
             startTime,
             totalCount,
           });
@@ -446,6 +468,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             logView,
             startTime: bucketStart,
             totalCount,
+            windowSizeInMins,
           });
           history.counts += 1;
         }

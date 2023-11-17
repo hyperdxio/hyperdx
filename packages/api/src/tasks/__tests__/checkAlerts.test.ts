@@ -225,7 +225,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it.only('CHART alert', async () => {
+    it('CHART alert', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -248,16 +248,6 @@ describe('checkAlerts', () => {
           rows: 0,
           data: [],
         } as any);
-      // jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-      //   rows: 1,
-      //   data: [
-      //     {
-      //       timestamp: '2023-11-16T22:10:00.000Z',
-      //       severity_text: 'error',
-      //       body: 'Oh no! Something went wrong!',
-      //     },
-      //   ],
-      // } as any);
 
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
@@ -367,7 +357,18 @@ describe('checkAlerts', () => {
         'https://hooks.slack.com/services/123',
         {
           text: 'Alert for "Max Duration" in "My Dashboard" - 11 lines found',
-          blocks: expect.any(Array),
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700172600000&granularity=5+minute&to=1700172900000 | Alert for "Max Duration" in "My Dashboard">*`,
+                  '11 lines found, expected less than 10 lines',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
         },
       );
     });
