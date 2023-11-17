@@ -980,7 +980,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: string;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
