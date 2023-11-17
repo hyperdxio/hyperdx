@@ -21,6 +21,8 @@ import { ITeam } from '../models/team';
 import { ObjectId } from '../models';
 import { truncateString } from '../utils/common';
 
+type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
+
 const MAX_MESSAGE_LENGTH = 500;
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
@@ -89,27 +91,21 @@ const buildChartEventSlackMessage = ({
 }: {
   alert: AlertDocument;
   endTime: Date;
-  dashboard: {
-    id: string;
-    name: string;
-    chart: {
-      id: string;
-      name: string;
-      series: IDashboard['charts'][0]['series'][0];
-    };
-  };
+  dashboard: EnhancedDashboard;
   granularity: string;
   group?: string;
   startTime: Date;
   totalCount: number;
 }) => {
+  // should be only 1 chart
+  const chart = dashboard.charts[0];
   const mrkdwn = [
     `*<${buildChartLink({
-      dashboardId: dashboard.id,
+      dashboardId: dashboard._id.toString(),
       endTime,
       granularity,
       startTime,
-    })} | Alert for "${dashboard.chart.name}" in "${dashboard.name}">*`,
+    })} | Alert for "${chart.name}" in "${dashboard.name}">*`,
     ...(group != null ? [`Group: "${group}"`] : []),
     `${totalCount} lines found, expected ${
       alert.type === 'presence' ? 'less than' : 'greater than'
@@ -117,7 +113,7 @@ const buildChartEventSlackMessage = ({
   ].join('\n');
 
   return {
-    text: `Alert for "${dashboard.chart.name}" in "${dashboard.name}" - ${totalCount} lines found`,
+    text: `Alert for "${chart.name}" in "${dashboard.name}" - ${totalCount} lines found`,
     blocks: [
       {
         type: 'section',
@@ -220,15 +216,7 @@ const fireChannelEvent = async ({
 }: {
   alert: AlertDocument;
   logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
-  dashboard: {
-    id: string;
-    name: string;
-    chart: {
-      id: string;
-      name: string;
-      series: IDashboard['charts'][0]['series'][0];
-    };
-  } | null;
+  dashboard: EnhancedDashboard | null;
   endTime: Date;
   group?: string;
   startTime: Date;
@@ -345,15 +333,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       | Awaited<ReturnType<typeof clickhouse.getLogsChart>>
       | null = null;
     let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
-    let targetDashboard: {
-      id: string;
-      name: string;
-      chart: {
-        id: string;
-        name: string;
-        series: IDashboard['charts'][0]['series'][0];
-      };
-    } | null = null;
+    let targetDashboard: EnhancedDashboard | null = null;
     if (alert.source === 'LOG' && alert.logView) {
       logView = await getLogViewEnhanced(alert.logView);
       // TODO: use getLogsChart instead so we can deprecate checkAlert
@@ -401,16 +381,8 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
         const chart = dashboard.charts[0];
         // TODO: assuming that the chart has only 1 series for now
         const series = chart.series[0];
-        if (series.table === 'logs') {
-          targetDashboard = {
-            id: dashboard._id.toString(),
-            name: dashboard.name,
-            chart: {
-              id: chart.id,
-              name: chart.name,
-              series,
-            },
-          };
+        if (series.type === 'time' && series.table === 'logs') {
+          targetDashboard = dashboard;
           const MAX_NUM_GROUPS = 20;
           const startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
@@ -424,6 +396,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           checksData = await clickhouse.getLogsChart({
             aggFn: series.aggFn,
             endTime: endTimeMs,
+            // @ts-expect-error
             field: series.field,
             granularity: `${windowSizeInMins} minute`,
             groupBy: series.groupBy[0],
