@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
-import * as config from '../config';
-import logger from '../utils/logger';
+import * as config from '@/config';
+import logger from '@/utils/logger';
 
 export type ObjectId = mongoose.Types.ObjectId;
 

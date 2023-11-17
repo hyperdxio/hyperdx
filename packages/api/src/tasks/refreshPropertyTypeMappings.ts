@@ -3,10 +3,10 @@
 // --------------------------------------------------------
 import ms from 'ms';
 
-import * as clickhouse from '../clickhouse';
-import Team from '../models/team';
-import logger from '../utils/logger';
-import { LogsPropertyTypeMappingsModel } from '../clickhouse/propertyTypeMappingsModel';
+import * as clickhouse from '@/clickhouse';
+import Team from '@/models/team';
+import logger from '@/utils/logger';
+import { LogsPropertyTypeMappingsModel } from '@/clickhouse/propertyTypeMappingsModel';
 
 const MAX_PROCESS_TEAMS = 30;
 const LOG_PREFIX = '[refreshPropertyTypeMappings]';
