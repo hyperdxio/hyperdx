@@ -270,7 +270,16 @@ const fireChannelEvent = async ({
           });
         }
 
-        await slack.postMessageToWebhook(webhook.url, message);
+        if (message !== null) {
+          await slack.postMessageToWebhook(webhook.url, message);
+        } else {
+          logger.error({
+            alert,
+            dashboard,
+            logView,
+            message: 'Unsupported alert source',
+          });
+        }
       }
       break;
     }
