@@ -77,7 +77,7 @@ const DEFAULT_ALERT: Alert = {
     type: 'webhook',
   },
   threshold: 1,
-  interval: '1m',
+  interval: '5m',
   type: 'presence',
   source: 'CHART',
 };

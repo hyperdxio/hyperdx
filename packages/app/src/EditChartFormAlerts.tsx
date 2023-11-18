@@ -81,6 +81,9 @@ export default function EditChartFormAlerts({
             );
           }}
         >
+          <option value="" disabled>
+            Select interval
+          </option>
           {Object.entries(CHART_ALERT_INTERVAL_OPTIONS).map(([value, text]) => (
             <option key={value} value={value}>
               {text}
