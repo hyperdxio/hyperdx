@@ -8,7 +8,6 @@ import cx from 'classnames';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
 import mapValues from 'lodash/mapValues';
-import omit from 'lodash/omit';
 import pickBy from 'lodash/pickBy';
 import stripAnsi from 'strip-ansi';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -20,6 +19,19 @@ import { toast } from 'react-toastify';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryParam } from 'use-query-params';
+import type { StacktraceFrame, StacktraceBreadcrumb } from './types';
+import {
+  networkColumns,
+  stacktraceColumns,
+  breadcrumbColumns,
+  headerColumns,
+  StacktraceValue,
+  CollapsibleSection,
+  SectionWrapper,
+  NetworkBody,
+  LogSidePanelKbdShortcuts,
+} from './LogSidePanelElements';
+import { Table } from './components/Table';
 
 import api from './api';
 import LogLevel from './LogLevel';
@@ -27,7 +39,6 @@ import SearchInput from './SearchInput';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
 import SessionSubpanel from './SessionSubpanel';
-import LogSidePanelKbdShortcuts from './LogSidePanelKbdShortcuts';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
@@ -48,7 +59,7 @@ const HDX_BODY_FIELD = '_hdx_body';
 
 // https://github.com/reduxjs/redux-devtools/blob/f11383d294c1139081f119ef08aa1169bd2ad5ff/packages/react-json-tree/src/createStylingFromTheme.ts
 const JSON_TREE_THEME = {
-  base00: '#0F1216',
+  base00: '#00000000',
   base01: '#383830',
   base02: '#49483e',
   base03: '#75715e',
@@ -596,13 +607,14 @@ function TraceSubpanel({
           setSelectedLog({ id, sortKey });
         }}
       />
-      <div className="mt-1 border-top border-dark mb-2">
+
+      <div className="border-top border-dark mb-4">
         {selectedLogData != null ? (
           <>
             <div className="my-3">
-              <span className="text-muted">
-                {selectedLogData.type === 'span' ? 'Span' : 'Log'} Details for:{' '}
-              </span>
+              <div className="text-slate-200 fs-7 mb-2 mt-3">
+                {selectedLogData.type === 'span' ? 'Span' : 'Log'} Details
+              </div>
               <span>
                 [<LogLevel level={selectedLogData.severity_text} />]
               </span>{' '}
@@ -655,18 +667,24 @@ function TraceSubpanel({
                 )}
               >
                 <ExceptionSubpanel
-                  breadcrumbs={JSON.parse(
-                    selectedLogData?.['string.values']?.[
-                      selectedLogData?.['string.names']?.indexOf('breadcrumbs')
-                    ],
-                  )}
-                  exceptionValues={JSON.parse(
-                    selectedLogData?.['string.values']?.[
-                      selectedLogData?.['string.names']?.indexOf(
-                        'exception.values',
-                      )
-                    ],
-                  )}
+                  breadcrumbs={
+                    JSON.parse(
+                      selectedLogData?.['string.values']?.[
+                        selectedLogData?.['string.names']?.indexOf(
+                          'breadcrumbs',
+                        )
+                      ],
+                    ) ?? []
+                  }
+                  exceptionValues={
+                    JSON.parse(
+                      selectedLogData?.['string.values']?.[
+                        selectedLogData?.['string.names']?.indexOf(
+                          'exception.values',
+                        )
+                      ],
+                    ) ?? []
+                  }
                 />
               </ErrorBoundary>
             )}
@@ -822,7 +840,7 @@ function EventTagSubpanel({
 
   return (
     <div className="my-3">
-      <div className="fw-bold mb-1">Event Tags</div>
+      <div className="fw-bold mb-1 mt-2">Event Tags</div>
       <div className="d-flex flex-wrap">
         {Object.entries(properties).map(([key, value]) => {
           let commandArgs = '';
@@ -887,50 +905,6 @@ function ExceptionEvent({
           {stacktrace}
         </pre>
       )}
-    </div>
-  );
-}
-
-function CollapsibleSection({
-  title,
-  children,
-  initiallyCollapsed,
-}: {
-  title: string;
-  children: React.ReactNode;
-  initiallyCollapsed?: boolean;
-}) {
-  const [collapsed, setCollapsed] = useState(initiallyCollapsed ?? false);
-  return (
-    <div className="my-3">
-      <div
-        className="d-flex align-items-center mb-1 text-white-hover"
-        role="button"
-        onClick={() => setCollapsed(!collapsed)}
-      >
-        <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'} me-2`}></i>
-        <div className="fs-7">{title}</div>
-      </div>
-      {collapsed ? null : children}
-    </div>
-  );
-}
-
-function NetworkPropertyRow({
-  label,
-  value,
-  width,
-  className,
-}: {
-  label: React.ReactNode;
-  value: React.ReactNode;
-  width: number;
-  className?: string;
-}) {
-  return (
-    <div className={`d-flex ${className ?? ''}`}>
-      <div style={{ width, minWidth: width }}>{label}</div>
-      <div className="text-muted">{value}</div>
     </div>
   );
 }
@@ -1080,7 +1054,6 @@ function NetworkPropertySubpanel({
     field: string;
     groupBy: string[];
   }) => string;
-
   onPropertyAddClick?: (key: string, value: string) => void;
 }) {
   const parsedProperties = useParsedLogProperties(logData);
@@ -1092,8 +1065,6 @@ function NetworkPropertySubpanel({
   const responseHeaders = useMemo(() => {
     return parseHeaders('http.response.header.', parsedProperties);
   }, [parsedProperties]);
-
-  const LABEL_WIDTH = 200;
 
   const url = parsedProperties['http.url'];
   const remoteAddress = parsedProperties['net.peer.ip'];
@@ -1145,100 +1116,61 @@ function NetworkPropertySubpanel({
           </Button>
         </Link>
       </div>
-      <NetworkPropertyRow
-        className="mb-1"
-        label="URL"
-        value={url}
-        width={LABEL_WIDTH}
-      />
-      <NetworkPropertyRow
-        className="mb-1"
-        label="Method"
-        value={method}
-        width={LABEL_WIDTH}
-      />
-      {remoteAddress != null && (
-        <NetworkPropertyRow
-          className="mb-1"
-          label="Remote Address"
-          value={remoteAddress}
-          width={LABEL_WIDTH}
-        />
-      )}
-      {statusCode != null && (
-        <NetworkPropertyRow
-          className="mb-1"
-          label="Status"
-          value={
-            <span
-              className={`${
+
+      <SectionWrapper>
+        <Table
+          borderless
+          density="compact"
+          columns={networkColumns}
+          data={[
+            url && { label: 'URL', value: url },
+            method && { label: 'Method', value: method },
+            remoteAddress && { label: 'Remote Address', value: remoteAddress },
+            statusCode && {
+              label: 'Status',
+              value: `${statusCode} ${
+                parsedProperties['http.status_text'] ?? ''
+              }`,
+              className:
                 statusCode >= 500
                   ? 'text-danger'
                   : statusCode >= 400
                   ? 'text-warning'
-                  : 'text-success'
-              }`}
-            >
-              {statusCode} {parsedProperties['http.status_text'] ?? ''}
-            </span>
-          }
-          width={LABEL_WIDTH}
+                  : 'text-success',
+            },
+          ].filter(Boolean)}
+          hideHeader
         />
-      )}
+      </SectionWrapper>
+
       {requestHeaders.length > 0 && (
         <CollapsibleSection
           title={`Request Headers (${requestHeaders.length})`}
           initiallyCollapsed
         >
-          {requestHeaders.length > 0 ? (
-            requestHeaders.map(([key, value]) => (
-              <NetworkPropertyRow
-                key={key}
-                className="mb-1"
-                label={key}
-                value={value}
-                width={LABEL_WIDTH}
-              />
-            ))
-          ) : (
-            <div className="text-muted">No request headers collected</div>
-          )}
+          <SectionWrapper>
+            <Table
+              borderless
+              hideHeader
+              density="compact"
+              columns={headerColumns}
+              data={requestHeaders}
+              emptyMessage="No request headers collected"
+            />
+          </SectionWrapper>
         </CollapsibleSection>
       )}
+
       {requestBody != null && (
-        <CollapsibleSection title={`Request Body`}>
-          {requestBody != null ? (
-            <div className="mb-1">
-              <pre className="mb-0">
-                {typeof requestBody === 'string' ? (
-                  requestBody
-                ) : (
-                  <JSONTree
-                    hideRoot
-                    invertTheme={false}
-                    // shouldExpandNode={() => true}
-                    data={requestBody}
-                    theme={JSON_TREE_THEME}
-                    valueRenderer={(raw, value, ...keyPath) => {
-                      return (
-                        <pre
-                          className="d-inline text-break"
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            wordWrap: 'break-word',
-                          }}
-                        >
-                          {raw}
-                        </pre>
-                      );
-                    }}
-                  />
-                )}
-              </pre>
-            </div>
-          ) : (
-            <div className="text-muted">No request body collected</div>
-          )}
+        <CollapsibleSection title="Request Body">
+          <SectionWrapper>
+            <NetworkBody
+              body={requestBody}
+              theme={JSON_TREE_THEME}
+              emptyMessage="Empty request"
+              notCollectedMessage="No request body collected"
+            />
+          </SectionWrapper>
         </CollapsibleSection>
       )}
       {responseHeaders.length > 0 && (
@@ -1246,57 +1178,28 @@ function NetworkPropertySubpanel({
           title={`Response Headers (${responseHeaders.length})`}
           initiallyCollapsed
         >
-          {responseHeaders.length > 0 ? (
-            responseHeaders.map(([key, value]) => (
-              <NetworkPropertyRow
-                key={key}
-                className="mb-1"
-                label={key}
-                value={value}
-                width={LABEL_WIDTH}
-              />
-            ))
-          ) : (
-            <div className="text-muted">No response headers collected</div>
-          )}
+          <SectionWrapper>
+            <Table
+              borderless
+              hideHeader
+              density="compact"
+              columns={headerColumns}
+              data={responseHeaders}
+              emptyMessage="No response headers collected"
+            />
+          </SectionWrapper>
         </CollapsibleSection>
       )}
       {responseBody != null && (
-        <CollapsibleSection title={`Response Body`}>
-          {responseBody != null && responseBody != '' ? (
-            <div className="mb-1">
-              <pre className="mb-0">
-                {typeof responseBody === 'string' ? (
-                  responseBody
-                ) : (
-                  <JSONTree
-                    hideRoot
-                    invertTheme={false}
-                    // shouldExpandNode={() => true}
-                    data={responseBody}
-                    theme={JSON_TREE_THEME}
-                    valueRenderer={raw => {
-                      return (
-                        <pre
-                          className="d-inline text-break"
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            wordWrap: 'break-word',
-                          }}
-                        >
-                          {raw}
-                        </pre>
-                      );
-                    }}
-                  />
-                )}
-              </pre>
-            </div>
-          ) : responseBody === '' ? (
-            <div className="text-muted">Empty response</div>
-          ) : (
-            <div className="text-muted">No response body collected</div>
-          )}
+        <CollapsibleSection title="Response Body">
+          <SectionWrapper>
+            <NetworkBody
+              body={responseBody}
+              theme={JSON_TREE_THEME}
+              emptyMessage="Empty response"
+              notCollectedMessage="No response body collected"
+            />
+          </SectionWrapper>
         </CollapsibleSection>
       )}
     </div>
@@ -1939,131 +1842,97 @@ const ExceptionSubpanel = ({
   breadcrumbs,
   exceptionValues,
 }: {
-  breadcrumbs: {
-    type?: string;
-    level?: string;
-    event_id?: string;
-    category?: string;
-    message?: string;
-    data?: { [key: string]: any };
-    timestamp: number;
-  }[];
+  breadcrumbs?: StacktraceBreadcrumb[];
   exceptionValues: {
     type: string;
     value: string;
     mechanism?: {
       type: string;
       handled: boolean;
+      data?: {
+        // TODO: Are these fields dynamic?
+        function?: string;
+        handler?: string;
+        target?: string;
+      };
     };
     stacktrace?: {
-      frames: {
-        filename: string;
-        function: string;
-        module?: string;
-        lineno: number;
-        colno: number;
-        in_app: boolean;
-        context_line?: string;
-        pre_context?: string[];
-        post_context?: string[];
-      }[];
+      frames: StacktraceFrame[];
     };
   }[];
 }) => {
   const firstException = exceptionValues[0];
 
+  const stacktraceFrames = useMemo(
+    () => firstException.stacktrace?.frames.reverse() ?? [],
+    [firstException.stacktrace?.frames],
+  );
+
   // TODO: show all frames (stackable)
   return (
     <div>
-      <CollapsibleSection title="Stack Trace" initiallyCollapsed={false}>
-        {firstException ? (
-          <div>
-            <div className="fw-bold fs-8">{firstException.type}</div>
-            <div className="text-muted">{firstException.value}</div>
-            <div className="text-muted">
-              <span>mechanism: {firstException.mechanism?.type}</span>
-              <span className="ms-2">
-                handled:{' '}
-                {firstException.mechanism?.handled ? (
-                  <span className="text-success">true</span>
-                ) : (
-                  <span className="text-danger">false</span>
-                )}
-              </span>
-            </div>
-            {firstException.stacktrace?.frames?.reverse().map((frame, i) => (
-              <div key={frame.filename + frame.lineno} className="mt-3">
-                <div className="fw-bold fs-8">
-                  {frame.filename} in {frame.function} at line {frame.lineno}:
-                  {frame.colno}
-                </div>
-                <pre className="mt-3">
-                  {frame.pre_context?.map((line, i) => (
-                    <div key={line} className="text-muted">
-                      {(frame.lineno ?? 0) -
-                        (frame.pre_context?.length ?? 0) +
-                        i}{' '}
-                      {line}
-                    </div>
-                  ))}
-                  {frame.context_line && (
-                    <div
-                      className="fw-bold"
-                      style={{ backgroundColor: '#1f2429' }}
-                    >
-                      {frame.lineno} {frame.context_line}
-                    </div>
-                  )}
-                  {frame.post_context?.map((line, i) => (
-                    <div key={line} className="text-muted">
-                      {frame.lineno + i + 1} {line}
-                    </div>
-                  ))}
-                </pre>
+      <CollapsibleSection title="Stack Trace">
+        <SectionWrapper
+          title={
+            <>
+              <div className="pb-3">
+                <div className="fw-bold fs-8">{firstException.type}</div>
+                <div className="text-muted">{firstException.value}</div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-muted">No Stack Trace Found</div>
-        )}
+              <div className="d-flex gap-2 flex-wrap">
+                <StacktraceValue
+                  label="mechanism"
+                  value={firstException.mechanism?.type}
+                />
+                <StacktraceValue
+                  label="handled"
+                  value={
+                    firstException.mechanism?.handled ? (
+                      <span className="text-success">true</span>
+                    ) : (
+                      <span className="text-danger">false</span>
+                    )
+                  }
+                />
+                {firstException.mechanism?.data?.function ? (
+                  <StacktraceValue
+                    label="function"
+                    value={firstException.mechanism.data.function}
+                  />
+                ) : null}
+                {firstException.mechanism?.data?.handler ? (
+                  <StacktraceValue
+                    label="handler"
+                    value={firstException.mechanism.data.handler}
+                  />
+                ) : null}
+                {firstException.mechanism?.data?.target ? (
+                  <StacktraceValue
+                    label="target"
+                    value={firstException.mechanism.data.target}
+                  />
+                ) : null}
+              </div>
+            </>
+          }
+        >
+          <Table
+            hideHeader
+            columns={stacktraceColumns}
+            data={stacktraceFrames}
+            emptyMessage="No stack trace found"
+          />
+        </SectionWrapper>
       </CollapsibleSection>
-      <CollapsibleSection title="Breadcrumbs" initiallyCollapsed>
-        {breadcrumbs.length > 0 ? (
-          breadcrumbs.map((event, i) => (
-            <div
-              key={i}
-              className={cx({
-                'd-flex align-items-center': 0,
-              })}
-            >
-              <div className="text-muted mt-3 mb-1">
-                {format(new Date(event.timestamp * 1000), 'MMM d HH:mm:ss.SSS')}
-              </div>
-              <JSONTree
-                hideRoot
-                invertTheme={false}
-                shouldExpandNode={() => true}
-                data={omit(event, ['timestamp'])}
-                theme={JSON_TREE_THEME}
-                valueRenderer={(raw, value, ...keyPath) => {
-                  return (
-                    <pre
-                      className="d-inline text-break"
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        wordWrap: 'break-word',
-                      }}
-                    >
-                      {raw}
-                    </pre>
-                  );
-                }}
-              />
-            </div>
-          ))
-        ) : (
-          <div className="text-muted">No Breadcrumbs Found</div>
-        )}
+
+      <CollapsibleSection title="Breadcrumbs">
+        <SectionWrapper>
+          <Table
+            columns={breadcrumbColumns}
+            data={breadcrumbs}
+            emptyMessage="No breadcrumbs found"
+          />
+        </SectionWrapper>
       </CollapsibleSection>
     </div>
   );
@@ -2213,7 +2082,7 @@ export default function LogSidePanel({
                 onClose={_onClose}
               />
               <TabBar
-                className="fs-8 mb-2 mt-2"
+                className="fs-8 mt-2"
                 items={[
                   {
                     text: 'Parsed Properties',
@@ -2296,7 +2165,7 @@ export default function LogSidePanel({
                 {/* Trace */}
                 {displayedTab === 'trace' ? (
                   <div
-                    className="flex-grow-1 px-4 mt-3 bg-body overflow-auto"
+                    className="flex-grow-1 px-4 pt-3 bg-body overflow-auto"
                     style={{ minHeight: 0 }}
                   >
                     <TraceSubpanel

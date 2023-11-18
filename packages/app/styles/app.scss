@@ -74,6 +74,30 @@ html[class~='dark'] body {
   color: $gray-600;
 }
 
+.text-slate-700 {
+  color: $slate-700;
+}
+
+.text-slate-600 {
+  color: $slate-600;
+}
+
+.text-slate-500 {
+  color: $slate-500;
+}
+
+.text-slate-400 {
+  color: $slate-400;
+}
+
+.text-slate-300 {
+  color: $slate-300;
+}
+
+.text-slate-200 {
+  color: $slate-200;
+}
+
 .text-muted-hover {
   color: $text-muted;
   transition: color 0.2s ease;
