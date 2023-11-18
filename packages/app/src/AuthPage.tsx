@@ -185,7 +185,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                       data-test-id="form-confirm-password"
                       id="confirmPassword"
                       type="password"
-                      className="border-0"
+                      className="border-0 mb-2"
                       onKeyUp={updateConfirmPassword}
                       {...form.confirmPassword}
                     />
