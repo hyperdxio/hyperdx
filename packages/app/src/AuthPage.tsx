@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 
+import { PasswordCheck, CheckOrX } from './PasswordCheck';
 import LandingHeader from './LandingHeader';
 import * as config from './config';
 import api from './api';
@@ -24,6 +25,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     handleSubmit,
     formState: { errors, isSubmitting },
     setError,
+    watch,
   } = useForm<FormData>({
     reValidateMode: 'onSubmit',
   });
@@ -44,6 +46,13 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       router.push('/login');
     }
   }, [installation, isRegister, router]);
+
+  const currentPassword = watch('password', '');
+  const confirmPassword = watch('confirmPassword', '');
+
+  const confirmPass = () => {
+    return currentPassword === confirmPassword;
+  };
 
   const onSubmit: SubmitHandler<FormData> = data =>
     registerPassword.mutate(
@@ -153,15 +162,21 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                       htmlFor="confirmPassword"
                       className="text-start text-muted fs-7.5 mb-1"
                     >
-                      Confirm Password
+                      <CheckOrX
+                        handler={confirmPass}
+                        password={currentPassword}
+                      >
+                        Confirm Password
+                      </CheckOrX>
                     </Form.Label>
                     <Form.Control
                       data-test-id="form-confirm-password"
                       id="confirmPassword"
                       type="password"
-                      className="border-0"
+                      className="border-0 mb-2"
                       {...form.confirmPassword}
                     />
+                    <PasswordCheck password={currentPassword} />
                   </>
                 )}
                 {isRegister && Object.keys(errors).length > 0 && (
