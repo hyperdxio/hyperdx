@@ -27,10 +27,7 @@ export type AlertChannel = {
   webhookId: string;
 };
 
-export enum AlertSource {
-  LOG = 'LOG',
-  CHART = 'CHART',
-}
+export type AlertSource = 'LOG' | 'CHART';
 
 export interface IAlert {
   _id: ObjectId;
@@ -52,6 +49,8 @@ export interface IAlert {
   dashboardId?: ObjectId;
   chartId?: string;
 }
+
+export type AlertDocument = mongoose.HydratedDocument<IAlert>;
 
 const AlertSchema = new Schema<IAlert>(
   {
@@ -83,9 +82,8 @@ const AlertSchema = new Schema<IAlert>(
     },
     source: {
       type: String,
-      enum: AlertSource,
       required: false,
-      default: AlertSource.LOG,
+      default: 'LOG',
     },
 
     // Log alerts

@@ -3,10 +3,10 @@
 // --------------------------------------------------------
 import ms from 'ms';
 
-import * as clickhouse from '../clickhouse';
-import Team from '../models/team';
-import logger from '../utils/logger';
-import { LogsPropertyTypeMappingsModel } from '../clickhouse/propertyTypeMappingsModel';
+import * as clickhouse from '@/clickhouse';
+import Team from '@/models/team';
+import logger from '@/utils/logger';
+import { LogsPropertyTypeMappingsModel } from '@/clickhouse/propertyTypeMappingsModel';
 
 const MAX_PROCESS_TEAMS = 30;
 const LOG_PREFIX = '[refreshPropertyTypeMappings]';
@@ -15,7 +15,7 @@ export default async () => {
   const nowInMs = Date.now();
   const teams = await Team.find({});
   let c = 0;
-  const promises = [];
+  const promises: Promise<any>[] = [];
   for (const team of teams) {
     if (c >= MAX_PROCESS_TEAMS) {
       logger.info(`${LOG_PREFIX} Processed ${c} teams, exiting...`);

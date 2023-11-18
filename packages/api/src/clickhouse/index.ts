@@ -14,9 +14,9 @@ import {
 } from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -30,13 +30,14 @@ import {
   isCustomColumn,
   msToBigIntNs,
 } from './searchQueryParser';
+import { redisClient } from '../utils/redis';
 
 import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
-} from '../utils/logParser';
+} from '@/utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
@@ -563,7 +564,7 @@ export const buildMetricsPropertyTypeMappingsModel = async (
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
-  property: string,
+  property: string | undefined,
   model: LogsPropertyTypeMappingsModel,
 ) => {
   if (!property) {
@@ -601,6 +602,24 @@ export const getCHServerMetrics = async () => {
 };
 
 export const getMetricsTags = async (teamId: string) => {
+  if (config.CACHE_METRICS_TAGS) {
+    logger.info({
+      message: 'getMetricsTags: attempting cached fetch',
+      teamId: teamId,
+    });
+    return getMetricsTagsCached(teamId);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: skipping cache, direct query',
+      teamId: teamId,
+    });
+    return getMetricsTagsUncached(teamId);
+  }
+};
+
+// NB preserving this exactly as in original for this ticket
+// but looks like a good candidate for a query refactor baed on comment
+const getMetricsTagsUncached = async (teamId: string) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
@@ -627,6 +646,28 @@ export const getMetricsTags = async (teamId: string) => {
     took: Date.now() - ts,
   });
   return result;
+};
+
+const getMetricsTagsCached = async (teamId: string) => {
+  const redisKey = `metrics-tags-${teamId}`;
+  const cached = await redisClient.get(redisKey);
+  if (cached) {
+    logger.info({
+      message: 'getMetricsTags: cache hit',
+      teamId: teamId,
+    });
+    return JSON.parse(cached);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: cache miss',
+      teamId: teamId,
+    });
+    const result = await getMetricsTagsUncached(teamId);
+    await redisClient.set(redisKey, JSON.stringify(result), {
+      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
+    });
+    return result;
+  }
 };
 
 const isRateAggFn = (aggFn: AggFn) => {
@@ -980,7 +1021,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -1119,6 +1168,12 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
+  const componentField = buildSearchColumnName('string', 'component');
+  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
+  if (!componentField || !sessionIdField) {
+    throw new Error('component or sessionId is null');
+  }
+
   const sessionsWithSearchQuery = SqlString.format(
     `SELECT
       MAX(timestamp) AS maxTimestamp,
@@ -1139,8 +1194,8 @@ export const getSessions = async ({
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
     [
-      SqlString.raw(buildSearchColumnName('string', 'component')),
-      SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
+      SqlString.raw(componentField),
+      SqlString.raw(sessionIdField),
       columns,
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
@@ -1386,8 +1441,8 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        count(*) as data,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1432,7 +1487,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',
@@ -1639,8 +1694,6 @@ export const getLogBatchGroupedByBody = async ({
       span.end();
     },
   );
-
-  return result;
 };
 
 export const getLogBatch = async ({
@@ -1711,6 +1764,7 @@ export const getLogBatch = async ({
     span.end();
   });
 
+  // @ts-ignore
   return result;
 };
 
@@ -1769,6 +1823,7 @@ export const getRrwebEvents = async ({
     span.end();
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };
 
@@ -1839,5 +1894,6 @@ export const getLogStream = async ({
     }
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };

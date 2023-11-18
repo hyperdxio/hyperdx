@@ -1,210 +1,111 @@
 import express from 'express';
-import ms from 'ms';
-import { getHours, getMinutes } from 'date-fns';
+import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
-import Alert, {
-  AlertChannel,
-  AlertInterval,
-  AlertType,
-  AlertSource,
-} from '../../models/alert';
-import * as clickhouse from '../../clickhouse';
-import { SQLSerializer } from '../../clickhouse/searchQueryParser';
-import { getTeam } from '../../controllers/team';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Alert from '@/models/alert';
+import { getTeam } from '@/controllers/team';
+import { isUserAuthenticated } from '@/middleware/auth';
+import {
+  createAlert,
+  updateAlert,
+  validateGroupByProperty,
+} from '@/controllers/alerts';
 
 const router = express.Router();
 
-const getCron = (interval: AlertInterval) => {
-  const now = new Date();
-  const nowMins = getMinutes(now);
-  const nowHours = getHours(now);
+// Input validation
+const zChannel = z.object({
+  type: z.literal('webhook'),
+  webhookId: z.string().min(1),
+});
 
-  switch (interval) {
-    case '1m':
-      return '* * * * *';
-    case '5m':
-      return '*/5 * * * *';
-    case '15m':
-      return '*/15 * * * *';
-    case '30m':
-      return '*/30 * * * *';
-    case '1h':
-      return `${nowMins} * * * *`;
-    case '6h':
-      return `${nowMins} */6 * * *`;
-    case '12h':
-      return `${nowMins} */12 * * *`;
-    case '1d':
-      return `${nowMins} ${nowHours} * * *`;
-  }
-};
+const zLogAlert = z.object({
+  source: z.literal('LOG'),
+  groupBy: z.string().optional(),
+  logViewId: z.string().min(1),
+  message: z.string().optional(),
+});
 
-const createAlert = async ({
-  channel,
-  groupBy,
-  interval,
-  logViewId,
-  threshold,
-  type,
-}: {
-  channel: AlertChannel;
-  groupBy?: string;
-  interval: AlertInterval;
-  logViewId: string;
-  threshold: number;
-  type: AlertType;
-}) => {
-  return new Alert({
-    channel,
-    cron: getCron(interval),
-    groupBy,
-    interval,
-    source: AlertSource.LOG,
-    logView: logViewId,
-    threshold,
-    timezone: 'UTC', // TODO: support different timezone
-    type,
-  }).save();
-};
+const zChartAlert = z.object({
+  source: z.literal('CHART'),
+  chartId: z.string().min(1),
+  dashboardId: z.string().min(1),
+});
 
-// create an update alert function based off of the above create alert function
-const updateAlert = async ({
-  channel,
-  groupBy,
-  id,
-  interval,
-  logViewId,
-  threshold,
-  type,
-}: {
-  channel: AlertChannel;
-  groupBy?: string;
-  id: string;
-  interval: AlertInterval;
-  logViewId: string;
-  threshold: number;
-  type: AlertType;
-}) => {
-  return Alert.findByIdAndUpdate(
-    id,
-    {
-      channel,
-      cron: getCron(interval),
-      groupBy: groupBy ?? null,
-      interval,
-      source: AlertSource.LOG,
-      logView: logViewId,
-      threshold,
-      timezone: 'UTC', // TODO: support different timezone
-      type,
-    },
-    {
-      returnDocument: 'after',
-    },
-  );
-};
+const zAlert = z
+  .object({
+    channel: zChannel,
+    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+    threshold: z.number().min(1),
+    type: z.enum(['presence', 'absence']),
+    source: z.enum(['LOG', 'CHART']).default('LOG'),
+  })
+  .and(zLogAlert.or(zChartAlert));
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
-  try {
+const zAlertInput = zAlert;
+
+// Validate groupBy property
+const validateGroupBy = async (req, res, next) => {
+  const { groupBy, source } = req.body || {};
+  if (source === 'LOG' && groupBy) {
     const teamId = req.user?.team;
-    const { channel, groupBy, interval, logViewId, threshold, type } = req.body;
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    if (!channel || !threshold || !interval || !type) {
-      return res.sendStatus(400);
-    }
-    if (!['slack', 'email', 'pagerduty', 'webhook'].includes(channel.type)) {
-      return res.sendStatus(400);
-    }
-
     const team = await getTeam(teamId);
     if (team == null) {
       return res.sendStatus(403);
     }
-
-    // validate groupBy property
-    if (groupBy) {
-      const nowInMs = Date.now();
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId.toString(),
-          nowInMs - ms('1d'),
-          nowInMs,
-        );
-      const serializer = new SQLSerializer(propertyTypeMappingsModel);
-      const { found } = await serializer.getColumnForField(groupBy);
-      if (!found) {
-        return res.sendStatus(400);
-      }
-    }
-
-    res.json({
-      data: await createAlert({
-        channel,
-        groupBy,
-        interval,
-        logViewId,
-        threshold,
-        type,
-      }),
+    // Validate groupBy property
+    const groupByValid = await validateGroupByProperty({
+      groupBy,
+      logStreamTableVersion: team.logStreamTableVersion,
+      teamId: teamId.toString(),
     });
-  } catch (e) {
-    next(e);
+    if (!groupByValid) {
+      return res.status(400).json({
+        error: 'Invalid groupBy property',
+      });
+    }
   }
-});
+  next();
+};
 
-router.put('/:id', isUserAuthenticated, async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { id: alertId } = req.params;
-    const { channel, interval, logViewId, threshold, type, groupBy } = req.body;
-    if (teamId == null) {
-      return res.sendStatus(403);
+// Routes
+router.post(
+  '/',
+  isUserAuthenticated,
+  validateRequest({ body: zAlertInput }),
+  validateGroupBy,
+  async (req, res, next) => {
+    try {
+      const alertInput = req.body;
+      return res.json({
+        data: await createAlert(alertInput),
+      });
+    } catch (e) {
+      next(e);
     }
-    if (!channel || !threshold || !interval || !type || !alertId) {
-      return res.sendStatus(400);
-    }
+  },
+);
 
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
+router.put(
+  '/:id',
+  isUserAuthenticated,
+  validateRequest({ body: zAlertInput }),
+  validateGroupBy,
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const alertInput = req.body;
+      res.json({
+        data: await updateAlert(id, alertInput),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    // validate groupBy property
-    if (groupBy) {
-      const nowInMs = Date.now();
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId.toString(),
-          nowInMs - ms('1d'),
-          nowInMs,
-        );
-      const serializer = new SQLSerializer(propertyTypeMappingsModel);
-      const { found } = await serializer.getColumnForField(groupBy);
-      if (!found) {
-        return res.sendStatus(400);
-      }
-    }
-
-    res.json({
-      data: await updateAlert({
-        channel,
-        groupBy,
-        id: alertId,
-        interval,
-        logViewId,
-        threshold,
-        type,
-      }),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
   try {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import produce from 'immer';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import Select from 'react-select';
@@ -818,20 +818,24 @@ export const EditHistogramChartForm = ({
 };
 
 export const EditLineChartForm = ({
+  isLocalDashboard,
   chart,
+  alerts,
   onClose,
   onSave,
   dateRange,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
 }) => {
   const CHART_TYPE = 'time';
-
+  const [alert] = alerts; // TODO: Support multiple alerts eventually
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
-  const [editedAlert, setEditedAlert] = useState<Alert | undefined>();
+  const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
   const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
 
   const chartConfig = useMemo(
@@ -867,7 +871,10 @@ export const EditLineChartForm = ({
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave(
+          editedChart,
+          alertEnabled ? [editedAlert ?? DEFAULT_ALERT] : undefined,
+        );
       }}
     >
       <div className="fs-5 mb-4">Line Chart Builder</div>
@@ -963,21 +970,29 @@ export const EditLineChartForm = ({
         }}
       />
 
-      {config.CHART_ALERTS_ENABLED && (
+      {editedChart.series[0].table === 'logs' && (
         <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
-          <Checkbox
-            id="check"
-            label="Enable alerts"
-            checked={alertEnabled}
-            onChange={() => setAlertEnabled(!alertEnabled)}
-          />
-          {alertEnabled && (
-            <div className="mt-2">
-              <EditChartFormAlerts
-                alert={editedAlert ?? DEFAULT_ALERT}
-                setAlert={setEditedAlert}
+          {isLocalDashboard ? (
+            <span className="text-gray-600 fs-8">
+              Alerts are not available in unsaved dashboards.
+            </span>
+          ) : (
+            <>
+              <Checkbox
+                id="check"
+                label="Enable alerts"
+                checked={alertEnabled}
+                onChange={() => setAlertEnabled(!alertEnabled)}
               />
-            </div>
+              {alertEnabled && (
+                <div className="mt-2">
+                  <EditChartFormAlerts
+                    alert={editedAlert ?? DEFAULT_ALERT}
+                    setAlert={setEditedAlert}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

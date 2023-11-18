@@ -3,50 +3,12 @@ import _ from 'lodash';
 import {
   clearDBCollections,
   closeDB,
-  getAgent,
+  getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
-import { getTeam } from '../../../controllers/team';
-import { findUserByEmail } from '../../../controllers/user';
-
-const MOCK_USER = {
-  email: 'fake@deploysentinel.com',
-  password: 'TacoCat!2#4X',
-};
+} from '@/fixtures';
 
 describe('team router', () => {
   const server = getServer();
-
-  const login = async () => {
-    const agent = getAgent(server);
-
-    await agent
-      .post('/register/password')
-      .send({ ...MOCK_USER, confirmPassword: 'wrong-password' })
-      .expect(400);
-    await agent
-      .post('/register/password')
-      .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
-      .expect(200);
-
-    const user = await findUserByEmail(MOCK_USER.email);
-    const team = await getTeam(user?.team as any);
-
-    if (team === null || user === null) {
-      throw Error('team or user not found');
-    }
-
-    await user.save();
-
-    // login app
-    await agent.post('/login/password').send(MOCK_USER).expect(302);
-
-    return {
-      agent,
-      team,
-      user,
-    };
-  };
 
   beforeAll(async () => {
     await server.start();
@@ -62,7 +24,7 @@ describe('team router', () => {
   });
 
   it('GET /team', async () => {
-    const { agent } = await login();
+    const { agent } = await getLoggedInAgent(server);
 
     const resp = await agent.get('/team').expect(200);
 
