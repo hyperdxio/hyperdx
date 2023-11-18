@@ -3,7 +3,7 @@ import { Button, Form } from 'react-bootstrap';
 import { NextSeo } from 'next-seo';
 import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
-import { KeyboardEventHandler, useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 
@@ -18,8 +18,6 @@ type FormData = {
   confirmPassword: string;
 };
 
-type FormControlElement = HTMLInputElement | HTMLTextAreaElement;
-
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const isRegister = action === 'register';
   const {
@@ -27,6 +25,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     handleSubmit,
     formState: { errors, isSubmitting },
     setError,
+    watch,
   } = useForm<FormData>({
     reValidateMode: 'onSubmit',
   });
@@ -48,18 +47,8 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     }
   }, [installation, isRegister, router]);
 
-  const [currentPassword, setCurrentPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-
-  const updateCurrentPassword: KeyboardEventHandler<FormControlElement> = e => {
-    const val = (e.target as HTMLInputElement).value;
-    setCurrentPassword(val);
-  };
-
-  const updateConfirmPassword: KeyboardEventHandler<FormControlElement> = e => {
-    const val = (e.target as HTMLInputElement).value;
-    setConfirmPassword(val);
-  };
+  const currentPassword = watch('password', '');
+  const confirmPassword = watch('confirmPassword', '');
 
   const confirmPass = () => {
     return currentPassword === confirmPassword;
@@ -165,7 +154,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   className={cx('border-0', {
                     'mb-3': isRegister,
                   })}
-                  onKeyUp={updateCurrentPassword}
                   {...form.password}
                 />
                 {isRegister && (
@@ -186,7 +174,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                       id="confirmPassword"
                       type="password"
                       className="border-0 mb-2"
-                      onKeyUp={updateConfirmPassword}
                       {...form.confirmPassword}
                     />
                     <PasswordCheck password={currentPassword} />

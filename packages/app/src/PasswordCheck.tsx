@@ -6,36 +6,36 @@ const checkOneLower = (password: string) => /[a-z]+/.test(password);
 const checkOneNumber = (password: string) => /\d+/.test(password);
 const checkOneSpecial = (password: string) => /\W+/.test(password);
 
-export const PasswordCheck = (password: string | null) => {
-  password = password ?? '';
+export const PasswordCheck = (opts: { password: string }) => {
+  const password = opts.password;
   return (
-    <ul>
-      <li>
+    <div>
+      <div>
         <CheckOrX handler={checkLength} password={password}>
           minimum 12 characters
         </CheckOrX>
-      </li>
-      <li>
+      </div>
+      <div>
         <CheckOrX handler={checkOneUpper} password={password}>
           at least 1 uppercase
         </CheckOrX>
-      </li>
-      <li>
+      </div>
+      <div>
         <CheckOrX handler={checkOneLower} password={password}>
           at least 1 lowercase
         </CheckOrX>
-      </li>
-      <li>
+      </div>
+      <div>
         <CheckOrX handler={checkOneNumber} password={password}>
           at least 1 number
         </CheckOrX>
-      </li>
-      <li>
+      </div>
+      <div>
         <CheckOrX handler={checkOneSpecial} password={password}>
           at least 1 special character
         </CheckOrX>
-      </li>
-    </ul>
+      </div>
+    </div>
   );
 };
 
