@@ -1694,6 +1694,9 @@ export const getLogBatchGroupedByBody = async ({
       span.end();
     },
   );
+
+  // @ts-ignore
+  return result;
 };
 
 export const getLogBatch = async ({
