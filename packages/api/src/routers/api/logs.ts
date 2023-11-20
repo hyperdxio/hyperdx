@@ -109,12 +109,10 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
       teamId: teamId.toString(),
     });
 
-    // @ts-expect-error
     if (logs.data.length === 0) {
       return res.json({ data: [] });
     }
 
-    // @ts-expect-error
     // use the 1st id as the representative id
     const lines = logs.data.map(log => [log.ids[0], log.body]);
     // TODO: separate patterns by service
@@ -136,7 +134,6 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
         trends: Record<string, number>;
       }
     > = {};
-    // @ts-expect-error
     for (const log of logs.data) {
       const patternId = logsPatternsData.result[log.ids[0]];
       if (patternId) {
