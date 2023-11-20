@@ -1,5 +1,27 @@
 # @hyperdx/app
 
+## 1.2.0
+
+### Minor Changes
+
+- fe41b15: feat: Add dashboard delete confirmations and duplicate chart button
+- bbda669: Chart alerts: add schemas and read path
+- bf8af29: feat: Toggle columns from LogSidePanel
+- 04f82d7: LogTable and LogSidePanel UI tweaks
+- 0824ae7: API: Add support for chart alerts
+- b1a537d: feat(register): password confirmation
+- 8443a08: feat: implement CHART source alert (scheduled task)
+- 283f32a: Chart alerts: connect UI to API
+- 7d636f2: feat: enhanced registration form validation
+
+### Patch Changes
+
+- 9a72b85: fix: getLogBatchGroupedByBody missing return bug (regression)
+- 956e5b5: chore: bump vector to v0.34.0
+- 2fcd167: Chart alerts: Add UI to chart builder
+- 640a5ba: fix: Chart alert default interval
+- e904ec3: Refactor: Extract shared alert logic into a separate component
+
 ## 1.1.4
 
 ### Patch Changes
