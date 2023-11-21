@@ -492,6 +492,7 @@ function isExceptionSpan({ logData }: { logData: any }) {
 
 function TraceSubpanel({
   logData,
+  isException,
   onClose,
   onPropertyAddClick,
   generateChartUrl,
@@ -500,6 +501,7 @@ function TraceSubpanel({
   toggleColumn,
 }: {
   logData: any;
+  isException: boolean;
   onClose: () => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
@@ -558,7 +560,6 @@ function TraceSubpanel({
   }, [_searchedQuery, _inputQuery]);
   // Allows us to determine if the user has changed the search query
   const searchedQuery = _searchedQuery ?? '';
-  const isException = isExceptionSpan({ logData: selectedLogData });
 
   const exceptionBreadcrumbs = useMemo<StacktraceBreadcrumb[]>(() => {
     try {
@@ -2010,8 +2011,14 @@ export default function LogSidePanel({
     onClose();
   }, [setQueryTab, isNestedPanel, onClose]);
 
+  const isException = useMemo(
+    () => isExceptionSpan({ logData: logDataRaw?.data[0] }),
+    [logDataRaw],
+  );
+
   const logData = useMemo(() => logDataRaw?.data[0], [logDataRaw]);
-  const displayedTab = tab ?? (logData?.type === 'span' ? 'trace' : 'parsed');
+  const displayedTab =
+    tab ?? (logData?.type === 'span' || isException ? 'trace' : 'parsed');
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
@@ -2177,6 +2184,7 @@ export default function LogSidePanel({
                   >
                     <TraceSubpanel
                       logData={logData}
+                      isException={isException}
                       onPropertyAddClick={onPropertyAddClick}
                       generateSearchUrl={generateSearchUrl}
                       generateChartUrl={generateChartUrl}
