@@ -25,6 +25,7 @@ import api from './api';
 import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { KEEP_DRAWER_OPEN_DATA_ATTRIBUTE } from './useDrawerWithInteractiveBg';
 
 import styles from '../styles/LogTable.module.scss';
 
@@ -583,6 +584,7 @@ export const RawLogTable = memo(
           className="w-100 bg-inherit"
           id={tableId}
           style={{ tableLayout: 'fixed' }}
+          {...{ [KEEP_DRAWER_OPEN_DATA_ATTRIBUTE]: true }}
         >
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
