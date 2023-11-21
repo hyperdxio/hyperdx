@@ -23,6 +23,7 @@ $padding-x: 24px;
 
 .panelDetails {
   padding: $padding-x;
+  padding-bottom: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -48,6 +49,18 @@ $padding-x: 24px;
   flex-grow: 1;
 }
 
+.panelSectionWrapper {
+  background-color: #14171b;
+  margin: 10px -24px 24px;
+  border-top: 1px solid $slate-950;
+  border-bottom: 1px solid $slate-950;
+}
+
+.panelSectionWrapperTitle {
+  padding: 18px 24px;
+  border-bottom: 1px solid $slate-950;
+}
+
 .kbdShortcuts {
   background: $slate-950;
   border-top: 1px solid $slate-900;
@@ -70,4 +83,38 @@ $padding-x: 24px;
   height: 21px;
   width: 1px;
   background: $slate-800;
+}
+
+.lineContext {
+  color: $slate-300;
+  background-color: #ffffff08;
+  padding: 8px 0;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.lineContextCurrentLine {
+  background-color: $slate-800;
+  color: $slate-100;
+  font-weight: 600;
+
+  .lineContextLineNo {
+    color: $slate-100;
+    border-right-color: $slate-600;
+  }
+}
+
+.lineContextLineNo {
+  display: inline-block;
+  width: 60px;
+  text-align: right;
+  border-right: 1px solid $slate-950;
+  padding-right: 12px;
+  margin-right: 12px;
+}
+
+.emptyMessage {
+  color: $slate-500;
+  text-align: center;
+  padding: 10px;
 }

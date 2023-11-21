@@ -1,7 +1,6 @@
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { useRouter } from 'next/router';
 import { useState, useEffect, useRef } from 'react';
-import Convert from 'ansi-to-html';
 
 import type { MutableRefObject } from 'react';
 

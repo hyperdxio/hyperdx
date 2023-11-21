@@ -78,6 +78,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           name="viewport"
           content="width=device-width, initial-scale=0.75"
         />
+        <meta name="theme-color" content="#25292e"></meta>
       </Head>
 
       <SSRProvider>

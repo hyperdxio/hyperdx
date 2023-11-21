@@ -25,6 +25,7 @@ import api from './api';
 import { useWindowSize } from './utils';
 import { Pattern } from './PatternSidePanel';
 import { Granularity, timeBucketByGranularity } from './ChartUtils';
+import { UNDEFINED_WIDTH } from './tableUtils';
 
 const PatternTrendChartTooltip = (props: any) => {
   return null;
@@ -149,9 +150,6 @@ const MemoPatternTable = memo(
   }) => {
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
-
-    // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-    const UNDEFINED_WIDTH = 99999;
 
     //we need a reference to the scrolling element for logic down below
     const tableContainerRef = useRef<HTMLDivElement>(null);
