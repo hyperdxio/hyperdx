@@ -714,3 +714,19 @@ div.react-datepicker {
     );
   border-radius: 4px;
 }
+
+.effect-pulse {
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
