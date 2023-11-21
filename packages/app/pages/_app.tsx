@@ -61,7 +61,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       <Head>
         <link
           rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
+          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"
         />
         <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
