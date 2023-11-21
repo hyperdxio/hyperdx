@@ -83,6 +83,7 @@ const Tile = forwardRef(
   (
     {
       chart,
+      alert,
       dateRange,
       onDuplicateClick,
       onEditClick,
@@ -91,7 +92,6 @@ const Tile = forwardRef(
       queued,
       onSettled,
       granularity,
-      hasAlert,
 
       // Properties forwarded by grid layout
       className,
@@ -102,6 +102,7 @@ const Tile = forwardRef(
       children,
     }: {
       chart: Chart;
+      alert?: Alert;
       dateRange: [Date, Date];
       onDuplicateClick: () => void;
       onEditClick: () => void;
@@ -110,7 +111,6 @@ const Tile = forwardRef(
       onSettled?: () => void;
       queued?: boolean;
       granularity: Granularity | undefined;
-      hasAlert?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -200,14 +200,22 @@ const Tile = forwardRef(
           <div className="fs-7 text-muted">{chart.name}</div>
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
-            {hasAlert && (
-              <div
-                className="rounded px-1 text-muted bg-grey opacity-90 cursor-default"
-                title="Has alert"
-              >
-                <span className="bi bi-bell" />
+            {alert && (
+              <div className="rounded px-1 text-muted bg-grey opacity-90 cursor-default">
+                {alert.state === 'ALERT' ? (
+                  <i
+                    className="bi bi-bell text-danger effect-pulse"
+                    title="Has alert and is in ALERT state"
+                  ></i>
+                ) : (
+                  <i
+                    className="bi bi-bell"
+                    title="Has alert and is in OK state"
+                  ></i>
+                )}
               </div>
             )}
+
             <Button
               variant="link"
               className="text-muted-hover p-0"
@@ -717,7 +725,7 @@ export default function DashboardPage() {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
-            hasAlert={dashboard?.alerts?.some(a => a.chartId === chart.id)}
+            alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
             onDuplicateClick={async () => {
               if (dashboard != null) {
                 if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {
