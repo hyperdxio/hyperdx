@@ -72,6 +72,7 @@
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",
     "jest": "^28.1.1",
+    "@jest/globals": "29.7.0",
     "nodemon": "^2.0.20",
     "rimraf": "^4.4.1",
     "supertest": "^6.3.1",

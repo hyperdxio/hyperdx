@@ -704,6 +704,7 @@ export const getMetricsChart = async ({
   startTime: number; // unix in ms
   teamId: string;
 }) => {
+  await redisClient.connect()
   const tableName = `default.${TableName.Metric}`;
   const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
     undefined, // default version
@@ -803,6 +804,8 @@ FROM
   (
     ?
   )
+WHERE
+  isNaN(rate) = 0
 `.trim(),
     [SqlString.raw(sumMetricSource)],
   );
