@@ -158,27 +158,82 @@ export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
   },
 ];
 
+const MAX_URL_LENGTH = 120;
+const Url = ({ url }: { url?: string }) => (
+  <span className="text-slate-300" title={url}>
+    {url == null
+      ? ''
+      : url.length > MAX_URL_LENGTH
+      ? `${url.slice(0, MAX_URL_LENGTH)}...`
+      : url}
+  </span>
+);
+
 export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   {
     accessorKey: 'category',
     header: 'Category',
+    size: 180,
     cell: ({ row }) => (
       <span className="text-slate-300">{row.original.category}</span>
     ),
   },
   {
     accessorKey: 'message',
-    header: 'Message',
+    header: 'Data',
     size: UNDEFINED_WIDTH,
-    cell: ({ row }) =>
-      row.original.message || <span className="text-slate-500">Empty</span>,
+    cell: ({ row }) => {
+      // fetch
+      if (row.original.category === 'fetch' && row.original.data) {
+        const { method, url } = row.original.data;
+        return (
+          <>
+            <span>{method} </span>
+            <span className="text-slate-300" title={url}>
+              <Url url={url} />
+            </span>
+          </>
+        );
+      }
+
+      // navigation
+      if (row.original.category === 'navigation' && row.original.data) {
+        const { from, to } = row.original.data;
+        return (
+          <>
+            <span className="text-slate-300" title={from}>
+              <Url url={from} />
+            </span>
+            <span>{' → '}</span>
+            <span className="text-slate-300" title={to}>
+              <Url url={to} />
+            </span>
+          </>
+        );
+      }
+
+      return (
+        row.original.message || <span className="text-slate-500">Empty</span>
+      );
+    },
   },
   {
     accessorKey: 'level',
     header: '',
-    size: 140,
-    cell: ({ row }) =>
-      row.original.level ? <LogLevel level={row.original.level} /> : null,
+    size: 80,
+    cell: ({ row }) => {
+      if (row.original.category === 'fetch' && row.original.data) {
+        const { status_code } = row.original.data;
+        return parseInt(status_code) >= 400 ? (
+          <span className="text-danger"> {status_code}</span>
+        ) : (
+          <span className="text-slate-500"> {status_code}</span>
+        );
+      }
+      return row.original.level ? (
+        <LogLevel level={row.original.level} />
+      ) : null;
+    },
   },
   {
     header: 'Timestamp',
@@ -200,9 +255,9 @@ export const headerColumns: ColumnDef<[string, string]>[] = [
     header: 'Header',
     size: 260,
     cell: ({ row }) => (
-      <span className="text-slate-300 text-truncate" title={row.original[0]}>
+      <div className="text-slate-300 text-truncate" title={row.original[0]}>
         {row.original[0]}
-      </span>
+      </div>
     ),
   },
   {

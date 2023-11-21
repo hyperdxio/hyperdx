@@ -1876,6 +1876,11 @@ const ExceptionSubpanel = ({
     [firstException.stacktrace?.frames],
   );
 
+  const chronologicalBreadcrumbs = useMemo(
+    () => breadcrumbs?.slice().reverse() ?? [],
+    [breadcrumbs],
+  );
+
   // TODO: show all frames (stackable)
   return (
     <div>
@@ -1937,7 +1942,7 @@ const ExceptionSubpanel = ({
         <SectionWrapper>
           <Table
             columns={breadcrumbColumns}
-            data={breadcrumbs}
+            data={chronologicalBreadcrumbs}
             emptyMessage="No breadcrumbs found"
           />
         </SectionWrapper>
@@ -2011,12 +2016,10 @@ export default function LogSidePanel({
     onClose();
   }, [setQueryTab, isNestedPanel, onClose]);
 
-  const isException = useMemo(
-    () => isExceptionSpan({ logData: logDataRaw?.data[0] }),
-    [logDataRaw],
-  );
-
   const logData = useMemo(() => logDataRaw?.data[0], [logDataRaw]);
+
+  const isException = useMemo(() => isExceptionSpan({ logData }), [logData]);
+
   const displayedTab =
     tab ?? (logData?.type === 'span' || isException ? 'trace' : 'parsed');
 
