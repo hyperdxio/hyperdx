@@ -559,6 +559,31 @@ function TraceSubpanel({
   // Allows us to determine if the user has changed the search query
   const searchedQuery = _searchedQuery ?? '';
   const isException = isExceptionSpan({ logData: selectedLogData });
+
+  const exceptionBreadcrumbs = useMemo<StacktraceBreadcrumb[]>(() => {
+    try {
+      return JSON.parse(
+        selectedLogData?.['string.values']?.[
+          selectedLogData?.['string.names']?.indexOf('breadcrumbs')
+        ] ?? '[]',
+      );
+    } catch (e) {
+      return [];
+    }
+  }, [selectedLogData]);
+
+  const exceptionValues = useMemo<any[]>(() => {
+    try {
+      return JSON.parse(
+        selectedLogData?.['string.values']?.[
+          selectedLogData?.['string.names']?.indexOf('exception.values')
+        ] ?? '[]',
+      );
+    } catch (e) {
+      return [];
+    }
+  }, [selectedLogData]);
+
   // Clear search query when we close the panel
   // TODO: This doesn't work because it breaks navigation to things like the sessions page,
   // probably due to a race condition. Need to fix later.
@@ -667,50 +692,32 @@ function TraceSubpanel({
                 )}
               >
                 <ExceptionSubpanel
-                  breadcrumbs={
-                    JSON.parse(
-                      selectedLogData?.['string.values']?.[
-                        selectedLogData?.['string.names']?.indexOf(
-                          'breadcrumbs',
-                        )
-                      ],
-                    ) ?? []
-                  }
-                  exceptionValues={
-                    JSON.parse(
-                      selectedLogData?.['string.values']?.[
-                        selectedLogData?.['string.names']?.indexOf(
-                          'exception.values',
-                        )
-                      ],
-                    ) ?? []
-                  }
+                  breadcrumbs={exceptionBreadcrumbs}
+                  exceptionValues={exceptionValues}
                 />
               </ErrorBoundary>
             )}
             {!isException && (
-              <>
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                      An error occurred while rendering event properties.
-                    </div>
-                  )}
-                >
-                  <PropertySubpanel
-                    logData={selectedLogData}
-                    onPropertyAddClick={onPropertyAddClick}
-                    generateSearchUrl={generateSearchUrl}
-                    onClose={onClose}
-                    generateChartUrl={generateChartUrl}
-                    displayedColumns={displayedColumns}
-                    toggleColumn={toggleColumn}
-                  />
-                </ErrorBoundary>
-              </>
+              <ErrorBoundary
+                onError={err => {
+                  console.error(err);
+                }}
+                fallbackRender={() => (
+                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                    An error occurred while rendering event properties.
+                  </div>
+                )}
+              >
+                <PropertySubpanel
+                  logData={selectedLogData}
+                  onPropertyAddClick={onPropertyAddClick}
+                  generateSearchUrl={generateSearchUrl}
+                  onClose={onClose}
+                  generateChartUrl={generateChartUrl}
+                  displayedColumns={displayedColumns}
+                  toggleColumn={toggleColumn}
+                />
+              </ErrorBoundary>
             )}
             <ErrorBoundary
               onError={err => {
