@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "ci:lint": "yarn lint",
-    "ci:unit": "jest --coverage"
+    "ci:unit": "jest --coverage",
+    "storybook": "./node_modules/.bin/sb dev"
   },
   "dependencies": {
     "@hyperdx/browser": "^0.18.4",
@@ -87,6 +88,14 @@
   "devDependencies": {
     "@deploysentinel/jest-rtl-debugger": "^0.2.3",
     "@jedmao/location": "^3.0.0",
+    "@storybook/addon-essentials": "^7.5.3",
+    "@storybook/addon-interactions": "^7.5.3",
+    "@storybook/cli": "^7.5.3",
+    "@storybook/core-server": "^7.5.3",
+    "@storybook/jest": "^0.2.3",
+    "@storybook/nextjs": "^7.5.3",
+    "@storybook/test-runner": "^0.15.1",
+    "@storybook/testing-library": "^0.2.2",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^12.1.4",
     "@testing-library/user-event": "^14.4.3",
