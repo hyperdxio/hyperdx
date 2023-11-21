@@ -32,6 +32,7 @@ describe('team router', () => {
 Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",
+  "sentryDSN": "",
   "teamInvites": Array [],
   "users": Array [
     Object {
