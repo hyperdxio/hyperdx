@@ -7,8 +7,6 @@ import { CloseButton } from 'react-bootstrap';
 import { useLocalStorage } from './utils';
 import { ColumnDef, Row } from '@tanstack/react-table';
 import { TableCellButton } from './components/Table';
-import LogLevel from './LogLevel';
-
 import { UNDEFINED_WIDTH } from './tableUtils';
 
 export const CollapsibleSection = ({
@@ -158,16 +156,53 @@ export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
   },
 ];
 
-const MAX_URL_LENGTH = 120;
+/**
+ * Breadcrumbs
+ */
+
 const Url = ({ url }: { url?: string }) => (
-  <span className="text-slate-300" title={url}>
-    {url == null
-      ? ''
-      : url.length > MAX_URL_LENGTH
-      ? `${url.slice(0, MAX_URL_LENGTH)}...`
-      : url}
+  <span className="text-slate-300 no-underline" title={url}>
+    {url}
   </span>
 );
+
+const StatusChip = React.memo(({ status }: { status?: number }) => {
+  if (!status) {
+    return null;
+  }
+  const className =
+    status >= 500
+      ? 'text-danger bg-danger'
+      : status >= 400
+      ? 'text-warning bg-warning'
+      : 'text-success bg-success';
+  return (
+    <span
+      className={`badge lh-base rounded-5 bg-opacity-10 fw-normal ${className}`}
+    >
+      {status}
+    </span>
+  );
+});
+
+const LevelChip = React.memo(({ level }: { level?: string }) => {
+  if (!level) {
+    return null;
+  }
+  const className = level.includes('error')
+    ? 'text-danger bg-danger'
+    : level.includes('warn') || level.includes('warning')
+    ? 'text-warning bg-warning'
+    : 'text-slate-300 bg-grey';
+
+  return (
+    <span
+      className={`badge lh-base rounded-5 bg-opacity-10 fw-normal ${className}`}
+    >
+      {level}
+    </span>
+  );
+});
 
 export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
   {
@@ -175,7 +210,16 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     header: 'Category',
     size: 180,
     cell: ({ row }) => (
-      <span className="text-slate-300">{row.original.category}</span>
+      <span className="text-slate-300 d-flex align-items-center gap-2">
+        {row.original.category}
+        {row.original.category === 'console' && (
+          <LevelChip level={row.original.level} />
+        )}
+        {row.original.category === 'fetch' ||
+        row.original.category === 'xhr' ? (
+          <StatusChip status={row.original.data?.status_code} />
+        ) : null}
+      </span>
     ),
   },
   {
@@ -184,15 +228,18 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     size: UNDEFINED_WIDTH,
     cell: ({ row }) => {
       // fetch
-      if (row.original.category === 'fetch' && row.original.data) {
+      if (
+        row.original.data &&
+        (row.original.category === 'fetch' || row.original.category === 'xhr')
+      ) {
         const { method, url } = row.original.data;
         return (
-          <>
+          <div className="text-truncate">
             <span>{method} </span>
             <span className="text-slate-300" title={url}>
               <Url url={url} />
             </span>
-          </>
+          </div>
         );
       }
 
@@ -200,7 +247,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
       if (row.original.category === 'navigation' && row.original.data) {
         const { from, to } = row.original.data;
         return (
-          <>
+          <div className="text-truncate">
             <span className="text-slate-300" title={from}>
               <Url url={from} />
             </span>
@@ -208,31 +255,28 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
             <span className="text-slate-300" title={to}>
               <Url url={to} />
             </span>
-          </>
+          </div>
         );
       }
 
-      return (
-        row.original.message || <span className="text-slate-500">Empty</span>
-      );
-    },
-  },
-  {
-    accessorKey: 'level',
-    header: '',
-    size: 80,
-    cell: ({ row }) => {
-      if (row.original.category === 'fetch' && row.original.data) {
-        const { status_code } = row.original.data;
-        return parseInt(status_code) >= 400 ? (
-          <span className="text-danger"> {status_code}</span>
-        ) : (
-          <span className="text-slate-500"> {status_code}</span>
+      // console
+      if (row.original.category === 'console') {
+        const { message } = row.original;
+        return (
+          <pre
+            className="text-slate-300 mb-0 text-truncate fs-8"
+            title={message}
+          >
+            {message}
+          </pre>
         );
       }
-      return row.original.level ? (
-        <LogLevel level={row.original.level} />
-      ) : null;
+
+      if (row.original.message) {
+        return <div className="text-truncate">{row.original.message}</div>;
+      }
+
+      return <span className="text-slate-500">Empty</span>;
     },
   },
   {
@@ -245,6 +289,31 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     ),
   },
 ];
+
+export const useShowMoreRows = <T extends object>({
+  rows,
+  maxRows = 5,
+}: {
+  rows: T[];
+  maxRows?: number;
+}) => {
+  const [isExpanded, setIsExpanded] = React.useState(false);
+
+  const visibleRows = React.useMemo(() => {
+    return isExpanded ? rows : rows.slice(0, maxRows);
+  }, [rows, isExpanded, maxRows]);
+
+  const hiddenRowsCount = React.useMemo<number | null>(() => {
+    const length = rows.length ?? 0;
+    return length > maxRows ? length - maxRows : null;
+  }, [rows.length, maxRows]);
+
+  const handleToggleMoreRows = React.useCallback(() => {
+    setIsExpanded(!isExpanded);
+  }, [isExpanded]);
+
+  return { visibleRows, hiddenRowsCount, handleToggleMoreRows, isExpanded };
+};
 
 /**
  * Request / Response Headers elements
