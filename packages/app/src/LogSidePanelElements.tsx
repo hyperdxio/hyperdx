@@ -161,7 +161,7 @@ export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
  */
 
 const Url = ({ url }: { url?: string }) => (
-  <span className="text-slate-300 no-underline" title={url}>
+  <span className="text-slate-300" title={url}>
     {url}
   </span>
 );

@@ -2209,10 +2209,7 @@ export default function LogSidePanel({
                     : []),
                 ]}
                 activeItem={displayedTab}
-                onClick={(v: any) => {
-                  setTab(v);
-                  throw new Error('For Kolechia');
-                }}
+                onClick={(v: any) => setTab(v)}
               />
               <ErrorBoundary
                 onError={err => {
