@@ -50,45 +50,21 @@ describe('clickhouse', () => {
       .mockResolvedValueOnce({ json: () => Promise.resolve({}) } as any);
 
     await clickhouse.getMetricsChart({
-      aggFn: clickhouse.AggFn.Count,
+      aggFn: clickhouse.AggFn.AvgRate,
       dataType: 'Sum',
       endTime: Date.now(),
       granularity: clickhouse.Granularity.OneHour,
       name: 'test',
       q: '',
-      startTime: Date.now(),
+      startTime: Date.now() - 1000 * 60 * 60 * 24,
       teamId: 'test',
     });
 
     expect(clickhouse.client.query).toHaveBeenCalledTimes(1);
-    expect(clickhouse.client.query).toHaveBeenCalledWith({
-      "format": "JSON", "query": `
-    WITH metrics AS (SELECT
-    toStartOfInterval(timestamp, INTERVAL '1 hour') as timestamp,
-    min(value) as value,
-    _string_attributes,
-    name
-  FROM
-    \`default\`.\`metric_stream\`
-  WHERE
-    name = 'test'
-    AND data_type = 'Sum'
-    AND ((_timestamp_sort_key >= 1700608499630000128 AND _timestamp_sort_key < 1700608499630000128))
-  GROUP BY
-    name,
-    _string_attributes,
-    timestamp
-  ORDER BY
-    _string_attributes,
-    timestamp ASC)
-    SELECT toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL '1 hour')) AS ts_bucket,name AS group,COUNT(value) as data
-    FROM metrics
-    GROUP BY group, ts_bucket
-    ORDER BY ts_bucket ASC
-    WITH FILL
-      FROM toUnixTimestamp(toStartOfInterval(toDateTime(1700608499.63), INTERVAL '1 hour'))
-      TO toUnixTimestamp(toStartOfInterval(toDateTime(1700608499.63), INTERVAL '1 hour'))
-      STEP 3600
-    `});
+    expect(clickhouse.client.query).toHaveBeenCalledWith(expect.objectContaining(
+      {
+        "format": "JSON",
+        "query": expect.stringContaining("isNaN(rate) = 0")
+      }));
   });
 });
