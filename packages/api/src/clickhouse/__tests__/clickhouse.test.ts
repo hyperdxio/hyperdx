@@ -1,5 +1,5 @@
 import * as clickhouse from '..';
-import {describe, beforeEach, jest, it, expect} from '@jest/globals';
+import { describe, beforeEach, jest, it, expect } from '@jest/globals';
 
 describe('clickhouse', () => {
   beforeEach(() => {
@@ -61,10 +61,11 @@ describe('clickhouse', () => {
     });
 
     expect(clickhouse.client.query).toHaveBeenCalledTimes(1);
-    expect(clickhouse.client.query).toHaveBeenCalledWith(expect.objectContaining(
-      {
-        "format": "JSON",
-        "query": expect.stringContaining("isNaN(rate) = 0")
-      }));
+    expect(clickhouse.client.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'JSON',
+        query: expect.stringContaining('isNaN(rate) = 0'),
+      }),
+    );
   });
 });

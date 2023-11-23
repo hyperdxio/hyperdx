@@ -88,6 +88,7 @@
     "dev:task": "ts-node -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias",
     "lint": "eslint . --ext .ts",
+    "lintfix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "jest --runInBand --ci --forceExit --coverage",
     "dev:int": "jest --watchAll --runInBand --detectOpenHandles"
