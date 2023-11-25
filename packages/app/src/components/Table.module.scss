@@ -9,6 +9,7 @@ $horizontalPadding: 12px;
 .tableWrapper {
   table {
     width: 100%;
+    table-layout: fixed;
 
     th,
     td {
@@ -41,6 +42,7 @@ $horizontalPadding: 12px;
     }
 
     td {
+      font-size: 12px;
       padding: $normalVerticalPadding $horizontalPadding;
       word-wrap: break-word;
       word-break: break-all;
@@ -68,6 +70,18 @@ $horizontalPadding: 12px;
     th,
     td {
       padding: $comfortableVerticalPadding $horizontalPadding;
+    }
+  }
+
+  // Interactive
+  &.tableInteractive {
+    tr:hover td {
+      cursor: pointer;
+      background-color: #ffffff08;
+    }
+    tr:active td {
+      background-color: #00000050;
+      opacity: 0.8;
     }
   }
 }

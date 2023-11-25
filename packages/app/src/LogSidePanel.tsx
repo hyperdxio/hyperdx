@@ -21,6 +21,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryParam } from 'use-query-params';
 import type { StacktraceFrame, StacktraceBreadcrumb } from './types';
 import {
+  useShowMoreRows,
   networkColumns,
   stacktraceColumns,
   breadcrumbColumns,
@@ -695,6 +696,7 @@ function TraceSubpanel({
                 <ExceptionSubpanel
                   breadcrumbs={exceptionBreadcrumbs}
                   exceptionValues={exceptionValues}
+                  logData={selectedLogData}
                 />
               </ErrorBoundary>
             )}
@@ -1847,9 +1849,11 @@ function SidePanelHeader({
 }
 
 const ExceptionSubpanel = ({
+  logData,
   breadcrumbs,
   exceptionValues,
 }: {
+  logData?: any;
   breadcrumbs?: StacktraceBreadcrumb[];
   exceptionValues: {
     type: string;
@@ -1876,10 +1880,39 @@ const ExceptionSubpanel = ({
     [firstException.stacktrace?.frames],
   );
 
-  const chronologicalBreadcrumbs = useMemo(
-    () => breadcrumbs?.slice().reverse() ?? [],
-    [breadcrumbs],
-  );
+  const chronologicalBreadcrumbs = useMemo<StacktraceBreadcrumb[]>(() => {
+    return [
+      {
+        category: 'exception',
+        timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
+        message: `${firstException.type}: ${firstException.value} `,
+      },
+      ...(breadcrumbs?.slice().reverse() ?? []),
+    ];
+  }, [
+    breadcrumbs,
+    firstException.type,
+    firstException.value,
+    logData?.timestamp,
+  ]);
+
+  const {
+    handleToggleMoreRows: handleStacktraceToggleMoreRows,
+    hiddenRowsCount: stacktraceHiddenRowsCount,
+    visibleRows: stacktraceVisibleRows,
+    isExpanded: stacktraceExpanded,
+  } = useShowMoreRows({
+    rows: stacktraceFrames,
+  });
+
+  const {
+    handleToggleMoreRows: handleBreadcrumbToggleMoreRows,
+    hiddenRowsCount: breadcrumbHiddenRowsCount,
+    visibleRows: breadcrumbVisibleRows,
+    isExpanded: breadcrumbExpanded,
+  } = useShowMoreRows({
+    rows: chronologicalBreadcrumbs,
+  });
 
   // TODO: show all frames (stackable)
   return (
@@ -1932,9 +1965,30 @@ const ExceptionSubpanel = ({
           <Table
             hideHeader
             columns={stacktraceColumns}
-            data={stacktraceFrames}
+            data={stacktraceVisibleRows}
             emptyMessage="No stack trace found"
           />
+
+          {stacktraceHiddenRowsCount ? (
+            <Button
+              variant="dark"
+              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+              size="sm"
+              as="a"
+              onClick={handleStacktraceToggleMoreRows}
+            >
+              {stacktraceExpanded ? (
+                <>
+                  <i className="bi bi-chevron-up me-2" /> Hide stack trace
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-chevron-down me-2" />
+                  Show {stacktraceHiddenRowsCount} more frames
+                </>
+              )}
+            </Button>
+          ) : null}
         </SectionWrapper>
       </CollapsibleSection>
 
@@ -1942,9 +1996,29 @@ const ExceptionSubpanel = ({
         <SectionWrapper>
           <Table
             columns={breadcrumbColumns}
-            data={chronologicalBreadcrumbs}
+            data={breadcrumbVisibleRows}
             emptyMessage="No breadcrumbs found"
           />
+          {breadcrumbHiddenRowsCount ? (
+            <Button
+              variant="dark"
+              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+              size="sm"
+              as="a"
+              onClick={handleBreadcrumbToggleMoreRows}
+            >
+              {breadcrumbExpanded ? (
+                <>
+                  <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-chevron-down me-2" />
+                  Show {breadcrumbHiddenRowsCount} more breadcrumbs
+                </>
+              )}
+            </Button>
+          ) : null}
         </SectionWrapper>
       </CollapsibleSection>
     </div>
