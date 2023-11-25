@@ -17,6 +17,7 @@ type TableProps<T extends object> = {
   hideHeader?: boolean;
   borderless?: boolean;
   density?: 'compact' | 'normal' | 'comfortable';
+  interactive?: boolean;
 };
 
 export const Table = <T extends object>({
@@ -26,6 +27,7 @@ export const Table = <T extends object>({
   hideHeader,
   borderless,
   density = 'normal',
+  interactive,
 }: TableProps<T>) => {
   const table = useReactTable({
     data,
@@ -43,6 +45,7 @@ export const Table = <T extends object>({
         [styles.tableBorderless]: borderless,
         [styles.tableDensityCompact]: density === 'compact',
         [styles.tableDensityComfortable]: density === 'comfortable',
+        [styles.tableInteractive]: interactive,
       })}
     >
       <table>
@@ -51,7 +54,15 @@ export const Table = <T extends object>({
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map(header => (
-                  <th key={header.id}>
+                  <th
+                    key={header.id}
+                    style={{
+                      width:
+                        header.column.getSize() === UNDEFINED_WIDTH
+                          ? '100%'
+                          : header.column.getSize(),
+                    }}
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -75,11 +86,6 @@ export const Table = <T extends object>({
                       cell.column.getSize() === UNDEFINED_WIDTH
                         ? '100%'
                         : cell.column.getSize(),
-                    // Allow unknown width columns to shrink to 0
-                    minWidth:
-                      cell.column.getSize() === UNDEFINED_WIDTH
-                        ? 0
-                        : cell.column.getSize(),
                   }}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -101,7 +107,7 @@ export const TableCellButton: React.VFC<{
 }> = ({ onClick, title, label, biIcon }) => {
   return (
     <button className={styles.tableCellButton} title={title} onClick={onClick}>
-      <span>{label}</span>
+      {label && <span>{label}</span>}
       {biIcon ? <i className={`bi bi-${biIcon}`} /> : null}
     </button>
   );

@@ -117,11 +117,19 @@ export type StacktraceFrame = {
   post_context?: string[];
 };
 
+export type StacktraceBreadcrumbCategory =
+  | 'ui.click'
+  | 'fetch'
+  | 'xhr'
+  | 'console'
+  | 'navigation'
+  | string;
+
 export type StacktraceBreadcrumb = {
   type?: string;
   level?: string;
   event_id?: string;
-  category?: string;
+  category?: StacktraceBreadcrumbCategory;
   message?: string;
   data?: { [key: string]: any };
   timestamp: number;
