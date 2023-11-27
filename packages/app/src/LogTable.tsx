@@ -265,8 +265,8 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
-    const timeFormat: TimeFormat = useUserPreferences().timeFormat
-    const tsFormat = TIME_TOKENS[timeFormat]
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const tsFormat = TIME_TOKENS[timeFormat];
     const tsShortFormat = 'HH:mm:ss';
     // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
     const UNDEFINED_WIDTH = 99999;

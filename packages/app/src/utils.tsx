@@ -153,9 +153,9 @@ export const useDebounce = <T,>(
 };
 
 export const TIME_TOKENS = {
-  '12h' : 'MMM d h:mm:ss a',
-  '24h' : 'MMM d HH:mm:ss.SSS',
-}
+  '12h': 'MMM d h:mm:ss a',
+  '24h': 'MMM d HH:mm:ss.SSS',
+};
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State to store our value

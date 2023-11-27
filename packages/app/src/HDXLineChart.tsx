@@ -74,8 +74,8 @@ const MemoChart = memo(function MemoChart({
   }, [groupKeys]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
-  const timeFormat: TimeFormat = useUserPreferences().timeFormat
-  const tsFormat = TIME_TOKENS[timeFormat]
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const tsFormat = TIME_TOKENS[timeFormat];
   // Gets the preffered time format from User Preferences, then converts it to a formattable token
 
   return (
@@ -182,8 +182,8 @@ const MemoChart = memo(function MemoChart({
 });
 
 const HDXLineChartTooltip = (props: any) => {
-  const timeFormat: TimeFormat = useUserPreferences().timeFormat
-  const tsFormat = TIME_TOKENS[timeFormat]
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const tsFormat = TIME_TOKENS[timeFormat];
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
     return (
