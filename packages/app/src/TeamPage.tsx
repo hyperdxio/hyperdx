@@ -38,9 +38,9 @@ export default function TeamPage() {
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
-  const setTimeFormat = useUserPreferences().setTimeFormat
-  const timeFormat = useUserPreferences().timeFormat
-  const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val)
+  const setTimeFormat = useUserPreferences().setTimeFormat;
+  const timeFormat = useUserPreferences().timeFormat;
+  const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val);
 
   const hasAllowedAuthMethods =
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
@@ -428,16 +428,41 @@ export default function TeamPage() {
                   </Modal.Body>
                 </Modal>
               </div>
+              <div className="text-muted my-2">
+                Note: Only affects your own view and does not propagate to other
+                team members.
+              </div>
               <div>
                 <h2 className="mt-5">Time Format</h2>
-                  <ToggleButtonGroup type="radio" value={timeFormat} onChange={handleTimeButtonClick} name="buttons">
-                    <ToggleButton id="tbg-btn-1" value='24h' variant={timeFormat === '24h' ? 'outline-success' : 'outline-secondary'}>
-                      24h
-                    </ToggleButton>
-                    <ToggleButton id="tbg-btn-2" value='12h' variant={timeFormat === '12h' ? 'outline-success' : 'outline-secondary'}>
-                      12h
-                    </ToggleButton>
-                  </ToggleButtonGroup>
+                <ToggleButtonGroup
+                  type="radio"
+                  value={timeFormat}
+                  onChange={handleTimeButtonClick}
+                  name="buttons"
+                >
+                  <ToggleButton
+                    id="tbg-btn-1"
+                    value="24h"
+                    variant={
+                      timeFormat === '24h'
+                        ? 'outline-success'
+                        : 'outline-secondary'
+                    }
+                  >
+                    24h
+                  </ToggleButton>
+                  <ToggleButton
+                    id="tbg-btn-2"
+                    value="12h"
+                    variant={
+                      timeFormat === '12h'
+                        ? 'outline-success'
+                        : 'outline-secondary'
+                    }
+                  >
+                    12h
+                  </ToggleButton>
+                </ToggleButtonGroup>
               </div>
             </>
           )}
