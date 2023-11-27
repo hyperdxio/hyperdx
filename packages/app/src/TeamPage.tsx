@@ -114,7 +114,7 @@ export default function TeamPage() {
       toast.error('Please enter a name for the Slack webhook');
       return;
     }
-    if (!url || !isValidUrl(url) || !url.includes('hooks.slack.com')) {
+    if (!url || !isValidUrl(url)) {
       toast.error('Please enter a valid Slack webhook URL');
       return;
     }
