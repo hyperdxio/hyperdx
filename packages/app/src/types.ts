@@ -104,3 +104,33 @@ export type Session = {
 export type Dictionary<T> = {
   [key: string]: T;
 };
+
+export type StacktraceFrame = {
+  filename: string;
+  function: string;
+  module?: string;
+  lineno: number;
+  colno: number;
+  in_app: boolean;
+  context_line?: string;
+  pre_context?: string[];
+  post_context?: string[];
+};
+
+export type StacktraceBreadcrumbCategory =
+  | 'ui.click'
+  | 'fetch'
+  | 'xhr'
+  | 'console'
+  | 'navigation'
+  | string;
+
+export type StacktraceBreadcrumb = {
+  type?: string;
+  level?: string;
+  event_id?: string;
+  category?: StacktraceBreadcrumbCategory;
+  message?: string;
+  data?: { [key: string]: any };
+  timestamp: number;
+};

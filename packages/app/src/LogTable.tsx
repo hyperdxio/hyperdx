@@ -25,6 +25,7 @@ import api from './api';
 import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { UNDEFINED_WIDTH } from './tableUtils';
 
 import styles from '../styles/LogTable.module.scss';
 
@@ -279,8 +280,6 @@ export const RawLogTable = memo(
 
     const tsFormat = 'MMM d HH:mm:ss.SSS';
     const tsShortFormat = 'HH:mm:ss';
-    // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-    const UNDEFINED_WIDTH = 99999;
     //once the user has scrolled within 500px of the bottom of the table, fetch more data if there is any
     const FETCH_NEXT_PAGE_PX = 500;
 

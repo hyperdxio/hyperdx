@@ -71,6 +71,20 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
+const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
+  try {
+    const url = new URL(ingestorApiUrl);
+    url.username = apiKey.replaceAll('-', '');
+    url.pathname = '0';
+    // TODO: Set up hostname from env variable
+    url.hostname = 'localhost';
+    return url.toString();
+  } catch (e) {
+    logger.error(serializeError(e));
+    return '';
+  }
+};
+
 router.get('/', isUserAuthenticated, async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -114,6 +128,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
         name: ti.name,
         url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
       })),
+      sentryDSN: getSentryDSN(team.apiKey, config.INGESTOR_API_URL),
     });
   } catch (e) {
     next(e);

@@ -1,5 +1,23 @@
 # @hyperdx/api
 
+## 1.2.0
+
+### Minor Changes
+
+- bbda669: Chart alerts: add schemas and read path
+- 0824ae7: API: Add support for chart alerts
+- b1a537d: feat(register): password confirmation
+- 8443a08: feat: implement CHART source alert (scheduled task)
+- 7d636f2: feat: enhanced registration form validation
+
+### Patch Changes
+
+- 9a72b85: fix: getLogBatchGroupedByBody missing return bug (regression)
+- 42969f2: chore: Add path aliases
+- 956e5b5: chore: bump vector to v0.34.0
+- f662007: Fixed Sum metric types from over reporting on sum and average aggFns
+- 753a175: Fix typescript compilation with path aliases
+
 ## 1.1.4
 
 ### Patch Changes
