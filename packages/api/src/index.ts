@@ -3,7 +3,6 @@ import { serializeError } from 'serialize-error';
 import * as config from './config';
 import Server from './server';
 import logger from './utils/logger';
-import { initCiEnvs } from './fixtures';
 import { isOperationalError } from './utils/errors';
 
 const server = new Server();

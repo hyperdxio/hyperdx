@@ -43,8 +43,8 @@ export const initCiEnvs = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  // create a fake team with fake api key + setup gh integration
-  await createTeam({ name: 'Fake Team' });
+
+  // Populate fake data here...
 };
 
 class MockServer extends Server {
