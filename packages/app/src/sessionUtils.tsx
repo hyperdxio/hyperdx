@@ -38,6 +38,7 @@ export function useSessionEvents({
         'location.href',
         'span_name',
         'component',
+        'otel.library.name',
       ],
       order: null,
       limit: 4000,
