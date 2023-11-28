@@ -11,8 +11,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
-    "ci:lint": "yarn lint",
-    "ci:unit": "jest --coverage"
+    "ci:lint": "yarn lint && yarn tsc --noEmit",
+    "ci:unit": "jest --ci --coverage"
   },
   "dependencies": {
     "@hyperdx/browser": "^0.18.4",
