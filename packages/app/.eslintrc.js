@@ -4,7 +4,7 @@ module.exports = {
   plugins: ['@typescript-eslint', 'prettier'],
   parserOptions: {
     tsconfigRootDir: __dirname,
-    project: ['./tsconfig.json', './tsconfig.storybook.json'],
+    project: ['./tsconfig.json'],
   },
   extends: [
     'next',
