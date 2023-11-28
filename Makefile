@@ -34,6 +34,7 @@ ci-lint:
 .PHONY: dev-int
 dev-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
 ci-int:
