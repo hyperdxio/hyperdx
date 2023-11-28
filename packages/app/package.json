@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
-    "ci:lint": "yarn lint",
+    "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "jest --coverage"
   },
   "dependencies": {
