@@ -25,11 +25,11 @@ dev-down:
 
 .PHONY: dev-lint
 dev-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t lint
 
 .PHONY: ci-lint
 ci-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run ci:lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t ci:lint
 
 .PHONY: dev-int
 dev-int:
@@ -39,6 +39,14 @@ dev-int:
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
+
+.PHONY: dev-unit
+dev-unit:
+	npx nx run-many -t dev:unit
+
+.PHONY: ci-unit
+ci-unit:
+	npx nx run-many -t ci:unit
 
 .PHONY: build-local
 build-local:
