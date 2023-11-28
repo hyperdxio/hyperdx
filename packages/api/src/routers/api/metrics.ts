@@ -32,7 +32,7 @@ router.post(
       granularity: z.nativeEnum(clickhouse.Granularity),
       groupBy: z.string().optional(),
       name: z.string().min(1),
-      type: z.nativeEnum(clickhouse.MetricsDataType).optional(), // FIXME: backward compatibility
+      type: z.nativeEnum(clickhouse.MetricsDataType),
       q: z.string(),
       startTime: z.number().int().min(0),
     }),
@@ -48,24 +48,14 @@ router.post(
         return res.sendStatus(403);
       }
 
-      // FIXME: backward compatibility
-      let metricName = name;
-      let metricDataType: any = type;
-      if (name.includes(' - ') && type == null) {
-        [metricName, metricDataType] = name.split(' - ');
-        if (metricName == null || metricDataType == null) {
-          return res.sendStatus(400);
-        }
-      }
-
       res.json(
         await clickhouse.getMetricsChart({
           aggFn,
-          dataType: metricDataType,
+          dataType: type,
           endTime,
           granularity,
           groupBy,
-          name: metricName,
+          name,
           q,
           startTime,
           teamId: teamId.toString(),
