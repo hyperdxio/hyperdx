@@ -2,10 +2,10 @@ import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 
 import logger from './logger';
-import User from '../models/user';
-import { findUserById } from '../controllers/user';
+import User from '@/models/user';
+import { findUserById } from '@/controllers/user';
 
-import type { UserDocument } from '../models/user';
+import type { UserDocument } from '@/models/user';
 
 passport.serializeUser(function (user, done) {
   done(null, (user as any)._id);

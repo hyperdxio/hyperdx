@@ -1,17 +1,14 @@
-import _ from 'lodash';
+import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
 import expressWinston from 'express-winston';
 import winston, { addColors } from 'winston';
-import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
 
 import {
   APP_TYPE,
   HYPERDX_API_KEY,
+  HYPERDX_LOG_LEVEL,
   INGESTOR_API_URL,
-  IS_DEV,
   IS_PROD,
-} from '../config';
-
-import type { IUser } from '../models/user';
+} from '@/config';
 
 // LOCAL DEV ONLY
 addColors({
@@ -24,7 +21,7 @@ addColors({
   silly: 'cyan',
 });
 
-const MAX_LEVEL = IS_PROD ? 'debug' : 'debug';
+const MAX_LEVEL = HYPERDX_LOG_LEVEL ?? 'debug';
 const DEFAULT_FORMAT = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.json(),
@@ -38,6 +35,7 @@ const hyperdxTransport = HYPERDX_API_KEY
   : null;
 
 export const expressLogger = expressWinston.logger({
+  level: MAX_LEVEL,
   format: DEFAULT_FORMAT,
   msg: IS_PROD
     ? undefined

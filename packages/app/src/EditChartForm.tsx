@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import produce from 'immer';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import Select from 'react-select';
 import { Button, Form, InputGroup, Modal } from 'react-bootstrap';
-
+import * as config from './config';
+import type { Alert } from './types';
+import Checkbox from './Checkbox';
 import HDXLineChart from './HDXLineChart';
 import {
   AGG_FNS,
@@ -15,9 +17,10 @@ import {
 import { hashCode, useDebounce } from './utils';
 import HDXHistogramChart from './HDXHistogramChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-
+import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
+import { intervalToGranularity } from './Alert';
 
 export type Chart = {
   id: string;
@@ -67,6 +70,16 @@ export type Chart = {
         content: string;
       }
   )[];
+};
+
+const DEFAULT_ALERT: Alert = {
+  channel: {
+    type: 'webhook',
+  },
+  threshold: 1,
+  interval: '5m',
+  type: 'presence',
+  source: 'CHART',
 };
 
 export const EditMarkdownChartForm = ({
@@ -548,6 +561,16 @@ export const EditTableChartForm = ({
             }),
           )
         }
+        setTableAndAggFn={(table, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].table = table;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
         setWhere={where =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -579,6 +602,16 @@ export const EditTableChartForm = ({
             }),
           )
         }
+        setFieldAndAggFn={(field, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].field = field;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
         setSortOrder={sortOrder =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -785,32 +818,43 @@ export const EditHistogramChartForm = ({
 };
 
 export const EditLineChartForm = ({
+  isLocalDashboard,
   chart,
+  alerts,
   onClose,
   onSave,
   dateRange,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
 }) => {
+  const CHART_TYPE = 'time';
+  const [alert] = alerts; // TODO: Support multiple alerts eventually
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
+  const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
 
   const chartConfig = useMemo(
     () =>
-      editedChart != null && editedChart.series?.[0]?.type === 'time'
+      editedChart != null && editedChart.series?.[0]?.type === CHART_TYPE
         ? {
             table: editedChart.series[0].table ?? 'logs',
             aggFn: editedChart.series[0].aggFn,
             field: editedChart.series[0].field ?? '', // TODO: Fix in definition
             groupBy: editedChart.series[0].groupBy[0],
             where: editedChart.series[0].where,
-            granularity: convertDateRangeToGranularityString(dateRange, 60),
+            granularity:
+              alertEnabled && editedAlert?.interval
+                ? intervalToGranularity(editedAlert?.interval)
+                : convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
           }
         : null,
-    [editedChart, dateRange],
+    [editedChart, alertEnabled, editedAlert?.interval, dateRange],
   );
   const previewConfig = useDebounce(chartConfig, 500);
 
@@ -827,7 +871,10 @@ export const EditLineChartForm = ({
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave(
+          editedChart,
+          alertEnabled ? [editedAlert ?? DEFAULT_ALERT] : undefined,
+        );
       }}
     >
       <div className="fs-5 mb-4">Line Chart Builder</div>
@@ -855,7 +902,7 @@ export const EditLineChartForm = ({
         setTable={table =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].table = table;
               }
             }),
@@ -864,7 +911,7 @@ export const EditLineChartForm = ({
         setAggFn={aggFn =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].aggFn = aggFn;
               }
             }),
@@ -873,7 +920,7 @@ export const EditLineChartForm = ({
         setWhere={where =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].where = where;
               }
             }),
@@ -882,7 +929,7 @@ export const EditLineChartForm = ({
         setGroupBy={groupBy =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 if (groupBy != undefined) {
                   draft.series[0].groupBy[0] = groupBy;
                 } else {
@@ -895,13 +942,61 @@ export const EditLineChartForm = ({
         setField={field =>
           setEditedChart(
             produce(editedChart, draft => {
-              if (draft.series[0].type === 'time') {
+              if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].field = field;
               }
             }),
           )
         }
+        setTableAndAggFn={(table, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].table = table;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
+        setFieldAndAggFn={(field, aggFn) => {
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].field = field;
+                draft.series[0].aggFn = aggFn;
+              }
+            }),
+          );
+        }}
       />
+
+      {editedChart.series[0].table === 'logs' && (
+        <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
+          {isLocalDashboard ? (
+            <span className="text-gray-600 fs-8">
+              Alerts are not available in unsaved dashboards.
+            </span>
+          ) : (
+            <>
+              <Checkbox
+                id="check"
+                label="Enable alerts"
+                checked={alertEnabled}
+                onChange={() => setAlertEnabled(!alertEnabled)}
+              />
+              {alertEnabled && (
+                <div className="mt-2">
+                  <EditChartFormAlerts
+                    alert={editedAlert ?? DEFAULT_ALERT}
+                    setAlert={setEditedAlert}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="d-flex justify-content-between my-3 ps-2">
         <Button
           variant="outline-success"
@@ -917,7 +1012,14 @@ export const EditLineChartForm = ({
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
         <div style={{ height: 400 }}>
-          <HDXLineChart config={previewConfig} />
+          <HDXLineChart
+            config={previewConfig}
+            {...(alertEnabled && {
+              alertThreshold: editedAlert?.threshold,
+              alertThresholdType:
+                editedAlert?.type === 'presence' ? 'above' : 'below',
+            })}
+          />
         </div>
       </div>
       {editedChart.series[0].table === 'logs' ? (

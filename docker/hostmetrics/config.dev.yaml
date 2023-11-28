@@ -21,7 +21,7 @@ receivers:
       network:
 exporters:
   logging:
-    loglevel: debug
+    loglevel: ${env:HYPERDX_LOG_LEVEL}
   otlphttp:
     endpoint: 'http://otel-collector:4318'
     headers:
@@ -30,7 +30,7 @@ exporters:
 service:
   telemetry:
     logs:
-      level: 'debug'
+      level: ${env:HYPERDX_LOG_LEVEL}
   pipelines:
     metrics:
       receivers: [mongodb, redis, hostmetrics]

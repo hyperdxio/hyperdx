@@ -1,13 +1,13 @@
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   Row as TableRow,
   useReactTable,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
+import { useCallback, useRef, memo } from 'react';
 import cx from 'classnames';
+import { UNDEFINED_WIDTH } from './tableUtils';
 
 import api from './api';
 import { AggFn } from './ChartUtils';
@@ -19,9 +19,6 @@ const Table = ({
   data: any[];
   valueColumnName: string;
 }) => {
-  // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-  const UNDEFINED_WIDTH = 99999;
-
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -209,7 +206,7 @@ const HDXTableChart = memo(
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -247,6 +244,10 @@ const HDXTableChart = memo(
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : data?.data?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

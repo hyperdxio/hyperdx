@@ -121,7 +121,7 @@ export default function TeamPage() {
       toast.error('Please enter a name for the Slack webhook');
       return;
     }
-    if (!url || !isValidUrl(url) || !url.includes('hooks.slack.com')) {
+    if (!url || !isValidUrl(url)) {
       toast.error('Please enter a valid Slack webhook URL');
       return;
     }
@@ -265,7 +265,7 @@ export default function TeamPage() {
               <div className="my-5">
                 <h2>Slack Webhooks</h2>
                 <div className="text-muted">
-                  Lean how to set up a Slack webhook{' '}
+                  Learn how to set up a Slack webhook{' '}
                   <a
                     href="https://api.slack.com/messaging/webhooks"
                     target="_blank"
@@ -348,6 +348,27 @@ export default function TeamPage() {
                   </Modal.Body>
                 </Modal>
               </div>
+
+              {team.sentryDSN && (
+                <div className="my-5">
+                  <h2>Sentry Integration</h2>
+                  <div className="mb-2 text-muted">
+                    To setup Sentry integration, use your Sentry DSN below.
+                  </div>
+                  <div>
+                    <strong>{team.sentryDSN}</strong>
+                    <CopyToClipboard text={team.sentryDSN}>
+                      <Button
+                        variant="link"
+                        className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
+                      >
+                        📋 Copy URL
+                      </Button>
+                    </CopyToClipboard>
+                  </div>
+                </div>
+              )}
+
               {hasAllowedAuthMethods && (
                 <>
                   <h2>Security Policies</h2>

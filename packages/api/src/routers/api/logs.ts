@@ -6,13 +6,13 @@ import { serializeError } from 'serialize-error';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { LimitedSizeQueue } from '../../utils/queue';
-import { customColumnMapType } from '../../clickhouse/searchQueryParser';
-import { getLogsPatterns } from '../../utils/miner';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { isUserAuthenticated } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import { LimitedSizeQueue } from '@/utils/queue';
+import { customColumnMapType } from '@/clickhouse/searchQueryParser';
+import { getLogsPatterns } from '@/utils/miner';
+import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 
@@ -60,8 +60,8 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -200,8 +200,8 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -276,8 +276,8 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
     }
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error streaming logs',
@@ -321,8 +321,8 @@ router.get(
       });
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
       next(e);
     }
   },
@@ -359,8 +359,8 @@ router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });
@@ -433,11 +433,14 @@ router.get(
         await clickhouse.getLogsChart({
           aggFn,
           endTime: endTimeNum,
+          // @ts-expect-error
           field,
           granularity,
+          // @ts-expect-error
           groupBy,
           maxNumGroups: MAX_NUM_GROUPS,
           propertyTypeMappingsModel,
+          // @ts-expect-error
           q,
           sortOrder,
           startTime: startTimeNum,
@@ -447,8 +450,8 @@ router.get(
       );
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
       next(e);
     }
   },
@@ -483,8 +486,8 @@ router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -517,8 +520,8 @@ router.get('/:id', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }

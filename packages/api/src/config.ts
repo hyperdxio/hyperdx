@@ -11,6 +11,7 @@ export const COOKIE_DOMAIN = env.COOKIE_DOMAIN as string; // prod ONLY
 export const EXPRESS_SESSION_SECRET = env.EXPRESS_SESSION_SECRET as string;
 export const FRONTEND_URL = env.FRONTEND_URL as string;
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
+export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const INGESTOR_API_URL = env.INGESTOR_API_URL as string;
 export const IS_CI = NODE_ENV === 'ci';
 export const IS_DEV = NODE_ENV === 'development';
@@ -24,3 +25,8 @@ export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
 export const SERVER_URL = env.SERVER_URL as string;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
+export const CACHE_METRICS_TAGS = env.CACHE_METRICS_TAGS !== 'false';
+// deliberately using '||' instead of '??' to avoid empty/falsey values
+// returning as a string since all env values are stringish (to be parsed using ms())
+export const CACHE_METRICS_EXPIRATION_IN_SEC =
+  (env.CACHE_METRICS_EXPIRATION_IN_SEC as string) || '600';

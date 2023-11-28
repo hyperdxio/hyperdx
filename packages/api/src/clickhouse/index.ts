@@ -14,9 +14,9 @@ import {
 } from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -30,13 +30,14 @@ import {
   isCustomColumn,
   msToBigIntNs,
 } from './searchQueryParser';
+import { redisClient } from '../utils/redis';
 
 import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
-} from '../utils/logParser';
+} from '@/utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
@@ -44,15 +45,23 @@ export type SortOrder = 'asc' | 'desc' | null;
 
 export enum AggFn {
   Avg = 'avg',
+  AvgRate = 'avg_rate',
   Count = 'count',
   CountDistinct = 'count_distinct',
   Max = 'max',
+  MaxRate = 'max_rate',
   Min = 'min',
+  MinRate = 'min_rate',
   P50 = 'p50',
+  P50Rate = 'p50_rate',
   P90 = 'p90',
+  P90Rate = 'p90_rate',
   P95 = 'p95',
+  P95Rate = 'p95_rate',
   P99 = 'p99',
+  P99Rate = 'p99_rate',
   Sum = 'sum',
+  SumRate = 'sum_rate',
 }
 
 export enum Granularity {
@@ -555,7 +564,7 @@ export const buildMetricsPropertyTypeMappingsModel = async (
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
-  property: string,
+  property: string | undefined,
   model: LogsPropertyTypeMappingsModel,
 ) => {
   if (!property) {
@@ -593,6 +602,24 @@ export const getCHServerMetrics = async () => {
 };
 
 export const getMetricsTags = async (teamId: string) => {
+  if (config.CACHE_METRICS_TAGS) {
+    logger.info({
+      message: 'getMetricsTags: attempting cached fetch',
+      teamId: teamId,
+    });
+    return getMetricsTagsCached(teamId);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: skipping cache, direct query',
+      teamId: teamId,
+    });
+    return getMetricsTagsUncached(teamId);
+  }
+};
+
+// NB preserving this exactly as in original for this ticket
+// but looks like a good candidate for a query refactor baed on comment
+const getMetricsTagsUncached = async (teamId: string) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
@@ -619,6 +646,41 @@ export const getMetricsTags = async (teamId: string) => {
     took: Date.now() - ts,
   });
   return result;
+};
+
+const getMetricsTagsCached = async (teamId: string) => {
+  const redisKey = `metrics-tags-${teamId}`;
+  const cached = await redisClient.get(redisKey);
+  if (cached) {
+    logger.info({
+      message: 'getMetricsTags: cache hit',
+      teamId: teamId,
+    });
+    return JSON.parse(cached);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: cache miss',
+      teamId: teamId,
+    });
+    const result = await getMetricsTagsUncached(teamId);
+    await redisClient.set(redisKey, JSON.stringify(result), {
+      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
+    });
+    return result;
+  }
+};
+
+const isRateAggFn = (aggFn: AggFn) => {
+  return (
+    aggFn === AggFn.SumRate ||
+    aggFn === AggFn.AvgRate ||
+    aggFn === AggFn.MaxRate ||
+    aggFn === AggFn.MinRate ||
+    aggFn === AggFn.P50Rate ||
+    aggFn === AggFn.P90Rate ||
+    aggFn === AggFn.P95Rate ||
+    aggFn === AggFn.P99Rate
+  );
 };
 
 export const getMetricsChart = async ({
@@ -663,78 +725,109 @@ export const getMetricsChart = async ({
       : 'name AS group',
   ];
 
-  switch (dataType) {
-    case 'Gauge':
-      selectClause.push(
-        aggFn === AggFn.Count
-          ? 'COUNT(value) as data'
-          : aggFn === AggFn.Sum
-          ? `SUM(value) as data`
-          : aggFn === AggFn.Avg
-          ? `AVG(value) as data`
-          : aggFn === AggFn.Max
-          ? `MAX(value) as data`
-          : aggFn === AggFn.Min
-          ? `MIN(value) as data`
-          : `quantile(${
-              aggFn === AggFn.P50
-                ? '0.5'
-                : aggFn === AggFn.P90
-                ? '0.90'
-                : aggFn === AggFn.P95
-                ? '0.95'
-                : '0.99'
-            })(value) as data`,
-      );
-      break;
-    case 'Sum':
-      selectClause.push(
-        aggFn === AggFn.Count
-          ? 'COUNT(delta) as data'
-          : aggFn === AggFn.Sum
-          ? `SUM(delta) as data`
-          : aggFn === AggFn.Avg
-          ? `AVG(delta) as data`
-          : aggFn === AggFn.Max
-          ? `MAX(delta) as data`
-          : aggFn === AggFn.Min
-          ? `MIN(delta) as data`
-          : `quantile(${
-              aggFn === AggFn.P50
-                ? '0.5'
-                : aggFn === AggFn.P90
-                ? '0.90'
-                : aggFn === AggFn.P95
-                ? '0.95'
-                : '0.99'
-            })(delta) as data`,
-      );
-      break;
-    default:
-      logger.error(`Unsupported data type: ${dataType}`);
-      break;
+  const isRate = isRateAggFn(aggFn);
+
+  if (dataType === 'Gauge' || dataType === 'Sum') {
+    selectClause.push(
+      aggFn === AggFn.Count
+        ? 'COUNT(value) as data'
+        : aggFn === AggFn.Sum
+        ? `SUM(value) as data`
+        : aggFn === AggFn.Avg
+        ? `AVG(value) as data`
+        : aggFn === AggFn.Max
+        ? `MAX(value) as data`
+        : aggFn === AggFn.Min
+        ? `MIN(value) as data`
+        : aggFn === AggFn.SumRate
+        ? `SUM(rate) as data`
+        : aggFn === AggFn.AvgRate
+        ? `AVG(rate) as data`
+        : aggFn === AggFn.MaxRate
+        ? `MAX(rate) as data`
+        : aggFn === AggFn.MinRate
+        ? `MIN(rate) as data`
+        : `quantile(${
+            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+              ? '0.5'
+              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+              ? '0.90'
+              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
+              ? '0.95'
+              : '0.99'
+          })(${isRate ? 'rate' : 'value'}) as data`,
+    );
+  } else {
+    logger.error(`Unsupported data type: ${dataType}`);
   }
 
-  // TODO: support other data types like Sum, Histogram, etc.
+  // used to sum/avg/percentile Sum metrics
+  // max/min don't require pre-bucketing the Sum timeseries
+  const sumMetricSource = SqlString.format(
+    `
+    SELECT
+      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+      min(value) as value,
+      _string_attributes,
+      name
+    FROM
+      ??
+    WHERE
+      name = ?
+      AND data_type = ?
+      AND (?)
+    GROUP BY
+      name,
+      _string_attributes,
+      timestamp
+    ORDER BY
+      _string_attributes,
+      timestamp ASC
+  `.trim(),
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+  );
+
+  const rateMetricSource = SqlString.format(
+    `
+SELECT
+  if(
+    runningDifference(value) < 0
+    OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+    nan,
+    runningDifference(value)
+  ) AS rate,
+  timestamp,
+  _string_attributes,
+  name
+FROM
+  (
+    ?
+  )
+`.trim(),
+    [SqlString.raw(sumMetricSource)],
+  );
+
+  const gaugeMetricSource = SqlString.format(
+    `
+SELECT 
+  timestamp,
+  name,
+  value,
+  _string_attributes
+FROM ??
+WHERE name = ?
+AND data_type = ?
+AND (?)
+ORDER BY _timestamp_sort_key ASC
+`.trim(),
+    [tableName, name, dataType, SqlString.raw(whereClause)],
+  );
+
   const query = SqlString.format(
     `
-      WITH metrcis AS (
-        SELECT *, runningDifference(value) AS delta
-        FROM (
-          SELECT 
-            timestamp,
-            name,
-            value,
-            _string_attributes
-          FROM ??
-          WHERE name = ?
-          AND data_type = ?
-          AND (?)
-          ORDER BY _timestamp_sort_key ASC
-        )
-      )
+      WITH metrics AS (?)
       SELECT ?
-      FROM metrcis
+      FROM metrics
       GROUP BY group, ts_bucket
       ORDER BY ts_bucket ASC
       WITH FILL
@@ -743,10 +836,14 @@ export const getMetricsChart = async ({
         STEP ?
     `,
     [
-      tableName,
-      name,
-      dataType,
-      SqlString.raw(whereClause),
+      SqlString.raw(
+        isRate
+          ? rateMetricSource
+          : // Max/Min aggs are the same for both Sum and Gauge metrics
+          dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
+          ? sumMetricSource
+          : gaugeMetricSource,
+      ),
       SqlString.raw(selectClause.join(',')),
       startTime / 1000,
       granularity,
@@ -798,6 +895,10 @@ export const getLogsChart = async ({
   tableVersion: number | undefined;
   teamId: string;
 }) => {
+  if (isRateAggFn(aggFn)) {
+    throw new Error('Rate is not supported in logs chart');
+  }
+
   const tableName = getLogStreamTableName(tableVersion, teamId);
   const whereClause = await buildSearchQueryWhereCondition({
     endTime,
@@ -920,7 +1021,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -1059,6 +1168,12 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
+  const componentField = buildSearchColumnName('string', 'component');
+  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
+  if (!componentField || !sessionIdField) {
+    throw new Error('component or sessionId is null');
+  }
+
   const sessionsWithSearchQuery = SqlString.format(
     `SELECT
       MAX(timestamp) AS maxTimestamp,
@@ -1079,8 +1194,8 @@ export const getSessions = async ({
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
     [
-      SqlString.raw(buildSearchColumnName('string', 'component')),
-      SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
+      SqlString.raw(componentField),
+      SqlString.raw(sessionIdField),
       columns,
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
@@ -1326,8 +1441,8 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        count(*) as data,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1372,7 +1487,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',
@@ -1580,6 +1695,7 @@ export const getLogBatchGroupedByBody = async ({
     },
   );
 
+  // @ts-ignore
   return result;
 };
 
@@ -1651,6 +1767,7 @@ export const getLogBatch = async ({
     span.end();
   });
 
+  // @ts-ignore
   return result;
 };
 
@@ -1709,6 +1826,7 @@ export const getRrwebEvents = async ({
     span.end();
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };
 
@@ -1779,5 +1897,6 @@ export const getLogStream = async ({
     }
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };

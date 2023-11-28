@@ -3,10 +3,10 @@ import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { isUserAuthenticated } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 
@@ -41,8 +41,8 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
@@ -96,8 +96,8 @@ router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error while streaming rrweb events',
