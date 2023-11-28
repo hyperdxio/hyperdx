@@ -28,7 +28,12 @@ function formatTs({
     const seconds = Math.floor((value / 1000) % 60);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   } else {
-    return format(new Date(ts), 'hh:mm:ss a');
+    try {
+      return format(new Date(ts), 'hh:mm:ss a');
+    } catch (err) {
+      console.error(err, ts);
+      return '--:--';
+    }
   }
 }
 
