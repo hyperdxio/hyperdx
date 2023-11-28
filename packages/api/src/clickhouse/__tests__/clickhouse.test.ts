@@ -44,7 +44,7 @@ describe('clickhouse', () => {
     expect.assertions(2);
   });
 
-  it('getMetricsChart', async () => {
+  it('getMetricsChart avoids sending NaN to frontend', async () => {
     jest
       .spyOn(clickhouse.client, 'query')
       .mockResolvedValueOnce({ json: () => Promise.resolve({}) } as any);
