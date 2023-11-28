@@ -10,7 +10,7 @@ import { UNDEFINED_WIDTH } from '../tableUtils';
 
 import styles from './Table.module.scss';
 
-type TableProps<T extends Record<string, unknown>> = {
+type TableProps<T extends Record<string, unknown> | string[]> = {
   data?: T[];
   columns: ColumnDef<T>[];
   emptyMessage?: string;
@@ -20,7 +20,7 @@ type TableProps<T extends Record<string, unknown>> = {
   interactive?: boolean;
 };
 
-export const Table = <T extends Record<string, unknown>>({
+export const Table = <T extends Record<string, unknown> | string[]>({
   data = [],
   columns,
   emptyMessage,
