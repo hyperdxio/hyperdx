@@ -44,15 +44,6 @@ HYPERDX_API_KEY=<YOUR_INGESTION_API_KEY_HERE> docker compose -f ./docker-compose
 The core services are all hot-reloaded, so you can make changes to the code and
 see them reflected in real-time.
 
-### UI development with Storybook
-
-To run Storybook locally, you can run the following command from
-`/packages/app/`:
-
-```bash
-yarn storybook
-```
-
 ## Testing
 
 To run the tests locally, you can run the following command:
