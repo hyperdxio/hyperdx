@@ -44,7 +44,7 @@ export const initCiEnvs = async () => {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
 
-  // Populate fake data here...
+  // Populate fake persistent data here...
 };
 
 class MockServer extends Server {
