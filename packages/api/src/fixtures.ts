@@ -52,6 +52,11 @@ class MockServer extends Server {
     return this.httpServer;
   }
 
+  async start(): Promise<void> {
+    await super.start();
+    await initCiEnvs();
+  }
+
   closeHttpServer() {
     return new Promise<void>((resolve, reject) => {
       this.httpServer.close(err => {
