@@ -1,5 +1,4 @@
 import * as clickhouse from '..';
-import { describe, beforeEach, jest, it, expect } from '@jest/globals';
 
 describe('clickhouse', () => {
   beforeEach(() => {
