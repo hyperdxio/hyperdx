@@ -1,6 +1,5 @@
 import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import { isNumber, parseInt } from 'lodash';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 
@@ -33,6 +32,7 @@ router.post(
       granularity: z.nativeEnum(clickhouse.Granularity),
       groupBy: z.string().optional(),
       name: z.string().min(1),
+      type: z.nativeEnum(clickhouse.MetricsDataType).optional(), // FIXME: backward compatibility
       q: z.string(),
       startTime: z.number().int().min(0),
     }),
@@ -41,17 +41,21 @@ router.post(
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      const { aggFn, endTime, granularity, groupBy, name, q, startTime } =
+      const { aggFn, endTime, granularity, groupBy, name, q, startTime, type } =
         req.body;
 
       if (teamId == null) {
         return res.sendStatus(403);
       }
 
-      // FIXME: separate name + dataType
-      const [metricName, metricDataType] = name.split(' - ');
-      if (metricName == null || metricDataType == null) {
-        return res.sendStatus(400);
+      // FIXME: backward compatibility
+      let metricName = name;
+      let metricDataType: any = type;
+      if (name.includes(' - ') && type == null) {
+        [metricName, metricDataType] = name.split(' - ');
+        if (metricName == null || metricDataType == null) {
+          return res.sendStatus(400);
+        }
       }
 
       res.json(

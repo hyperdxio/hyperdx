@@ -43,6 +43,12 @@ const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
 
+export enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+}
+
 export enum AggFn {
   Avg = 'avg',
   AvgRate = 'avg_rate',
@@ -695,7 +701,7 @@ export const getMetricsChart = async ({
   teamId,
 }: {
   aggFn: AggFn;
-  dataType: string;
+  dataType: MetricsDataType;
   endTime: number; // unix in ms,
   granularity: Granularity;
   groupBy?: string;
@@ -727,7 +733,7 @@ export const getMetricsChart = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  if (dataType === 'Gauge' || dataType === 'Sum') {
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
