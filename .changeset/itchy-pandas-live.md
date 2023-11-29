@@ -3,4 +3,6 @@
 '@hyperdx/app': minor
 ---
 
-refactor + feat: split metrics chart endpoint name query param + add validator
+refactor: split metrics chart endpoint `name` query param into `type` and `name`
+params (changing an internal API) feat: add validation for metrics chart
+endpoint using zod
