@@ -109,7 +109,7 @@ const api = {
       aggFn: string;
       endDate: Date;
       granularity: string | undefined;
-      name: string;
+      name: string; // WARN: name consists of metric name and type
       q: string;
       startDate: Date;
       groupBy: string;
@@ -118,6 +118,10 @@ const api = {
   ) {
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
+
+    // FIXME: pass metric name and type separately
+    const [metricName, metricDataType] = name.split(' - ');
+
     return useQuery<any, Error>({
       refetchOnWindowFocus: false,
       queryKey: [
@@ -137,10 +141,11 @@ const api = {
             aggFn,
             endTime,
             granularity,
-            name,
+            groupBy,
+            name: metricName,
             q,
             startTime,
-            groupBy,
+            type: metricDataType,
           },
         }).json(),
       ...options,
