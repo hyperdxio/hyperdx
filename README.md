@@ -98,7 +98,7 @@ the `.env` file. After making your changes, rebuild images with
 
 **DB Migration**
 
-You can initiate the DB migration process by executing `make dev-migrate-db-up`.
+You can initiate the DB migration process by executing `make dev-migrate-db`.
 This will run the migration scripts in `/packages/api/migrations` against the
 local DB.
 

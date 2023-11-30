@@ -48,13 +48,9 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
-.PHONY: dev-migrate-db-up
-dev-migrate-db-up:
-	npx nx run @hyperdx/api:dev:migrate-db-up
-
-.PHONY: dev-migrate-db-down
-dev-migrate-db-down:
-	npx nx run @hyperdx/api:dev:migrate-db-down
+.PHONY: dev-migrate-db
+dev-migrate-db:
+	npx nx run @hyperdx/api:dev:migrate-db
 
 .PHONY: build-local
 build-local:
