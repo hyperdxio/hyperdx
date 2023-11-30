@@ -48,6 +48,14 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+.PHONY: dev-migrate-db-up
+dev-migrate-db-up:
+	npx nx run @hyperdx/api:dev:migrate-db-up
+
+.PHONY: dev-migrate-db-down
+dev-migrate-db-down:
+	npx nx run @hyperdx/api:dev:migrate-db-down
+
 .PHONY: build-local
 build-local:
 	docker build ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod &
