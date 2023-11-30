@@ -21,7 +21,7 @@ export const UserPreferencesProvider = ({
   };
   const initState = {
     isUTC: false,
-    timeFormat: '24h',
+    timeFormat: '24h' as TimeFormat,
     setTimeFormat,
     setIsUTC: (isUTC: boolean) => setState(state => ({ ...state, isUTC })),
   };
@@ -34,7 +34,7 @@ export const UserPreferencesProvider = ({
       return;
     }
     try {
-      let timeFormat = window.localStorage.getItem('timeFormat');
+      let timeFormat = window.localStorage.getItem('timeFormat') as TimeFormat;
       if (timeFormat !== null) timeFormat = JSON.parse(timeFormat);
 
       if (timeFormat !== null) {
