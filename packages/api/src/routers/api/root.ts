@@ -52,11 +52,19 @@ router.get('/me', isUserAuthenticated, async (req, res, next) => {
       throw new Api404Error('Request without user found');
     }
 
-    const { _id: id, team: teamId, email, name, createdAt } = req.user;
+    const {
+      _id: id,
+      accessKey,
+      createdAt,
+      email,
+      name,
+      team: teamId,
+    } = req.user;
 
     const team = await getTeam(teamId);
 
     return res.json({
+      accessKey,
       createdAt,
       email,
       id,

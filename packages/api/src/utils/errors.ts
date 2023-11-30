@@ -1,10 +1,11 @@
 export enum StatusCode {
-  OK = 200,
   BAD_REQUEST = 400,
-  UNAUTHORIZED = 401,
+  CONFLICT = 409,
   FORBIDDEN = 403,
-  NOT_FOUND = 404,
   INTERNAL_SERVER = 500,
+  NOT_FOUND = 404,
+  OK = 200,
+  UNAUTHORIZED = 401,
 }
 
 export class BaseError extends Error {
@@ -45,6 +46,24 @@ export class Api400Error extends BaseError {
 export class Api404Error extends BaseError {
   constructor(name: string) {
     super(name, StatusCode.NOT_FOUND, true, 'Not Found');
+  }
+}
+
+export class Api401Error extends BaseError {
+  constructor(name: string) {
+    super(name, StatusCode.UNAUTHORIZED, true, 'Unauthorized');
+  }
+}
+
+export class Api403Error extends BaseError {
+  constructor(name: string) {
+    super(name, StatusCode.FORBIDDEN, true, 'Forbidden');
+  }
+}
+
+export class Api409Error extends BaseError {
+  constructor(name: string) {
+    super(name, StatusCode.CONFLICT, true, 'Conflict');
   }
 }
 

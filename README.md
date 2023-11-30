@@ -96,6 +96,12 @@ can change this by updating `HYPERDX_APP_**` and `HYPERDX_API_**` variables in
 the `.env` file. After making your changes, rebuild images with
 `make build-local`.
 
+**DB Migration**
+
+You can initiate the DB migration process by executing `make dev-migrate-db`.
+This will run the migration scripts in `/packages/api/migrations` against the
+local DB.
+
 ### Hosted Cloud
 
 HyperDX is also available as a hosted cloud service at

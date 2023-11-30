@@ -1,3 +1,5 @@
 keys
 node_modules
 archive
+migrations
+migrate-mongo-config.ts
