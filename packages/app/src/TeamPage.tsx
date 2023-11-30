@@ -255,6 +255,22 @@ export default function TeamPage() {
                   </Modal>
                 </div>
               </div>
+              {!isLoadingMe && me != null && (
+                <div className="my-4 fs-5">
+                  <div className="text-muted">Personal API Access Key: </div>
+                  <Badge bg="primary" data-test-id="apiKey">
+                    {me.accessKey}
+                  </Badge>
+                  <CopyToClipboard text={me.accessKey}>
+                    <Button
+                      variant="link"
+                      className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
+                    >
+                      📋 Copy Key
+                    </Button>
+                  </CopyToClipboard>
+                </div>
+              )}
               <div className="my-5">
                 <h2>Slack Webhooks</h2>
                 <div className="text-muted">
