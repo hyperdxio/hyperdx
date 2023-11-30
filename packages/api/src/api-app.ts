@@ -7,6 +7,7 @@ import session from 'express-session';
 
 import * as config from './config';
 import defaultCors from './middleware/cors';
+import externalRoutersV1 from './routers/external-api/v1';
 import passport from './utils/passport';
 import routers from './routers/api';
 import usageStats from './tasks/usageStats';
@@ -80,6 +81,14 @@ app.use('/metrics', routers.metricsRouter);
 app.use('/sessions', routers.sessionsRouter);
 app.use('/team', routers.teamRouter);
 app.use('/webhooks', routers.webhooksRouter);
+// ---------------------------------------------------------------------
+
+// TODO: Separate external API routers from internal routers
+// ---------------------------------------------------------------------
+// ----------------------- External Routers ----------------------------
+// ---------------------------------------------------------------------
+// API v1
+app.use('/api/v1', externalRoutersV1);
 // ---------------------------------------------------------------------
 
 // error handling
