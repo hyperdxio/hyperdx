@@ -92,6 +92,7 @@
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "jest --runInBand --ci --forceExit --coverage",
     "dev:int": "jest --watchAll --runInBand --detectOpenHandles",
+    "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
     "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts"
   }
 }
