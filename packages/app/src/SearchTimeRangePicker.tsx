@@ -37,7 +37,7 @@ export default function SearchTimeRangePicker({
   setInputValue,
   onSearch,
   showLive = false,
-  timeFormat = '24h',
+  timeFormat = '12h',
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
