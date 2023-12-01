@@ -4,44 +4,50 @@ import _ from 'lodash';
 import ms from 'ms';
 import opentelemetry from '@opentelemetry/api';
 import {
-  Logger as _CHLogger,
   SettingsMap,
-  createClient,
 } from '@clickhouse/client';
-import {
-  LogParams as _CHLogParams,
-  ErrorLogParams as _CHErrorLogParams,
-} from '@clickhouse/client/dist/logger';
-import { serializeError } from 'serialize-error';
 
-import * as config from '@/config';
+import { client } from './client';
 import logger from '@/utils/logger';
-import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
 } from './propertyTypeMappingsModel';
 import {
   SQLSerializer,
-  SearchQueryBuilder,
   buildSearchColumnName,
   buildSearchColumnName_OLD,
   buildSearchQueryWhereCondition,
   isCustomColumn,
   msToBigIntNs,
 } from './searchQueryParser';
-import { redisClient } from '../utils/redis';
 
 import type { ResponseJSON, ResultSet } from '@clickhouse/client';
-import type {
-  LogStreamModel,
-  MetricModel,
-  RrwebEventModel,
-} from '@/utils/logParser';
+
+// reexporting things that used to be in this file
+export { getMetricsTags } from './queries/metricTags';
+export { getSessions } from './queries/sessions';
+export { bulkInsertRrwebEvents, bulkInsertTeamLogStream, bulkInsertTeamMetricStream } from './queries/bulkInsert';
+export { getChartHistogram } from './queries/chartHistogram';
+
+// TODO this is only needed until tests are migrated!
+export { clientInsertWithRetries } from './queries/bulkInsert';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
+
+export type MetricChartConfig = {
+  aggFn: AggFn;
+  dataType: MetricsDataType;
+  endTime: number; // unix in ms,
+  granularity: Granularity;
+  groupBy?: string;
+  name: string;
+  q: string;
+  startTime: number; // unix in ms
+  teamId: string;
+}
 
 export enum MetricsDataType {
   Gauge = 'Gauge',
@@ -93,85 +99,6 @@ export enum TableName {
   Rrweb = 'rrweb',
 }
 
-export class CHLogger implements _CHLogger {
-  debug({ module, message, args }: _CHLogParams): void {
-    logger.debug({
-      type: '@clickhouse/client',
-      module,
-      message,
-      ...args,
-    });
-  }
-
-  trace({ module, message, args }: _CHLogParams) {
-    // TODO: trace level ??
-    logger.info({
-      type: '@clickhouse/client',
-      module,
-      message,
-      ...args,
-    });
-  }
-
-  info({ module, message, args }: _CHLogParams): void {
-    logger.info({
-      type: '@clickhouse/client',
-      module,
-      message,
-      ...args,
-    });
-  }
-
-  warn({ module, message, args }: _CHLogParams): void {
-    logger.warn({
-      type: '@clickhouse/client',
-      module,
-      message,
-      ...args,
-    });
-  }
-
-  error({ module, message, args, err }: _CHErrorLogParams): void {
-    logger.error({
-      type: '@clickhouse/client',
-      module,
-      message,
-      ...args,
-      err,
-    });
-  }
-}
-
-// TODO: move this to somewhere else
-export const client = createClient({
-  host: config.CLICKHOUSE_HOST,
-  username: config.CLICKHOUSE_USER,
-  password: config.CLICKHOUSE_PASSWORD,
-  request_timeout: ms('1m'),
-  compression: {
-    request: false,
-    response: false, // has to be off to enable streaming
-  },
-  keep_alive: {
-    enabled: true,
-    // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
-    // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
-    // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    socket_ttl: 60000,
-    retry_on_expired_socket: true,
-  },
-  clickhouse_settings: {
-    connect_timeout: ms('1m') / 1000,
-    date_time_output_format: 'iso',
-    max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
-    max_download_threads: 32,
-    max_execution_time: ms('2m') / 1000,
-  },
-  log: {
-    LoggerClass: CHLogger,
-  },
-});
-
 export const getLogStreamTableName = (
   version: number | undefined | null,
   teamId: string,
@@ -187,249 +114,19 @@ export const buildLogStreamAdditionalFilters = (
   teamId: string,
 ) => SettingsMap.from({});
 
-export const healthCheck = () => client.ping();
-
-export const connect = async () => {
-  if (config.IS_CI) {
-    return;
-  }
-  // FIXME: this is a hack to avoid CI failure
-  logger.info('Checking connections to ClickHouse...');
-  // health check
-  await healthCheck();
-
-  logger.info('Initializing ClickHouse...');
-
-  // *************************************
-  // Create Tables
-  // *************************************
-  // Log model (v1)
-  // 1. https://opentelemetry.io/docs/reference/specification/logs/data-model/
-  // 2. https://www.uber.com/blog/logging/
-  // 3. https://clickhouse.com/blog/storing-log-data-in-clickhouse-fluent-bit-vector-open-telemetry#architectures
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS default.${TableName.LogStream} (
-        id UUID DEFAULT generateUUIDv4(),
-        type Enum8('log' = 1, 'span' = 2) DEFAULT 'log',
-        timestamp DateTime64(9, 'UTC') CODEC(Delta(8), ZSTD(1)),
-        observed_timestamp DateTime64(9, 'UTC') CODEC(Delta(8), ZSTD(1)),
-        end_timestamp DateTime64(9, 'UTC') CODEC(Delta(8), ZSTD(1)),
-        trace_id String CODEC(ZSTD(1)),
-        span_name String CODEC(ZSTD(1)),
-        span_id String CODEC(ZSTD(1)),
-        parent_span_id String CODEC(ZSTD(1)),
-        severity_number UInt8 CODEC(ZSTD(1)),
-        severity_text String CODEC(ZSTD(1)),
-        "string.names" Array(String),
-        "string.values" Array(String),
-        "number.names" Array(String),
-        "number.values" Array(Float64),
-        "bool.names" Array(String),
-        "bool.values" Array(UInt8),
-        _string_attributes Map(LowCardinality(String), String) MATERIALIZED CAST((string.names, string.values), 'Map(String, String)'),
-        _number_attributes Map(LowCardinality(String), Float64) MATERIALIZED CAST((number.names, number.values), 'Map(String, Float64)'),
-        _bool_attributes Map(LowCardinality(String), UInt8) MATERIALIZED CAST((bool.names, bool.values), 'Map(String, UInt8)'),
-        _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
-        _namespace LowCardinality(String) CODEC(ZSTD(1)),
-        _platform LowCardinality(String) CODEC(ZSTD(1)),
-        _host String CODEC(ZSTD(1)),
-        _service LowCardinality(String) CODEC(ZSTD(1)),
-        _source String CODEC(ZSTD(1)),
-        _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, observed_timestamp, _created_at)),
-        _hdx_body String MATERIALIZED "string.values"[indexOf("string.names", '_hdx_body')],
-        _duration Float64 MATERIALIZED (toUnixTimestamp64Nano(end_timestamp) - toUnixTimestamp64Nano(timestamp)) / 1000000,
-        _user_id String MATERIALIZED "string.values"[indexOf("string.names", 'userId')],
-        _user_email String MATERIALIZED "string.values"[indexOf("string.names", 'userEmail')],
-        _user_name String MATERIALIZED "string.values"[indexOf("string.names", 'userName')],
-        _rum_session_id String MATERIALIZED "string.values"[indexOf("string.names", 'process.tag.rum.sessionId')],
-        _hyperdx_event_size UInt32 MATERIALIZED length(_source),
-            INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
-            INDEX idx_rum_session_id _rum_session_id TYPE bloom_filter(0.001) GRANULARITY 1,
-            INDEX idx_lower_source (lower(_source)) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 1,
-            INDEX idx_duration _duration TYPE minmax GRANULARITY 1,
-            INDEX idx_string_attr_key mapKeys(_string_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_string_attr_val mapValues(_string_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_number_attr_key mapKeys(_number_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_number_attr_val mapValues(_number_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_bool_attr_key mapKeys(_bool_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_bool_attr_val mapValues(_bool_attributes) TYPE bloom_filter(0.01) GRANULARITY 1
-      )
-      ENGINE = MergeTree
-      TTL toDateTime(_created_at) + INTERVAL 1 MONTH DELETE
-      ORDER BY (_timestamp_sort_key)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-
-  // RRWeb table: storing rrweb metadata for the player
-  await client.command({
-    query: `
-        CREATE TABLE IF NOT EXISTS default.${TableName.Rrweb} (
-          id UUID DEFAULT generateUUIDv4(),
-          timestamp DateTime64(9, 'UTC') CODEC(Delta(8), ZSTD(1)),
-          "string.names" Array(String),
-          "string.values" Array(String),
-          "number.names" Array(String),
-          "number.values" Array(Float64),
-          "bool.names" Array(String),
-          "bool.values" Array(UInt8),
-          body MATERIALIZED "string.values"[indexOf("string.names", '_hdx_body')],
-          session_id MATERIALIZED "string.values"[indexOf("string.names", 'rum.sessionId')],
-          type MATERIALIZED "number.values"[indexOf("number.names", 'type')],
-          _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
-          _service LowCardinality(String) CODEC(ZSTD(1)),
-          _source String CODEC(ZSTD(1)),
-          _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
-          _hyperdx_event_size UInt32 MATERIALIZED length(_source)
-        )
-        ENGINE = MergeTree
-        TTL toDateTime(_created_at) + INTERVAL 1 MONTH DELETE
-        ORDER BY (session_id, type, _timestamp_sort_key)
-        SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-      `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-
-  // Metric model
-  // 1. https://opentelemetry.io/docs/specs/otel/metrics/data-model/#timeseries-model
-  // 2. https://github.com/mindis/prom2click
-  // 3. https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/clickhouseexporter/internal/gauge_metrics.go
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS default.${TableName.Metric} (
-        timestamp DateTime64(9, 'UTC') CODEC(Delta(8), ZSTD(1)),
-        name LowCardinality(String) CODEC(ZSTD(1)),
-        data_type LowCardinality(String) CODEC(ZSTD(1)),
-        value Float64 CODEC(ZSTD(1)),
-        flags UInt32  CODEC(ZSTD(1)),
-        unit String CODEC(ZSTD(1)),
-        _string_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
-        _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
-            INDEX idx_string_attr_key mapKeys(_string_attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-            INDEX idx_string_attr_val mapValues(_string_attributes) TYPE bloom_filter(0.01) GRANULARITY 1
-      )
-      ENGINE = MergeTree
-      PARTITION BY toDate(_created_at)
-      TTL toDateTime(_created_at) + INTERVAL 1 MONTH DELETE
-      ORDER BY (name, data_type, _string_attributes, _timestamp_sort_key)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
-};
-
-export const clientInsertWithRetries = async <T>({
-  table,
-  values,
-  retries = 10,
-  timeout = 10000,
-}: {
-  table: string;
-  values: T[];
-  retries?: number;
-  timeout?: number;
-}) => {
-  let maxRetries = retries;
-  const ts = Date.now();
-  while (maxRetries > 0) {
-    try {
-      await client.insert({
-        table,
-        values,
-        format: 'JSONEachRow',
-      });
-      break;
-    } catch (err) {
-      logger.error({
-        message: `Failed to bulk insert. Sleeping for ${timeout} ms...`,
-        table,
-        n: values.length,
-        error: serializeError(err),
-        maxRetries,
-      });
-      await sleep(timeout);
-      maxRetries--;
-      if (maxRetries === 0) {
-        // TODO: requeue the failed events
-        throw err;
-      }
-      logger.warn({
-        message: 'Retrying bulk insert...',
-        table,
-        n: values.length,
-        maxRetries,
-      });
-    }
-  }
-  logger.info({
-    message: `Bulk inserted table: ${table}`,
-    table,
-    n: values.length,
-    took: Date.now() - ts,
-  });
-};
-
-export const bulkInsertRrwebEvents = async (events: RrwebEventModel[]) => {
-  const tableName = `default.${TableName.Rrweb}`;
-  await clientInsertWithRetries<RrwebEventModel>({
-    table: tableName,
-    values: events,
-  });
-};
-
-export const bulkInsertTeamLogStream = async (
-  version: number | undefined | null,
-  teamId: string,
-  logs: LogStreamModel[],
-) => {
-  const tableName = getLogStreamTableName(version, teamId);
-  await clientInsertWithRetries<LogStreamModel>({
-    table: tableName,
-    values: logs,
-  });
-};
-
-export const bulkInsertTeamMetricStream = async (metrics: MetricModel[]) => {
-  const tableName = `default.${TableName.Metric}`;
-  await clientInsertWithRetries<MetricModel>({
-    table: tableName,
-    values: metrics,
-  });
-};
-
 // TODO: support since, until
 export const fetchMetricsPropertyTypeMappings =
   (intervalSecs: number) =>
   async (tableVersion: number | undefined, teamId: string) => {
     const tableName = `default.${TableName.Metric}`;
+    const fromClause = [tableName, intervalSecs];
     const query = SqlString.format(
       `
     SELECT groupUniqArrayArray(mapKeys(_string_attributes)) as strings
     FROM ??
     WHERE fromUnixTimestamp64Nano(_timestamp_sort_key) > now() - toIntervalSecond(?)
   `,
-      [tableName, intervalSecs], // TODO: declare as constant
+      fromClause,
     );
     const ts = Date.now();
     const rows = await client.query({
@@ -568,17 +265,6 @@ export const buildMetricsPropertyTypeMappingsModel = async (
   return model;
 };
 
-// TODO: move this to PropertyTypeMappingsModel
-export const doesLogsPropertyExist = (
-  property: string | undefined,
-  model: LogsPropertyTypeMappingsModel,
-) => {
-  if (!property) {
-    return true; // in this case, we don't refresh the property type mappings
-  }
-  return isCustomColumn(property) || model.get(property);
-};
-
 // ******************************************************
 export const getCHServerMetrics = async () => {
   const query = `
@@ -607,75 +293,6 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async (teamId: string) => {
-  if (config.CACHE_METRICS_TAGS) {
-    logger.info({
-      message: 'getMetricsTags: attempting cached fetch',
-      teamId: teamId,
-    });
-    return getMetricsTagsCached(teamId);
-  } else {
-    logger.info({
-      message: 'getMetricsTags: skipping cache, direct query',
-      teamId: teamId,
-    });
-    return getMetricsTagsUncached(teamId);
-  }
-};
-
-// NB preserving this exactly as in original for this ticket
-// but looks like a good candidate for a query refactor baed on comment
-const getMetricsTagsUncached = async (teamId: string) => {
-  const tableName = `default.${TableName.Metric}`;
-  // TODO: remove 'data_type' in the name field
-  const query = SqlString.format(
-    `
-        SELECT 
-          format('{} - {}', name, data_type) as name,
-          data_type,
-          groupUniqArray(_string_attributes) AS tags
-        FROM ??
-        GROUP BY name, data_type
-        ORDER BY name
-    `,
-    [tableName],
-  );
-  const ts = Date.now();
-  const rows = await client.query({
-    query,
-    format: 'JSON',
-  });
-  const result = await rows.json<ResponseJSON<{ names: string[] }>>();
-  logger.info({
-    message: 'getMetricsProps',
-    query,
-    took: Date.now() - ts,
-  });
-  return result;
-};
-
-const getMetricsTagsCached = async (teamId: string) => {
-  const redisKey = `metrics-tags-${teamId}`;
-  const cached = await redisClient.get(redisKey);
-  if (cached) {
-    logger.info({
-      message: 'getMetricsTags: cache hit',
-      teamId: teamId,
-    });
-    return JSON.parse(cached);
-  } else {
-    logger.info({
-      message: 'getMetricsTags: cache miss',
-      teamId: teamId,
-    });
-    const result = await getMetricsTagsUncached(teamId);
-    await redisClient.set(redisKey, JSON.stringify(result), {
-      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
-    });
-    return result;
-  }
-};
-
 const isRateAggFn = (aggFn: AggFn) => {
   return (
     aggFn === AggFn.SumRate ||
@@ -689,49 +306,22 @@ const isRateAggFn = (aggFn: AggFn) => {
   );
 };
 
-export const getMetricsChart = async ({
-  aggFn,
-  dataType,
-  endTime,
-  granularity,
-  groupBy,
-  name,
-  q,
-  startTime,
-  teamId,
-}: {
-  aggFn: AggFn;
-  dataType: MetricsDataType;
-  endTime: number; // unix in ms,
-  granularity: Granularity;
-  groupBy?: string;
-  name: string;
-  q: string;
-  startTime: number; // unix in ms
-  teamId: string;
-}) => {
-  const tableName = `default.${TableName.Metric}`;
-  const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
-    undefined, // default version
-    teamId,
-  );
-  const whereClause = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: q,
-    startTime,
-  });
-  const selectClause = [
-    SqlString.format(
-      'toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket',
-      [granularity],
-    ),
-    groupBy
-      ? SqlString.format(`_string_attributes[?] AS group`, [groupBy])
-      : 'name AS group',
-  ];
-
+const buildMetricsChartSelectClause = async ({granularity, groupBy, dataType, aggFn}:{granularity:Granularity, groupBy?:string, dataType:MetricsDataType, aggFn:AggFn}):Promise<string[]> => {
   const isRate = isRateAggFn(aggFn);
+  const selectClause:string[] = [];
+  const bucket = SqlString.format(
+    'toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket',
+    [granularity],
+  )
+
+  selectClause.push(bucket)
+  if(groupBy) {
+    const group = SqlString.format(`_string_attributes[?] AS group`, [groupBy])
+    selectClause.push(group)
+  } else {
+    const group = 'name AS group';
+    selectClause.push(group)
+  }
 
   if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
@@ -767,6 +357,34 @@ export const getMetricsChart = async ({
     logger.error(`Unsupported data type: ${dataType}`);
   }
 
+  return selectClause;
+};
+
+export const getMetricsChart = async ({
+  aggFn,
+  dataType,
+  endTime,
+  granularity,
+  groupBy,
+  name,
+  q,
+  startTime,
+  teamId,
+}: MetricChartConfig) => {
+  const tableName = `default.${TableName.Metric}`;
+  const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
+    undefined, // default version
+    teamId,
+  );
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime,
+  });
+  const isRate = isRateAggFn(aggFn);
+  const selectClause = await buildMetricsChartSelectClause({granularity, groupBy, dataType, aggFn});
+  
   // used to sum/avg/percentile Sum metrics
   // max/min don't require pre-bucketing the Sum timeseries
   const sumMetricSource = SqlString.format(
@@ -1050,213 +668,6 @@ export const getLogsChart = async ({
       span.end();
     }
   });
-};
-
-export const getChartHistogram = async ({
-  bins,
-  endTime,
-  field,
-  q,
-  startTime,
-  tableVersion,
-  teamId,
-}: {
-  bins: number;
-  endTime: number; // unix in ms,
-  field: string;
-  q: string;
-  startTime: number; // unix in ms
-  tableVersion: number | undefined;
-  teamId: string;
-}) => {
-  const tableName = getLogStreamTableName(tableVersion, teamId);
-  const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    startTime,
-    endTime,
-  );
-  const whereClause = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: q,
-    startTime,
-    teamId,
-  });
-
-  // TODO: hacky way to make sure the cache is update to date
-  if (!doesLogsPropertyExist(field, propertyTypeMappingsModel)) {
-    logger.warn({
-      message: `getChart: Property type mappings cache is out of date (${field})`,
-    });
-    await propertyTypeMappingsModel.refresh();
-  }
-
-  // WARNING: selectField can be null
-  const selectField = buildSearchColumnName(
-    propertyTypeMappingsModel.get(field),
-    field,
-  );
-
-  const serializer = new SQLSerializer(propertyTypeMappingsModel);
-
-  const selectClause = `histogram(${bins})(${selectField}) as data`;
-
-  const query = SqlString.format(`SELECT ? FROM ?? WHERE ? AND (?) AND (?)`, [
-    SqlString.raw(selectClause),
-    tableName,
-    buildTeamLogStreamWhereCondition(tableVersion, teamId),
-    SqlString.raw(whereClause),
-    SqlString.raw(`${await serializer.isNotNull(field, false)}`),
-  ]);
-
-  const ts = Date.now();
-  const rows = await client.query({
-    query,
-    format: 'JSON',
-    clickhouse_settings: {
-      additional_table_filters: buildLogStreamAdditionalFilters(
-        tableVersion,
-        teamId,
-      ),
-    },
-  });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
-  logger.info({
-    message: 'getChartHistogram',
-    query,
-    teamId,
-    took: Date.now() - ts,
-  });
-  return result;
-};
-
-export const getSessions = async ({
-  endTime,
-  limit,
-  offset,
-  q,
-  startTime,
-  tableVersion,
-  teamId,
-}: {
-  endTime: number; // unix in ms,
-  limit: number;
-  offset: number;
-  q: string;
-  startTime: number; // unix in ms
-  tableVersion: number | undefined;
-  teamId: string;
-}) => {
-  const tableName = getLogStreamTableName(tableVersion, teamId);
-  const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    startTime,
-    endTime,
-  );
-  const sessionsWhereClause = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: `rum_session_id:* AND ${q}`,
-    startTime,
-  });
-
-  const buildCustomColumn = (propName: string, alias: string) =>
-    `MAX(${buildSearchColumnName('string', propName)}) as "${alias}"`;
-
-  const columns = [
-    ['userEmail', 'userEmail'],
-    ['userName', 'userName'],
-    ['teamName', 'teamName'],
-    ['teamId', 'teamId'],
-  ]
-    .map(props => buildCustomColumn(props[0], props[1]))
-    .map(column => SqlString.raw(column));
-
-  const componentField = buildSearchColumnName('string', 'component');
-  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
-  if (!componentField || !sessionIdField) {
-    throw new Error('component or sessionId is null');
-  }
-
-  const sessionsWithSearchQuery = SqlString.format(
-    `SELECT
-      MAX(timestamp) AS maxTimestamp,
-      MIN(timestamp) AS minTimestamp,
-      count() AS sessionCount,
-      countIf(?='user-interaction') AS interactionCount,
-      countIf(severity_text = 'error') AS errorCount,
-      ? AS sessionId,
-      ?
-    FROM ??
-    WHERE ? AND (?)
-    GROUP BY sessionId
-    ${
-      // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
-      // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-      q.length === 0 ? 'HAVING interactionCount > 0' : ''
-    }
-    ORDER BY maxTimestamp DESC
-    LIMIT ?, ?`,
-    [
-      SqlString.raw(componentField),
-      SqlString.raw(sessionIdField),
-      columns,
-      tableName,
-      buildTeamLogStreamWhereCondition(tableVersion, teamId),
-      SqlString.raw(sessionsWhereClause),
-      offset,
-      limit,
-    ],
-  );
-
-  const sessionsWithRecordingsQuery = SqlString.format(
-    `WITH sessions AS (${sessionsWithSearchQuery}),
-sessionIdsWithRecordings AS (
-  SELECT DISTINCT _rum_session_id as sessionId
-  FROM ??
-  WHERE span_name='record init' 
-    AND (_rum_session_id IN (SELECT sessions.sessionId FROM sessions))
-    AND (?)
-)
-SELECT * 
-FROM sessions 
-WHERE sessions.sessionId IN (
-    SELECT sessionIdsWithRecordings.sessionId FROM sessionIdsWithRecordings
-  )`,
-    [
-      tableName,
-      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
-    ],
-  );
-
-  // If the user specifes a query, we need to filter out returned sessions
-  // by the 'record init' event being included so we don't return "blank"
-  // sessions, this can be optimized once we record background status
-  // of all events in the RUM package
-  const executedQuery =
-    q.length === 0 ? sessionsWithSearchQuery : sessionsWithRecordingsQuery;
-
-  const ts = Date.now();
-  const rows = await client.query({
-    query: executedQuery,
-    format: 'JSON',
-    clickhouse_settings: {
-      additional_table_filters: buildLogStreamAdditionalFilters(
-        tableVersion,
-        teamId,
-      ),
-    },
-  });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
-  logger.info({
-    message: 'getSessions',
-    query: executedQuery,
-    teamId,
-    took: Date.now() - ts,
-  });
-  return result;
 };
 
 export const getHistogram = async (
