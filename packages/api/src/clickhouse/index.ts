@@ -733,7 +733,7 @@ export const getMetricsChart = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum || dataType === MetricsDataType.Histogram) {
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
