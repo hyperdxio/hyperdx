@@ -67,8 +67,10 @@ export type LogStreamModel = KeyValuePairs &
 export type MetricModel = {
   _string_attributes: Record<string, string>;
   data_type: string;
+  flags: number;
   name: string;
   timestamp: number;
+  unit: string;
   value: number;
 };
 
@@ -207,14 +209,17 @@ export type VectorSpan = {
 };
 
 export type VectorMetric = {
+  at: number; // aggregation temporality
   authorization?: string;
   b: JSONBlob; // tags
   dt: string; // data type
   hdx_platform: string;
   hdx_token: string;
+  im: boolean; // is monotonic
   n: string; // name
   ts: number; // timestamp
   tso: number; // observed timestamp
+  u: string; // unit
   v: number; // value
 };
 
@@ -276,8 +281,10 @@ class VectorMetricParser extends ParsingInterface<VectorMetric> {
     return {
       _string_attributes: metric.b,
       data_type: metric.dt,
+      flags: metric.at,
       name: metric.n,
       timestamp: metric.ts,
+      unit: metric.u,
       value: metric.v,
     };
   }
