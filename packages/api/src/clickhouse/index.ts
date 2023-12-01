@@ -633,6 +633,8 @@ const getMetricsTagsUncached = async (teamId: string) => {
         SELECT 
           format('{} - {}', name, data_type) as name,
           data_type,
+          MAX(flags) as flags,
+          MAX(unit) as unit,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
         GROUP BY name, data_type
