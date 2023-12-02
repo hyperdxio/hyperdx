@@ -98,7 +98,7 @@ the `.env` file. After making your changes, rebuild images with
 
 **DB Migration**
 
-Before running the migration, you'll need to install the migration tool:
+Before running the migration, you'll need to install the migration tools:
 
 1. Install local dependencies with `make`.
 2. Install
