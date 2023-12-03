@@ -98,6 +98,13 @@ the `.env` file. After making your changes, rebuild images with
 
 **DB Migration**
 
+Before running the migration, you'll need to install the migration tools:
+
+1. Install local dependencies with `make`.
+2. Install
+   [golang-migrate](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
+   CLI.
+
 You can initiate the DB migration process by executing `make dev-migrate-db`.
 This will run the migration scripts in `/packages/api/migrations` against the
 local DB.
