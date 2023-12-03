@@ -48,9 +48,13 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+# TODO: check db connections before running the migration CLIs
 .PHONY: dev-migrate-db
 dev-migrate-db:
+	@echo "Migrating Mongo db...\n"
 	npx nx run @hyperdx/api:dev:migrate-db
+	@echo "Migrating ClickHouse db...\n"
+	npx nx run @hyperdx/api:dev:migrate-ch
 
 .PHONY: build-local
 build-local:

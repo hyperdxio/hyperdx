@@ -93,6 +93,8 @@
     "ci:int": "jest --runInBand --ci --forceExit --coverage",
     "dev:int": "jest --watchAll --runInBand --detectOpenHandles",
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
-    "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts"
+    "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts",
+    "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",
+    "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up"
   }
 }
