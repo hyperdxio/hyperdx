@@ -6,6 +6,11 @@ export type JSONBlob = Record<string, any>;
 
 export type KeyPath = string[];
 
+export enum AggregationTemporality {
+  Delta = 1,
+  Cumulative = 2,
+}
+
 export enum LogType {
   Log = 'log',
   Metric = 'metric',
@@ -67,7 +72,8 @@ export type LogStreamModel = KeyValuePairs &
 export type MetricModel = {
   _string_attributes: Record<string, string>;
   data_type: string;
-  flags: number;
+  is_delta: boolean;
+  is_monotonic: boolean;
   name: string;
   timestamp: number;
   unit: string;
@@ -281,7 +287,8 @@ class VectorMetricParser extends ParsingInterface<VectorMetric> {
     return {
       _string_attributes: metric.b,
       data_type: metric.dt,
-      flags: metric.at,
+      is_delta: metric.at === AggregationTemporality.Delta,
+      is_monotonic: metric.im,
       name: metric.n,
       timestamp: metric.ts,
       unit: metric.u,
