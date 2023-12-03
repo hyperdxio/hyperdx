@@ -317,6 +317,8 @@ export const connect = async () => {
         value Float64 CODEC(ZSTD(1)),
         flags UInt32  CODEC(ZSTD(1)),
         unit String CODEC(ZSTD(1)),
+        is_delta Boolean CODEC(Delta, ZSTD(1)),
+        is_monotonic Boolean CODEC(Delta, ZSTD(1)),
         _string_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
         _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
         _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
