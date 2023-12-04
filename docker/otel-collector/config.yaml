@@ -30,6 +30,22 @@ processors:
       - key: __HDX_API_KEY
         from_context: authorization
         action: upsert
+  # TODO: use transform to attach __HDX_API_KEY attribute to spans/metrics/logs
+  transform:
+    error_mode: ignore
+    metric_statements:
+      - context: resource
+        statements:
+          # map metrics context to resource context (so splunk_hec will capture it)
+          - set(attributes["metric_aggregation_temporality"], "0")
+          - set(attributes["metric_unit"], "")
+          - set(attributes["metric_is_monotonic"], false)
+      - context: metric
+        statements:
+          - set(resource.attributes["metric_aggregation_temporality"],
+            aggregation_temporality)
+          - set(resource.attributes["metric_unit"], unit)
+          - set(resource.attributes["metric_is_monotonic"], is_monotonic)
   batch:
   memory_limiter:
     # 80% of maximum memory up to 2G
@@ -78,7 +94,7 @@ service:
       exporters: [logzio/traces, logging]
     metrics:
       receivers: [otlp]
-      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      processors: [attributes/attachHdxKey, transform, memory_limiter, batch]
       exporters: [splunk_hec, logging]
     logs:
       receivers: [otlp, fluentforward]

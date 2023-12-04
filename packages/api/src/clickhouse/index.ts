@@ -633,8 +633,11 @@ const getMetricsTagsUncached = async (teamId: string) => {
   const query = SqlString.format(
     `
         SELECT 
-          format('{} - {}', name, data_type) as name,
+          any(is_delta) as is_delta,
+          any(is_monotonic) as is_monotonic,
+          any(unit) as unit,
           data_type,
+          format('{} - {}', name, data_type) as name,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
         GROUP BY name, data_type

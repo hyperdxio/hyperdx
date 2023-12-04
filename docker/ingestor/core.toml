@@ -709,8 +709,12 @@ source = '''
   if err == null && structured.event == "metric" {
     # TODO: do this at extract_token
     .hdx_token = del(structured.fields.__HDX_API_KEY)
-    .dt = structured.fields.metric_type
-    filtered_keys = ["metric_type"]
+    .at = to_int(del(structured.fields.metric_aggregation_temporality)) ?? 0
+    .dt = del(structured.fields.metric_type)
+    .im = to_bool(del(structured.fields.metric_is_monotonic)) ?? null
+    .u = del(structured.fields.metric_unit)
+
+    filtered_keys = []
     for_each(object(structured.fields) ?? {})-> |key, value| {
       if is_integer(value) || is_float(value) {
         filtered_keys = push(filtered_keys, key)
