@@ -1,15 +1,15 @@
+import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/generateCategoricalChart';
-import { memo, useCallback, useMemo, useRef } from 'react';
-import { useHotkeys } from 'react-hotkeys-hook';
 
 import api from './api';
 import { generateSearchUrl } from './utils';

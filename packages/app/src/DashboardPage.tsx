@@ -1,4 +1,3 @@
-import Head from 'next/head';
 import {
   ForwardedRef,
   forwardRef,
@@ -8,12 +7,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import RGL, { WidthProvider } from 'react-grid-layout';
-import produce from 'immer';
-import HDXMarkdownChart from './HDXMarkdownChart';
-import { Button, Form, Modal } from 'react-bootstrap';
-import { useHotkeys } from 'react-hotkeys-hook';
+import Head from 'next/head';
 import { useRouter } from 'next/router';
+import produce from 'immer';
+import { Button, Form, Modal } from 'react-bootstrap';
+import RGL, { WidthProvider } from 'react-grid-layout';
+import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import {
@@ -23,37 +22,37 @@ import {
   withDefault,
 } from 'use-query-params';
 
-import HDXLineChart from './HDXLineChart';
-import AppNav from './AppNav';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
-import { Granularity, convertDateRangeToGranularityString } from './ChartUtils';
-import { FloppyIcon, Histogram } from './SVGIcons';
-import SearchInput from './SearchInput';
-import { hashCode } from './utils';
-import TabBar from './TabBar';
-import HDXHistogramChart from './HDXHistogramChart';
 import api from './api';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
-import type { Alert } from './types';
+import AppNav from './AppNav';
+import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
+import type { Chart } from './EditChartForm';
 import {
-  EditSearchChartForm,
-  EditMarkdownChartForm,
   EditHistogramChartForm,
   EditLineChartForm,
+  EditMarkdownChartForm,
   EditNumberChartForm,
+  EditSearchChartForm,
   EditTableChartForm,
 } from './EditChartForm';
-import HDXNumberChart from './HDXNumberChart';
 import GranularityPicker from './GranularityPicker';
+import HDXHistogramChart from './HDXHistogramChart';
+import HDXLineChart from './HDXLineChart';
+import HDXMarkdownChart from './HDXMarkdownChart';
+import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import SearchInput from './SearchInput';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import { FloppyIcon, Histogram } from './SVGIcons';
+import TabBar from './TabBar';
+import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
+import type { Alert } from './types';
 import { useConfirm } from './useConfirm';
-
-import type { Chart } from './EditChartForm';
+import { hashCode } from './utils';
+import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { ZIndexContext } from './zIndex';
 
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 

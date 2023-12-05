@@ -1,28 +1,27 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Modal } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { useEffect, useMemo, useState } from 'react';
 
-import HDXLineChart from './HDXLineChart';
-import TabBar from './TabBar';
+import {
+  ALERT_CHANNEL_OPTIONS,
+  ALERT_INTERVAL_OPTIONS,
+  intervalToDateRange,
+  intervalToGranularity,
+  SlackChannelForm,
+} from './Alert';
 import api from './api';
 import { FieldSelect } from './ChartUtils';
-import { capitalizeFirstLetter } from './utils';
+import HDXLineChart from './HDXLineChart';
 import { genEnglishExplanation } from './queryv2';
-
+import TabBar from './TabBar';
 import type {
   AlertChannelType,
   AlertInterval,
   AlertType,
   LogView,
 } from './types';
-import {
-  intervalToGranularity,
-  intervalToDateRange,
-  ALERT_INTERVAL_OPTIONS,
-  ALERT_CHANNEL_OPTIONS,
-  SlackChannelForm,
-} from './Alert';
+import { capitalizeFirstLetter } from './utils';
 
 function AlertForm({
   alertId,
