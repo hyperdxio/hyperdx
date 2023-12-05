@@ -55,28 +55,28 @@ export const SlackChannelForm = ({
 
   return (
     <>
-      {hasSlackWebhooks && (
-        <div className="mt-3">
-          <Form.Label className="text-muted">Slack Webhook</Form.Label>
-          <Form.Select
-            className="bg-black border-0 mb-1 px-3"
-            required
-            id="webhookId"
-            size="sm"
-            {...webhookSelectProps}
-          >
-            {/* Ensure user selects a slack webhook before submitting form */}
-            <option value="" disabled>
-              Select a Slack Webhook
+      <div className="mt-3">
+        <Form.Label className="text-muted">Slack Webhook</Form.Label>
+        <Form.Select
+          className="bg-black border-0 mb-1 px-3"
+          required
+          id="webhookId"
+          size="sm"
+          {...webhookSelectProps}
+        >
+          {/* Ensure user selects a slack webhook before submitting form */}
+          <option value="" disabled selected>
+            {hasSlackWebhooks
+              ? 'Select a Slack Webhook'
+              : 'No Slack Webhooks available'}
+          </option>
+          {slackWebhooks?.data.map((sw: any) => (
+            <option key={sw._id} value={sw._id}>
+              {sw.name}
             </option>
-            {slackWebhooks.data.map((sw: any) => (
-              <option key={sw._id} value={sw._id}>
-                {sw.name}
-              </option>
-            ))}
-          </Form.Select>
-        </div>
-      )}
+          ))}
+        </Form.Select>
+      </div>
 
       <div className="mb-2">
         <a
