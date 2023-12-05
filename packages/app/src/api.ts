@@ -120,6 +120,7 @@ const api = {
     const endTime = endDate.getTime();
 
     // FIXME: pass metric name and type separately
+    if (!name.includes(' - ')) return;
     const [metricName, metricDataType] = name.split(' - ');
 
     return useQuery<any, Error>({
