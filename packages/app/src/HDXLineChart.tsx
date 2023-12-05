@@ -19,7 +19,9 @@ import Link from 'next/link';
 import pick from 'lodash/pick';
 
 import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
-import { semanticKeyedColor, truncateMiddle } from './utils';
+import { semanticKeyedColor, truncateMiddle, TIME_TOKENS } from './utils';
+import useUserPreferences, { TimeFormat } from './useUserPreferences';
+
 import api from './api';
 
 function ExpandableLegendItem({ value, entry }: any) {
@@ -88,6 +90,9 @@ const MemoChart = memo(function MemoChart({
   }, [groupKeys, displayType]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const tsFormat = TIME_TOKENS[timeFormat];
+  // Gets the preffered time format from User Preferences, then converts it to a formattable token
 
   return (
     <ResponsiveContainer
@@ -136,7 +141,7 @@ const MemoChart = memo(function MemoChart({
           interval="preserveStartEnd"
           scale="time"
           type="number"
-          tickFormatter={tick => format(new Date(tick * 1000), 'MMM d HH:mm')}
+          tickFormatter={tick => format(new Date(tick * 1000), tsFormat)}
           minTickGap={50}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
@@ -193,7 +198,8 @@ const MemoChart = memo(function MemoChart({
 });
 
 const HDXLineChartTooltip = (props: any) => {
-  const tsFormat = 'MMM d HH:mm:ss.SSS';
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const tsFormat = TIME_TOKENS[timeFormat];
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
     return (

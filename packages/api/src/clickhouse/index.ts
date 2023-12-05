@@ -43,6 +43,12 @@ const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
 
+export enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+}
+
 export enum AggFn {
   Avg = 'avg',
   AvgRate = 'avg_rate',
@@ -311,6 +317,8 @@ export const connect = async () => {
         value Float64 CODEC(ZSTD(1)),
         flags UInt32  CODEC(ZSTD(1)),
         unit String CODEC(ZSTD(1)),
+        is_delta Boolean CODEC(Delta, ZSTD(1)),
+        is_monotonic Boolean CODEC(Delta, ZSTD(1)),
         _string_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
         _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
         _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
@@ -625,8 +633,11 @@ const getMetricsTagsUncached = async (teamId: string) => {
   const query = SqlString.format(
     `
         SELECT 
-          format('{} - {}', name, data_type) as name,
+          any(is_delta) as is_delta,
+          any(is_monotonic) as is_monotonic,
+          any(unit) as unit,
           data_type,
+          format('{} - {}', name, data_type) as name,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
         GROUP BY name, data_type
@@ -695,7 +706,7 @@ export const getMetricsChart = async ({
   teamId,
 }: {
   aggFn: AggFn;
-  dataType: string;
+  dataType: MetricsDataType;
   endTime: number; // unix in ms,
   granularity: Granularity;
   groupBy?: string;
@@ -727,7 +738,7 @@ export const getMetricsChart = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  if (dataType === 'Gauge' || dataType === 'Sum') {
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'

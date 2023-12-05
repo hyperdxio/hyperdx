@@ -25,19 +25,36 @@ dev-down:
 
 .PHONY: dev-lint
 dev-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t lint
 
 .PHONY: ci-lint
 ci-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run ci:lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t ci:lint
 
 .PHONY: dev-int
 dev-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
+
+.PHONY: dev-unit
+dev-unit:
+	npx nx run-many -t dev:unit
+
+.PHONY: ci-unit
+ci-unit:
+	npx nx run-many -t ci:unit
+
+# TODO: check db connections before running the migration CLIs
+.PHONY: dev-migrate-db
+dev-migrate-db:
+	@echo "Migrating Mongo db...\n"
+	npx nx run @hyperdx/api:dev:migrate-db
+	@echo "Migrating ClickHouse db...\n"
+	npx nx run @hyperdx/api:dev:migrate-ch
 
 .PHONY: build-local
 build-local:

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import {
   Badge,
   Button,
+  ToggleButton,
+  ToggleButtonGroup,
   Container,
   Form,
   Modal,
@@ -13,6 +15,8 @@ import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useState } from 'react';
 
+import useUserPreferences from './useUserPreferences';
+import { TimeFormat } from './useUserPreferences';
 import AppNav from './AppNav';
 import api from './api';
 import { isValidUrl } from './utils';
@@ -34,6 +38,9 @@ export default function TeamPage() {
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
+  const setTimeFormat = useUserPreferences().setTimeFormat;
+  const timeFormat = useUserPreferences().timeFormat;
+  const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val);
 
   const hasAllowedAuthMethods =
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
@@ -255,6 +262,22 @@ export default function TeamPage() {
                   </Modal>
                 </div>
               </div>
+              {!isLoadingMe && me != null && (
+                <div className="my-4 fs-5">
+                  <div className="text-muted">Personal API Access Key: </div>
+                  <Badge bg="primary" data-test-id="apiKey">
+                    {me.accessKey}
+                  </Badge>
+                  <CopyToClipboard text={me.accessKey}>
+                    <Button
+                      variant="link"
+                      className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
+                    >
+                      📋 Copy Key
+                    </Button>
+                  </CopyToClipboard>
+                </div>
+              )}
               <div className="my-5">
                 <h2>Slack Webhooks</h2>
                 <div className="text-muted">
@@ -441,6 +464,42 @@ export default function TeamPage() {
                     </Form>
                   </Modal.Body>
                 </Modal>
+              </div>
+              <div className="text-muted my-2">
+                Note: Only affects your own view and does not propagate to other
+                team members.
+              </div>
+              <div>
+                <h2 className="mt-5">Time Format</h2>
+                <ToggleButtonGroup
+                  type="radio"
+                  value={timeFormat}
+                  onChange={handleTimeButtonClick}
+                  name="buttons"
+                >
+                  <ToggleButton
+                    id="tbg-btn-1"
+                    value="24h"
+                    variant={
+                      timeFormat === '24h'
+                        ? 'outline-success'
+                        : 'outline-secondary'
+                    }
+                  >
+                    24h
+                  </ToggleButton>
+                  <ToggleButton
+                    id="tbg-btn-2"
+                    value="12h"
+                    variant={
+                      timeFormat === '12h'
+                        ? 'outline-success'
+                        : 'outline-secondary'
+                    }
+                  >
+                    12h
+                  </ToggleButton>
+                </ToggleButtonGroup>
               </div>
             </>
           )}
