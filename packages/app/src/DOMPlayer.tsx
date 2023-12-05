@@ -367,7 +367,7 @@ export default function DOMPlayer({
   }, [lastEventTsLoaded, focus, playerState, pause, play]);
 
   return (
-    <div>
+    <>
       {lastHref != '' && (
         <div className="bg-dark rounded p-2 mb-2">{lastHref}</div>
       )}
@@ -396,6 +396,11 @@ export default function DOMPlayer({
           'd-none': isLoading || isBuffering,
           started: (replayer.current?.getCurrentTime() ?? 0) > 0,
         })}
+        style={{
+          marginBottom: 80, // XXX (mikeshi): This is a CSS hack as the side panel parent
+          // height is 100%, which is incorrect and will be higher than the actual height available
+          // however fixing the side panel to use flex will likely take longer to fix
+        }}
       >
         <div
           className="player rr-block"
@@ -405,6 +410,6 @@ export default function DOMPlayer({
           }}
         />
       </div>
-    </div>
+    </>
   );
 }
