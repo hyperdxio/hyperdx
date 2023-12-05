@@ -1,6 +1,18 @@
 import * as clickhouse from '..';
+import { closeDB, getServer } from '@/fixtures';
 
 describe('clickhouse', () => {
+  const server = getServer();
+
+  beforeAll(async () => {
+    await server.start();
+  });
+
+  afterAll(async () => {
+    await server.closeHttpServer();
+    await closeDB();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
