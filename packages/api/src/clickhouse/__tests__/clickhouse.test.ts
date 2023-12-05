@@ -62,7 +62,7 @@ describe('clickhouse', () => {
 
     await clickhouse.getMetricsChart({
       aggFn: clickhouse.AggFn.AvgRate,
-      dataType: 'Sum',
+      dataType: clickhouse.MetricsDataType.Sum,
       endTime: Date.now(),
       granularity: clickhouse.Granularity.OneHour,
       name: 'test',
