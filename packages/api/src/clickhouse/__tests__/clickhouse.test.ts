@@ -71,7 +71,7 @@ describe('clickhouse', () => {
       teamId: 'test',
     });
 
-    expect(clickhouse.client.query).toHaveBeenCalledTimes(1);
+    expect(clickhouse.client.query).toHaveBeenCalledTimes(2);
     expect(clickhouse.client.query).toHaveBeenCalledWith(
       expect.objectContaining({
         format: 'JSON',
