@@ -25,7 +25,7 @@ dev-down:
 
 .PHONY: dev-lint
 dev-lint:
-	./docker/ingestor/run_linting.sh && npx nx run-many -t lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t lint:fix
 
 .PHONY: ci-lint
 ci-lint:

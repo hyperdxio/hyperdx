@@ -190,9 +190,6 @@ export const buildLogStreamAdditionalFilters = (
 export const healthCheck = () => client.ping();
 
 export const connect = async () => {
-  if (config.IS_CI) {
-    return;
-  }
   // FIXME: this is a hack to avoid CI failure
   logger.info('Checking connections to ClickHouse...');
   // health check
@@ -814,6 +811,8 @@ FROM
   (
     ?
   )
+WHERE
+  isNaN(rate) = 0
 `.trim(),
     [SqlString.raw(sumMetricSource)],
   );
