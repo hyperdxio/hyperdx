@@ -1,4 +1,5 @@
 import { useConfig } from 'nextra-theme-docs';
+
 import { useIsBlog, useIsDocs, useIsTerms } from './utils';
 
 export default function useNextraSeoProps() {

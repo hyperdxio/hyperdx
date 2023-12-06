@@ -1,3 +1,16 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import stripAnsi from 'strip-ansi';
 import {
   ColumnDef,
   flexRender,
@@ -6,26 +19,13 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
-import stripAnsi from 'strip-ansi';
-import {
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-} from 'recharts';
 
-import LogLevel from './LogLevel';
 import api from './api';
-import { useWindowSize } from './utils';
-import { Pattern } from './PatternSidePanel';
 import { Granularity, timeBucketByGranularity } from './ChartUtils';
+import LogLevel from './LogLevel';
+import { Pattern } from './PatternSidePanel';
 import { UNDEFINED_WIDTH } from './tableUtils';
+import { useWindowSize } from './utils';
 
 const PatternTrendChartTooltip = (props: any) => {
   return null;

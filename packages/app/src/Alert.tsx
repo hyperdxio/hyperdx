@@ -1,7 +1,8 @@
 import { sub } from 'date-fns';
 import { Form, FormSelectProps } from 'react-bootstrap';
+
 import api from './api';
-import type { AlertInterval, AlertChannelType } from './types';
+import type { AlertChannelType, AlertInterval } from './types';
 
 export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '1m') return '1 minute' as const;

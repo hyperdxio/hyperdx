@@ -1,8 +1,8 @@
-import throttle from 'lodash/throttle';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import cx from 'classnames';
+import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
-import cx from 'classnames';
 
 import { useSearchEventStream } from './search';
 import { useDebugMode } from './utils';

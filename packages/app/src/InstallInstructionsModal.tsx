@@ -1,8 +1,8 @@
 import cx from 'classnames';
 import { Button, Modal } from 'react-bootstrap';
 
-import Clipboard from './Clipboard';
 import api from './api';
+import Clipboard from './Clipboard';
 
 function CopyableValue({
   label = '',

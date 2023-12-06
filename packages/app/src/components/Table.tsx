@@ -1,11 +1,12 @@
 import * as React from 'react';
 import cx from 'classnames';
 import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
   ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
 } from '@tanstack/react-table';
+
 import { UNDEFINED_WIDTH } from '../tableUtils';
 
 import styles from './Table.module.scss';

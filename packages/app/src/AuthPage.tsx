@@ -1,16 +1,16 @@
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { Button, Form } from 'react-bootstrap';
-import { NextSeo } from 'next-seo';
-import { API_SERVER_URL } from './config';
-import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { NextSeo } from 'next-seo';
 import cx from 'classnames';
+import { Button, Form } from 'react-bootstrap';
+import { SubmitHandler, useForm } from 'react-hook-form';
 
-import { PasswordCheck, CheckOrX } from './PasswordCheck';
-import LandingHeader from './LandingHeader';
-import * as config from './config';
 import api from './api';
+import { API_SERVER_URL } from './config';
+import * as config from './config';
+import LandingHeader from './LandingHeader';
+import { CheckOrX, PasswordCheck } from './PasswordCheck';
 
 type FormData = {
   email: string;

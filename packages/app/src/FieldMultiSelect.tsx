@@ -1,4 +1,3 @@
-import AsyncSelect from 'react-select/async';
 import React, { MouseEventHandler, useMemo } from 'react';
 import {
   components,
@@ -7,12 +6,13 @@ import {
   OnChangeValue,
   Props,
 } from 'react-select';
+import AsyncSelect from 'react-select/async';
 import {
   SortableContainer,
   SortableContainerProps,
   SortableElement,
-  SortEndHandler,
   SortableHandle,
+  SortEndHandler,
 } from 'react-sortable-hoc';
 
 import { usePropertyOptions } from './ChartUtils';

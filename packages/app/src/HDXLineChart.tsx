@@ -1,28 +1,27 @@
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import cx from 'classnames';
+import { add, format } from 'date-fns';
+import pick from 'lodash/pick';
 import {
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Line,
-  LineChart,
-  Legend,
-  ReferenceLine,
-  ReferenceArea,
-  Label,
   Bar,
   BarChart,
+  Label,
+  Legend,
+  Line,
+  LineChart,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { format, add } from 'date-fns';
-import cx from 'classnames';
-import Link from 'next/link';
-import pick from 'lodash/pick';
-
-import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
-import { semanticKeyedColor, truncateMiddle, TIME_TOKENS } from './utils';
-import useUserPreferences, { TimeFormat } from './useUserPreferences';
 
 import api from './api';
+import { AggFn, convertGranularityToSeconds, Granularity } from './ChartUtils';
+import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
 function ExpandableLegendItem({ value, entry }: any) {
   const [expanded, setExpanded] = useState(false);

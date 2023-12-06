@@ -1,26 +1,24 @@
-import Head from 'next/head';
 import React, { useEffect } from 'react';
-import SSRProvider from 'react-bootstrap/SSRProvider';
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
+import { NextAdapter } from 'next-query-params';
+import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ReactQueryDevtools } from 'react-query/devtools';
 import { ToastContainer } from 'react-toastify';
-import { NextAdapter } from 'next-query-params';
 import { QueryParamProvider } from 'use-query-params';
-import { useConfirmModal } from '../src/useConfirm';
 
 import * as config from '../src/config';
+import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
 import { UserPreferencesProvider } from '../src/useUserPreferences';
 
 import 'react-toastify/dist/ReactToastify.css';
-
 import '../styles/globals.css';
 import '../styles/app.scss';
 import '../src/LandingPage.scss';
 
 const queryClient = new QueryClient();
-
 import HyperDX from '@hyperdx/browser';
 
 export default function MyApp({ Component, pageProps }: AppProps) {

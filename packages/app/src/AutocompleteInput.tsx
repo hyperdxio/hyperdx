@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Form, InputGroup, OverlayTrigger } from 'react-bootstrap';
 import Fuse from 'fuse.js';
+import { Form, InputGroup, OverlayTrigger } from 'react-bootstrap';
 
 import { useDebounce } from './utils';
 

@@ -1,14 +1,15 @@
-import { Form, InputGroup } from 'react-bootstrap';
-import cx from 'classnames';
-import { useRef, useEffect, useState } from 'react';
-import DatePicker from 'react-datepicker';
-import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
-import { endOfDay, format, sub } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import * as chrono from 'chrono-node';
+import cx from 'classnames';
+import { endOfDay, format, sub } from 'date-fns';
+import { Form, InputGroup } from 'react-bootstrap';
+import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
+import DatePicker from 'react-datepicker';
+import { useHotkeys } from 'react-hotkeys-hook';
+
+import { TimeFormat } from './useUserPreferences';
 
 import 'react-datepicker/dist/react-datepicker.css';
-import { useHotkeys } from 'react-hotkeys-hook';
-import { TimeFormat } from './useUserPreferences';
 
 export function parseTimeRangeInput(str: string): [Date | null, Date | null] {
   const parsedTimeResult = chrono.parse(str);

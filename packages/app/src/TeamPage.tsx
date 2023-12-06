@@ -1,24 +1,24 @@
+import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import {
   Badge,
   Button,
-  ToggleButton,
-  ToggleButtonGroup,
   Container,
   Form,
   Modal,
   Row,
   Spinner,
+  ToggleButton,
+  ToggleButtonGroup,
 } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
-import { useState } from 'react';
 
+import api from './api';
+import AppNav from './AppNav';
 import useUserPreferences from './useUserPreferences';
 import { TimeFormat } from './useUserPreferences';
-import AppNav from './AppNav';
-import api from './api';
 import { isValidUrl } from './utils';
 
 export default function TeamPage() {

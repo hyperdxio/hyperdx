@@ -1,14 +1,14 @@
 import * as React from 'react';
-import { Form } from 'react-bootstrap';
-import { omit } from 'lodash';
 import produce from 'immer';
-import type { Alert } from './types';
+import { omit } from 'lodash';
+import { Form } from 'react-bootstrap';
 
 import {
-  ALERT_INTERVAL_OPTIONS,
   ALERT_CHANNEL_OPTIONS,
+  ALERT_INTERVAL_OPTIONS,
   SlackChannelForm,
 } from './Alert';
+import type { Alert } from './types';
 
 // Don't allow 1 minute alerts for charts
 const CHART_ALERT_INTERVAL_OPTIONS = omit(ALERT_INTERVAL_OPTIONS, '1m');

@@ -1,17 +1,19 @@
+import * as React from 'react';
+import { useImperativeHandle } from 'react';
+import { useRouter } from 'next/router';
+import { NextAdapter } from 'next-query-params';
+import { QueryParamProvider } from 'use-query-params';
+import { LocationMock } from '@jedmao/location';
+import { render } from '@testing-library/react';
+
 import {
   getLiveTailTimeRange,
   useNewTimeQuery,
   type UseTimeQueryInputType,
   type UseTimeQueryReturnType,
 } from '../timeQuery';
-import { useRouter } from 'next/router';
-import { render } from '@testing-library/react';
-import * as React from 'react';
-import { useImperativeHandle } from 'react';
-import { QueryParamProvider } from 'use-query-params';
-import { NextAdapter } from 'next-query-params';
+
 import { TestRouter } from './fixtures';
-import { LocationMock } from '@jedmao/location';
 
 // Setting a fixed time of 10/03/23 at 12pm EDT
 const INITIAL_DATE_STRING =

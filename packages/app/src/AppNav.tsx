@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import cx from 'classnames';
-import { useQueryClient } from 'react-query';
 import Router, { useRouter } from 'next/router';
+import cx from 'classnames';
+import { Button } from 'react-bootstrap';
+import { useQueryClient } from 'react-query';
 import {
   NumberParam,
   StringParam,
@@ -10,15 +12,13 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
-import { useEffect, useState } from 'react';
 
 import api from './api';
-import Logo from './Logo';
-import { API_SERVER_URL } from './config';
-import { useWindowSize } from './utils';
-import { Button } from 'react-bootstrap';
-import Icon from './Icon';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
+import { API_SERVER_URL } from './config';
+import Icon from './Icon';
+import Logo from './Logo';
+import { useWindowSize } from './utils';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',

@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import usePortal from 'react-useportal';
 
-import type { LogView } from './types';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
+import type { LogView } from './types';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 export function LogTableWithSidePanel({
