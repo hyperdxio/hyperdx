@@ -1,12 +1,12 @@
 import { useMemo, useRef } from 'react';
+import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 
 import api from './api';
-import { add } from 'date-fns';
-import SearchInput from './SearchInput';
-import MetricTagFilterInput from './MetricTagFilterInput';
 import Checkbox from './Checkbox';
+import MetricTagFilterInput from './MetricTagFilterInput';
+import SearchInput from './SearchInput';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },

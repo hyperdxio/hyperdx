@@ -1,16 +1,16 @@
-import CopyToClipboard from 'react-copy-to-clipboard';
-import Drawer from 'react-modern-drawer';
-import { Button } from 'react-bootstrap';
-import { toast } from 'react-toastify';
-import { useHotkeys } from 'react-hotkeys-hook';
 import { useState } from 'react';
+import { Button } from 'react-bootstrap';
+import CopyToClipboard from 'react-copy-to-clipboard';
+import { useHotkeys } from 'react-hotkeys-hook';
+import Drawer from 'react-modern-drawer';
+import { toast } from 'react-toastify';
 
 import api from './api';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
+import { ZIndexContext } from './zIndex';
 
 import 'react-modern-drawer/dist/index.css';
-import { ZIndexContext } from './zIndex';
 
 export default function SessionSidePanel({
   sessionId,
