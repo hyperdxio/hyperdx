@@ -1,10 +1,9 @@
-import { useState, useCallback, memo } from 'react';
+import { memo, useCallback, useState } from 'react';
 import usePortal from 'react-useportal';
 
+import type { Pattern } from './PatternSidePanel';
 import PatternSidePanel from './PatternSidePanel';
 import PatternTable from './PatternTable';
-
-import type { Pattern } from './PatternSidePanel';
 
 function PatternTableWithSidePanel({
   config,

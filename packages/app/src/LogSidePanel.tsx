@@ -1,59 +1,58 @@
-import Button from 'react-bootstrap/Button';
-import CopyToClipboard from 'react-copy-to-clipboard';
-import Drawer from 'react-modern-drawer';
-import Fuse from 'fuse.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import Timestamp from 'timestamp-nano';
 import cx from 'classnames';
+import { add, format } from 'date-fns';
+import Fuse from 'fuse.js';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
 import mapValues from 'lodash/mapValues';
 import pickBy from 'lodash/pickBy';
-import stripAnsi from 'strip-ansi';
-import { ErrorBoundary } from 'react-error-boundary';
 import { Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
-import { JSONTree } from 'react-json-tree';
-import { StringParam, withDefault } from 'serialize-query-params';
-import { add, format } from 'date-fns';
-import { toast } from 'react-toastify';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Button from 'react-bootstrap/Button';
+import CopyToClipboard from 'react-copy-to-clipboard';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { JSONTree } from 'react-json-tree';
+import Drawer from 'react-modern-drawer';
+import { toast } from 'react-toastify';
+import { StringParam, withDefault } from 'serialize-query-params';
+import stripAnsi from 'strip-ansi';
+import Timestamp from 'timestamp-nano';
 import { useQueryParam } from 'use-query-params';
-import type { StacktraceFrame, StacktraceBreadcrumb } from './types';
-import {
-  useShowMoreRows,
-  networkColumns,
-  stacktraceColumns,
-  breadcrumbColumns,
-  headerColumns,
-  StacktraceValue,
-  CollapsibleSection,
-  SectionWrapper,
-  NetworkBody,
-  LogSidePanelKbdShortcuts,
-} from './LogSidePanelElements';
-import { Table } from './components/Table';
 
+import { Table } from './components/Table';
 import api from './api';
+import { CurlGenerator } from './curlGenerator';
 import LogLevel from './LogLevel';
+import {
+  breadcrumbColumns,
+  CollapsibleSection,
+  headerColumns,
+  LogSidePanelKbdShortcuts,
+  NetworkBody,
+  networkColumns,
+  SectionWrapper,
+  stacktraceColumns,
+  StacktraceValue,
+  useShowMoreRows,
+} from './LogSidePanelElements';
 import SearchInput from './SearchInput';
+import SessionSubpanel from './SessionSubpanel';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
-import SessionSubpanel from './SessionSubpanel';
+import { dateRangeToString } from './timeQuery';
+import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
+import { Dictionary } from './types';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
   useLocalStorage,
   useWindowSize,
 } from './utils';
-import { dateRangeToString } from './timeQuery';
+import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
 import 'react-modern-drawer/dist/index.css';
-import { CurlGenerator } from './curlGenerator';
-import { Dictionary } from './types';
-import { ZIndexContext, useZIndex } from './zIndex';
-
 import styles from '../styles/LogSidePanel.module.scss';
 
 const HDX_BODY_FIELD = '_hdx_body';
@@ -493,7 +492,6 @@ function isExceptionSpan({ logData }: { logData: any }) {
 
 function TraceSubpanel({
   logData,
-  isException,
   onClose,
   onPropertyAddClick,
   generateChartUrl,
@@ -502,7 +500,6 @@ function TraceSubpanel({
   toggleColumn,
 }: {
   logData: any;
-  isException: boolean;
   onClose: () => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
@@ -585,6 +582,11 @@ function TraceSubpanel({
       return [];
     }
   }, [selectedLogData]);
+
+  const isSelectedLogDataException = useMemo(
+    () => isExceptionSpan({ logData: selectedLogData }),
+    [selectedLogData],
+  );
 
   // Clear search query when we close the panel
   // TODO: This doesn't work because it breaks navigation to things like the sessions page,
@@ -682,7 +684,7 @@ function TraceSubpanel({
                 />
               </ErrorBoundary>
             )}
-            {isException && (
+            {isSelectedLogDataException && (
               <ErrorBoundary
                 onError={err => {
                   console.error(err);
@@ -700,7 +702,7 @@ function TraceSubpanel({
                 />
               </ErrorBoundary>
             )}
-            {!isException && (
+            {!isSelectedLogDataException && (
               <ErrorBoundary
                 onError={err => {
                   console.error(err);
@@ -2261,7 +2263,6 @@ export default function LogSidePanel({
                   >
                     <TraceSubpanel
                       logData={logData}
-                      isException={isException}
                       onPropertyAddClick={onPropertyAddClick}
                       generateSearchUrl={generateSearchUrl}
                       generateChartUrl={generateChartUrl}

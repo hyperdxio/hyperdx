@@ -1,7 +1,6 @@
+import type { Control } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import Select from 'react-select';
-
-import type { Control } from 'react-hook-form';
 
 export default function ControllerSelect<
   Option extends { value: string | undefined; label: React.ReactNode },

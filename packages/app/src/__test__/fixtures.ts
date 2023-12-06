@@ -1,6 +1,6 @@
 import { Router } from 'next/router';
-import { LocationMock } from '@jedmao/location';
 import type { UrlObject } from 'url';
+import { LocationMock } from '@jedmao/location';
 
 type PartialRouter = Partial<Router>;
 

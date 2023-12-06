@@ -1,4 +1,5 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
+
 import { useLocalStorage } from './utils';
 export type TimeFormat = '12h' | '24h';
 

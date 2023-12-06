@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { genEnglishExplanation } from './queryv2';
 import api from './api';
 import AutocompleteInput from './AutocompleteInput';
+import { genEnglishExplanation } from './queryv2';
 
 export default function SearchInput({
   inputRef,

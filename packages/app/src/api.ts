@@ -1,5 +1,7 @@
 import Router from 'next/router';
+import type { HTTPError } from 'ky';
 import ky from 'ky-universal';
+import type { UseQueryOptions } from 'react-query';
 import {
   useInfiniteQuery,
   useMutation,
@@ -8,17 +10,14 @@ import {
 } from 'react-query';
 
 import { API_SERVER_URL } from './config';
-
 import type {
   AlertChannel,
   AlertInterval,
-  AlertType,
   AlertSource,
+  AlertType,
   LogView,
   Session,
 } from './types';
-import type { HTTPError } from 'ky';
-import type { UseQueryOptions } from 'react-query';
 
 type ApiAlertInput = {
   channel: AlertChannel;
