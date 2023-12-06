@@ -492,7 +492,6 @@ function isExceptionSpan({ logData }: { logData: any }) {
 
 function TraceSubpanel({
   logData,
-  isException,
   onClose,
   onPropertyAddClick,
   generateChartUrl,
@@ -501,7 +500,6 @@ function TraceSubpanel({
   toggleColumn,
 }: {
   logData: any;
-  isException: boolean;
   onClose: () => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
@@ -584,6 +582,11 @@ function TraceSubpanel({
       return [];
     }
   }, [selectedLogData]);
+
+  const isSelectedLogDataException = useMemo(
+    () => isExceptionSpan({ logData: selectedLogData }),
+    [selectedLogData],
+  );
 
   // Clear search query when we close the panel
   // TODO: This doesn't work because it breaks navigation to things like the sessions page,
@@ -681,7 +684,7 @@ function TraceSubpanel({
                 />
               </ErrorBoundary>
             )}
-            {isException && (
+            {isSelectedLogDataException && (
               <ErrorBoundary
                 onError={err => {
                   console.error(err);
@@ -699,7 +702,7 @@ function TraceSubpanel({
                 />
               </ErrorBoundary>
             )}
-            {!isException && (
+            {!isSelectedLogDataException && (
               <ErrorBoundary
                 onError={err => {
                   console.error(err);
@@ -2260,7 +2263,6 @@ export default function LogSidePanel({
                   >
                     <TraceSubpanel
                       logData={logData}
-                      isException={isException}
                       onPropertyAddClick={onPropertyAddClick}
                       generateSearchUrl={generateSearchUrl}
                       generateChartUrl={generateChartUrl}

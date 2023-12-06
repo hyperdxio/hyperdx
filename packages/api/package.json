@@ -11,6 +11,7 @@
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-logger": "^0.2.8",
     "@hyperdx/node-opentelemetry": "^0.3.0",
+    "@sentry/node": "^7.85.0",
     "@slack/webhook": "^6.1.0",
     "compression": "^1.7.4",
     "connect-mongo": "^4.6.0",

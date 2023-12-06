@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import MongoStore from 'connect-mongo';
 import compression from 'compression';
 import express from 'express';
@@ -15,6 +16,22 @@ import { appErrorHandler } from './middleware/error';
 import { expressLogger } from './utils/logger';
 
 const app: express.Application = express();
+
+if (config.SENTRY_DSN) {
+  Sentry.init({
+    dsn: config.SENTRY_DSN,
+    environment: config.NODE_ENV,
+    release: config.CODE_VERSION,
+  });
+
+  Sentry.setContext('hyperdx', {
+    serviceName: config.OTEL_SERVICE_NAME,
+  });
+}
+
+// RequestHandler creates a separate execution context using domains, so that every
+// transaction/span/breadcrumb is attached to its own Hub instance
+app.use(Sentry.Handlers.requestHandler());
 
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
@@ -90,6 +107,9 @@ app.use('/webhooks', routers.webhooksRouter);
 // API v1
 app.use('/api/v1', externalRoutersV1);
 // ---------------------------------------------------------------------
+
+// The error handler must be before any other error middleware and after all controllers
+app.use(Sentry.Handlers.errorHandler());
 
 // error handling
 app.use(appErrorHandler);
