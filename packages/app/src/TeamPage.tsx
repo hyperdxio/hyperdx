@@ -341,6 +341,7 @@ export default function TeamPage() {
                         name="name"
                         placeholder="My Slack Webhook"
                         className="border-0 mb-4 px-3"
+                        required
                       />
                       <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                         Webhook URL
@@ -351,6 +352,7 @@ export default function TeamPage() {
                         name="url"
                         placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
                         className="border-0 mb-4 px-3"
+                        required
                       />
                       <Button
                         variant="brand-primary"

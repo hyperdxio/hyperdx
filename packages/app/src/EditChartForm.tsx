@@ -21,6 +21,7 @@ import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
 import { intervalToGranularity } from './Alert';
+import { METRIC_ALERTS_ENABLED } from './config';
 
 export type Chart = {
   id: string;
@@ -867,6 +868,9 @@ export const EditLineChartForm = ({
     return null;
   }
 
+  const isChartAlertsFeatureEnabled =
+    editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED;
+
   return (
     <form
       onSubmit={e => {
@@ -970,7 +974,7 @@ export const EditLineChartForm = ({
         }}
       />
 
-      {editedChart.series[0].table === 'logs' && (
+      {isChartAlertsFeatureEnabled && (
         <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
