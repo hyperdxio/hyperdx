@@ -523,9 +523,15 @@ export default function SessionSubpanel({
           />
         </div>
       </div>
-      <div style={{ width: playerFullWidth ? '100%' : '50%' }}>
+      <div
+        style={{ width: playerFullWidth ? '100%' : '50%' }}
+        className="d-flex flex-column"
+      >
         <div className="fs-8 text-muted mt-4 mb-2">Session Player</div>
-        <div className="mt-1 border-top border-dark mb-2">
+        <div
+          className="d-flex flex-column mt-1 border-top border-dark mb-2"
+          style={{ minHeight: 0 }}
+        >
           <div className="mb-3 mt-2">
             <MemoPlaybar
               playerState={playerState}
