@@ -79,4 +79,29 @@ describe('clickhouse', () => {
       }),
     );
   });
+
+  it('getMetricsChart supports Histogram type metrics', async () => {
+    jest
+      .spyOn(clickhouse.client, 'query')
+      .mockResolvedValueOnce({ json: () => Promise.resolve({}) } as any);
+
+    await clickhouse.getMetricsChart({
+      aggFn: clickhouse.AggFn.Count,
+      dataType: clickhouse.MetricsDataType.Histogram,
+      endTime: Date.now(),
+      granularity: clickhouse.Granularity.OneHour,
+      name: 'test',
+      q: '',
+      startTime: Date.now() - 1000 * 60 * 60 * 24,
+      teamId: 'test',
+    });
+
+    expect(clickhouse.client.query).toHaveBeenCalledTimes(1);
+    expect(clickhouse.client.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'JSON',
+        query: '',
+      }),
+    );
+  });
 });

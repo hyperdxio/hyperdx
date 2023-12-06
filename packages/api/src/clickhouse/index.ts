@@ -691,6 +691,100 @@ const isRateAggFn = (aggFn: AggFn) => {
   );
 };
 
+const buildMetricHistogramQuery = async ({
+  aggFn,
+  endTime,
+  name,
+  q,
+  startTime,
+  teamId,
+}: {
+  aggFn: AggFn;
+  endTime: number; // unix in ms,
+  name: string;
+  q: string;
+  startTime: number; // unix in ms
+  teamId: string;
+}) => {
+  if (aggFn !== AggFn.Count) {
+    throw new Error('Histogram metrics only support count aggregation');
+  }
+  // baseMetric is the name but with the last underscore and following text
+  // stripped off, e.g. "http_request_duration_seconds_bucket" -> "http_request_duration_seconds"
+  const baseMetric = name.replace(/_[^_]*$/, '');
+  const bucketMetric = `${baseMetric}_bucket`;
+  const countMetric = `${baseMetric}_count`;
+  const sumMetric = `${baseMetric}_sum`;
+  const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
+    undefined, // default version
+    teamId,
+  );
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime,
+  });
+  const overall_sum = SqlString.format(
+    `
+  select
+    ? as group,
+    sum(value) as sumSum,
+    min(timestamp) as sum_start_time,
+    max(timestamp) as sum_end_time
+    from metric_stream
+    where data_type = 'Histogram' and name = ?
+    and timestamp > ? and timestamp < ?
+    and team_id = ?
+`,
+    [baseMetric, sumMetric, startTime, endTime, teamId],
+  );
+  const overall_count = SqlString.format(
+    `
+  select
+    ? as group,
+    sum(value) as countSum,
+    min(timestamp) as count_start_time,
+    max(timestamp) as count_end_time
+    from metric_stream
+    where data_type = 'Histogram' and name = ?
+    and timestamp > ? and timestamp < ?
+    and team_id = ?
+  `,
+    [baseMetric, countMetric, startTime, endTime, teamId],
+  );
+
+  const buckets = SqlString.format(
+    `
+  select
+    ? as group,
+    sum(value) as bucketCount,
+    _string_attributes['le'] as bucket_ceil,
+    min(timestamp) as bucket_start_timestamp,
+    max(timestamp) as bucket_end_timestamp
+    from metric_stream
+    where data_type = 'Histogram' and name = ?
+    and timestamp > ? and timestamp < ?
+    and team_id = ?
+    group by bucket_ceil
+  `,
+    [baseMetric, bucketMetric, startTime, endTime, teamId],
+  );
+  const query = SqlString.format(
+    `
+  WITH overall_sum AS (?), overall_count AS (?), buckets as (?)
+  select buckets.group as name, sumSum as sum, countSum as total, bucketCount as count, bucket_ceil, bucket_start_timestamp, bucket_end_timestamp from overall_sum, overall_count, buckets
+  where overall_sum.group = overall_count.group and overall_count.group = buckets.group and overall_sum.group = buckets.group
+  `,
+    [
+      SqlString.raw(overall_sum),
+      SqlString.raw(overall_count),
+      SqlString.raw(buckets),
+    ],
+  );
+  return query;
+};
+
 export const getMetricsChart = async ({
   aggFn,
   dataType,
@@ -765,6 +859,28 @@ export const getMetricsChart = async ({
               : '0.99'
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
+  } else if (dataType === MetricsDataType.Histogram) {
+    const query = await buildMetricHistogramQuery({
+      aggFn,
+      endTime,
+      name,
+      q,
+      startTime,
+      teamId,
+    });
+    const ts = Date.now();
+    const rows = await client.query({
+      query,
+      format: 'JSON',
+    });
+    const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+    logger.info({
+      message: 'getMetricsChart',
+      query,
+      teamId,
+      took: Date.now() - ts,
+    });
+    return result;
   } else {
     logger.error(`Unsupported data type: ${dataType}`);
   }
