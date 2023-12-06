@@ -1,34 +1,34 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
+import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+import curry from 'lodash/curry';
+import { Button, Modal } from 'react-bootstrap';
+import { CSVLink } from 'react-csv';
+import { useHotkeys } from 'react-hotkeys-hook';
+import stripAnsi from 'strip-ansi';
 import {
   ColumnDef,
   ColumnResizeMode,
   flexRender,
   getCoreRowModel,
-  TableOptions,
   Row as TableRow,
+  TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
-import { formatInTimeZone } from 'date-fns-tz';
-import { format } from 'date-fns';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
-import { Button, Modal } from 'react-bootstrap';
-import stripAnsi from 'strip-ansi';
-import { CSVLink } from 'react-csv';
-import curry from 'lodash/curry';
 
+import api from './api';
 import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
 import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
-import api from './api';
-import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
-import { useHotkeys } from 'react-hotkeys-hook';
-import { TIME_TOKENS } from './utils';
-import useUserPreferences from './useUserPreferences';
-import type { TimeFormat } from './useUserPreferences';
 import { UNDEFINED_WIDTH } from './tableUtils';
+import type { TimeFormat } from './useUserPreferences';
+import useUserPreferences from './useUserPreferences';
+import { useLocalStorage, usePrevious, useWindowSize } from './utils';
+import { TIME_TOKENS } from './utils';
 
 import styles from '../styles/LogTable.module.scss';
 

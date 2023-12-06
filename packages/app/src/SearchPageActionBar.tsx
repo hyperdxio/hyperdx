@@ -1,6 +1,6 @@
-import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
-import { Button } from 'react-bootstrap';
 import { useState } from 'react';
+import { Button } from 'react-bootstrap';
+import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
 
 import { FloppyIcon } from './SVGIcons';
 import { useWindowSize } from './utils';

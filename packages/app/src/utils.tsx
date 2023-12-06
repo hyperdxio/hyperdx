@@ -1,7 +1,6 @@
-import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useState, useEffect, useRef } from 'react';
-
+import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { atom, useAtomValue, useSetAtom } from 'jotai';
-import Modal from 'react-bootstrap/Modal';
 import Button from 'react-bootstrap/Button';
+import Modal from 'react-bootstrap/Modal';
 
 type ConfirmAtom = {
   message: string;
