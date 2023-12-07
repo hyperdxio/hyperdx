@@ -705,7 +705,7 @@ export const getMetricsChart = async ({
   aggFn: AggFn;
   dataType: MetricsDataType;
   endTime: number; // unix in ms,
-  granularity: Granularity;
+  granularity: Granularity | string;
   groupBy?: string;
   name: string;
   q: string;
@@ -868,7 +868,13 @@ ORDER BY _timestamp_sort_key ASC
     query,
     format: 'JSON',
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: number;
+      group: string;
+      ts_bucket: number;
+    }>
+  >();
   logger.info({
     message: 'getMetricsChart',
     query,

@@ -6,7 +6,9 @@ import { URLSearchParams } from 'url';
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import ms from 'ms';
+import { isString } from 'lodash';
 import { serializeError } from 'serialize-error';
+import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
@@ -336,6 +338,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     let checksData:
       | Awaited<ReturnType<typeof clickhouse.checkAlert>>
       | Awaited<ReturnType<typeof clickhouse.getLogsChart>>
+      | Awaited<ReturnType<typeof clickhouse.getMetricsChart>>
       | null = null;
     let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
     let targetDashboard: EnhancedDashboard | null = null;
@@ -412,8 +415,30 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
           });
+        } else if (
+          series.type === 'time' &&
+          series.table === 'metrics' &&
+          series.field
+        ) {
+          targetDashboard = dashboard;
+          const startTimeMs = fns.getTime(checkStartTime);
+          const endTimeMs = fns.getTime(checkEndTime);
+          const [metricName, rawMetricDataType] = series.field.split(' - ');
+          const metricDataType = z
+            .nativeEnum(clickhouse.MetricsDataType)
+            .parse(rawMetricDataType);
+          checksData = await clickhouse.getMetricsChart({
+            aggFn: series.aggFn,
+            dataType: metricDataType,
+            endTime: endTimeMs,
+            granularity: `${windowSizeInMins} minute`,
+            groupBy: series.groupBy[0],
+            name: metricName,
+            q: series.where,
+            startTime: startTimeMs,
+            teamId: dashboard.team._id.toString(),
+          });
         }
-        // TODO: support metrics table
       }
 
       logger.info({
@@ -439,7 +464,9 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     let alertState = AlertState.OK;
     if (checksData?.rows && checksData?.rows > 0) {
       for (const checkData of checksData.data) {
-        const totalCount = parseInt(checkData.data);
+        const totalCount = isString(checkData.data)
+          ? parseInt(checkData.data)
+          : checkData.data;
         if (doesExceedThreshold(alert, totalCount)) {
           alertState = AlertState.ALERT;
           logger.info({
