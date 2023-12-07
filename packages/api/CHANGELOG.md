@@ -1,5 +1,28 @@
 # @hyperdx/api
 
+## 1.3.0
+
+### Minor Changes
+
+- ff38d75: feat: extract and ingest more metrics context (aggregation
+  temporality, unit and monotonicity)
+- 6f2c75e: refactor: split metrics chart endpoint `name` query param into `type`
+  and `name` params (changing an internal API) feat: add validation for metrics
+  chart endpoint using zod
+- 27f1b7e: feat: metrics alerting support
+- 8c8c476: feat: add is_delta + is_monotonic fields to metric_stream table
+  (REQUIRES DB MIGRATION)
+- 20b1f17: feat: external api v1 route (REQUIRES db migration) + Mongo DB
+  migration script
+- e8c26d8: feat: time format ui addition
+
+### Patch Changes
+
+- 3a93196: Fix Sentry exception rendering error in side panel, add Sentry SDK to
+  API server.
+- 8c8c476: feat: setup clickhouse migration tool
+- 141fce0: Filter out NaN values from metric charts
+
 ## 1.2.0
 
 ### Minor Changes
