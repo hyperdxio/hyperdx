@@ -399,7 +399,7 @@ describe('checkAlerts', () => {
           rows: 1,
           data: [
             {
-              data: '11',
+              data: 11,
               group: 'HyperDX',
               ts_bucket: 1700172600,
             },

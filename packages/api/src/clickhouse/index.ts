@@ -870,7 +870,7 @@ ORDER BY _timestamp_sort_key ASC
   });
   const result = await rows.json<
     ResponseJSON<{
-      data: string;
+      data: number;
       group: string;
       ts_bucket: number;
     }>
