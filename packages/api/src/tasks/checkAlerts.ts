@@ -421,13 +421,15 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           targetDashboard = dashboard;
           const startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
-          const [metricName, metricDataType] = series.field.split(' - ');
-          z.nativeEnum(clickhouse.MetricsDataType).parse(metricDataType);
+          const [metricName, rawMetricDataType] = series.field.split(' - ');
+          const metricDataType = z
+            .nativeEnum(clickhouse.MetricsDataType)
+            .parse(rawMetricDataType);
           checksData = await clickhouse.getMetricsChart({
             aggFn: series.aggFn,
-            dataType: metricDataType as clickhouse.MetricsDataType,
+            dataType: metricDataType,
             endTime: endTimeMs,
-            granularity: `${windowSizeInMins} minute` as clickhouse.Granularity,
+            granularity: `${windowSizeInMins} minute`,
             groupBy: series.groupBy[0],
             name: metricName,
             q: series.where,

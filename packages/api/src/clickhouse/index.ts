@@ -705,7 +705,7 @@ export const getMetricsChart = async ({
   aggFn: AggFn;
   dataType: MetricsDataType;
   endTime: number; // unix in ms,
-  granularity: Granularity;
+  granularity: Granularity | string;
   groupBy?: string;
   name: string;
   q: string;
