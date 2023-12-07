@@ -868,7 +868,13 @@ ORDER BY _timestamp_sort_key ASC
     query,
     format: 'JSON',
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: string;
+      group: string;
+      ts_bucket: number;
+    }>
+  >();
   logger.info({
     message: 'getMetricsChart',
     query,

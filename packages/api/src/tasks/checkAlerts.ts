@@ -7,6 +7,7 @@ import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
+import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
@@ -412,8 +413,28 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
           });
+        } else if (
+          series.type === 'time' &&
+          series.table === 'metrics' &&
+          series.field
+        ) {
+          targetDashboard = dashboard;
+          const startTimeMs = fns.getTime(checkStartTime);
+          const endTimeMs = fns.getTime(checkEndTime);
+          const [metricName, metricDataType] = series.field.split(' - ');
+          z.nativeEnum(clickhouse.MetricsDataType).parse(metricDataType);
+          checksData = await clickhouse.getMetricsChart({
+            aggFn: series.aggFn,
+            dataType: metricDataType as clickhouse.MetricsDataType,
+            endTime: endTimeMs,
+            granularity: `${windowSizeInMins} minute` as clickhouse.Granularity,
+            groupBy: series.groupBy[0],
+            name: metricName,
+            q: series.where,
+            startTime: startTimeMs,
+            teamId: dashboard.team._id.toString(),
+          });
         }
-        // TODO: support metrics table
       }
 
       logger.info({
