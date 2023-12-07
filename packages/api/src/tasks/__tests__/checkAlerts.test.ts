@@ -241,7 +241,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('CHART alert', async () => {
+    it('CHART alert (logs table series)', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -377,6 +377,150 @@ describe('checkAlerts', () => {
               text: {
                 text: [
                   `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Max Duration" in "My Dashboard">*`,
+                  'Group: "HyperDX"',
+                  '11 exceeds 10',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+    });
+
+    it('CHART alert (metrics table series)', async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+      jest
+        .spyOn(clickhouse, 'getMetricsChart')
+        .mockResolvedValueOnce({
+          rows: 1,
+          data: [
+            {
+              data: '11',
+              group: 'HyperDX',
+              ts_bucket: 1700172600,
+            },
+          ],
+        } as any)
+        // no logs found in the next window
+        .mockResolvedValueOnce({
+          rows: 0,
+          data: [],
+        } as any);
+
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        charts: [
+          {
+            id: '198hki',
+            name: 'Redis Memory',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            series: [
+              {
+                table: 'metrics',
+                type: 'time',
+                aggFn: 'max',
+                field: 'redis.memory.rss - Gauge',
+                where: 'cloud.provider:"aws"',
+                groupBy: ['host'],
+              },
+            ],
+          },
+          {
+            id: 'obil1',
+            name: 'Min Duratioin',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            series: [
+              {
+                table: 'logs',
+                type: 'time',
+                aggFn: 'min',
+                field: 'duration',
+                where: '',
+                groupBy: [],
+              },
+            ],
+          },
+        ],
+      }).save();
+      const alert = await createAlert({
+        source: 'CHART',
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        type: 'presence',
+        threshold: 10,
+        dashboardId: dashboard._id.toString(),
+        chartId: '198hki',
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+
+      // shoud fetch 5m of logs
+      await processAlert(now, alert);
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alertId: alert._id,
+      });
+      expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(alert.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlert(later, alert);
+      // alert should still be in alert state
+      expect(alert.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlert(nextWindow, alert);
+      // alert should be in ok state
+      expect(alert.state).toBe('OK');
+
+      // check if getLogsChart query + webhook were triggered
+      expect(clickhouse.getMetricsChart).toHaveBeenNthCalledWith(1, {
+        aggFn: 'max',
+        dataType: 'Gauge',
+        endTime: 1700172600000,
+        granularity: '5 minute',
+        groupBy: 'host',
+        name: 'redis.memory.rss',
+        q: 'cloud.provider:"aws"',
+        startTime: 1700172300000,
+        teamId: team._id.toString(),
+      });
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: 'Alert for "Redis Memory" in "My Dashboard" - 11 exceeds 10',
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Redis Memory" in "My Dashboard">*`,
                   'Group: "HyperDX"',
                   '11 exceeds 10',
                 ].join('\n'),
