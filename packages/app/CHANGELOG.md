@@ -1,5 +1,40 @@
 # @hyperdx/app
 
+## 1.3.0
+
+### Minor Changes
+
+- ff38d75: feat: extract and ingest more metrics context (aggregation
+  temporality, unit and monotonicity)
+- 6f2c75e: refactor: split metrics chart endpoint `name` query param into `type`
+  and `name` params (changing an internal API) feat: add validation for metrics
+  chart endpoint using zod
+- 8c8c476: feat: add is_delta + is_monotonic fields to metric_stream table
+  (REQUIRES DB MIGRATION)
+- 20b1f17: feat: external api v1 route (REQUIRES db migration) + Mongo DB
+  migration script
+- 9c2e279: feat: Log Side Panel styling
+- e8c26d8: feat: time format ui addition
+
+### Patch Changes
+
+- ddd4867: Set up Storybook
+- ddd4867: Sentry exceptions ui improvements
+- 3a93196: Fix Sentry exception rendering error in side panel, add Sentry SDK to
+  API server.
+- a40faf1: Allow to set alerts for metric charts on development env
+- f205ed5: feat: Add Sentry Integration section to Team Settings
+- 2be709c: Revert adding Storybook
+- 8c8c476: feat: setup clickhouse migration tool
+- 77c1019: Show chart alert state (OK and ALERT)
+- 4c0617e: Fix: Vertically resize session replayer
+- 7784921: Fix: Don't crash session replay player when playback timestamp is not
+  a valid date
+- 242d8cc: Show custom actions in Session Replay events panel
+- 713537d: Click on Table Tile to view all events
+- 58a19fd: Set up ESLint rule for sorting imports
+- abe3b12: Log Side Panel: exceptions ui improvements
+
 ## 1.2.0
 
 ### Minor Changes
