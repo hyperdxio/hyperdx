@@ -16,8 +16,13 @@
     "ci:unit": "jest --ci --coverage"
   },
   "dependencies": {
+    "@emotion/react": "^11.11.1",
+    "@emotion/server": "^11.11.0",
     "@hyperdx/browser": "^0.18.4",
     "@hyperdx/lucene": "^3.1.1",
+    "@mantine/core": "6.0.21",
+    "@mantine/hooks": "6.0.21",
+    "@mantine/next": "6.0.21",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@monaco-editor/react": "^4.3.1",
     "@tanstack/react-table": "^8.7.9",
