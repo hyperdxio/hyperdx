@@ -5,7 +5,13 @@ import api from './api';
 import Logo from './Logo';
 import NavHoverDropdown from './NavHoverDropdown';
 
-export default function LandingHeader({ activeKey }: { activeKey: string }) {
+export default function LandingHeader({
+  activeKey,
+  fixed,
+}: {
+  activeKey: string;
+  fixed?: boolean;
+}) {
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
 
@@ -70,7 +76,7 @@ export default function LandingHeader({ activeKey }: { activeKey: string }) {
           </Navbar.Collapse>
         </Container>
       </Navbar>
-      <div style={{ height: 70 }} />
+      {!fixed && <div style={{ height: 70 }} />}
     </>
   );
 }
