@@ -421,7 +421,9 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           series.field
         ) {
           targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
+          const startTimeMs = fns.getTime(
+            fns.subMinutes(checkStartTime, windowSizeInMins),
+          );
           const endTimeMs = fns.getTime(checkEndTime);
           const [metricName, rawMetricDataType] = series.field.split(' - ');
           const metricDataType = z
