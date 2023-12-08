@@ -421,14 +421,21 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           series.field
         ) {
           targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(
-            fns.subMinutes(checkStartTime, windowSizeInMins),
-          );
+          let startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
           const [metricName, rawMetricDataType] = series.field.split(' - ');
           const metricDataType = z
             .nativeEnum(clickhouse.MetricsDataType)
             .parse(rawMetricDataType);
+          if (
+            metricDataType === clickhouse.MetricsDataType.Sum &&
+            clickhouse.isRateAggFn(series.aggFn)
+          ) {
+            // adjust the time so that we have enough data points to calculate a rate
+            startTimeMs = fns
+              .subMinutes(startTimeMs, windowSizeInMins)
+              .getTime();
+          }
           checksData = await clickhouse.getMetricsChart({
             aggFn: series.aggFn,
             dataType: metricDataType,
