@@ -25,7 +25,7 @@ export const CollapsibleSection = ({
   return (
     <div className="my-3">
       <div
-        className={`d-flex align-items-center mb-1 text-white-hover`}
+        className={`d-flex align-items-center mb-1 text-white-hover w-50`}
         role="button"
         onClick={() => setCollapsed(!collapsed)}
       >
