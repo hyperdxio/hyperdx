@@ -30,3 +30,7 @@ export const CACHE_METRICS_TAGS = env.CACHE_METRICS_TAGS !== 'false';
 // returning as a string since all env values are stringish (to be parsed using ms())
 export const CACHE_METRICS_EXPIRATION_IN_SEC =
   (env.CACHE_METRICS_EXPIRATION_IN_SEC as string) || '600';
+
+// Only for single container local deployments, disable authentication
+export const IS_LOCAL_APP_MODE =
+  env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
