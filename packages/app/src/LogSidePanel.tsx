@@ -101,21 +101,22 @@ function useParsedLogProperties(logData: any): { [key: string]: any } {
     return {
       // TODO: Users can't search on this via property search so we need to figure out a nice way to handle those search actions...
       // TODO: Probably move this into the render below
-      ...mapValues(mergedKvPairs, value => {
-        if (
-          typeof value === 'string' &&
-          value.length > 2 &&
-          ((value[0] === '{' && value[value.length - 1] === '}') ||
-            (value[0] === '[' && value[value.length - 1] === ']'))
-        ) {
-          try {
-            return JSON.parse(value);
-          } catch (e) {
-            // do nothing
-          }
-        }
-        return value;
-      }),
+      ...mergedKvPairs,
+      // ...mapValues(mergedKvPairs, value => {
+      //   if (
+      //     typeof value === 'string' &&
+      //     value.length > 2 &&
+      //     ((value[0] === '{' && value[value.length - 1] === '}') ||
+      //       (value[0] === '[' && value[value.length - 1] === ']'))
+      //   ) {
+      //     try {
+      //       return JSON.parse(value);
+      //     } catch (e) {
+      //       // do nothing
+      //     }
+      //   }
+      //   return value;
+      // }),
       ...addIfTruthy('span_id', span_id),
       ...addIfTruthy('trace_id', trace_id),
       ...addIfTruthy('parent_span_id', parent_span_id),
@@ -1346,6 +1347,8 @@ function PropertySubpanel({
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const [asJsonKeys, setAsJsonKeys] = useState<Record<string, boolean>>({});
+
   return (
     <div>
       {events != null && events.length > 0 && (
@@ -1443,6 +1446,14 @@ function PropertySubpanel({
         className="d-flex flex-wrap mt-1 react-json-tree"
         style={{ overflowX: 'hidden' }}
       >
+        <pre>
+          {JSON.stringify(
+            isNestedView ? nestedProperties : filteredProperties,
+            null,
+            4,
+          )}
+        </pre>
+
         <JSONTree
           hideRoot={true}
           shouldExpandNode={() => true}
@@ -1511,18 +1522,61 @@ function PropertySubpanel({
           valueRenderer={(raw, value, ...rawKeyPath) => {
             const keyPath = rawKeyPath.slice().reverse();
             const keyPathString = keyPath.join('.');
+            const isJsonValue =
+              (value[0] === '{' && value[value.length - 1] === '}') ||
+              (value[0] === '[' && value[value.length - 1] === ']');
+            const isJsonValueFormatted = asJsonKeys[keyPathString];
+
+            let isJsonValueParsed: any;
+            if (isJsonValueFormatted) {
+              try {
+                isJsonValueParsed = JSON.parse(value);
+              } catch (e) {
+                isJsonValueParsed = value;
+              }
+            }
 
             return (
               <div className="parent-hover-trigger d-inline-block px-2">
-                <pre
-                  className="d-inline text-break"
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
-                  }}
-                >
-                  {raw}
-                </pre>
+                {isJsonValue && isJsonValueFormatted ? (
+                  <div>
+                    <JSONTree
+                      data={isJsonValueParsed}
+                      // theme={JSON_TREE_THEME}
+                      invertTheme={false}
+                      hideRoot={true}
+                    />
+                  </div>
+                ) : (
+                  <pre
+                    className="d-inline text-break"
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                    }}
+                  >
+                    {raw}
+                  </pre>
+                )}
+
+                {isJsonValue && (
+                  <span className="ms-2">
+                    <Button
+                      className="p-0 fs-8 text-decoration-none text-slate-400"
+                      variant="outline"
+                      title="Add to search"
+                      onClick={() => {
+                        setAsJsonKeys(prev => ({
+                          ...prev,
+                          [keyPathString]: !prev[keyPathString],
+                        }));
+                      }}
+                    >
+                      {isJsonValueFormatted ? '[As String]' : '[Format JSON]'}
+                    </Button>
+                  </span>
+                )}
+
                 <span className="me-2" />
                 {onPropertyAddClick != null ? (
                   <Button
