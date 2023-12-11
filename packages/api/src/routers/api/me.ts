@@ -2,11 +2,10 @@ import express from 'express';
 
 import { Api404Error } from '@/utils/errors';
 import { getTeam } from '@/controllers/team';
-import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     if (req.user == null) {
       throw new Api404Error('Request without user found');
