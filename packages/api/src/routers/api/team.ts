@@ -7,12 +7,9 @@ import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import TeamInvite from '@/models/teamInvite';
-import User from '@/models/user';
 import logger from '@/utils/logger';
 import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
 import { getTeam, rotateTeamApiKey } from '@/controllers/team';
-import { redirectToDashboard } from '@/middleware/auth';
-import { validatePassword } from '@/utils/validators';
 
 const router = express.Router();
 
