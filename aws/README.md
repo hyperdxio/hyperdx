@@ -12,8 +12,9 @@ Before getting started, make sure you have the following:
 - Docker installed on your local machine
 - A Docker Compose file that defines your application's services and dependencies
 
-## Step 0: Description `.env` file
+## Step 0: Description config files
 
+Set up the `.env.aws` file.
 ```env
 # AWS configuration
 ECS_PROFILE_NAME=hyperdx
@@ -23,6 +24,37 @@ AWS_REGION=us-east-1
 ECS_LAUNCH_TYPE=FARGATE
 HYPERDX_APP_ALB_PORT=443
 HYPERDX_APP_ALB_URL=https://localhost
+```
+
+Only `localhost` is currently available in the aws container, so you must change all endpoints in the settings to build it exclusively for aws.
+```diff
+      # docker/otel-collector/config.yaml:45
+-     endpoint: 'http://ingestor:8002?hdx_platform=otel-traces'
++     endpoint: 'http://localhost:8002?hdx_platform=otel-traces'
+
+      # docker/otel-collector/config.yaml:48
+-     endpoint: 'http://ingestor:8002?hdx_platform=otel-logs'
++     endpoint: 'http://localhost:8002?hdx_platform=otel-logs'
+
+      # docker/otel-collector/config.yaml:53
+-     endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
++     endpoint: 'http://localhost:8002?hdx_platform=otel-metrics'
+
+      # docker/hostmetrics/config.dev.yaml:3
+-     endpoint: redis:6379
++     endpoint: localhost:6379
+
+      # docker/hostmetrics/config.dev.yaml:26
+-     endpoint: 'http://otel-collector:4318'
++     endpoint: 'http://localhost:4318'
+
+      # docker/ingestor/http-sinks.toml:3
+-     uri = "http://aggregator:8001"
++     uri = "http://localhost:8001"
+
+      # docker/ingestor/http-sinks.toml:14
+-     uri = "http://aggregator:8001?telemetry=metric"
++     uri = "http://localhost:8001?telemetry=metric"
 ```
 
 ## Step 1: Set up an ECS Cluster

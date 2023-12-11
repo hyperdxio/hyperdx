@@ -1,6 +1,6 @@
 receivers:
   redis:
-    endpoint: localhost:6379
+    endpoint: redis:6379
     collection_interval: 5s
   mongodb:
     hosts:
@@ -23,7 +23,7 @@ exporters:
   logging:
     loglevel: ${env:HYPERDX_LOG_LEVEL}
   otlphttp:
-    endpoint: 'http://localhost:4318'
+    endpoint: 'http://otel-collector:4318'
     headers:
       authorization: ${HYPERDX_API_KEY}
     compression: gzip
