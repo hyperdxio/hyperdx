@@ -7,13 +7,8 @@ import * as config from '@/config';
 import User from '@/models/user'; // TODO -> do not import model directly
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
-import { Api404Error } from '@/utils/errors';
-import { isTeamExisting, createTeam, getTeam } from '@/controllers/team';
-import {
-  isUserAuthenticated,
-  redirectToDashboard,
-  handleAuthError,
-} from '@/middleware/auth';
+import { isTeamExisting, createTeam } from '@/controllers/team';
+import { redirectToDashboard, handleAuthError } from '@/middleware/auth';
 
 const registrationSchema = z
   .object({
@@ -44,36 +39,6 @@ const router = express.Router();
 
 router.get('/health', async (req, res) => {
   res.send({ data: 'OK', version: config.CODE_VERSION, ip: req.ip });
-});
-
-router.get('/me', isUserAuthenticated, async (req, res, next) => {
-  try {
-    if (req.user == null) {
-      throw new Api404Error('Request without user found');
-    }
-
-    const {
-      _id: id,
-      accessKey,
-      createdAt,
-      email,
-      name,
-      team: teamId,
-    } = req.user;
-
-    const team = await getTeam(teamId);
-
-    return res.json({
-      accessKey,
-      createdAt,
-      email,
-      id,
-      name,
-      team,
-    });
-  } catch (e) {
-    next(e);
-  }
 });
 
 router.get('/installation', async (req, res, next) => {
@@ -146,6 +111,55 @@ router.get('/logout', (req, res) => {
   // @ts-ignore
   req.logout();
   res.redirect(`${config.FRONTEND_URL}/login`);
+});
+
+// TODO: rename this ?
+router.post('/team/setup/:token', async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const { token } = req.params;
+
+    if (!validatePassword(password)) {
+      return res.redirect(
+        `${config.FRONTEND_URL}/join-team?err=invalid&token=${token}`,
+      );
+    }
+
+    const teamInvite = await TeamInvite.findOne({
+      token: req.params.token,
+    });
+    if (!teamInvite) {
+      return res.status(401).send('Invalid token');
+    }
+
+    (User as any).register(
+      new User({
+        email: teamInvite.email,
+        name: teamInvite.email,
+        team: teamInvite.teamId,
+      }),
+      password, // TODO: validate password
+      async (err: Error, user: any) => {
+        if (err) {
+          logger.error(serializeError(err));
+          return res.redirect(
+            `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
+          );
+        }
+
+        await TeamInvite.findByIdAndRemove(teamInvite._id);
+
+        req.login(user, err => {
+          if (err) {
+            return next(err);
+          }
+          redirectToDashboard(req, res);
+        });
+      },
+    );
+  } catch (e) {
+    next(e);
+  }
 });
 
 export default router;

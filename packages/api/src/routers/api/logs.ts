@@ -7,7 +7,6 @@ import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
-import { isUserAuthenticated } from '@/middleware/auth';
 import logger from '@/utils/logger';
 import { LimitedSizeQueue } from '@/utils/queue';
 import { customColumnMapType } from '@/clickhouse/searchQueryParser';
@@ -16,7 +15,7 @@ import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, offset, q, startTime, order, limit } = req.query;
@@ -67,7 +66,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
+router.get('/patterns', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime, sampleRate } = req.query;
@@ -207,7 +206,7 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/stream', isUserAuthenticated, async (req, res, next) => {
+router.get('/stream', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, offset, q, startTime, order, limit } = req.query;
@@ -289,46 +288,42 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get(
-  '/propertyTypeMappings',
-  isUserAuthenticated,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        return res.sendStatus(403);
-      }
-
-      const team = await getTeam(teamId);
-      if (team == null) {
-        return res.sendStatus(403);
-      }
-
-      const nowInMs = Date.now();
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId.toString(),
-          nowInMs - ms('1d'),
-          nowInMs,
-        );
-
-      res.json({
-        data: [
-          ...propertyTypeMappingsModel.currentPropertyTypeMappings,
-          ...Object.entries(omit(customColumnMapType, ['<implicit>'])),
-        ],
-      });
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span?.recordException(e as Error);
-      span?.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
+router.get('/propertyTypeMappings', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
     }
-  },
-);
 
-router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
+    const team = await getTeam(teamId);
+    if (team == null) {
+      return res.sendStatus(403);
+    }
+
+    const nowInMs = Date.now();
+    const propertyTypeMappingsModel =
+      await clickhouse.buildLogsPropertyTypeMappingsModel(
+        team.logStreamTableVersion,
+        teamId.toString(),
+        nowInMs - ms('1d'),
+        nowInMs,
+      );
+
+    res.json({
+      data: [
+        ...propertyTypeMappingsModel.currentPropertyTypeMappings,
+        ...Object.entries(omit(customColumnMapType, ['<implicit>'])),
+      ],
+    });
+  } catch (e) {
+    const span = opentelemetry.trace.getActiveSpan();
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
+    next(e);
+  }
+});
+
+router.get('/chart/histogram', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, field, q, startTime } = req.query;
@@ -367,7 +362,6 @@ router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
 
 router.get(
   '/chart',
-  isUserAuthenticated,
   validateRequest({
     query: z.object({
       aggFn: z.nativeEnum(clickhouse.AggFn),
@@ -457,7 +451,7 @@ router.get(
   },
 );
 
-router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
+router.get('/histogram', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime } = req.query;
@@ -493,7 +487,7 @@ router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/:id', isUserAuthenticated, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const logId = req.params.id;
