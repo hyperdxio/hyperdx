@@ -1,5 +1,5 @@
-import { clearDBCollections, closeDB, connectDB } from '../../fixtures';
-import { createTeam, getTeam, getTeamByApiKey } from '../../controllers/team';
+import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
+import { createTeam, getTeam, getTeamByApiKey } from '@/controllers/team';
 
 describe('team controller', () => {
   beforeAll(async () => {

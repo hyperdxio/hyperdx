@@ -1,24 +1,22 @@
-import Head from 'next/head';
-import { Button } from 'react-bootstrap';
-import { useQueryParam, StringParam, withDefault } from 'use-query-params';
 import { useCallback, useEffect, useState } from 'react';
-import { encodeArray, decodeArray } from 'serialize-query-params';
+import Head from 'next/head';
 import produce from 'immer';
+import { Button } from 'react-bootstrap';
+import { toast } from 'react-toastify';
+import type { QueryParamConfig } from 'serialize-query-params';
+import { decodeArray, encodeArray } from 'serialize-query-params';
+import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 
-import { useQueryParam as useHDXQueryParam } from './useQueryParam';
+import AppNav from './AppNav';
+import { AggFn, ChartSeries, ChartSeriesForm } from './ChartUtils';
+import DSSelect from './DSSelect';
+import HDXLineChart from './HDXLineChart';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchTimeRangePicker, {
   parseTimeRangeInput,
 } from './SearchTimeRangePicker';
-import DSSelect from './DSSelect';
-import AppNav from './AppNav';
-
-import HDXLineChart from './HDXLineChart';
-import { ChartSeries, AggFn, ChartSeriesForm } from './ChartUtils';
-
-import type { QueryParamConfig } from 'serialize-query-params';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
-import { toast } from 'react-toastify';
+import { useQueryParam as useHDXQueryParam } from './useQueryParam';
 
 export const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
   encode: (

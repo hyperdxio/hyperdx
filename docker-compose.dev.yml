@@ -176,6 +176,7 @@ services:
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      SENTRY_DSN: ${SENTRY_DSN}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
@@ -204,7 +205,7 @@ services:
       - 8080:8080
     environment:
       NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
-      NEXT_PUBLIC_HDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
       NODE_ENV: development

@@ -1,8 +1,6 @@
-import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useState, useEffect, useRef } from 'react';
-import Convert from 'ansi-to-html';
-
+import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';
@@ -150,6 +148,11 @@ export const useDebounce = <T,>(
   }
 
   return debouncedValue;
+};
+
+export const TIME_TOKENS = {
+  '12h': 'MMM d h:mm:ss a',
+  '24h': 'MMM d HH:mm:ss.SSS',
 };
 
 export function useLocalStorage<T>(key: string, initialValue: T) {

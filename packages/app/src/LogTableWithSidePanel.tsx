@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import usePortal from 'react-useportal';
 
-import type { LogView } from './types';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
+import type { LogView } from './types';
+import { useDisplayedColumns } from './useDisplayedColumns';
 
 export function LogTableWithSidePanel({
   config,
@@ -82,6 +83,9 @@ export function LogTableWithSidePanel({
 
   const voidFn = useCallback(() => {}, []);
 
+  const { displayedColumns, setDisplayedColumns, toggleColumn } =
+    useDisplayedColumns();
+
   return (
     <>
       {openedLog != null ? (
@@ -95,6 +99,8 @@ export function LogTableWithSidePanel({
             onPropertyAddClick={onPropertyAddClick}
             generateSearchUrl={generateSearchUrl}
             generateChartUrl={generateChartUrl}
+            displayedColumns={displayedColumns}
+            toggleColumn={toggleColumn}
           />
         </Portal>
       ) : null}
@@ -114,6 +120,8 @@ export function LogTableWithSidePanel({
           [setOpenedLog, onRowExpandClick],
         )}
         onEnd={onSettled}
+        displayedColumns={displayedColumns}
+        setDisplayedColumns={setDisplayedColumns}
       />
     </>
   );

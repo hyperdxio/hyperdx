@@ -8,7 +8,7 @@ import {
   HYPERDX_LOG_LEVEL,
   INGESTOR_API_URL,
   IS_PROD,
-} from '../config';
+} from '@/config';
 
 // LOCAL DEV ONLY
 addColors({

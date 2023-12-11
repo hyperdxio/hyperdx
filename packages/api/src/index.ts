@@ -3,7 +3,6 @@ import { serializeError } from 'serialize-error';
 import * as config from './config';
 import Server from './server';
 import logger from './utils/logger';
-import { initCiEnvs } from './fixtures';
 import { isOperationalError } from './utils/errors';
 
 const server = new Server();
@@ -18,7 +17,7 @@ process.on('uncaughtException', (err: Error) => {
   }
 });
 
-process.on('unhandledRejection', (err: Error) => {
+process.on('unhandledRejection', (err: any) => {
   // TODO: do we want to throw here ?
   logger.error(serializeError(err));
 });
@@ -35,13 +34,4 @@ process.on('SIGTERM', () => {
   server.stop();
 });
 
-server
-  .start()
-  .then(() => {
-    // TODO: a quick hack to work with e2e. We should do this in separate op
-    if (config.IS_CI) {
-      // place where we setup fake data for CI
-      return initCiEnvs();
-    }
-  })
-  .catch(e => logger.error(serializeError(e)));
+server.start().catch(e => logger.error(serializeError(e)));

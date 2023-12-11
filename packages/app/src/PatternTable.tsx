@@ -1,3 +1,16 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import stripAnsi from 'strip-ansi';
 import {
   ColumnDef,
   flexRender,
@@ -6,25 +19,13 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
-import stripAnsi from 'strip-ansi';
-import {
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-} from 'recharts';
 
-import LogLevel from './LogLevel';
 import api from './api';
-import { useWindowSize } from './utils';
-import { Pattern } from './PatternSidePanel';
 import { Granularity, timeBucketByGranularity } from './ChartUtils';
+import LogLevel from './LogLevel';
+import { Pattern } from './PatternSidePanel';
+import { UNDEFINED_WIDTH } from './tableUtils';
+import { useWindowSize } from './utils';
 
 const PatternTrendChartTooltip = (props: any) => {
   return null;
@@ -149,9 +150,6 @@ const MemoPatternTable = memo(
   }) => {
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
-
-    // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-    const UNDEFINED_WIDTH = 99999;
 
     //we need a reference to the scrolling element for logic down below
     const tableContainerRef = useRef<HTMLDivElement>(null);

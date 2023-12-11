@@ -1,5 +1,7 @@
 import Router from 'next/router';
+import type { HTTPError } from 'ky';
 import ky from 'ky-universal';
+import type { UseQueryOptions } from 'react-query';
 import {
   useInfiniteQuery,
   useMutation,
@@ -8,10 +10,26 @@ import {
 } from 'react-query';
 
 import { API_SERVER_URL } from './config';
+import type {
+  AlertChannel,
+  AlertInterval,
+  AlertSource,
+  AlertType,
+  LogView,
+  Session,
+} from './types';
 
-import type { AlertChannel, AlertInterval, LogView, Session } from './types';
-import type { HTTPError } from 'ky';
-import type { UseQueryOptions } from 'react-query';
+type ApiAlertInput = {
+  channel: AlertChannel;
+  interval: AlertInterval;
+  threshold: number;
+  type: AlertType;
+  source: AlertSource;
+  groupBy?: string;
+  logViewId?: string;
+  dashboardId?: string;
+  chartId?: string;
+};
 
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
@@ -90,7 +108,7 @@ const api = {
       aggFn: string;
       endDate: Date;
       granularity: string | undefined;
-      name: string;
+      name: string; // WARN: name consists of metric name and type
       q: string;
       startDate: Date;
       groupBy: string;
@@ -99,6 +117,10 @@ const api = {
   ) {
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
+
+    // FIXME: pass metric name and type separately
+    const [metricName, metricDataType] = name.split(' - ');
+
     return useQuery<any, Error>({
       refetchOnWindowFocus: false,
       queryKey: [
@@ -118,10 +140,11 @@ const api = {
             aggFn,
             endTime,
             granularity,
-            name,
+            groupBy,
+            name: metricName,
             q,
             startTime,
-            groupBy,
+            type: metricDataType,
           },
         }).json(),
       ...options,
@@ -360,18 +383,7 @@ const api = {
     );
   },
   useSaveAlert() {
-    return useMutation<
-      any,
-      Error,
-      {
-        channel: AlertChannel;
-        groupBy: string | undefined;
-        interval: AlertInterval;
-        logViewId: string;
-        threshold: number;
-        type: string;
-      }
-    >(`alerts`, async alert =>
+    return useMutation<any, Error, ApiAlertInput>(`alerts`, async alert =>
       server('alerts', {
         method: 'POST',
         json: alert,
@@ -379,23 +391,13 @@ const api = {
     );
   },
   useUpdateAlert() {
-    return useMutation<
-      any,
-      Error,
-      {
-        channel: AlertChannel;
-        groupBy: string | undefined;
-        id: string;
-        interval: AlertInterval;
-        logViewId: string;
-        threshold: number;
-        type: string;
-      }
-    >(`alerts`, async alert =>
-      server(`alerts/${alert.id}`, {
-        method: 'PUT',
-        json: alert,
-      }).json(),
+    return useMutation<any, Error, { id: string } & ApiAlertInput>(
+      `alerts`,
+      async alert =>
+        server(`alerts/${alert.id}`, {
+          method: 'PUT',
+          json: alert,
+        }).json(),
     );
   },
   useDeleteAlert() {
@@ -541,6 +543,22 @@ const api = {
     return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
       server(`webhooks/${id}`, {
         method: 'DELETE',
+      }).json(),
+    );
+  },
+  useRegisterPassword() {
+    return useMutation<
+      any,
+      HTTPError,
+      { email: string; password: string; confirmPassword: string }
+    >(async ({ email, password, confirmPassword }) =>
+      server(`register/password`, {
+        method: 'POST',
+        json: {
+          email,
+          password,
+          confirmPassword,
+        },
       }).json(),
     );
   },

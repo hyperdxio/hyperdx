@@ -1,30 +1,36 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
+import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+import curry from 'lodash/curry';
+import { Button, Modal } from 'react-bootstrap';
+import { CSVLink } from 'react-csv';
+import { useHotkeys } from 'react-hotkeys-hook';
+import stripAnsi from 'strip-ansi';
 import {
   ColumnDef,
   ColumnResizeMode,
   flexRender,
   getCoreRowModel,
-  TableOptions,
   Row as TableRow,
+  TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
-import { formatInTimeZone } from 'date-fns-tz';
-import { format } from 'date-fns';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
-import { Button, Modal } from 'react-bootstrap';
-import stripAnsi from 'strip-ansi';
-import { CSVLink } from 'react-csv';
-import curry from 'lodash/curry';
 
+import api from './api';
 import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
 import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
-import api from './api';
-import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
-import { useHotkeys } from 'react-hotkeys-hook';
+import { UNDEFINED_WIDTH } from './tableUtils';
+import type { TimeFormat } from './useUserPreferences';
+import useUserPreferences from './useUserPreferences';
+import { useLocalStorage, usePrevious, useWindowSize } from './utils';
+import { TIME_TOKENS } from './utils';
+
+import styles from '../styles/LogTable.module.scss';
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -270,15 +276,14 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const tsFormat = TIME_TOKENS[timeFormat];
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
     >(`${tableId}-column-sizes`, {});
 
-    const tsFormat = 'MMM d HH:mm:ss.SSS';
     const tsShortFormat = 'HH:mm:ss';
-    // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-    const UNDEFINED_WIDTH = 99999;
     //once the user has scrolled within 500px of the bottom of the table, fetch more data if there is any
     const FETCH_NEXT_PAGE_PX = 500;
 
@@ -316,7 +321,7 @@ export const RawLogTable = memo(
                   onRowExpandClick(id, sort_key);
                 }}
               >
-                {'> '}
+                <span className="bi bi-chevron-right" />
               </div>
             );
           },
@@ -564,7 +569,7 @@ export const RawLogTable = memo(
 
     return (
       <div
-        className="overflow-auto h-100 fs-8 bg-inherit py-2"
+        className="overflow-auto h-100 fs-8 bg-inherit"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -582,14 +587,7 @@ export const RawLogTable = memo(
           id={tableId}
           style={{ tableLayout: 'fixed' }}
         >
-          <thead
-            className="bg-inherit"
-            style={{
-              background: 'inherit',
-              position: 'sticky',
-              top: 0,
-            }}
-          >
+          <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, headerIndex) => {
@@ -623,7 +621,7 @@ export const RawLogTable = memo(
                         <div
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className={`resizer text-gray-600 cursor-grab ${
+                          className={`resizer text-gray-600 cursor-col-resize ${
                             header.column.getIsResizing() ? 'isResizing' : ''
                           }`}
                           style={{
@@ -690,8 +688,9 @@ export const RawLogTable = memo(
                   }}
                   role="button"
                   key={virtualRow.key}
-                  className={cx('bg-default-dark-grey-hover', {
-                    'bg-dark-grey': highlightedLineId === row.original.id,
+                  className={cx(styles.tableRow, {
+                    [styles.tableRow__selected]:
+                      highlightedLineId === row.original.id,
                   })}
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
@@ -784,6 +783,8 @@ export default function LogTable({
   onEnd,
   onShowPatternsClick,
   tableId,
+  displayedColumns,
+  setDisplayedColumns,
 }: {
   config: {
     where: string;
@@ -802,10 +803,11 @@ export default function LogTable({
   onEnd?: () => void;
   onShowPatternsClick?: () => void;
   tableId?: string;
+  displayedColumns: string[];
+  setDisplayedColumns: (columns: string[]) => void;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [displayedColumns, setDisplayedColumns] = useState<string[]>([]);
   const [wrapLines, setWrapLines] = useState(false);
 
   const prevQueryConfig = usePrevious({ searchedQuery, isLive });

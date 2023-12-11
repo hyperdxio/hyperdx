@@ -6,6 +6,11 @@ export type JSONBlob = Record<string, any>;
 
 export type KeyPath = string[];
 
+export enum AggregationTemporality {
+  Delta = 1,
+  Cumulative = 2,
+}
+
 export enum LogType {
   Log = 'log',
   Metric = 'metric',
@@ -67,8 +72,11 @@ export type LogStreamModel = KeyValuePairs &
 export type MetricModel = {
   _string_attributes: Record<string, string>;
   data_type: string;
+  is_delta: boolean;
+  is_monotonic: boolean;
   name: string;
   timestamp: number;
+  unit: string;
   value: number;
 };
 
@@ -207,14 +215,17 @@ export type VectorSpan = {
 };
 
 export type VectorMetric = {
+  at: number; // aggregation temporality
   authorization?: string;
   b: JSONBlob; // tags
   dt: string; // data type
   hdx_platform: string;
   hdx_token: string;
+  im: boolean; // is monotonic
   n: string; // name
   ts: number; // timestamp
   tso: number; // observed timestamp
+  u: string; // unit
   v: number; // value
 };
 
@@ -225,7 +236,7 @@ abstract class ParsingInterface<T> {
   ): LogStreamModel | MetricModel | RrwebEventModel;
 
   parse(logs: T[], ...args: any[]) {
-    const parsedLogs = [];
+    const parsedLogs: any[] = [];
     for (const log of logs) {
       try {
         parsedLogs.push(this._parse(log, ...args));
@@ -276,8 +287,11 @@ class VectorMetricParser extends ParsingInterface<VectorMetric> {
     return {
       _string_attributes: metric.b,
       data_type: metric.dt,
+      is_delta: metric.at === AggregationTemporality.Delta,
+      is_monotonic: metric.im,
       name: metric.n,
       timestamp: metric.ts,
+      unit: metric.u,
       value: metric.v,
     };
   }

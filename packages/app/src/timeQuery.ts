@@ -1,23 +1,24 @@
-import { useRouter } from 'next/router';
-import * as chrono from 'chrono-node';
 import {
-  useQueryParam,
-  StringParam,
-  withDefault,
-  NumberParam,
-  useQueryParams,
-} from 'use-query-params';
-import {
-  useState,
+  Dispatch,
+  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
   useRef,
-  Dispatch,
-  SetStateAction,
+  useState,
 } from 'react';
-import { format, sub, startOfSecond, isValid } from 'date-fns';
+import { useRouter } from 'next/router';
+import * as chrono from 'chrono-node';
+import { format, isValid, startOfSecond, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+import {
+  NumberParam,
+  StringParam,
+  useQueryParam,
+  useQueryParams,
+  withDefault,
+} from 'use-query-params';
+
 import { usePrevious } from './utils';
 
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';

@@ -1,23 +1,28 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
-import HDXMarkdownChart from './HDXMarkdownChart';
-import Select from 'react-select';
 import { Button, Form, InputGroup, Modal } from 'react-bootstrap';
+import Select from 'react-select';
 
-import HDXLineChart from './HDXLineChart';
+import { intervalToGranularity } from './Alert';
 import {
   AGG_FNS,
   AggFn,
   ChartSeriesForm,
-  FieldSelect,
   convertDateRangeToGranularityString,
+  FieldSelect,
 } from './ChartUtils';
-import { hashCode, useDebounce } from './utils';
+import Checkbox from './Checkbox';
+import * as config from './config';
+import { METRIC_ALERTS_ENABLED } from './config';
+import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXHistogramChart from './HDXHistogramChart';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-
+import HDXLineChart from './HDXLineChart';
+import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import type { Alert } from './types';
+import { hashCode, useDebounce } from './utils';
 
 export type Chart = {
   id: string;
@@ -67,6 +72,16 @@ export type Chart = {
         content: string;
       }
   )[];
+};
+
+const DEFAULT_ALERT: Alert = {
+  channel: {
+    type: 'webhook',
+  },
+  threshold: 1,
+  interval: '5m',
+  type: 'presence',
+  source: 'CHART',
 };
 
 export const EditMarkdownChartForm = ({
@@ -805,19 +820,25 @@ export const EditHistogramChartForm = ({
 };
 
 export const EditLineChartForm = ({
+  isLocalDashboard,
   chart,
+  alerts,
   onClose,
   onSave,
   dateRange,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
 }) => {
   const CHART_TYPE = 'time';
-
+  const [alert] = alerts; // TODO: Support multiple alerts eventually
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
+  const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
 
   const chartConfig = useMemo(
     () =>
@@ -828,11 +849,14 @@ export const EditLineChartForm = ({
             field: editedChart.series[0].field ?? '', // TODO: Fix in definition
             groupBy: editedChart.series[0].groupBy[0],
             where: editedChart.series[0].where,
-            granularity: convertDateRangeToGranularityString(dateRange, 60),
+            granularity:
+              alertEnabled && editedAlert?.interval
+                ? intervalToGranularity(editedAlert?.interval)
+                : convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
           }
         : null,
-    [editedChart, dateRange],
+    [editedChart, alertEnabled, editedAlert?.interval, dateRange],
   );
   const previewConfig = useDebounce(chartConfig, 500);
 
@@ -845,11 +869,17 @@ export const EditLineChartForm = ({
     return null;
   }
 
+  const isChartAlertsFeatureEnabled =
+    editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED;
+
   return (
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave(
+          editedChart,
+          alertEnabled ? [editedAlert ?? DEFAULT_ALERT] : undefined,
+        );
       }}
     >
       <div className="fs-5 mb-4">Line Chart Builder</div>
@@ -944,6 +974,34 @@ export const EditLineChartForm = ({
           );
         }}
       />
+
+      {isChartAlertsFeatureEnabled && (
+        <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
+          {isLocalDashboard ? (
+            <span className="text-gray-600 fs-8">
+              Alerts are not available in unsaved dashboards.
+            </span>
+          ) : (
+            <>
+              <Checkbox
+                id="check"
+                label="Enable alerts"
+                checked={alertEnabled}
+                onChange={() => setAlertEnabled(!alertEnabled)}
+              />
+              {alertEnabled && (
+                <div className="mt-2">
+                  <EditChartFormAlerts
+                    alert={editedAlert ?? DEFAULT_ALERT}
+                    setAlert={setEditedAlert}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="d-flex justify-content-between my-3 ps-2">
         <Button
           variant="outline-success"
@@ -959,7 +1017,14 @@ export const EditLineChartForm = ({
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
         <div style={{ height: 400 }}>
-          <HDXLineChart config={previewConfig} />
+          <HDXLineChart
+            config={previewConfig}
+            {...(alertEnabled && {
+              alertThreshold: editedAlert?.threshold,
+              alertThresholdType:
+                editedAlert?.type === 'presence' ? 'above' : 'below',
+            })}
+          />
         </div>
       </div>
       {editedChart.series[0].table === 'logs' ? (

@@ -43,6 +43,8 @@ export type LogView = {
   alerts?: Alert[];
 };
 
+export type AlertType = 'presence' | 'absence';
+
 export type AlertInterval =
   | '1m'
   | '5m'
@@ -55,6 +57,8 @@ export type AlertInterval =
 
 export type AlertChannelType = 'webhook';
 
+export type AlertSource = 'LOG' | 'CHART';
+
 export type AlertChannel = {
   channelId?: string;
   recipients?: string[];
@@ -64,17 +68,24 @@ export type AlertChannel = {
 };
 
 export type Alert = {
-  _id: string;
+  _id?: string;
   channel: AlertChannel;
-  cron: string;
-  groupBy?: string;
+  cron?: string;
   interval: AlertInterval;
-  logView: string;
-  message?: string;
-  state: 'ALERT' | 'OK';
+  state?: 'ALERT' | 'OK';
   threshold: number;
-  timezone: string;
-  type: 'presence' | 'absence';
+  timezone?: string;
+  type: AlertType;
+  source: AlertSource;
+
+  // Log alerts
+  logView?: string;
+  message?: string;
+  groupBy?: string;
+
+  // Chart alerts
+  dashboardId?: string;
+  chartId?: string;
 };
 
 export type Session = {
@@ -92,4 +103,34 @@ export type Session = {
 
 export type Dictionary<T> = {
   [key: string]: T;
+};
+
+export type StacktraceFrame = {
+  filename: string;
+  function: string;
+  module?: string;
+  lineno: number;
+  colno: number;
+  in_app: boolean;
+  context_line?: string;
+  pre_context?: string[];
+  post_context?: string[];
+};
+
+export type StacktraceBreadcrumbCategory =
+  | 'ui.click'
+  | 'fetch'
+  | 'xhr'
+  | 'console'
+  | 'navigation'
+  | string;
+
+export type StacktraceBreadcrumb = {
+  type?: string;
+  level?: string;
+  event_id?: string;
+  category?: StacktraceBreadcrumbCategory;
+  message?: string;
+  data?: { [key: string]: any };
+  timestamp: number;
 };

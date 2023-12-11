@@ -1,27 +1,27 @@
+import { memo, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/router';
+import cx from 'classnames';
 import {
-  ColumnDef,
   flexRender,
   getCoreRowModel,
   Row as TableRow,
   useReactTable,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
 
 import api from './api';
 import { AggFn } from './ChartUtils';
+import { UNDEFINED_WIDTH } from './tableUtils';
 
 const Table = ({
   data,
   valueColumnName,
+  onRowClick,
 }: {
   data: any[];
   valueColumnName: string;
+  onRowClick?: (row: any) => void;
 }) => {
-  // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-  const UNDEFINED_WIDTH = 99999;
-
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -152,10 +152,8 @@ const Table = ({
             const row = rows[virtualRow.index] as TableRow<any>;
             return (
               <tr
-                // role="button"
-                // onClick={() => {
-                //   onRowExpandClick(row.original);
-                // }}
+                role={onRowClick ? 'button' : undefined}
+                onClick={() => onRowClick?.(row.original)}
                 key={virtualRow.key}
                 className={cx('bg-default-dark-grey-hover', {
                   // 'bg-light-grey': highlightedPatternId === row.original.id,
@@ -209,7 +207,7 @@ const HDXTableChart = memo(
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -244,9 +242,28 @@ const HDXTableChart = memo(
 
     const valueColumnName = aggFn === 'count' ? 'Count' : `${aggFn}(${field})`;
 
+    const router = useRouter();
+    const handleRowClick = useMemo(() => {
+      if (table !== 'logs') {
+        return undefined;
+      }
+      return (row?: { group: string }) => {
+        const qparams = new URLSearchParams({
+          q: where + (groupBy ? ` ${groupBy}:${row?.group || '*'}` : ''),
+          from: `${dateRange[0].getTime()}`,
+          to: `${dateRange[1].getTime()}`,
+        });
+        router.push(`/search?${qparams.toString()}`);
+      };
+    }, [dateRange, groupBy, router, table, where]);
+
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : data?.data?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -254,7 +271,11 @@ const HDXTableChart = memo(
       </div>
     ) : (
       <div className="d-flex align-items-center justify-content-center fs-2 h-100">
-        <Table data={data?.data ?? []} valueColumnName={valueColumnName} />
+        <Table
+          data={data?.data ?? []}
+          valueColumnName={valueColumnName}
+          onRowClick={handleRowClick}
+        />
       </div>
     );
   },

@@ -14,9 +14,9 @@ import {
 } from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { sleep } from '@/utils/common';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -30,17 +30,24 @@ import {
   isCustomColumn,
   msToBigIntNs,
 } from './searchQueryParser';
+import { redisClient } from '../utils/redis';
 
 import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
-} from '../utils/logParser';
+} from '@/utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
+
+export enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+}
 
 export enum AggFn {
   Avg = 'avg',
@@ -183,9 +190,6 @@ export const buildLogStreamAdditionalFilters = (
 export const healthCheck = () => client.ping();
 
 export const connect = async () => {
-  if (config.IS_CI) {
-    return;
-  }
   // FIXME: this is a hack to avoid CI failure
   logger.info('Checking connections to ClickHouse...');
   // health check
@@ -310,6 +314,8 @@ export const connect = async () => {
         value Float64 CODEC(ZSTD(1)),
         flags UInt32  CODEC(ZSTD(1)),
         unit String CODEC(ZSTD(1)),
+        is_delta Boolean CODEC(Delta, ZSTD(1)),
+        is_monotonic Boolean CODEC(Delta, ZSTD(1)),
         _string_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
         _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
         _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
@@ -563,7 +569,7 @@ export const buildMetricsPropertyTypeMappingsModel = async (
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
-  property: string,
+  property: string | undefined,
   model: LogsPropertyTypeMappingsModel,
 ) => {
   if (!property) {
@@ -601,13 +607,34 @@ export const getCHServerMetrics = async () => {
 };
 
 export const getMetricsTags = async (teamId: string) => {
+  if (config.CACHE_METRICS_TAGS) {
+    logger.info({
+      message: 'getMetricsTags: attempting cached fetch',
+      teamId: teamId,
+    });
+    return getMetricsTagsCached(teamId);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: skipping cache, direct query',
+      teamId: teamId,
+    });
+    return getMetricsTagsUncached(teamId);
+  }
+};
+
+// NB preserving this exactly as in original for this ticket
+// but looks like a good candidate for a query refactor baed on comment
+const getMetricsTagsUncached = async (teamId: string) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
     `
         SELECT 
-          format('{} - {}', name, data_type) as name,
+          any(is_delta) as is_delta,
+          any(is_monotonic) as is_monotonic,
+          any(unit) as unit,
           data_type,
+          format('{} - {}', name, data_type) as name,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
         GROUP BY name, data_type
@@ -627,6 +654,28 @@ export const getMetricsTags = async (teamId: string) => {
     took: Date.now() - ts,
   });
   return result;
+};
+
+const getMetricsTagsCached = async (teamId: string) => {
+  const redisKey = `metrics-tags-${teamId}`;
+  const cached = await redisClient.get(redisKey);
+  if (cached) {
+    logger.info({
+      message: 'getMetricsTags: cache hit',
+      teamId: teamId,
+    });
+    return JSON.parse(cached);
+  } else {
+    logger.info({
+      message: 'getMetricsTags: cache miss',
+      teamId: teamId,
+    });
+    const result = await getMetricsTagsUncached(teamId);
+    await redisClient.set(redisKey, JSON.stringify(result), {
+      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
+    });
+    return result;
+  }
 };
 
 const isRateAggFn = (aggFn: AggFn) => {
@@ -654,9 +703,9 @@ export const getMetricsChart = async ({
   teamId,
 }: {
   aggFn: AggFn;
-  dataType: string;
+  dataType: MetricsDataType;
   endTime: number; // unix in ms,
-  granularity: Granularity;
+  granularity: Granularity | string;
   groupBy?: string;
   name: string;
   q: string;
@@ -686,7 +735,7 @@ export const getMetricsChart = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  if (dataType === 'Gauge' || dataType === 'Sum') {
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
@@ -720,6 +769,32 @@ export const getMetricsChart = async ({
     logger.error(`Unsupported data type: ${dataType}`);
   }
 
+  // used to sum/avg/percentile Sum metrics
+  // max/min don't require pre-bucketing the Sum timeseries
+  const sumMetricSource = SqlString.format(
+    `
+    SELECT
+      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+      min(value) as value,
+      _string_attributes,
+      name
+    FROM
+      ??
+    WHERE
+      name = ?
+      AND data_type = ?
+      AND (?)
+    GROUP BY
+      name,
+      _string_attributes,
+      timestamp
+    ORDER BY
+      _string_attributes,
+      timestamp ASC
+  `.trim(),
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+  );
+
   const rateMetricSource = SqlString.format(
     `
 SELECT
@@ -729,31 +804,17 @@ SELECT
     nan,
     runningDifference(value)
   ) AS rate,
-  ts_bucket as timestamp,
+  timestamp,
   _string_attributes,
-  min_name as name
+  name
 FROM
   (
-    SELECT
-      toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket,
-      min(value) as value,
-      _string_attributes,
-      min(name) as min_name
-    FROM
-      ??
-    WHERE
-      name = ?
-      AND data_type = ?
-      AND (?)
-    GROUP BY
-      _string_attributes,
-      ts_bucket
-    ORDER BY
-      _string_attributes,
-      ts_bucket ASC
+    ?
   )
+WHERE
+  isNaN(rate) = 0
 `.trim(),
-    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+    [SqlString.raw(sumMetricSource)],
   );
 
   const gaugeMetricSource = SqlString.format(
@@ -772,7 +833,6 @@ ORDER BY _timestamp_sort_key ASC
     [tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
-  // TODO: support other data types like Sum, Histogram, etc.
   const query = SqlString.format(
     `
       WITH metrics AS (?)
@@ -786,7 +846,14 @@ ORDER BY _timestamp_sort_key ASC
         STEP ?
     `,
     [
-      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
+      SqlString.raw(
+        isRate
+          ? rateMetricSource
+          : // Max/Min aggs are the same for both Sum and Gauge metrics
+          dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
+          ? sumMetricSource
+          : gaugeMetricSource,
+      ),
       SqlString.raw(selectClause.join(',')),
       startTime / 1000,
       granularity,
@@ -801,7 +868,13 @@ ORDER BY _timestamp_sort_key ASC
     query,
     format: 'JSON',
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: number;
+      group: string;
+      ts_bucket: number;
+    }>
+  >();
   logger.info({
     message: 'getMetricsChart',
     query,
@@ -964,7 +1037,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -1103,6 +1184,12 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
+  const componentField = buildSearchColumnName('string', 'component');
+  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
+  if (!componentField || !sessionIdField) {
+    throw new Error('component or sessionId is null');
+  }
+
   const sessionsWithSearchQuery = SqlString.format(
     `SELECT
       MAX(timestamp) AS maxTimestamp,
@@ -1123,8 +1210,8 @@ export const getSessions = async ({
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
     [
-      SqlString.raw(buildSearchColumnName('string', 'component')),
-      SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
+      SqlString.raw(componentField),
+      SqlString.raw(sessionIdField),
       columns,
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
@@ -1370,8 +1457,8 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        count(*) as data,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1416,7 +1503,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',
@@ -1624,6 +1711,7 @@ export const getLogBatchGroupedByBody = async ({
     },
   );
 
+  // @ts-ignore
   return result;
 };
 
@@ -1695,6 +1783,7 @@ export const getLogBatch = async ({
     span.end();
   });
 
+  // @ts-ignore
   return result;
 };
 
@@ -1753,6 +1842,7 @@ export const getRrwebEvents = async ({
     span.end();
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };
 
@@ -1823,5 +1913,6 @@ export const getLogStream = async ({
     }
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };

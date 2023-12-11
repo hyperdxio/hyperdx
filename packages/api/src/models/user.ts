@@ -7,6 +7,7 @@ type ObjectId = mongoose.Types.ObjectId;
 
 export interface IUser {
   _id: ObjectId;
+  accessKey: string;
   createdAt: Date;
   email: string;
   name: string;
@@ -23,6 +24,12 @@ const UserSchema = new Schema(
       required: true,
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    accessKey: {
+      type: String,
+      default: function genUUID() {
+        return uuidv4();
+      },
+    },
   },
   {
     timestamps: true,

@@ -3,10 +3,11 @@ import type { Request, Response, NextFunction } from 'express';
 import { serializeError } from 'serialize-error';
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 
-import * as config from '../config';
-import logger from '../utils/logger';
+import * as config from '@/config';
+import logger from '@/utils/logger';
+import { findUserByAccessKey } from '@/controllers/user';
 
-import type { UserDocument } from '../models/user';
+import type { UserDocument } from '@/models/user';
 
 declare global {
   namespace Express {
@@ -56,6 +57,30 @@ export function handleAuthError(
       : 'unknown';
 
   res.redirect(`${config.FRONTEND_URL}/login?err=${returnErr}`);
+}
+
+export async function validateUserAccessKey(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.sendStatus(401);
+  }
+  const key = authHeader.split('Bearer ')[1];
+  if (!key) {
+    return res.sendStatus(401);
+  }
+
+  const user = await findUserByAccessKey(key);
+  if (!user) {
+    return res.sendStatus(401);
+  }
+
+  req.user = user;
+
+  next();
 }
 
 export function isUserAuthenticated(
