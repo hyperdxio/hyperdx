@@ -527,9 +527,9 @@ if exists(.ts) {
 if is_nullish(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
-    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""
   } else {
-    header = slice(to_string(.r) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.r) ?? "", start: 0, end: 256) ?? ""
   }
   if contains(header, "info", case_sensitive: false) {
     .st = "info"
