@@ -222,3 +222,8 @@ By following these steps, you can deploy your Docker Compose application to AWS 
 ![default-user.xml](https://github.com/hyperdxio/hyperdx/assets/59823089/d8c39942-b7cc-457a-a27e-f9dddc6aab71)
 
 EFS internal files or DataSync settings may not be correct. Please check [this procedure](#step-5-datasync-s3-to-efs).
+
+## failed to make an HTTP request
+![failed to make an HTTP request](https://github.com/hyperdxio/hyperdx/assets/59823089/5e706865-2a40-465f-816c-db758023f31e)
+
+The problem is caused by not being marked as `localhost`. Check out part [this procedure](#step-0-description-config-files).
