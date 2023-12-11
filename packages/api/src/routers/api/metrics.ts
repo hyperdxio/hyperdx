@@ -4,11 +4,10 @@ import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
-import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 
-router.get('/tags', isUserAuthenticated, async (req, res, next) => {
+router.get('/tags', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -37,7 +36,6 @@ router.post(
       startTime: z.number().int().min(0),
     }),
   }),
-  isUserAuthenticated,
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
