@@ -2,6 +2,7 @@ import alertsRouter from './alerts';
 import dashboardRouter from './dashboards';
 import logViewsRouter from './logViews';
 import logsRouter from './logs';
+import meRouter from './me';
 import metricsRouter from './metrics';
 import rootRouter from './root';
 import sessionsRouter from './sessions';
@@ -13,6 +14,7 @@ export default {
   dashboardRouter,
   logViewsRouter,
   logsRouter,
+  meRouter,
   metricsRouter,
   rootRouter,
   sessionsRouter,

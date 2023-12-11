@@ -2,11 +2,10 @@ import express from 'express';
 
 import Alert from '@/models/alert';
 import LogView from '@/models/logView';
-import { isUserAuthenticated } from '@/middleware/auth';
 
 const router = express.Router();
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -32,7 +31,7 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -61,7 +60,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.patch('/:id', isUserAuthenticated, async (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: logViewId } = req.params;
@@ -87,7 +86,7 @@ router.patch('/:id', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: logViewId } = req.params;
