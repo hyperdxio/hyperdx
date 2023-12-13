@@ -1453,6 +1453,13 @@ function PropertySubpanel({
               },
         );
       } else {
+        if (!isNestedView) {
+          actions.push({
+            key: 'copy-parent',
+            label: 'Copy Parent',
+            onClick: handleCopyObject,
+          });
+        }
         actions.push({
           key: 'copy-value',
           label: 'Copy Value',
