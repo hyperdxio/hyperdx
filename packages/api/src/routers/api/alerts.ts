@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import Alert from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
 import { getTeam } from '@/controllers/team';
 import {
   createAlert,
@@ -71,6 +72,52 @@ const validateGroupBy = async (req, res, next) => {
 };
 
 // Routes
+router.get('/', isUserAuthenticated, async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+    const alerts = await Alert.find({ team: teamId });
+    // may want to restrict this to reasonable time bounds
+    const alertHistories = await AlertHistory.find({ team: teamId });
+    res.json({
+      data: {
+        alerts: alerts,
+        alertHistories: alertHistories,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:id', isUserAuthenticated, async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    const { id } = req.params;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+    if (!id) {
+      return res.sendStatus(400);
+    }
+    const alert = (await Alert.find({ _id: id, team: teamId })).pop();
+    const alertHistories = await AlertHistory.find({ alert: id, team: teamId });
+    if (!alert) {
+      return res.sendStatus(404);
+    }
+    res.json({
+      data: {
+        ...alert,
+        history: alertHistories,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post(
   '/',
   validateRequest({ body: zAlertInput }),
