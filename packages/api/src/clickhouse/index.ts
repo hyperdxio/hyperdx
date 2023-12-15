@@ -187,6 +187,11 @@ export const buildLogStreamAdditionalFilters = (
   teamId: string,
 ) => SettingsMap.from({});
 
+export const buildMetricStreamAdditionalFilters = (
+  version: number | undefined | null,
+  teamId: string,
+) => SettingsMap.from({});
+
 export const healthCheck = () => client.ping();
 
 export const connect = async () => {
@@ -646,6 +651,12 @@ const getMetricsTagsUncached = async (teamId: string) => {
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
   const result = await rows.json<ResponseJSON<{ names: string[] }>>();
   logger.info({
@@ -773,63 +784,57 @@ export const getMetricsChart = async ({
   // max/min don't require pre-bucketing the Sum timeseries
   const sumMetricSource = SqlString.format(
     `
-    SELECT
-      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
-      min(value) as value,
-      _string_attributes,
-      name
-    FROM
-      ??
-    WHERE
-      name = ?
+      SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+        min(value) as value,
+        _string_attributes,
+        name
+      FROM ??
+      WHERE name = ?
       AND data_type = ?
       AND (?)
-    GROUP BY
-      name,
-      _string_attributes,
-      timestamp
-    ORDER BY
-      _string_attributes,
-      timestamp ASC
-  `.trim(),
+      GROUP BY
+        name,
+        _string_attributes,
+        timestamp
+      ORDER BY
+        _string_attributes,
+        timestamp ASC
+    `.trim(),
     [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const rateMetricSource = SqlString.format(
     `
-SELECT
-  if(
-    runningDifference(value) < 0
-    OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
-    nan,
-    runningDifference(value)
-  ) AS rate,
-  timestamp,
-  _string_attributes,
-  name
-FROM
-  (
-    ?
-  )
-WHERE
-  isNaN(rate) = 0
-`.trim(),
+      SELECT
+        if(
+          runningDifference(value) < 0
+          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+          nan,
+          runningDifference(value)
+        ) AS rate,
+        timestamp,
+        _string_attributes,
+        name
+      FROM (?)
+      WHERE isNaN(rate) = 0
+    `.trim(),
     [SqlString.raw(sumMetricSource)],
   );
 
   const gaugeMetricSource = SqlString.format(
     `
-SELECT 
-  timestamp,
-  name,
-  value,
-  _string_attributes
-FROM ??
-WHERE name = ?
-AND data_type = ?
-AND (?)
-ORDER BY _timestamp_sort_key ASC
-`.trim(),
+      SELECT 
+        timestamp,
+        name,
+        value,
+        _string_attributes
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (?)
+      ORDER BY _timestamp_sort_key ASC
+    `.trim(),
     [tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
@@ -867,6 +872,12 @@ ORDER BY _timestamp_sort_key ASC
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
   const result = await rows.json<
     ResponseJSON<{
