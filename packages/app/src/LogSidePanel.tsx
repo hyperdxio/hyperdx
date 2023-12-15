@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
 import Fuse from 'fuse.js';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
-import mapValues from 'lodash/mapValues';
 import pickBy from 'lodash/pickBy';
-import { Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -19,7 +19,15 @@ import { StringParam, withDefault } from 'serialize-query-params';
 import stripAnsi from 'strip-ansi';
 import Timestamp from 'timestamp-nano';
 import { useQueryParam } from 'use-query-params';
+import {
+  ActionIcon,
+  Group,
+  Menu,
+  SegmentedControl,
+  TextInput,
+} from '@mantine/core';
 
+import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { Table } from './components/Table';
 import api from './api';
 import { CurlGenerator } from './curlGenerator';
@@ -100,22 +108,7 @@ function useParsedLogProperties(logData: any): { [key: string]: any } {
 
     return {
       // TODO: Users can't search on this via property search so we need to figure out a nice way to handle those search actions...
-      // TODO: Probably move this into the render below
-      ...mapValues(mergedKvPairs, value => {
-        if (
-          typeof value === 'string' &&
-          value.length > 2 &&
-          ((value[0] === '{' && value[value.length - 1] === '}') ||
-            (value[0] === '[' && value[value.length - 1] === ']'))
-        ) {
-          try {
-            return JSON.parse(value);
-          } catch (e) {
-            // do nothing
-          }
-        }
-        return value;
-      }),
+      ...mergedKvPairs,
       ...addIfTruthy('span_id', span_id),
       ...addIfTruthy('trace_id', trace_id),
       ...addIfTruthy('parent_span_id', parent_span_id),
@@ -640,7 +633,7 @@ function TraceSubpanel({
       <div className="border-top border-dark mb-4">
         {selectedLogData != null ? (
           <>
-            <div className="my-3">
+            <div className="my-3 text-break">
               <div className="text-slate-200 fs-7 mb-2 mt-3">
                 {selectedLogData.type === 'span' ? 'Span' : 'Log'} Details
               </div>
@@ -1241,6 +1234,7 @@ function PropertySubpanel({
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
 }) {
+  const router = useRouter();
   const [propertySearchValue, setPropertySearchValue] = useState('');
   const [isNestedView, setIsNestedView] = useLocalStorage(
     'propertySubPanelNestedView',
@@ -1342,9 +1336,155 @@ function PropertySubpanel({
     }, {} as any);
   }, [displayedParsedProperties, propertySearchValue, search]);
 
-  const events: any[] | undefined = parsedProperties?.__events;
+  let events: any[] | undefined;
+  if (parsedProperties?.__events) {
+    try {
+      events = JSON.parse(parsedProperties?.__events);
+    } catch (e) {
+      console.warn(e);
+    }
+  }
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const [jsonOptions, setJsonOptions] = useLocalStorage(
+    'logviewer.jsonviewer.options',
+    {
+      normallyExpanded: true,
+      tabulate: true,
+      lineWrap: true,
+      useLegacyViewer: false,
+    },
+  );
+
+  const getLineActions = useCallback<GetLineActions>(
+    ({ keyPath, value }) => {
+      const actions: LineAction[] = [];
+
+      if (onPropertyAddClick != null && typeof value !== 'object') {
+        actions.push({
+          key: 'add-to-search',
+          label: <i className="bi bi-plus-circle" />,
+          title: 'Add to Search',
+          onClick: () => {
+            onPropertyAddClick(`${keyPath.join('.')}`, value);
+          },
+        });
+      }
+
+      if (typeof value !== 'object') {
+        actions.push({
+          key: 'search',
+          label: <i className="bi bi-search" />,
+          title: 'Search for this value only',
+          onClick: () => {
+            router.push(
+              generateSearchUrl(
+                `${keyPath.join('.')}:${
+                  typeof value === 'string' ? `"${value}"` : value
+                }`,
+              ),
+            );
+          },
+        });
+      }
+
+      /* TODO: Handle bools properly (they show up as number...) */
+      if (typeof value === 'number') {
+        actions.push({
+          key: 'chart',
+          label: <i className="bi bi-graph-up" />,
+          title: 'Chart',
+          onClick: () => {
+            router.push(
+              generateChartUrl({
+                aggFn: 'avg',
+                field: `${keyPath.join('.')}`,
+                groupBy: [],
+                table: 'logs',
+              }),
+            );
+          },
+        });
+      }
+
+      if (toggleColumn && typeof value !== 'object') {
+        const keyPathString = keyPath.join('.');
+        actions.push({
+          key: 'toggle-column',
+          label: <i className="bi bi-table" />,
+          title: displayedColumns?.includes(keyPathString)
+            ? `Remove ${keyPathString} column from results table`
+            : `Add ${keyPathString} column to results table`,
+          onClick: () => toggleColumn(keyPathString),
+        });
+      }
+
+      const handleCopyObject = () => {
+        const shouldCopyParent = !isNestedView;
+        const parentKeyPath = keyPath.slice(0, -1);
+        const copiedObj = shouldCopyParent
+          ? parentKeyPath.length === 0
+            ? nestedProperties
+            : get(nestedProperties, parentKeyPath)
+          : keyPath.length === 0
+          ? nestedProperties
+          : get(nestedProperties, keyPath);
+        window.navigator.clipboard.writeText(
+          JSON.stringify(copiedObj, null, 2),
+        );
+        toast.success(
+          `Copied ${shouldCopyParent ? 'parent' : 'object'} to clipboard`,
+        );
+      };
+
+      if (typeof value === 'object') {
+        actions.push(
+          isNestedView
+            ? {
+                key: 'copy-object',
+                label: 'Copy Object',
+                onClick: handleCopyObject,
+              }
+            : {
+                key: 'copy-parent',
+                label: 'Copy Parent',
+                onClick: handleCopyObject,
+              },
+        );
+      } else {
+        if (!isNestedView) {
+          actions.push({
+            key: 'copy-parent',
+            label: 'Copy Parent',
+            onClick: handleCopyObject,
+          });
+        }
+        actions.push({
+          key: 'copy-value',
+          label: 'Copy Value',
+          onClick: () => {
+            window.navigator.clipboard.writeText(
+              JSON.stringify(value, null, 2),
+            );
+            toast.success(`Value copied to clipboard`);
+          },
+        });
+      }
+
+      return actions;
+    },
+    [
+      onPropertyAddClick,
+      toggleColumn,
+      isNestedView,
+      router,
+      generateSearchUrl,
+      generateChartUrl,
+      displayedColumns,
+      nestedProperties,
+    ],
+  );
 
   return (
     <div>
@@ -1412,210 +1552,330 @@ function PropertySubpanel({
           })}
         </>
       )}
-      <div className="fw-bold fs-8 mt-4 d-flex align-items-center mb-2">
-        <span>Properties</span>
-        <Button
-          variant="link"
-          className="p-0 text-muted-hover fs-8 ms-2"
-          onClick={() => setIsNestedView(!isNestedView)}
-        >
-          Switch to {isNestedView ? 'Flat View' : 'Nested JSON View'}
-        </Button>
-      </div>
-      {isNestedView === false && (
-        <Form.Control
-          ref={searchInputRef}
-          size="sm"
-          type="text"
-          placeholder={'Search properties by key or value'}
-          className="border-0 fs-7.5 mt-2"
-          value={propertySearchValue}
-          onChange={e => setPropertySearchValue(e.target.value)}
-          // autoFocus
-          onKeyDown={e => {
-            if (e.key === 'Escape') {
-              searchInputRef.current?.blur();
-            }
-          }}
-        />
-      )}
-      <div
-        className="d-flex flex-wrap mt-1 react-json-tree"
-        style={{ overflowX: 'hidden' }}
-      >
-        <JSONTree
-          hideRoot={true}
-          shouldExpandNode={() => true}
-          data={isNestedView ? nestedProperties : filteredProperties}
-          invertTheme={false}
-          labelRenderer={keyPath => {
-            const shouldCopyParent = !isNestedView;
 
-            const [key] = keyPath;
-            const parsedKeyPath = isNestedView
-              ? keyPath
-                  .slice()
-                  .reverse()
-                  .flatMap(key => {
-                    return `${key}`.split('.');
-                  })
-              : keyPath;
+      <CollapsibleSection title="Properties" initiallyCollapsed={false}>
+        <SectionWrapper>
+          <div
+            className="px-3 py-1"
+            style={{
+              borderBottom: '1px solid #21262C',
+            }}
+          >
+            <Group align="center" position="apart">
+              <SegmentedControl
+                size="sm"
+                data={[
+                  {
+                    label: 'Flat view',
+                    value: 'flat',
+                  },
+                  {
+                    label: 'Nested view',
+                    value: 'nested',
+                  },
+                ]}
+                value={isNestedView ? 'nested' : 'flat'}
+                onChange={value => {
+                  setIsNestedView(value === 'nested');
+                }}
+              />
 
-            const parentKeyPath = parsedKeyPath.slice(0, -1);
-            const copiedObj = shouldCopyParent
-              ? parentKeyPath.length === 0
-                ? nestedProperties
-                : get(nestedProperties, parentKeyPath)
-              : parsedKeyPath.length === 0
-              ? nestedProperties
-              : get(nestedProperties, parsedKeyPath);
-
-            return (
-              <OverlayTrigger
-                trigger="click"
-                overlay={
-                  <Tooltip id={`tooltip`}>
-                    <CopyToClipboard
-                      text={JSON.stringify(copiedObj, null, 2)}
-                      onCopy={() => {
-                        toast.success(
-                          `${
-                            shouldCopyParent ? 'Parent object' : 'Object'
-                          } copied to clipboard`,
-                        );
-                      }}
-                    >
-                      <Button
-                        className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
-                        variant="link"
-                        title={`Copy ${
-                          shouldCopyParent ? 'parent' : ''
-                        } object`}
-                      >
-                        <i className="bi bi-clipboard" /> Copy{' '}
-                        {shouldCopyParent ? 'Parent ' : ''}Object (
-                        {(shouldCopyParent
-                          ? parentKeyPath
-                          : parsedKeyPath
-                        ).join('.')}
-                        )
-                      </Button>
-                    </CopyToClipboard>
-                  </Tooltip>
-                }
-              >
-                <span className="cursor-pointer">{key}</span>
-              </OverlayTrigger>
-            );
-          }}
-          valueRenderer={(raw, value, ...rawKeyPath) => {
-            const keyPath = rawKeyPath.slice().reverse();
-            const keyPathString = keyPath.join('.');
-
-            return (
-              <div className="parent-hover-trigger d-inline-block px-2">
-                <pre
-                  className="d-inline text-break"
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
-                  }}
-                >
-                  {raw}
-                </pre>
-                <span className="me-2" />
-                {onPropertyAddClick != null ? (
-                  <Button
-                    className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
-                    variant="link"
-                    title="Add to search"
-                    onClick={() => {
-                      onPropertyAddClick(`${keyPath.join('.')}`, value);
+              <Group position="right" spacing="xs" style={{ flex: 1 }}>
+                {isNestedView === false && (
+                  <TextInput
+                    style={{ flex: 1 }}
+                    maw={400}
+                    ref={searchInputRef}
+                    size="xs"
+                    variant="filled"
+                    type="text"
+                    placeholder={'Search properties by key or value'}
+                    value={propertySearchValue}
+                    onChange={e => setPropertySearchValue(e.target.value)}
+                    // autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') {
+                        searchInputRef.current?.blur();
+                      }
                     }}
-                    style={{ width: 20 }}
-                  >
-                    <i className="bi bi-plus-circle" />
-                  </Button>
-                ) : null}
-                {/* The styling here is a huge mess and I'm not sure why its not working */}
-                <Link
-                  href={generateSearchUrl(
-                    `${keyPath.join('.')}:${
-                      typeof value === 'string' ? `"${value}"` : value
-                    }`,
-                  )}
-                  passHref
-                >
-                  <Button
-                    className="fs-8 text-muted-hover child-hover-trigger p-0"
-                    variant="link"
-                    as="a"
-                    title="Search for this value only"
-                    style={{ width: 22 }}
-                  >
-                    <i className="bi bi-search" />
-                  </Button>
-                </Link>
-                {/* TODO: Handle bools properly (they show up as number...) */}
-                {typeof value === 'number' ? (
-                  <Link
-                    href={generateChartUrl({
-                      aggFn: 'avg',
-                      field: `${keyPath.join('.')}`,
-                      groupBy: [],
-                      table: 'logs',
-                    })}
-                    passHref
-                  >
-                    <Button
-                      className="fs-8 text-muted-hover child-hover-trigger p-0"
-                      variant="link"
-                      as="a"
-                      title="Chart this value"
-                      style={{ width: 20 }}
+                  />
+                )}
+                <Menu width={240}>
+                  <Menu.Target>
+                    <ActionIcon size="md" variant="filled">
+                      <i className="bi bi-gear" />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Label lh={1} py={6}>
+                      Properties view options
+                    </Menu.Label>
+                    <Menu.Item
+                      disabled={jsonOptions.useLegacyViewer}
+                      onClick={() =>
+                        setJsonOptions({
+                          ...jsonOptions,
+                          normallyExpanded: !jsonOptions.normallyExpanded,
+                        })
+                      }
+                      lh="1"
+                      py={8}
+                      rightSection={
+                        jsonOptions.normallyExpanded ? (
+                          <i className="ps-2 bi bi-check2" />
+                        ) : null
+                      }
                     >
-                      <i className="bi bi-graph-up" />
-                    </Button>
-                  </Link>
-                ) : null}
+                      Expand all properties
+                    </Menu.Item>
+                    <Menu.Item
+                      disabled={jsonOptions.useLegacyViewer}
+                      onClick={() =>
+                        setJsonOptions({
+                          ...jsonOptions,
+                          lineWrap: !jsonOptions.lineWrap,
+                        })
+                      }
+                      lh="1"
+                      py={8}
+                      rightSection={
+                        jsonOptions.lineWrap ? (
+                          <i className="ps-2 bi bi-check2" />
+                        ) : null
+                      }
+                    >
+                      Preserve line breaks
+                    </Menu.Item>
+                    <Menu.Item
+                      lh="1"
+                      py={8}
+                      disabled={jsonOptions.useLegacyViewer}
+                      rightSection={
+                        jsonOptions.tabulate ? (
+                          <i className="ps-2 bi bi-check2" />
+                        ) : null
+                      }
+                      onClick={() =>
+                        setJsonOptions({
+                          ...jsonOptions,
+                          tabulate: !jsonOptions.tabulate,
+                        })
+                      }
+                    >
+                      Tabulate
+                    </Menu.Item>
+                    <Menu.Item
+                      lh="1"
+                      py={8}
+                      rightSection={
+                        jsonOptions.useLegacyViewer ? (
+                          <i className="ps-2 bi bi-check2" />
+                        ) : null
+                      }
+                      onClick={() =>
+                        setJsonOptions({
+                          ...jsonOptions,
+                          useLegacyViewer: !jsonOptions.useLegacyViewer,
+                        })
+                      }
+                    >
+                      Use legacy viewer
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Group>
+            </Group>
+          </div>
+          <div
+            className="d-flex flex-wrap react-json-tree p-3"
+            style={{ overflowX: 'hidden' }}
+          >
+            {/* TODO: Remove old viewer once it passes the test of time... */}
+            {jsonOptions.useLegacyViewer ? (
+              <JSONTree
+                hideRoot={true}
+                shouldExpandNode={() => true}
+                data={isNestedView ? nestedProperties : filteredProperties}
+                invertTheme={false}
+                labelRenderer={keyPath => {
+                  const shouldCopyParent = !isNestedView;
 
-                {!!toggleColumn && keyPath.length === 1 ? (
-                  <Button
-                    className="fs-8 text-muted-hover child-hover-trigger p-0"
-                    variant="link"
-                    as="a"
-                    title={
-                      displayedColumns?.includes(keyPathString)
-                        ? `Remove ${keyPathString} column from results table`
-                        : `Add ${keyPathString} column to results table`
-                    }
-                    style={{ width: 20 }}
-                    onClick={() => toggleColumn(keyPathString)}
-                  >
-                    <i className="bi bi-table" />
-                  </Button>
-                ) : null}
+                  const [key] = keyPath;
+                  const parsedKeyPath = isNestedView
+                    ? keyPath
+                        .slice()
+                        .reverse()
+                        .flatMap(key => {
+                          return `${key}`.split('.');
+                        })
+                    : keyPath;
 
-                <CopyToClipboard
-                  text={value}
-                  onCopy={() => {
-                    toast.success(`Value copied to clipboard`);
-                  }}
-                >
-                  <Button
-                    className="fs-8 text-muted-hover child-hover-trigger p-0"
-                    title="Copy value to clipboard"
-                    variant="link"
-                  >
-                    <i className="bi bi-clipboard" />
-                  </Button>
-                </CopyToClipboard>
-              </div>
-            );
-          }}
-          theme={JSON_TREE_THEME}
-        />
-      </div>
+                  const parentKeyPath = parsedKeyPath.slice(0, -1);
+                  const copiedObj = shouldCopyParent
+                    ? parentKeyPath.length === 0
+                      ? nestedProperties
+                      : get(nestedProperties, parentKeyPath)
+                    : parsedKeyPath.length === 0
+                    ? nestedProperties
+                    : get(nestedProperties, parsedKeyPath);
+
+                  return (
+                    <OverlayTrigger
+                      trigger="click"
+                      overlay={
+                        <Tooltip id={`tooltip`}>
+                          <CopyToClipboard
+                            text={JSON.stringify(copiedObj, null, 2)}
+                            onCopy={() => {
+                              toast.success(
+                                `${
+                                  shouldCopyParent ? 'Parent object' : 'Object'
+                                } copied to clipboard`,
+                              );
+                            }}
+                          >
+                            <Button
+                              className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
+                              variant="link"
+                              title={`Copy ${
+                                shouldCopyParent ? 'parent' : ''
+                              } object`}
+                            >
+                              <i className="bi bi-clipboard" /> Copy{' '}
+                              {shouldCopyParent ? 'Parent ' : ''}Object (
+                              {(shouldCopyParent
+                                ? parentKeyPath
+                                : parsedKeyPath
+                              ).join('.')}
+                              )
+                            </Button>
+                          </CopyToClipboard>
+                        </Tooltip>
+                      }
+                    >
+                      <span className="cursor-pointer">{key}</span>
+                    </OverlayTrigger>
+                  );
+                }}
+                valueRenderer={(raw, value, ...rawKeyPath) => {
+                  const keyPath = rawKeyPath.slice().reverse();
+                  const keyPathString = keyPath.join('.');
+
+                  return (
+                    <div className="parent-hover-trigger d-inline-block px-2">
+                      <pre
+                        className="d-inline text-break"
+                        style={{
+                          whiteSpace: 'pre-wrap',
+                          wordWrap: 'break-word',
+                        }}
+                      >
+                        {raw}
+                      </pre>
+                      <span className="me-2" />
+                      {onPropertyAddClick != null ? (
+                        <Button
+                          className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
+                          variant="link"
+                          title="Add to search"
+                          onClick={() => {
+                            onPropertyAddClick(`${keyPath.join('.')}`, value);
+                          }}
+                          style={{ width: 20 }}
+                        >
+                          <i className="bi bi-plus-circle" />
+                        </Button>
+                      ) : null}
+                      {/* The styling here is a huge mess and I'm not sure why its not working */}
+                      <Link
+                        href={generateSearchUrl(
+                          `${keyPath.join('.')}:${
+                            typeof value === 'string' ? `"${value}"` : value
+                          }`,
+                        )}
+                        passHref
+                      >
+                        <Button
+                          className="fs-8 text-muted-hover child-hover-trigger p-0"
+                          variant="link"
+                          as="a"
+                          title="Search for this value only"
+                          style={{ width: 22 }}
+                        >
+                          <i className="bi bi-search" />
+                        </Button>
+                      </Link>
+                      {/* TODO: Handle bools properly (they show up as number...) */}
+                      {typeof value === 'number' ? (
+                        <Link
+                          href={generateChartUrl({
+                            aggFn: 'avg',
+                            field: `${keyPath.join('.')}`,
+                            groupBy: [],
+                            table: 'logs',
+                          })}
+                          passHref
+                        >
+                          <Button
+                            className="fs-8 text-muted-hover child-hover-trigger p-0"
+                            variant="link"
+                            as="a"
+                            title="Chart this value"
+                            style={{ width: 20 }}
+                          >
+                            <i className="bi bi-graph-up" />
+                          </Button>
+                        </Link>
+                      ) : null}
+
+                      {!!toggleColumn && keyPath.length === 1 ? (
+                        <Button
+                          className="fs-8 text-muted-hover child-hover-trigger p-0"
+                          variant="link"
+                          as="a"
+                          title={
+                            displayedColumns?.includes(keyPathString)
+                              ? `Remove ${keyPathString} column from results table`
+                              : `Add ${keyPathString} column to results table`
+                          }
+                          style={{ width: 20 }}
+                          onClick={() => toggleColumn(keyPathString)}
+                        >
+                          <i className="bi bi-table" />
+                        </Button>
+                      ) : null}
+
+                      <CopyToClipboard
+                        text={value}
+                        onCopy={() => {
+                          toast.success(`Value copied to clipboard`);
+                        }}
+                      >
+                        <Button
+                          className="fs-8 text-muted-hover child-hover-trigger p-0"
+                          title="Copy value to clipboard"
+                          variant="link"
+                        >
+                          <i className="bi bi-clipboard" />
+                        </Button>
+                      </CopyToClipboard>
+                    </div>
+                  );
+                }}
+                theme={JSON_TREE_THEME}
+              />
+            ) : (
+              <HyperJson
+                data={isNestedView ? nestedProperties : filteredProperties}
+                normallyExpanded={jsonOptions.normallyExpanded}
+                tabulate={jsonOptions.tabulate}
+                lineWrap={jsonOptions.lineWrap}
+                getLineActions={getLineActions}
+              />
+            )}
+          </div>
+        </SectionWrapper>
+      </CollapsibleSection>
     </div>
   );
 }
