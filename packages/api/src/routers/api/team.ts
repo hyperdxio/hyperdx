@@ -7,16 +7,13 @@ import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import TeamInvite from '@/models/teamInvite';
-import User from '@/models/user';
 import logger from '@/utils/logger';
 import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
 import { getTeam, rotateTeamApiKey } from '@/controllers/team';
-import { isUserAuthenticated, redirectToDashboard } from '@/middleware/auth';
-import { validatePassword } from '@/utils/validators';
 
 const router = express.Router();
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { email: toEmail, name } = req.body;
 
@@ -85,7 +82,7 @@ const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
   }
 };
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -135,7 +132,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.patch('/apiKey', isUserAuthenticated, async (req, res, next) => {
+router.patch('/apiKey', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -143,54 +140,6 @@ router.patch('/apiKey', isUserAuthenticated, async (req, res, next) => {
     }
     const team = await rotateTeamApiKey(teamId);
     res.json({ newApiKey: team?.apiKey });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.post('/setup/:token', async (req, res, next) => {
-  try {
-    const { password } = req.body;
-    const { token } = req.params;
-
-    if (!validatePassword(password)) {
-      return res.redirect(
-        `${config.FRONTEND_URL}/join-team?err=invalid&token=${token}`,
-      );
-    }
-
-    const teamInvite = await TeamInvite.findOne({
-      token: req.params.token,
-    });
-    if (!teamInvite) {
-      return res.status(401).send('Invalid token');
-    }
-
-    (User as any).register(
-      new User({
-        email: teamInvite.email,
-        name: teamInvite.email,
-        team: teamInvite.teamId,
-      }),
-      password, // TODO: validate password
-      async (err: Error, user: any) => {
-        if (err) {
-          logger.error(serializeError(err));
-          return res.redirect(
-            `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
-          );
-        }
-
-        await TeamInvite.findByIdAndRemove(teamInvite._id);
-
-        req.login(user, err => {
-          if (err) {
-            return next(err);
-          }
-          redirectToDashboard(req, res);
-        });
-      },
-    );
   } catch (e) {
     next(e);
   }

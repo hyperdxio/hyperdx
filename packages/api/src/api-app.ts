@@ -14,6 +14,7 @@ import routers from './routers/api';
 import usageStats from './tasks/usageStats';
 import { appErrorHandler } from './middleware/error';
 import { expressLogger } from './utils/logger';
+import { isUserAuthenticated } from './middleware/auth';
 
 const app: express.Application = express();
 
@@ -89,15 +90,19 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // ----------------------- Internal Routers ----------------------------
 // ---------------------------------------------------------------------
+// PUBLIC ROUTES
 app.use('/', routers.rootRouter);
-app.use('/alerts', routers.alertsRouter);
-app.use('/dashboards', routers.dashboardRouter);
-app.use('/log-views', routers.logViewsRouter);
-app.use('/logs', routers.logsRouter);
-app.use('/metrics', routers.metricsRouter);
-app.use('/sessions', routers.sessionsRouter);
-app.use('/team', routers.teamRouter);
-app.use('/webhooks', routers.webhooksRouter);
+
+// PRIVATE ROUTES
+app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
+app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
+app.use('/log-views', isUserAuthenticated, routers.logViewsRouter);
+app.use('/logs', isUserAuthenticated, routers.logsRouter);
+app.use('/me', isUserAuthenticated, routers.meRouter);
+app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
+app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
+app.use('/team', isUserAuthenticated, routers.teamRouter);
+app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers
