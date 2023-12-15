@@ -4,13 +4,12 @@ import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from '@/clickhouse';
-import { isUserAuthenticated } from '@/middleware/auth';
 import logger from '@/utils/logger';
 import { getTeam } from '@/controllers/team';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime } = req.query;
@@ -48,7 +47,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
+router.get('/:sessionId/rrweb', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { sessionId } = req.params;

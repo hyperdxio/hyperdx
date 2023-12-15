@@ -6,9 +6,6 @@ import cx from 'classnames';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import {
   Button,
-  Card,
-  Container,
-  Divider,
   Notification,
   Paper,
   PasswordInput,
@@ -115,7 +112,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       <NextSeo title={title} />
       <LandingHeader activeKey={`/${action}`} fixed />
       <div className="d-flex justify-content-center align-items-center vh-100">
-        <div>
+        <div style={{ width: '26rem' }}>
           <div
             className="text-center mb-2 fs-5 text-slate-300"
             style={{ marginTop: -30 }}
@@ -137,7 +134,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
           )}
           <form className="text-start mt-4" {...form.controller}>
             <Stack spacing="xl">
-              <Paper p={34} shadow="md" radius="md" w="26rem">
+              <Paper p={34} shadow="md" radius="md">
                 <Stack spacing="lg">
                   <TextInput
                     label="Email"
