@@ -1,7 +1,7 @@
+import { useState } from 'react';
 import cx from 'classnames';
 import { Button } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { useState } from 'react';
 
 export default function Clipboard({
   text,

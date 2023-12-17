@@ -1,7 +1,8 @@
-import { Button, Form } from 'react-bootstrap';
-import { NextSeo } from 'next-seo';
-import { API_SERVER_URL } from './config';
 import { useRouter } from 'next/router';
+import { NextSeo } from 'next-seo';
+import { Button, Form } from 'react-bootstrap';
+
+import { API_SERVER_URL } from './config';
 
 export default function JoinTeam() {
   const router = useRouter();

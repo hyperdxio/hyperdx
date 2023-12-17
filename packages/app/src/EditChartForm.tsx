@@ -1,26 +1,28 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
-import HDXMarkdownChart from './HDXMarkdownChart';
-import Select from 'react-select';
 import { Button, Form, InputGroup, Modal } from 'react-bootstrap';
-import * as config from './config';
-import type { Alert } from './types';
-import Checkbox from './Checkbox';
-import HDXLineChart from './HDXLineChart';
+import Select from 'react-select';
+
+import { intervalToGranularity } from './Alert';
 import {
   AGG_FNS,
   AggFn,
   ChartSeriesForm,
-  FieldSelect,
   convertDateRangeToGranularityString,
+  FieldSelect,
 } from './ChartUtils';
-import { hashCode, useDebounce } from './utils';
-import HDXHistogramChart from './HDXHistogramChart';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import Checkbox from './Checkbox';
+import * as config from './config';
+import { METRIC_ALERTS_ENABLED } from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
+import HDXHistogramChart from './HDXHistogramChart';
+import HDXLineChart from './HDXLineChart';
+import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
-import { intervalToGranularity } from './Alert';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import type { Alert } from './types';
+import { hashCode, useDebounce } from './utils';
 
 export type Chart = {
   id: string;
@@ -867,6 +869,9 @@ export const EditLineChartForm = ({
     return null;
   }
 
+  const isChartAlertsFeatureEnabled =
+    editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED;
+
   return (
     <form
       onSubmit={e => {
@@ -970,7 +975,7 @@ export const EditLineChartForm = ({
         }}
       />
 
-      {editedChart.series[0].table === 'logs' && (
+      {isChartAlertsFeatureEnabled && (
         <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">

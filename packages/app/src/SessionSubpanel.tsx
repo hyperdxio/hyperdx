@@ -1,18 +1,18 @@
-import ReactDOM from 'react-dom';
-import throttle from 'lodash/throttle';
-import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
-import { format } from 'date-fns';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { format } from 'date-fns';
+import throttle from 'lodash/throttle';
+import ReactDOM from 'react-dom';
+import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
 import { useQueryParam } from 'use-query-params';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import DOMPlayer from './DOMPlayer';
 import LogSidePanel from './LogSidePanel';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
+import { useSessionEvents } from './sessionUtils';
 import TabBar from './TabBar';
 import { getShortUrl, usePrevious } from './utils';
-import { useSessionEvents } from './sessionUtils';
 
 function SessionEventList({
   config: { where, dateRange },
@@ -523,9 +523,15 @@ export default function SessionSubpanel({
           />
         </div>
       </div>
-      <div style={{ width: playerFullWidth ? '100%' : '50%' }}>
+      <div
+        style={{ width: playerFullWidth ? '100%' : '50%' }}
+        className="d-flex flex-column"
+      >
         <div className="fs-8 text-muted mt-4 mb-2">Session Player</div>
-        <div className="mt-1 border-top border-dark mb-2">
+        <div
+          className="d-flex flex-column mt-1 border-top border-dark mb-2"
+          style={{ minHeight: 0 }}
+        >
           <div className="mb-3 mt-2">
             <MemoPlaybar
               playerState={playerState}

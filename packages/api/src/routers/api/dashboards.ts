@@ -2,7 +2,6 @@ import express from 'express';
 
 import Dashboard from '@/models/dashboard';
 import Alert from '@/models/alert';
-import { isUserAuthenticated } from '@/middleware/auth';
 import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
 import { groupBy, differenceBy } from 'lodash';
@@ -41,7 +40,7 @@ const zChart = z.object({
   ),
 });
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -73,7 +72,6 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
 
 router.post(
   '/',
-  isUserAuthenticated,
   validateRequest({
     body: z.object({
       name: z.string(),
@@ -108,7 +106,6 @@ router.post(
 
 router.put(
   '/:id',
-  isUserAuthenticated,
   validateRequest({
     body: z.object({
       name: z.string(),
@@ -163,7 +160,7 @@ router.put(
   },
 );
 
-router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: dashboardId } = req.params;

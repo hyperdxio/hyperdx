@@ -54,10 +54,16 @@ export const CheckOrX = ({
   } else {
     actualPassword = password.password ?? '';
   }
+  const isEmpty = actualPassword.length === 0;
   const isValid = useMemo(
     () => handler(actualPassword),
     [handler, actualPassword],
   );
+
+  if (isEmpty) {
+    return <span>{children}</span>;
+  }
+
   return (
     <span className={isValid ? 'text-success' : 'text-danger'}>
       {isValid ? <Check /> : <XShape />} {children}

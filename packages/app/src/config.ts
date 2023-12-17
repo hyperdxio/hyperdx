@@ -9,3 +9,6 @@ export const HDX_COLLECTOR_URL =
   'http://localhost:4318';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
+
+// Features in development
+export const METRIC_ALERTS_ENABLED = process.env.NODE_ENV === 'development';

@@ -1,4 +1,3 @@
-import { useRouter } from 'next/router';
 import {
   createContext,
   useCallback,
@@ -6,6 +5,8 @@ import {
   useEffect,
   useState,
 } from 'react';
+import { useRouter } from 'next/router';
+
 import { usePrevious } from './utils';
 
 type QueryParamContextType = Record<string, any> & {

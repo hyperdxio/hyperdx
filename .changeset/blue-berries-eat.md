@@ -3,4 +3,4 @@
 '@hyperdx/app': patch
 ---
 
-feat: setup clickhouse migration tool
+fix: extend level inference scanning range

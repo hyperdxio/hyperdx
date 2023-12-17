@@ -1,27 +1,96 @@
-import Head from 'next/head';
 import React, { useEffect } from 'react';
-import SSRProvider from 'react-bootstrap/SSRProvider';
 import type { AppProps } from 'next/app';
+import Head from 'next/head';
+import { NextAdapter } from 'next-query-params';
+import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ReactQueryDevtools } from 'react-query/devtools';
 import { ToastContainer } from 'react-toastify';
-import { NextAdapter } from 'next-query-params';
 import { QueryParamProvider } from 'use-query-params';
-import { useConfirmModal } from '../src/useConfirm';
+import {
+  createEmotionCache,
+  MantineProvider,
+  MantineThemeOverride,
+} from '@mantine/core';
 
 import * as config from '../src/config';
+import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
 import { UserPreferencesProvider } from '../src/useUserPreferences';
 
 import 'react-toastify/dist/ReactToastify.css';
-
 import '../styles/globals.css';
 import '../styles/app.scss';
 import '../src/LandingPage.scss';
 
 const queryClient = new QueryClient();
-
 import HyperDX from '@hyperdx/browser';
+
+const mantineCache = createEmotionCache({ key: 'mantine', prepend: true });
+
+const mantineTheme: MantineThemeOverride = {
+  colorScheme: 'dark',
+  fontFamily: 'IBM Plex Mono, sans-serif',
+  primaryColor: 'green',
+  primaryShade: 9,
+  white: '#fff',
+  fontSizes: {
+    xs: '12px',
+    sm: '13px',
+    md: '15px',
+    lg: '16px',
+    xl: '18px',
+  },
+  colors: {
+    green: [
+      '#e2ffeb',
+      '#cdffd9',
+      '#9bfdb5',
+      '#67fb8d',
+      '#3bf96b',
+      '#1ef956',
+      '#03f84a',
+      '#00dd3a',
+      '#00c531',
+      '#00aa23',
+    ],
+  },
+  headings: {
+    fontFamily: 'IBM Plex Mono, sans-serif',
+  },
+  components: {
+    Modal: {
+      styles: {
+        header: {
+          fontFamily: 'IBM Plex Mono, sans-serif',
+          fontWeight: 'bold',
+        },
+      },
+    },
+    InputWrapper: {
+      styles: {
+        label: {
+          marginBottom: 4,
+        },
+      },
+    },
+    Card: {
+      styles: {
+        root: {
+          backgroundColor: '#191B1F',
+        },
+      },
+    },
+    Table: {
+      styles: theme => ({
+        td: {
+          color: theme.colors.dark[3],
+          fontWeight: 'normal',
+        },
+      }),
+    },
+  },
+};
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   const confirmModal = useConfirmModal();
@@ -87,7 +156,12 @@ export default function MyApp({ Component, pageProps }: AppProps) {
             <QueryClientProvider client={queryClient}>
               <UserPreferencesProvider>
                 <ToastContainer position="bottom-right" theme="dark" />
-                <Component {...pageProps} />
+                <MantineProvider
+                  emotionCache={mantineCache}
+                  theme={mantineTheme}
+                >
+                  <Component {...pageProps} />
+                </MantineProvider>
                 <ReactQueryDevtools initialIsOpen={false} />
                 {confirmModal}
               </UserPreferencesProvider>

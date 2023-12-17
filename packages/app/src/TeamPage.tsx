@@ -1,24 +1,24 @@
+import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import {
   Badge,
   Button,
-  ToggleButton,
-  ToggleButtonGroup,
   Container,
   Form,
   Modal,
   Row,
   Spinner,
+  ToggleButton,
+  ToggleButtonGroup,
 } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
-import { useState } from 'react';
 
+import api from './api';
+import AppNav from './AppNav';
 import useUserPreferences from './useUserPreferences';
 import { TimeFormat } from './useUserPreferences';
-import AppNav from './AppNav';
-import api from './api';
 import { isValidUrl } from './utils';
 
 export default function TeamPage() {
@@ -341,6 +341,7 @@ export default function TeamPage() {
                         name="name"
                         placeholder="My Slack Webhook"
                         className="border-0 mb-4 px-3"
+                        required
                       />
                       <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                         Webhook URL
@@ -351,6 +352,7 @@ export default function TeamPage() {
                         name="url"
                         placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
                         className="border-0 mb-4 px-3"
+                        required
                       />
                       <Button
                         variant="brand-primary"

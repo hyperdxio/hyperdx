@@ -1,11 +1,17 @@
 import Link from 'next/link';
-import { Button, Container, Navbar, Nav, NavDropdown } from 'react-bootstrap';
+import { Button, Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
 
+import api from './api';
 import Logo from './Logo';
 import NavHoverDropdown from './NavHoverDropdown';
-import api from './api';
 
-export default function LandingHeader({ activeKey }: { activeKey: string }) {
+export default function LandingHeader({
+  activeKey,
+  fixed,
+}: {
+  activeKey: string;
+  fixed?: boolean;
+}) {
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
 
@@ -70,7 +76,7 @@ export default function LandingHeader({ activeKey }: { activeKey: string }) {
           </Navbar.Collapse>
         </Container>
       </Navbar>
-      <div style={{ height: 70 }} />
+      {!fixed && <div style={{ height: 70 }} />}
     </>
   );
 }

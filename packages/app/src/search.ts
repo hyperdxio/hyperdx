@@ -1,6 +1,6 @@
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { UseQueryOptions } from 'react-query';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 import { API_SERVER_URL } from './config';
 import { usePrevious } from './utils';

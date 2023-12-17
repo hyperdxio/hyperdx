@@ -13,6 +13,7 @@ export const FRONTEND_URL = env.FRONTEND_URL as string;
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
 export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const INGESTOR_API_URL = env.INGESTOR_API_URL as string;
+export const SENTRY_DSN = env.SENTRY_DSN as string;
 export const IS_CI = NODE_ENV === 'ci';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';

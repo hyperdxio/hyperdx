@@ -1,3 +1,6 @@
+import { memo, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/router';
+import cx from 'classnames';
 import {
   flexRender,
   getCoreRowModel,
@@ -5,12 +8,10 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useCallback, useRef, useMemo, memo } from 'react';
-import cx from 'classnames';
-import { UNDEFINED_WIDTH } from './tableUtils';
-import { useRouter } from 'next/router';
+
 import api from './api';
 import { AggFn } from './ChartUtils';
+import { UNDEFINED_WIDTH } from './tableUtils';
 
 const Table = ({
   data,

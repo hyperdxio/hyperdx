@@ -527,32 +527,34 @@ if exists(.ts) {
 if is_nullish(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
-    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""
   } else {
-    header = slice(to_string(.r) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.r) ?? "", start: 0, end: 256) ?? ""
   }
-  if contains(header, "info", case_sensitive: false) {
-    .st = "info"
-  } else if contains(header, "warn", case_sensitive: false) {
-    .st = "warn"
+
+  # should infer level by the order of severity
+  if contains(header, "emerg", case_sensitive: false) {
+    .st = "emergency"
+  } else if contains(header, "alert", case_sensitive: false) {
+    .st = "alert"
+  } else if contains(header, "crit", case_sensitive: false) {
+    .st = "critical"
+  } else if contains(header, "fatal", case_sensitive: false) {
+    .st = "fatal"
   } else if contains(header, "error", case_sensitive: false) {
     .st = "error"
+  } else if contains(header, "warn", case_sensitive: false) {
+    .st = "warn"
+  } else if contains(header, "notice", case_sensitive: false) {
+    .st = "notice"
+  } else if contains(header, "info", case_sensitive: false) {
+    .st = "info"
   } else if contains(header, "debug", case_sensitive: false) {
     .st = "debug"
   } else if contains(header, "trace", case_sensitive: false) {
     .st = "trace"
-  } else if contains(header, "fatal", case_sensitive: false) {
-    .st = "fatal"
-  } else if contains(header, "notice", case_sensitive: false) {
-    .st = "notice"
-  } else if contains(header, "crit", case_sensitive: false) {
-    .st = "critical"
-  } else if contains(header, "emerg", case_sensitive: false) {
-    .st = "emergency"
-  } else if contains(header, "alert", case_sensitive: false) {
-    .st = "alert"
   } else {
-    .st = "info" # mike said that on 2023-07-23
+    .st = "info"
   }
 }
 

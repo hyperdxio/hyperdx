@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import MongoStore from 'connect-mongo';
 import compression from 'compression';
 import express from 'express';
@@ -13,8 +14,25 @@ import routers from './routers/api';
 import usageStats from './tasks/usageStats';
 import { appErrorHandler } from './middleware/error';
 import { expressLogger } from './utils/logger';
+import { isUserAuthenticated } from './middleware/auth';
 
 const app: express.Application = express();
+
+if (config.SENTRY_DSN) {
+  Sentry.init({
+    dsn: config.SENTRY_DSN,
+    environment: config.NODE_ENV,
+    release: config.CODE_VERSION,
+  });
+
+  Sentry.setContext('hyperdx', {
+    serviceName: config.OTEL_SERVICE_NAME,
+  });
+}
+
+// RequestHandler creates a separate execution context using domains, so that every
+// transaction/span/breadcrumb is attached to its own Hub instance
+app.use(Sentry.Handlers.requestHandler());
 
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
@@ -74,15 +92,19 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // ----------------------- Internal Routers ----------------------------
 // ---------------------------------------------------------------------
+// PUBLIC ROUTES
 app.use('/', routers.rootRouter);
-app.use('/alerts', routers.alertsRouter);
-app.use('/dashboards', routers.dashboardRouter);
-app.use('/log-views', routers.logViewsRouter);
-app.use('/logs', routers.logsRouter);
-app.use('/metrics', routers.metricsRouter);
-app.use('/sessions', routers.sessionsRouter);
-app.use('/team', routers.teamRouter);
-app.use('/webhooks', routers.webhooksRouter);
+
+// PRIVATE ROUTES
+app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
+app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
+app.use('/log-views', isUserAuthenticated, routers.logViewsRouter);
+app.use('/logs', isUserAuthenticated, routers.logsRouter);
+app.use('/me', isUserAuthenticated, routers.meRouter);
+app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
+app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
+app.use('/team', isUserAuthenticated, routers.teamRouter);
+app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers
@@ -92,6 +114,9 @@ app.use('/webhooks', routers.webhooksRouter);
 // API v1
 app.use('/api/v1', externalRoutersV1);
 // ---------------------------------------------------------------------
+
+// The error handler must be before any other error middleware and after all controllers
+app.use(Sentry.Handlers.errorHandler());
 
 // error handling
 app.use(appErrorHandler);

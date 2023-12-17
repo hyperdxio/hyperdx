@@ -1,13 +1,15 @@
 import * as React from 'react';
 import { format } from 'date-fns';
-import { JSONTree } from 'react-json-tree';
-import type { StacktraceFrame, StacktraceBreadcrumb } from './types';
-import styles from '../styles/LogSidePanel.module.scss';
 import { CloseButton } from 'react-bootstrap';
-import { useLocalStorage } from './utils';
+import { JSONTree } from 'react-json-tree';
 import { ColumnDef, Row } from '@tanstack/react-table';
+
 import { TableCellButton } from './components/Table';
 import { UNDEFINED_WIDTH } from './tableUtils';
+import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
+import { useLocalStorage } from './utils';
+
+import styles from '../styles/LogSidePanel.module.scss';
 
 export const CollapsibleSection = ({
   title,
@@ -23,7 +25,7 @@ export const CollapsibleSection = ({
   return (
     <div className="my-3">
       <div
-        className={`d-flex align-items-center mb-1 text-white-hover`}
+        className={`d-flex align-items-center mb-1 text-white-hover w-50`}
         role="button"
         onClick={() => setCollapsed(!collapsed)}
       >

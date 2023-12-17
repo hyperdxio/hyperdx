@@ -1,51 +1,51 @@
+import {
+  FormEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { clamp, format, sub } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+import { Button } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
+import { useHotkeys } from 'react-hotkeys-hook';
+import { toast } from 'react-toastify';
 import {
-  BarChart,
   Bar,
+  BarChart,
+  ReferenceArea,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceArea,
 } from 'recharts';
 import {
-  useQueryParam,
   StringParam,
-  withDefault,
+  useQueryParam,
   useQueryParams,
+  withDefault,
 } from 'use-query-params';
-import {
-  FormEvent,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  useMemo,
-  memo,
-} from 'react';
-import { format, sub, clamp } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
-import { toast } from 'react-toastify';
-import { useHotkeys } from 'react-hotkeys-hook';
-import { Button } from 'react-bootstrap';
-
-import 'react-modern-drawer/dist/index.css';
 
 import api from './api';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import AppNav from './AppNav';
-import LogTable from './LogTable';
-import LogSidePanel from './LogSidePanel';
-import SearchInput from './SearchInput';
-import SaveSearchModal from './SaveSearchModal';
 import CreateLogAlertModal from './CreateLogAlertModal';
-import SearchPageActionBar from './SearchPageActionBar';
-import { useTimeQuery } from './timeQuery';
+import LogSidePanel from './LogSidePanel';
+import LogTable from './LogTable';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
-import { ErrorBoundary } from 'react-error-boundary';
+import SaveSearchModal from './SaveSearchModal';
+import SearchInput from './SearchInput';
+import SearchPageActionBar from './SearchPageActionBar';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
+
+import 'react-modern-drawer/dist/index.css';
 
 const formatDate = (
   date: Date,

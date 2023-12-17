@@ -4,7 +4,6 @@ import { validateRequest } from 'zod-express-middleware';
 
 import Alert from '@/models/alert';
 import { getTeam } from '@/controllers/team';
-import { isUserAuthenticated } from '@/middleware/auth';
 import {
   createAlert,
   updateAlert,
@@ -74,7 +73,6 @@ const validateGroupBy = async (req, res, next) => {
 // Routes
 router.post(
   '/',
-  isUserAuthenticated,
   validateRequest({ body: zAlertInput }),
   validateGroupBy,
   async (req, res, next) => {
@@ -91,7 +89,6 @@ router.post(
 
 router.put(
   '/:id',
-  isUserAuthenticated,
   validateRequest({ body: zAlertInput }),
   validateGroupBy,
   async (req, res, next) => {
@@ -107,7 +104,7 @@ router.put(
   },
 );
 
-router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: alertId } = req.params;
