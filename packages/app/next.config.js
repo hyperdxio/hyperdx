@@ -25,4 +25,9 @@ module.exports = withNextra({
     version,
   },
   productionBrowserSourceMaps: false,
+  ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
+    ? {
+        output: 'standalone',
+      }
+    : {}),
 });

@@ -33,7 +33,7 @@ redis-server &
 mongod --quiet --dbpath /data/db &
 
 # Start Vector Ingestor
-/root/.vector/bin/vector \
+vector \
   -c /etc/vector/sources.toml \
   -c /etc/vector/core.toml \
   -c /etc/vector/http-sinks.toml \
@@ -58,7 +58,8 @@ node /app/api/build/index.js &
 
 # App
 NODE_ENV=production \
-/app/app/node_modules/.bin/next start -p 8080 &
+PORT=8080 \
+node /app/app/server.js &
 
 # Wait for any process to exit
 wait -n
