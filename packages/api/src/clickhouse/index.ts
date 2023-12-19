@@ -689,7 +689,7 @@ const getMetricsTagsCached = async (teamId: string) => {
   }
 };
 
-const isRateAggFn = (aggFn: AggFn) => {
+export const isRateAggFn = (aggFn: AggFn) => {
   return (
     aggFn === AggFn.SumRate ||
     aggFn === AggFn.AvgRate ||
