@@ -21,6 +21,7 @@ module.exports = {
     '@typescript-eslint/no-floating-promises': 'error',
     '@typescript-eslint/no-namespace': 'warn',
     '@typescript-eslint/no-unused-vars': 'warn',
+    'no-process-exit': 'warn',
     'node/no-missing-import': 'off',
     'node/no-unpublished-import': 'warn',
     'node/no-unsupported-features/es-syntax': 'off',

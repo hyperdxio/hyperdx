@@ -1,5 +1,4 @@
 import os from 'os';
-import url from 'url';
 
 import winston from 'winston';
 import { HyperDXWinston } from '@hyperdx/node-logger';
@@ -64,9 +63,9 @@ const healthChecks = async () => {
     }
   };
 
-  const ingestorUrl = url.parse(config.INGESTOR_API_URL ?? '');
-  const otelCollectorUrl = url.parse(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
-  const aggregatorUrl = url.parse(config.AGGREGATOR_API_URL ?? '');
+  const ingestorUrl = new URL(config.INGESTOR_API_URL ?? '');
+  const otelCollectorUrl = new URL(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
+  const aggregatorUrl = new URL(config.AGGREGATOR_API_URL ?? '');
 
   const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
     await Promise.all([

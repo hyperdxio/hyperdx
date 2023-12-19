@@ -93,7 +93,7 @@
     "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev:task": "ts-node -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "jest --runInBand --ci --forceExit --coverage",
