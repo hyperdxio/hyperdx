@@ -1,14 +1,12 @@
-import os from 'os';
-
-import winston from 'winston';
+import type { ResponseJSON } from '@clickhouse/client';
 import { HyperDXWinston } from '@hyperdx/node-logger';
+import os from 'os';
+import winston from 'winston';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
 import Team from '@/models/team';
 import User from '@/models/user';
-
-import type { ResponseJSON } from '@clickhouse/client';
 
 const hyperdxTransport = new HyperDXWinston({
   apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key

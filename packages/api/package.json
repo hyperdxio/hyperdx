@@ -76,6 +76,7 @@
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-security": "^2.1.0",
+    "eslint-plugin-simple-import-sort": "^10.0.0",
     "jest": "^28.1.1",
     "migrate-mongo": "^11.0.0",
     "mongodb": "^6.3.0",

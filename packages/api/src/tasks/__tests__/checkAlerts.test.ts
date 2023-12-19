@@ -1,18 +1,18 @@
 import * as clickhouse from '../../clickhouse';
-import * as slack from '../../utils/slack';
+import { createAlert } from '../../controllers/alerts';
+import { createTeam } from '../../controllers/team';
+import { clearDBCollections, closeDB, getServer } from '../../fixtures';
 import AlertHistory from '../../models/alertHistory';
 import Dashboard from '../../models/dashboard';
 import LogView from '../../models/logView';
 import Webhook from '../../models/webhook';
+import * as slack from '../../utils/slack';
 import {
   buildLogSearchLink,
   doesExceedThreshold,
   processAlert,
   roundDownToXMinutes,
 } from '../checkAlerts';
-import { clearDBCollections, closeDB, getServer } from '../../fixtures';
-import { createAlert } from '../../controllers/alerts';
-import { createTeam } from '../../controllers/team';
 
 describe('checkAlerts', () => {
   it('roundDownToXMinutes', () => {

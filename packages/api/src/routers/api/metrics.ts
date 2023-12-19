@@ -1,7 +1,7 @@
-import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import { validateRequest } from 'zod-express-middleware';
+import express from 'express';
 import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
 
