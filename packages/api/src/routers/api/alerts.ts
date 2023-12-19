@@ -19,6 +19,8 @@ const zChannel = z.object({
   webhookId: z.string().min(1),
 });
 
+const validateGet = validateRequest({ params: z.object({ id: z.string() }) });
+
 const zLogAlert = z.object({
   source: z.literal('LOG'),
   groupBy: z.string().optional(),
@@ -72,19 +74,24 @@ const validateGroupBy = async (req, res, next) => {
 };
 
 // Routes
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
       return res.sendStatus(403);
     }
     const alerts = await Alert.find({ team: teamId });
-    // may want to restrict this to reasonable time bounds
-    const alertHistories = await AlertHistory.find({ team: teamId });
+    const alertHistories: any = {};
+    for (const alert of alerts) {
+      const histories = await AlertHistory.find({ alert: alert._id })
+        .sort({ createdAt: -1 })
+        .limit(20);
+      alertHistories[alert._id.toString()] = histories;
+    }
     res.json({
       data: {
         alerts: alerts,
-        alertHistories: alertHistories,
+        histories: alertHistories,
       },
     });
   } catch (e) {
@@ -92,21 +99,21 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/:id', isUserAuthenticated, async (req, res, next) => {
+router.get('/:id', validateGet, async (req, res, next) => {
   try {
     const teamId = req.user?.team;
-    const { id } = req.params;
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    if (!id) {
-      return res.sendStatus(400);
-    }
-    const alert = (await Alert.find({ _id: id, team: teamId })).pop();
-    const alertHistories = await AlertHistory.find({ alert: id, team: teamId });
+    const { id } = req.params;
+    const alert = await Alert.findOne({ _id: id, team: teamId });
     if (!alert) {
       return res.sendStatus(404);
     }
+    const alertHistories = await AlertHistory.find({
+      alert: id,
+      team: teamId,
+    }).limit(20);
     res.json({
       data: {
         ...alert,
