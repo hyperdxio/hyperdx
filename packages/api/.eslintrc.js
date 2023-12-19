@@ -10,7 +10,7 @@ module.exports = {
     'eslint:recommended',
     'plugin:@typescript-eslint/eslint-recommended',
     'plugin:@typescript-eslint/recommended',
-    'plugin:node/recommended',
+    'plugin:n/recommended',
     'plugin:prettier/recommended',
     'plugin:security/recommended-legacy',
   ],
@@ -21,15 +21,15 @@ module.exports = {
     '@typescript-eslint/no-floating-promises': 'error',
     '@typescript-eslint/no-namespace': 'warn',
     '@typescript-eslint/no-unused-vars': 'warn',
-    'no-process-exit': 'warn',
-    'node/no-missing-import': 'off',
-    'node/no-unpublished-import': [
+    'n/no-process-exit': 'warn',
+    'n/no-missing-import': 'off',
+    'n/no-unpublished-import': [
       'error',
       {
         allowModules: ['mongodb', 'supertest'],
       },
     ],
-    'node/no-unsupported-features/es-syntax': [
+    'n/no-unsupported-features/es-syntax': [
       'error',
       {
         ignores: ['modules'],

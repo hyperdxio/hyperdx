@@ -14,12 +14,12 @@ export default class Server {
     switch (config.APP_TYPE) {
       case 'api':
         return http.createServer(
-          // eslint-disable-next-line node/no-unsupported-features/es-syntax
+          // eslint-disable-next-line n/no-unsupported-features/es-syntax
           (await import('./api-app').then(m => m.default)) as any,
         );
       case 'aggregator':
         return http.createServer(
-          // eslint-disable-next-line node/no-unsupported-features/es-syntax
+          // eslint-disable-next-line n/no-unsupported-features/es-syntax
           (await import('./aggregator-app').then(m => m.default)) as any,
         );
       default:
