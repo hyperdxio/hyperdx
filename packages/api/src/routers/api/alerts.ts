@@ -46,6 +46,13 @@ const zAlert = z
 
 const zAlertInput = zAlert;
 
+const getHistory = async (alertId: string, teamId: string) => {
+  const histories = await AlertHistory.find({ alert: alertId, team: teamId })
+    .sort({ createdAt: -1 })
+    .limit(20);
+  return histories;
+};
+
 // Validate groupBy property
 const validateGroupBy = async (req, res, next) => {
   const { groupBy, source } = req.body || {};
@@ -81,17 +88,15 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
     const alerts = await Alert.find({ team: teamId });
-    const alertHistories: any = {};
-    for (const alert of alerts) {
-      const histories = await AlertHistory.find({ alert: alert._id })
-        .sort({ createdAt: -1 })
-        .limit(20);
-      alertHistories[alert._id.toString()] = histories;
-    }
+    const alertsWithHistory = await Promise.all(
+      alerts.map(async alert => ({
+        ...alert,
+        history: await getHistory(alert._id.toString(), teamId.toString()),
+      })),
+    );
     res.json({
       data: {
-        alerts: alerts,
-        histories: alertHistories,
+        alerts: alertsWithHistory,
       },
     });
   } catch (e) {
@@ -110,10 +115,10 @@ router.get('/:id', validateGet, async (req, res, next) => {
     if (!alert) {
       return res.sendStatus(404);
     }
-    const alertHistories = await AlertHistory.find({
-      alert: id,
-      team: teamId,
-    }).limit(20);
+    const alertHistories = await getHistory(
+      alert._id.toString(),
+      teamId.toString(),
+    );
     res.json({
       data: {
         ...alert,
