@@ -10,7 +10,9 @@ module.exports = {
     'eslint:recommended',
     'plugin:@typescript-eslint/eslint-recommended',
     'plugin:@typescript-eslint/recommended',
+    'plugin:node/recommended',
     'plugin:prettier/recommended',
+    'plugin:security/recommended-legacy',
   ],
   rules: {
     '@typescript-eslint/ban-ts-comment': 'warn',
@@ -19,6 +21,9 @@ module.exports = {
     '@typescript-eslint/no-floating-promises': 'error',
     '@typescript-eslint/no-namespace': 'warn',
     '@typescript-eslint/no-unused-vars': 'warn',
+    'node/no-missing-import': 'off',
+    'node/no-unpublished-import': 'warn',
+    'node/no-unsupported-features/es-syntax': 'off',
     'prettier/prettier': 'error',
   },
 };
