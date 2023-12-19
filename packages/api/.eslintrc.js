@@ -23,8 +23,18 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': 'warn',
     'no-process-exit': 'warn',
     'node/no-missing-import': 'off',
-    'node/no-unpublished-import': 'warn',
-    'node/no-unsupported-features/es-syntax': 'off',
+    'node/no-unpublished-import': [
+      'error',
+      {
+        allowModules: ['mongodb', 'supertest'],
+      },
+    ],
+    'node/no-unsupported-features/es-syntax': [
+      'error',
+      {
+        ignores: ['modules'],
+      },
+    ],
     'prettier/prettier': 'error',
   },
 };
