@@ -48,6 +48,18 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+.PHONY: dev-alerts
+dev-alerts:
+	docker compose exec api yarn dev:task check-alerts
+
+.PHONY: dev-clickhouse
+dev-clickhouse:
+	docker compose exec ch-server clickhouse-client
+
+.PHONY: dev-clear-alert-history
+dev-clear-alert-history:
+	docker compose exec db mongo --eval "db.getSiblingDB('hyperdx').alerthistories.deleteMany({})"
+
 # TODO: check db connections before running the migration CLIs
 .PHONY: dev-migrate-db
 dev-migrate-db:
