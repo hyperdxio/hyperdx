@@ -1,5 +1,6 @@
-import * as clickhouse from '..';
 import { closeDB, getServer } from '@/fixtures';
+
+import * as clickhouse from '..';
 
 describe('clickhouse', () => {
   const server = getServer();

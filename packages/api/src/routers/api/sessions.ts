@@ -1,11 +1,11 @@
-import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import express from 'express';
 import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from '@/clickhouse';
-import logger from '@/utils/logger';
 import { getTeam } from '@/controllers/team';
+import logger from '@/utils/logger';
 
 const router = express.Router();
 
