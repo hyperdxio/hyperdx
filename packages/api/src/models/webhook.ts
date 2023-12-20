@@ -1,6 +1,5 @@
-import mongoose, { Schema } from 'mongoose';
-
 import { ObjectId } from 'mongodb';
+import mongoose, { Schema } from 'mongoose';
 
 export interface IWebhook {
   _id: ObjectId;

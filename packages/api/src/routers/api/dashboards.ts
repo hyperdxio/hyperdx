@@ -1,10 +1,10 @@
 import express from 'express';
-
-import Dashboard from '@/models/dashboard';
-import Alert from '@/models/alert';
-import { validateRequest } from 'zod-express-middleware';
+import { differenceBy, groupBy } from 'lodash';
 import { z } from 'zod';
-import { groupBy, differenceBy } from 'lodash';
+import { validateRequest } from 'zod-express-middleware';
+
+import Alert from '@/models/alert';
+import Dashboard from '@/models/dashboard';
 
 // create routes that will get and update dashboards
 const router = express.Router();

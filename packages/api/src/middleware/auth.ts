@@ -1,13 +1,11 @@
-import type { Request, Response, NextFunction } from 'express';
-
-import { serializeError } from 'serialize-error';
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
+import type { NextFunction, Request, Response } from 'express';
+import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
-import logger from '@/utils/logger';
 import { findUserByAccessKey } from '@/controllers/user';
-
 import type { UserDocument } from '@/models/user';
+import logger from '@/utils/logger';
 
 declare global {
   namespace Express {

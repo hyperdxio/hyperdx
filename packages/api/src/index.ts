@@ -2,8 +2,8 @@ import { serializeError } from 'serialize-error';
 
 import * as config from './config';
 import Server from './server';
-import logger from './utils/logger';
 import { isOperationalError } from './utils/errors';
+import logger from './utils/logger';
 
 const server = new Server();
 

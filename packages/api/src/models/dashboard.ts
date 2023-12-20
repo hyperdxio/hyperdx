@@ -1,7 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
 import { AggFn } from '../clickhouse';
-
 import type { ObjectId } from '.';
 
 type Chart = {

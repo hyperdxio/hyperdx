@@ -1,15 +1,12 @@
-import os from 'os';
-import url from 'url';
-
-import winston from 'winston';
+import type { ResponseJSON } from '@clickhouse/client';
 import { HyperDXWinston } from '@hyperdx/node-logger';
+import os from 'os';
+import winston from 'winston';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
 import Team from '@/models/team';
 import User from '@/models/user';
-
-import type { ResponseJSON } from '@clickhouse/client';
 
 const hyperdxTransport = new HyperDXWinston({
   apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
@@ -64,9 +61,9 @@ const healthChecks = async () => {
     }
   };
 
-  const ingestorUrl = url.parse(config.INGESTOR_API_URL ?? '');
-  const otelCollectorUrl = url.parse(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
-  const aggregatorUrl = url.parse(config.AGGREGATOR_API_URL ?? '');
+  const ingestorUrl = new URL(config.INGESTOR_API_URL ?? '');
+  const otelCollectorUrl = new URL(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
+  const aggregatorUrl = new URL(config.AGGREGATOR_API_URL ?? '');
 
   const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
     await Promise.all([

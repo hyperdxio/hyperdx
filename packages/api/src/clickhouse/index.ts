@@ -1,43 +1,43 @@
-import * as fns from 'date-fns';
-import SqlString from 'sqlstring';
-import _ from 'lodash';
-import ms from 'ms';
-import opentelemetry from '@opentelemetry/api';
+import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import {
+  createClient,
   Logger as _CHLogger,
   SettingsMap,
-  createClient,
 } from '@clickhouse/client';
 import {
-  LogParams as _CHLogParams,
   ErrorLogParams as _CHErrorLogParams,
+  LogParams as _CHLogParams,
 } from '@clickhouse/client/dist/logger';
+import opentelemetry from '@opentelemetry/api';
+import * as fns from 'date-fns';
+import _ from 'lodash';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
+import SqlString from 'sqlstring';
 
 import * as config from '@/config';
-import logger from '@/utils/logger';
 import { sleep } from '@/utils/common';
-import {
-  LogsPropertyTypeMappingsModel,
-  MetricsPropertyTypeMappingsModel,
-} from './propertyTypeMappingsModel';
-import {
-  SQLSerializer,
-  SearchQueryBuilder,
-  buildSearchColumnName,
-  buildSearchColumnName_OLD,
-  buildSearchQueryWhereCondition,
-  isCustomColumn,
-  msToBigIntNs,
-} from './searchQueryParser';
-import { redisClient } from '../utils/redis';
-
-import type { ResponseJSON, ResultSet } from '@clickhouse/client';
+import logger from '@/utils/logger';
 import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
 } from '@/utils/logParser';
+
+import { redisClient } from '../utils/redis';
+import {
+  LogsPropertyTypeMappingsModel,
+  MetricsPropertyTypeMappingsModel,
+} from './propertyTypeMappingsModel';
+import {
+  buildSearchColumnName,
+  buildSearchColumnName_OLD,
+  buildSearchQueryWhereCondition,
+  isCustomColumn,
+  msToBigIntNs,
+  SearchQueryBuilder,
+  SQLSerializer,
+} from './searchQueryParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 

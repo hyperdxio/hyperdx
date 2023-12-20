@@ -1,7 +1,7 @@
 import express from 'express';
 
-import { Api404Error } from '@/utils/errors';
 import { getTeam } from '@/controllers/team';
+import { Api404Error } from '@/utils/errors';
 
 const router = express.Router();
 

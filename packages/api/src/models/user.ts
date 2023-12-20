@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
 // @ts-ignore don't install the @types for this package, as it conflicts with mongoose
 import passportLocalMongoose from 'passport-local-mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 

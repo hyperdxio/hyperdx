@@ -1,15 +1,14 @@
 import crypto from 'crypto';
-
 import express from 'express';
 import isemail from 'isemail';
 import pick from 'lodash/pick';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import { getTeam, rotateTeamApiKey } from '@/controllers/team';
+import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
-import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
-import { getTeam, rotateTeamApiKey } from '@/controllers/team';
 
 const router = express.Router();
 

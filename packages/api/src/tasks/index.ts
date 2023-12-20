@@ -1,15 +1,15 @@
-import { performance } from 'perf_hooks';
-
 import minimist from 'minimist';
 import schedule from 'node-schedule';
+import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
-import checkAlerts from './checkAlerts';
-import logger from '@/utils/logger';
-import redisClient from '@/utils/redis';
-import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 import { IS_DEV } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
+import logger from '@/utils/logger';
+import redisClient from '@/utils/redis';
+
+import checkAlerts from './checkAlerts';
+import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
 const main = async () => {
   const argv = minimist(process.argv.slice(2));

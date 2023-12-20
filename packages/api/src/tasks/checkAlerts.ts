@@ -1,27 +1,26 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
-import { URLSearchParams } from 'url';
-
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import ms from 'ms';
 import { isString } from 'lodash';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
+import { URLSearchParams } from 'url';
 import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
-import * as slack from '@/utils/slack';
-import Alert, { AlertState, AlertDocument } from '@/models/alert';
+import { ObjectId } from '@/models';
+import Alert, { AlertDocument, AlertState } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
-import Webhook from '@/models/webhook';
-import logger from '@/utils/logger';
 import { ITeam } from '@/models/team';
-import { ObjectId } from '@/models';
+import Webhook from '@/models/webhook';
 import { truncateString } from '@/utils/common';
+import logger from '@/utils/logger';
+import * as slack from '@/utils/slack';
 
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
