@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
 import Fuse from 'fuse.js';
+import { useAtomValue } from 'jotai';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
 import pickBy from 'lodash/pickBy';
@@ -45,6 +46,7 @@ import {
   useShowMoreRows,
 } from './LogSidePanelElements';
 import SearchInput from './SearchInput';
+import { playerExpandedAtom } from './SessionSubpanel';
 import SessionSubpanel from './SessionSubpanel';
 import TabBar from './TabBar';
 import TimelineChart from './TimelineChart';
@@ -1978,6 +1980,8 @@ function SidePanelHeader({
     parsedProperties?.['process.tag.rum.sessionId'] ??
     sessionId;
 
+  const playerExpanded = useAtomValue(playerExpandedAtom);
+
   return (
     <div>
       <div className={styles.panelHeader}>
@@ -2054,58 +2058,60 @@ function SidePanelHeader({
           </Button>
         </div>
       </div>
-      <div className={styles.panelDetails}>
-        <div>
-          <div
-            className="bg-hdx-dark p-3 overflow-auto"
-            style={{ maxHeight: 300 }}
-          >
-            {stripAnsi(logData.body)}
+      {!playerExpanded && (
+        <div className={styles.panelDetails}>
+          <div>
+            <div
+              className="bg-hdx-dark p-3 overflow-auto"
+              style={{ maxHeight: 300 }}
+            >
+              {stripAnsi(logData.body)}
+            </div>
+          </div>
+          <div className="d-flex flex-wrap">
+            {logData._service ? (
+              <EventTag
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                name="service"
+                value={logData._service}
+              />
+            ) : null}
+            {logData._host ? (
+              <EventTag
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                name="host"
+                value={logData._host}
+              />
+            ) : null}
+            {userEmail ? (
+              <EventTag
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                name="userEmail"
+                value={userEmail}
+              />
+            ) : null}
+            {userName ? (
+              <EventTag
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                name="userName"
+                value={userName}
+              />
+            ) : null}
+            {teamName ? (
+              <EventTag
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                name="teamName"
+                value={teamName}
+              />
+            ) : null}
           </div>
         </div>
-        <div className="d-flex flex-wrap">
-          {logData._service ? (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              name="service"
-              value={logData._service}
-            />
-          ) : null}
-          {logData._host ? (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              name="host"
-              value={logData._host}
-            />
-          ) : null}
-          {userEmail ? (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              name="userEmail"
-              value={userEmail}
-            />
-          ) : null}
-          {userName ? (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              name="userName"
-              value={userName}
-            />
-          ) : null}
-          {teamName ? (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={generateSearchUrl}
-              name="teamName"
-              value={teamName}
-            />
-          ) : null}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -2406,6 +2412,8 @@ export default function LogSidePanel({
 
   const drawerZIndex = contextZIndex + 1;
 
+  const playerExpanded = useAtomValue(playerExpandedAtom);
+
   return (
     <Drawer
       enableOverlay
@@ -2434,45 +2442,47 @@ export default function LogSidePanel({
                 generateSearchUrl={generateSearchUrl}
                 onClose={_onClose}
               />
-              <TabBar
-                className="fs-8 mt-2"
-                items={[
-                  {
-                    text: 'Parsed Properties',
-                    value: 'parsed',
-                  },
-                  ...(logData.trace_id != ''
-                    ? ([
-                        {
-                          text: 'Trace',
-                          value: 'trace',
-                        },
-                      ] as const)
-                    : []),
-                  {
-                    text: 'Original Line',
-                    value: 'original',
-                  },
-                  // {
-                  //   text: 'Surrounding Context',
-                  //   value: 'context',
-                  // },
-                  // {
-                  //   text: 'Debug',
-                  //   value: 'debug',
-                  // },
-                  ...(rumSessionId != null
-                    ? ([
-                        {
-                          text: 'Session Replay',
-                          value: 'replay',
-                        },
-                      ] as const)
-                    : []),
-                ]}
-                activeItem={displayedTab}
-                onClick={(v: any) => setTab(v)}
-              />
+              {displayedTab === 'replay' && playerExpanded ? null : (
+                <TabBar
+                  className="fs-8 mt-2"
+                  items={[
+                    {
+                      text: 'Parsed Properties',
+                      value: 'parsed',
+                    },
+                    ...(logData.trace_id != ''
+                      ? ([
+                          {
+                            text: 'Trace',
+                            value: 'trace',
+                          },
+                        ] as const)
+                      : []),
+                    {
+                      text: 'Original Line',
+                      value: 'original',
+                    },
+                    // {
+                    //   text: 'Surrounding Context',
+                    //   value: 'context',
+                    // },
+                    // {
+                    //   text: 'Debug',
+                    //   value: 'debug',
+                    // },
+                    ...(rumSessionId != null
+                      ? ([
+                          {
+                            text: 'Session Replay',
+                            value: 'replay',
+                          },
+                        ] as const)
+                      : []),
+                  ]}
+                  activeItem={displayedTab}
+                  onClick={(v: any) => setTab(v)}
+                />
+              )}
               <ErrorBoundary
                 onError={err => {
                   console.error(err);
