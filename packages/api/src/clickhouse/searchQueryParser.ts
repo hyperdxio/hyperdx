@@ -1,8 +1,9 @@
-import SqlString from 'sqlstring';
 import lucene from '@hyperdx/lucene';
 import { serializeError } from 'serialize-error';
+import SqlString from 'sqlstring';
 
 import { LogPlatform, LogType } from '@/utils/logParser';
+
 import { PropertyTypeMappingsModel } from './propertyTypeMappingsModel';
 
 function encodeSpecialTokens(query: string): string {

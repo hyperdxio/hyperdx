@@ -1,14 +1,15 @@
 import { getHours, getMinutes } from 'date-fns';
-import Alert, {
-  IAlert,
-  AlertChannel,
-  AlertInterval,
-  AlertType,
-  AlertSource,
-} from '@/models/alert';
+import ms from 'ms';
+
 import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
-import ms from 'ms';
+import Alert, {
+  AlertChannel,
+  AlertInterval,
+  AlertSource,
+  AlertType,
+  IAlert,
+} from '@/models/alert';
 
 export type AlertInput = {
   source: AlertSource;

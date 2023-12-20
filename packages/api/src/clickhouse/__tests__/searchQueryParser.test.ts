@@ -2,10 +2,10 @@ import SqlString from 'sqlstring';
 
 import { LogsPropertyTypeMappingsModel } from '../propertyTypeMappingsModel';
 import {
-  SearchQueryBuilder,
   genWhereSQL,
   msToBigIntNs,
   parse,
+  SearchQueryBuilder,
 } from '../searchQueryParser';
 
 describe('searchQueryParser', () => {

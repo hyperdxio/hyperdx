@@ -1,20 +1,20 @@
 import * as Sentry from '@sentry/node';
-import MongoStore from 'connect-mongo';
 import compression from 'compression';
+import MongoStore from 'connect-mongo';
 import express from 'express';
+import session from 'express-session';
 import ms from 'ms';
 import onHeaders from 'on-headers';
-import session from 'express-session';
 
 import * as config from './config';
-import defaultCors from './middleware/cors';
-import externalRoutersV1 from './routers/external-api/v1';
-import passport from './utils/passport';
-import routers from './routers/api';
-import usageStats from './tasks/usageStats';
-import { appErrorHandler } from './middleware/error';
-import { expressLogger } from './utils/logger';
 import { isUserAuthenticated } from './middleware/auth';
+import defaultCors from './middleware/cors';
+import { appErrorHandler } from './middleware/error';
+import routers from './routers/api';
+import externalRoutersV1 from './routers/external-api/v1';
+import usageStats from './tasks/usageStats';
+import { expressLogger } from './utils/logger';
+import passport from './utils/passport';
 
 const app: express.Application = express();
 
