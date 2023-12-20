@@ -465,12 +465,13 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       return;
     }
 
+    // TODO: support INSUFFICIENT_DATA state
+    let alertState = AlertState.OK;
     const history = await new AlertHistory({
       alert: alert._id,
       createdAt: nowInMinsRoundDown,
+      state: alertState,
     }).save();
-    // TODO: support INSUFFICIENT_DATA state
-    let alertState = AlertState.OK;
     if (checksData?.rows && checksData?.rows > 0) {
       for (const checkData of checksData.data) {
         const totalCount = isString(checkData.data)
@@ -499,8 +500,11 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           history.counts += 1;
         }
       }
+
+      history.state = alertState;
       await history.save();
     }
+
     alert.state = alertState;
     await alert.save();
   } catch (e) {
