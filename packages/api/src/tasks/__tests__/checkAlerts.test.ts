@@ -189,6 +189,7 @@ describe('checkAlerts', () => {
         alertId: alert._id,
       });
       expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
@@ -336,6 +337,7 @@ describe('checkAlerts', () => {
         alertId: alert._id,
       });
       expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
@@ -482,6 +484,7 @@ describe('checkAlerts', () => {
         alertId: alert._id,
       });
       expect(alertHistories.length).toBe(1);
+      expect(alertHistories[0].state).toBe('ALERT');
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
