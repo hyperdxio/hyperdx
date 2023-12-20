@@ -1272,12 +1272,17 @@
     human-id "^1.0.2"
     prettier "^2.7.1"
 
-"@clickhouse/client@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.1.1.tgz#1a848438baf5deefadf7dcee40ad441c8666c398"
-  integrity sha512-oeALCAjNFEXHPxMHJgj0QERiLM2ZknOOavvHB1mxmztZLhTuj86HaQEfh9q8x7LgKnv3jep7lb/fhFgD71WTjA==
+"@clickhouse/client-common@0.2.7":
+  version "0.2.7"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-0.2.7.tgz#c238ef9f5386f7d7a18e09931bb765a4ad4d7ebb"
+  integrity sha512-vgZm+8c5Cu1toIx1/xplF5dEHlCPw+7pJDOOEtLv2CIUVZ0Bl6nGVZ43EWxRdHeah9ivTfoRWhN1zI1PxjH0xQ==
+
+"@clickhouse/client@^0.2.7":
+  version "0.2.7"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.2.7.tgz#f13103d7a4ab39d86307e6211504f46b8c71faae"
+  integrity sha512-ZiyarrGngHc+f5AjZSA7mkQfvnE/71jgXk304B0ps8V+aBpE2CsFB6AQmE/Mk2YkP5j+8r/JfG+m0AZWmE27ig==
   dependencies:
-    uuid "^9.0.0"
+    "@clickhouse/client-common" "0.2.7"
 
 "@cnakazawa/watch@^1.0.3":
   version "1.0.4"
@@ -16465,11 +16470,6 @@ uuid@^8.3.2:
   version "8.3.2"
   resolved "https://registry.yarnpkg.com/uuid/-/uuid-8.3.2.tgz#80d5b5ced271bb9af6c445f21a1a04c606cefbe2"
   integrity sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==
-
-uuid@^9.0.0:
-  version "9.0.0"
-  resolved "https://registry.yarnpkg.com/uuid/-/uuid-9.0.0.tgz#592f550650024a38ceb0c562f2f6aa435761efb5"
-  integrity sha512-MXcSTerfPa4uqyzStbRoTgt5XIe3x5+42+q1sDuy3R5MDk66URdLMOZe5aPX/SQd+kuYAh0FdP/pO28IkQyTeg==
 
 uvu@^0.5.0:
   version "0.5.6"

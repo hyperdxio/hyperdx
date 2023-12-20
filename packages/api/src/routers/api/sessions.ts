@@ -1,3 +1,4 @@
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import { isNumber, parseInt } from 'lodash';
@@ -83,7 +84,7 @@ router.get('/:sessionId/rrweb', async (req, res, next) => {
       offset: offsetNum,
     });
 
-    stream.on('data', (rows: any[]) => {
+    stream.on('data', (rows: Row[]) => {
       res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
       res.flush();
     });

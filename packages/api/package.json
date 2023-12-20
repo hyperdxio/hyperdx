@@ -7,7 +7,7 @@
     "node": ">=18.12.0"
   },
   "dependencies": {
-    "@clickhouse/client": "^0.1.1",
+    "@clickhouse/client": "^0.2.7",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-logger": "^0.2.8",
     "@hyperdx/node-opentelemetry": "^0.3.0",
