@@ -13,6 +13,7 @@ import _ from 'lodash';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
+import { Readable } from 'stream';
 
 import * as config from '@/config';
 import { sleep } from '@/utils/common';
@@ -191,7 +192,16 @@ export const buildMetricStreamAdditionalFilters = (
   teamId: string,
 ) => SettingsMap.from({});
 
-export const healthCheck = () => client.ping();
+export const healthCheck = async () => {
+  const result = await client.ping();
+  if (!result.success) {
+    logger.error({
+      message: 'ClickHouse health check failed',
+      error: result.error,
+    });
+    throw result.error;
+  }
+};
 
 export const connect = async () => {
   // FIXME: this is a hack to avoid CI failure
@@ -1837,7 +1847,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: BaseResultSet<any>;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -1896,7 +1906,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: BaseResultSet<any>;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
