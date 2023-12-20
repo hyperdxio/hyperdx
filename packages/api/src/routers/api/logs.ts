@@ -1,3 +1,4 @@
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import { isNumber, omit, parseInt } from 'lodash';
@@ -261,7 +262,7 @@ router.get('/stream', async (req, res, next) => {
       res.write('event: end\ndata:\n\n');
       res.end();
     } else {
-      stream.on('data', (rows: any[]) => {
+      stream.on('data', (rows: Row[]) => {
         resultCount += rows.length;
         logger.info(`Sending ${rows.length} rows`);
 
