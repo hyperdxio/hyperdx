@@ -1,13 +1,12 @@
-import type { ResponseJSON, ResultSet } from '@clickhouse/client';
 import {
+  BaseResultSet,
   createClient,
+  ErrorLogParams as _CHErrorLogParams,
   Logger as _CHLogger,
+  LogParams as _CHLogParams,
+  ResponseJSON,
   SettingsMap,
 } from '@clickhouse/client';
-import {
-  ErrorLogParams as _CHErrorLogParams,
-  LogParams as _CHLogParams,
-} from '@clickhouse/client/dist/logger';
 import opentelemetry from '@opentelemetry/api';
 import * as fns from 'date-fns';
 import _ from 'lodash';
@@ -1838,7 +1837,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<any>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -1897,7 +1896,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<any>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
