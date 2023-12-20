@@ -1,8 +1,9 @@
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
-import type { ObjectId } from '.';
 import { AlertState } from '@/models/alert';
+
+import type { ObjectId } from '.';
 
 export interface IAlertHistory {
   alert: ObjectId;
