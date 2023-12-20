@@ -1,12 +1,15 @@
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
+import { AlertState } from '@/models/alert';
+
 import type { ObjectId } from '.';
 
 export interface IAlertHistory {
   alert: ObjectId;
   counts: number;
   createdAt: Date;
+  state: AlertState;
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -19,6 +22,11 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
     required: true,
   },
   alert: { type: mongoose.Schema.Types.ObjectId, ref: 'Alert' },
+  state: {
+    type: String,
+    enum: Object.values(AlertState),
+    required: true,
+  },
 });
 
 AlertHistorySchema.index(
