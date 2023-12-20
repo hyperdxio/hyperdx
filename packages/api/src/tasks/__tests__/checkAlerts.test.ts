@@ -184,16 +184,6 @@ describe('checkAlerts', () => {
 
       // shoud fetch 5m of logs
       await processAlert(now, alert);
-      // check alert history
-      const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
-      });
-      expect(alertHistories.length).toBe(1);
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
       expect(alert.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
@@ -206,6 +196,24 @@ describe('checkAlerts', () => {
       await processAlert(nextWindow, alert);
       // alert should be in ok state
       expect(alert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alertId: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(alertHistories[1].state).toBe('OK');
+      expect(alertHistories[1].counts).toBe(0);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
 
       // check if checkAlert query + webhook were triggered
       expect(clickhouse.checkAlert).toHaveBeenNthCalledWith(1, {
@@ -332,16 +340,6 @@ describe('checkAlerts', () => {
 
       // shoud fetch 5m of logs
       await processAlert(now, alert);
-      // check alert history
-      const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
-      });
-      expect(alertHistories.length).toBe(1);
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
       expect(alert.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
@@ -354,6 +352,24 @@ describe('checkAlerts', () => {
       await processAlert(nextWindow, alert);
       // alert should be in ok state
       expect(alert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alertId: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(alertHistories[1].state).toBe('OK');
+      expect(alertHistories[1].counts).toBe(0);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
 
       // check if getLogsChart query + webhook were triggered
       expect(clickhouse.getLogsChart).toHaveBeenNthCalledWith(1, {
@@ -479,16 +495,6 @@ describe('checkAlerts', () => {
 
       // shoud fetch 5m of logs
       await processAlert(now, alert);
-      // check alert history
-      const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
-      });
-      expect(alertHistories.length).toBe(1);
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
       expect(alert.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
@@ -501,6 +507,24 @@ describe('checkAlerts', () => {
       await processAlert(nextWindow, alert);
       // alert should be in ok state
       expect(alert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alertId: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(alertHistories[1].state).toBe('OK');
+      expect(alertHistories[1].counts).toBe(0);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
 
       // check if getLogsChart query + webhook were triggered
       expect(clickhouse.getMetricsChart).toHaveBeenNthCalledWith(1, {
