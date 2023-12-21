@@ -1,7 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { Button, Form } from 'react-bootstrap';
+import { formatRelative } from 'date-fns';
 
 import api from './api';
 import AppNav from './AppNav';
@@ -95,6 +94,7 @@ function AlertHistoryCard({
   history: AlertHistory;
   interval: AlertInterval;
 }) {
+  const start = new Date(history.createdAt.toString());
   return (
     <div
       className={
@@ -102,7 +102,7 @@ function AlertHistoryCard({
         (history.state === AlertState.OK ? 'bg-success ' : 'bg-danger ') +
         ' m-0 rounded-0'
       }
-      title={history.createdAt.toString()}
+      title={formatRelative(start, new Date())}
     >
       {history.state === AlertState.OK ? '.' : '!'}
     </div>
@@ -202,11 +202,45 @@ function AlertCard({ alertData }: { alertData: AlertData }) {
 }
 
 function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
+  const alarmData = alertDatas.filter(
+    alertData => alertData.alert.state === AlertState.ALERT,
+  );
+  const okData = alertDatas.filter(
+    alertData => alertData.alert.state === AlertState.OK,
+  );
+  const disabledData = alertDatas.filter(
+    alertData =>
+      alertData.alert.state === AlertState.DISABLED ||
+      alertData.alert.state === AlertState.INSUFFICIENT_DATA,
+  );
   return (
     <div>
-      {alertDatas.map((alertData, index) => (
-        <AlertCard key={index} alertData={alertData} />
-      ))}
+      {alarmData.length > 0 && (
+        <div>
+          <div className="fs-5 mb-3 text-danger">Alarmed Alerts</div>
+          {alarmData.map((alertData, index) => (
+            <AlertCard key={index} alertData={alertData} />
+          ))}
+        </div>
+      )}
+      <div>
+        <div className="fs-5 mb-3">Running</div>
+        {okData.length === 0 && (
+          <div className="text-center text-muted">No alerts</div>
+        )}
+        {okData.map((alertData, index) => (
+          <AlertCard key={index} alertData={alertData} />
+        ))}
+      </div>
+      <div>
+        <div className="fs-5 mb-3">Disabled</div>
+        {disabledData.length === 0 && (
+          <div className="text-center text-muted">No alerts</div>
+        )}
+        {disabledData.map((alertData, index) => (
+          <AlertCard key={index} alertData={alertData} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -222,7 +256,7 @@ export default function AlertsPage() {
       <AppNav fixed />
       <div className="d-flex flex-column flex-grow-1 px-3 pt-3">
         <div className="d-flex justify-content-between">
-          <div className="fs-5 mb-3 fw-500">Alerts</div>
+          <div className="fs-4 mb-3">Alerts</div>
         </div>
         <div style={{ minHeight: 0 }} className="mt-4">
           <AlertCardList alertDatas={alertDatas || []} />
