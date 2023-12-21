@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { Button, Form } from 'react-bootstrap';
 
 import api from './api';
@@ -94,25 +95,34 @@ function AlertHistoryCard({
   history: AlertHistory;
   interval: AlertInterval;
 }) {
-  // render a red or green badge depending on whether the alert is in alert state, multiplied
-  // by the number of times the alert was triggered
-  if (history.state === AlertState.ALERT) {
-    return (
-      <div className="d-flex align-items-center">
-        <div className="me-2">
-          <div className="badge bg-danger">{history.counts}</div>
-        </div>
-      </div>
-    );
-  } else {
-    return (
-      <div className="d-flex align-items-center">
-        <div className="me-2">
-          <div className="badge bg-success">OK</div>
-        </div>
-      </div>
-    );
-  }
+  return (
+    <div
+      className={
+        'badge ' +
+        (history.state === AlertState.OK ? 'bg-success ' : 'bg-danger ') +
+        ' m-0 rounded-0'
+      }
+      title={history.createdAt.toString()}
+    >
+      {history.state === AlertState.OK ? '.' : '!'}
+    </div>
+  );
+}
+
+function AlertHistoryCardList({
+  history,
+  interval,
+}: {
+  history: AlertHistory[];
+  interval: AlertInterval;
+}) {
+  return (
+    <div className="d-flex flex-row">
+      {history.map((history, index) => (
+        <AlertHistoryCard key={index} history={history} interval={interval} />
+      ))}
+    </div>
+  );
 }
 
 function AlertDetails({
@@ -122,44 +132,32 @@ function AlertDetails({
   alert: AlertData['alert'];
   history: AlertHistory[];
 }) {
-  const historyDisplay = history.length > 0 && (
+  return (
     <>
-      {history.map(historyItem => {
-        return (
-          <AlertHistoryCard history={historyItem} interval={alert.interval} />
-        );
-      })}
+      <div className="text-end">
+        {alert.state === AlertState.ALERT && (
+          <div className="badge bg-danger">ALERT</div>
+        )}
+        {alert.state === AlertState.OK && (
+          <div className="badge bg-success">OK</div>
+        )}
+        <div className="fs-6 mt-2">
+          Alerts if
+          <span className="fw-bold">
+            {' '}
+            {alert.source === 'LOG' ? 'count' : 'value'}{' '}
+          </span>
+          is
+          <span className="fw-bold">
+            {' '}
+            {alert.type === 'presence' ? 'over' : 'under'}{' '}
+          </span>
+          <span className="fw-bold">{alert.threshold}</span>
+        </div>
+      </div>
+      <AlertHistoryCardList history={history} interval={alert.interval} />
     </>
   );
-  if (alert.state === AlertState.ALERT) {
-    return (
-      <>
-        <div className="text-end">
-          <div className="badge bg-danger">ALERT</div>
-          <div className="fs-6 mt-2">
-            <span className="me-2">Threshold: {alert.threshold}</span>
-            <span className="me-2">Interval: {alert.interval}</span>
-            <span className="me-2">Timezone: {alert.timezone}</span>
-          </div>
-        </div>
-        {historyDisplay}
-      </>
-    );
-  } else {
-    return (
-      <>
-        <div className="text-end">
-          <div className="badge bg-success">OK</div>
-          <div className="fs-6 mt-2">
-            <span className="me-2">Threshold: {alert.threshold}</span>
-            <span className="me-2">Interval: {alert.interval}</span>
-            <span className="me-2">Timezone: {alert.timezone}</span>
-          </div>
-        </div>
-        {historyDisplay}
-      </>
-    );
-  }
 }
 
 function ChartAlertCard({ alertData }: { alertData: AlertData }) {
@@ -169,7 +167,9 @@ function ChartAlertCard({ alertData }: { alertData: AlertData }) {
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <div>{alertData.dashboard.name}</div>
+      <Link href={`/dashboards/${alert.dashboardId}`} key={alert.dashboardId}>
+        {alertData.dashboard.name}
+      </Link>
       <AlertDetails alert={alert} history={history} />
     </div>
   );
@@ -182,7 +182,9 @@ function LogAlertCard({ alertData }: { alertData: AlertData }) {
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <div>{alertData.logView.name}</div>
+      <Link href={`/search/${alert.logView}`} key={alert.logView}>
+        {alertData.logView.name}
+      </Link>
       <AlertDetails alert={alert} history={history} />
     </div>
   );

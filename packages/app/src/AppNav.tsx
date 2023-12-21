@@ -453,6 +453,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     api.useDashboards();
   const dashboards = dashboardsData?.data ?? [];
 
+  const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
+  const alerts = alertsData?.data?.alerts ?? [];
+
   const router = useRouter();
   const { pathname, query } = router;
 
@@ -804,10 +807,32 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     },
                   )}
                 >
-                  <span>
-                    <i className="bi bi-laptop" />{' '}
-                    {!isCollapsed && <span>Alerts</span>}
-                  </span>
+                  <div>
+                    <i className="bi bi-exclamation-triangle" />{' '}
+                    {!isCollapsed && (
+                      <>
+                        <span>Alerts</span>
+                        {/* 
+                      This should float at the end and display a count of alerts? 
+                      or perhaps be tucked underneath with a breakdown of count in each state?
+                    */}
+                        {Array.isArray(alerts) ? alerts.length : null}
+                        {Array.isArray(alerts) && alerts.length > 0 ? (
+                          alerts.some(a => a.state === 'ALERT') ? (
+                            <i
+                              className="bi bi-bell float-end text-danger"
+                              title="Has Alerts and is in ALERT state"
+                            ></i>
+                          ) : (
+                            <i
+                              className="bi bi-bell float-end"
+                              title="Has Alerts and is in OK state"
+                            ></i>
+                          )
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 </a>
               </Link>
             </div>
