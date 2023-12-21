@@ -2,14 +2,16 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import Alert from '@/models/alert';
-import AlertHistory from '@/models/alertHistory';
-import { getTeam } from '@/controllers/team';
 import {
   createAlert,
   updateAlert,
   validateGroupByProperty,
 } from '@/controllers/alerts';
+import { getTeam } from '@/controllers/team';
+import Alert, { IAlert } from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
+import Dashboard from '@/models/dashboard';
+import LogView from '@/models/logView';
 
 const router = express.Router();
 
@@ -46,11 +48,27 @@ const zAlert = z
 
 const zAlertInput = zAlert;
 
-const getHistory = async (alertId: string, teamId: string) => {
-  const histories = await AlertHistory.find({ alert: alertId, team: teamId })
+const getHistory = async (alert: IAlert, teamId: string) => {
+  const histories = await AlertHistory.find({ alert: alert._id, team: teamId })
     .sort({ createdAt: -1 })
     .limit(20);
   return histories;
+};
+
+const getDashboard = async (alert: IAlert, teamId: string) => {
+  const dashboard = await Dashboard.findOne({
+    _id: alert.dashboardId,
+    team: teamId,
+  });
+  return dashboard;
+};
+
+const getLogView = async (alert: IAlert, teamId: string) => {
+  const logView = await LogView.findOne({
+    _id: alert.logView,
+    team: teamId,
+  });
+  return logView;
 };
 
 // Validate groupBy property
@@ -89,10 +107,22 @@ router.get('/', async (req, res, next) => {
     }
     const alerts = await Alert.find({ team: teamId });
     const alertsWithHistory = await Promise.all(
-      alerts.map(async alert => ({
-        ...alert,
-        history: await getHistory(alert._id.toString(), teamId.toString()),
-      })),
+      alerts.map(async alert => {
+        if (!alert.source) throw new Error('Alert source is undefined');
+        if (alert.source === 'LOG') {
+          return {
+            alert: alert,
+            logView: await getLogView(alert, teamId.toString()),
+            history: await getHistory(alert, teamId.toString()),
+          };
+        } else {
+          return {
+            alert: alert,
+            dashboard: await getDashboard(alert, teamId.toString()),
+            history: await getHistory(alert, teamId.toString()),
+          };
+        }
+      }),
     );
     res.json({
       data: {
@@ -115,10 +145,7 @@ router.get('/:id', validateGet, async (req, res, next) => {
     if (!alert) {
       return res.sendStatus(404);
     }
-    const alertHistories = await getHistory(
-      alert._id.toString(),
-      teamId.toString(),
-    );
+    const alertHistories = await getHistory(alert, teamId.toString());
     res.json({
       data: {
         ...alert,

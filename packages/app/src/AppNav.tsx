@@ -794,6 +794,23 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </>
             )}
+            <div className="my-4">
+              <Link href="/alerts">
+                <a
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/alerts'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-laptop" />{' '}
+                    {!isCollapsed && <span>Alerts</span>}
+                  </span>
+                </a>
+              </Link>
+            </div>
           </div>
         </div>
         <div className="mb-4 mt-4">
