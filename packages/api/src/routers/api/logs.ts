@@ -1,17 +1,18 @@
-import express from 'express';
-import ms from 'ms';
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import express from 'express';
 import { isNumber, omit, parseInt } from 'lodash';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
-import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
-import logger from '@/utils/logger';
-import { LimitedSizeQueue } from '@/utils/queue';
 import { customColumnMapType } from '@/clickhouse/searchQueryParser';
-import { getLogsPatterns } from '@/utils/miner';
 import { getTeam } from '@/controllers/team';
+import logger from '@/utils/logger';
+import { getLogsPatterns } from '@/utils/miner';
+import { LimitedSizeQueue } from '@/utils/queue';
 
 const router = express.Router();
 
@@ -261,7 +262,7 @@ router.get('/stream', async (req, res, next) => {
       res.write('event: end\ndata:\n\n');
       res.end();
     } else {
-      stream.on('data', (rows: any[]) => {
+      stream.on('data', (rows: Row[]) => {
         resultCount += rows.length;
         logger.info(`Sending ${rows.length} rows`);
 

@@ -2,10 +2,10 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 
 import * as config from './config';
-import Server from './server';
 import { createTeam, getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
+import Server from './server';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',

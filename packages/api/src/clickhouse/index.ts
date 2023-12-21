@@ -1,43 +1,43 @@
+import {
+  BaseResultSet,
+  createClient,
+  ErrorLogParams as _CHErrorLogParams,
+  Logger as _CHLogger,
+  LogParams as _CHLogParams,
+  ResponseJSON,
+  SettingsMap,
+} from '@clickhouse/client';
+import opentelemetry from '@opentelemetry/api';
 import * as fns from 'date-fns';
-import SqlString from 'sqlstring';
 import _ from 'lodash';
 import ms from 'ms';
-import opentelemetry from '@opentelemetry/api';
-import {
-  Logger as _CHLogger,
-  SettingsMap,
-  createClient,
-} from '@clickhouse/client';
-import {
-  LogParams as _CHLogParams,
-  ErrorLogParams as _CHErrorLogParams,
-} from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
+import SqlString from 'sqlstring';
+import { Readable } from 'stream';
 
 import * as config from '@/config';
-import logger from '@/utils/logger';
 import { sleep } from '@/utils/common';
-import {
-  LogsPropertyTypeMappingsModel,
-  MetricsPropertyTypeMappingsModel,
-} from './propertyTypeMappingsModel';
-import {
-  SQLSerializer,
-  SearchQueryBuilder,
-  buildSearchColumnName,
-  buildSearchColumnName_OLD,
-  buildSearchQueryWhereCondition,
-  isCustomColumn,
-  msToBigIntNs,
-} from './searchQueryParser';
-import { redisClient } from '../utils/redis';
-
-import type { ResponseJSON, ResultSet } from '@clickhouse/client';
+import logger from '@/utils/logger';
 import type {
   LogStreamModel,
   MetricModel,
   RrwebEventModel,
 } from '@/utils/logParser';
+
+import { redisClient } from '../utils/redis';
+import {
+  LogsPropertyTypeMappingsModel,
+  MetricsPropertyTypeMappingsModel,
+} from './propertyTypeMappingsModel';
+import {
+  buildSearchColumnName,
+  buildSearchColumnName_OLD,
+  buildSearchQueryWhereCondition,
+  isCustomColumn,
+  msToBigIntNs,
+  SearchQueryBuilder,
+  SQLSerializer,
+} from './searchQueryParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
@@ -187,7 +187,21 @@ export const buildLogStreamAdditionalFilters = (
   teamId: string,
 ) => SettingsMap.from({});
 
-export const healthCheck = () => client.ping();
+export const buildMetricStreamAdditionalFilters = (
+  version: number | undefined | null,
+  teamId: string,
+) => SettingsMap.from({});
+
+export const healthCheck = async () => {
+  const result = await client.ping();
+  if (!result.success) {
+    logger.error({
+      message: 'ClickHouse health check failed',
+      error: result.error,
+    });
+    throw result.error;
+  }
+};
 
 export const connect = async () => {
   // FIXME: this is a hack to avoid CI failure
@@ -646,6 +660,12 @@ const getMetricsTagsUncached = async (teamId: string) => {
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
   const result = await rows.json<ResponseJSON<{ names: string[] }>>();
   logger.info({
@@ -678,7 +698,7 @@ const getMetricsTagsCached = async (teamId: string) => {
   }
 };
 
-const isRateAggFn = (aggFn: AggFn) => {
+export const isRateAggFn = (aggFn: AggFn) => {
   return (
     aggFn === AggFn.SumRate ||
     aggFn === AggFn.AvgRate ||
@@ -773,63 +793,57 @@ export const getMetricsChart = async ({
   // max/min don't require pre-bucketing the Sum timeseries
   const sumMetricSource = SqlString.format(
     `
-    SELECT
-      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
-      min(value) as value,
-      _string_attributes,
-      name
-    FROM
-      ??
-    WHERE
-      name = ?
+      SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+        min(value) as value,
+        _string_attributes,
+        name
+      FROM ??
+      WHERE name = ?
       AND data_type = ?
       AND (?)
-    GROUP BY
-      name,
-      _string_attributes,
-      timestamp
-    ORDER BY
-      _string_attributes,
-      timestamp ASC
-  `.trim(),
+      GROUP BY
+        name,
+        _string_attributes,
+        timestamp
+      ORDER BY
+        _string_attributes,
+        timestamp ASC
+    `.trim(),
     [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const rateMetricSource = SqlString.format(
     `
-SELECT
-  if(
-    runningDifference(value) < 0
-    OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
-    nan,
-    runningDifference(value)
-  ) AS rate,
-  timestamp,
-  _string_attributes,
-  name
-FROM
-  (
-    ?
-  )
-WHERE
-  isNaN(rate) = 0
-`.trim(),
+      SELECT
+        if(
+          runningDifference(value) < 0
+          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+          nan,
+          runningDifference(value)
+        ) AS rate,
+        timestamp,
+        _string_attributes,
+        name
+      FROM (?)
+      WHERE isNaN(rate) = 0
+    `.trim(),
     [SqlString.raw(sumMetricSource)],
   );
 
   const gaugeMetricSource = SqlString.format(
     `
-SELECT 
-  timestamp,
-  name,
-  value,
-  _string_attributes
-FROM ??
-WHERE name = ?
-AND data_type = ?
-AND (?)
-ORDER BY _timestamp_sort_key ASC
-`.trim(),
+      SELECT 
+        timestamp,
+        name,
+        value,
+        _string_attributes
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (?)
+      ORDER BY _timestamp_sort_key ASC
+    `.trim(),
     [tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
@@ -867,6 +881,12 @@ ORDER BY _timestamp_sort_key ASC
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
   const result = await rows.json<
     ResponseJSON<{
@@ -1827,7 +1847,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -1886,7 +1906,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);

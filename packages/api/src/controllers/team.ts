@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 
-import Team from '@/models/team';
-
 import type { ObjectId } from '@/models';
+import Team from '@/models/team';
 
 export async function isTeamExisting() {
   const teamCount = await Team.countDocuments({});

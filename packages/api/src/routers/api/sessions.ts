@@ -1,11 +1,12 @@
-import express from 'express';
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import express from 'express';
 import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from '@/clickhouse';
-import logger from '@/utils/logger';
 import { getTeam } from '@/controllers/team';
+import logger from '@/utils/logger';
 
 const router = express.Router();
 
@@ -83,7 +84,7 @@ router.get('/:sessionId/rrweb', async (req, res, next) => {
       offset: offsetNum,
     });
 
-    stream.on('data', (rows: any[]) => {
+    stream.on('data', (rows: Row[]) => {
       res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
       res.flush();
     });

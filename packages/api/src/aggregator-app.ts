@@ -1,14 +1,13 @@
 import compression from 'compression';
+import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from './clickhouse';
-import logger, { expressLogger } from './utils/logger';
+import { mongooseConnection } from './models';
 import routers from './routers/aggregator';
 import { BaseError, StatusCode } from './utils/errors';
-import { mongooseConnection } from './models';
-
-import type { Request, Response, NextFunction } from 'express';
+import logger, { expressLogger } from './utils/logger';
 
 const app: express.Application = express();
 

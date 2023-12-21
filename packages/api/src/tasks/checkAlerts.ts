@@ -1,27 +1,26 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
-import { URLSearchParams } from 'url';
-
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import ms from 'ms';
 import { isString } from 'lodash';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
+import { URLSearchParams } from 'url';
 import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
-import * as slack from '@/utils/slack';
-import Alert, { AlertState, AlertDocument } from '@/models/alert';
+import { ObjectId } from '@/models';
+import Alert, { AlertDocument, AlertState } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
-import Webhook from '@/models/webhook';
-import logger from '@/utils/logger';
 import { ITeam } from '@/models/team';
-import { ObjectId } from '@/models';
+import Webhook from '@/models/webhook';
 import { truncateString } from '@/utils/common';
+import logger from '@/utils/logger';
+import * as slack from '@/utils/slack';
 
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
@@ -421,12 +420,21 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           series.field
         ) {
           targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
+          let startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
           const [metricName, rawMetricDataType] = series.field.split(' - ');
           const metricDataType = z
             .nativeEnum(clickhouse.MetricsDataType)
             .parse(rawMetricDataType);
+          if (
+            metricDataType === clickhouse.MetricsDataType.Sum &&
+            clickhouse.isRateAggFn(series.aggFn)
+          ) {
+            // adjust the time so that we have enough data points to calculate a rate
+            startTimeMs = fns
+              .subMinutes(startTimeMs, windowSizeInMins)
+              .getTime();
+          }
           checksData = await clickhouse.getMetricsChart({
             aggFn: series.aggFn,
             dataType: metricDataType,
@@ -456,12 +464,13 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       return;
     }
 
+    // TODO: support INSUFFICIENT_DATA state
+    let alertState = AlertState.OK;
     const history = await new AlertHistory({
       alert: alert._id,
       createdAt: nowInMinsRoundDown,
+      state: alertState,
     }).save();
-    // TODO: support INSUFFICIENT_DATA state
-    let alertState = AlertState.OK;
     if (checksData?.rows && checksData?.rows > 0) {
       for (const checkData of checksData.data) {
         const totalCount = isString(checkData.data)
@@ -490,8 +499,11 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           history.counts += 1;
         }
       }
+
+      history.state = alertState;
       await history.save();
     }
+
     alert.state = alertState;
     await alert.save();
   } catch (e) {
