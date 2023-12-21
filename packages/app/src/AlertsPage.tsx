@@ -95,7 +95,9 @@ function AlertHistoryCard({ history }: { history: AlertHistory }) {
         (history.state === AlertState.OK ? 'bg-success ' : 'bg-danger ') +
         ' m-0 rounded-0'
       }
-      title={formatRelative(start, new Date())}
+      title={
+        (history.lastValue ?? '') + ' ' + formatRelative(start, new Date())
+      }
     >
       {history.state === AlertState.OK ? '.' : '!'}
     </div>
@@ -110,6 +112,10 @@ function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
       ))}
     </div>
   );
+}
+
+function disableAlert(alertId: string) {
+  // TODO do some lovely disabling of the alert here
 }
 
 function AlertDetails({
@@ -128,6 +134,20 @@ function AlertDetails({
         {alert.state === AlertState.OK && (
           <div className="badge bg-success">OK</div>
         )}
+        {alert.state === AlertState.DISABLED && (
+          <div className="badge bg-secondary">DISABLED</div>
+        )}{' '}
+        {/* can we disable an alert that is alarming? hmmmmm */}
+        {/* also, will make the alert jump from under the cursor to the disabled area */}
+        <button
+          className="btn btn-sm btn-outline-secondary"
+          title="Disable/enable"
+          onClick={() => {
+            disableAlert(alert._id);
+          }}
+        >
+          <i className="bi bi-gear"></i>
+        </button>
         <div className="fs-6 mt-2">
           Alerts if
           <span className="fw-bold">
@@ -140,10 +160,10 @@ function AlertDetails({
             {alert.type === 'presence' ? 'over' : 'under'}{' '}
           </span>
           <span className="fw-bold">{alert.threshold}</span>
-          {history.length > 0 && (
+          {history.length > 0 && history[0]?.lastValue && (
             <span className="fw-light">
               {' '}
-              most recently {history[0].lastValue}
+              (most recently {history[0].lastValue})
             </span>
           )}
         </div>
@@ -210,14 +230,18 @@ function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
     <div>
       {alarmData.length > 0 && (
         <div>
-          <div className="fs-5 mb-3 text-danger">Alarmed Alerts</div>
+          <div className="fs-5 mb-3 text-danger">
+            <i className="bi bi-exclamation-triangle"></i> Alarmed
+          </div>
           {alarmData.map((alertData, index) => (
             <AlertCard key={index} alertData={alertData} />
           ))}
         </div>
       )}
       <div>
-        <div className="fs-5 mb-3">Running</div>
+        <div className="fs-5 mb-3">
+          <i className="bi bi-repeat"></i> Running
+        </div>
         {okData.length === 0 && (
           <div className="text-center text-muted">No alerts</div>
         )}
@@ -226,7 +250,9 @@ function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
         ))}
       </div>
       <div>
-        <div className="fs-5 mb-3">Disabled</div>
+        <div className="fs-5 mb-3">
+          <i className="bi bi-stop"></i> Disabled
+        </div>
         {disabledData.length === 0 && (
           <div className="text-center text-muted">No alerts</div>
         )}
