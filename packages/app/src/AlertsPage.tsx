@@ -37,6 +37,7 @@ export interface AlertHistory {
   counts: number;
   createdAt: Date;
   state: AlertState;
+  lastValue: number;
 }
 // end illegitimate thievery
 
@@ -51,21 +52,19 @@ type AlertData = {
     channel: AlertChannel;
     state: AlertState;
     source: AlertSource;
-
-    // chart alerts
-    dashboardId?: string;
-    chartId?: string;
-
-    // log alerts
-    groupBy?: string;
-    logView?: string;
-    message?: string;
-
     createdAt: string;
     updatedAt: string;
     __v: number;
+    // chart alerts only
+    dashboardId?: string;
+    chartId?: string;
+
+    // log alerts only
+    groupBy?: string;
+    logView?: string;
+    message?: string;
   };
-  // added properties above and beyond IAlert
+  // added properties above and beyond IAlert above
   history: AlertHistory[];
   dashboard?: {
     name: string;
@@ -87,13 +86,7 @@ const intervalToSeconds = (interval: AlertInterval) => {
   return 86400;
 };
 
-function AlertHistoryCard({
-  history,
-  interval,
-}: {
-  history: AlertHistory;
-  interval: AlertInterval;
-}) {
+function AlertHistoryCard({ history }: { history: AlertHistory }) {
   const start = new Date(history.createdAt.toString());
   return (
     <div
@@ -109,17 +102,11 @@ function AlertHistoryCard({
   );
 }
 
-function AlertHistoryCardList({
-  history,
-  interval,
-}: {
-  history: AlertHistory[];
-  interval: AlertInterval;
-}) {
+function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
   return (
     <div className="d-flex flex-row">
       {history.map((history, index) => (
-        <AlertHistoryCard key={index} history={history} interval={interval} />
+        <AlertHistoryCard key={index} history={history} />
       ))}
     </div>
   );
@@ -153,9 +140,15 @@ function AlertDetails({
             {alert.type === 'presence' ? 'over' : 'under'}{' '}
           </span>
           <span className="fw-bold">{alert.threshold}</span>
+          {history.length > 0 && (
+            <span className="fw-light">
+              {' '}
+              most recently {history[0].lastValue}
+            </span>
+          )}
         </div>
       </div>
-      <AlertHistoryCardList history={history} interval={alert.interval} />
+      <AlertHistoryCardList history={history} />
     </>
   );
 }

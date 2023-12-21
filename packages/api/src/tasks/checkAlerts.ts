@@ -497,7 +497,11 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             windowSizeInMins,
           });
           history.counts += 1;
+          // will overwrite if multiple alerts fire
+          history.lastValue = totalCount;
         }
+        // only write one lastValue if there are no alerts at all?
+        history.lastValue ??= totalCount;
       }
 
       history.state = alertState;

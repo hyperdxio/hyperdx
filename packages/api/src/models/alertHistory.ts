@@ -10,6 +10,7 @@ export interface IAlertHistory {
   counts: number;
   createdAt: Date;
   state: AlertState;
+  lastValue: number;
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -26,6 +27,9 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
     type: String,
     enum: Object.values(AlertState),
     required: true,
+  },
+  lastValue: {
+    type: Schema.Types.Number,
   },
 });
 
