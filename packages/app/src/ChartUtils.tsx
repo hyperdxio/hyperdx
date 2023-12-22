@@ -176,7 +176,7 @@ export function MetricSelect({
   setMetricName: (value: string | undefined) => void;
 }) {
   // TODO: Dedup with metric rate checkbox
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricTagsData, isLoading, isError } = api.useMetricsTags();
 
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
@@ -198,6 +198,8 @@ export function MetricSelect({
     <>
       <div className="ms-3 flex-grow-1">
         <MetricNameSelect
+          isLoading={isLoading}
+          isError={isError}
           value={metricName}
           setValue={name => {
             const metricType = metricTagsData?.data?.find(
@@ -259,9 +261,13 @@ export function MetricRateSelect({
 export function MetricNameSelect({
   value,
   setValue,
+  isLoading,
+  isError,
 }: {
   value: string | undefined | null;
   setValue: (value: string | undefined) => void;
+  isLoading?: boolean;
+  isError?: boolean;
 }) {
   const { data: metricTagsData } = api.useMetricsTags();
 
@@ -276,6 +282,15 @@ export function MetricNameSelect({
 
   return (
     <AsyncSelect
+      isLoading={isLoading}
+      isDisabled={isError}
+      placeholder={
+        isLoading
+          ? 'Loading...'
+          : isError
+          ? 'Unable to load metrics'
+          : 'Select a metric...'
+      }
       loadOptions={input => {
         return Promise.resolve(
           options.filter(v =>
