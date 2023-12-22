@@ -67,12 +67,19 @@ export type AlertChannel = {
   webhookId?: string;
 };
 
+export enum AlertState {
+  ALERT = 'ALERT',
+  DISABLED = 'DISABLED',
+  INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
+  OK = 'OK',
+}
+
 export type Alert = {
   _id?: string;
   channel: AlertChannel;
   cron?: string;
   interval: AlertInterval;
-  state?: 'ALERT' | 'OK';
+  state?: AlertState;
   threshold: number;
   timezone?: string;
   type: AlertType;
@@ -86,6 +93,14 @@ export type Alert = {
   // Chart alerts
   dashboardId?: string;
   chartId?: string;
+};
+
+export type AlertHistory = {
+  alert: string;
+  counts: number;
+  createdAt: Date;
+  state: AlertState;
+  lastValue: number;
 };
 
 export type Session = {

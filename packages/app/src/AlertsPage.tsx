@@ -4,86 +4,18 @@ import { formatRelative } from 'date-fns';
 
 import api from './api';
 import AppNav from './AppNav';
+import { AlertState } from './types';
 
-// stolen directly from the api alert model for now
-export type AlertType = 'presence' | 'absence';
+import type { Alert, AlertHistory } from './types';
 
-export enum AlertState {
-  ALERT = 'ALERT',
-  DISABLED = 'DISABLED',
-  INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
-  OK = 'OK',
-}
-
-// follow 'ms' pkg formats
-export type AlertInterval =
-  | '1m'
-  | '5m'
-  | '15m'
-  | '30m'
-  | '1h'
-  | '6h'
-  | '12h'
-  | '1d';
-
-export type AlertChannel = {
-  type: 'webhook';
-  webhookId: string;
-};
-
-export type AlertSource = 'LOG' | 'CHART';
-export interface AlertHistory {
-  alert: string;
-  counts: number;
-  createdAt: Date;
-  state: AlertState;
-  lastValue: number;
-}
-// end illegitimate thievery
-
-type AlertData = {
-  alert: {
-    _id: string;
-    type: AlertType;
-    threshold: number;
-    interval: AlertInterval;
-    timezone: string;
-    cron: string;
-    channel: AlertChannel;
-    state: AlertState;
-    source: AlertSource;
-    createdAt: string;
-    updatedAt: string;
-    __v: number;
-    // chart alerts only
-    dashboardId?: string;
-    chartId?: string;
-
-    // log alerts only
-    groupBy?: string;
-    logView?: string;
-    message?: string;
-  };
-  // added properties above and beyond IAlert above
+type AlertData = Alert & {
   history: AlertHistory[];
   dashboard?: {
     name: string;
   };
-  logView?: {
+  logViewObj?: {
     name: string;
   };
-};
-
-const intervalToSeconds = (interval: AlertInterval) => {
-  if (interval === '1m') return 60;
-  if (interval === '5m') return 300;
-  if (interval === '15m') return 900;
-  if (interval === '30m') return 1800;
-  if (interval === '1h') return 3600;
-  if (interval === '6h') return 21600;
-  if (interval === '12h') return 43200;
-  if (interval === '1d') return 86400;
-  return 86400;
 };
 
 function AlertHistoryCard({ history }: { history: AlertHistory }) {
@@ -114,7 +46,10 @@ function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
   );
 }
 
-function disableAlert(alertId: string) {
+function disableAlert(alertId?: string) {
+  if (!alertId) {
+    return; // no ID yet to disable?
+  }
   // TODO do some lovely disabling of the alert here
 }
 
@@ -122,7 +57,7 @@ function AlertDetails({
   alert,
   history,
 }: {
-  alert: AlertData['alert'];
+  alert: AlertData;
   history: AlertHistory[];
 }) {
   return (
@@ -139,15 +74,17 @@ function AlertDetails({
         )}{' '}
         {/* can we disable an alert that is alarming? hmmmmm */}
         {/* also, will make the alert jump from under the cursor to the disabled area */}
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          title="Disable/enable"
-          onClick={() => {
-            disableAlert(alert._id);
-          }}
-        >
-          <i className="bi bi-gear"></i>
-        </button>
+        {false ? (
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            title="Disable/enable"
+            onClick={() => {
+              disableAlert(alert._id);
+            }}
+          >
+            <i className="bi bi-gear"></i>
+          </button>
+        ) : null}
         <div className="fs-6 mt-2">
           Alerts if
           <span className="fw-bold">
@@ -173,68 +110,61 @@ function AlertDetails({
   );
 }
 
-function ChartAlertCard({ alertData }: { alertData: AlertData }) {
-  const { alert, history } = alertData;
-  if (!alertData.dashboard) {
+function ChartAlertCard({ alert }: { alert: AlertData }) {
+  const { history } = alert;
+  if (!alert.dashboard) {
     throw new Error('alertData.dashboard is undefined');
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
       <Link href={`/dashboards/${alert.dashboardId}`} key={alert.dashboardId}>
-        {alertData.dashboard.name}
+        {alert.dashboard.name}
       </Link>
       <AlertDetails alert={alert} history={history} />
     </div>
   );
 }
 
-function LogAlertCard({ alertData }: { alertData: AlertData }) {
-  const { alert, history } = alertData;
-  if (!alertData.logView) {
+function LogAlertCard({ alert }: { alert: AlertData }) {
+  const { history } = alert;
+  if (!alert.logViewObj) {
     throw new Error('alert.logView is undefined');
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
       <Link href={`/search/${alert.logView}`} key={alert.logView}>
-        {alertData.logView.name}
+        {alert.logViewObj?.name}
       </Link>
       <AlertDetails alert={alert} history={history} />
     </div>
   );
 }
 
-function AlertCard({ alertData }: { alertData: AlertData }) {
-  const { alert } = alertData;
-  console.log(alertData);
-
+function AlertCard({ alert }: { alert: AlertData }) {
   if (alert.source === 'LOG') {
-    return <LogAlertCard alertData={alertData} />;
+    return <LogAlertCard alert={alert} />;
   } else {
-    return <ChartAlertCard alertData={alertData} />;
+    return <ChartAlertCard alert={alert} />;
   }
 }
 
-function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
-  const alarmData = alertDatas.filter(
-    alertData => alertData.alert.state === AlertState.ALERT,
-  );
-  const okData = alertDatas.filter(
-    alertData => alertData.alert.state === AlertState.OK,
-  );
-  const disabledData = alertDatas.filter(
-    alertData =>
-      alertData.alert.state === AlertState.DISABLED ||
-      alertData.alert.state === AlertState.INSUFFICIENT_DATA,
+function AlertCardList({ alerts }: { alerts: AlertData[] }) {
+  const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
+  const okData = alerts.filter(alert => alert.state === AlertState.OK);
+  const disabledData = alerts.filter(
+    alert =>
+      alert.state === AlertState.DISABLED ||
+      alert.state === AlertState.INSUFFICIENT_DATA,
   );
   return (
     <div>
-      {alarmData.length > 0 && (
+      {alarmAlerts.length > 0 && (
         <div>
           <div className="fs-5 mb-3 text-danger">
             <i className="bi bi-exclamation-triangle"></i> Alarmed
           </div>
-          {alarmData.map((alertData, index) => (
-            <AlertCard key={index} alertData={alertData} />
+          {alarmAlerts.map((alert, index) => (
+            <AlertCard key={index} alert={alert} />
           ))}
         </div>
       )}
@@ -245,8 +175,8 @@ function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
         {okData.length === 0 && (
           <div className="text-center text-muted">No alerts</div>
         )}
-        {okData.map((alertData, index) => (
-          <AlertCard key={index} alertData={alertData} />
+        {okData.map((alert, index) => (
+          <AlertCard key={index} alert={alert} />
         ))}
       </div>
       <div>
@@ -256,8 +186,8 @@ function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
         {disabledData.length === 0 && (
           <div className="text-center text-muted">No alerts</div>
         )}
-        {disabledData.map((alertData, index) => (
-          <AlertCard key={index} alertData={alertData} />
+        {disabledData.map((alert, index) => (
+          <AlertCard key={index} alert={alert} />
         ))}
       </div>
     </div>
@@ -265,8 +195,8 @@ function AlertCardList({ alertDatas }: { alertDatas: AlertData[] }) {
 }
 
 export default function AlertsPage() {
-  const alertDatas = api.useAlerts().data?.data.alerts;
-
+  const alerts = api.useAlerts().data?.data.alerts;
+  console.log(alerts);
   return (
     <div className="AlertsPage d-flex" style={{ height: '100vh' }}>
       <Head>
@@ -277,8 +207,13 @@ export default function AlertsPage() {
         <div className="d-flex justify-content-between">
           <div className="fs-4 mb-3">Alerts</div>
         </div>
+        <div className="fw-light">
+          Note that for now, you'll need to go to either the dashboard or saved
+          search pages in order to create alerts. This is merely a place to
+          enable/disable and get an overview of which alerts are in which state.
+        </div>
         <div style={{ minHeight: 0 }} className="mt-4">
-          <AlertCardList alertDatas={alertDatas || []} />
+          <AlertCardList alerts={alerts || []} />
         </div>
       </div>
     </div>

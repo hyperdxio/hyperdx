@@ -9,9 +9,9 @@ import {
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import Alert, { IAlert } from '@/models/alert';
-import AlertHistory from '@/models/alertHistory';
+import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard from '@/models/dashboard';
-import LogView from '@/models/logView';
+import LogView, { ILogView } from '@/models/logView';
 
 const router = express.Router();
 
@@ -110,16 +110,20 @@ router.get('/', async (req, res, next) => {
       alerts.map(async alert => {
         if (!alert.source) throw new Error('Alert source is undefined');
         if (alert.source === 'LOG') {
+          const logView = await getLogView(alert, teamId.toString());
+          const history = await getHistory(alert, teamId.toString());
+          // had to rename because logView is an ObjectID
           return {
-            alert: alert,
-            logView: await getLogView(alert, teamId.toString()),
-            history: await getHistory(alert, teamId.toString()),
+            logViewObj: logView,
+            history,
+            ...alert.toObject(),
           };
         } else {
+          const dashboard = await getDashboard(alert, teamId.toString());
           return {
-            alert: alert,
-            dashboard: await getDashboard(alert, teamId.toString()),
-            history: await getHistory(alert, teamId.toString()),
+            dashboard,
+            history,
+            ...alert.toObject(),
           };
         }
       }),

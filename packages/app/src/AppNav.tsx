@@ -797,45 +797,47 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </>
             )}
-            <div className="my-4">
-              <Link href="/alerts">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/alerts'),
-                    },
-                  )}
-                >
-                  <div>
-                    <i className="bi bi-exclamation-triangle" />{' '}
-                    {!isCollapsed && (
-                      <>
-                        <span>Alerts</span>
-                        {/* 
+            {false ? (
+              <div className="my-4">
+                <Link href="/alerts">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/alerts'),
+                      },
+                    )}
+                  >
+                    <div>
+                      <i className="bi bi-exclamation-triangle" />{' '}
+                      {!isCollapsed && (
+                        <>
+                          <span>Alerts</span>
+                          {/* 
                       This should float at the end and display a count of alerts? 
                       or perhaps be tucked underneath with a breakdown of count in each state?
                     */}
-                        {Array.isArray(alerts) ? alerts.length : null}
-                        {Array.isArray(alerts) && alerts.length > 0 ? (
-                          alerts.some(a => a.state === 'ALERT') ? (
-                            <i
-                              className="bi bi-bell float-end text-danger"
-                              title="Has Alerts and is in ALERT state"
-                            ></i>
-                          ) : (
-                            <i
-                              className="bi bi-bell float-end"
-                              title="Has Alerts and is in OK state"
-                            ></i>
-                          )
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                </a>
-              </Link>
-            </div>
+                          {Array.isArray(alerts) ? alerts.length : null}
+                          {Array.isArray(alerts) && alerts.length > 0 ? (
+                            alerts.some(a => a.state === 'ALERT') ? (
+                              <i
+                                className="bi bi-bell float-end text-danger"
+                                title="Has Alerts and is in ALERT state"
+                              ></i>
+                            ) : (
+                              <i
+                                className="bi bi-bell float-end"
+                                title="Has Alerts and is in OK state"
+                              ></i>
+                            )
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </a>
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="mb-4 mt-4">
