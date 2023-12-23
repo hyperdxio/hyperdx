@@ -90,6 +90,13 @@ function AlertDetails({
           </button>
         ) : null}
         <div className="fs-6 mt-2">
+          {alert.channel.type === 'webhook' && (
+            <span>
+              Notifies via <span className="fw-bold">Webhook</span>
+            </span>
+          )}
+        </div>
+        <div className="fs-6 mt-2">
           Alerts if
           <span className="fw-bold">
             {' '}

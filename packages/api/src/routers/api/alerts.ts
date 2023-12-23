@@ -108,10 +108,10 @@ router.get('/', async (req, res, next) => {
     const alerts = await Alert.find({ team: teamId });
     const alertsWithHistory = await Promise.all(
       alerts.map(async alert => {
+        const history = (await getHistory(alert, teamId.toString())) ?? [];
         if (!alert.source) throw new Error('Alert source is undefined');
         if (alert.source === 'LOG') {
           const logView = await getLogView(alert, teamId.toString());
-          const history = await getHistory(alert, teamId.toString());
           // had to rename because logView is an ObjectID
           return {
             logViewObj: logView,
@@ -131,29 +131,6 @@ router.get('/', async (req, res, next) => {
     res.json({
       data: {
         alerts: alertsWithHistory,
-      },
-    });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.get('/:id', validateGet, async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    const { id } = req.params;
-    const alert = await Alert.findOne({ _id: id, team: teamId });
-    if (!alert) {
-      return res.sendStatus(404);
-    }
-    const alertHistories = await getHistory(alert, teamId.toString());
-    res.json({
-      data: {
-        ...alert,
-        history: alertHistories,
       },
     });
   } catch (e) {
