@@ -425,6 +425,8 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
+  // TODO enable this once the alerts page is ready for public consumption
+  const showAlertSidebar = false;
   useEffect(() => {
     let redirectUrl;
     try {
@@ -797,7 +799,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </>
             )}
-            {false ? (
+            {showAlertSidebar ? (
               <div className="my-4">
                 <Link href="/alerts">
                   <a
@@ -817,7 +819,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       This should float at the end and display a count of alerts? 
                       or perhaps be tucked underneath with a breakdown of count in each state?
                     */}
-                          {Array.isArray(alerts) ? alerts.length : null}
+                          <span className="text-end">
+                            {' '}
+                            {Array.isArray(alerts) ? alerts.length : null}
+                          </span>
                           {Array.isArray(alerts) && alerts.length > 0 ? (
                             alerts.some(a => a.state === 'ALERT') ? (
                               <i

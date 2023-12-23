@@ -365,6 +365,7 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
       );
+      expect(alertHistories[0].lastValues).toBe([]);
       expect(alertHistories[1].state).toBe('OK');
       expect(alertHistories[1].counts).toBe(0);
       expect(alertHistories[1].createdAt).toEqual(

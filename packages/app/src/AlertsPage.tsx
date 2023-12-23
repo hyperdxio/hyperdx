@@ -4,9 +4,8 @@ import { formatRelative } from 'date-fns';
 
 import api from './api';
 import AppNav from './AppNav';
-import { AlertState } from './types';
-
 import type { Alert, AlertHistory } from './types';
+import { AlertState } from './types';
 
 type AlertData = Alert & {
   history: AlertHistory[];
@@ -20,6 +19,11 @@ type AlertData = Alert & {
 
 function AlertHistoryCard({ history }: { history: AlertHistory }) {
   const start = new Date(history.createdAt.toString());
+  const latestValues = history.lastValues
+    .map(({ count }, index) => {
+      return count.toString();
+    })
+    .join(', ');
   return (
     <div
       className={
@@ -27,9 +31,7 @@ function AlertHistoryCard({ history }: { history: AlertHistory }) {
         (history.state === AlertState.OK ? 'bg-success ' : 'bg-danger ') +
         ' m-0 rounded-0'
       }
-      title={
-        (history.lastValue ?? '') + ' ' + formatRelative(start, new Date())
-      }
+      title={latestValues + ' ' + formatRelative(start, new Date())}
     >
       {history.state === AlertState.OK ? '.' : '!'}
     </div>
@@ -60,6 +62,8 @@ function AlertDetails({
   alert: AlertData;
   history: AlertHistory[];
 }) {
+  // TODO enable once disable handler is implemented above
+  const showDisableButton = false;
   return (
     <>
       <div className="text-end">
@@ -74,7 +78,7 @@ function AlertDetails({
         )}{' '}
         {/* can we disable an alert that is alarming? hmmmmm */}
         {/* also, will make the alert jump from under the cursor to the disabled area */}
-        {false ? (
+        {showDisableButton ? (
           <button
             className="btn btn-sm btn-outline-secondary"
             title="Disable/enable"
@@ -97,10 +101,11 @@ function AlertDetails({
             {alert.type === 'presence' ? 'over' : 'under'}{' '}
           </span>
           <span className="fw-bold">{alert.threshold}</span>
-          {history.length > 0 && history[0]?.lastValue && (
+          {history.length > 0 && history[0]?.lastValues.length > 0 && (
             <span className="fw-light">
               {' '}
-              (most recently {history[0].lastValue})
+              (most recently{' '}
+              {history[0].lastValues.map(({ count }) => count).join(', ')})
             </span>
           )}
         </div>
@@ -208,9 +213,10 @@ export default function AlertsPage() {
           <div className="fs-4 mb-3">Alerts</div>
         </div>
         <div className="fw-light">
-          Note that for now, you'll need to go to either the dashboard or saved
-          search pages in order to create alerts. This is merely a place to
-          enable/disable and get an overview of which alerts are in which state.
+          Note that for now, you&apos;ll need to go to either the dashboard or
+          saved search pages in order to create alerts. This is merely a place
+          to enable/disable and get an overview of which alerts are in which
+          state.
         </div>
         <div style={{ minHeight: 0 }} className="mt-4">
           <AlertCardList alerts={alerts || []} />

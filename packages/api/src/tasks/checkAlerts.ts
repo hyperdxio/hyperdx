@@ -476,6 +476,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
         const totalCount = isString(checkData.data)
           ? parseInt(checkData.data)
           : checkData.data;
+        const bucketStart = new Date(checkData.ts_bucket * 1000);
         if (doesExceedThreshold(alert, totalCount)) {
           alertState = AlertState.ALERT;
           logger.info({
@@ -484,7 +485,6 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             totalCount,
             checkData,
           });
-          const bucketStart = new Date(checkData.ts_bucket * 1000);
 
           await fireChannelEvent({
             alert,
@@ -497,11 +497,8 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             windowSizeInMins,
           });
           history.counts += 1;
-          // will overwrite if multiple alerts fire
-          history.lastValue = totalCount;
         }
-        // only write one lastValue if there are no alerts at all?
-        history.lastValue ??= totalCount;
+        history.lastValues.push({ count: totalCount, startTime: bucketStart });
       }
 
       history.state = alertState;

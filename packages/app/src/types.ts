@@ -100,7 +100,7 @@ export type AlertHistory = {
   counts: number;
   createdAt: Date;
   state: AlertState;
-  lastValue: number;
+  lastValues: { startTime: Date; count: number }[];
 };
 
 export type Session = {
