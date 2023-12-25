@@ -134,3 +134,14 @@ export type StacktraceBreadcrumb = {
   data?: { [key: string]: any };
   timestamp: number;
 };
+
+export type NumberFormat = {
+  output?: 'currency' | 'percent' | 'byte' | 'time' | 'number';
+  mantissa?: number;
+  thousandSeparated?: boolean;
+  average?: boolean;
+  decimalBytes?: boolean;
+  factor?: number;
+  currencySymbol?: string;
+  unit?: string;
+};
