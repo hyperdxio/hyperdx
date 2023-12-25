@@ -55,6 +55,7 @@ const MemoChart = memo(function MemoChart({
   groupKeys,
   alertThreshold,
   alertThresholdType,
+  logReferenceTimestamp,
   displayType = 'line',
   numberFormat,
 }: {
@@ -67,6 +68,7 @@ const MemoChart = memo(function MemoChart({
   alertThresholdType?: 'above' | 'below';
   displayType?: 'stacked_bar' | 'line';
   numberFormat?: NumberFormat;
+  logReferenceTimestamp?: number;
 }) {
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
@@ -208,6 +210,14 @@ const MemoChart = memo(function MemoChart({
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
         ) : null}
+        {logReferenceTimestamp != null ? (
+          <ReferenceLine
+            x={logReferenceTimestamp}
+            stroke="#ff5d5b"
+            strokeDasharray="3 3"
+            label="Log"
+          />
+        ) : null}
       </ChartComponent>
     </ResponsiveContainer>
   );
@@ -249,6 +259,7 @@ const HDXLineChart = memo(
     onSettled,
     alertThreshold,
     alertThresholdType,
+    logReferenceTimestamp,
   }: {
     config: {
       table: string;
@@ -263,6 +274,7 @@ const HDXLineChart = memo(
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
+    logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } =
       table === 'logs'
@@ -517,6 +529,7 @@ const HDXLineChart = memo(
             alertThresholdType={alertThresholdType}
             displayType={displayType}
             numberFormat={numberFormat}
+            logReferenceTimestamp={logReferenceTimestamp}
           />
         </div>
       </div>

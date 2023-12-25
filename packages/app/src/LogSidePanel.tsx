@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import cx from 'classnames';
-import { add, format } from 'date-fns';
+import { add, format, sub } from 'date-fns';
 import Fuse from 'fuse.js';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
@@ -30,7 +30,15 @@ import {
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { Table } from './components/Table';
 import api from './api';
+import {
+  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+  K8S_FILESYSTEM_NUMBER_FORMAT,
+  K8S_MEM_NUMBER_FORMAT,
+  K8S_NETWORK_NUMBER_FORMAT,
+} from './ChartUtils';
+import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
+import HDXLineChart from './HDXLineChart';
 import LogLevel from './LogLevel';
 import {
   breadcrumbColumns,
@@ -2286,6 +2294,190 @@ const ExceptionSubpanel = ({
     </div>
   );
 };
+import { Card, SimpleGrid, Stack } from '@mantine/core';
+
+import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
+
+const MetricsSubpanelGroup = ({
+  timestamp,
+  where,
+  fieldPrefix,
+  title,
+}: {
+  timestamp: any;
+  where: string;
+  fieldPrefix: string;
+  title: string;
+}) => {
+  const [range, setRange] = useState<'30m' | '1h' | '1d'>('30m');
+  const [size, setSize] = useState<'sm' | 'md' | 'lg'>('sm');
+
+  const dateRange = useMemo<[Date, Date]>(() => {
+    const duration = {
+      '30m': { minutes: 15 },
+      '1h': { minutes: 30 },
+      '1d': { hours: 12 },
+    }[range];
+    return [
+      sub(new Date(timestamp), duration),
+      add(new Date(timestamp), duration),
+    ];
+  }, [timestamp, range]);
+
+  const { cols, height } = useMemo(() => {
+    switch (size) {
+      case 'sm':
+        return { cols: 3, height: 200 };
+      case 'md':
+        return { cols: 2, height: 250 };
+      case 'lg':
+        return { cols: 1, height: 320 };
+    }
+  }, [size]);
+
+  const granularity = useMemo<Granularity>(() => {
+    return convertDateRangeToGranularityString(dateRange, 60);
+  }, [dateRange]);
+
+  return (
+    <div>
+      <Group position="apart" align="center">
+        <Group align="center">
+          <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
+          <SegmentedControl
+            bg="dark.7"
+            color="dark.5"
+            size="xs"
+            data={[
+              { label: '30m', value: '30m' },
+              { label: '1h', value: '1h' },
+              { label: '1d', value: '1d' },
+            ]}
+            value={range}
+            onChange={value => setRange(value as any)}
+          />
+        </Group>
+        <Group align="center">
+          <SegmentedControl
+            bg="dark.7"
+            color="dark.5"
+            size="xs"
+            data={[
+              { label: 'SM', value: 'sm' },
+              { label: 'MD', value: 'md' },
+              { label: 'LG', value: 'lg' },
+            ]}
+            value={size}
+            onChange={value => setSize(value as any)}
+          />
+        </Group>
+      </Group>
+      <SimpleGrid mt="md" cols={cols}>
+        <Card p="md">
+          <Card.Section p="md" py="xs" withBorder>
+            CPU Usage (%)
+          </Card.Section>
+          <Card.Section py={8} px={4} h={height}>
+            <HDXLineChart
+              config={{
+                dateRange,
+                granularity,
+                where,
+                groupBy: '',
+                aggFn: 'avg',
+                field: `${fieldPrefix}cpu.utilization - Gauge`,
+                table: 'metrics',
+                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+              }}
+              logReferenceTimestamp={timestamp / 1000}
+            />
+          </Card.Section>
+        </Card>
+        <Card p="md">
+          <Card.Section p="md" py="xs" withBorder>
+            Memory Used
+          </Card.Section>
+          <Card.Section py={8} px={4} h={height}>
+            <HDXLineChart
+              config={{
+                dateRange,
+                granularity,
+                where,
+                groupBy: '',
+                aggFn: 'avg',
+                field: `${fieldPrefix}memory.usage - Gauge`,
+                table: 'metrics',
+                numberFormat: K8S_MEM_NUMBER_FORMAT,
+              }}
+              logReferenceTimestamp={timestamp / 1000}
+            />
+          </Card.Section>
+        </Card>
+        <Card p="md">
+          <Card.Section p="md" py="xs" withBorder>
+            Disk Available
+          </Card.Section>
+          <Card.Section py={8} px={4} h={height}>
+            <HDXLineChart
+              config={{
+                dateRange,
+                granularity,
+                where,
+                groupBy: '',
+                aggFn: 'avg',
+                field: `${fieldPrefix}filesystem.available - Gauge`,
+                table: 'metrics',
+                numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+              }}
+              logReferenceTimestamp={timestamp / 1000}
+            />
+          </Card.Section>
+        </Card>
+      </SimpleGrid>
+    </div>
+  );
+};
+
+const MetricsSubpanel = ({ logData }: { logData?: any }) => {
+  const podUid = useMemo(() => {
+    return logData?.['string.values']?.[
+      logData?.['string.names']?.indexOf('k8s.pod.uid')
+    ];
+  }, [logData]);
+
+  const nodeName = useMemo(() => {
+    return logData?.['string.values']?.[
+      logData?.['string.names']?.indexOf('k8s.node.name')
+    ];
+  }, [logData]);
+
+  const timestamp = new Date(logData?.timestamp).getTime();
+
+  return (
+    <Stack my="md" spacing={40}>
+      {podUid && (
+        <MetricsSubpanelGroup
+          title="Pod Metrics"
+          where={`k8s.pod.uid:"${podUid}"`}
+          fieldPrefix="k8s.pod."
+          timestamp={timestamp}
+        />
+      )}
+      {nodeName && (
+        <MetricsSubpanelGroup
+          title="Node Metrics"
+          where={`k8s.node.name:"${nodeName}"`}
+          fieldPrefix="k8s.node."
+          timestamp={timestamp}
+        />
+      )}
+    </Stack>
+  );
+};
+
+const checkKeyExistsInLogData = (key: string, logData: any) => {
+  return logData?.['string.values']?.[logData?.['string.names']?.indexOf(key)];
+};
 
 export default function LogSidePanel({
   logId,
@@ -2393,18 +2585,21 @@ export default function LogSidePanel({
 
   // TODO: use rum_session_id instead ?
   const rumSessionId: string | undefined =
-    logData?.['string.values']?.[
-      logData?.['string.names']?.indexOf('rum.sessionId')
-    ] ??
-    logData?.['string.values']?.[
-      logData?.['string.names']?.indexOf('process.tag.rum.sessionId')
-    ] ??
+    checkKeyExistsInLogData('rum.sessionId', logData) ??
+    checkKeyExistsInLogData('process.tag.rum.sessionId', logData) ??
     sessionId;
 
   const { width } = useWindowSize();
   const isSmallScreen = (width ?? 1000) < 900;
 
   const drawerZIndex = contextZIndex + 1;
+
+  const hasK8sContext = useMemo(() => {
+    return (
+      checkKeyExistsInLogData('k8s.pod.uid', logData) != null ||
+      checkKeyExistsInLogData('k8s.node.name', logData) != null
+    );
+  }, [logData]);
 
   return (
     <Drawer
@@ -2466,6 +2661,14 @@ export default function LogSidePanel({
                         {
                           text: 'Session Replay',
                           value: 'replay',
+                        },
+                      ] as const)
+                    : []),
+                  ...(K8S_METRICS_ENABLED && hasK8sContext
+                    ? ([
+                        {
+                          text: 'Metrics',
+                          value: 'metrics',
                         },
                       ] as const)
                     : []),
@@ -2561,6 +2764,13 @@ export default function LogSidePanel({
                         Session ID not found.
                       </span>
                     )}
+                  </div>
+                ) : null}
+
+                {/* Metrics */}
+                {displayedTab === 'metrics' ? (
+                  <div className="px-4 overflow-auto">
+                    <MetricsSubpanel logData={logData} />
                   </div>
                 ) : null}
               </ErrorBoundary>
