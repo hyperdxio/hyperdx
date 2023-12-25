@@ -3,6 +3,19 @@ import mongoose, { Schema } from 'mongoose';
 import { AggFn } from '../clickhouse';
 import type { ObjectId } from '.';
 
+// Based on numbro.js format
+// https://numbrojs.com/format.html
+type NumberFormat = {
+  output?: 'currency' | 'percent' | 'byte' | 'time' | 'number';
+  mantissa?: number;
+  thousandSeparated?: boolean;
+  average?: boolean;
+  decimalBytes?: boolean;
+  factor?: number;
+  currencySymbol?: string;
+  unit?: string;
+};
+
 type Chart = {
   id: string;
   name: string;
@@ -18,6 +31,7 @@ type Chart = {
         field: string | undefined;
         where: string;
         groupBy: string[];
+        numberFormat?: NumberFormat;
       }
     | {
         table: string;
@@ -36,6 +50,7 @@ type Chart = {
         aggFn: AggFn;
         field: string | undefined;
         where: string;
+        numberFormat?: NumberFormat;
       }
     | {
         type: 'table';
@@ -45,6 +60,7 @@ type Chart = {
         where: string;
         groupBy: string[];
         sortOrder: 'desc' | 'asc';
+        numberFormat?: NumberFormat;
       }
     | {
         type: 'markdown';

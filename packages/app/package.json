@@ -48,6 +48,7 @@
     "nextra": "2.0.1",
     "nextra-theme-docs": "^2.0.2",
     "normalize-url": "4",
+    "numbro": "^2.4.0",
     "pluralize": "^8.0.0",
     "react": "^17.0.2",
     "react-bootstrap": "^2.4.0",

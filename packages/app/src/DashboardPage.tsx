@@ -134,6 +134,7 @@ const Tile = forwardRef(
             granularity:
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
           }
         : type === 'table'
         ? {
@@ -147,6 +148,7 @@ const Tile = forwardRef(
             granularity:
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
           }
         : type === 'histogram'
         ? {
@@ -169,6 +171,7 @@ const Tile = forwardRef(
             field: chart.series[0].field ?? '', // TODO: Fix in definition
             where: buildAndWhereClause(query, chart.series[0].where),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
           }
         : {
             type,
@@ -322,6 +325,7 @@ const EditChartModal = ({
         onHide={onClose}
         show={show}
         size="xl"
+        enforceFocus={false}
       >
         <Modal.Body className="bg-hdx-dark rounded">
           <TabBar

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
 import { Button, Form, InputGroup, Modal } from 'react-bootstrap';
 import Select from 'react-select';
+import { Divider, Group, Paper } from '@mantine/core';
 
+import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
 import {
   AGG_FNS,
@@ -21,7 +23,7 @@ import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import type { Alert } from './types';
+import type { Alert, NumberFormat } from './types';
 import { hashCode, useDebounce } from './utils';
 
 export type Chart = {
@@ -39,6 +41,7 @@ export type Chart = {
         field: string | undefined;
         where: string;
         groupBy: string[];
+        numberFormat?: NumberFormat;
       }
     | {
         table: string;
@@ -57,6 +60,7 @@ export type Chart = {
         aggFn: AggFn;
         field: string | undefined;
         where: string;
+        numberFormat?: NumberFormat;
       }
     | {
         type: 'table';
@@ -66,6 +70,7 @@ export type Chart = {
         where: string;
         groupBy: string[];
         sortOrder: 'desc' | 'asc';
+        numberFormat?: NumberFormat;
       }
     | {
         type: 'markdown';
@@ -318,6 +323,7 @@ export const EditNumberChartForm = ({
           field: editedChart.series[0].field ?? '', // TODO: Fix in definition
           where: editedChart.series[0].where,
           dateRange,
+          numberFormat: editedChart.series[0].numberFormat,
         }
       : null;
   }, [editedChart, dateRange]);
@@ -430,6 +436,34 @@ export const EditNumberChartForm = ({
           </InputGroup>
         </div>
       </div>
+      <div className="ms-2 mt-2 mb-3">
+        <Divider
+          label={
+            <>
+              <i className="bi bi-gear me-1" />
+              Chart Settings
+            </>
+          }
+          c="dark.2"
+          mb={8}
+        />
+        <Group>
+          <div className="fs-8 text-slate-300">Number Format</div>
+          <NumberFormatInput
+            value={editedChart.series[0].numberFormat}
+            onChange={numberFormat =>
+              setEditedChart(
+                produce(editedChart, draft => {
+                  if (draft.series[0].type === 'number') {
+                    draft.series[0].numberFormat = numberFormat;
+                  }
+                }),
+              )
+            }
+          />
+        </Group>
+      </div>
+
       <div className="d-flex justify-content-between my-3 ps-2">
         <Button
           variant="outline-success"
@@ -500,6 +534,7 @@ export const EditTableChartForm = ({
             sortOrder: editedChart.series[0].sortOrder ?? 'desc',
             granularity: convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: editedChart.series[0].numberFormat,
           }
         : null,
     [editedChart, dateRange],
@@ -619,6 +654,16 @@ export const EditTableChartForm = ({
             produce(editedChart, draft => {
               if (draft.series[0].type === CHART_TYPE) {
                 draft.series[0].sortOrder = sortOrder;
+              }
+            }),
+          )
+        }
+        numberFormat={editedChart.series[0].numberFormat}
+        setNumberFormat={numberFormat =>
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].numberFormat = numberFormat;
               }
             }),
           )
@@ -854,6 +899,7 @@ export const EditLineChartForm = ({
                 ? intervalToGranularity(editedAlert?.interval)
                 : convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: editedChart.series[0].numberFormat,
           }
         : null,
     [editedChart, alertEnabled, editedAlert?.interval, dateRange],
@@ -904,6 +950,7 @@ export const EditLineChartForm = ({
         where={editedChart.series[0].where}
         groupBy={editedChart.series[0].groupBy[0]}
         field={editedChart.series[0].field ?? ''}
+        numberFormat={editedChart.series[0].numberFormat}
         setTable={table =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -973,10 +1020,19 @@ export const EditLineChartForm = ({
             }),
           );
         }}
+        setNumberFormat={numberFormat =>
+          setEditedChart(
+            produce(editedChart, draft => {
+              if (draft.series[0].type === CHART_TYPE) {
+                draft.series[0].numberFormat = numberFormat;
+              }
+            }),
+          )
+        }
       />
 
       {isChartAlertsFeatureEnabled && (
-        <div className="mt-4 border-top border-bottom border-grey p-2 py-3">
+        <Paper bg="dark.7" p="md" py="xs" mt="md" withBorder className="ms-2">
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
               Alerts are not available in unsaved dashboards.
@@ -991,15 +1047,17 @@ export const EditLineChartForm = ({
               />
               {alertEnabled && (
                 <div className="mt-2">
+                  <Divider mb="sm" />
                   <EditChartFormAlerts
                     alert={editedAlert ?? DEFAULT_ALERT}
                     setAlert={setEditedAlert}
+                    numberFormat={editedChart.series[0].numberFormat}
                   />
                 </div>
               )}
             </>
           )}
-        </div>
+        </Paper>
       )}
 
       <div className="d-flex justify-content-between my-3 ps-2">

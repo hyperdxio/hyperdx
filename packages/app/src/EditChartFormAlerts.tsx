@@ -2,6 +2,7 @@ import * as React from 'react';
 import produce from 'immer';
 import { omit } from 'lodash';
 import { Form } from 'react-bootstrap';
+import { Tooltip } from '@mantine/core';
 
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -9,6 +10,8 @@ import {
   SlackChannelForm,
 } from './Alert';
 import type { Alert } from './types';
+import { NumberFormat } from './types';
+import { formatNumber } from './utils';
 
 // Don't allow 1 minute alerts for charts
 const CHART_ALERT_INTERVAL_OPTIONS = omit(ALERT_INTERVAL_OPTIONS, '1m');
@@ -16,16 +19,23 @@ const CHART_ALERT_INTERVAL_OPTIONS = omit(ALERT_INTERVAL_OPTIONS, '1m');
 type ChartAlertFormProps = {
   alert: Alert;
   setAlert: (alert?: Alert) => void;
+  numberFormat?: NumberFormat;
 };
 
 export default function EditChartFormAlerts({
   alert,
   setAlert,
+  numberFormat,
 }: ChartAlertFormProps) {
   return (
     <>
-      <div className="d-flex align-items-center gap-3">
-        Alert when the value
+      <div className="d-flex align-items-center gap-3 flex-wrap">
+        <span>
+          Alert when the value
+          <Tooltip label="Raw value before applying number format">
+            <i className="bi bi-question-circle ms-1 text-slate-300" />
+          </Tooltip>
+        </span>
         <Form.Select
           id="type"
           size="sm"
@@ -48,22 +58,39 @@ export default function EditChartFormAlerts({
             falls below
           </option>
         </Form.Select>
-        <Form.Control
-          style={{ width: 70 }}
-          type="number"
-          required
-          id="threshold"
-          size="sm"
-          defaultValue={1}
-          value={alert?.threshold}
-          onChange={e => {
-            setAlert(
-              produce(alert, draft => {
-                draft.threshold = parseFloat(e.target.value);
-              }),
-            );
-          }}
-        />
+        <div style={{ marginBottom: -20 }}>
+          <Form.Control
+            style={{ width: 100 }}
+            type="number"
+            required
+            id="threshold"
+            size="sm"
+            defaultValue={1}
+            value={alert?.threshold}
+            onChange={e => {
+              setAlert(
+                produce(alert, draft => {
+                  draft.threshold = parseFloat(e.target.value);
+                }),
+              );
+            }}
+          />
+          <div
+            className="text-slate-300 fs-8"
+            style={{
+              height: 20,
+            }}
+          >
+            {numberFormat && alert?.threshold > 0 && (
+              <>
+                {formatNumber(alert.threshold, numberFormat)}
+                <Tooltip label="Formatted value">
+                  <i className="bi bi-question-circle ms-1 text-slate-300" />
+                </Tooltip>
+              </>
+            )}
+          </div>
+        </div>
         over
         <Form.Select
           id="interval"

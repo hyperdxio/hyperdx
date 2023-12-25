@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
@@ -20,7 +20,9 @@ import {
 
 import api from './api';
 import { AggFn, convertGranularityToSeconds, Granularity } from './ChartUtils';
+import type { NumberFormat } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { formatNumber } from './utils';
 import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
 function ExpandableLegendItem({ value, entry }: any) {
@@ -54,6 +56,7 @@ const MemoChart = memo(function MemoChart({
   alertThreshold,
   alertThresholdType,
   displayType = 'line',
+  numberFormat,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -63,6 +66,7 @@ const MemoChart = memo(function MemoChart({
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
   displayType?: 'stacked_bar' | 'line';
+  numberFormat?: NumberFormat;
 }) {
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
@@ -92,6 +96,22 @@ const MemoChart = memo(function MemoChart({
   const timeFormat: TimeFormat = useUserPreferences().timeFormat;
   const tsFormat = TIME_TOKENS[timeFormat];
   // Gets the preffered time format from User Preferences, then converts it to a formattable token
+
+  const tickFormatter = useCallback(
+    (value: number) =>
+      numberFormat
+        ? formatNumber(value, {
+            ...numberFormat,
+            average: true,
+            mantissa: 0,
+            unit: undefined,
+          })
+        : new Intl.NumberFormat('en-US', {
+            notation: 'compact',
+            compactDisplay: 'short',
+          }).format(value),
+    [numberFormat],
+  );
 
   return (
     <ResponsiveContainer
@@ -145,18 +165,15 @@ const MemoChart = memo(function MemoChart({
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <YAxis
-          width={35}
+          width={40}
           minTickGap={25}
-          tickFormatter={(value: number) =>
-            new Intl.NumberFormat('en-US', {
-              notation: 'compact',
-              compactDisplay: 'short',
-            }).format(value)
-          }
+          tickFormatter={tickFormatter}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         {lines}
-        <Tooltip content={<HDXLineChartTooltip />} />
+        <Tooltip
+          content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+        />
         {alertThreshold != null && alertThresholdType === 'below' && (
           <ReferenceArea
             y1={0}
@@ -199,7 +216,7 @@ const MemoChart = memo(function MemoChart({
 const HDXLineChartTooltip = (props: any) => {
   const timeFormat: TimeFormat = useUserPreferences().timeFormat;
   const tsFormat = TIME_TOKENS[timeFormat];
-  const { active, payload, label } = props;
+  const { active, payload, label, numberFormat } = props;
   if (active && payload && payload.length) {
     return (
       <div className="bg-grey px-3 py-2 rounded fs-8">
@@ -208,7 +225,8 @@ const HDXLineChartTooltip = (props: any) => {
           .sort((a: any, b: any) => b.value - a.value)
           .map((p: any) => (
             <div key={p.name} style={{ color: p.color }}>
-              {p.dataKey}: {p.value}
+              {p.dataKey}:{' '}
+              {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
             </div>
           ))}
       </div>
@@ -218,7 +236,16 @@ const HDXLineChartTooltip = (props: any) => {
 };
 const HDXLineChart = memo(
   ({
-    config: { table, aggFn, field, where, groupBy, granularity, dateRange },
+    config: {
+      table,
+      aggFn,
+      field,
+      where,
+      groupBy,
+      granularity,
+      dateRange,
+      numberFormat,
+    },
     onSettled,
     alertThreshold,
     alertThresholdType,
@@ -231,6 +258,7 @@ const HDXLineChart = memo(
       groupBy: string;
       granularity: Granularity;
       dateRange: [Date, Date];
+      numberFormat?: NumberFormat;
     };
     onSettled?: () => void;
     alertThreshold?: number;
@@ -488,6 +516,7 @@ const HDXLineChart = memo(
             alertThreshold={alertThreshold}
             alertThresholdType={alertThresholdType}
             displayType={displayType}
+            numberFormat={numberFormat}
           />
         </div>
       </div>
