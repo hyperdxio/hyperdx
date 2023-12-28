@@ -1,4 +1,5 @@
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
+import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -9,6 +10,9 @@ import {
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import Alert from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
+import { IDashboard } from '@/models/dashboard';
+import { ILogView } from '@/models/logView';
 
 const router = express.Router();
 
@@ -41,10 +45,12 @@ const zAlert = z
   })
   .and(zLogAlert.or(zChartAlert));
 
-const zAlertInput = zAlert;
-
 // Validate groupBy property
-const validateGroupBy = async (req, res, next) => {
+const validateGroupBy = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const { groupBy, source } = req.body || {};
   if (source === 'LOG' && groupBy) {
     const teamId = req.user?.team;
@@ -70,10 +76,63 @@ const validateGroupBy = async (req, res, next) => {
   next();
 };
 
-// Routes
+router.get('/', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+    const alerts = await Alert.find({ team: teamId }).populate<{
+      logView: ILogView;
+      dashboardId: IDashboard;
+    }>(['logView', 'dashboardId']);
+
+    const data = await Promise.all(
+      alerts.map(async alert => {
+        const history = await AlertHistory.find(
+          {
+            alert: alert._id,
+            team: teamId,
+          },
+          {
+            __v: 0,
+            _id: 0,
+            alert: 0,
+          },
+        )
+          .sort({ createdAt: -1 })
+          .limit(20);
+
+        return {
+          history,
+          dashboard: alert.dashboardId,
+          ..._.pick(alert, [
+            '_id',
+            'channel',
+            'interval',
+            'threshold',
+            'state',
+            'type',
+            'source',
+            'logView',
+            'chartId',
+            'createdAt',
+            'updatedAt',
+          ]),
+        };
+      }),
+    );
+    res.json({
+      data,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post(
   '/',
-  validateRequest({ body: zAlertInput }),
+  validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
     try {
@@ -89,7 +148,7 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({ body: zAlertInput }),
+  validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
     try {

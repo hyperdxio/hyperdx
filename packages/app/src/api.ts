@@ -382,6 +382,9 @@ const api = {
       }).json(),
     );
   },
+  useAlerts() {
+    return useQuery<any, Error>(`alerts`, () => server.get(`alerts`).json());
+  },
   useSaveAlert() {
     return useMutation<any, Error, ApiAlertInput>(`alerts`, async alert =>
       server('alerts', {

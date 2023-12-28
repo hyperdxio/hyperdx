@@ -98,6 +98,7 @@ export const createAlert = async (alertInput: AlertInput) => {
 
 // create an update alert function based off of the above create alert function
 export const updateAlert = async (id: string, alertInput: AlertInput) => {
+  // should consider clearing AlertHistory when updating an alert?
   return Alert.findByIdAndUpdate(id, makeAlert(alertInput), {
     returnDocument: 'after',
   });

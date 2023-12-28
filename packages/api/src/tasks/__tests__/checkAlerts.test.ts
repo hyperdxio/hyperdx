@@ -360,16 +360,17 @@ describe('checkAlerts', () => {
         createdAt: 1,
       });
       expect(alertHistories.length).toBe(2);
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
-      expect(alertHistories[1].state).toBe('OK');
-      expect(alertHistories[1].counts).toBe(0);
-      expect(alertHistories[1].createdAt).toEqual(
-        new Date('2023-11-16T22:15:00.000Z'),
-      );
+      const [history1, history2] = alertHistories;
+      expect(history1.state).toBe('ALERT');
+      expect(history1.counts).toBe(1);
+      expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
+      expect(history1.lastValues.length).toBe(1);
+      expect(history1.lastValues.length).toBeGreaterThan(0);
+      expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
+
+      expect(history2.state).toBe('OK');
+      expect(history2.counts).toBe(0);
+      expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
 
       // check if getLogsChart query + webhook were triggered
       expect(clickhouse.getLogsChart).toHaveBeenNthCalledWith(1, {
