@@ -4,17 +4,16 @@ import { formatRelative } from 'date-fns';
 
 import api from './api';
 import AppNav from './AppNav';
-import type { Alert, AlertHistory } from './types';
+import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
 
 type AlertData = Alert & {
   history: AlertHistory[];
   dashboard?: {
+    _id: string;
     name: string;
   };
-  logViewObj?: {
-    name: string;
-  };
+  logView?: LogView;
 };
 
 function AlertHistoryCard({ history }: { history: AlertHistory }) {
@@ -129,7 +128,10 @@ function ChartAlertCard({ alert }: { alert: AlertData }) {
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <Link href={`/dashboards/${alert.dashboardId}`} key={alert.dashboardId}>
+      <Link
+        href={`/dashboards/${alert.dashboard._id}`}
+        key={alert.dashboard._id}
+      >
         {alert.dashboard.name}
       </Link>
       <AlertDetails alert={alert} history={history} />
@@ -139,13 +141,13 @@ function ChartAlertCard({ alert }: { alert: AlertData }) {
 
 function LogAlertCard({ alert }: { alert: AlertData }) {
   const { history } = alert;
-  if (!alert.logViewObj) {
+  if (!alert.logView) {
     throw new Error('alert.logView is undefined');
   }
   return (
     <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <Link href={`/search/${alert.logView}`} key={alert.logView}>
-        {alert.logViewObj?.name}
+      <Link href={`/search/${alert.logView._id}`} key={alert.logView._id}>
+        {alert.logView?.name}
       </Link>
       <AlertDetails alert={alert} history={history} />
     </div>

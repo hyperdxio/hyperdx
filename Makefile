@@ -31,14 +31,14 @@ dev-lint:
 ci-lint:
 	./docker/ingestor/run_linting.sh && npx nx run-many -t ci:lint
 
+.PHONY: dev-int-build
+dev-int-build:
+	docker compose -p int -f ./docker-compose.ci.yml build
+
 .PHONY: dev-int
 dev-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int $(FILE)
 	docker compose -p int -f ./docker-compose.ci.yml down
-
-.PHONY: dev-int-build
-dev-int-build:
-	docker compose -p int -f ./docker-compose.ci.yml build
 
 .PHONY: ci-int
 ci-int:
