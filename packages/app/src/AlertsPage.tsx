@@ -207,8 +207,7 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
 }
 
 export default function AlertsPage() {
-  const alerts = api.useAlerts().data?.data.alerts;
-  console.log(alerts);
+  const alerts = api.useAlerts().data?.data;
   return (
     <div className="AlertsPage d-flex" style={{ height: '100vh' }}>
       <Head>

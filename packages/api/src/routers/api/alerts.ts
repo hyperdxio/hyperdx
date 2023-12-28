@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -9,7 +9,7 @@ import {
   validateGroupByProperty,
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
-import Alert, { IAlert } from '@/models/alert';
+import Alert from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ILogView } from '@/models/logView';
@@ -45,17 +45,12 @@ const zAlert = z
   })
   .and(zLogAlert.or(zChartAlert));
 
-const zAlertInput = zAlert;
-
-const getHistory = async (alert: IAlert, teamId: string) => {
-  const histories = await AlertHistory.find({ alert: alert._id, team: teamId })
-    .sort({ createdAt: -1 })
-    .limit(20);
-  return histories;
-};
-
 // Validate groupBy property
-const validateGroupBy = async (req, res, next) => {
+const validateGroupBy = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const { groupBy, source } = req.body || {};
   if (source === 'LOG' && groupBy) {
     const teamId = req.user?.team;
@@ -94,8 +89,19 @@ router.get('/', async (req, res, next) => {
 
     const data = await Promise.all(
       alerts.map(async alert => {
-        const history =
-          (await getHistory(alert as any, teamId.toString())) ?? [];
+        const history = await AlertHistory.find(
+          {
+            alert: alert._id,
+            team: teamId,
+          },
+          {
+            __v: 0,
+            _id: 0,
+            alert: 0,
+          },
+        )
+          .sort({ createdAt: -1 })
+          .limit(20);
 
         return {
           history,
@@ -126,7 +132,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
-  validateRequest({ body: zAlertInput }),
+  validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
     try {
@@ -142,7 +148,7 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({ body: zAlertInput }),
+  validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
     try {
