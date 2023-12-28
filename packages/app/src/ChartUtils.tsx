@@ -1,17 +1,19 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
+import { Divider, Group, Paper } from '@mantine/core';
 
+import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
 import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
-
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
   { value: 'desc' as const, label: 'Descending' },
 ];
+import { NumberFormat } from './types';
 export type SortOrder = (typeof SORT_ORDER)[number]['value'];
 
 export const TABLES = [
@@ -394,6 +396,8 @@ export function ChartSeriesForm({
   sortOrder,
   table,
   where,
+  numberFormat,
+  setNumberFormat,
 }: {
   aggFn: AggFn;
   field: string | undefined;
@@ -409,6 +413,8 @@ export function ChartSeriesForm({
   sortOrder?: string;
   table: string;
   where: string;
+  numberFormat?: NumberFormat;
+  setNumberFormat?: (format?: NumberFormat) => void;
 }) {
   const labelWidth = 350;
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -598,6 +604,27 @@ export function ChartSeriesForm({
           </div>
         )
       }
+      {setNumberFormat && (
+        <div className="ms-2 mt-2 mb-3">
+          <Divider
+            label={
+              <>
+                <i className="bi bi-gear me-1" />
+                Chart Settings
+              </>
+            }
+            c="dark.2"
+            mb={8}
+          />
+          <Group>
+            <div className="fs-8 text-slate-300">Number Format</div>
+            <NumberFormatInput
+              value={numberFormat}
+              onChange={setNumberFormat}
+            />
+          </Group>
+        </div>
+      )}
     </div>
   );
 }

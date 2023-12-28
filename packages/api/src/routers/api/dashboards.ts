@@ -36,6 +36,26 @@ const zChart = z.object({
       groupBy: z.array(z.string()).optional(),
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
+      numberFormat: z
+        .object({
+          output: z
+            .union([
+              z.literal('currency'),
+              z.literal('percent'),
+              z.literal('byte'),
+              z.literal('time'),
+              z.literal('number'),
+            ])
+            .optional(),
+          mantissa: z.number().optional(),
+          thousandSeparated: z.boolean().optional(),
+          average: z.boolean().optional(),
+          decimalBytes: z.boolean().optional(),
+          factor: z.number().optional(),
+          currencySymbol: z.string().optional(),
+          unit: z.string().optional(),
+        })
+        .optional(),
     }),
   ),
 });

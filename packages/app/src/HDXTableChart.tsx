@@ -7,25 +7,29 @@ import {
   Row as TableRow,
   useReactTable,
 } from '@tanstack/react-table';
+import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
 import { AggFn } from './ChartUtils';
 import { UNDEFINED_WIDTH } from './tableUtils';
-
+import type { NumberFormat } from './types';
+import { formatNumber } from './utils';
 const Table = ({
   data,
   valueColumnName,
+  numberFormat,
   onRowClick,
 }: {
   data: any[];
   valueColumnName: string;
+  numberFormat?: NumberFormat;
   onRowClick?: (row: any) => void;
 }) => {
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  const columns = [
+  const columns: ColumnDef<any>[] = [
     {
       accessorKey: 'group',
       header: 'Group',
@@ -39,6 +43,13 @@ const Table = ({
       accessorKey: 'data',
       header: valueColumnName,
       size: UNDEFINED_WIDTH,
+      cell: ({ getValue }) => {
+        const value = getValue() as string;
+        if (numberFormat) {
+          return formatNumber(parseInt(value), numberFormat);
+        }
+        return value;
+      },
     },
   ];
 
@@ -193,7 +204,16 @@ const Table = ({
 
 const HDXTableChart = memo(
   ({
-    config: { table, aggFn, field, where, groupBy, dateRange, sortOrder },
+    config: {
+      table,
+      aggFn,
+      field,
+      where,
+      groupBy,
+      dateRange,
+      sortOrder,
+      numberFormat,
+    },
     onSettled,
   }: {
     config: {
@@ -204,6 +224,7 @@ const HDXTableChart = memo(
       groupBy: string;
       dateRange: [Date, Date];
       sortOrder: 'asc' | 'desc';
+      numberFormat?: NumberFormat;
     };
     onSettled?: () => void;
   }) => {
@@ -275,6 +296,7 @@ const HDXTableChart = memo(
           data={data?.data ?? []}
           valueColumnName={valueColumnName}
           onRowClick={handleRowClick}
+          numberFormat={numberFormat}
         />
       </div>
     );

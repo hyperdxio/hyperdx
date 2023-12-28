@@ -72,6 +72,10 @@ const mantineTheme: MantineThemeOverride = {
         label: {
           marginBottom: 4,
         },
+        description: {
+          marginBottom: 8,
+          lineHeight: 1.3,
+        },
       },
     },
     Card: {
