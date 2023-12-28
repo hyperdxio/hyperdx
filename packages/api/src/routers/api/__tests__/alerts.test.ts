@@ -73,9 +73,8 @@ describe('alerts router', () => {
     );
 
     const alerts = await agent.get(`/alerts`).expect(200);
-    expect(alerts.body.data.alerts.length).toBe(5);
-    for (const alert of alerts.body.data.alerts) {
-      expect(alert.dashboardId).toBe(dashboard._id);
+    expect(alerts.body.data.length).toBe(5);
+    for (const alert of alerts.body.data) {
       expect(alert.chartId).toBeDefined();
       expect(alert.dashboard).toBeDefined();
     }

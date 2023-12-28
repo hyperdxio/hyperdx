@@ -1,4 +1,5 @@
 import express from 'express';
+import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -9,9 +10,9 @@ import {
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
 import Alert, { IAlert } from '@/models/alert';
-import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import Dashboard from '@/models/dashboard';
-import LogView, { ILogView } from '@/models/logView';
+import AlertHistory from '@/models/alertHistory';
+import { IDashboard } from '@/models/dashboard';
+import { ILogView } from '@/models/logView';
 
 const router = express.Router();
 
@@ -20,8 +21,6 @@ const zChannel = z.object({
   type: z.literal('webhook'),
   webhookId: z.string().min(1),
 });
-
-const validateGet = validateRequest({ params: z.object({ id: z.string() }) });
 
 const zLogAlert = z.object({
   source: z.literal('LOG'),
@@ -55,22 +54,6 @@ const getHistory = async (alert: IAlert, teamId: string) => {
   return histories;
 };
 
-const getDashboard = async (alert: IAlert, teamId: string) => {
-  const dashboard = await Dashboard.findOne({
-    _id: alert.dashboardId,
-    team: teamId,
-  });
-  return dashboard;
-};
-
-const getLogView = async (alert: IAlert, teamId: string) => {
-  const logView = await LogView.findOne({
-    _id: alert.logView,
-    team: teamId,
-  });
-  return logView;
-};
-
 // Validate groupBy property
 const validateGroupBy = async (req, res, next) => {
   const { groupBy, source } = req.body || {};
@@ -98,40 +81,43 @@ const validateGroupBy = async (req, res, next) => {
   next();
 };
 
-// Routes
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    const alerts = await Alert.find({ team: teamId });
-    const alertsWithHistory = await Promise.all(
+    const alerts = await Alert.find({ team: teamId }).populate<{
+      logView: ILogView;
+      dashboardId: IDashboard;
+    }>(['logView', 'dashboardId']);
+
+    const data = await Promise.all(
       alerts.map(async alert => {
-        const history = (await getHistory(alert, teamId.toString())) ?? [];
-        if (!alert.source) throw new Error('Alert source is undefined');
-        if (alert.source === 'LOG') {
-          const logView = await getLogView(alert, teamId.toString());
-          // had to rename because logView is an ObjectID
-          return {
-            logViewObj: logView,
-            history,
-            ...alert.toObject(),
-          };
-        } else {
-          const dashboard = await getDashboard(alert, teamId.toString());
-          return {
-            dashboard,
-            history,
-            ...alert.toObject(),
-          };
-        }
+        const history =
+          (await getHistory(alert as any, teamId.toString())) ?? [];
+
+        return {
+          history,
+          dashboard: alert.dashboardId,
+          ..._.pick(alert, [
+            '_id',
+            'channel',
+            'interval',
+            'threshold',
+            'state',
+            'type',
+            'source',
+            'logView',
+            'chartId',
+            'createdAt',
+            'updatedAt',
+          ]),
+        };
       }),
     );
     res.json({
-      data: {
-        alerts: alertsWithHistory,
-      },
+      data,
     });
   } catch (e) {
     next(e);
