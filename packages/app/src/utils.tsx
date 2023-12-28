@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';
+import { NumberFormat } from './types';
 
 export function generateSearchUrl({
   query,
@@ -395,4 +397,35 @@ export const useDrag = (
   }, [...deps, isDragging]);
 
   return { isDragging };
+};
+
+export const formatNumber = (
+  value?: number,
+  options?: NumberFormat,
+): string => {
+  if (!value && value !== 0) {
+    return 'N/A';
+  }
+
+  if (!options) {
+    return value.toString();
+  }
+
+  const numbroFormat: numbro.Format = {
+    output: options.output || 'number',
+    mantissa: options.mantissa || 0,
+    thousandSeparated: options.thousandSeparated || false,
+    average: options.average || false,
+    ...(options.output === 'byte' && {
+      base: options.decimalBytes ? 'decimal' : 'general',
+      spaceSeparated: true,
+    }),
+    ...(options.output === 'currency' && {
+      currencySymbol: options.currencySymbol || '$',
+    }),
+  };
+  return (
+    numbro(value * (options.factor ?? 1)).format(numbroFormat) +
+    (options.unit ? ` ${options.unit}` : '')
+  );
 };

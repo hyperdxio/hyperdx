@@ -1272,12 +1272,17 @@
     human-id "^1.0.2"
     prettier "^2.7.1"
 
-"@clickhouse/client@^0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.1.1.tgz#1a848438baf5deefadf7dcee40ad441c8666c398"
-  integrity sha512-oeALCAjNFEXHPxMHJgj0QERiLM2ZknOOavvHB1mxmztZLhTuj86HaQEfh9q8x7LgKnv3jep7lb/fhFgD71WTjA==
+"@clickhouse/client-common@0.2.7":
+  version "0.2.7"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-0.2.7.tgz#c238ef9f5386f7d7a18e09931bb765a4ad4d7ebb"
+  integrity sha512-vgZm+8c5Cu1toIx1/xplF5dEHlCPw+7pJDOOEtLv2CIUVZ0Bl6nGVZ43EWxRdHeah9ivTfoRWhN1zI1PxjH0xQ==
+
+"@clickhouse/client@^0.2.7":
+  version "0.2.7"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.2.7.tgz#f13103d7a4ab39d86307e6211504f46b8c71faae"
+  integrity sha512-ZiyarrGngHc+f5AjZSA7mkQfvnE/71jgXk304B0ps8V+aBpE2CsFB6AQmE/Mk2YkP5j+8r/JfG+m0AZWmE27ig==
   dependencies:
-    uuid "^9.0.0"
+    "@clickhouse/client-common" "0.2.7"
 
 "@cnakazawa/watch@^1.0.3":
   version "1.0.4"
@@ -4982,7 +4987,7 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@>=16", "@types/react@>=16.9.11", "@types/react@^17", "@types/react@^17.0.52":
+"@types/react@*", "@types/react@17.0.52", "@types/react@>=16", "@types/react@>=16.9.11", "@types/react@^17", "@types/react@^17.0.52":
   version "17.0.52"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-17.0.52.tgz#10d8b907b5c563ac014a541f289ae8eaa9bf2e9b"
   integrity sha512-vwk8QqVODi0VaZZpDXQCmEmiOuyjEFPY7Ttaw5vjM112LOq37yz1CDJGrRJwA1fYEq4Iitd5rnjd1yWAc/bT+A==
@@ -5888,6 +5893,11 @@ big-integer@^1.6.16:
   version "1.6.51"
   resolved "https://registry.yarnpkg.com/big-integer/-/big-integer-1.6.51.tgz#0df92a5d9880560d3ff2d5fd20245c889d130686"
   integrity sha512-GPEid2Y9QU1Exl1rpO9B2IPJGHPSupF5GnVIP0blYvNOMer2bTvSWs1jGOUg04hTmu67nmLsQ9TBo1puaotBHg==
+
+"bignumber.js@^8 || ^9":
+  version "9.1.2"
+  resolved "https://registry.yarnpkg.com/bignumber.js/-/bignumber.js-9.1.2.tgz#b7c4242259c008903b13707983b5f4bbd31eda0c"
+  integrity sha512-2/mKyZH9K85bzOEfhXDBFZTGd1CTs+5IHpeFQo9luiBG7hghdC851Pj2WAhb6E3R6b9tZj/XKhbg4fum+Kepug==
 
 bignumber.js@^9.0.0:
   version "9.1.1"
@@ -12710,6 +12720,13 @@ npm-run-path@^5.1.0:
   dependencies:
     path-key "^4.0.0"
 
+numbro@^2.4.0:
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/numbro/-/numbro-2.4.0.tgz#3cecae307ab2c2d9fd3e1c08249f4abd504bd577"
+  integrity sha512-t6rVkO1CcKvffvOJJu/zMo70VIcQSR6w3AmIhfHGvmk4vHbNe6zHgomB0aWFAPZWM9JBVWBM0efJv9DBiRoSTA==
+  dependencies:
+    bignumber.js "^8 || ^9"
+
 nwsapi@^2.0.7, nwsapi@^2.2.0, nwsapi@^2.2.2:
   version "2.2.2"
   resolved "https://registry.yarnpkg.com/nwsapi/-/nwsapi-2.2.2.tgz#e5418863e7905df67d51ec95938d67bf801f0bb0"
@@ -16465,11 +16482,6 @@ uuid@^8.3.2:
   version "8.3.2"
   resolved "https://registry.yarnpkg.com/uuid/-/uuid-8.3.2.tgz#80d5b5ced271bb9af6c445f21a1a04c606cefbe2"
   integrity sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==
-
-uuid@^9.0.0:
-  version "9.0.0"
-  resolved "https://registry.yarnpkg.com/uuid/-/uuid-9.0.0.tgz#592f550650024a38ceb0c562f2f6aa435761efb5"
-  integrity sha512-MXcSTerfPa4uqyzStbRoTgt5XIe3x5+42+q1sDuy3R5MDk66URdLMOZe5aPX/SQd+kuYAh0FdP/pO28IkQyTeg==
 
 uvu@^0.5.0:
   version "0.5.6"

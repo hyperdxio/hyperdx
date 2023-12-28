@@ -1982,6 +1982,27 @@ function SidePanelHeader({
 
   const playerExpanded = useAtomValue(playerExpandedAtom);
 
+  const headerEventTags = useMemo(() => {
+    return [
+      ['service', logData._service],
+      ['host', logData._host],
+      ['k8s.node.name', parsedProperties['k8s.node.name']],
+      ['k8s.pod.name', parsedProperties['k8s.pod.name']],
+      ['k8s.statefulset.name', parsedProperties['k8s.statefulset.name']],
+      ['k8s.container.name', parsedProperties['k8s.container.name']],
+      ['userEmail', userEmail],
+      ['userName', userName],
+      ['teamName', teamName],
+    ].filter(([, value]) => !!value);
+  }, [
+    logData._host,
+    logData._service,
+    parsedProperties,
+    teamName,
+    userEmail,
+    userName,
+  ]);
+
   return (
     <div>
       <div className={styles.panelHeader}>
@@ -2069,46 +2090,15 @@ function SidePanelHeader({
             </div>
           </div>
           <div className="d-flex flex-wrap">
-            {logData._service ? (
+            {headerEventTags.map(([name, value]) => (
               <EventTag
+                key={name}
                 onPropertyAddClick={onPropertyAddClick}
                 generateSearchUrl={generateSearchUrl}
-                name="service"
-                value={logData._service}
+                name={name}
+                value={value}
               />
-            ) : null}
-            {logData._host ? (
-              <EventTag
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                name="host"
-                value={logData._host}
-              />
-            ) : null}
-            {userEmail ? (
-              <EventTag
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                name="userEmail"
-                value={userEmail}
-              />
-            ) : null}
-            {userName ? (
-              <EventTag
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                name="userName"
-                value={userName}
-              />
-            ) : null}
-            {teamName ? (
-              <EventTag
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                name="teamName"
-                value={teamName}
-              />
-            ) : null}
+            ))}
           </div>
         </div>
       )}
