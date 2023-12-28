@@ -2,7 +2,7 @@ version: '3'
 services:
   ch_server:
     container_name: hdx-ci-ch-server
-    image: clickhouse/clickhouse-server:23.7.1-alpine
+    image: clickhouse/clickhouse-server:23.8.8-alpine
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
