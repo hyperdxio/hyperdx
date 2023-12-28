@@ -425,6 +425,8 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
+  // TODO enable this once the alerts page is ready for public consumption
+  const showAlertSidebar = false;
   useEffect(() => {
     let redirectUrl;
     try {
@@ -452,6 +454,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const { data: dashboardsData, isLoading: isDashboardsLoading } =
     api.useDashboards();
   const dashboards = dashboardsData?.data ?? [];
+
+  const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
+  const alerts = alertsData?.data?.alerts ?? [];
 
   const router = useRouter();
   const { pathname, query } = router;
@@ -794,6 +799,50 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </>
             )}
+            {showAlertSidebar ? (
+              <div className="my-4">
+                <Link href="/alerts">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/alerts'),
+                      },
+                    )}
+                  >
+                    <div>
+                      <i className="bi bi-exclamation-triangle" />{' '}
+                      {!isCollapsed && (
+                        <>
+                          <span>Alerts</span>
+                          {/* 
+                      This should float at the end and display a count of alerts? 
+                      or perhaps be tucked underneath with a breakdown of count in each state?
+                    */}
+                          <span className="text-end">
+                            {' '}
+                            {Array.isArray(alerts) ? alerts.length : null}
+                          </span>
+                          {Array.isArray(alerts) && alerts.length > 0 ? (
+                            alerts.some(a => a.state === 'ALERT') ? (
+                              <i
+                                className="bi bi-bell float-end text-danger"
+                                title="Has Alerts and is in ALERT state"
+                              ></i>
+                            ) : (
+                              <i
+                                className="bi bi-bell float-end"
+                                title="Has Alerts and is in OK state"
+                              ></i>
+                            )
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </a>
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="mb-4 mt-4">

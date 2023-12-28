@@ -89,7 +89,7 @@ const AlertSchema = new Schema<IAlert>(
     // Log alerts
     logView: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Alert',
+      ref: 'LogView',
       required: false,
     },
     groupBy: {
