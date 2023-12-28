@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
+import { atom, useAtom } from 'jotai';
 import throttle from 'lodash/throttle';
 import ReactDOM from 'react-dom';
 import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
@@ -13,6 +14,8 @@ import SearchInput from './SearchInput';
 import { useSessionEvents } from './sessionUtils';
 import TabBar from './TabBar';
 import { getShortUrl, usePrevious } from './utils';
+
+export const playerExpandedAtom = atom(false);
 
 function SessionEventList({
   config: { where, dateRange },
@@ -426,7 +429,15 @@ export default function SessionSubpanel({
     }),
     [rumSessionId, start, end, searchedQuery],
   );
-  const [playerFullWidth, setPlayerFullWidth] = useState(false);
+
+  const [playerExpanded, setPlayerExpanded] = useAtom(playerExpandedAtom);
+  // Clean up player expanded state when panel is closed
+  useEffect(() => {
+    setPlayerExpanded(false);
+    return () => {
+      setPlayerExpanded(false);
+    };
+  }, []);
 
   const sessionEventListConfig = useMemo(
     () => ({
@@ -444,7 +455,7 @@ export default function SessionSubpanel({
       {selectedLog != null && portaledPanel}
       <div
         className={`bg-hdx-dark rounded ${
-          playerFullWidth ? '' : 'pt-3 me-3 mb-7'
+          playerExpanded ? '' : 'p-3 pb-0 my-3'
         } flex-column`}
         style={{
           width: '50%',
@@ -452,7 +463,7 @@ export default function SessionSubpanel({
           display: 'flex',
           // d-none will cause too many layout changes for the infinite scroll
           // inside the event list, so we'll just hide it with opacity/width
-          ...(playerFullWidth
+          ...(playerExpanded
             ? {
                 width: 0,
                 minWidth: 0,
@@ -524,8 +535,8 @@ export default function SessionSubpanel({
         </div>
       </div>
       <div
-        style={{ width: playerFullWidth ? '100%' : '50%' }}
-        className="d-flex flex-column"
+        style={{ width: playerExpanded ? '100%' : '50%' }}
+        className={`d-flex flex-column ${playerExpanded ? '' : 'ms-3'}`}
       >
         <div className="fs-8 text-muted mt-4 mb-2">Session Player</div>
         <div
@@ -544,8 +555,8 @@ export default function SessionSubpanel({
               setPlayerSpeed={setPlayerSpeed}
               skipInactive={skipInactive}
               setSkipInactive={setSkipInactive}
-              setPlayerFullWidth={setPlayerFullWidth}
-              playerFullWidth={playerFullWidth}
+              setPlayerFullWidth={setPlayerExpanded}
+              playerFullWidth={playerExpanded}
             />
           </div>
           <DOMPlayer
@@ -568,7 +579,7 @@ export default function SessionSubpanel({
             skipInactive={skipInactive}
             setPlayerStartTimestamp={setPlayerStartTs}
             setPlayerEndTimestamp={setPlayerEndTs}
-            resizeKey={`${playerFullWidth}`}
+            resizeKey={`${playerExpanded}`}
           />
         </div>
       </div>
