@@ -13,8 +13,8 @@ export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
   { value: 'desc' as const, label: 'Descending' },
 ];
-import { NumberFormat } from './types';
 export type SortOrder = (typeof SORT_ORDER)[number]['value'];
+import type { NumberFormat } from './types';
 
 export const TABLES = [
   { value: 'logs' as const, label: 'Logs / Spans' },
@@ -759,3 +759,20 @@ export function timeBucketByGranularity(
 
   return buckets;
 }
+
+export const K8S_CPU_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 0,
+};
+
+export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {
+  output: 'byte',
+};
+
+export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
+  output: 'byte',
+};
+
+export const K8S_NETWORK_NUMBER_FORMAT: NumberFormat = {
+  output: 'byte',
+};
