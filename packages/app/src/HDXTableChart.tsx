@@ -270,7 +270,11 @@ const HDXTableChart = memo(
       }
       return (row?: { group: string }) => {
         const qparams = new URLSearchParams({
-          q: where + (groupBy ? ` ${groupBy}:${row?.group || '*'}` : ''),
+          q:
+            where +
+            (groupBy
+              ? ` ${groupBy}:${row?.group ? `"${row.group}"` : '*'}`
+              : ''),
           from: `${dateRange[0].getTime()}`,
           to: `${dateRange[1].getTime()}`,
         });
