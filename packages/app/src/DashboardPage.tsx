@@ -21,6 +21,7 @@ import {
   useQueryParam,
   withDefault,
 } from 'use-query-params';
+import { Badge, Transition } from '@mantine/core';
 
 import api from './api';
 import AppNav from './AppNav';
@@ -624,6 +625,18 @@ export default function DashboardPage() {
   }, [dashboardsData, dashboardId, isLocalDashboard, localDashboard]);
 
   // Update dashboard
+  const [isSavedNow, _setSavedNow] = useState(false);
+  const savedNowTimerRef = useRef<any>(null);
+  const setSavedNow = useCallback(() => {
+    if (savedNowTimerRef.current != null) {
+      clearTimeout(savedNowTimerRef.current);
+    }
+    _setSavedNow(true);
+    savedNowTimerRef.current = setTimeout(() => {
+      _setSavedNow(false);
+    }, 1500);
+  }, []);
+
   const setDashboard = useCallback(
     (newDashboard: Dashboard) => {
       if (isLocalDashboard) {
@@ -639,17 +652,19 @@ export default function DashboardPage() {
           {
             onSuccess: () => {
               queryClient.invalidateQueries(['dashboards']);
+              setSavedNow();
             },
           },
         );
       }
     },
     [
-      dashboardId,
-      updateDashboard,
-      queryClient,
       isLocalDashboard,
       setLocalDashboard,
+      updateDashboard,
+      dashboardId,
+      queryClient,
+      setSavedNow,
     ],
   );
 
@@ -895,6 +910,13 @@ export default function DashboardPage() {
                   })
                 }
               />
+              <Transition mounted={isSavedNow} transition="skew-down">
+                {style => (
+                  <Badge fw="normal" tt="none" ml="xs" style={style}>
+                    Saved now
+                  </Badge>
+                )}
+              </Transition>
               {isLocalDashboard && (
                 <span className="text-muted ms-3">(Unsaved Dashboard)</span>
               )}
