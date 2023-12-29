@@ -17,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { Tooltip as MTooltip } from '@mantine/core';
 
 import api from './api';
 import { AggFn, convertGranularityToSeconds, Granularity } from './ChartUtils';
@@ -25,27 +26,73 @@ import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { formatNumber } from './utils';
 import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
-function ExpandableLegendItem({ value, entry }: any) {
-  const [expanded, setExpanded] = useState(false);
-  const { color } = entry;
+import styles from '../styles/HDXLineChart.module.scss';
+
+const MAX_LEGEND_ITEMS = 4;
+
+function ExpandableLegendItem({ entry, expanded }: any) {
+  const [_expanded, setExpanded] = useState(false);
+  const isExpanded = _expanded || expanded;
 
   return (
-    <span>
-      <span
-        style={{ color }}
-        role="button"
-        onClick={() => setExpanded(v => !v)}
-        title="Click to expand"
-      >
-        {expanded ? value : truncateMiddle(`${value}`, 45)}
-      </span>
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => setExpanded(v => !v)}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
     </span>
   );
 }
 
-const legendFormatter = (value: string, entry: any) => (
-  <ExpandableLegendItem value={value} entry={entry} />
-);
+const LegendRenderer = memo<{
+  payload?: {
+    value: string;
+    color: string;
+  }[];
+}>(props => {
+  const payload = props.payload ?? [];
+  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
+  const restItems = payload.slice(MAX_LEGEND_ITEMS);
+
+  return (
+    <div className={styles.legend}>
+      {shownItems.map((entry, index) => (
+        <ExpandableLegendItem
+          key={`item-${index}`}
+          value={entry.value}
+          entry={entry}
+        />
+      ))}
+      {restItems.length ? (
+        <MTooltip
+          color="gray"
+          withinPortal
+          withArrow
+          label={
+            <div className={styles.legendTooltipContent}>
+              {restItems.map((entry, index) => (
+                <ExpandableLegendItem
+                  key={`item-${index}`}
+                  value={entry.value}
+                  entry={entry}
+                  expanded
+                />
+              ))}
+            </div>
+          }
+        >
+          <div className={cx(styles.legendItem, styles.legendMoreLink)}>
+            +{restItems.length} more
+          </div>
+        </MTooltip>
+      ) : null}
+    </div>
+  );
+});
 
 const MemoChart = memo(function MemoChart({
   graphResults,
@@ -204,7 +251,7 @@ const MemoChart = memo(function MemoChart({
         <Legend
           iconSize={10}
           verticalAlign="bottom"
-          formatter={legendFormatter}
+          content={<LegendRenderer />}
         />
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
