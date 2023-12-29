@@ -215,7 +215,7 @@ const MemoChart = memo(function MemoChart({
             x={logReferenceTimestamp}
             stroke="#ff5d5b"
             strokeDasharray="3 3"
-            label="Log"
+            label="Event"
           />
         ) : null}
       </ChartComponent>
