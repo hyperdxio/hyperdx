@@ -39,7 +39,7 @@ const zAlert = z
   .object({
     channel: zChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    threshold: z.number().min(1),
+    threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
     source: z.enum(['LOG', 'CHART']).default('LOG'),
   })

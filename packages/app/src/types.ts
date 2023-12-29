@@ -159,3 +159,82 @@ export type NumberFormat = {
   currencySymbol?: string;
   unit?: string;
 };
+
+export type AggFn =
+  | 'avg_rate'
+  | 'avg'
+  | 'count_distinct'
+  | 'count'
+  | 'max_rate'
+  | 'max'
+  | 'min_rate'
+  | 'min'
+  | 'p50_rate'
+  | 'p50'
+  | 'p90_rate'
+  | 'p90'
+  | 'p95_rate'
+  | 'p95'
+  | 'p99_rate'
+  | 'p99'
+  | 'sum_rate'
+  | 'sum';
+
+export type SourceTable = 'logs' | 'rrweb' | 'metrics';
+
+export type TimeChartSeries = {
+  table: SourceTable;
+  type: 'time';
+  aggFn: AggFn; // TODO: Type
+  field?: string | undefined;
+  where: string;
+  groupBy: string[];
+  numberFormat?: NumberFormat;
+};
+
+export type ChartSeries =
+  | TimeChartSeries
+  | {
+      table: SourceTable;
+      type: 'histogram';
+      field: string | undefined;
+      where: string;
+    }
+  | {
+      type: 'search';
+      fields: string[];
+      where: string;
+    }
+  | {
+      type: 'number';
+      table: SourceTable;
+      aggFn: AggFn;
+      field: string | undefined;
+      where: string;
+      numberFormat?: NumberFormat;
+    }
+  | {
+      type: 'table';
+      table: SourceTable;
+      aggFn: AggFn;
+      field: string | undefined;
+      where: string;
+      groupBy: string[];
+      sortOrder: 'desc' | 'asc';
+      numberFormat?: NumberFormat;
+    }
+  | {
+      type: 'markdown';
+      content: string;
+    };
+
+export type Chart = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  series: ChartSeries[];
+  seriesReturnType: 'ratio' | 'column';
+};

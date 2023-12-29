@@ -1,6 +1,8 @@
 import mongoose, { Schema } from 'mongoose';
 
-import { AggFn } from '../clickhouse';
+import { SourceTable } from '@/utils/zod';
+
+import { AggFn, SeriesReturnType } from '../clickhouse';
 import type { ObjectId } from '.';
 
 // Based on numbro.js format
@@ -25,7 +27,7 @@ type Chart = {
   h: number;
   series: (
     | {
-        table: string;
+        table: SourceTable;
         type: 'time';
         aggFn: AggFn; // TODO: Type
         field: string | undefined;
@@ -34,7 +36,7 @@ type Chart = {
         numberFormat?: NumberFormat;
       }
     | {
-        table: string;
+        table: SourceTable;
         type: 'histogram';
         field: string | undefined;
         where: string;
@@ -46,7 +48,7 @@ type Chart = {
       }
     | {
         type: 'number';
-        table: string;
+        table: SourceTable;
         aggFn: AggFn;
         field: string | undefined;
         where: string;
@@ -54,7 +56,7 @@ type Chart = {
       }
     | {
         type: 'table';
-        table: string;
+        table: SourceTable;
         aggFn: AggFn;
         field: string | undefined;
         where: string;
@@ -67,6 +69,7 @@ type Chart = {
         content: string;
       }
   )[];
+  seriesReturnType?: SeriesReturnType;
 };
 
 export interface IDashboard {

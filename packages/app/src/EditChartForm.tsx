@@ -1,83 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Draft } from 'immer';
 import produce from 'immer';
-import { Button, Form, InputGroup, Modal } from 'react-bootstrap';
+import { Button as BSButton, Form, InputGroup, Modal } from 'react-bootstrap';
 import Select from 'react-select';
-import { Divider, Group, Paper } from '@mantine/core';
+import { Button, Divider, Flex, Group, Paper, Switch } from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
 import {
   AGG_FNS,
-  AggFn,
   ChartSeriesForm,
+  ChartSeriesFormCompact,
   convertDateRangeToGranularityString,
   FieldSelect,
+  GroupBySelect,
+  seriesToSearchQuery,
+  TableSelect,
 } from './ChartUtils';
 import Checkbox from './Checkbox';
 import * as config from './config';
 import { METRIC_ALERTS_ENABLED } from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXHistogramChart from './HDXHistogramChart';
-import HDXLineChart from './HDXLineChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
+import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import type { Alert, NumberFormat } from './types';
+import type {
+  AggFn,
+  Alert,
+  Chart,
+  NumberFormat,
+  TimeChartSeries,
+} from './types';
 import { hashCode, useDebounce } from './utils';
-
-export type Chart = {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  series: (
-    | {
-        table: string;
-        type: 'time';
-        aggFn: AggFn; // TODO: Type
-        field: string | undefined;
-        where: string;
-        groupBy: string[];
-        numberFormat?: NumberFormat;
-      }
-    | {
-        table: string;
-        type: 'histogram';
-        field: string | undefined;
-        where: string;
-      }
-    | {
-        type: 'search';
-        fields: string[];
-        where: string;
-      }
-    | {
-        type: 'number';
-        table: string;
-        aggFn: AggFn;
-        field: string | undefined;
-        where: string;
-        numberFormat?: NumberFormat;
-      }
-    | {
-        type: 'table';
-        table: string;
-        aggFn: AggFn;
-        field: string | undefined;
-        where: string;
-        groupBy: string[];
-        sortOrder: 'desc' | 'asc';
-        numberFormat?: NumberFormat;
-      }
-    | {
-        type: 'markdown';
-        content: string;
-      }
-  )[];
-};
 
 const DEFAULT_ALERT: Alert = {
   channel: {
@@ -169,16 +126,16 @@ export const EditMarkdownChartForm = ({
         </div>
       </div>
       <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Markdown Preview</div>
@@ -272,16 +229,16 @@ export const EditSearchChartForm = ({
         </div>
       </div>
       <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Search Preview</div>
@@ -465,16 +422,16 @@ export const EditNumberChartForm = ({
       </div>
 
       <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
@@ -580,15 +537,6 @@ export const EditTableChartForm = ({
         where={editedChart.series[0].where}
         groupBy={editedChart.series[0].groupBy[0]}
         field={editedChart.series[0].field ?? ''}
-        setTable={table =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].table = table;
-              }
-            }),
-          )
-        }
         setAggFn={aggFn =>
           setEditedChart(
             produce(editedChart, draft => {
@@ -670,16 +618,16 @@ export const EditTableChartForm = ({
         }
       />
       <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
@@ -822,16 +770,16 @@ export const EditHistogramChartForm = ({
         </div>
       </div>
       <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
@@ -861,6 +809,285 @@ export const EditHistogramChartForm = ({
         </>
       ) : null}
     </form>
+  );
+};
+
+function pushNewSeries(draft: Draft<Chart>) {
+  const firstSeries = draft.series[0] as TimeChartSeries;
+  const { table, type, groupBy, numberFormat } = firstSeries;
+  draft.series.push({
+    table,
+    type,
+    aggFn: table === 'logs' ? 'count' : 'avg',
+    field: '',
+    where: '',
+    groupBy,
+    numberFormat,
+  });
+}
+
+export const EditMultiSeriesChartForm = ({
+  editedChart,
+  setEditedChart,
+  CHART_TYPE,
+}: {
+  editedChart: Chart;
+  setEditedChart: (chart: Chart) => void;
+  CHART_TYPE: 'time' | 'table';
+}) => {
+  if (editedChart.series[0].type !== CHART_TYPE) {
+    return null;
+  }
+
+  return (
+    <>
+      {editedChart.series.length > 1 && (
+        <Flex align="center" gap="md" mb="sm">
+          <div className="text-muted">
+            <i className="bi bi-database me-2" />
+            Data Source
+          </div>
+          <div className="flex-grow-1">
+            <TableSelect
+              table={editedChart.series[0].table ?? 'logs'}
+              setTableAndAggFn={(table, aggFn) => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    draft.series.forEach((series, i) => {
+                      if (series.type === CHART_TYPE) {
+                        series.table = table;
+                        series.aggFn = aggFn;
+                      }
+                    });
+                  }),
+                );
+              }}
+            />
+          </div>
+        </Flex>
+      )}
+      {editedChart.series.map((series, i) => {
+        if (series.type !== CHART_TYPE) {
+          return null;
+        }
+
+        return (
+          <div className="mb-2" key={i}>
+            <Divider
+              label={
+                <>
+                  {editedChart.series.length > 1 && (
+                    <Button
+                      variant="subtle"
+                      color="gray"
+                      size="xs"
+                      onClick={() => {
+                        setEditedChart(
+                          produce(editedChart, draft => {
+                            draft.series.splice(i, 1);
+                            if (draft.series.length != 2) {
+                              draft.seriesReturnType = 'column';
+                            }
+                          }),
+                        );
+                      }}
+                    >
+                      <i className="bi bi-trash me-2" />
+                      Remove Series
+                    </Button>
+                  )}
+                </>
+              }
+              c="dark.2"
+              labelPosition="right"
+              mb={8}
+            />
+            <ChartSeriesFormCompact
+              table={series.table ?? 'logs'}
+              aggFn={series.aggFn}
+              where={series.where}
+              groupBy={series.groupBy[0]}
+              field={series.field ?? ''}
+              numberFormat={series.numberFormat}
+              setAggFn={aggFn =>
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    const draftSeries = draft.series[i];
+                    if (draftSeries.type === CHART_TYPE) {
+                      draftSeries.aggFn = aggFn;
+                    }
+                  }),
+                )
+              }
+              setWhere={where =>
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    const draftSeries = draft.series[i];
+                    if (draftSeries.type === CHART_TYPE) {
+                      draftSeries.where = where;
+                    }
+                  }),
+                )
+              }
+              setGroupBy={
+                editedChart.series.length === 1
+                  ? groupBy =>
+                      setEditedChart(
+                        produce(editedChart, draft => {
+                          const draftSeries = draft.series[i];
+                          if (draftSeries.type === CHART_TYPE) {
+                            if (groupBy != undefined) {
+                              draftSeries.groupBy[0] = groupBy;
+                            } else {
+                              draftSeries.groupBy = [];
+                            }
+                          }
+                        }),
+                      )
+                  : undefined
+              }
+              setField={field =>
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    const draftSeries = draft.series[i];
+                    if (draftSeries.type === CHART_TYPE) {
+                      draftSeries.field = field;
+                    }
+                  }),
+                )
+              }
+              setTableAndAggFn={
+                editedChart.series.length === 1
+                  ? (table, aggFn) => {
+                      setEditedChart(
+                        produce(editedChart, draft => {
+                          const draftSeries = draft.series[i];
+                          if (draftSeries.type === CHART_TYPE) {
+                            draftSeries.table = table;
+                            draftSeries.aggFn = aggFn;
+                          }
+                        }),
+                      );
+                    }
+                  : undefined
+              }
+              setFieldAndAggFn={(field, aggFn) => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    const draftSeries = draft.series[i];
+                    if (draftSeries.type === CHART_TYPE) {
+                      draftSeries.field = field;
+                      draftSeries.aggFn = aggFn;
+                    }
+                  }),
+                );
+              }}
+            />
+          </div>
+        );
+      })}
+      <Divider my="md" />
+      {editedChart.series.length > 1 && (
+        <Flex align="center" gap="md" mb="sm">
+          <div className="text-muted">Group By</div>
+          <div className="flex-grow-1">
+            <GroupBySelect
+              table={editedChart.series[0].table ?? 'logs'}
+              groupBy={editedChart.series[0].groupBy[0]}
+              fields={
+                editedChart.series
+                  .map(s => (s as TimeChartSeries).field)
+                  .filter(f => f != null) as string[]
+              }
+              setGroupBy={groupBy => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    draft.series.forEach((series, i) => {
+                      if (series.type === CHART_TYPE) {
+                        if (groupBy != undefined) {
+                          series.groupBy[0] = groupBy;
+                        } else {
+                          series.groupBy = [];
+                        }
+                      }
+                    });
+                  }),
+                );
+              }}
+            />
+          </div>
+        </Flex>
+      )}
+      <Flex justify="space-between">
+        <Flex gap="md" align="center">
+          {editedChart.series.length === 1 && (
+            <Button
+              mt={4}
+              variant="subtle"
+              size="sm"
+              color="gray"
+              onClick={() => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    pushNewSeries(draft);
+                    draft.seriesReturnType = 'ratio';
+                  }),
+                );
+              }}
+            >
+              <i className="bi bi-plus-circle me-2" />
+              Add Ratio
+            </Button>
+          )}
+          <Button
+            mt={4}
+            variant="subtle"
+            size="sm"
+            color="gray"
+            onClick={() => {
+              setEditedChart(
+                produce(editedChart, draft => {
+                  pushNewSeries(draft);
+                  draft.seriesReturnType = 'column';
+                }),
+              );
+            }}
+          >
+            <i className="bi bi-plus-circle me-2" />
+            Add Series
+          </Button>
+          {editedChart.series.length == 2 && (
+            <Switch
+              label="As Ratio"
+              checked={editedChart.seriesReturnType === 'ratio'}
+              onChange={event =>
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    draft.seriesReturnType = event.currentTarget.checked
+                      ? 'ratio'
+                      : 'column';
+                  }),
+                )
+              }
+            />
+          )}
+        </Flex>
+        <NumberFormatInput
+          value={editedChart.series[0].numberFormat}
+          onChange={numberFormat => {
+            setEditedChart(
+              produce(editedChart, draft => {
+                draft.series.forEach((series, i) => {
+                  if (series.type === CHART_TYPE) {
+                    series.numberFormat = numberFormat;
+                  }
+                });
+              }),
+            );
+          }}
+        />
+      </Flex>
+    </>
   );
 };
 
@@ -900,6 +1127,8 @@ export const EditLineChartForm = ({
                 : convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
             numberFormat: editedChart.series[0].numberFormat,
+            series: editedChart.series,
+            seriesReturnType: editedChart.seriesReturnType,
           }
         : null,
     [editedChart, alertEnabled, editedAlert?.interval, dateRange],
@@ -944,95 +1173,12 @@ export const EditLineChartForm = ({
           placeholder="Chart Name"
         />
       </div>
-      <ChartSeriesForm
-        table={editedChart.series[0].table ?? 'logs'}
-        aggFn={editedChart.series[0].aggFn}
-        where={editedChart.series[0].where}
-        groupBy={editedChart.series[0].groupBy[0]}
-        field={editedChart.series[0].field ?? ''}
-        numberFormat={editedChart.series[0].numberFormat}
-        setTable={table =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].table = table;
-              }
-            }),
-          )
-        }
-        setAggFn={aggFn =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          )
-        }
-        setWhere={where =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].where = where;
-              }
-            }),
-          )
-        }
-        setGroupBy={groupBy =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                if (groupBy != undefined) {
-                  draft.series[0].groupBy[0] = groupBy;
-                } else {
-                  draft.series[0].groupBy = [];
-                }
-              }
-            }),
-          )
-        }
-        setField={field =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].field = field;
-              }
-            }),
-          )
-        }
-        setTableAndAggFn={(table, aggFn) => {
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].table = table;
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          );
-        }}
-        setFieldAndAggFn={(field, aggFn) => {
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].field = field;
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          );
-        }}
-        setNumberFormat={numberFormat =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].numberFormat = numberFormat;
-              }
-            }),
-          )
-        }
+      <EditMultiSeriesChartForm
+        {...{ editedChart, setEditedChart, CHART_TYPE }}
       />
 
       {isChartAlertsFeatureEnabled && (
-        <Paper bg="dark.7" p="md" py="xs" mt="md" withBorder className="ms-2">
+        <Paper bg="dark.7" p="md" py="xs" mt="md" withBorder>
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
               Alerts are not available in unsaved dashboards.
@@ -1060,22 +1206,22 @@ export const EditLineChartForm = ({
         </Paper>
       )}
 
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <Button
+      <div className="d-flex justify-content-between my-3">
+        <BSButton
           variant="outline-success"
           className="fs-7 text-muted-hover-black"
           type="submit"
         >
           Save
-        </Button>
-        <Button onClick={onClose} variant="dark">
+        </BSButton>
+        <BSButton onClick={onClose} variant="dark">
           Cancel
-        </Button>
+        </BSButton>
       </div>
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
         <div style={{ height: 400 }}>
-          <HDXLineChart
+          <HDXMultiSeriesLineChart
             config={previewConfig}
             {...(alertEnabled && {
               alertThreshold: editedAlert?.threshold,
@@ -1093,15 +1239,9 @@ export const EditLineChartForm = ({
               <LogTableWithSidePanel
                 config={{
                   ...previewConfig,
-                  where: `${previewConfig.where} ${
-                    previewConfig.aggFn != 'count' && previewConfig.field != ''
-                      ? `${previewConfig.field}:*`
-                      : ''
-                  } ${
-                    previewConfig.groupBy != '' && previewConfig.groupBy != null
-                      ? `${previewConfig.groupBy}:*`
-                      : ''
-                  }`,
+                  where: `${seriesToSearchQuery({
+                    series: previewConfig.series,
+                  })}`,
                 }}
                 isLive={false}
                 isUTC={false}

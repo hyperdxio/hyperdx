@@ -26,7 +26,6 @@ import { Badge, Transition } from '@mantine/core';
 import api from './api';
 import AppNav from './AppNav';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
-import type { Chart } from './EditChartForm';
 import {
   EditHistogramChartForm,
   EditLineChartForm,
@@ -37,8 +36,8 @@ import {
 } from './EditChartForm';
 import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
-import HDXLineChart from './HDXLineChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
+import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import HDXTableChart from './HDXTableChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
@@ -46,8 +45,8 @@ import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { FloppyIcon, Histogram } from './SVGIcons';
 import TabBar from './TabBar';
-import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
-import type { Alert } from './types';
+import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import type { Alert, Chart } from './types';
 import { useConfirm } from './useConfirm';
 import { hashCode } from './utils';
 import { ZIndexContext } from './zIndex';
@@ -257,10 +256,16 @@ const Tile = forwardRef(
             className="fs-7 text-muted flex-grow-1 overflow-hidden"
             onMouseDown={e => e.stopPropagation()}
           >
-            {config.type === 'time' && (
-              <HDXLineChart config={config} onSettled={onSettled} />
+            {chart.series[0].type === 'time' && config.type === 'time' && (
+              <HDXMultiSeriesLineChart
+                config={{
+                  ...config,
+                  seriesReturnType: chart.seriesReturnType,
+                  series: chart.series,
+                }}
+              />
             )}
-            {config.type === 'table' && (
+            {chart.series[0].type === 'table' && config.type === 'table' && (
               <HDXTableChart config={config} onSettled={onSettled} />
             )}
             {config.type === 'histogram' && (
@@ -722,6 +727,7 @@ export default function DashboardPage() {
           groupBy: [],
         },
       ],
+      seriesReturnType: 'column',
     });
   };
 

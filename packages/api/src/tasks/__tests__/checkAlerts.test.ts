@@ -1,3 +1,13 @@
+import ms from 'ms';
+
+import { LogType } from '@/utils/logParser';
+import {
+  buildEvent,
+  buildMetricSeries,
+  mockLogsPropertyTypeMappingsModel,
+  mockSpyMetricPropertyTypeMappingsModel,
+} from '@/utils/testUtils';
+
 import * as clickhouse from '../../clickhouse';
 import { createAlert } from '../../controllers/alerts';
 import { createTeam } from '../../controllers/team';
@@ -254,25 +264,34 @@ describe('checkAlerts', () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
-      jest
-        .spyOn(clickhouse, 'getLogsChart')
-        .mockResolvedValueOnce({
-          rows: 1,
-          data: [
-            {
-              data: '11',
-              group: 'HyperDX',
-              rank: '1',
-              rank_order_by_value: '11',
-              ts_bucket: 1700172600,
-            },
-          ],
-        } as any)
-        // no logs found in the next window
-        .mockResolvedValueOnce({
-          rows: 0,
-          data: [],
-        } as any);
+      mockLogsPropertyTypeMappingsModel({
+        runId: 'string',
+      });
+
+      const runId = Math.random().toString(); // dedup watch mode runs
+      const teamId = 'test';
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('5m');
+
+      await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+        buildEvent({
+          span_name: 'HyperDX',
+          level: 'error',
+          timestamp: eventMs,
+          runId,
+          end_timestamp: eventMs + 100,
+          type: LogType.Span,
+        }),
+        buildEvent({
+          span_name: 'HyperDX',
+          level: 'error',
+          timestamp: eventMs + 5,
+          runId,
+          end_timestamp: eventMs + 7,
+          type: LogType.Span,
+        }),
+      ]);
 
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
@@ -296,12 +315,21 @@ describe('checkAlerts', () => {
               {
                 table: 'logs',
                 type: 'time',
-                aggFn: 'max',
+                aggFn: 'sum',
                 field: 'duration',
-                where: 'level:error',
+                where: `level:error runId:${runId}`,
+                groupBy: ['span_name'],
+              },
+              {
+                table: 'logs',
+                type: 'time',
+                aggFn: 'min',
+                field: 'duration',
+                where: `level:error runId:${runId}`,
                 groupBy: ['span_name'],
               },
             ],
+            seriesReturnType: 'column',
           },
           {
             id: 'obil1',
@@ -336,9 +364,7 @@ describe('checkAlerts', () => {
         chartId: '198hki',
       });
 
-      const now = new Date('2023-11-16T22:12:00.000Z');
-
-      // shoud fetch 5m of logs
+      // should fetch 5m of logs
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
@@ -359,12 +385,13 @@ describe('checkAlerts', () => {
       }).sort({
         createdAt: 1,
       });
+
       expect(alertHistories.length).toBe(2);
       const [history1, history2] = alertHistories;
       expect(history1.state).toBe('ALERT');
       expect(history1.counts).toBe(1);
       expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
-      expect(history1.lastValues.length).toBe(1);
+      expect(history1.lastValues.length).toBe(2);
       expect(history1.lastValues.length).toBeGreaterThan(0);
       expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
 
@@ -372,32 +399,19 @@ describe('checkAlerts', () => {
       expect(history2.counts).toBe(0);
       expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
 
-      // check if getLogsChart query + webhook were triggered
-      expect(clickhouse.getLogsChart).toHaveBeenNthCalledWith(1, {
-        aggFn: 'max',
-        endTime: 1700172600000,
-        field: 'duration',
-        granularity: '5 minute',
-        groupBy: 'span_name',
-        maxNumGroups: 20,
-        propertyTypeMappingsModel: expect.any(Object),
-        q: 'level:error',
-        startTime: 1700172300000,
-        tableVersion: team.logStreamTableVersion,
-        teamId: team._id.toString(),
-      });
+      // check if webhook was triggered
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Max Duration" in "My Dashboard" - 11 exceeds 10',
+          text: 'Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Max Duration" in "My Dashboard">*`,
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard">*`,
                   'Group: "HyperDX"',
-                  '11 exceeds 10',
+                  '102 exceeds 10',
                 ].join('\n'),
                 type: 'mrkdwn',
               },
@@ -406,29 +420,111 @@ describe('checkAlerts', () => {
           ],
         },
       );
+
+      jest.resetAllMocks();
     });
 
     it('CHART alert (metrics table series)', async () => {
+      const runId = Math.random().toString(); // dedup watch mode runs
+
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
-      jest
-        .spyOn(clickhouse, 'getMetricsChart')
-        .mockResolvedValueOnce({
-          rows: 1,
-          data: [
-            {
-              data: 11,
-              group: 'HyperDX',
-              ts_bucket: 1700172600,
-            },
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Need data in 22:00 - 22:05 to calculate a rate for 22:05 - 22:10
+      const metricNowTs = new Date('2023-11-16T22:00:00.000Z').getTime();
+
+      mockSpyMetricPropertyTypeMappingsModel({
+        runId: 'string',
+        host: 'string',
+        'cloud.provider': 'string',
+      });
+
+      await clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'redis.memory.rss',
+          tags: {
+            host: 'HyperDX',
+            'cloud.provider': 'aws',
+            runId,
+            series: '1',
+          },
+          data_type: clickhouse.MetricsDataType.Sum,
+          is_monotonic: true,
+          is_delta: true,
+          unit: 'Bytes',
+          points: [
+            { value: 1, timestamp: metricNowTs },
+            { value: 8, timestamp: metricNowTs + ms('1m') },
+            { value: 8, timestamp: metricNowTs + ms('2m') },
+            { value: 9, timestamp: metricNowTs + ms('3m') },
+            { value: 15, timestamp: metricNowTs + ms('4m') },
+            { value: 30, timestamp: metricNowTs + ms('5m') },
+            { value: 31, timestamp: metricNowTs + ms('6m') },
+            { value: 32, timestamp: metricNowTs + ms('7m') },
+            { value: 33, timestamp: metricNowTs + ms('8m') },
+            { value: 34, timestamp: metricNowTs + ms('9m') },
+            { value: 35, timestamp: metricNowTs + ms('10m') },
+            { value: 36, timestamp: metricNowTs + ms('11m') },
           ],
-        } as any)
-        // no logs found in the next window
-        .mockResolvedValueOnce({
-          rows: 0,
-          data: [],
-        } as any);
+        }),
+      );
+
+      await clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'redis.memory.rss',
+          tags: {
+            host: 'HyperDX',
+            'cloud.provider': 'aws',
+            runId,
+            series: '2',
+          },
+          data_type: clickhouse.MetricsDataType.Sum,
+          is_monotonic: true,
+          is_delta: true,
+          unit: 'Bytes',
+          points: [
+            { value: 1000, timestamp: metricNowTs },
+            { value: 8000, timestamp: metricNowTs + ms('1m') },
+            { value: 8000, timestamp: metricNowTs + ms('2m') },
+            { value: 9000, timestamp: metricNowTs + ms('3m') },
+            { value: 15000, timestamp: metricNowTs + ms('4m') },
+            { value: 30000, timestamp: metricNowTs + ms('5m') },
+            { value: 30001, timestamp: metricNowTs + ms('6m') },
+            { value: 30002, timestamp: metricNowTs + ms('7m') },
+            { value: 30003, timestamp: metricNowTs + ms('8m') },
+            { value: 30004, timestamp: metricNowTs + ms('9m') },
+            { value: 30005, timestamp: metricNowTs + ms('10m') },
+            { value: 30006, timestamp: metricNowTs + ms('11m') },
+          ],
+        }),
+      );
+
+      await clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'redis.memory.rss',
+          tags: { host: 'test2', 'cloud.provider': 'aws', runId, series: '0' },
+          data_type: clickhouse.MetricsDataType.Sum,
+          is_monotonic: true,
+          is_delta: true,
+          unit: 'Bytes',
+          points: [
+            { value: 1, timestamp: metricNowTs },
+            { value: 8, timestamp: metricNowTs + ms('1m') },
+            { value: 8, timestamp: metricNowTs + ms('2m') },
+            { value: 9, timestamp: metricNowTs + ms('3m') },
+            { value: 15, timestamp: metricNowTs + ms('4m') },
+            { value: 17, timestamp: metricNowTs + ms('5m') },
+            { value: 18, timestamp: metricNowTs + ms('6m') },
+            { value: 19, timestamp: metricNowTs + ms('7m') },
+            { value: 20, timestamp: metricNowTs + ms('8m') },
+            { value: 21, timestamp: metricNowTs + ms('9m') },
+            { value: 22, timestamp: metricNowTs + ms('10m') },
+            { value: 23, timestamp: metricNowTs + ms('11m') },
+          ],
+        }),
+      );
 
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
@@ -452,12 +548,21 @@ describe('checkAlerts', () => {
               {
                 table: 'metrics',
                 type: 'time',
-                aggFn: 'max',
-                field: 'redis.memory.rss - Gauge',
-                where: 'cloud.provider:"aws"',
+                aggFn: 'avg_rate',
+                field: 'redis.memory.rss - Sum',
+                where: `cloud.provider:"aws" runId:${runId}`,
+                groupBy: ['host'],
+              },
+              {
+                table: 'metrics',
+                type: 'time',
+                aggFn: 'min_rate',
+                field: 'redis.memory.rss - Sum',
+                where: `cloud.provider:"aws" runId:${runId}`,
                 groupBy: ['host'],
               },
             ],
+            seriesReturnType: 'ratio',
           },
           {
             id: 'obil1',
@@ -492,9 +597,7 @@ describe('checkAlerts', () => {
         chartId: '198hki',
       });
 
-      const now = new Date('2023-11-16T22:12:00.000Z');
-
-      // shoud fetch 5m of logs
+      // shoud fetch 5m of metrics
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
@@ -527,30 +630,19 @@ describe('checkAlerts', () => {
         new Date('2023-11-16T22:15:00.000Z'),
       );
 
-      // check if getLogsChart query + webhook were triggered
-      expect(clickhouse.getMetricsChart).toHaveBeenNthCalledWith(1, {
-        aggFn: 'max',
-        dataType: 'Gauge',
-        endTime: 1700172600000,
-        granularity: '5 minute',
-        groupBy: 'host',
-        name: 'redis.memory.rss',
-        q: 'cloud.provider:"aws"',
-        startTime: 1700172300000,
-        teamId: team._id.toString(),
-      });
+      // check if webhook was triggered
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Redis Memory" in "My Dashboard" - 11 exceeds 10',
+          text: 'Alert for "Redis Memory" in "My Dashboard" - 500.5 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170500000&granularity=5+minute&to=1700175000000 | Alert for "Redis Memory" in "My Dashboard">*`,
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard">*`,
                   'Group: "HyperDX"',
-                  '11 exceeds 10',
+                  '500.5 exceeds 10',
                 ].join('\n'),
                 type: 'mrkdwn',
               },

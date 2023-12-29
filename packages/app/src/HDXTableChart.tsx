@@ -11,9 +11,9 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
-import { AggFn } from './ChartUtils';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
+import { AggFn } from './types';
 import { formatNumber } from './utils';
 const Table = ({
   data,
