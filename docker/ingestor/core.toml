@@ -303,13 +303,19 @@ if .hdx_platform == "vector-internal" {
       if tmp_level != "info" {
         .st = tmp_level
       }
-      .sv = .b.fly.app.name
       .ts = to_unix_timestamp(parse_timestamp(.b.timestamp, format: "%+") ?? now(), unit: "nanoseconds")
       .b._hdx_body = .b.message
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
       }
+
+      # use user-specifed service name by default
+      .sv = .b."service.name"
+      if is_nullish(.sv) {
+        .sv = .b.fly.app.name
+      }
+
       # TODO: maybe move this to post_logs
       if !is_nullish(.b.message) {
         .b._hdx_body = .b.message
