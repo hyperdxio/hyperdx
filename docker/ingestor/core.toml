@@ -303,13 +303,19 @@ if .hdx_platform == "vector-internal" {
       if tmp_level != "info" {
         .st = tmp_level
       }
-      .sv = .b.fly.app.name
       .ts = to_unix_timestamp(parse_timestamp(.b.timestamp, format: "%+") ?? now(), unit: "nanoseconds")
       .b._hdx_body = .b.message
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
       }
+
+      # use user-specifed service name by default
+      .sv = .b."service.name"
+      if is_nullish(.sv) {
+        .sv = .b.fly.app.name
+      }
+
       # TODO: maybe move this to post_logs
       if !is_nullish(.b.message) {
         .b._hdx_body = .b.message
@@ -409,6 +415,34 @@ if .hdx_platform == "vector-internal" {
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
+      }
+
+      # extract k8s event metadata
+      if .b.object.apiVersion == "events.k8s.io/v1" && .b.object.kind == "Event" {
+        # set severity
+        if is_nullish(.b.level) && (.b.object.type == "Warning" || .b.object.type == "Normal") {
+          .b.level = .b.object.type
+        }
+        # transform the attributes so that the log events use the k8s.* semantic conventions 
+        # ref: https://docs.honeycomb.io/integrations/kubernetes/kubernetes-events/
+        if .b.object.regarding.kind == "Pod" {
+          .b."k8s.pod.name" = .b.object.regarding.name
+          .b."k8s.pod.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        } else if .b.object.regarding.kind == "Node" {
+          .b."k8s.node.name" = .b.object.regarding.name
+          .b."k8s.node.uid" = .b.object.regarding.uid
+        } else if .b.object.regarding.kind == "Job" {
+          .b."k8s.job.name" = .b.object.regarding.name
+          .b."k8s.job.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        } else if .b.object.regarding.kind == "CronJob" {
+          .b."k8s.cronjob.name" = .b.object.regarding.name
+          .b."k8s.cronjob.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        }
+        # set main message
+        .b._hdx_body = .b.object.note
       }
 
       # set severity after merging structured message (to avoid conflict)
