@@ -1,17 +1,19 @@
 import ms from 'ms';
 
-import { LogType } from '@/utils/logParser';
 import {
   buildEvent,
   buildMetricSeries,
+  clearDBCollections,
+  closeDB,
+  getServer,
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
-} from '@/utils/testUtils';
+} from '@/fixtures';
+import { LogType } from '@/utils/logParser';
 
 import * as clickhouse from '../../clickhouse';
 import { createAlert } from '../../controllers/alerts';
 import { createTeam } from '../../controllers/team';
-import { clearDBCollections, closeDB, getServer } from '../../fixtures';
 import AlertHistory from '../../models/alertHistory';
 import Dashboard from '../../models/dashboard';
 import LogView from '../../models/logView';
@@ -459,12 +461,12 @@ describe('checkAlerts', () => {
             { value: 8, timestamp: metricNowTs + ms('1m') },
             { value: 8, timestamp: metricNowTs + ms('2m') },
             { value: 9, timestamp: metricNowTs + ms('3m') },
-            { value: 15, timestamp: metricNowTs + ms('4m') },
+            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15
             { value: 30, timestamp: metricNowTs + ms('5m') },
             { value: 31, timestamp: metricNowTs + ms('6m') },
             { value: 32, timestamp: metricNowTs + ms('7m') },
             { value: 33, timestamp: metricNowTs + ms('8m') },
-            { value: 34, timestamp: metricNowTs + ms('9m') },
+            { value: 34, timestamp: metricNowTs + ms('9m') }, // 34
             { value: 35, timestamp: metricNowTs + ms('10m') },
             { value: 36, timestamp: metricNowTs + ms('11m') },
           ],
@@ -489,12 +491,12 @@ describe('checkAlerts', () => {
             { value: 8000, timestamp: metricNowTs + ms('1m') },
             { value: 8000, timestamp: metricNowTs + ms('2m') },
             { value: 9000, timestamp: metricNowTs + ms('3m') },
-            { value: 15000, timestamp: metricNowTs + ms('4m') },
+            { value: 15000, timestamp: metricNowTs + ms('4m') }, // 15000
             { value: 30000, timestamp: metricNowTs + ms('5m') },
             { value: 30001, timestamp: metricNowTs + ms('6m') },
             { value: 30002, timestamp: metricNowTs + ms('7m') },
             { value: 30003, timestamp: metricNowTs + ms('8m') },
-            { value: 30004, timestamp: metricNowTs + ms('9m') },
+            { value: 30004, timestamp: metricNowTs + ms('9m') }, // 30004
             { value: 30005, timestamp: metricNowTs + ms('10m') },
             { value: 30006, timestamp: metricNowTs + ms('11m') },
           ],
@@ -514,12 +516,12 @@ describe('checkAlerts', () => {
             { value: 8, timestamp: metricNowTs + ms('1m') },
             { value: 8, timestamp: metricNowTs + ms('2m') },
             { value: 9, timestamp: metricNowTs + ms('3m') },
-            { value: 15, timestamp: metricNowTs + ms('4m') },
+            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15
             { value: 17, timestamp: metricNowTs + ms('5m') },
             { value: 18, timestamp: metricNowTs + ms('6m') },
             { value: 19, timestamp: metricNowTs + ms('7m') },
             { value: 20, timestamp: metricNowTs + ms('8m') },
-            { value: 21, timestamp: metricNowTs + ms('9m') },
+            { value: 21, timestamp: metricNowTs + ms('9m') }, // 21
             { value: 22, timestamp: metricNowTs + ms('10m') },
             { value: 23, timestamp: metricNowTs + ms('11m') },
           ],
@@ -635,14 +637,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Redis Memory" in "My Dashboard" - 500.5 exceeds 10',
+          text: 'Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
                   `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard">*`,
                   'Group: "HyperDX"',
-                  '500.5 exceeds 10',
+                  '395.3421052631579 exceeds 10',
                 ].join('\n'),
                 type: 'mrkdwn',
               },

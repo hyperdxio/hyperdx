@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { Draft } from 'immer';
 import produce from 'immer';
-import { Button as BSButton, Form, InputGroup, Modal } from 'react-bootstrap';
+import { Button as BSButton, Form, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
 import { Button, Divider, Flex, Group, Paper, Switch } from '@mantine/core';
 
@@ -9,7 +9,6 @@ import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
 import {
   AGG_FNS,
-  ChartSeriesForm,
   ChartSeriesFormCompact,
   convertDateRangeToGranularityString,
   FieldSelect,
@@ -23,18 +22,12 @@ import { METRIC_ALERTS_ENABLED } from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
+import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
-import HDXTableChart from './HDXTableChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import type {
-  AggFn,
-  Alert,
-  Chart,
-  NumberFormat,
-  TimeChartSeries,
-} from './types';
-import { hashCode, useDebounce } from './utils';
+import type { Alert, Chart, TimeChartSeries } from './types';
+import { useDebounce } from './utils';
 
 const DEFAULT_ALERT: Alert = {
   channel: {
@@ -492,6 +485,8 @@ export const EditTableChartForm = ({
             granularity: convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
             numberFormat: editedChart.series[0].numberFormat,
+            series: editedChart.series,
+            seriesReturnType: editedChart.seriesReturnType,
           }
         : null,
     [editedChart, dateRange],
@@ -530,92 +525,8 @@ export const EditTableChartForm = ({
           placeholder="Chart Name"
         />
       </div>
-      <ChartSeriesForm
-        sortOrder={editedChart.series[0].sortOrder ?? 'desc'}
-        table={editedChart.series[0].table ?? 'logs'}
-        aggFn={editedChart.series[0].aggFn}
-        where={editedChart.series[0].where}
-        groupBy={editedChart.series[0].groupBy[0]}
-        field={editedChart.series[0].field ?? ''}
-        setAggFn={aggFn =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          )
-        }
-        setTableAndAggFn={(table, aggFn) => {
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].table = table;
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          );
-        }}
-        setWhere={where =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].where = where;
-              }
-            }),
-          )
-        }
-        setGroupBy={groupBy =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                if (groupBy != undefined) {
-                  draft.series[0].groupBy[0] = groupBy;
-                } else {
-                  draft.series[0].groupBy = [];
-                }
-              }
-            }),
-          )
-        }
-        setField={field =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].field = field;
-              }
-            }),
-          )
-        }
-        setFieldAndAggFn={(field, aggFn) => {
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].field = field;
-                draft.series[0].aggFn = aggFn;
-              }
-            }),
-          );
-        }}
-        setSortOrder={sortOrder =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].sortOrder = sortOrder;
-              }
-            }),
-          )
-        }
-        numberFormat={editedChart.series[0].numberFormat}
-        setNumberFormat={numberFormat =>
-          setEditedChart(
-            produce(editedChart, draft => {
-              if (draft.series[0].type === CHART_TYPE) {
-                draft.series[0].numberFormat = numberFormat;
-              }
-            }),
-          )
-        }
+      <EditMultiSeriesChartForm
+        {...{ editedChart, setEditedChart, CHART_TYPE }}
       />
       <div className="d-flex justify-content-between my-3 ps-2">
         <BSButton
@@ -632,7 +543,36 @@ export const EditTableChartForm = ({
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
         <div style={{ height: 400 }}>
-          <HDXTableChart config={previewConfig} />
+          <HDXMultiSeriesTableChart
+            config={previewConfig}
+            onSortClick={seriesIndex => {
+              setEditedChart(
+                produce(editedChart, draft => {
+                  // We need to clear out all other series sort orders first
+                  for (let i = 0; i < draft.series.length; i++) {
+                    if (i !== seriesIndex) {
+                      const s = draft.series[i];
+                      if (s.type === CHART_TYPE) {
+                        s.sortOrder = undefined;
+                      }
+                    }
+                  }
+
+                  const s = draft.series[seriesIndex];
+                  if (s.type === CHART_TYPE) {
+                    s.sortOrder =
+                      s.sortOrder == null
+                        ? 'desc'
+                        : s.sortOrder === 'asc'
+                        ? 'desc'
+                        : 'asc';
+                  }
+
+                  return;
+                }),
+              );
+            }}
+          />
         </div>
       </div>
       {editedChart.series[0].table === 'logs' ? (

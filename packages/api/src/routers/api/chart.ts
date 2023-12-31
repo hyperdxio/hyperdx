@@ -1,18 +1,12 @@
-import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
-import { isNumber, omit, parseInt } from 'lodash';
-import ms from 'ms';
-import { serializeError } from 'serialize-error';
+import { isNumber, parseInt } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
-import { customColumnMapType } from '@/clickhouse/searchQueryParser';
 import { getTeam } from '@/controllers/team';
 import logger from '@/utils/logger';
-import { getLogsPatterns } from '@/utils/miner';
-import { LimitedSizeQueue } from '@/utils/queue';
 import { chartSeriesSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -20,28 +14,24 @@ const router = express.Router();
 router.post(
   '/series',
   validateRequest({
-    query: z.object({
-      endTime: z.string(),
-      granularity: z.nativeEnum(clickhouse.Granularity).optional(),
-      startTime: z.string(),
-      seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
-    }),
     body: z.object({
       series: z.array(chartSeriesSchema),
+      endTime: z.number(),
+      granularity: z.nativeEnum(clickhouse.Granularity).optional(),
+      startTime: z.number(),
+      seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
     }),
   }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      const { endTime, granularity, startTime, seriesReturnType } = req.query;
-      const { series } = req.body;
+      const { endTime, granularity, startTime, seriesReturnType, series } =
+        req.body;
 
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      const startTimeNum = parseInt(startTime);
-      const endTimeNum = parseInt(endTime);
-      if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
+      if (!isNumber(startTime) || !isNumber(endTime)) {
         return res.sendStatus(400);
       }
 
@@ -54,8 +44,8 @@ router.post(
         await clickhouse.buildLogsPropertyTypeMappingsModel(
           team.logStreamTableVersion,
           teamId.toString(),
-          startTimeNum,
-          endTimeNum,
+          startTime,
+          endTime,
         );
 
       const propertySet = new Set<string>();
@@ -93,11 +83,11 @@ router.post(
       res.json(
         await clickhouse.getMultiSeriesChart({
           series,
-          endTime: endTimeNum,
+          endTime: endTime,
           granularity,
           maxNumGroups: MAX_NUM_GROUPS,
           propertyTypeMappingsModel,
-          startTime: startTimeNum,
+          startTime: startTime,
           tableVersion: team.logStreamTableVersion,
           teamId: teamId.toString(),
           seriesReturnType,

@@ -92,26 +92,37 @@ export function seriesColumns({
             displayName: `${seriesDisplayName(series[0])}/${seriesDisplayName(
               series[1],
             )}`,
+            sortOrder:
+              'sortOrder' in series[0] ? series[0].sortOrder : undefined,
           },
         ]
       : series.map((s, i) => {
           return {
             dataKey: `series_${i}.data`,
             displayName: seriesDisplayName(s),
+            sortOrder: 'sortOrder' in s ? s.sortOrder : undefined,
           };
         });
 
   return seriesMeta;
 }
 
-export function seriesToSearchQuery({ series }: { series: ChartSeries[] }) {
+export function seriesToSearchQuery({
+  series,
+  groupByValue,
+}: {
+  series: ChartSeries[];
+  groupByValue?: string;
+}) {
   const queries = series
     .map((s, i) => {
-      if ('where' in s && 'aggFn' in s && 'groupBy' in s) {
-        const { groupBy, where, aggFn, field } = s;
+      if (s.type === 'time' || s.type === 'table' || s.type === 'number') {
+        const { where, aggFn, field } = s;
         return `${where.trim()}${aggFn !== 'count' ? ` ${field}:*` : ''}${
-          groupBy != null && groupBy.length > 0 ? ` ${groupBy}:*` : ''
-        }`;
+          'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
+            ? ` ${s.groupBy}:${groupByValue}`
+            : ''
+        }`.trim();
       }
     })
     .filter(q => q != null && q.length > 0);
@@ -127,11 +138,13 @@ export function seriesToSearchQuery({ series }: { series: ChartSeries[] }) {
 export function seriesToUrlSearchQueryParam({
   series,
   dateRange,
+  groupByValue = '*',
 }: {
   series: ChartSeries[];
   dateRange: [Date, Date];
+  groupByValue?: string | undefined;
 }) {
-  const q = seriesToSearchQuery({ series });
+  const q = seriesToSearchQuery({ series, groupByValue });
 
   return new URLSearchParams({
     q,

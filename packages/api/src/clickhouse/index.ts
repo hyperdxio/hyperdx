@@ -922,6 +922,7 @@ export const buildMetricSeriesQuery = async ({
   q,
   startTime,
   teamId,
+  sortOrder,
 }: {
   aggFn: AggFn;
   dataType: MetricsDataType;
@@ -932,6 +933,7 @@ export const buildMetricSeriesQuery = async ({
   q: string;
   startTime: number; // unix in ms
   teamId: string;
+  sortOrder?: 'asc' | 'desc';
 }) => {
   const tableName = `default.${TableName.Metric}`;
   const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
@@ -941,13 +943,14 @@ export const buildMetricSeriesQuery = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  const shouldModifyStartTime = isRate && granularity != null;
+  const shouldModifyStartTime = isRate;
 
   // If it's a rate function, then we'll need to look 1 window back to calculate
   // the initial rate value.
   // We'll filter this extra bucket out later
   const modifiedStartTime = shouldModifyStartTime
-    ? startTime - ms(granularity)
+    ? // If granularity is not defined (tables), we'll just look behind 5min
+      startTime - ms(granularity ?? '5 minute')
     : startTime;
 
   const whereClause = await buildSearchQueryWhereCondition({
@@ -1004,28 +1007,41 @@ export const buildMetricSeriesQuery = async ({
     logger.error(`Unsupported data type: ${dataType}`);
   }
 
-  // used to sum/avg/percentile Sum metrics
-  // max/min don't require pre-bucketing the Sum timeseries
-  const sumMetricSource = SqlString.format(
+  const startTimeUnixTs = Math.floor(startTime / 1000);
+
+  // TODO: Can remove the ORDER BY _string_attributes for Gauge metrics
+  // since they don't get subjected to runningDifference afterwards
+  const gaugeMetricSource = SqlString.format(
     `
       SELECT
-        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
-        min(value) as value,
-        _string_attributes,
-        name
+        ?,
+        name,
+        last_value(value) as value,
+        _string_attributes
       FROM ??
       WHERE name = ?
       AND data_type = ?
       AND (?)
-      GROUP BY
-        name,
-        _string_attributes,
-        timestamp
-      ORDER BY
-        _string_attributes,
-        timestamp ASC
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY _string_attributes, timestamp ASC
     `.trim(),
-    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
+    [
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
+      ),
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
+    ],
   );
 
   const rateMetricSource = SqlString.format(
@@ -1045,26 +1061,9 @@ export const buildMetricSeriesQuery = async ({
       ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
     `.trim(),
     [
-      SqlString.raw(sumMetricSource),
-      ...(shouldModifyStartTime ? [startTime / 1000] : []),
+      SqlString.raw(gaugeMetricSource),
+      ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
     ],
-  );
-
-  const gaugeMetricSource = SqlString.format(
-    `
-      SELECT
-        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
-        name,
-        last_value(value) as value,
-        _string_attributes
-      FROM ??
-      WHERE name = ?
-      AND data_type = ?
-      AND (?)
-      GROUP BY name, _string_attributes, timestamp
-      ORDER BY timestamp ASC
-    `.trim(),
-    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const query = SqlString.format(
@@ -1084,14 +1083,7 @@ export const buildMetricSeriesQuery = async ({
       }
     `,
     [
-      SqlString.raw(
-        isRate
-          ? rateMetricSource
-          : // Max/Min aggs are the same for both Sum and Gauge metrics
-          dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
-          ? sumMetricSource
-          : gaugeMetricSource,
-      ),
+      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
       SqlString.raw(selectClause.join(',')),
       ...(granularity != null
         ? [
@@ -1108,6 +1100,7 @@ export const buildMetricSeriesQuery = async ({
   return {
     query,
     hasGroupBy,
+    sortOrder,
   };
 };
 
@@ -1117,7 +1110,6 @@ const buildEventSeriesQuery = async ({
   field,
   granularity,
   groupBy,
-  maxNumGroups,
   propertyTypeMappingsModel,
   q,
   sortOrder,
@@ -1130,7 +1122,6 @@ const buildEventSeriesQuery = async ({
   field?: string;
   granularity: string | undefined; // can be undefined in the number chart
   groupBy: string;
-  maxNumGroups: number;
   propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
   q: string;
   sortOrder?: 'asc' | 'desc';
@@ -1175,16 +1166,16 @@ const buildEventSeriesQuery = async ({
     isCountFn
       ? 'toFloat64(count()) as data'
       : aggFn === AggFn.Sum
-      ? `sum(${selectField}) as data`
+      ? `toFloat64(sum(${selectField})) as data`
       : aggFn === AggFn.Avg
-      ? `avg(${selectField}) as data`
+      ? `toFloat64(avg(${selectField})) as data`
       : aggFn === AggFn.Max
-      ? `max(${selectField}) as data`
+      ? `toFloat64(max(${selectField})) as data`
       : aggFn === AggFn.Min
-      ? `min(${selectField}) as data`
+      ? `toFloat64(min(${selectField})) as data`
       : aggFn === AggFn.CountDistinct
-      ? `count(distinct ${selectField}) as data`
-      : `quantile(${
+      ? `toFloat64(count(distinct ${selectField})) as data`
+      : `toFloat64(quantile(${
           aggFn === AggFn.P50
             ? '0.5'
             : aggFn === AggFn.P90
@@ -1192,7 +1183,7 @@ const buildEventSeriesQuery = async ({
             : aggFn === AggFn.P95
             ? '0.95'
             : '0.99'
-        })(${selectField}) as data`,
+        })(${selectField})) as data`,
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
@@ -1251,6 +1242,7 @@ const buildEventSeriesQuery = async ({
   return {
     query,
     hasGroupBy,
+    sortOrder,
   };
 };
 
@@ -1258,29 +1250,40 @@ export const queryMultiSeriesChart = async ({
   maxNumGroups,
   tableVersion,
   teamId,
-  seriesReturnType = 'column',
+  seriesReturnType = SeriesReturnType.Column,
   queries,
 }: {
   maxNumGroups: number;
   tableVersion: number | undefined;
   teamId: string;
-  seriesReturnType?: 'ratio' | 'column';
-  queries: { query: string; hasGroupBy: boolean }[];
+  seriesReturnType?: SeriesReturnType;
+  queries: { query: string; hasGroupBy: boolean; sortOrder?: 'desc' | 'asc' }[];
 }) => {
   // For now only supports same-table series with the same groupBy
 
-  const seriesCTEs = SqlString.raw(
-    'WITH ' + queries.map((q, i) => `series_${i} AS (${q.query})`).join(',\n'),
-  );
+  const seriesCTEs = queries
+    .map((q, i) => `series_${i} AS (${q.query})`)
+    .join(',\n');
 
   // Only join on group bys if all queries have group bys
   // TODO: This will not work for an array of group by fields
   const allQueiesHaveGroupBy = queries.every(q => q.hasGroupBy);
 
+  let seriesIndexWithSorting = -1;
+  let sortOrder: 'asc' | 'desc' = 'desc';
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i];
+    if (q.sortOrder === 'asc' || q.sortOrder === 'desc') {
+      seriesIndexWithSorting = i;
+      sortOrder = q.sortOrder;
+      break;
+    }
+  }
+
   let leftJoin = '';
   // Join every series after the first one
   for (let i = 1; i < queries.length; i++) {
-    leftJoin += `LEFT JOIN series_${i} AS series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
+    leftJoin += `LEFT JOIN series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
       allQueiesHaveGroupBy ? ` AND series_${i}.group = series_0.group` : ''
     }\n`;
   }
@@ -1296,7 +1299,7 @@ export const queryMultiSeriesChart = async ({
 
   // Return each series data as a separate column
   const query = SqlString.format(
-    `? 
+    `WITH ? 
       ,raw_groups AS (
         SELECT 
           ?,
@@ -1305,24 +1308,46 @@ export const queryMultiSeriesChart = async ({
         FROM series_0 AS series_0
         ?
       ), groups AS (
-        SELECT *, MAX(${
-          seriesReturnType === 'column'
-            ? `greatest(${queries
-                .map((_, i) => `series_${i}.data`)
-                .join(', ')})`
-            : 'series_0.data'
-        }) OVER (PARTITION BY group) as rank_order_by_value
+        SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
         FROM raw_groups
       ), final AS (
-        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value DESC) as rank
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
         FROM groups
       )
       SELECT *
       FROM final
       WHERE rank <= ?
       ORDER BY ts_bucket ASC
+      ?
     `,
-    [seriesCTEs, SqlString.raw(select), SqlString.raw(leftJoin), maxNumGroups],
+    [
+      SqlString.raw(seriesCTEs),
+      SqlString.raw(select),
+      SqlString.raw(leftJoin),
+      // Setting rank_order_by_value
+      SqlString.raw(sortOrder === 'asc' ? 'MIN' : 'MAX'),
+      SqlString.raw(
+        // If ratio, we judge on series_0
+        seriesReturnType === 'ratio'
+          ? 'series_0.data'
+          : // If the user specified a sorting order, we use that
+          seriesIndexWithSorting > -1
+          ? `series_${seriesIndexWithSorting}.data`
+          : // Otherwise we just grab the greatest value
+            `greatest(${queries.map((_, i) => `series_${i}.data`).join(', ')})`,
+      ),
+      // ORDER BY rank_order_by_value ....
+      SqlString.raw(sortOrder === 'asc' ? 'ASC' : 'DESC'),
+      maxNumGroups,
+      // Final row sort ordering
+      SqlString.raw(
+        sortOrder === 'asc' || sortOrder === 'desc'
+          ? `, series_${
+              seriesIndexWithSorting > -1 ? seriesIndexWithSorting : 0
+            }.data ${sortOrder}`
+          : '',
+      ),
+    ],
   );
 
   const rows = await client.query({
@@ -1367,8 +1392,17 @@ export const getMultiSeriesChart = async ({
   teamId: string;
   seriesReturnType?: SeriesReturnType;
 }) => {
-  let queries: { query: string; hasGroupBy: boolean }[] = [];
-  if ('table' in series[0] && series[0].table === 'logs') {
+  let queries: {
+    query: string;
+    hasGroupBy: boolean;
+    sortOrder?: 'desc' | 'asc';
+  }[] = [];
+  if (
+    // Default table is logs
+    ('table' in series[0] &&
+      (series[0].table === 'logs' || series[0].table == null)) ||
+    !('table' in series[0])
+  ) {
     if (propertyTypeMappingsModel == null) {
       throw new Error('propertyTypeMappingsModel is required for logs chart');
     }
@@ -1378,6 +1412,9 @@ export const getMultiSeriesChart = async ({
         if (s.type != 'time' && s.type != 'table') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
+        if (s.table != 'logs' && s.table != null) {
+          throw new Error(`All series must have the same table`);
+        }
 
         return buildEventSeriesQuery({
           aggFn: s.aggFn,
@@ -1385,7 +1422,6 @@ export const getMultiSeriesChart = async ({
           field: s.field,
           granularity,
           groupBy: s.groupBy[0],
-          maxNumGroups,
           propertyTypeMappingsModel,
           q: s.where,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
@@ -1401,6 +1437,9 @@ export const getMultiSeriesChart = async ({
         if (s.type != 'time' && s.type != 'table') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
+        if (s.table != 'metrics') {
+          throw new Error(`All series must have the same table`);
+        }
         if (s.field == null) {
           throw new Error('Metric name is required');
         }
@@ -1414,9 +1453,8 @@ export const getMultiSeriesChart = async ({
           name: s.field,
           granularity,
           groupBy: s.groupBy[0],
-          // maxNumGroups,
+          sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           q: s.where,
-          // sortOrder: s.sortOrder,
           startTime,
           teamId,
           dataType: s.metricDataType,

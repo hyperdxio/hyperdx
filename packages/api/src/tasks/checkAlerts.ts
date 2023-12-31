@@ -336,7 +336,6 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     // Logs Source
     let checksData:
       | Awaited<ReturnType<typeof clickhouse.checkAlert>>
-      | Awaited<ReturnType<typeof clickhouse.getMetricsChart>>
       | Awaited<ReturnType<typeof clickhouse.getMultiSeriesChartLegacyFormat>>
       | null = null;
     let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;

@@ -192,8 +192,20 @@ export type TimeChartSeries = {
   numberFormat?: NumberFormat;
 };
 
+export type TableChartSeries = {
+  type: 'table';
+  table: SourceTable;
+  aggFn: AggFn;
+  field: string | undefined;
+  where: string;
+  groupBy: string[];
+  sortOrder?: 'desc' | 'asc';
+  numberFormat?: NumberFormat;
+};
+
 export type ChartSeries =
   | TimeChartSeries
+  | TableChartSeries
   | {
       table: SourceTable;
       type: 'histogram';
@@ -211,16 +223,6 @@ export type ChartSeries =
       aggFn: AggFn;
       field: string | undefined;
       where: string;
-      numberFormat?: NumberFormat;
-    }
-  | {
-      type: 'table';
-      table: SourceTable;
-      aggFn: AggFn;
-      field: string | undefined;
-      where: string;
-      groupBy: string[];
-      sortOrder: 'desc' | 'asc';
       numberFormat?: NumberFormat;
     }
   | {

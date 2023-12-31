@@ -32,7 +32,7 @@ export const sourceTableSchema = z.union([
 export type SourceTable = z.infer<typeof sourceTableSchema>;
 
 export const timeChartSeriesSchema = z.object({
-  table: sourceTableSchema,
+  table: z.optional(sourceTableSchema),
   type: z.literal('time'),
   aggFn: aggFnSchema,
   field: z.union([z.string(), z.undefined()]),
@@ -44,20 +44,21 @@ export const timeChartSeriesSchema = z.object({
 
 export const tableChartSeriesSchema = z.object({
   type: z.literal('table'),
-  table: sourceTableSchema,
+  table: z.optional(sourceTableSchema),
   aggFn: aggFnSchema,
   field: z.optional(z.string()),
   where: z.string(),
   groupBy: z.array(z.string()),
-  sortOrder: z.union([z.literal('desc'), z.literal('asc')]),
+  sortOrder: z.optional(z.union([z.literal('desc'), z.literal('asc')])),
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
 });
 
 export const chartSeriesSchema = z.union([
   timeChartSeriesSchema,
+  tableChartSeriesSchema,
   z.object({
-    table: sourceTableSchema,
+    table: z.optional(sourceTableSchema),
     type: z.literal('histogram'),
     field: z.union([z.string(), z.undefined()]),
     where: z.string(),
@@ -69,13 +70,12 @@ export const chartSeriesSchema = z.union([
   }),
   z.object({
     type: z.literal('number'),
-    table: sourceTableSchema,
+    table: z.optional(sourceTableSchema),
     aggFn: aggFnSchema,
     field: z.union([z.string(), z.undefined()]),
     where: z.string(),
     numberFormat: numberFormatSchema.optional(),
   }),
-  tableChartSeriesSchema,
   z.object({
     type: z.literal('markdown'),
     content: z.string(),

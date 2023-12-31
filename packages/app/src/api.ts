@@ -197,14 +197,14 @@ const api = {
       queryFn: () =>
         server('chart/series', {
           method: 'POST',
-          searchParams: [
-            ['endTime', endTime],
-            ...(granularity != null ? [['granularity', granularity]] : []),
-            ['startTime', startTime],
-            ...(sortOrder != null ? [['sortOrder', sortOrder]] : []),
-            ['seriesReturnType', seriesReturnType],
-          ],
-          json: { series: enrichedSeries },
+          json: {
+            series: enrichedSeries,
+            endTime,
+            startTime,
+            granularity,
+            sortOrder,
+            seriesReturnType,
+          },
         }).json(),
       retry: 1,
       ...options,
