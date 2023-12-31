@@ -1,46 +1,85 @@
+import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import cx from 'classnames';
 import { formatRelative } from 'date-fns';
+import {
+  Alert as MAlert,
+  Badge,
+  Button,
+  Container,
+  Divider,
+  Group,
+  Stack,
+  Tooltip,
+} from '@mantine/core';
 
 import api from './api';
 import AppNav from './AppNav';
 import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
 
+import styles from '../styles/AlertsPage.module.scss';
+
 type AlertData = Alert & {
   history: AlertHistory[];
   dashboard?: {
     _id: string;
     name: string;
+    charts: { id: string; name: string }[];
   };
   logView?: LogView;
 };
 
+const DISABLE_ALERTS_ENABLED = false;
+
 function AlertHistoryCard({ history }: { history: AlertHistory }) {
   const start = new Date(history.createdAt.toString());
-  const latestValues = history.lastValues
-    .map(({ count }, index) => {
-      return count.toString();
-    })
-    .join(', ');
+  const today = React.useMemo(() => new Date(), []);
+  const latestHighestValue = history.lastValues.length
+    ? Math.max(...history.lastValues.map(({ count }) => count))
+    : 0;
   return (
-    <div
-      className={
-        'badge ' +
-        (history.state === AlertState.OK ? 'bg-success ' : 'bg-danger ') +
-        ' m-0 rounded-0'
-      }
-      title={latestValues + ' ' + formatRelative(start, new Date())}
+    <Tooltip
+      label={latestHighestValue + ' ' + formatRelative(start, today)}
+      color="dark"
+      withArrow
     >
-      {history.state === AlertState.OK ? '.' : '!'}
-    </div>
+      <div
+        className={cx(
+          styles.historyCard,
+          history.state === AlertState.OK ? styles.ok : styles.alarm,
+        )}
+      />
+    </Tooltip>
   );
 }
 
+const HISTORY_ITEMS = 18;
+
 function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
+  const items = React.useMemo(() => {
+    if (history.length < HISTORY_ITEMS) {
+      return history;
+    }
+    return history.slice(0, HISTORY_ITEMS);
+  }, [history]);
+
+  const paddingItems = React.useMemo(() => {
+    if (history.length > HISTORY_ITEMS) {
+      return [];
+    }
+    return new Array(HISTORY_ITEMS - history.length).fill(null);
+  }, [history]);
+
   return (
-    <div className="d-flex flex-row">
-      {history.map((history, index) => (
+    <div className={styles.historyCardWrapper}>
+      {paddingItems.map((_, index) => (
+        <Tooltip label="No data" color="dark" withArrow key={index}>
+          <div className={styles.historyCard} />
+        </Tooltip>
+      ))}
+      {items.reverse().map((history, index) => (
         <AlertHistoryCard key={index} history={history} />
       ))}
     </div>
@@ -54,112 +93,106 @@ function disableAlert(alertId?: string) {
   // TODO do some lovely disabling of the alert here
 }
 
-function AlertDetails({
-  alert,
-  history,
-}: {
-  alert: AlertData;
-  history: AlertHistory[];
-}) {
-  // TODO enable once disable handler is implemented above
-  const showDisableButton = false;
+function AlertDetails({ alert }: { alert: AlertData }) {
+  const alertName = React.useMemo(() => {
+    if (alert.source === 'CHART' && alert.dashboard) {
+      const chartName = alert.dashboard.charts.find(
+        chart => chart.id === alert.chartId,
+      )?.name;
+      return (
+        <>
+          {alert.dashboard.name}
+          {chartName ? (
+            <>
+              <i className="bi bi-chevron-right fs-8 mx-1 text-slate-400" />
+              {chartName}
+            </>
+          ) : null}
+        </>
+      );
+    }
+    if (alert.source === 'LOG' && alert.logView) {
+      return alert.logView?.name;
+    }
+    return '–';
+  }, [alert]);
+
+  const alertUrl = React.useMemo(() => {
+    if (alert.source === 'CHART' && alert.dashboard) {
+      return `/dashboards/${alert.dashboard._id}?highlightedChartId=${alert.chartId}`;
+    }
+    if (alert.source === 'LOG' && alert.logView) {
+      return `/search/${alert.logView._id}`;
+    }
+    return '';
+  }, [alert]);
+
   return (
-    <>
-      <div className="text-end">
+    <div className={styles.alertRow}>
+      <Group>
         {alert.state === AlertState.ALERT && (
-          <div className="badge bg-danger">ALERT</div>
+          <Badge color="red" size="sm">
+            Alert
+          </Badge>
         )}
-        {alert.state === AlertState.OK && (
-          <div className="badge bg-success">OK</div>
-        )}
+        {alert.state === AlertState.OK && <Badge size="sm">Ok</Badge>}
         {alert.state === AlertState.DISABLED && (
-          <div className="badge bg-secondary">DISABLED</div>
-        )}{' '}
+          <Badge color="gray" size="sm">
+            Disabled
+          </Badge>
+        )}
+
+        <Stack spacing={2}>
+          <div>
+            <Link href={alertUrl}>
+              <a
+                className={styles.alertLink}
+                title={
+                  alert.source === 'CHART' ? 'Dashboard chart' : 'Saved search'
+                }
+              >
+                <i
+                  className={`bi ${
+                    alert.source === 'CHART'
+                      ? 'bi-graph-up'
+                      : 'bi-layout-text-sidebar-reverse'
+                  } text-slate-200 me-2 fs-8`}
+                />
+                {alertName}
+              </a>
+            </Link>
+          </div>
+          <div className="text-slate-400 fs-8 d-flex gap-2">
+            If {alert.source === 'LOG' ? 'count' : 'value'} is{' '}
+            {alert.type === 'presence' ? 'over' : 'under'}{' '}
+            <span className="fw-bold">{alert.threshold}</span>
+            <span className="text-slate-400">&middot;</span>
+            {alert.channel.type === 'webhook' && (
+              <span>Notify via Webhook</span>
+            )}
+          </div>
+        </Stack>
+      </Group>
+
+      <Group>
+        <AlertHistoryCardList history={alert.history} />
         {/* can we disable an alert that is alarming? hmmmmm */}
         {/* also, will make the alert jump from under the cursor to the disabled area */}
-        {showDisableButton ? (
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            title="Disable/enable"
+        {DISABLE_ALERTS_ENABLED ? (
+          <Button
+            size="xs"
+            compact
+            color="gray"
             onClick={() => {
               disableAlert(alert._id);
             }}
           >
-            <i className="bi bi-gear"></i>
-          </button>
+            Disable
+          </Button>
         ) : null}
-        <div className="fs-6 mt-2">
-          {alert.channel.type === 'webhook' && (
-            <span>
-              Notifies via <span className="fw-bold">Webhook</span>
-            </span>
-          )}
-        </div>
-        <div className="fs-6 mt-2">
-          Alerts if
-          <span className="fw-bold">
-            {' '}
-            {alert.source === 'LOG' ? 'count' : 'value'}{' '}
-          </span>
-          is
-          <span className="fw-bold">
-            {' '}
-            {alert.type === 'presence' ? 'over' : 'under'}{' '}
-          </span>
-          <span className="fw-bold">{alert.threshold}</span>
-          {history.length > 0 && history[0]?.lastValues.length > 0 && (
-            <span className="fw-light">
-              {' '}
-              (most recently{' '}
-              {history[0].lastValues.map(({ count }) => count).join(', ')})
-            </span>
-          )}
-        </div>
-      </div>
-      <AlertHistoryCardList history={history} />
-    </>
-  );
-}
-
-function ChartAlertCard({ alert }: { alert: AlertData }) {
-  const { history } = alert;
-  if (!alert.dashboard) {
-    throw new Error('alertData.dashboard is undefined');
-  }
-  return (
-    <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <Link
-        href={`/dashboards/${alert.dashboard._id}`}
-        key={alert.dashboard._id}
-      >
-        {alert.dashboard.name}
-      </Link>
-      <AlertDetails alert={alert} history={history} />
+      </Group>
     </div>
   );
-}
-
-function LogAlertCard({ alert }: { alert: AlertData }) {
-  const { history } = alert;
-  if (!alert.logView) {
-    throw new Error('alert.logView is undefined');
-  }
-  return (
-    <div className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger">
-      <Link href={`/search/${alert.logView._id}`} key={alert.logView._id}>
-        {alert.logView?.name}
-      </Link>
-      <AlertDetails alert={alert} history={history} />
-    </div>
-  );
-}
-
-function AlertCard({ alert }: { alert: AlertData }) {
-  if (alert.source === 'LOG') {
-    return <LogAlertCard alert={alert} />;
-  } else {
-    return <ChartAlertCard alert={alert} />;
-  }
 }
 
 function AlertCardList({ alerts }: { alerts: AlertData[] }) {
@@ -171,63 +204,84 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
       alert.state === AlertState.INSUFFICIENT_DATA,
   );
   return (
-    <div>
+    <div className="d-flex flex-column gap-4">
       {alarmAlerts.length > 0 && (
         <div>
-          <div className="fs-5 mb-3 text-danger">
-            <i className="bi bi-exclamation-triangle"></i> Alarmed
+          <div className={styles.sectionHeader}>
+            <i className="bi bi-exclamation-triangle"></i> Triggered
           </div>
           {alarmAlerts.map((alert, index) => (
-            <AlertCard key={index} alert={alert} />
+            <AlertDetails key={index} alert={alert} />
           ))}
         </div>
       )}
       <div>
-        <div className="fs-5 mb-3">
+        <div className={styles.sectionHeader}>
           <i className="bi bi-repeat"></i> Running
         </div>
         {okData.length === 0 && (
-          <div className="text-center text-muted">No alerts</div>
+          <div className="text-center text-slate-400 my-4 fs-8">No alerts</div>
         )}
         {okData.map((alert, index) => (
-          <AlertCard key={index} alert={alert} />
+          <AlertDetails key={index} alert={alert} />
         ))}
       </div>
-      <div>
-        <div className="fs-5 mb-3">
-          <i className="bi bi-stop"></i> Disabled
+      {DISABLE_ALERTS_ENABLED && (
+        <div>
+          <div className={styles.sectionHeader}>
+            <i className="bi bi-stop"></i> Disabled
+          </div>
+          {disabledData.length === 0 && (
+            <div className="text-center text-slate-400 my-4 fs-8">
+              No alerts
+            </div>
+          )}
+          {disabledData.map((alert, index) => (
+            <AlertDetails key={index} alert={alert} />
+          ))}
         </div>
-        {disabledData.length === 0 && (
-          <div className="text-center text-muted">No alerts</div>
-        )}
-        {disabledData.map((alert, index) => (
-          <AlertCard key={index} alert={alert} />
-        ))}
-      </div>
+      )}
     </div>
   );
 }
 
 export default function AlertsPage() {
-  const alerts = api.useAlerts().data?.data;
+  const { data, isError, isLoading } = api.useAlerts();
+  const alerts = data?.data;
+
+  // TODO: Error and loading states
+
   return (
-    <div className="AlertsPage d-flex" style={{ height: '100vh' }}>
+    <div className="AlertsPage" style={{ minHeight: '100vh' }}>
       <Head>
         <title>Alerts - HyperDX</title>
       </Head>
-      <AppNav fixed />
-      <div className="d-flex flex-column flex-grow-1 px-3 pt-3">
-        <div className="d-flex justify-content-between">
-          <div className="fs-4 mb-3">Alerts</div>
-        </div>
-        <div className="fw-light">
-          Note that for now, you&apos;ll need to go to either the dashboard or
-          saved search pages in order to create alerts. This is merely a place
-          to enable/disable and get an overview of which alerts are in which
-          state.
-        </div>
-        <div style={{ minHeight: 0 }} className="mt-4">
-          <AlertCardList alerts={alerts || []} />
+      <div className="d-flex">
+        <AppNav fixed />
+        <div className="w-100">
+          <div className={styles.header}>Alerts</div>
+          <div className="my-4">
+            <Container>
+              <MAlert
+                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+                color="gray"
+              >
+                Alerts can be created from dashboard charts and from saved
+                searches.
+              </MAlert>
+              {isLoading ? (
+                <div className="text-center text-slate-400 my-4 fs-8">
+                  Loading...
+                </div>
+              ) : isError ? (
+                <div className="text-center text-slate-400 my-4 fs-8">
+                  Error
+                </div>
+              ) : (
+                alerts?.length && <AlertCardList alerts={alerts} />
+              )}
+            </Container>
+          </div>
         </div>
       </div>
     </div>

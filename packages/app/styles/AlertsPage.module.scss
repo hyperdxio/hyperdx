@@ -1,0 +1,79 @@
+@import './variables';
+
+// TODO: Move to shared styles
+
+.header {
+  align-items: center;
+  background-color: $body-bg;
+  border-bottom: 1px solid $slate-950;
+  color: $slate-200;
+  display: flex;
+  font-weight: 500;
+  height: 60px;
+  justify-content: space-between;
+  line-height: 1;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.sectionHeader {
+  border-bottom: 1px solid $slate-950;
+  margin-top: 30px;
+  padding-bottom: 10px;
+  font-size: 14px;
+  color: $slate-400;
+}
+
+.historyCardWrapper {
+  display: flex;
+  flex-direction: row;
+  &:hover {
+    .historyCard {
+      opacity: 0.3;
+    }
+  }
+}
+
+.historyCard {
+  width: 4px;
+  height: 16px;
+  background-color: $slate-950;
+  border-radius: 2px;
+  margin: 0 1px;
+  cursor: pointer;
+  transition: opacity 0.1s ease-in;
+
+  &:hover {
+    transition: none;
+    opacity: 1 !important;
+  }
+
+  &.ok {
+    background-color: #00d474;
+  }
+
+  &.alarm {
+    background-color: #e74c3c;
+  }
+}
+
+.alertRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid $slate-950;
+}
+
+.alertLink {
+  font-weight: 500;
+  color: $slate-200;
+  text-decoration: none;
+
+  &:hover {
+    color: #fff;
+  }
+}
