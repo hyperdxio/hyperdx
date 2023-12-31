@@ -406,11 +406,16 @@ export default function SearchPage() {
     onTimeRangeSelect,
   } = useTimeQuery({ isUTC });
 
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  useEffect(() => {
+    setIsFirstLoad(false);
+  }, []);
   const [_searchedQuery, setSearchedQuery] = useQueryParam(
     'q',
     withDefault(StringParam, undefined),
     {
-      updateType: 'pushIn',
+      // prevent hijacking browser back button
+      updateType: isFirstLoad ? 'replaceIn' : 'pushIn',
       // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
       enableBatching: true,
     },
