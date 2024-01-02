@@ -630,6 +630,17 @@ div.react-datepicker {
 }
 
 .ds-select {
+  &.w-auto {
+    .ds-react-select__menu {
+      width: auto;
+    }
+  }
+  &.text-nowrap {
+    .ds-react-select__option {
+      text-wrap: nowrap;
+    }
+  }
+
   &.input-bg .ds-react-select__control {
     background: $input-bg;
   }

@@ -14,6 +14,7 @@ import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
 import { Readable } from 'stream';
+import { z } from 'zod';
 
 import * as config from '@/config';
 import { sleep } from '@/utils/common';
@@ -23,6 +24,7 @@ import type {
   MetricModel,
   RrwebEventModel,
 } from '@/utils/logParser';
+import { chartSeriesSchema } from '@/utils/zod';
 
 import { redisClient } from '../utils/redis';
 import {
@@ -42,6 +44,11 @@ import {
 const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
+
+export enum SeriesReturnType {
+  Ratio = 'ratio',
+  Column = 'column',
+}
 
 export enum MetricsDataType {
   Gauge = 'Gauge',
@@ -833,18 +840,19 @@ export const getMetricsChart = async ({
 
   const gaugeMetricSource = SqlString.format(
     `
-      SELECT 
-        timestamp,
+      SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
         name,
-        value,
+        last_value(value) as value,
         _string_attributes
       FROM ??
       WHERE name = ?
       AND data_type = ?
       AND (?)
-      ORDER BY _timestamp_sort_key ASC
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY timestamp ASC
     `.trim(),
-    [tableName, name, dataType, SqlString.raw(whereClause)],
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const query = SqlString.format(
@@ -902,6 +910,626 @@ export const getMetricsChart = async ({
     took: Date.now() - ts,
   });
   return result;
+};
+
+export const buildMetricSeriesQuery = async ({
+  aggFn,
+  dataType,
+  endTime,
+  granularity,
+  groupBy,
+  name,
+  q,
+  startTime,
+  teamId,
+  sortOrder,
+}: {
+  aggFn: AggFn;
+  dataType: MetricsDataType;
+  endTime: number; // unix in ms,
+  granularity?: Granularity | string;
+  groupBy?: string;
+  name: string;
+  q: string;
+  startTime: number; // unix in ms
+  teamId: string;
+  sortOrder?: 'asc' | 'desc';
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
+    undefined, // default version
+    teamId,
+  );
+
+  const isRate = isRateAggFn(aggFn);
+
+  const shouldModifyStartTime = isRate;
+
+  // If it's a rate function, then we'll need to look 1 window back to calculate
+  // the initial rate value.
+  // We'll filter this extra bucket out later
+  const modifiedStartTime = shouldModifyStartTime
+    ? // If granularity is not defined (tables), we'll just look behind 5min
+      startTime - ms(granularity ?? '5 minute')
+    : startTime;
+
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime: modifiedStartTime,
+  });
+  const selectClause = [
+    granularity != null
+      ? SqlString.format(
+          'toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket',
+          [granularity],
+        )
+      : "'0' as ts_bucket",
+    groupBy
+      ? SqlString.format(`_string_attributes[?] AS group`, [groupBy])
+      : "'' AS group",
+  ];
+
+  const hasGroupBy = groupBy != '' && groupBy != null;
+
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
+    selectClause.push(
+      aggFn === AggFn.Count
+        ? 'COUNT(value) as data'
+        : aggFn === AggFn.Sum
+        ? `SUM(value) as data`
+        : aggFn === AggFn.Avg
+        ? `AVG(value) as data`
+        : aggFn === AggFn.Max
+        ? `MAX(value) as data`
+        : aggFn === AggFn.Min
+        ? `MIN(value) as data`
+        : aggFn === AggFn.SumRate
+        ? `SUM(rate) as data`
+        : aggFn === AggFn.AvgRate
+        ? `AVG(rate) as data`
+        : aggFn === AggFn.MaxRate
+        ? `MAX(rate) as data`
+        : aggFn === AggFn.MinRate
+        ? `MIN(rate) as data`
+        : `quantile(${
+            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+              ? '0.5'
+              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+              ? '0.90'
+              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
+              ? '0.95'
+              : '0.99'
+          })(${isRate ? 'rate' : 'value'}) as data`,
+    );
+  } else {
+    logger.error(`Unsupported data type: ${dataType}`);
+  }
+
+  const startTimeUnixTs = Math.floor(startTime / 1000);
+
+  // TODO: Can remove the ORDER BY _string_attributes for Gauge metrics
+  // since they don't get subjected to runningDifference afterwards
+  const gaugeMetricSource = SqlString.format(
+    `
+      SELECT
+        ?,
+        name,
+        last_value(value) as value,
+        _string_attributes
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (?)
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY _string_attributes, timestamp ASC
+    `.trim(),
+    [
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
+      ),
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
+    ],
+  );
+
+  const rateMetricSource = SqlString.format(
+    `
+      SELECT
+        if(
+          runningDifference(value) < 0
+          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+          nan,
+          runningDifference(value)
+        ) AS rate,
+        timestamp,
+        _string_attributes,
+        name
+      FROM (?)
+      WHERE isNaN(rate) = 0
+      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
+    `.trim(),
+    [
+      SqlString.raw(gaugeMetricSource),
+      ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
+    ],
+  );
+
+  const query = SqlString.format(
+    `
+      WITH metrics AS (?)
+      SELECT ?
+      FROM metrics
+      GROUP BY group, ts_bucket
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }
+    `,
+    [
+      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
+      SqlString.raw(selectClause.join(',')),
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
+    ],
+  );
+
+  return {
+    query,
+    hasGroupBy,
+    sortOrder,
+  };
+};
+
+const buildEventSeriesQuery = async ({
+  aggFn,
+  endTime,
+  field,
+  granularity,
+  groupBy,
+  propertyTypeMappingsModel,
+  q,
+  sortOrder,
+  startTime,
+  tableVersion,
+  teamId,
+}: {
+  aggFn: AggFn;
+  endTime: number; // unix in ms,
+  field?: string;
+  granularity: string | undefined; // can be undefined in the number chart
+  groupBy: string;
+  propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
+  q: string;
+  sortOrder?: 'asc' | 'desc';
+  startTime: number; // unix in ms
+  tableVersion: number | undefined;
+  teamId: string;
+}) => {
+  if (isRateAggFn(aggFn)) {
+    throw new Error('Rate is not supported in logs chart');
+  }
+
+  const tableName = getLogStreamTableName(tableVersion, teamId);
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime,
+  });
+
+  if (field == null && aggFn !== AggFn.Count) {
+    throw new Error(
+      'Field is required for all aggregation functions except Count',
+    );
+  }
+
+  const selectField =
+    field != null
+      ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
+      : '';
+
+  const hasGroupBy = groupBy != '' && groupBy != null;
+  const isCountFn = aggFn === AggFn.Count;
+  const groupByField =
+    hasGroupBy &&
+    buildSearchColumnName(propertyTypeMappingsModel.get(groupBy), groupBy);
+
+  const serializer = new SQLSerializer(propertyTypeMappingsModel);
+
+  const label = SqlString.escape(`${aggFn}(${field})`);
+
+  const selectClause = [
+    isCountFn
+      ? 'toFloat64(count()) as data'
+      : aggFn === AggFn.Sum
+      ? `toFloat64(sum(${selectField})) as data`
+      : aggFn === AggFn.Avg
+      ? `toFloat64(avg(${selectField})) as data`
+      : aggFn === AggFn.Max
+      ? `toFloat64(max(${selectField})) as data`
+      : aggFn === AggFn.Min
+      ? `toFloat64(min(${selectField})) as data`
+      : aggFn === AggFn.CountDistinct
+      ? `toFloat64(count(distinct ${selectField})) as data`
+      : `toFloat64(quantile(${
+          aggFn === AggFn.P50
+            ? '0.5'
+            : aggFn === AggFn.P90
+            ? '0.90'
+            : aggFn === AggFn.P95
+            ? '0.95'
+            : '0.99'
+        })(${selectField})) as data`,
+    granularity != null
+      ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
+      : "'0' as ts_bucket",
+    groupByField ? `${groupByField} as group` : `'' as group`, // FIXME: should we fallback to use aggFn as group
+    `${label} as label`,
+  ].join(',');
+
+  const groupByClause = `ts_bucket ${groupByField ? `, ${groupByField}` : ''}`;
+
+  const query = SqlString.format(
+    `
+      SELECT ?
+      FROM ??
+      WHERE ? AND (?) ? ?
+      GROUP BY ?
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }${
+      sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
+    }
+    `,
+    [
+      SqlString.raw(selectClause),
+      tableName,
+      buildTeamLogStreamWhereCondition(tableVersion, teamId),
+      SqlString.raw(whereClause),
+      SqlString.raw(
+        !isCountFn && field != null
+          ? ` AND (${await serializer.isNotNull(field, false)})`
+          : '',
+      ),
+      SqlString.raw(
+        hasGroupBy
+          ? ` AND (${await serializer.isNotNull(groupBy, false)})`
+          : '',
+      ),
+      SqlString.raw(groupByClause),
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
+    ],
+  );
+
+  return {
+    query,
+    hasGroupBy,
+    sortOrder,
+  };
+};
+
+export const queryMultiSeriesChart = async ({
+  maxNumGroups,
+  tableVersion,
+  teamId,
+  seriesReturnType = SeriesReturnType.Column,
+  queries,
+}: {
+  maxNumGroups: number;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+  queries: { query: string; hasGroupBy: boolean; sortOrder?: 'desc' | 'asc' }[];
+}) => {
+  // For now only supports same-table series with the same groupBy
+
+  const seriesCTEs = queries
+    .map((q, i) => `series_${i} AS (${q.query})`)
+    .join(',\n');
+
+  // Only join on group bys if all queries have group bys
+  // TODO: This will not work for an array of group by fields
+  const allQueiesHaveGroupBy = queries.every(q => q.hasGroupBy);
+
+  let seriesIndexWithSorting = -1;
+  let sortOrder: 'asc' | 'desc' = 'desc';
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i];
+    if (q.sortOrder === 'asc' || q.sortOrder === 'desc') {
+      seriesIndexWithSorting = i;
+      sortOrder = q.sortOrder;
+      break;
+    }
+  }
+
+  let leftJoin = '';
+  // Join every series after the first one
+  for (let i = 1; i < queries.length; i++) {
+    leftJoin += `LEFT JOIN series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
+      allQueiesHaveGroupBy ? ` AND series_${i}.group = series_0.group` : ''
+    }\n`;
+  }
+
+  const select =
+    seriesReturnType === 'column'
+      ? queries
+          .map((_, i) => {
+            return `series_${i}.data as "series_${i}.data"`;
+          })
+          .join(',\n')
+      : 'series_0.data / series_1.data as "series_0.data"';
+
+  // Return each series data as a separate column
+  const query = SqlString.format(
+    `WITH ? 
+      ,raw_groups AS (
+        SELECT 
+          ?,
+          series_0.ts_bucket as ts_bucket, 
+          series_0.group as group
+        FROM series_0 AS series_0
+        ?
+      ), groups AS (
+        SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
+        FROM raw_groups
+      ), final AS (
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
+        FROM groups
+      )
+      SELECT *
+      FROM final
+      WHERE rank <= ?
+      ORDER BY ts_bucket ASC
+      ?
+    `,
+    [
+      SqlString.raw(seriesCTEs),
+      SqlString.raw(select),
+      SqlString.raw(leftJoin),
+      // Setting rank_order_by_value
+      SqlString.raw(sortOrder === 'asc' ? 'MIN' : 'MAX'),
+      SqlString.raw(
+        // If ratio, we judge on series_0
+        seriesReturnType === 'ratio'
+          ? 'series_0.data'
+          : // If the user specified a sorting order, we use that
+          seriesIndexWithSorting > -1
+          ? `series_${seriesIndexWithSorting}.data`
+          : // Otherwise we just grab the greatest value
+            `greatest(${queries.map((_, i) => `series_${i}.data`).join(', ')})`,
+      ),
+      // ORDER BY rank_order_by_value ....
+      SqlString.raw(sortOrder === 'asc' ? 'ASC' : 'DESC'),
+      maxNumGroups,
+      // Final row sort ordering
+      SqlString.raw(
+        sortOrder === 'asc' || sortOrder === 'desc'
+          ? `, series_${
+              seriesIndexWithSorting > -1 ? seriesIndexWithSorting : 0
+            }.data ${sortOrder}`
+          : '',
+      ),
+    ],
+  );
+
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildLogStreamAdditionalFilters(
+        tableVersion,
+        teamId,
+      ),
+    },
+  });
+
+  const result = await rows.json<
+    ResponseJSON<{
+      ts_bucket: number;
+      group: string;
+      [series_data: `series_${number}.data`]: number;
+    }>
+  >();
+  return result;
+};
+
+export const getMultiSeriesChart = async ({
+  series,
+  endTime,
+  granularity,
+  maxNumGroups,
+  propertyTypeMappingsModel,
+  startTime,
+  tableVersion,
+  teamId,
+  seriesReturnType = SeriesReturnType.Column,
+}: {
+  series: z.infer<typeof chartSeriesSchema>[];
+  endTime: number; // unix in ms,
+  startTime: number; // unix in ms
+  granularity: string | undefined; // can be undefined in the number chart
+  maxNumGroups: number;
+  propertyTypeMappingsModel?: LogsPropertyTypeMappingsModel;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+}) => {
+  let queries: {
+    query: string;
+    hasGroupBy: boolean;
+    sortOrder?: 'desc' | 'asc';
+  }[] = [];
+  if (
+    // Default table is logs
+    ('table' in series[0] &&
+      (series[0].table === 'logs' || series[0].table == null)) ||
+    !('table' in series[0])
+  ) {
+    if (propertyTypeMappingsModel == null) {
+      throw new Error('propertyTypeMappingsModel is required for logs chart');
+    }
+
+    queries = await Promise.all(
+      series.map(s => {
+        if (s.type != 'time' && s.type != 'table') {
+          throw new Error(`Unsupported series type: ${s.type}`);
+        }
+        if (s.table != 'logs' && s.table != null) {
+          throw new Error(`All series must have the same table`);
+        }
+
+        return buildEventSeriesQuery({
+          aggFn: s.aggFn,
+          endTime,
+          field: s.field,
+          granularity,
+          groupBy: s.groupBy[0],
+          propertyTypeMappingsModel,
+          q: s.where,
+          sortOrder: s.type === 'table' ? s.sortOrder : undefined,
+          startTime,
+          tableVersion,
+          teamId,
+        });
+      }),
+    );
+  } else if ('table' in series[0] && series[0].table === 'metrics') {
+    queries = await Promise.all(
+      series.map(s => {
+        if (s.type != 'time' && s.type != 'table') {
+          throw new Error(`Unsupported series type: ${s.type}`);
+        }
+        if (s.table != 'metrics') {
+          throw new Error(`All series must have the same table`);
+        }
+        if (s.field == null) {
+          throw new Error('Metric name is required');
+        }
+        if (s.metricDataType == null) {
+          throw new Error('Metric data type is required');
+        }
+
+        return buildMetricSeriesQuery({
+          aggFn: s.aggFn,
+          endTime,
+          name: s.field,
+          granularity,
+          groupBy: s.groupBy[0],
+          sortOrder: s.type === 'table' ? s.sortOrder : undefined,
+          q: s.where,
+          startTime,
+          teamId,
+          dataType: s.metricDataType,
+        });
+      }),
+    );
+  }
+
+  return queryMultiSeriesChart({
+    maxNumGroups,
+    tableVersion,
+    teamId,
+    seriesReturnType,
+    queries,
+  });
+};
+
+export const getMultiSeriesChartLegacyFormat = async ({
+  series,
+  endTime,
+  granularity,
+  maxNumGroups,
+  propertyTypeMappingsModel,
+  startTime,
+  tableVersion,
+  teamId,
+  seriesReturnType,
+}: {
+  series: z.infer<typeof chartSeriesSchema>[];
+  endTime: number; // unix in ms,
+  startTime: number; // unix in ms
+  granularity: string | undefined; // can be undefined in the number chart
+  maxNumGroups: number;
+  propertyTypeMappingsModel?: LogsPropertyTypeMappingsModel;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+}) => {
+  const result = await getMultiSeriesChart({
+    series,
+    endTime,
+    granularity,
+    maxNumGroups,
+    propertyTypeMappingsModel,
+    startTime,
+    tableVersion,
+    teamId,
+    seriesReturnType,
+  });
+
+  const flatData = result.data.flatMap(row => {
+    if (seriesReturnType === 'column') {
+      return series.map((_, i) => {
+        return {
+          ts_bucket: row.ts_bucket,
+          group: row.group,
+          data: row[`series_${i}.data`],
+        };
+      });
+    }
+
+    // Ratio only has 1 series
+    return [
+      {
+        ts_bucket: row.ts_bucket,
+        group: row.group,
+        data: row['series_0.data'],
+      },
+    ];
+  });
+
+  return {
+    rows: flatData.length,
+    data: flatData,
+  };
 };
 
 export const getLogsChart = async ({

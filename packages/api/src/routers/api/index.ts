@@ -1,4 +1,5 @@
 import alertsRouter from './alerts';
+import chartRouter from './chart';
 import dashboardRouter from './dashboards';
 import logsRouter from './logs';
 import logViewsRouter from './logViews';
@@ -20,4 +21,5 @@ export default {
   sessionsRouter,
   teamRouter,
   webhooksRouter,
+  chartRouter,
 };
