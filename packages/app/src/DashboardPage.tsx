@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import produce from 'immer';
 import { Button, Form, Modal } from 'react-bootstrap';
@@ -99,6 +100,7 @@ const Tile = forwardRef(
       onMouseUp,
       onTouchEnd,
       children,
+      isHighlighed,
     }: {
       chart: Chart;
       alert?: Alert;
@@ -118,6 +120,7 @@ const Tile = forwardRef(
       onMouseUp?: (e: React.MouseEvent) => void;
       onTouchEnd?: (e: React.TouchEvent) => void;
       children?: React.ReactNode; // Resizer tooltip
+      isHighlighed?: boolean;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -188,9 +191,20 @@ const Tile = forwardRef(
       }
     }, [config.type, onSettled]);
 
+    useEffect(() => {
+      if (isHighlighed) {
+        document
+          .getElementById(`chart-${chart.id}`)
+          ?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, []);
+
     return (
       <div
-        className={`bg-hdx-dark p-3 ${className} d-flex flex-column`}
+        className={`bg-hdx-dark p-3 ${className} d-flex flex-column ${
+          isHighlighed && 'dashboard-chart-highlighted'
+        }`}
+        id={`chart-${chart.id}`}
         key={chart.id}
         ref={ref}
         style={style}
@@ -203,19 +217,20 @@ const Tile = forwardRef(
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
             {alert && (
-              <div className="rounded px-1 text-muted bg-grey opacity-90 cursor-default">
-                {alert.state === 'ALERT' ? (
+              <Link href="/alerts">
+                <div
+                  className={`rounded px-1 text-muted cursor-pointer ${
+                    alert.state === 'ALERT'
+                      ? 'bg-danger effect-pulse'
+                      : 'bg-grey opacity-90'
+                  }`}
+                >
                   <i
-                    className="bi bi-bell text-danger effect-pulse"
-                    title="Has alert and is in ALERT state"
-                  ></i>
-                ) : (
-                  <i
-                    className="bi bi-bell"
-                    title="Has alert and is in OK state"
-                  ></i>
-                )}
-              </div>
+                    className="bi bi-bell text-white"
+                    title={`Has alert and is in ${alert.state} state`}
+                  />
+                </div>
+              </Link>
             )}
 
             <Button
@@ -754,6 +769,8 @@ export default function DashboardPage() {
     }
   }, [isLocalDashboard, router, dashboard?.charts.length]);
 
+  const [highlightedChartId] = useQueryParam('highlightedChartId');
+
   const tiles = useMemo(
     () =>
       (dashboard?.charts ?? []).map(chart => {
@@ -766,6 +783,7 @@ export default function DashboardPage() {
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
             alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
+            isHighlighed={highlightedChartId === chart.id}
             onDuplicateClick={async () => {
               if (dashboard != null) {
                 if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {
@@ -803,6 +821,7 @@ export default function DashboardPage() {
       dashboardQuery,
       searchedTimeRange,
       granularityQuery,
+      highlightedChartId,
       confirm,
       setDashboard,
     ],
