@@ -15,6 +15,7 @@ import type {
   AlertInterval,
   AlertSource,
   AlertType,
+  ChartSeries,
   LogView,
   Session,
 } from './types';
@@ -147,6 +148,65 @@ const api = {
             type: metricDataType,
           },
         }).json(),
+      ...options,
+    });
+  },
+  useMultiSeriesChart(
+    {
+      startDate,
+      series,
+      sortOrder,
+      granularity,
+      endDate,
+      seriesReturnType,
+    }: {
+      series: ChartSeries[];
+      endDate: Date;
+      granularity?: string;
+      startDate: Date;
+      sortOrder?: 'asc' | 'desc';
+      seriesReturnType: 'column' | 'ratio';
+    },
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    const enrichedSeries = series.map(s => {
+      if (s.type != 'search' && s.type != 'markdown' && s.table === 'metrics') {
+        const [metricName, metricDataType] = (s.field ?? '').split(' - ');
+        return {
+          ...s,
+          field: metricName,
+          metricDataType,
+        };
+      }
+
+      return s;
+    });
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    return useQuery<any, Error>({
+      refetchOnWindowFocus: false,
+      queryKey: [
+        'chart/series',
+        enrichedSeries,
+        endTime,
+        granularity,
+        startTime,
+        sortOrder,
+        seriesReturnType,
+      ],
+      queryFn: () =>
+        server('chart/series', {
+          method: 'POST',
+          json: {
+            series: enrichedSeries,
+            endTime,
+            startTime,
+            granularity,
+            sortOrder,
+            seriesReturnType,
+          },
+        }).json(),
+      retry: 1,
       ...options,
     });
   },

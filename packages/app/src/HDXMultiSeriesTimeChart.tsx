@@ -17,82 +17,40 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Tooltip as MTooltip } from '@mantine/core';
 
 import api from './api';
-import { convertGranularityToSeconds, Granularity } from './ChartUtils';
-import type { AggFn, NumberFormat } from './types';
+import {
+  convertGranularityToSeconds,
+  Granularity,
+  seriesColumns,
+  seriesToUrlSearchQueryParam,
+} from './ChartUtils';
+import type { ChartSeries, NumberFormat } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { formatNumber } from './utils';
 import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
-import styles from '../styles/HDXLineChart.module.scss';
-
-const MAX_LEGEND_ITEMS = 4;
-
-function ExpandableLegendItem({ entry, expanded }: any) {
-  const [_expanded, setExpanded] = useState(false);
-  const isExpanded = _expanded || expanded;
+function ExpandableLegendItem({ value, entry }: any) {
+  const [expanded, setExpanded] = useState(false);
+  const { color } = entry;
 
   return (
-    <span
-      className={styles.legendItem}
-      style={{ color: entry.color }}
-      role="button"
-      onClick={() => setExpanded(v => !v)}
-      title="Click to expand"
-    >
-      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
-      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
+    <span>
+      <span
+        style={{ color }}
+        role="button"
+        onClick={() => setExpanded(v => !v)}
+        title="Click to expand"
+      >
+        {expanded ? value : truncateMiddle(`${value}`, 45)}
+      </span>
     </span>
   );
 }
 
-const LegendRenderer = memo<{
-  payload?: {
-    value: string;
-    color: string;
-  }[];
-}>(props => {
-  const payload = props.payload ?? [];
-  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
-  const restItems = payload.slice(MAX_LEGEND_ITEMS);
-
-  return (
-    <div className={styles.legend}>
-      {shownItems.map((entry, index) => (
-        <ExpandableLegendItem
-          key={`item-${index}`}
-          value={entry.value}
-          entry={entry}
-        />
-      ))}
-      {restItems.length ? (
-        <MTooltip
-          color="gray"
-          withinPortal
-          withArrow
-          label={
-            <div className={styles.legendTooltipContent}>
-              {restItems.map((entry, index) => (
-                <ExpandableLegendItem
-                  key={`item-${index}`}
-                  value={entry.value}
-                  entry={entry}
-                  expanded
-                />
-              ))}
-            </div>
-          }
-        >
-          <div className={cx(styles.legendItem, styles.legendMoreLink)}>
-            +{restItems.length} more
-          </div>
-        </MTooltip>
-      ) : null}
-    </div>
-  );
-});
+const legendFormatter = (value: string, entry: any) => (
+  <ExpandableLegendItem value={value} entry={entry} />
+);
 
 const MemoChart = memo(function MemoChart({
   graphResults,
@@ -100,9 +58,9 @@ const MemoChart = memo(function MemoChart({
   isClickActive,
   dateRange,
   groupKeys,
+  lineNames,
   alertThreshold,
   alertThresholdType,
-  logReferenceTimestamp,
   displayType = 'line',
   numberFormat,
 }: {
@@ -111,21 +69,22 @@ const MemoChart = memo(function MemoChart({
   isClickActive: any;
   dateRange: [Date, Date];
   groupKeys: string[];
+  lineNames: string[];
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
   displayType?: 'stacked_bar' | 'line';
   numberFormat?: NumberFormat;
-  logReferenceTimestamp?: number;
 }) {
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
   const lines = useMemo(() => {
-    return groupKeys.map(key =>
+    return groupKeys.map((key, i) =>
       displayType === 'stacked_bar' ? (
         <Bar
           key={key}
           type="monotone"
           dataKey={key}
+          name={lineNames[i] ?? key}
           fill={semanticKeyedColor(key)}
           stackId="1"
         />
@@ -134,12 +93,13 @@ const MemoChart = memo(function MemoChart({
           key={key}
           type="monotone"
           dataKey={key}
+          name={lineNames[i] ?? key}
           stroke={semanticKeyedColor(key)}
           dot={false}
         />
       ),
     );
-  }, [groupKeys, displayType]);
+  }, [groupKeys, displayType, lineNames]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const timeFormat: TimeFormat = useUserPreferences().timeFormat;
@@ -251,19 +211,11 @@ const MemoChart = memo(function MemoChart({
         <Legend
           iconSize={10}
           verticalAlign="bottom"
-          content={<LegendRenderer />}
+          formatter={legendFormatter}
         />
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
-        ) : null}
-        {logReferenceTimestamp != null ? (
-          <ReferenceLine
-            x={logReferenceTimestamp}
-            stroke="#ff5d5b"
-            strokeDasharray="3 3"
-            label="Event"
-          />
         ) : null}
       </ChartComponent>
     </ResponsiveContainer>
@@ -281,8 +233,8 @@ const HDXLineChartTooltip = (props: any) => {
         {payload
           .sort((a: any, b: any) => b.value - a.value)
           .map((p: any) => (
-            <div key={p.name} style={{ color: p.color }}>
-              {p.dataKey}:{' '}
+            <div key={p.dataKey} style={{ color: p.color }}>
+              {p.name ?? p.dataKey}:{' '}
               {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
             </div>
           ))}
@@ -291,125 +243,95 @@ const HDXLineChartTooltip = (props: any) => {
   }
   return null;
 };
-const HDXLineChart = memo(
+
+const HDXMultiSeriesLineChart = memo(
   ({
-    config: {
-      table,
-      aggFn,
-      field,
-      where,
-      groupBy,
-      granularity,
-      dateRange,
-      numberFormat,
-    },
+    config: { series, granularity, dateRange, seriesReturnType = 'column' },
     onSettled,
     alertThreshold,
     alertThresholdType,
-    logReferenceTimestamp,
   }: {
     config: {
-      table: string;
-      aggFn: AggFn;
-      field: string;
-      where: string;
-      groupBy: string;
+      series: ChartSeries[];
       granularity: Granularity;
       dateRange: [Date, Date];
-      numberFormat?: NumberFormat;
+      seriesReturnType: 'ratio' | 'column';
     };
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
-    logReferenceTimestamp?: number;
   }) => {
-    const { data, isError, isLoading } =
-      table === 'logs'
-        ? api.useLogsChart(
-            {
-              aggFn,
-              endDate: dateRange[1] ?? new Date(),
-              field,
-              granularity,
-              groupBy,
-              q: where,
-              startDate: dateRange[0] ?? new Date(),
-            },
-            {
-              enabled:
-                aggFn === 'count' ||
-                (typeof field === 'string' && field.length > 0),
-              onSettled,
-            },
-          )
-        : api.useMetricsChart(
-            {
-              aggFn,
-              endDate: dateRange[1] ?? new Date(),
-              granularity,
-              groupBy,
-              name: field,
-              q: where,
-              startDate: dateRange[0] ?? new Date(),
-            },
-            {
-              onSettled,
-            },
-          );
+    const { data, isError, isLoading } = api.useMultiSeriesChart({
+      series,
+      granularity,
+      endDate: dateRange[1] ?? new Date(),
+      startDate: dateRange[0] ?? new Date(),
+      seriesReturnType,
+    });
 
     const tsBucketMap = new Map();
     let graphResults: {
       ts_bucket: number;
       [key: string]: number | undefined;
     }[] = [];
-    let groupKeys: string[] = [];
-    const groupKeySet = new Set<string>();
-    const groupKeyMax = new Map<string, number>();
+
+    // TODO: FIX THIS COUNTER
     let totalGroups = 0;
+    const groupSet = new Set(); // to count how many unique groups there were
+
+    const lineDataMap: {
+      [seriesGroup: string]: {
+        dataKey: string;
+        displayName: string;
+      };
+    } = {};
+
+    const seriesMeta = seriesColumns({
+      series,
+      seriesReturnType,
+    });
+
+    // Each row of data will contain the ts_bucket, group name
+    // and a data value per series, we just need to turn them all into keys
     if (data != null) {
       for (const row of data.data) {
-        const key = row.group;
-        const value = Number.parseFloat(row.data);
-
-        // Keep track of the max value we've seen for this key so far
-        // we'll pick the top N to display later
-        groupKeyMax.set(key, Math.max(groupKeyMax.get(key) ?? 0, value));
+        groupSet.add(row.group);
 
         const tsBucket = tsBucketMap.get(row.ts_bucket) ?? {};
-        groupKeySet.add(key);
         tsBucketMap.set(row.ts_bucket, {
           ...tsBucket,
           ts_bucket: row.ts_bucket,
-          [key]: value, // CH can return strings for UInt64
+          ...seriesMeta.reduce((acc, meta, i) => {
+            // We set an arbitrary data key that is unique
+            // per series/group
+            const dataKey = `series_${i}.data:::${row.group}`;
+
+            const displayName =
+              series.length === 1
+                ? // If there's only one series, just show the group, unless there is no group
+                  row.group
+                  ? `${row.group}`
+                  : meta.displayName
+                : // Otherwise, show the series and a group if there is any
+                  `${row.group ? `${row.group} • ` : ''}${meta.displayName}`;
+
+            acc[dataKey] = row[meta.dataKey];
+            lineDataMap[dataKey] = {
+              dataKey,
+              displayName,
+            };
+            return acc;
+          }, {} as any),
         });
       }
-
-      // get top N keys from groupKeyMax
-      const topN = 20;
-      const topNKeys = Array.from(groupKeyMax.entries())
-        .filter(([groupKey]) => groupKey !== '') // filter out zero padding key
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, topN)
-        .map(([k]) => k);
-
-      totalGroups = groupKeyMax.size - 1; // subtract zero padding key from total
-
-      graphResults = Array.from(tsBucketMap.values())
-        .sort((a, b) => a.ts_bucket - b.ts_bucket)
-        .map(v => {
-          const defaultValues = Object.fromEntries(
-            topNKeys.map(k => [k, aggFn === 'count' ? 0 : undefined]), // fill in undefined for missing value
-          ) as { [key: string]: number | undefined };
-          return {
-            ...defaultValues,
-            ...(pick(v, ['ts_bucket', ...topNKeys]) as {
-              ts_bucket: number;
-              [key: string]: number;
-            }),
-          };
-        });
-      groupKeys = topNKeys;
+      graphResults = Array.from(tsBucketMap.values()).sort(
+        (a, b) => a.ts_bucket - b.ts_bucket,
+      );
+      totalGroups = groupSet.size;
     }
+
+    const groupKeys = Object.values(lineDataMap).map(s => s.dataKey);
+    const lineNames = Object.values(lineDataMap).map(s => s.displayName);
 
     const [activeClickPayload, setActiveClickPayload] = useState<
       | {
@@ -443,15 +365,14 @@ const HDXLineChart = memo(
       const to = add(clickedActiveLabelDate, {
         seconds: convertGranularityToSeconds(granularity),
       });
-      qparams = new URLSearchParams({
-        q:
-          where +
-          (aggFn !== 'count' ? ` ${field}:*` : '') +
-          (groupBy != null && groupBy != '' ? ` ${groupBy}:*` : ''),
-        from: `${clickedActiveLabelDate?.getTime()}`,
-        to: `${to.getTime()}`,
+      qparams = seriesToUrlSearchQueryParam({
+        series,
+        dateRange: [clickedActiveLabelDate, to],
       });
     }
+
+    const numberFormat =
+      series[0].type === 'time' ? series[0]?.numberFormat : undefined;
 
     const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
       'line',
@@ -567,6 +488,7 @@ const HDXLineChart = memo(
             </span>
           </div>
           <MemoChart
+            lineNames={lineNames}
             graphResults={graphResults}
             groupKeys={groupKeys}
             isClickActive={activeClickPayload}
@@ -576,7 +498,6 @@ const HDXLineChart = memo(
             alertThresholdType={alertThresholdType}
             displayType={displayType}
             numberFormat={numberFormat}
-            logReferenceTimestamp={logReferenceTimestamp}
           />
         </div>
       </div>
@@ -584,4 +505,4 @@ const HDXLineChart = memo(
   },
 );
 
-export default HDXLineChart;
+export default HDXMultiSeriesLineChart;

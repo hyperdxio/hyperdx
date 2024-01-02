@@ -103,6 +103,7 @@ app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
 app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
+app.use('/chart', isUserAuthenticated, routers.chartRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

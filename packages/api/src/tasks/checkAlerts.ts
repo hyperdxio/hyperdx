@@ -155,7 +155,7 @@ const buildLogEventSlackMessage = async ({
     endTime: endTime.getTime(),
     limit: 5,
     offset: 0,
-    order: 'desc', // TODO: better to use null
+    order: 'desc',
     q: searchQuery,
     startTime: startTime.getTime(),
     tableVersion: logView.team.logStreamTableVersion,
@@ -336,8 +336,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     // Logs Source
     let checksData:
       | Awaited<ReturnType<typeof clickhouse.checkAlert>>
-      | Awaited<ReturnType<typeof clickhouse.getLogsChart>>
-      | Awaited<ReturnType<typeof clickhouse.getMetricsChart>>
+      | Awaited<ReturnType<typeof clickhouse.getMultiSeriesChartLegacyFormat>>
       | null = null;
     let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
     let targetDashboard: EnhancedDashboard | null = null;
@@ -380,17 +379,19 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       ).populate<{
         team: ITeam;
       }>('team');
+
       if (
         dashboard &&
         Array.isArray(dashboard.charts) &&
         dashboard.charts.length === 1
       ) {
         const chart = dashboard.charts[0];
+        // Doesn't work for metric alerts yet
+        const MAX_NUM_GROUPS = 20;
         // TODO: assuming that the chart has only 1 series for now
-        const series = chart.series[0];
-        if (series.type === 'time' && series.table === 'logs') {
+        const firstSeries = chart.series[0];
+        if (firstSeries.type === 'time' && firstSeries.table === 'logs') {
           targetDashboard = dashboard;
-          const MAX_NUM_GROUPS = 20;
           const startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
           const propertyTypeMappingsModel =
@@ -400,51 +401,49 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
               startTimeMs,
               endTimeMs,
             );
-          checksData = await clickhouse.getLogsChart({
-            aggFn: series.aggFn,
+
+          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
+            series: chart.series,
             endTime: endTimeMs,
-            // @ts-expect-error
-            field: series.field,
             granularity: `${windowSizeInMins} minute`,
-            groupBy: series.groupBy[0],
             maxNumGroups: MAX_NUM_GROUPS,
             propertyTypeMappingsModel,
-            q: series.where,
             startTime: startTimeMs,
             tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
+            seriesReturnType: chart.seriesReturnType,
           });
         } else if (
-          series.type === 'time' &&
-          series.table === 'metrics' &&
-          series.field
+          firstSeries.type === 'time' &&
+          firstSeries.table === 'metrics' &&
+          firstSeries.field
         ) {
           targetDashboard = dashboard;
-          let startTimeMs = fns.getTime(checkStartTime);
+          const startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
-          const [metricName, rawMetricDataType] = series.field.split(' - ');
-          const metricDataType = z
-            .nativeEnum(clickhouse.MetricsDataType)
-            .parse(rawMetricDataType);
-          if (
-            metricDataType === clickhouse.MetricsDataType.Sum &&
-            clickhouse.isRateAggFn(series.aggFn)
-          ) {
-            // adjust the time so that we have enough data points to calculate a rate
-            startTimeMs = fns
-              .subMinutes(startTimeMs, windowSizeInMins)
-              .getTime();
-          }
-          checksData = await clickhouse.getMetricsChart({
-            aggFn: series.aggFn,
-            dataType: metricDataType,
+          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
+            series: chart.series.map(series => {
+              if ('field' in series && series.field != null) {
+                const [metricName, rawMetricDataType] =
+                  series.field.split(' - ');
+                const metricDataType = z
+                  .nativeEnum(clickhouse.MetricsDataType)
+                  .parse(rawMetricDataType);
+                return {
+                  ...series,
+                  metricDataType,
+                  field: metricName,
+                };
+              }
+              return series;
+            }),
             endTime: endTimeMs,
             granularity: `${windowSizeInMins} minute`,
-            groupBy: series.groupBy[0],
-            name: metricName,
-            q: series.where,
+            maxNumGroups: MAX_NUM_GROUPS,
             startTime: startTimeMs,
+            tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
+            seriesReturnType: chart.seriesReturnType,
           });
         }
       }

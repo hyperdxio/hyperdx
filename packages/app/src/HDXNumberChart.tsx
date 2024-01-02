@@ -1,8 +1,7 @@
 import { memo } from 'react';
 
 import api from './api';
-import { AggFn } from './ChartUtils';
-import { NumberFormat } from './types';
+import type { AggFn, NumberFormat } from './types';
 import { formatNumber } from './utils';
 
 const HDXNumberChart = memo(

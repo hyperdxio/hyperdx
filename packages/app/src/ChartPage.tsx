@@ -8,7 +8,7 @@ import { decodeArray, encodeArray } from 'serialize-query-params';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 
 import AppNav from './AppNav';
-import { AggFn, ChartSeries, ChartSeriesForm } from './ChartUtils';
+import { ChartSeriesForm } from './ChartUtils';
 import DSSelect from './DSSelect';
 import HDXLineChart from './HDXLineChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
@@ -16,6 +16,7 @@ import SearchTimeRangePicker, {
   parseTimeRangeInput,
 } from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import type { AggFn, ChartSeries, SourceTable } from './types';
 import { useQueryParam as useHDXQueryParam } from './useQueryParam';
 
 export const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
@@ -56,21 +57,12 @@ export default function GraphPage() {
     },
   );
 
-  const setTable = (index: number, table: string) => {
-    setChartSeries(
-      produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].table = table;
-        }
-      }),
-    );
-  };
-
   const setAggFn = (index: number, fn: AggFn) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].aggFn = fn;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.aggFn = fn;
         }
       }),
     );
@@ -78,8 +70,9 @@ export default function GraphPage() {
   const setField = (index: number, field: string | undefined) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].field = field;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.field = field;
         }
       }),
     );
@@ -91,9 +84,10 @@ export default function GraphPage() {
   ) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].field = field;
-          series[index].aggFn = fn;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.field = field;
+          s.aggFn = fn;
         }
       }),
     );
@@ -101,8 +95,9 @@ export default function GraphPage() {
   const setWhere = (index: number, where: string) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].where = where;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.where = where;
         }
       }),
     );
@@ -110,8 +105,9 @@ export default function GraphPage() {
   const setGroupBy = (index: number, groupBy: string | undefined) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].groupBy = groupBy != null ? [groupBy] : [];
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.groupBy = groupBy != null ? [groupBy] : [];
         }
       }),
     );
@@ -148,7 +144,11 @@ export default function GraphPage() {
     onSearch(displayedTimeInputValue);
     const dateRange = parseTimeRangeInput(displayedTimeInputValue);
 
-    if (dateRange[0] != null && dateRange[1] != null) {
+    if (
+      dateRange[0] != null &&
+      dateRange[1] != null &&
+      chartSeries[0].type === 'time'
+    ) {
       setChartConfig({
         // TODO: Support multiple series
         table: chartSeries[0].table ?? 'logs',
@@ -177,6 +177,9 @@ export default function GraphPage() {
         <form className="bg-body p-3" onSubmit={e => e.preventDefault()}>
           <div className="fs-5 mb-3 fw-500">Create New Chart</div>
           {chartSeries.map((series, index) => {
+            if (series.type !== 'time') {
+              return null;
+            }
             return (
               <ChartSeriesForm
                 key={index}
@@ -191,14 +194,14 @@ export default function GraphPage() {
                 setTableAndAggFn={(table, aggFn) => {
                   setChartSeries(
                     produce(chartSeries, series => {
-                      if (series?.[index] != null) {
-                        series[index].table = table;
-                        series[index].aggFn = aggFn;
+                      const s = series?.[index];
+                      if (s != null && s.type === 'time') {
+                        s.table = table;
+                        s.aggFn = aggFn;
                       }
                     }),
                   );
                 }}
-                setTable={table => setTable(index, table)}
                 setWhere={where => setWhere(index, where)}
                 setAggFn={fn => setAggFn(index, fn)}
                 setGroupBy={groupBy => setGroupBy(index, groupBy)}
