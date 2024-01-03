@@ -195,7 +195,7 @@ export class MetricsPropertyTypeMappingsModel extends PropertyTypeMappingsModel 
     });
   }
 
-  get(property: string) {
+  get(property: string): 'string' | 'number' | 'bool' | undefined {
     return 'string';
   }
 
