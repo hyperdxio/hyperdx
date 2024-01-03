@@ -236,9 +236,7 @@ export function mockLogsPropertyTypeMappingsModel(propertyMap: {
 export function mockSpyMetricPropertyTypeMappingsModel(propertyMap: {
   [property: string]: 'bool' | 'number' | 'string';
 }) {
-  const model = new MetricsPropertyTypeMappingsModel(1, 'fake', () =>
-    Promise.resolve({}),
-  );
+  const model = new MetricsPropertyTypeMappingsModel(1, 'fake');
 
   jest.spyOn(model, 'get').mockImplementation((property: string) => {
     // eslint-disable-next-line security/detect-object-injection
