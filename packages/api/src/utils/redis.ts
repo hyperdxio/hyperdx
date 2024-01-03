@@ -17,10 +17,7 @@ class SimpleCache<T> {
     private readonly key: string,
     private readonly ttlInMs: number,
     private readonly fetcher: () => Promise<T>,
-  ) {
-    this.key = key;
-    this.ttlInMs = ttlInMs;
-  }
+  ) {}
 
   async get(): Promise<T | null> {
     const cached = await client.get(this.key);
