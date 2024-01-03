@@ -638,7 +638,7 @@ export const getMetricsTags = async ({
       data_type: string;
       is_delta: boolean;
       is_monotonic: boolean;
-      names: string[];
+      name: string;
       tags: string[];
       unit: string;
     }>

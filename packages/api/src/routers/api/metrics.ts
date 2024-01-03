@@ -1,5 +1,4 @@
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import * as fns from 'date-fns';
 import express from 'express';
 import ms from 'ms';
 import { z } from 'zod';
@@ -17,13 +16,14 @@ router.get('/tags', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
+    const nowInMs = Date.now();
     const simpleCache = new SimpleCache<
       Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
     >(`metrics-tags-${teamId}`, ms('10m'), () =>
       clickhouse.getMetricsTags({
         // FIXME: fix it 5 days ago for now
-        startTime: fns.subDays(new Date(), 5).getTime(),
-        endTime: Date.now(),
+        startTime: nowInMs - ms('5d'),
+        endTime: nowInMs,
         teamId: teamId.toString(),
       }),
     );

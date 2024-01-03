@@ -9,6 +9,7 @@ import * as clickhouse from '@/clickhouse';
 import { getTeam } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
 import { Api400Error, Api403Error } from '@/utils/errors';
+import { SimpleCache } from '@/utils/redis';
 import rateLimiter from '@/utils/rateLimiter';
 
 const router = express.Router();
@@ -154,7 +155,19 @@ router.get(
       if (teamId == null) {
         throw new Api403Error('Forbidden');
       }
-      const tags = await clickhouse.getMetricsTags(teamId.toString());
+
+      const nowInMs = Date.now();
+      const simpleCache = new SimpleCache<
+        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+      >(`metrics-tags-${teamId}`, ms('10m'), () =>
+        clickhouse.getMetricsTags({
+          // FIXME: fix it 5 days ago for now
+          startTime: nowInMs - ms('5d'),
+          endTime: nowInMs,
+          teamId: teamId.toString(),
+        }),
+      );
+      const tags = await simpleCache.get();
       res.json({
         data: tags.data.map(tag => ({
           // FIXME: unify the return type of both internal and external APIs

@@ -19,7 +19,7 @@ class SimpleCache<T> {
     private readonly fetcher: () => Promise<T>,
   ) {}
 
-  async get(): Promise<T | null> {
+  async get(): Promise<T> {
     const cached = await client.get(this.key);
     if (cached != null) {
       logger.info({
