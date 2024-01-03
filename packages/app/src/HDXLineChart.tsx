@@ -48,7 +48,7 @@ function ExpandableLegendItem({ entry, expanded }: any) {
   );
 }
 
-const LegendRenderer = memo<{
+export const LegendRenderer = memo<{
   payload?: {
     value: string;
     color: string;
