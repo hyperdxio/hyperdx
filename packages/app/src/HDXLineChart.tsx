@@ -94,6 +94,7 @@ export const LegendRenderer = memo<{
   );
 });
 
+const HARD_LINES_LIMIT = 60;
 const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -120,25 +121,27 @@ const MemoChart = memo(function MemoChart({
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
   const lines = useMemo(() => {
-    return groupKeys.map(key =>
-      displayType === 'stacked_bar' ? (
-        <Bar
-          key={key}
-          type="monotone"
-          dataKey={key}
-          fill={semanticKeyedColor(key)}
-          stackId="1"
-        />
-      ) : (
-        <Line
-          key={key}
-          type="monotone"
-          dataKey={key}
-          stroke={semanticKeyedColor(key)}
-          dot={false}
-        />
-      ),
-    );
+    return groupKeys
+      .slice(0, HARD_LINES_LIMIT)
+      .map(key =>
+        displayType === 'stacked_bar' ? (
+          <Bar
+            key={key}
+            type="monotone"
+            dataKey={key}
+            fill={semanticKeyedColor(key)}
+            stackId="1"
+          />
+        ) : (
+          <Line
+            key={key}
+            type="monotone"
+            dataKey={key}
+            stroke={semanticKeyedColor(key)}
+            dot={false}
+          />
+        ),
+      );
   }, [groupKeys, displayType]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
@@ -270,27 +273,32 @@ const MemoChart = memo(function MemoChart({
   );
 });
 
-const HDXLineChartTooltip = (props: any) => {
+export const HDXLineChartTooltip = memo((props: any) => {
   const timeFormat: TimeFormat = useUserPreferences().timeFormat;
   const tsFormat = TIME_TOKENS[timeFormat];
   const { active, payload, label, numberFormat } = props;
   if (active && payload && payload.length) {
     return (
-      <div className="bg-grey px-3 py-2 rounded fs-8">
-        <div className="mb-2">{format(new Date(label * 1000), tsFormat)}</div>
-        {payload
-          .sort((a: any, b: any) => b.value - a.value)
-          .map((p: any) => (
-            <div key={p.name} style={{ color: p.color }}>
-              {p.dataKey}:{' '}
-              {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
-            </div>
-          ))}
+      <div className={styles.chartTooltip}>
+        <div className={styles.chartTooltipHeader}>
+          {format(new Date(label * 1000), tsFormat)}
+        </div>
+        <div className={styles.chartTooltipContent}>
+          {payload
+            .sort((a: any, b: any) => b.value - a.value)
+            .map((p: any) => (
+              <div key={p.dataKey} style={{ color: p.color }}>
+                {truncateMiddle(p.name ?? p.dataKey, 50)}:{' '}
+                {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+              </div>
+            ))}
+        </div>
       </div>
     );
   }
   return null;
-};
+});
+
 const HDXLineChart = memo(
   ({
     config: {
