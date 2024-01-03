@@ -58,8 +58,12 @@ export abstract class PropertyTypeMappingsModel {
     return mapping;
   }
 
+  private remainingTTL() {
+    return redisClient.pTTL(this.getCacheKey());
+  }
+
   // decide if the cache is still valid
-  private async needsRefresh() {
+  protected async needsRefresh() {
     return true;
   }
 
@@ -164,10 +168,6 @@ export abstract class PropertyTypeMappingsModel {
     return this.currentPropertyTypeMappings.size;
   }
 
-  remainingTTL() {
-    return redisClient.pTTL(this.getCacheKey());
-  }
-
   async isAboutToExpire() {
     return (await this.remainingTTL()) < ms('2h');
   }
@@ -183,7 +183,22 @@ export class LogsPropertyTypeMappingsModel extends PropertyTypeMappingsModel {
   }
 }
 
+// FIXME: no need to cache metrics property type mappings since it's always string type
 export class MetricsPropertyTypeMappingsModel extends PropertyTypeMappingsModel {
+  protected async needsRefresh() {
+    return false;
+  }
+
+  constructor(tableVersion: number | undefined, teamId: string) {
+    super(tableVersion, teamId, async () => {
+      // do nothing
+    });
+  }
+
+  get(property: string) {
+    return 'string';
+  }
+
   getCacheKey() {
     return `metrics_property_type_mappings:${this.teamId}`;
   }

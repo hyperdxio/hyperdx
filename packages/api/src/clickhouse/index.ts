@@ -578,15 +578,7 @@ export const buildLogsPropertyTypeMappingsModel = async (
 export const buildMetricsPropertyTypeMappingsModel = async (
   tableVersion: number | undefined,
   teamId: string,
-) => {
-  const model = new MetricsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    fetchMetricsPropertyTypeMappings(ms('28d') / 1000),
-  );
-  await model.init();
-  return model;
-};
+) => new MetricsPropertyTypeMappingsModel(tableVersion, teamId);
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
