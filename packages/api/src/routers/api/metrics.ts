@@ -1,9 +1,12 @@
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import * as fns from 'date-fns';
 import express from 'express';
+import ms from 'ms';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
+import { SimpleCache } from '@/utils/redis';
 
 const router = express.Router();
 
@@ -13,7 +16,18 @@ router.get('/tags', async (req, res, next) => {
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    res.json(await clickhouse.getMetricsTags(teamId.toString()));
+
+    const simpleCache = new SimpleCache<
+      Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+    >(`metrics-tags-${teamId}`, ms('10m'), () =>
+      clickhouse.getMetricsTags({
+        // FIXME: fix it 5 days ago for now
+        startTime: fns.subDays(new Date(), 5).getTime(),
+        endTime: Date.now(),
+        teamId: teamId.toString(),
+      }),
+    );
+    res.json(await simpleCache.get());
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
     span?.recordException(e as Error);
