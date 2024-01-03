@@ -438,33 +438,6 @@ export const bulkInsertTeamMetricStream = async (metrics: MetricModel[]) => {
   });
 };
 
-// TODO: support since, until
-export const fetchMetricsPropertyTypeMappings =
-  (intervalSecs: number) =>
-  async (tableVersion: number | undefined, teamId: string) => {
-    const tableName = `default.${TableName.Metric}`;
-    const query = SqlString.format(
-      `
-    SELECT groupUniqArrayArray(mapKeys(_string_attributes)) as strings
-    FROM ??
-    WHERE fromUnixTimestamp64Nano(_timestamp_sort_key) > now() - toIntervalSecond(?)
-  `,
-      [tableName, intervalSecs], // TODO: declare as constant
-    );
-    const ts = Date.now();
-    const rows = await client.query({
-      query,
-      format: 'JSON',
-    });
-    const result = await rows.json<ResponseJSON<Record<string, any[]>>>();
-    logger.info({
-      message: 'fetchMetricsPropertyTypeMappings',
-      query,
-      took: Date.now() - ts,
-    });
-    return result;
-  };
-
 // since, until -> unix in ms
 // TODO: what if since is like 0 or the difference is too big?
 export const fetchLogsPropertyTypeMappings =
@@ -578,15 +551,7 @@ export const buildLogsPropertyTypeMappingsModel = async (
 export const buildMetricsPropertyTypeMappingsModel = async (
   tableVersion: number | undefined,
   teamId: string,
-) => {
-  const model = new MetricsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    fetchMetricsPropertyTypeMappings(ms('28d') / 1000),
-  );
-  await model.init();
-  return model;
-};
+) => new MetricsPropertyTypeMappingsModel(tableVersion, teamId);
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
