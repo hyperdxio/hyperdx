@@ -929,7 +929,16 @@ const parseHeaders = (
   const reqHeaderObj: Dictionary<string | string[] | Dictionary<string>> =
     pickBy(parsedProperties, (value, key) => key.startsWith(keyPrefix));
 
-  return Object.entries(reqHeaderObj).flatMap(([fullKey, value]) => {
+  return Object.entries(reqHeaderObj).flatMap(([fullKey, _value]) => {
+    let value = _value;
+    try {
+      if (typeof _value === 'string') {
+        value = JSON.parse(_value);
+      }
+    } catch (e) {
+      // ignore
+    }
+
     // Replacing _ -> - is part of the otel spec, idk why
     const key = fullKey.replace(keyPrefix, '').replace('_', '-');
 
