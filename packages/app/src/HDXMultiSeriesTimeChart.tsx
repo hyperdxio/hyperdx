@@ -25,11 +25,13 @@ import {
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
 import { LegendRenderer } from './HDXLineChart';
+import { HDXLineChartTooltip } from './HDXLineChart';
 import type { ChartSeries, NumberFormat } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { formatNumber } from './utils';
 import { semanticKeyedColor, TIME_TOKENS } from './utils';
 
+const HARD_LINES_LIMIT = 60;
 const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -56,27 +58,29 @@ const MemoChart = memo(function MemoChart({
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
   const lines = useMemo(() => {
-    return groupKeys.map((key, i) =>
-      displayType === 'stacked_bar' ? (
-        <Bar
-          key={key}
-          type="monotone"
-          dataKey={key}
-          name={lineNames[i] ?? key}
-          fill={semanticKeyedColor(key)}
-          stackId="1"
-        />
-      ) : (
-        <Line
-          key={key}
-          type="monotone"
-          dataKey={key}
-          name={lineNames[i] ?? key}
-          stroke={semanticKeyedColor(key)}
-          dot={false}
-        />
-      ),
-    );
+    return groupKeys
+      .slice(0, HARD_LINES_LIMIT)
+      .map((key, i) =>
+        displayType === 'stacked_bar' ? (
+          <Bar
+            key={key}
+            type="monotone"
+            dataKey={key}
+            name={lineNames[i] ?? key}
+            fill={semanticKeyedColor(key)}
+            stackId="1"
+          />
+        ) : (
+          <Line
+            key={key}
+            type="monotone"
+            dataKey={key}
+            name={lineNames[i] ?? key}
+            stroke={semanticKeyedColor(key)}
+            dot={false}
+          />
+        ),
+      );
   }, [groupKeys, displayType, lineNames]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
@@ -190,6 +194,7 @@ const MemoChart = memo(function MemoChart({
           iconSize={10}
           verticalAlign="bottom"
           content={<LegendRenderer />}
+          offset={-100}
         />
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
@@ -199,28 +204,6 @@ const MemoChart = memo(function MemoChart({
     </ResponsiveContainer>
   );
 });
-
-const HDXLineChartTooltip = (props: any) => {
-  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
-  const tsFormat = TIME_TOKENS[timeFormat];
-  const { active, payload, label, numberFormat } = props;
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-grey px-3 py-2 rounded fs-8">
-        <div className="mb-2">{format(new Date(label * 1000), tsFormat)}</div>
-        {payload
-          .sort((a: any, b: any) => b.value - a.value)
-          .map((p: any) => (
-            <div key={p.dataKey} style={{ color: p.color }}>
-              {p.name ?? p.dataKey}:{' '}
-              {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
-            </div>
-          ))}
-      </div>
-    );
-  }
-  return null;
-};
 
 const HDXMultiSeriesLineChart = memo(
   ({

@@ -31,3 +31,20 @@
   max-width: 40vw;
   overflow: hidden;
 }
+
+.chartTooltip {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(1px);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.chartTooltipHeader {
+  padding: 2px 12px;
+  color: $slate-400;
+  border-bottom: 1px solid $slate-700;
+}
+
+.chartTooltipContent {
+  padding: 6px 12px;
+}
