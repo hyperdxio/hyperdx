@@ -9,8 +9,8 @@ import * as clickhouse from '@/clickhouse';
 import { getTeam } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
 import { Api400Error, Api403Error } from '@/utils/errors';
-import { SimpleCache } from '@/utils/redis';
 import rateLimiter from '@/utils/rateLimiter';
+import { SimpleCache } from '@/utils/redis';
 
 const router = express.Router();
 
