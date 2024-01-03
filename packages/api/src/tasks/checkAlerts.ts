@@ -485,16 +485,25 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             checkData,
           });
 
-          await fireChannelEvent({
-            alert,
-            dashboard: targetDashboard,
-            endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-            group: checkData.group,
-            logView,
-            startTime: bucketStart,
-            totalCount,
-            windowSizeInMins,
-          });
+          try {
+            await fireChannelEvent({
+              alert,
+              dashboard: targetDashboard,
+              endTime: fns.addMinutes(bucketStart, windowSizeInMins),
+              group: checkData.group,
+              logView,
+              startTime: bucketStart,
+              totalCount,
+              windowSizeInMins,
+            });
+          } catch (e) {
+            logger.error({
+              message: 'Failed to fire channel event',
+              alert,
+              error: serializeError(e),
+            });
+          }
+
           history.counts += 1;
         }
         history.lastValues.push({ count: totalCount, startTime: bucketStart });
