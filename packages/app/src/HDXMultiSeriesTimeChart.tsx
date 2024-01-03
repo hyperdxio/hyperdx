@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
-import pick from 'lodash/pick';
 import {
   Bar,
   BarChart,
@@ -25,32 +24,11 @@ import {
   seriesColumns,
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
+import { LegendRenderer } from './HDXLineChart';
 import type { ChartSeries, NumberFormat } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { formatNumber } from './utils';
-import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
-
-function ExpandableLegendItem({ value, entry }: any) {
-  const [expanded, setExpanded] = useState(false);
-  const { color } = entry;
-
-  return (
-    <span>
-      <span
-        style={{ color }}
-        role="button"
-        onClick={() => setExpanded(v => !v)}
-        title="Click to expand"
-      >
-        {expanded ? value : truncateMiddle(`${value}`, 45)}
-      </span>
-    </span>
-  );
-}
-
-const legendFormatter = (value: string, entry: any) => (
-  <ExpandableLegendItem value={value} entry={entry} />
-);
+import { semanticKeyedColor, TIME_TOKENS } from './utils';
 
 const MemoChart = memo(function MemoChart({
   graphResults,
@@ -211,7 +189,7 @@ const MemoChart = memo(function MemoChart({
         <Legend
           iconSize={10}
           verticalAlign="bottom"
-          formatter={legendFormatter}
+          content={<LegendRenderer />}
         />
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
