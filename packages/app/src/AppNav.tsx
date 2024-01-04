@@ -15,7 +15,7 @@ import HyperDX from '@hyperdx/browser';
 
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import { API_SERVER_URL } from './config';
+import { API_SERVER_URL, SERVICE_DASHBOARD_ENABLED } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { useWindowSize } from './utils';
@@ -692,6 +692,25 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </a>
               </Link>
             </div>
+            {SERVICE_DASHBOARD_ENABLED ? (
+              <div className="my-4">
+                <Link href="/services">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/services'),
+                      },
+                    )}
+                  >
+                    <span>
+                      <i className="bi bi-heart-pulse" />{' '}
+                      {!isCollapsed && <span>Service Health</span>}
+                    </span>
+                  </a>
+                </Link>
+              </div>
+            ) : null}
             <div>
               <div
                 className={cx(
