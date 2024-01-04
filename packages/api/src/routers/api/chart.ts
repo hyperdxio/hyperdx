@@ -40,43 +40,6 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId.toString(),
-          startTime,
-          endTime,
-        );
-
-      const propertySet = new Set<string>();
-      series.map(s => {
-        if ('field' in s && s.field != null) {
-          propertySet.add(s.field);
-        }
-        if ('groupBy' in s && s.groupBy.length > 0) {
-          s.groupBy.map(g => propertySet.add(g));
-        }
-      });
-
-      // Hack to refresh property cache if needed
-      const properties = Array.from(propertySet);
-
-      if (
-        properties.some(p => {
-          return !clickhouse.doesLogsPropertyExist(
-            p,
-            propertyTypeMappingsModel,
-          );
-        })
-      ) {
-        logger.warn({
-          message: `getChart: Property type mappings cache is out of date (${properties.join(
-            ', ',
-          )})`,
-        });
-        await propertyTypeMappingsModel.refresh();
-      }
-
       // TODO: expose this to the frontend
       const MAX_NUM_GROUPS = 20;
 
@@ -86,7 +49,6 @@ router.post(
           endTime: endTime,
           granularity,
           maxNumGroups: MAX_NUM_GROUPS,
-          propertyTypeMappingsModel,
           startTime: startTime,
           tableVersion: team.logStreamTableVersion,
           teamId: teamId.toString(),

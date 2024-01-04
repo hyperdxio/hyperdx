@@ -304,7 +304,7 @@ export const HDXLineChartTooltip = memo((props: any) => {
             .sort((a: any, b: any) => b.value - a.value)
             .map((p: any) => (
               <div key={p.dataKey} style={{ color: p.color }}>
-                {truncateMiddle(p.name ?? p.dataKey, 50)}:{' '}
+                {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
                 {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
               </div>
             ))}

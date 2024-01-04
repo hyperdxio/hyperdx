@@ -869,6 +869,7 @@ export const buildMetricSeriesQuery = async ({
   startTime,
   teamId,
   sortOrder,
+  propertyTypeMappingsModel,
 }: {
   aggFn: AggFn;
   dataType: MetricsDataType;
@@ -880,12 +881,9 @@ export const buildMetricSeriesQuery = async ({
   startTime: number; // unix in ms
   teamId: string;
   sortOrder?: 'asc' | 'desc';
+  propertyTypeMappingsModel: MetricsPropertyTypeMappingsModel;
 }) => {
   const tableName = `default.${TableName.Metric}`;
-  const propertyTypeMappingsModel = await buildMetricsPropertyTypeMappingsModel(
-    undefined, // default version
-    teamId,
-  );
 
   const isRate = isRateAggFn(aggFn);
 
@@ -1299,12 +1297,6 @@ export const queryMultiSeriesChart = async ({
   const rows = await client.query({
     query,
     format: 'JSON',
-    clickhouse_settings: {
-      additional_table_filters: buildLogStreamAdditionalFilters(
-        tableVersion,
-        teamId,
-      ),
-    },
   });
 
   const result = await rows.json<
@@ -1322,7 +1314,6 @@ export const getMultiSeriesChart = async ({
   endTime,
   granularity,
   maxNumGroups,
-  propertyTypeMappingsModel,
   startTime,
   tableVersion,
   teamId,
@@ -1333,7 +1324,6 @@ export const getMultiSeriesChart = async ({
   startTime: number; // unix in ms
   granularity: string | undefined; // can be undefined in the number chart
   maxNumGroups: number;
-  propertyTypeMappingsModel?: LogsPropertyTypeMappingsModel;
   tableVersion: number | undefined;
   teamId: string;
   seriesReturnType?: SeriesReturnType;
@@ -1349,8 +1339,37 @@ export const getMultiSeriesChart = async ({
       (series[0].table === 'logs' || series[0].table == null)) ||
     !('table' in series[0])
   ) {
-    if (propertyTypeMappingsModel == null) {
-      throw new Error('propertyTypeMappingsModel is required for logs chart');
+    const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
+      tableVersion,
+      teamId.toString(),
+      startTime,
+      endTime,
+    );
+
+    const propertySet = new Set<string>();
+    series.map(s => {
+      if ('field' in s && s.field != null) {
+        propertySet.add(s.field);
+      }
+      if ('groupBy' in s && s.groupBy.length > 0) {
+        s.groupBy.map(g => propertySet.add(g));
+      }
+    });
+
+    // Hack to refresh property cache if needed
+    const properties = Array.from(propertySet);
+
+    if (
+      properties.some(p => {
+        return !doesLogsPropertyExist(p, propertyTypeMappingsModel);
+      })
+    ) {
+      logger.warn({
+        message: `getChart: Property type mappings cache is out of date (${properties.join(
+          ', ',
+        )})`,
+      });
+      await propertyTypeMappingsModel.refresh();
     }
 
     queries = await Promise.all(
@@ -1378,6 +1397,12 @@ export const getMultiSeriesChart = async ({
       }),
     );
   } else if ('table' in series[0] && series[0].table === 'metrics') {
+    const propertyTypeMappingsModel =
+      await buildMetricsPropertyTypeMappingsModel(
+        undefined, // default version
+        teamId,
+      );
+
     queries = await Promise.all(
       series.map(s => {
         if (s.type != 'time' && s.type != 'table') {
@@ -1404,6 +1429,7 @@ export const getMultiSeriesChart = async ({
           startTime,
           teamId,
           dataType: s.metricDataType,
+          propertyTypeMappingsModel,
         });
       }),
     );
@@ -1423,7 +1449,6 @@ export const getMultiSeriesChartLegacyFormat = async ({
   endTime,
   granularity,
   maxNumGroups,
-  propertyTypeMappingsModel,
   startTime,
   tableVersion,
   teamId,
@@ -1434,7 +1459,6 @@ export const getMultiSeriesChartLegacyFormat = async ({
   startTime: number; // unix in ms
   granularity: string | undefined; // can be undefined in the number chart
   maxNumGroups: number;
-  propertyTypeMappingsModel?: LogsPropertyTypeMappingsModel;
   tableVersion: number | undefined;
   teamId: string;
   seriesReturnType?: SeriesReturnType;
@@ -1444,7 +1468,6 @@ export const getMultiSeriesChartLegacyFormat = async ({
     endTime,
     granularity,
     maxNumGroups,
-    propertyTypeMappingsModel,
     startTime,
     tableVersion,
     teamId,

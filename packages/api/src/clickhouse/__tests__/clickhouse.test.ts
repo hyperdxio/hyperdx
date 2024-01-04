@@ -169,7 +169,7 @@ Array [
       }),
     ]);
 
-    const propertyTypeMappingsModel = mockLogsPropertyTypeMappingsModel({
+    mockLogsPropertyTypeMappingsModel({
       testGroup: 'string',
       awesomeNumber: 'number',
       runId: 'string',
@@ -202,7 +202,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, [
@@ -264,7 +263,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Ratio,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -388,7 +386,7 @@ Array [
       }),
     );
 
-    const propertyTypeMappingsModel = mockLogsPropertyTypeMappingsModel({});
+    mockLogsPropertyTypeMappingsModel({});
 
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
@@ -415,7 +413,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -466,7 +463,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -517,7 +513,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -558,7 +553,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -608,7 +602,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Ratio,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
@@ -746,7 +739,7 @@ Array [
       }),
     );
 
-    const propertyTypeMappingsModel = mockLogsPropertyTypeMappingsModel({});
+    mockLogsPropertyTypeMappingsModel({});
 
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
@@ -782,7 +775,6 @@ Array [
         granularity: undefined,
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d => {
       return _.pick(d, [
@@ -834,7 +826,7 @@ Array [
         ]),
     );
 
-    const propertyTypeMappingsModel = mockLogsPropertyTypeMappingsModel({
+    mockLogsPropertyTypeMappingsModel({
       testGroup: 'string',
       awesomeNumber: 'number',
       runId: 'string',
@@ -869,7 +861,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 3,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d =>
       _.pick(d, ['series_0.data', 'series_1.data', 'group', 'ts_bucket']),
@@ -945,7 +936,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 3,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d =>
       _.pick(d, ['series_0.data', 'series_1.data', 'group', 'ts_bucket']),
@@ -1021,7 +1011,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 3,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data.map(d =>
       _.pick(d, ['series_0.data', 'series_1.data', 'group', 'ts_bucket']),
@@ -1142,7 +1131,6 @@ Array [
         granularity: '5 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
-        propertyTypeMappingsModel,
       })
     ).data;
 
