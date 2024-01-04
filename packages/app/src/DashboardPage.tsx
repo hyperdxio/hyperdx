@@ -138,6 +138,14 @@ const Tile = forwardRef(
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
             numberFormat: chart.series[0].numberFormat,
+            seriesReturnType: chart.seriesReturnType,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'time' ? s.where : '',
+              ),
+            })),
           }
         : type === 'table'
         ? {
@@ -152,6 +160,14 @@ const Tile = forwardRef(
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
             numberFormat: chart.series[0].numberFormat,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'table' ? s.where : '',
+              ),
+            })),
+            seriesReturnType: chart.seriesReturnType,
           }
         : type === 'histogram'
         ? {
@@ -272,22 +288,10 @@ const Tile = forwardRef(
             onMouseDown={e => e.stopPropagation()}
           >
             {chart.series[0].type === 'time' && config.type === 'time' && (
-              <HDXMultiSeriesLineChart
-                config={{
-                  ...config,
-                  seriesReturnType: chart.seriesReturnType,
-                  series: chart.series,
-                }}
-              />
+              <HDXMultiSeriesLineChart config={config} />
             )}
             {chart.series[0].type === 'table' && config.type === 'table' && (
-              <HDXMultiSeriesTableChart
-                config={{
-                  ...config,
-                  seriesReturnType: chart.seriesReturnType,
-                  series: chart.series,
-                }}
-              />
+              <HDXMultiSeriesTableChart config={config} />
             )}
             {config.type === 'histogram' && (
               <HDXHistogramChart config={config} onSettled={onSettled} />

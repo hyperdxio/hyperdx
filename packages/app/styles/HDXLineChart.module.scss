@@ -37,15 +37,15 @@
 }
 
 .chartTooltip {
-  background-color: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(1px);
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(2px);
   border-radius: 4px;
   font-size: 11px;
 }
 
 .chartTooltipHeader {
   padding: 2px 12px;
-  color: $slate-400;
+  color: $slate-200;
   border-bottom: 1px solid $slate-700;
 }
 

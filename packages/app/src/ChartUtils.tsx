@@ -64,18 +64,32 @@ export type Granularity =
   | '7 day'
   | '30 day';
 
-const seriesDisplayName = (s: ChartSeries) =>
-  s.type === 'time' || s.type === 'table'
-    ? `${s.aggFn}${
-        s.aggFn !== 'count'
-          ? `(${
-              s.table === 'metrics'
-                ? s.field?.split(' - ')?.[0] ?? s.field
-                : s.field
-            })`
-          : '()'
-      }${s.where ? `{${s.where}}` : ''}`
-    : '';
+const seriesDisplayName = (
+  s: ChartSeries,
+  {
+    showAggFn,
+    showField,
+    showWhere,
+  }: {
+    showAggFn?: boolean;
+    showField?: boolean;
+    showWhere?: boolean;
+  } = {},
+) => {
+  if (s.type === 'time' || s.type === 'table') {
+    const displayField =
+      s.aggFn !== 'count'
+        ? s.table === 'metrics'
+          ? s.field?.split(' - ')?.[0] ?? s.field
+          : s.field
+        : '';
+
+    return `${showAggFn === false ? '' : s.aggFn}${
+      showField === false ? '' : `(${displayField})`
+    }${s.where && showWhere !== false ? `{${s.where}}` : ''}`;
+  }
+  return '';
+};
 
 export function seriesColumns({
   series,
@@ -84,14 +98,28 @@ export function seriesColumns({
   seriesReturnType: 'ratio' | 'column';
   series: ChartSeries[];
 }) {
+  const uniqueWhere = new Set<string | undefined>(
+    series.map(s => ('where' in s ? s.where : undefined)),
+  );
+  const uniqueFields = new Set<string | undefined>(
+    series.map(s => ('field' in s ? s.field : undefined)),
+  );
+
+  const showField = uniqueFields.size > 1;
+  const showWhere = uniqueWhere.size > 1;
+
   const seriesMeta =
     seriesReturnType === 'ratio'
       ? [
           {
             dataKey: `series_0.data`,
-            displayName: `${seriesDisplayName(series[0])}/${seriesDisplayName(
-              series[1],
-            )}`,
+            displayName: `${seriesDisplayName(series[0], {
+              showField,
+              showWhere,
+            })}/${seriesDisplayName(series[1], {
+              showField,
+              showWhere,
+            })}`,
             sortOrder:
               'sortOrder' in series[0] ? series[0].sortOrder : undefined,
           },
@@ -99,7 +127,10 @@ export function seriesColumns({
       : series.map((s, i) => {
           return {
             dataKey: `series_${i}.data`,
-            displayName: seriesDisplayName(s),
+            displayName: seriesDisplayName(s, {
+              showField,
+              showWhere,
+            }),
             sortOrder: 'sortOrder' in s ? s.sortOrder : undefined,
           };
         });
