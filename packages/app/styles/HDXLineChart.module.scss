@@ -15,6 +15,10 @@
   word-break: break-all;
   word-wrap: break-word;
   line-height: 1.2;
+
+  &:active {
+    opacity: 0.5;
+  }
 }
 
 .legendMoreLink {

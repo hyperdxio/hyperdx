@@ -3,6 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
 import pick from 'lodash/pick';
+import { toast } from 'react-toastify';
 import {
   Bar,
   BarChart,
@@ -17,7 +18,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Tooltip as MTooltip } from '@mantine/core';
+import { Popover } from '@mantine/core';
 
 import api from './api';
 import { convertGranularityToSeconds, Granularity } from './ChartUtils';
@@ -29,6 +30,24 @@ import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 import styles from '../styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
+
+function CopyableLegendItem({ entry }: any) {
+  return (
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => {
+        window.navigator.clipboard.writeText(entry.value);
+        toast.success(`Copied to clipboard`);
+      }}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {entry.value}
+    </span>
+  );
+}
 
 function ExpandableLegendItem({ entry, expanded }: any) {
   const [_expanded, setExpanded] = useState(false);
@@ -68,27 +87,24 @@ export const LegendRenderer = memo<{
         />
       ))}
       {restItems.length ? (
-        <MTooltip
-          color="gray"
-          withinPortal
-          withArrow
-          label={
+        <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
+          <Popover.Target>
+            <div className={cx(styles.legendItem, styles.legendMoreLink)}>
+              +{restItems.length} more
+            </div>
+          </Popover.Target>
+          <Popover.Dropdown p="xs">
             <div className={styles.legendTooltipContent}>
               {restItems.map((entry, index) => (
-                <ExpandableLegendItem
+                <CopyableLegendItem
                   key={`item-${index}`}
                   value={entry.value}
                   entry={entry}
-                  expanded
                 />
               ))}
             </div>
-          }
-        >
-          <div className={cx(styles.legendItem, styles.legendMoreLink)}>
-            +{restItems.length} more
-          </div>
-        </MTooltip>
+          </Popover.Dropdown>
+        </Popover>
       ) : null}
     </div>
   );
