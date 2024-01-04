@@ -1,5 +1,35 @@
 # @hyperdx/app
 
+## 1.4.0
+
+### Minor Changes
+
+- 24afb09: Introduce Mantine.dev v6 Component Library
+- 3b8effe: Add specifying multiple series of charts for time/line charts and
+  tables in dashboard (ex. min, max, avg all in one chart).
+- 60ee49a: Overhaul Properties viewer
+
+### Patch Changes
+
+- 9dc7750: fix: extend level inference scanning range
+- 6d3cdae: Fix table chart link query formatting
+- f65dd9b: Loading and error states for metrics dropdown
+- af70f7d: Link Infrastructure Metrics with Events
+- 8d1a949: perf: disable metrics property type mapping caching
+- 423fc22: perf + feat: introduce SimpleCache and specify getMetricsTags time
+  range
+- 5e37a94: Allow to customize number formats in dashboard charts
+- 807736c: Fix Headers parsing in Log Details
+- 5b3b256: Show save badge in Dashboard page
+- 72164a6: Limit Line Chart legend items
+- 70f5fc4: Alerts page styling
+- 58d928c: feat: transform k8s event semantic conventions
+- 8159a01: Add K8s event tags
+- ea20a79: Update Line Chart tooltip styling
+- df7cfdf: Add new Legend renderer to MultiSeries chart
+- b8133eb: feat: allow users to specify 'service.name' attr (flyio)
+- 6efca13: Use Popover instead of Tooltip for line chart overflow
+
 ## 1.3.0
 
 ### Minor Changes
