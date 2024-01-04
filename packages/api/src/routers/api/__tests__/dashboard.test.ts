@@ -50,6 +50,19 @@ const MOCK_DASHBOARD = {
 describe('dashboard router', () => {
   const server = getServer();
 
+  beforeAll(async () => {
+    await server.start();
+  });
+
+  afterEach(async () => {
+    await clearDBCollections();
+  });
+
+  afterAll(async () => {
+    await server.closeHttpServer();
+    await closeDB();
+  });
+
   it('deletes attached alerts when deleting charts', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -101,18 +114,5 @@ describe('dashboard router', () => {
       .map(alert => alert.chartId)
       .sort();
     expect(allChartsPostDelete).toEqual(chartsWithAlertsPostDelete);
-  });
-
-  beforeAll(async () => {
-    await server.start();
-  });
-
-  afterEach(async () => {
-    await clearDBCollections();
-  });
-
-  afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
   });
 });

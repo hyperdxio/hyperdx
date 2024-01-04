@@ -50,6 +50,19 @@ const MOCK_DASHBOARD = {
 describe('alerts router', () => {
   const server = getServer();
 
+  beforeAll(async () => {
+    await server.start();
+  });
+
+  afterEach(async () => {
+    await clearDBCollections();
+  });
+
+  afterAll(async () => {
+    await server.closeHttpServer();
+    await closeDB();
+  });
+
   it('index has alerts attached to dashboards', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -78,18 +91,5 @@ describe('alerts router', () => {
       expect(alert.chartId).toBeDefined();
       expect(alert.dashboard).toBeDefined();
     }
-  });
-
-  beforeAll(async () => {
-    await server.start();
-  });
-
-  afterEach(async () => {
-    await clearDBCollections();
-  });
-
-  afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
   });
 });

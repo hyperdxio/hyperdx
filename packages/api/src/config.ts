@@ -26,8 +26,3 @@ export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
 export const SERVER_URL = env.SERVER_URL as string;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
-export const CACHE_METRICS_TAGS = env.CACHE_METRICS_TAGS !== 'false';
-// deliberately using '||' instead of '??' to avoid empty/falsey values
-// returning as a string since all env values are stringish (to be parsed using ms())
-export const CACHE_METRICS_EXPIRATION_IN_SEC =
-  (env.CACHE_METRICS_EXPIRATION_IN_SEC as string) || '600';
