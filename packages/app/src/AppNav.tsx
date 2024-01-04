@@ -900,7 +900,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           </div>
         </div>
         <div className="d-flex justify-content-end align-items-end">
-          <span className="text-muted-hover">v{version}</span>
+          <span className="text-muted-hover fs-7">v{version}</span>
         </div>
       </div>
     </>
