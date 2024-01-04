@@ -394,20 +394,12 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           targetDashboard = dashboard;
           const startTimeMs = fns.getTime(checkStartTime);
           const endTimeMs = fns.getTime(checkEndTime);
-          const propertyTypeMappingsModel =
-            await clickhouse.buildLogsPropertyTypeMappingsModel(
-              dashboard.team.logStreamTableVersion,
-              dashboard.team._id.toString(),
-              startTimeMs,
-              endTimeMs,
-            );
 
           checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
             series: chart.series,
             endTime: endTimeMs,
             granularity: `${windowSizeInMins} minute`,
             maxNumGroups: MAX_NUM_GROUPS,
-            propertyTypeMappingsModel,
             startTime: startTimeMs,
             tableVersion: dashboard.team.logStreamTableVersion,
             teamId: dashboard.team._id.toString(),
