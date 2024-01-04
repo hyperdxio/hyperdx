@@ -592,30 +592,20 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async (teamId: string) => {
-  if (config.CACHE_METRICS_TAGS) {
-    logger.info({
-      message: 'getMetricsTags: attempting cached fetch',
-      teamId: teamId,
-    });
-    return getMetricsTagsCached(teamId);
-  } else {
-    logger.info({
-      message: 'getMetricsTags: skipping cache, direct query',
-      teamId: teamId,
-    });
-    return getMetricsTagsUncached(teamId);
-  }
-};
-
-// NB preserving this exactly as in original for this ticket
-// but looks like a good candidate for a query refactor baed on comment
-const getMetricsTagsUncached = async (teamId: string) => {
+export const getMetricsTags = async ({
+  teamId,
+  startTime,
+  endTime,
+}: {
+  teamId: string;
+  startTime: number; // unix in ms
+  endTime: number; // unix in ms
+}) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
     `
-        SELECT 
+        SELECT
           any(is_delta) as is_delta,
           any(is_monotonic) as is_monotonic,
           any(unit) as unit,
@@ -623,10 +613,14 @@ const getMetricsTagsUncached = async (teamId: string) => {
           format('{} - {}', name, data_type) as name,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
+        WHERE (?)
         GROUP BY name, data_type
         ORDER BY name
     `,
-    [tableName],
+    [
+      tableName,
+      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+    ],
   );
   const ts = Date.now();
   const rows = await client.query({
@@ -639,35 +633,22 @@ const getMetricsTagsUncached = async (teamId: string) => {
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<{ names: string[] }>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      tags: Record<string, string>[];
+      unit: string;
+    }>
+  >();
   logger.info({
-    message: 'getMetricsProps',
+    message: 'getMetricsTags',
     query,
     took: Date.now() - ts,
   });
   return result;
-};
-
-const getMetricsTagsCached = async (teamId: string) => {
-  const redisKey = `metrics-tags-${teamId}`;
-  const cached = await redisClient.get(redisKey);
-  if (cached) {
-    logger.info({
-      message: 'getMetricsTags: cache hit',
-      teamId: teamId,
-    });
-    return JSON.parse(cached);
-  } else {
-    logger.info({
-      message: 'getMetricsTags: cache miss',
-      teamId: teamId,
-    });
-    const result = await getMetricsTagsUncached(teamId);
-    await redisClient.set(redisKey, JSON.stringify(result), {
-      PX: ms(config.CACHE_METRICS_EXPIRATION_IN_SEC.toString() + 's'),
-    });
-    return result;
-  }
 };
 
 export const isRateAggFn = (aggFn: AggFn) => {
