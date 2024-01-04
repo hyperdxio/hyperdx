@@ -66,7 +66,7 @@ describe('external api v1', () => {
         },
       ],
       rows: 1,
-    });
+    } as any);
     const { agent, user } = await getLoggedInAgent(server);
     const resp = await agent
       .get(`/api/v1/metrics/tags`)

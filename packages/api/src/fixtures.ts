@@ -12,9 +12,10 @@ import {
   LogType,
   MetricModel,
 } from '@/utils/logParser';
+import { redisClient } from '@/utils/redis';
 
 import * as config from './config';
-import { createTeam, getTeam } from './controllers/team';
+import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
 import Server from './server';
@@ -65,6 +66,9 @@ class MockServer extends Server {
   }
 
   async start(): Promise<void> {
+    if (!config.IS_CI) {
+      throw new Error('ONLY execute this in CI env 😈 !!!');
+    }
     await super.start();
     await initCiEnvs();
   }
@@ -117,6 +121,38 @@ export const getLoggedInAgent = async (server: MockServer) => {
     user,
   };
 };
+
+// ------------------------------------------------
+// ------------------ Redis -----------------------
+// ------------------------------------------------
+export const clearRedis = async () => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await redisClient.flushAll();
+};
+
+// ------------------------------------------------
+// ------------------ Clickhouse ------------------
+// ------------------------------------------------
+export const clearClickhouseTables = async () => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  const promises: any[] = [];
+  for (const table of Object.values(clickhouse.TableName)) {
+    promises.push(
+      clickhouse.client.command({
+        query: `TRUNCATE TABLE default.${table}`,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      }),
+    );
+  }
+  await Promise.all(promises);
+};
+
 export function buildEvent({
   level,
   source = 'test',
