@@ -13,6 +13,8 @@ import {
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
 
+import { version } from '../package.json';
+
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
 import { API_SERVER_URL } from './config';
@@ -896,6 +898,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </span>
             </Link>
           </div>
+        </div>
+        <div className="d-flex justify-content-end align-items-end">
+          <span className="text-muted-hover">v{version}</span>
         </div>
       </div>
     </>
