@@ -1,5 +1,27 @@
 # @hyperdx/api
 
+## 1.4.0
+
+### Minor Changes
+
+- ce70319: chore: bump clickhouse client to v0.2.7
+- 226a00d: feat: add state field to AlertHistory collection
+- 3b8effe: Add specifying multiple series of charts for time/line charts and
+  tables in dashboard (ex. min, max, avg all in one chart).
+- 29d1e03: fix: infer log level by the order of severity
+
+### Patch Changes
+
+- 9dc7750: fix: extend level inference scanning range
+- 8d1a949: perf: disable metrics property type mapping caching
+- 423fc22: perf + feat: introduce SimpleCache and specify getMetricsTags time
+  range
+- 5e37a94: Allow to customize number formats in dashboard charts
+- 619bd1a: fix: checkAlerts - add error handling
+- 58d928c: feat: transform k8s event semantic conventions
+- b8133eb: feat: allow users to specify 'service.name' attr (flyio)
+- bb4f90d: Adjust time window for sum-rate alerts
+
 ## 1.3.0
 
 ### Minor Changes
