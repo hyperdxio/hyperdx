@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 
 import * as clickhouse from '@/clickhouse';
-import { redisClient } from '@/utils/redis';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -13,6 +12,7 @@ import {
   LogType,
   MetricModel,
 } from '@/utils/logParser';
+import { redisClient } from '@/utils/redis';
 
 import * as config from './config';
 import { getTeam } from './controllers/team';
