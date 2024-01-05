@@ -1,13 +1,14 @@
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import { isNumber } from 'lodash';
+import ms from 'ms';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
-import ms from 'ms';
 
-import { buildSearchColumnName } from '@/clickhouse/searchQueryParser';
 import * as clickhouse from '@/clickhouse';
+import { buildSearchColumnName } from '@/clickhouse/searchQueryParser';
 import { getTeam } from '@/controllers/team';
+import { SimpleCache } from '@/utils/redis';
 import { chartSeriesSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -46,34 +47,39 @@ router.get('/services', async (req, res, next) => {
 
     const MAX_NUM_GROUPS = 50;
 
-    const results = await clickhouse.getMultiSeriesChart({
-      series: [
-        {
-          aggFn: clickhouse.AggFn.Count,
-          groupBy: targetGroupByFields,
-          table: 'logs',
-          type: 'table',
-          where: '',
-        },
-      ],
-      endTime,
-      granularity: undefined,
-      maxNumGroups: MAX_NUM_GROUPS,
-      startTime,
-      tableVersion: team.logStreamTableVersion,
-      teamId: teamId.toString(),
-      seriesReturnType: clickhouse.SeriesReturnType.Column,
-    });
+    const simpleCache = new SimpleCache<
+      Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>
+    >(`chart-services-${teamId}`, ms('10m'), () =>
+      clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            aggFn: clickhouse.AggFn.Count,
+            groupBy: targetGroupByFields,
+            table: 'logs',
+            type: 'table',
+            where: '',
+          },
+        ],
+        endTime,
+        granularity: undefined,
+        maxNumGroups: MAX_NUM_GROUPS,
+        startTime,
+        tableVersion: team.logStreamTableVersion,
+        teamId: teamId.toString(),
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      }),
+    );
 
+    const results = await simpleCache.get();
     // restructure service maps
-    const serviceMap = {};
+    const serviceMap: Record<string, Record<string, string>[]> = {};
     for (const row of results.data) {
       const values = row.group;
       const service = values[0];
       if (!(service in serviceMap)) {
         serviceMap[service] = [];
       }
-      const k8sAttrs = {};
+      const k8sAttrs: Record<string, string> = {};
       for (let i = 1; i < values.length; i++) {
         const field = targetGroupByFields[i];
         const value = values[i];
