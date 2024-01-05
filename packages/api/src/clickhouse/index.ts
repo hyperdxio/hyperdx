@@ -1098,22 +1098,21 @@ const buildEventSeriesQuery = async ({
       : '';
 
   const isCountFn = aggFn === AggFn.Count;
-  const hasGroupBy = groupBys.length > 0;
   const groupByFields: string[] = [];
-  if (hasGroupBy) {
-    for (const groupBy of groupBys) {
-      const _buildSearchColumnName = buildSearchColumnName(
-        propertyTypeMappingsModel.get(groupBy),
-        groupBy,
-      );
-      if (_buildSearchColumnName != null) {
-        groupByFields.push(_buildSearchColumnName);
-      }
+  for (const groupBy of groupBys) {
+    const _buildSearchColumnName = buildSearchColumnName(
+      propertyTypeMappingsModel.get(groupBy),
+      groupBy,
+    );
+    if (_buildSearchColumnName != null) {
+      groupByFields.push(_buildSearchColumnName);
     }
   }
 
   // Need to make sure group by fields ordering is consistent
   groupByFields.sort();
+
+  const hasGroupBy = groupByFields.length > 0;
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
 
@@ -1158,9 +1157,7 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    groupByFields.length > 0
-      ? `[${groupByFields.join(',')}] as group`
-      : `[] as group`, // FIXME: should we fallback to use aggFn as group
+    hasGroupBy ? `[${groupByFields.join(',')}] as group` : `[] as group`, // FIXME: should we fallback to use aggFn as group
     `${label} as label`,
   ].join(',');
 
