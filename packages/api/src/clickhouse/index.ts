@@ -2040,6 +2040,8 @@ export const getLogById = async (
   return result;
 };
 
+// TODO: support multiple group bys
+// FIXME: return 'group' field should be array type
 export const checkAlert = async ({
   endTime,
   groupBy,

@@ -482,7 +482,9 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
               alert,
               dashboard: targetDashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: checkData.group,
+              group: Array.isArray(checkData.group)
+                ? checkData.group.join(', ')
+                : checkData.group,
               logView,
               startTime: bucketStart,
               totalCount,
