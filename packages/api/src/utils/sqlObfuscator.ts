@@ -9,6 +9,11 @@ const getChild = () => {
 
   const arch = process.arch;
 
+  // can be updated if new arch is built
+  if (arch !== 'x64' && arch !== 'arm64') {
+    throw new Error(`Unsupported architecture: ${arch}`);
+  }
+
   subprocess = spawn(`src/gobin/sql_obfuscator_${arch}`, [], {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
   });

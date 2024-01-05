@@ -2,6 +2,7 @@ import _ from 'lodash';
 
 import { tryJSONStringify } from './common';
 import { sqlObfuscator } from './sqlObfuscator';
+import * as config from '@/config';
 
 export type JSONBlob = Record<string, any>;
 
@@ -171,7 +172,7 @@ export const mapObjectToKeyValuePairs = async (
     }
   }
 
-  if (output['string.names'].includes('db.statement')) {
+  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
     const index = output['string.names'].indexOf('db.statement');
     const value = output['string.values'][index];
     const obfuscated = await sqlObfuscator(value);
