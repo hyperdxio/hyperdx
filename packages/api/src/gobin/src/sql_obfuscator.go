@@ -31,7 +31,13 @@ func main() {
 			sqllexer.WithKeepSQLAlias(false),
 		)
 
-		normalized, _, _ := normalizer.Normalize(query)
+		normalized, _, err := normalizer.Normalize(query)
+		if err != nil {
+			// write to stderr
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(1)
+		}
+
 		obfuscator := sqllexer.NewObfuscator()
 		obfuscated := obfuscator.Obfuscate(normalized)
 		fmt.Printf("%s\n", obfuscated)
