@@ -1,9 +1,9 @@
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 
-let subprocess: any;
+let subprocess: ChildProcess | undefined;
 
 const getChild = () => {
-  if (subprocess) {
+  if (subprocess && subprocess?.killed === false && subprocess?.connected) {
     return subprocess;
   }
 
@@ -18,25 +18,50 @@ const getChild = () => {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
   });
 
+  if (!subprocess) {
+    throw new Error(`Could not spawn child process`);
+  }
+
   process.on('SIGINT', () => {
-    subprocess.kill('SIGINT');
+    if (subprocess && subprocess?.killed === false) {
+      subprocess.kill('SIGINT');
+    }
   });
 
   return subprocess;
 };
 
-const removeListeners = (subprocess: any) => {
-  subprocess.stdout.removeAllListeners();
-  subprocess.stderr.removeAllListeners();
+const removeListeners = (subprocess: ChildProcess | undefined) => {
+  if (!subprocess) {
+    return;
+  }
   subprocess.removeAllListeners();
+  if (subprocess.stdout) {
+    subprocess.stdout.removeAllListeners();
+  }
+  if (subprocess.stderr) {
+    subprocess.stderr.removeAllListeners();
+  }
 };
 
 export const sqlObfuscator = async (sql: string): Promise<string> => {
   subprocess = getChild();
+  if (!subprocess || subprocess.stdin === null) {
+    throw new Error(`Could not spawn child process`);
+  }
+
   const strippedSql = sql.replace(/(\r\n|\n|\r)/gm, ' ');
   subprocess.stdin.write(`${strippedSql}\n`);
 
   return new Promise((resolve, reject) => {
+    if (
+      !subprocess ||
+      subprocess.stdin === null ||
+      subprocess.stdout === null ||
+      subprocess.stderr === null
+    ) {
+      throw new Error(`Could not spawn child process`);
+    }
     const errorOutput = (data: any) => {
       removeListeners(subprocess);
       reject(data.toString());
@@ -45,9 +70,16 @@ export const sqlObfuscator = async (sql: string): Promise<string> => {
       removeListeners(subprocess);
       resolve(data.toString());
     };
+    const handleExit = (code: number | null, signal: string | null) => {
+      if (code !== 0) {
+        errorOutput(`Child process exited with code ${code}`);
+      } else {
+        errorOutput(`Child process exited with signal ${signal}`);
+      }
+    };
     subprocess.stdout.on('data', dataRecieved);
     subprocess.stderr.on('data', errorOutput);
     subprocess.on('error', errorOutput);
-    subprocess.on('exit', errorOutput);
+    subprocess.on('exit', handleExit);
   });
 };

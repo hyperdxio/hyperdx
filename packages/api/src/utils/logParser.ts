@@ -1,8 +1,9 @@
 import _ from 'lodash';
 
+import * as config from '@/config';
+
 import { tryJSONStringify } from './common';
 import { sqlObfuscator } from './sqlObfuscator';
-import * as config from '@/config';
 
 export type JSONBlob = Record<string, any>;
 
