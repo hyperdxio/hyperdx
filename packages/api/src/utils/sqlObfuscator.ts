@@ -21,10 +21,6 @@ const getChild = () => {
 };
 
 export const sqlObfuscator = async (sql: string): Promise<string> => {
-  if (process.arch !== 'arm64') {
-    // we do not support the go binary in other architectures
-    return sql;
-  }
   subprocess = getChild();
   const strippedSql = sql.replace(/(\r\n|\n|\r)/gm, ' ');
   subprocess.stdin.write(`${strippedSql}\n`);
