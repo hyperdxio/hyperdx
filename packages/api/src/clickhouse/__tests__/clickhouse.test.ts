@@ -115,18 +115,21 @@ Array [
         timestamp: now,
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 1,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 15,
       }),
       buildEvent({
         timestamp: now + ms('2m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 61,
       }),
       // Group 1, sum: 7, avg: 2.3333333
@@ -134,18 +137,21 @@ Array [
         timestamp: now + ms('6m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 4,
       }),
       buildEvent({
         timestamp: now + ms('7m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 2,
       }),
       buildEvent({
         timestamp: now + ms('8m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup3',
         awesomeNumber: 1,
       }),
       // Group 2, sum: 777, avg: 259
@@ -153,24 +159,28 @@ Array [
         timestamp: now,
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 70,
       }),
       buildEvent({
         timestamp: now + ms('4m'),
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 700,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 7,
       }),
     ]);
 
     mockLogsPropertyTypeMappingsModel({
       testGroup: 'string',
+      testOtherGroup: 'string',
       awesomeNumber: 'number',
       runId: 'string',
     });
@@ -216,21 +226,100 @@ Array [
     expect(data).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 777,
     "series_1.data": 259,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 77,
     "series_1.data": 25.666666666666668,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 7,
     "series_1.data": 2.3333333333333335,
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+    const multiGroupBysData = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'logs',
+            aggFn: clickhouse.AggFn.Sum,
+            field: 'awesomeNumber',
+            where: `runId:${runId}`,
+            groupBy: ['testGroup', 'testOtherGroup'],
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('10m'),
+        granularity: '5 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'series_1.data',
+        'ts_bucket',
+      ]);
+    });
+    expect(multiGroupBysData.length).toEqual(5);
+    expect(multiGroupBysData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "group2",
+      "otherGroup1",
+    ],
+    "series_0.data": 777,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 61,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup1",
+    ],
+    "series_0.data": 16,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 6,
+    "ts_bucket": 1641341100,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup3",
+    ],
+    "series_0.data": 1,
     "ts_bucket": 1641341100,
   },
 ]
@@ -272,24 +361,28 @@ Array [
     expect(ratioData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641341100,
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('fetches multi-series metric time chart correctly', async () => {
@@ -421,22 +514,22 @@ Array [
     expect(singleSumSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 19,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 79,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 5813,
     "ts_bucket": 1641341400,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 78754,
     "ts_bucket": 1641341700,
   },
@@ -471,22 +564,30 @@ Array [
     expect(singleGaugeGroupedSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 6.25,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 4,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 80,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 4,
     "ts_bucket": 1641341100,
   },
@@ -521,12 +622,12 @@ Array [
     expect(singleGaugeSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 5.125,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 42,
     "ts_bucket": 1641341100,
   },
@@ -561,12 +662,12 @@ Array [
     expect(singleGaugeSeriesSummedData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 10.25,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 84,
     "ts_bucket": 1641341100,
   },
@@ -610,39 +711,45 @@ Array [
     expect(ratioData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 0.78125,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 0.36363636363636365,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 80,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 0.05128205128205128,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": null,
     "ts_bucket": 1641341400,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": null,
     "ts_bucket": 1641341700,
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('fetches multi series metric table chart correctly', async () => {
@@ -788,15 +895,13 @@ Array [
     expect(singleSumSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 84665,
     "series_1.data": 42,
     "ts_bucket": "0",
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('limits groups and sorts multi series charts properly', async () => {
@@ -869,37 +974,49 @@ Array [
     expect(ascData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group0",
+    "group": Array [
+      "group0",
+    ],
     "series_0.data": 1,
     "series_1.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 1,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 1,
     "series_1.data": 2,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group0",
+    "group": Array [
+      "group0",
+    ],
     "series_0.data": 1,
     "series_1.data": 0,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 1,
     "series_1.data": 2,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 19,
     "ts_bucket": 1641341100,
@@ -944,37 +1061,49 @@ Array [
     expect(descData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group5",
+    "group": Array [
+      "group5",
+    ],
     "series_0.data": 1,
     "series_1.data": 5,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group3",
+    "group": Array [
+      "group3",
+    ],
     "series_0.data": 1,
     "series_1.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 1,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 19,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group3",
+    "group": Array [
+      "group3",
+    ],
     "series_0.data": 1,
     "series_1.data": 17,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group5",
+    "group": Array [
+      "group5",
+    ],
     "series_0.data": 1,
     "series_1.data": 15,
     "ts_bucket": 1641341100,
@@ -1019,26 +1148,31 @@ Array [
     expect(descDataSimple).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group9",
+    "group": Array [
+      "group9",
+    ],
     "series_0.data": 1,
     "series_1.data": 9,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group8",
+    "group": Array [
+      "group8",
+    ],
     "series_0.data": 1,
     "series_1.data": 8,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group7",
+    "group": Array [
+      "group7",
+    ],
     "series_0.data": 1,
     "series_1.data": 7,
     "ts_bucket": 1641340800,
   },
 ]
 `);
-    jest.clearAllMocks();
   });
 
   it('fetches legacy format correctly for alerts', async () => {
@@ -1153,25 +1287,29 @@ Array [
 Array [
   Object {
     "data": 777,
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "ts_bucket": 1641340800,
   },
   Object {
     "data": 77,
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "ts_bucket": 1641340800,
   },
   Object {
     "data": 7,
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "ts_bucket": 1641341100,
   },
 ]
 `);
 
     expect(data).toMatchObject(oldData);
-
-    jest.clearAllMocks();
   });
 
   it('clientInsertWithRetries (success)', async () => {

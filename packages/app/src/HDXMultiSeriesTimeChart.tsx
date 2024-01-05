@@ -267,14 +267,16 @@ const HDXMultiSeriesLineChart = memo(
             // per series/group
             const dataKey = `series_${i}.data:::${row.group}`;
 
+            const hasGroup = Array.isArray(row.group) && row.group.length > 0;
+
             const displayName =
               series.length === 1
                 ? // If there's only one series, just show the group, unless there is no group
-                  row.group
+                  hasGroup
                   ? `${row.group}`
                   : meta.displayName
                 : // Otherwise, show the series and a group if there is any
-                  `${row.group ? `${row.group} • ` : ''}${meta.displayName}`;
+                  `${hasGroup ? `${row.group} • ` : ''}${meta.displayName}`;
 
             acc[dataKey] = row[meta.dataKey];
             lineDataMap[dataKey] = {
