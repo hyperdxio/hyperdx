@@ -419,6 +419,7 @@ export const formatNumber = (
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
+      average: false,
     }),
     ...(options.output === 'currency' && {
       currencySymbol: options.currencySymbol || '$',
