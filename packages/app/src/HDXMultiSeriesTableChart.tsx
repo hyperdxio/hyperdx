@@ -1,8 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
-import cx from 'classnames';
-import { Anchor, Flex, Text } from '@mantine/core';
+import { Flex, Text } from '@mantine/core';
 import {
   flexRender,
   getCoreRowModel,
@@ -22,7 +20,6 @@ import {
 } from './ChartUtils';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { ChartSeries, NumberFormat } from './types';
-import { AggFn } from './types';
 import { formatNumber } from './utils';
 
 const Table = ({
@@ -135,8 +132,6 @@ const Table = ({
     <div
       className="overflow-auto h-100 fs-8 bg-inherit"
       ref={tableContainerRef}
-      // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
-      // style={{ overflowAnchor: 'none' }}
     >
       <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>
         <thead
@@ -203,13 +198,6 @@ const Table = ({
                                   ? 'isResizing'
                                   : ''
                               }`}
-                              // style={{
-                              //   position: 'absolute',
-                              //   right: 4,
-                              //   top: 0,
-                              //   bottom: 0,
-                              //   width: 12,
-                              // }}
                             >
                               <i className="bi bi-three-dots-vertical" />
                             </div>
@@ -287,10 +275,9 @@ const HDXMultiSeriesTableChart = memo(
     config: {
       series,
       seriesReturnType = 'column',
-      // numberFormat,
       dateRange,
-      sortOrder,
       numberFormat,
+      groupColumnName,
     },
     onSettled,
     onSortClick,
@@ -302,6 +289,7 @@ const HDXMultiSeriesTableChart = memo(
       seriesReturnType: 'ratio' | 'column';
       sortOrder: 'asc' | 'desc';
       numberFormat?: NumberFormat;
+      groupColumnName?: string;
     };
     onSettled?: () => void;
     onSortClick?: (seriesIndex: number) => void;
@@ -346,9 +334,10 @@ const HDXMultiSeriesTableChart = memo(
         <Table
           data={data?.data ?? []}
           groupColumnName={
-            series[0].type === 'table'
+            groupColumnName ??
+            (series[0].type === 'table'
               ? series[0].groupBy.join(' ') || 'Group'
-              : 'Group'
+              : 'Group')
           }
           columns={seriesMeta}
           numberFormat={numberFormat}

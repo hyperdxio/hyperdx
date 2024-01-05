@@ -77,6 +77,10 @@ const seriesDisplayName = (
   } = {},
 ) => {
   if (s.type === 'time' || s.type === 'table') {
+    if (s.displayName != null) {
+      return s.displayName;
+    }
+
     const displayField =
       s.aggFn !== 'count'
         ? s.table === 'metrics'
@@ -113,13 +117,16 @@ export function seriesColumns({
       ? [
           {
             dataKey: `series_0.data`,
-            displayName: `${seriesDisplayName(series[0], {
-              showField,
-              showWhere,
-            })}/${seriesDisplayName(series[1], {
-              showField,
-              showWhere,
-            })}`,
+            displayName:
+              'displayName' in series[0] && series[0].displayName != null
+                ? series[0].displayName
+                : `${seriesDisplayName(series[0], {
+                    showField,
+                    showWhere,
+                  })}/${seriesDisplayName(series[1], {
+                    showField,
+                    showWhere,
+                  })}`,
             sortOrder:
               'sortOrder' in series[0] ? series[0].sortOrder : undefined,
           },
