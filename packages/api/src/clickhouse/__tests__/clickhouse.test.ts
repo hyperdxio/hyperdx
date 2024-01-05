@@ -115,18 +115,21 @@ Array [
         timestamp: now,
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 1,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 15,
       }),
       buildEvent({
         timestamp: now + ms('2m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 61,
       }),
       // Group 1, sum: 7, avg: 2.3333333
@@ -134,18 +137,21 @@ Array [
         timestamp: now + ms('6m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 4,
       }),
       buildEvent({
         timestamp: now + ms('7m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup2',
         awesomeNumber: 2,
       }),
       buildEvent({
         timestamp: now + ms('8m'),
         runId,
         testGroup: 'group1',
+        testOtherGroup: 'otherGroup3',
         awesomeNumber: 1,
       }),
       // Group 2, sum: 777, avg: 259
@@ -153,24 +159,28 @@ Array [
         timestamp: now,
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 70,
       }),
       buildEvent({
         timestamp: now + ms('4m'),
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 700,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
         runId,
         testGroup: 'group2',
+        testOtherGroup: 'otherGroup1',
         awesomeNumber: 7,
       }),
     ]);
 
     mockLogsPropertyTypeMappingsModel({
       testGroup: 'string',
+      testOtherGroup: 'string',
       awesomeNumber: 'number',
       runId: 'string',
     });
@@ -241,6 +251,79 @@ Array [
   },
 ]
 `);
+    const multiGroupBysData = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'logs',
+            aggFn: clickhouse.AggFn.Sum,
+            field: 'awesomeNumber',
+            where: `runId:${runId}`,
+            groupBy: ['testGroup', 'testOtherGroup'],
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('10m'),
+        granularity: '5 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'series_1.data',
+        'ts_bucket',
+      ]);
+    });
+    expect(multiGroupBysData.length).toEqual(5);
+    expect(multiGroupBysData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "group2",
+      "otherGroup1",
+    ],
+    "series_0.data": 777,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 61,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup1",
+    ],
+    "series_0.data": 16,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 6,
+    "ts_bucket": 1641341100,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup3",
+    ],
+    "series_0.data": 1,
+    "ts_bucket": 1641341100,
+  },
+]
+`);
 
     const ratioData = (
       await clickhouse.getMultiSeriesChart({
@@ -300,8 +383,6 @@ Array [
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('fetches multi-series metric time chart correctly', async () => {
@@ -669,8 +750,6 @@ Array [
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('fetches multi series metric table chart correctly', async () => {
@@ -823,8 +902,6 @@ Array [
   },
 ]
 `);
-
-    jest.clearAllMocks();
   });
 
   it('limits groups and sorts multi series charts properly', async () => {
@@ -1096,7 +1173,6 @@ Array [
   },
 ]
 `);
-    jest.clearAllMocks();
   });
 
   it('fetches legacy format correctly for alerts', async () => {
@@ -1234,8 +1310,6 @@ Array [
 `);
 
     expect(data).toMatchObject(oldData);
-
-    jest.clearAllMocks();
   });
 
   it('clientInsertWithRetries (success)', async () => {
