@@ -866,61 +866,69 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             ) : null}
           </div>
         </div>
-        <div className="mb-4 mt-4">
-          <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-            <span className="">Ready to use HyperDX Cloud?</span>
-            <div className="mt-3 mb-2">
-              <Link href="https://www.hyperdx.io/register" passHref>
-                <Button variant="outline-success" className="inter" size="sm">
-                  Get Started for Free
-                </Button>
-              </Link>
+        {!isCollapsed && (
+          <>
+            <div className="mb-4 mt-4">
+              <div className="my-3 bg-hdx-dark rounded p-2 text-center">
+                <span className="">Ready to use HyperDX Cloud?</span>
+                <div className="mt-3 mb-2">
+                  <Link href="https://www.hyperdx.io/register" passHref>
+                    <Button
+                      variant="outline-success"
+                      className="inter"
+                      size="sm"
+                    >
+                      Get Started for Free
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+              <div className="my-3">
+                <Link href="/team">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/team'),
+                      },
+                    )}
+                  >
+                    <span>
+                      <i className="bi bi-gear" />{' '}
+                      {!isCollapsed && <span>Team Settings</span>}
+                    </span>
+                  </a>
+                </Link>
+              </div>
+              <div className="my-3">
+                <Link href="https://hyperdx.io/docs">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                    )}
+                    target="_blank"
+                  >
+                    <span>
+                      <i className="bi bi-book" />{' '}
+                      {!isCollapsed && <span>Documentation</span>}
+                    </span>
+                  </a>
+                </Link>
+              </div>
+              <div className="my-4">
+                <Link href={`${API_SERVER_URL}/logout`}>
+                  <span role="button" className="text-muted-hover">
+                    <i className="bi bi-box-arrow-left" />{' '}
+                    {!isCollapsed && <span>Logout</span>}
+                  </span>
+                </Link>
+              </div>
             </div>
-          </div>
-          <div className="my-3">
-            <Link href="/team">
-              <a
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/team'),
-                  },
-                )}
-              >
-                <span>
-                  <i className="bi bi-gear" />{' '}
-                  {!isCollapsed && <span>Team Settings</span>}
-                </span>
-              </a>
-            </Link>
-          </div>
-          <div className="my-3">
-            <Link href="https://hyperdx.io/docs">
-              <a
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                )}
-                target="_blank"
-              >
-                <span>
-                  <i className="bi bi-book" />{' '}
-                  {!isCollapsed && <span>Documentation</span>}
-                </span>
-              </a>
-            </Link>
-          </div>
-          <div className="my-4">
-            <Link href={`${API_SERVER_URL}/logout`}>
-              <span role="button" className="text-muted-hover">
-                <i className="bi bi-box-arrow-left" />{' '}
-                {!isCollapsed && <span>Logout</span>}
-              </span>
-            </Link>
-          </div>
-        </div>
-        <div className="d-flex justify-content-end align-items-end">
-          <span className="text-muted-hover fs-7">v{version}</span>
-        </div>
+            <div className="d-flex justify-content-end align-items-end">
+              <span className="text-muted-hover fs-7">v{version}</span>
+            </div>
+          </>
+        )}
       </div>
     </>
   );
