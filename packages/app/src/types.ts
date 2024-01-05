@@ -183,6 +183,7 @@ export type AggFn =
 export type SourceTable = 'logs' | 'rrweb' | 'metrics';
 
 export type TimeChartSeries = {
+  displayName?: string;
   table: SourceTable;
   type: 'time';
   aggFn: AggFn; // TODO: Type
@@ -193,6 +194,7 @@ export type TimeChartSeries = {
 };
 
 export type TableChartSeries = {
+  displayName?: string;
   type: 'table';
   table: SourceTable;
   aggFn: AggFn;
