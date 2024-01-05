@@ -9,6 +9,11 @@ import (
 	"github.com/DataDog/go-sqllexer"
 )
 
+// This is a simple command line tool that reads multiple newline-separated SQL queries from stdin
+// and normalizes and obfuscates them, then prints them one at a time (newline separated) to stdout.
+// Example:
+// $ echo "SELECT * FROM foo as foo_table limit 1; SELECT * FROM /* sql comment */ bar where name = 'bob';" | go run sql_obfuscator.go
+// SELECT * FROM foo limit ?; SELECT * FROM bar where name = ?
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 	for {

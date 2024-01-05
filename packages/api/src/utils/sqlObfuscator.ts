@@ -2,7 +2,8 @@ import { ChildProcess, spawn } from 'child_process';
 
 let subprocess: ChildProcess | undefined;
 
-const getChild = () => {
+// exported only for testing
+export const getChild = () => {
   if (subprocess && subprocess?.killed === false && subprocess?.connected) {
     return subprocess;
   }
