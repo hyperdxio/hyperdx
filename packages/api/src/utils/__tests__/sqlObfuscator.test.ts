@@ -21,4 +21,9 @@ describe('logParser', () => {
     const end = Date.now();
     //console.log(`Took ${(end - start) / n}ms`);
   });
+
+  it('runs the right arch', () => {
+    expect(process.platform).toEqual('linux');
+    expect(process.arch).toEqual('arm64');
+  });
 });
