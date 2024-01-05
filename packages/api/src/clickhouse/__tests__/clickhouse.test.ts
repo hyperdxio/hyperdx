@@ -81,7 +81,7 @@ Array [
   Object {
     "_host": "",
     "_platform": "nodejs",
-    "_service": "",
+    "_service": "test-service",
     "body": "",
     "duration": -1641340800001,
     "severity_text": "",
@@ -92,7 +92,7 @@ Array [
   Object {
     "_host": "",
     "_platform": "nodejs",
-    "_service": "",
+    "_service": "test-service",
     "body": "",
     "duration": -1641340800000,
     "severity_text": "",

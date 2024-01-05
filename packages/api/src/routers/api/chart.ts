@@ -1,15 +1,100 @@
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
-import { isNumber, parseInt } from 'lodash';
+import { isNumber } from 'lodash';
+import ms from 'ms';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
+import { buildSearchColumnName } from '@/clickhouse/searchQueryParser';
 import { getTeam } from '@/controllers/team';
-import logger from '@/utils/logger';
+import { SimpleCache } from '@/utils/redis';
 import { chartSeriesSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+router.get('/services', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+    const team = await getTeam(teamId);
+    if (team == null) {
+      return res.sendStatus(403);
+    }
+
+    const FIELDS = ['k8s.namespace.name', 'k8s.pod.name', 'k8s.pod.uid'];
+    const nowInMs = Date.now();
+    const startTime = nowInMs - ms('5d');
+    const endTime = nowInMs;
+
+    const propertyTypeMappingsModel =
+      await clickhouse.buildLogsPropertyTypeMappingsModel(
+        team.logStreamTableVersion,
+        teamId.toString(),
+        startTime,
+        endTime,
+      );
+
+    const targetGroupByFields: string[] = ['service'];
+    // make sure all custom fields exist
+    for (const f of FIELDS) {
+      if (buildSearchColumnName(propertyTypeMappingsModel.get(f), f)) {
+        targetGroupByFields.push(f);
+      }
+    }
+
+    const MAX_NUM_GROUPS = 2000;
+
+    const simpleCache = new SimpleCache<
+      Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>
+    >(`chart-services-${teamId}`, ms('10m'), () =>
+      clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            aggFn: clickhouse.AggFn.Count,
+            groupBy: targetGroupByFields,
+            table: 'logs',
+            type: 'table',
+            where: '',
+          },
+        ],
+        endTime,
+        granularity: undefined,
+        maxNumGroups: MAX_NUM_GROUPS,
+        startTime,
+        tableVersion: team.logStreamTableVersion,
+        teamId: teamId.toString(),
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      }),
+    );
+
+    const results = await simpleCache.get();
+    // restructure service maps
+    const serviceMap: Record<string, Record<string, string>[]> = {};
+    for (const row of results.data) {
+      const values = row.group;
+      const service = values[0];
+      if (!(service in serviceMap)) {
+        serviceMap[service] = [];
+      }
+      const k8sAttrs: Record<string, string> = {};
+      for (let i = 1; i < values.length; i++) {
+        const field = targetGroupByFields[i];
+        const value = values[i];
+        k8sAttrs[field] = value;
+      }
+      serviceMap[service].push(k8sAttrs);
+    }
+
+    res.json({
+      data: serviceMap,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.post(
   '/series',
