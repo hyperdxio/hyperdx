@@ -25,17 +25,18 @@ const getChild = () => {
   return subprocess;
 };
 
+const removeListeners = (subprocess: any) => {
+  subprocess.stdout.removeAllListeners();
+  subprocess.stderr.removeAllListeners();
+  subprocess.removeAllListeners();
+};
+
 export const sqlObfuscator = async (sql: string): Promise<string> => {
   subprocess = getChild();
   const strippedSql = sql.replace(/(\r\n|\n|\r)/gm, ' ');
   subprocess.stdin.write(`${strippedSql}\n`);
 
   return new Promise((resolve, reject) => {
-    const removeListeners = (subprocess: any) => {
-      subprocess.stdout.removeAllListeners();
-      subprocess.stderr.removeAllListeners();
-      subprocess.removeAllListeners();
-    };
     const errorOutput = (data: any) => {
       removeListeners(subprocess);
       reject(data.toString());
