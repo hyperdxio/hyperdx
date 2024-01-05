@@ -858,6 +858,7 @@ export const getMetricsChart = async ({
   return result;
 };
 
+// TODO: support multiple groupBys
 export const buildMetricSeriesQuery = async ({
   aggFn,
   dataType,
@@ -911,8 +912,8 @@ export const buildMetricSeriesQuery = async ({
         )
       : "'0' as ts_bucket",
     groupBy
-      ? SqlString.format(`_string_attributes[?] AS group`, [groupBy])
-      : "'' AS group",
+      ? SqlString.format(`[_string_attributes[?]] AS group`, [groupBy])
+      : '[] AS group',
   ];
 
   const hasGroupBy = groupBy != '' && groupBy != null;
@@ -1053,7 +1054,7 @@ const buildEventSeriesQuery = async ({
   endTime,
   field,
   granularity,
-  groupBy,
+  groupBys,
   propertyTypeMappingsModel,
   q,
   sortOrder,
@@ -1065,7 +1066,7 @@ const buildEventSeriesQuery = async ({
   endTime: number; // unix in ms,
   field?: string;
   granularity: string | undefined; // can be undefined in the number chart
-  groupBy: string;
+  groupBys: string[];
   propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
   q: string;
   sortOrder?: 'asc' | 'desc';
@@ -1096,13 +1097,39 @@ const buildEventSeriesQuery = async ({
       ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
       : '';
 
-  const hasGroupBy = groupBy != '' && groupBy != null;
   const isCountFn = aggFn === AggFn.Count;
-  const groupByField =
-    hasGroupBy &&
-    buildSearchColumnName(propertyTypeMappingsModel.get(groupBy), groupBy);
+  const hasGroupBy = groupBys.length > 0;
+  const groupByFields: string[] = [];
+  if (hasGroupBy) {
+    for (const groupBy of groupBys) {
+      const _buildSearchColumnName = buildSearchColumnName(
+        propertyTypeMappingsModel.get(groupBy),
+        groupBy,
+      );
+      if (_buildSearchColumnName != null) {
+        groupByFields.push(_buildSearchColumnName);
+      }
+    }
+  }
+
+  // Need to make sure group by fields ordering is consistent
+  groupByFields.sort();
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
+
+  // compute additional where clouse for group-by fields + select field
+  let additionalSelectFieldCheck = '';
+  let additionalGroupByFieldCheck = '';
+  if (!isCountFn && field != null) {
+    const _condition = await serializer.isNotNull(field, false);
+    additionalSelectFieldCheck = ` AND (${_condition})`;
+  }
+  if (hasGroupBy) {
+    const _conditions = await Promise.all(
+      groupBys.map(g => serializer.isNotNull(g, false)),
+    );
+    additionalGroupByFieldCheck = ` AND (${_conditions.join(' AND ')})`;
+  }
 
   const label = SqlString.escape(`${aggFn}(${field})`);
 
@@ -1131,11 +1158,13 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    groupByField ? `${groupByField} as group` : `'' as group`, // FIXME: should we fallback to use aggFn as group
+    groupByFields.length > 0
+      ? `[${groupByFields.join(',')}] as group`
+      : `[] as group`, // FIXME: should we fallback to use aggFn as group
     `${label} as label`,
   ].join(',');
 
-  const groupByClause = `ts_bucket ${groupByField ? `, ${groupByField}` : ''}`;
+  const groupByClause = ['ts_bucket', ...groupByFields].join(',');
 
   const query = SqlString.format(
     `
@@ -1160,16 +1189,8 @@ const buildEventSeriesQuery = async ({
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
       SqlString.raw(whereClause),
-      SqlString.raw(
-        !isCountFn && field != null
-          ? ` AND (${await serializer.isNotNull(field, false)})`
-          : '',
-      ),
-      SqlString.raw(
-        hasGroupBy
-          ? ` AND (${await serializer.isNotNull(groupBy, false)})`
-          : '',
-      ),
+      SqlString.raw(additionalSelectFieldCheck),
+      SqlString.raw(additionalGroupByFieldCheck),
       SqlString.raw(groupByClause),
       ...(granularity != null
         ? [
@@ -1302,7 +1323,7 @@ export const queryMultiSeriesChart = async ({
   const result = await rows.json<
     ResponseJSON<{
       ts_bucket: number;
-      group: string;
+      group: string[];
       [series_data: `series_${number}.data`]: number;
     }>
   >();
@@ -1386,7 +1407,7 @@ export const getMultiSeriesChart = async ({
           endTime,
           field: s.field,
           granularity,
-          groupBy: s.groupBy[0],
+          groupBys: s.groupBy,
           propertyTypeMappingsModel,
           q: s.where,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
