@@ -7,7 +7,9 @@ const getChild = () => {
     return subprocess;
   }
 
-  subprocess = spawn('src/gobin/sql_obfuscator', [], {
+  const arch = process.arch;
+
+  subprocess = spawn(`src/gobin/sql_obfuscator_${arch}`, [], {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
   });
 
