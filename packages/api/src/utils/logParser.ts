@@ -177,7 +177,7 @@ export const mapObjectToKeyValuePairs = async (
     const index = output['string.names'].indexOf('db.statement');
     const value = output['string.values'][index];
     const obfuscated = await sqlObfuscator(value);
-    output['string.names'].push('db.statement.obfuscated');
+    output['string.names'].push('db.sql.normalized');
     output['string.values'].push(obfuscated);
   }
 
