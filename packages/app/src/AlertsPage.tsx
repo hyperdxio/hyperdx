@@ -277,8 +277,12 @@ export default function AlertsPage() {
                 <div className="text-center text-slate-400 my-4 fs-8">
                   Error
                 </div>
+              ) : alerts?.length ? (
+                <AlertCardList alerts={alerts} />
               ) : (
-                alerts?.length && <AlertCardList alerts={alerts} />
+                <div className="text-center text-slate-400 my-4 fs-8">
+                  No alerts created yet
+                </div>
               )}
             </Container>
           </div>
