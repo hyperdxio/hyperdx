@@ -9,7 +9,6 @@ import {
   closeDB,
   getLoggedInAgent,
   getServer,
-  mockLogsPropertyTypeMappingsModel,
 } from '@/fixtures';
 
 describe('charts router', () => {
@@ -39,21 +38,21 @@ describe('charts router', () => {
       team.id,
       [
         buildEvent({
-          timestamp: now - ms('30m'),
+          timestamp: now,
           service: 'service1',
           'k8s.namespace.name': 'namespace1',
           'k8s.pod.name': 'pod1',
           'k8s.pod.uid': 'uid1',
         }),
         buildEvent({
-          timestamp: now - ms('1d'),
+          timestamp: now,
           service: 'service1',
           'k8s.namespace.name': 'namespace1',
           'k8s.pod.name': 'pod2',
           'k8s.pod.uid': 'uid2',
         }),
         buildEvent({
-          timestamp: now - ms('1h'),
+          timestamp: now - ms('1d'),
           service: 'service2',
           'k8s.namespace.name': 'namespace2',
           'k8s.pod.name': 'pod3',
@@ -97,22 +96,16 @@ Object {
       team.id,
       [
         buildEvent({
-          timestamp: now - ms('30m'),
+          timestamp: now,
           service: 'service1',
-          'k8s.namespace.name': 'namespace1',
-          'k8s.pod.uid': 'uid1',
+        }),
+        buildEvent({
+          timestamp: now,
+          service: 'service1',
         }),
         buildEvent({
           timestamp: now - ms('1d'),
-          service: 'service1',
-          'k8s.namespace.name': 'namespace1',
-          'k8s.pod.uid': 'uid2',
-        }),
-        buildEvent({
-          timestamp: now - ms('1h'),
           service: 'service2',
-          'k8s.namespace.name': 'namespace2',
-          'k8s.pod.uid': 'uid3',
         }),
       ],
     );
@@ -121,20 +114,10 @@ Object {
     expect(results.body.data).toMatchInlineSnapshot(`
 Object {
   "service1": Array [
-    Object {
-      "k8s.namespace.name": "namespace1",
-      "k8s.pod.uid": "uid1",
-    },
-    Object {
-      "k8s.namespace.name": "namespace1",
-      "k8s.pod.uid": "uid2",
-    },
+    Object {},
   ],
   "service2": Array [
-    Object {
-      "k8s.namespace.name": "namespace2",
-      "k8s.pod.uid": "uid3",
-    },
+    Object {},
   ],
 }
 `);
