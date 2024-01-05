@@ -129,6 +129,8 @@ export function seriesColumns({
                   })}`,
             sortOrder:
               'sortOrder' in series[0] ? series[0].sortOrder : undefined,
+            numberFormat:
+              'numberFormat' in series[0] ? series[0].numberFormat : undefined,
           },
         ]
       : series.map((s, i) => {
@@ -139,6 +141,7 @@ export function seriesColumns({
               showWhere,
             }),
             sortOrder: 'sortOrder' in s ? s.sortOrder : undefined,
+            numberFormat: 'numberFormat' in s ? s.numberFormat : undefined,
           };
         });
 
@@ -1185,6 +1188,26 @@ export function timeBucketByGranularity(
 
   return buckets;
 }
+
+export const INTEGER_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 0,
+  thousandSeparated: true,
+};
+
+export const MS_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 2,
+  thousandSeparated: true,
+  unit: 'ms',
+};
+
+export const ERROR_RATE_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 0,
+};
 
 export const K8S_CPU_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
   output: 'percent',

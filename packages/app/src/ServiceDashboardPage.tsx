@@ -4,12 +4,21 @@ import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { Card, Grid, Group, Select, Tabs } from '@mantine/core';
 
 import AppNav from './AppNav';
-import { convertDateRangeToGranularityString } from './ChartUtils';
+import {
+  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+  INTEGER_NUMBER_FORMAT,
+  MS_NUMBER_FORMAT,
+  convertDateRangeToGranularityString,
+} from './ChartUtils';
 import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
+import EndpointLatencyTile from './EndpointLatencyTile';
 import HDXLineChart from './HDXLineChart';
+import HDXListBarChart from './HDXListBarChart';
+import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
+import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
@@ -107,6 +116,16 @@ export default function ServiceDashboardPage() {
       searchQuery,
     ].join(' ');
   }, [podNames, searchQuery]);
+
+  const scopeWhereQuery = React.useCallback(
+    (where: string) => {
+      const serviceQuery = service ? `service:${service} ` : '';
+      const sQuery = searchQuery ? `(${searchQuery}) ` : '';
+      const whereQuery = where ? `(${where})` : '';
+      return `${serviceQuery}${sQuery}${whereQuery}`;
+    },
+    [service, searchQuery],
+  );
 
   return (
     <div>
@@ -269,7 +288,230 @@ export default function ServiceDashboardPage() {
                   </Grid.Col>
                 </Grid>
               </Tabs.Panel>
-              <Tabs.Panel value="http">HTTP Service</Tabs.Panel>
+              <Tabs.Panel value="http">
+                <Grid>
+                  <Grid.Col span={6}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Request Error Rate
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesLineChart
+                          config={{
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Error Rate %',
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'count',
+                                where: scopeWhereQuery(
+                                  'span.kind:"server" level:"error"',
+                                ),
+                                groupBy: [],
+                                numberFormat:
+                                  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                              {
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'count',
+                                field: '',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: [],
+                                numberFormat:
+                                  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                            seriesReturnType: 'ratio',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Request Throughput
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesLineChart
+                          config={{
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Requests',
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'count',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: [],
+                                numberFormat: {
+                                  ...INTEGER_NUMBER_FORMAT,
+                                  unit: 'requests',
+                                },
+                              },
+                            ],
+                            seriesReturnType: 'column',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        20 Top Most Time Consuming Endpoints
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXListBarChart
+                          config={{
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'sum',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: MS_NUMBER_FORMAT,
+                              },
+                            ],
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <EndpointLatencyTile
+                      dateRange={dateRange}
+                      scopeWhereQuery={scopeWhereQuery}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={12}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Endpoints
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesTableChart
+                          config={{
+                            groupColumnName: 'Endpoint',
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Throughput',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'count',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                              },
+                              {
+                                displayName: 'P95',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p95',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                              },
+                              {
+                                displayName: 'Median',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p50',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                              },
+                              {
+                                displayName: 'Total',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'sum',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                sortOrder: 'desc',
+                              },
+                              {
+                                displayName: 'Errors',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'count',
+                                field: '',
+                                where: scopeWhereQuery(
+                                  'span.kind:"server" level:"error"',
+                                ),
+                                groupBy: ['span_name'],
+                              },
+                            ],
+                            seriesReturnType: 'column',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={12}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Debug
+                      </Card.Section>
+                      <Card.Section p="md" py="sm">
+                        <pre>
+                          {JSON.stringify(
+                            {
+                              dateRange,
+                              searchQuery,
+                              service,
+                              podNames,
+                              whereClause,
+                            },
+                            null,
+                            4,
+                          )}
+                        </pre>
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                </Grid>
+              </Tabs.Panel>
               <Tabs.Panel value="database">Database</Tabs.Panel>
             </div>
           </Tabs>
