@@ -13,3 +13,4 @@ export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 // Features in development
 export const METRIC_ALERTS_ENABLED = process.env.NODE_ENV === 'development';
 export const K8S_METRICS_ENABLED = process.env.NODE_ENV === 'development';
+export const SERVICE_DASHBOARD_ENABLED = process.env.NODE_ENV === 'development';
