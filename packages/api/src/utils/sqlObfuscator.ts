@@ -53,6 +53,8 @@ export const sqlObfuscator = async (sql: string): Promise<string> => {
   const strippedSql = sql.replace(/(\r\n|\n|\r)/gm, ' ');
   subprocess.stdin.write(`${strippedSql}\n`);
 
+  let output = '';
+
   return new Promise((resolve, reject) => {
     if (
       !subprocess ||
@@ -67,8 +69,12 @@ export const sqlObfuscator = async (sql: string): Promise<string> => {
       reject(data.toString());
     };
     const dataRecieved = (data: any) => {
-      removeListeners(subprocess);
-      resolve(data.toString());
+      const str = data.toString();
+      output += str;
+      if (str[str.length - 1] === '\n') {
+        removeListeners(subprocess);
+        resolve(output);
+      }
     };
     const handleExit = (code: number | null, signal: string | null) => {
       if (code !== 0) {
