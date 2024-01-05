@@ -1109,9 +1109,6 @@ const buildEventSeriesQuery = async ({
     }
   }
 
-  // Need to make sure group by fields ordering is consistent
-  groupByFields.sort();
-
   const hasGroupBy = groupByFields.length > 0;
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
