@@ -5,10 +5,10 @@ import { Card, Grid, Group, Select, Tabs } from '@mantine/core';
 
 import AppNav from './AppNav';
 import {
+  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
-  convertDateRangeToGranularityString,
 } from './ChartUtils';
 import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
