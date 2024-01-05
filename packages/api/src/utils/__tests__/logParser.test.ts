@@ -53,8 +53,8 @@ describe('logParser', () => {
     ]);
   });
 
-  it('mapObjectToKeyValuePairs', () => {
-    expect(mapObjectToKeyValuePairs(null as any)).toEqual({
+  it('mapObjectToKeyValuePairs', async () => {
+    expect(await mapObjectToKeyValuePairs(null as any)).toEqual({
       'bool.names': [],
       'bool.values': [],
       'number.names': [],
@@ -63,7 +63,7 @@ describe('logParser', () => {
       'string.values': [],
     });
 
-    expect(mapObjectToKeyValuePairs({})).toEqual({
+    expect(await mapObjectToKeyValuePairs({})).toEqual({
       'bool.names': [],
       'bool.values': [],
       'number.names': [],
@@ -73,7 +73,7 @@ describe('logParser', () => {
     });
 
     expect(
-      mapObjectToKeyValuePairs({ foo: '123', foo1: 123, foo2: false }),
+      await mapObjectToKeyValuePairs({ foo: '123', foo1: 123, foo2: false }),
     ).toEqual({
       'bool.names': ['foo2'],
       'bool.values': [0],
@@ -84,7 +84,7 @@ describe('logParser', () => {
     });
 
     expect(
-      mapObjectToKeyValuePairs({
+      await mapObjectToKeyValuePairs({
         foo: '123',
         foo1: 123,
         foo2: false,
@@ -113,7 +113,7 @@ describe('logParser', () => {
     for (let i = 0; i < 2000; i++) {
       testObject[`foo${i}`] = i;
     }
-    const result = mapObjectToKeyValuePairs(testObject);
+    const result = await mapObjectToKeyValuePairs(testObject);
     expect(result['number.names'].length).toEqual(1024);
     expect(result['number.values'].length).toEqual(1024);
     expect(result).toMatchSnapshot();
