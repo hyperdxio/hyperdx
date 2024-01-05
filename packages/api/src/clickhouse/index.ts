@@ -1116,7 +1116,7 @@ const buildEventSeriesQuery = async ({
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
 
-  // compute additional where clouse for group-by fields + select field
+  // compute additional where clause for group-by fields + select field
   let additionalSelectFieldCheck = '';
   let additionalGroupByFieldCheck = '';
   if (!isCountFn && field != null) {
