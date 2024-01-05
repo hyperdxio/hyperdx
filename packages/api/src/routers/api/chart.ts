@@ -45,7 +45,7 @@ router.get('/services', async (req, res, next) => {
       }
     }
 
-    const MAX_NUM_GROUPS = 50;
+    const MAX_NUM_GROUPS = 2000;
 
     const simpleCache = new SimpleCache<
       Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>
