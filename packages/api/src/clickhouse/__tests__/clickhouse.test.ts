@@ -216,19 +216,25 @@ Array [
     expect(data).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 777,
     "series_1.data": 259,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 77,
     "series_1.data": 25.666666666666668,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 7,
     "series_1.data": 2.3333333333333335,
     "ts_bucket": 1641341100,
@@ -272,17 +278,23 @@ Array [
     expect(ratioData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 3,
     "ts_bucket": 1641341100,
   },
@@ -421,22 +433,22 @@ Array [
     expect(singleSumSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 19,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 79,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 5813,
     "ts_bucket": 1641341400,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 78754,
     "ts_bucket": 1641341700,
   },
@@ -471,22 +483,30 @@ Array [
     expect(singleGaugeGroupedSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 6.25,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 4,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 80,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 4,
     "ts_bucket": 1641341100,
   },
@@ -521,12 +541,12 @@ Array [
     expect(singleGaugeSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 5.125,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 42,
     "ts_bucket": 1641341100,
   },
@@ -561,12 +581,12 @@ Array [
     expect(singleGaugeSeriesSummedData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 10.25,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 84,
     "ts_bucket": 1641341100,
   },
@@ -610,32 +630,40 @@ Array [
     expect(ratioData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 0.78125,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 0.36363636363636365,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "test1",
+    "group": Array [
+      "test1",
+    ],
     "series_0.data": 80,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "test2",
+    "group": Array [
+      "test2",
+    ],
     "series_0.data": 0.05128205128205128,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": null,
     "ts_bucket": 1641341400,
   },
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": null,
     "ts_bucket": 1641341700,
   },
@@ -788,7 +816,7 @@ Array [
     expect(singleSumSeriesData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "",
+    "group": Array [],
     "series_0.data": 84665,
     "series_1.data": 42,
     "ts_bucket": "0",
@@ -869,37 +897,49 @@ Array [
     expect(ascData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group0",
+    "group": Array [
+      "group0",
+    ],
     "series_0.data": 1,
     "series_1.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 1,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 1,
     "series_1.data": 2,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group0",
+    "group": Array [
+      "group0",
+    ],
     "series_0.data": 1,
     "series_1.data": 0,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "series_0.data": 1,
     "series_1.data": 2,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 19,
     "ts_bucket": 1641341100,
@@ -944,37 +984,49 @@ Array [
     expect(descData).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group5",
+    "group": Array [
+      "group5",
+    ],
     "series_0.data": 1,
     "series_1.data": 5,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group3",
+    "group": Array [
+      "group3",
+    ],
     "series_0.data": 1,
     "series_1.data": 3,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 1,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "series_0.data": 1,
     "series_1.data": 19,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group3",
+    "group": Array [
+      "group3",
+    ],
     "series_0.data": 1,
     "series_1.data": 17,
     "ts_bucket": 1641341100,
   },
   Object {
-    "group": "group5",
+    "group": Array [
+      "group5",
+    ],
     "series_0.data": 1,
     "series_1.data": 15,
     "ts_bucket": 1641341100,
@@ -1019,19 +1071,25 @@ Array [
     expect(descDataSimple).toMatchInlineSnapshot(`
 Array [
   Object {
-    "group": "group9",
+    "group": Array [
+      "group9",
+    ],
     "series_0.data": 1,
     "series_1.data": 9,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group8",
+    "group": Array [
+      "group8",
+    ],
     "series_0.data": 1,
     "series_1.data": 8,
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": "group7",
+    "group": Array [
+      "group7",
+    ],
     "series_0.data": 1,
     "series_1.data": 7,
     "ts_bucket": 1641340800,
@@ -1153,17 +1211,23 @@ Array [
 Array [
   Object {
     "data": 777,
-    "group": "group2",
+    "group": Array [
+      "group2",
+    ],
     "ts_bucket": 1641340800,
   },
   Object {
     "data": 77,
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "ts_bucket": 1641340800,
   },
   Object {
     "data": 7,
-    "group": "group1",
+    "group": Array [
+      "group1",
+    ],
     "ts_bucket": 1641341100,
   },
 ]
