@@ -61,6 +61,9 @@ export enum AggFn {
   AvgRate = 'avg_rate',
   Count = 'count',
   CountDistinct = 'count_distinct',
+  CountPerSec = 'count_per_sec',
+  CountPerMin = 'count_per_min',
+  CountPerHour = 'count_per_hour',
   Max = 'max',
   MaxRate = 'max_rate',
   Min = 'min',
@@ -1078,6 +1081,18 @@ const buildEventSeriesQuery = async ({
     throw new Error('Rate is not supported in logs chart');
   }
 
+  const isCountFn =
+    aggFn === AggFn.Count ||
+    aggFn === AggFn.CountPerSec ||
+    aggFn === AggFn.CountPerMin ||
+    aggFn === AggFn.CountPerHour;
+
+  if (field == null && !isCountFn) {
+    throw new Error(
+      'Field is required for all aggregation functions except Count',
+    );
+  }
+
   const tableName = getLogStreamTableName(tableVersion, teamId);
   const whereClause = await buildSearchQueryWhereCondition({
     endTime,
@@ -1086,18 +1101,11 @@ const buildEventSeriesQuery = async ({
     startTime,
   });
 
-  if (field == null && aggFn !== AggFn.Count) {
-    throw new Error(
-      'Field is required for all aggregation functions except Count',
-    );
-  }
-
   const selectField =
     field != null
       ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
       : '';
 
-  const isCountFn = aggFn === AggFn.Count;
   const groupByColumnNames = groupBy.map(g => {
     const columnName = buildSearchColumnName(
       propertyTypeMappingsModel.get(g),
@@ -1130,8 +1138,23 @@ const buildEventSeriesQuery = async ({
   const label = SqlString.escape(`${aggFn}(${field})`);
 
   const selectClause = [
-    isCountFn
+    aggFn === AggFn.Count
       ? 'toFloat64(count()) as data'
+      : aggFn === AggFn.CountPerSec
+      ? SqlString.format(
+          `divide(count(), age('ss', toDateTime(?), toDateTime(?))) as data`,
+          [startTime / 1000, endTime / 1000],
+        )
+      : aggFn === AggFn.CountPerMin
+      ? SqlString.format(
+          `divide(count(), age('mi', toDateTime(?), toDateTime(?))) as data`,
+          [startTime / 1000, endTime / 1000],
+        )
+      : aggFn === AggFn.CountPerHour
+      ? SqlString.format(
+          `divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data`,
+          [startTime / 1000, endTime / 1000],
+        )
       : aggFn === AggFn.Sum
       ? `toFloat64(sum(${selectField})) as data`
       : aggFn === AggFn.Avg
