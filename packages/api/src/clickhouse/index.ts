@@ -1141,20 +1141,11 @@ const buildEventSeriesQuery = async ({
     aggFn === AggFn.Count
       ? 'toFloat64(count()) as data'
       : aggFn === AggFn.CountPerSec
-      ? SqlString.format(
-          `divide(count(), age('ss', toDateTime(?), toDateTime(?))) as data`,
-          [startTime / 1000, endTime / 1000],
-        )
+      ? "divide(count(), age('ss', MIN(timestamp), MAX(timestamp))) as data"
       : aggFn === AggFn.CountPerMin
-      ? SqlString.format(
-          `divide(count(), age('mi', toDateTime(?), toDateTime(?))) as data`,
-          [startTime / 1000, endTime / 1000],
-        )
+      ? "divide(count(), age('mi', MIN(timestamp), MAX(timestamp))) as data"
       : aggFn === AggFn.CountPerHour
-      ? SqlString.format(
-          `divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data`,
-          [startTime / 1000, endTime / 1000],
-        )
+      ? "divide(count(), age('hh', MIN(timestamp), MAX(timestamp))) as data"
       : aggFn === AggFn.Sum
       ? `toFloat64(sum(${selectField})) as data`
       : aggFn === AggFn.Avg

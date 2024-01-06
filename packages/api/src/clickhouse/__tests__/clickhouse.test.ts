@@ -383,6 +383,51 @@ Array [
   },
 ]
 `);
+
+    const tableData = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'table',
+            table: 'logs',
+            aggFn: clickhouse.AggFn.CountPerMin,
+            where: `runId:${runId}`,
+            groupBy: ['testGroup'],
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('10m'),
+        granularity: undefined,
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket', 'rank']);
+    });
+
+    expect(tableData.length).toEqual(2);
+    expect(tableData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "group1",
+    ],
+    "rank": "1",
+    "series_0.data": 0.75,
+    "ts_bucket": "0",
+  },
+  Object {
+    "group": Array [
+      "group2",
+    ],
+    "rank": "1",
+    "series_0.data": 0.75,
+    "ts_bucket": "0",
+  },
+]
+`);
   });
 
   it('fetches multi-series metric time chart correctly', async () => {
@@ -845,8 +890,6 @@ Array [
         ],
       }),
     );
-
-    mockLogsPropertyTypeMappingsModel({});
 
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
