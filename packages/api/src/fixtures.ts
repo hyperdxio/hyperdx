@@ -101,7 +101,7 @@ export const getServer = (appType: 'api' | 'aggregator' = 'api') => {
     case 'aggregator':
       return new MockAggregatorServer();
     default:
-      throw new Error(`Invalid APP_TYPE: ${appType}`);
+      throw new Error(`Invalid app type: ${appType}`);
   }
 };
 
