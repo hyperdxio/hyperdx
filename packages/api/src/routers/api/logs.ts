@@ -361,6 +361,67 @@ router.get('/chart/histogram', async (req, res, next) => {
   }
 });
 
+// This endpoint needs to be generalized replaced once use-case matures
+router.post(
+  '/chart/spanPerformance',
+  validateRequest({
+    body: z.object({
+      parentSpanWhere: z.string().max(1024),
+      childrenSpanWhere: z.string().max(1024),
+      endTime: z.number(),
+      startTime: z.number(),
+      maxGroups: z.optional(z.number().min(1).max(20)),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const {
+        endTime,
+        startTime,
+        parentSpanWhere,
+        childrenSpanWhere,
+        maxGroups,
+      } = req.body;
+
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const team = await getTeam(teamId);
+      if (team == null) {
+        return res.sendStatus(403);
+      }
+
+      const propertyTypeMappingsModel =
+        await clickhouse.buildLogsPropertyTypeMappingsModel(
+          team.logStreamTableVersion,
+          teamId.toString(),
+          startTime,
+          endTime,
+        );
+
+      res.json(
+        await clickhouse.getSpanPerformanceChart({
+          endTime: endTime,
+          maxNumGroups: maxGroups ?? 20,
+          startTime: startTime,
+          tableVersion: team.logStreamTableVersion,
+          teamId: teamId.toString(),
+          parentSpanWhere,
+          childrenSpanWhere,
+          propertyTypeMappingsModel,
+        }),
+      );
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  },
+);
+
 router.get(
   '/chart',
   validateRequest({

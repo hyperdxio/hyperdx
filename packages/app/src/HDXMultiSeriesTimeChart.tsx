@@ -211,6 +211,7 @@ const HDXMultiSeriesLineChart = memo(
     onSettled,
     alertThreshold,
     alertThresholdType,
+    showDisplaySwitcher = true,
   }: {
     config: {
       series: ChartSeries[];
@@ -221,6 +222,7 @@ const HDXMultiSeriesLineChart = memo(
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
+    showDisplaySwitcher?: boolean;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
@@ -413,43 +415,42 @@ const HDXMultiSeriesLineChart = memo(
                 {groupKeys.length} groups shown
               </span>
             </div>
-          ) : null} */}
-          <div
-            className="bg-grey px-3 py-2 rounded fs-8"
-            style={{
-              zIndex: 5,
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              visibility: 'visible',
-            }}
-            title={`Only the top ${groupKeys.length} groups are shown, ${
-              totalGroups - groupKeys.length
-            } groups are hidden. Try grouping by a different field.`}
-          >
-            <span
-              className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
-                'text-success': displayType === 'line',
-                'text-muted-hover': displayType !== 'line',
-              })}
-              role="button"
-              title="Display as line chart"
-              onClick={() => setDisplayType('line')}
+            ) : null*/}
+          {showDisplaySwitcher && (
+            <div
+              className="bg-grey px-3 py-2 rounded fs-8"
+              style={{
+                zIndex: 5,
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                visibility: 'visible',
+              }}
             >
-              <i className="bi bi-graph-up"></i>
-            </span>
-            <span
-              className={cx('text-decoration-none fs-7 cursor-pointer', {
-                'text-success': displayType === 'stacked_bar',
-                'text-muted-hover': displayType !== 'stacked_bar',
-              })}
-              role="button"
-              title="Display as bar chart"
-              onClick={() => setDisplayType('stacked_bar')}
-            >
-              <i className="bi bi-bar-chart"></i>
-            </span>
-          </div>
+              <span
+                className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
+                  'text-success': displayType === 'line',
+                  'text-muted-hover': displayType !== 'line',
+                })}
+                role="button"
+                title="Display as line chart"
+                onClick={() => setDisplayType('line')}
+              >
+                <i className="bi bi-graph-up"></i>
+              </span>
+              <span
+                className={cx('text-decoration-none fs-7 cursor-pointer', {
+                  'text-success': displayType === 'stacked_bar',
+                  'text-muted-hover': displayType !== 'stacked_bar',
+                })}
+                role="button"
+                title="Display as bar chart"
+                onClick={() => setDisplayType('stacked_bar')}
+              >
+                <i className="bi bi-bar-chart"></i>
+              </span>
+            </div>
+          )}
           <MemoChart
             lineNames={lineNames}
             graphResults={graphResults}

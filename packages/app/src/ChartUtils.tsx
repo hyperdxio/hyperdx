@@ -116,7 +116,7 @@ export function seriesColumns({
     seriesReturnType === 'ratio'
       ? [
           {
-            dataKey: `series_0.data`,
+            dataKey: `series_0.data` as `series_${number}.data`,
             displayName:
               'displayName' in series[0] && series[0].displayName != null
                 ? series[0].displayName
@@ -135,7 +135,7 @@ export function seriesColumns({
         ]
       : series.map((s, i) => {
           return {
-            dataKey: `series_${i}.data`,
+            dataKey: `series_${i}.data` as `series_${number}.data`,
             displayName: seriesDisplayName(s, {
               showField,
               showWhere,
