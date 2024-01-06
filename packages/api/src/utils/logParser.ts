@@ -1,9 +1,6 @@
 import _ from 'lodash';
 
-import * as config from '@/config';
-
 import { tryJSONStringify } from './common';
-import { sqlObfuscator } from './sqlObfuscator';
 
 export type JSONBlob = Record<string, any>;
 
@@ -107,10 +104,10 @@ export function* traverseJson(
 }
 
 const MAX_KEY_VALUE_PAIRS_LENGTH = 1024;
-export const mapObjectToKeyValuePairs = async (
+export const mapObjectToKeyValuePairs = (
   blob: JSONBlob,
   maxArrayLength = MAX_KEY_VALUE_PAIRS_LENGTH,
-): Promise<KeyValuePairs> => {
+): KeyValuePairs => {
   const output: KeyValuePairs = {
     'bool.names': [],
     'bool.values': [],
@@ -171,14 +168,6 @@ export const mapObjectToKeyValuePairs = async (
         break;
       }
     }
-  }
-
-  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
-    const index = output['string.names'].indexOf('db.statement');
-    const value = output['string.values'][index];
-    const obfuscated = await sqlObfuscator(value);
-    output['string.names'].push('db.sql.normalized');
-    output['string.values'].push(obfuscated);
   }
 
   return output;
@@ -244,9 +233,9 @@ abstract class ParsingInterface<T> {
   abstract _parse(
     log: T,
     ...args: any[]
-  ): Promise<LogStreamModel | MetricModel | RrwebEventModel>;
+  ): LogStreamModel | MetricModel | RrwebEventModel;
 
-  async parse(logs: T[], ...args: any[]) {
+  parse(logs: T[], ...args: any[]) {
     const parsedLogs: any[] = [];
     for (const log of logs) {
       try {
@@ -270,9 +259,9 @@ class VectorLogParser extends ParsingInterface<VectorLog> {
     return LogType.Log;
   }
 
-  async _parse(log: VectorLog): Promise<LogStreamModel> {
+  _parse(log: VectorLog): LogStreamModel {
     return {
-      ...(await mapObjectToKeyValuePairs(log.b)),
+      ...mapObjectToKeyValuePairs(log.b),
       _platform: log.hdx_platform,
       _service: log.sv,
       _source: log.r,
@@ -294,7 +283,7 @@ class VectorLogParser extends ParsingInterface<VectorLog> {
 }
 
 class VectorMetricParser extends ParsingInterface<VectorMetric> {
-  async _parse(metric: VectorMetric): Promise<MetricModel> {
+  _parse(metric: VectorMetric): MetricModel {
     return {
       _string_attributes: metric.b,
       data_type: metric.dt,
@@ -309,9 +298,9 @@ class VectorMetricParser extends ParsingInterface<VectorMetric> {
 }
 
 class VectorRrwebParser extends ParsingInterface<VectorLog> {
-  async _parse(log: VectorLog): Promise<RrwebEventModel> {
+  _parse(log: VectorLog): RrwebEventModel {
     return {
-      ...(await mapObjectToKeyValuePairs(log.b)),
+      ...mapObjectToKeyValuePairs(log.b),
       _service: log.sv,
       _source: log.r,
       timestamp: log.ts,
