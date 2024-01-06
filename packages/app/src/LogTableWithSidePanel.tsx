@@ -21,6 +21,7 @@ export function LogTableWithSidePanel({
   config: {
     where: string;
     dateRange: [Date, Date];
+    columns?: string[];
   };
   isUTC: boolean;
   isLive: boolean;
@@ -84,7 +85,7 @@ export function LogTableWithSidePanel({
   const voidFn = useCallback(() => {}, []);
 
   const { displayedColumns, setDisplayedColumns, toggleColumn } =
-    useDisplayedColumns();
+    useDisplayedColumns(config.columns);
 
   return (
     <>
