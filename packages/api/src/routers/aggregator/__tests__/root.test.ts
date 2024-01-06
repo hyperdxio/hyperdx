@@ -37,7 +37,7 @@ describe('aggregator root router', () => {
     await agent.post('/').send({}).expect(400);
   });
 
-  it('POST / -> should aggregate logs', async () => {
+  it('POST / -> should ingest logs', async () => {
     const team = await createTeam({ name: 'test-team' });
     const agent = await getAgent(server);
     await agent.post('/').send([
@@ -76,4 +76,6 @@ describe('aggregator root router', () => {
     expect(result.data[0]._platform).toBe('nodejs');
     expect(result.data[0].severity_text).toBe('info');
   });
+
+  // TODO: test metrics
 });
