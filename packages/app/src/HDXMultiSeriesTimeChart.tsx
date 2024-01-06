@@ -67,7 +67,7 @@ const MemoChart = memo(function MemoChart({
             type="monotone"
             dataKey={key}
             name={lineNames[i] ?? key}
-            fill={semanticKeyedColor(key)}
+            fill={semanticKeyedColor(lineNames[i] ?? key)}
             stackId="1"
           />
         ) : (
@@ -76,7 +76,7 @@ const MemoChart = memo(function MemoChart({
             type="monotone"
             dataKey={key}
             name={lineNames[i] ?? key}
-            stroke={semanticKeyedColor(key)}
+            stroke={semanticKeyedColor(lineNames[i] ?? key)}
             dot={false}
           />
         ),
