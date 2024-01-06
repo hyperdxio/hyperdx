@@ -1,8 +1,7 @@
 import _ from 'lodash';
 
-import * as config from '@/config';
-
 import { tryJSONStringify } from './common';
+import logger from './logger';
 import { sqlObfuscator } from './sqlObfuscator';
 
 export type JSONBlob = Record<string, any>;
@@ -173,14 +172,19 @@ export const mapObjectToKeyValuePairs = async (
     }
   }
 
-  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
+  if (output['string.names'].includes('db.statement')) {
     const index = output['string.names'].indexOf('db.statement');
-    const value = output['string.values'][index];
-    const obfuscated = await sqlObfuscator(value);
-    output['string.names'].push('db.sql.normalized');
-    output['string.values'].push(obfuscated);
+    let obfuscated = '';
+    try {
+      obfuscated = await sqlObfuscator(output['string.values'][index]);
+    } catch (e) {
+      logger.error(`Normalizer error: ${e}`);
+    }
+    if (obfuscated.length > 0 && obfuscated.trim().length > 0) {
+      output['string.names'].push('db.sql.normalized');
+      output['string.values'].push(obfuscated);
+    }
   }
-
   return output;
 };
 
@@ -250,7 +254,7 @@ abstract class ParsingInterface<T> {
     const parsedLogs: any[] = [];
     for (const log of logs) {
       try {
-        parsedLogs.push(this._parse(log, ...args));
+        parsedLogs.push(await this._parse(log, ...args));
       } catch (e) {
         // continue if parser fails to parse single log
         console.warn(e);

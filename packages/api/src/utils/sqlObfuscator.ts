@@ -47,6 +47,9 @@ const removeListeners = (subprocess: ChildProcess | undefined) => {
 };
 
 export const sqlObfuscator = async (sql: string): Promise<string> => {
+  if (!sql || sql.length === 0 || sql.trim().length === 0) {
+    return '';
+  }
   subprocess = getChild();
   if (!subprocess || subprocess.stdin === null) {
     throw new Error(`Could not spawn child process`);
