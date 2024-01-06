@@ -29,7 +29,7 @@ const bulkInsert = async (
     switch (hdxTelemetry) {
       case 'metric':
         await bulkInsertTeamMetricStream(
-          vectorMetricParser.parse(data as VectorMetric[]),
+          await vectorMetricParser.parse(data as VectorMetric[]),
         );
         break;
       default: {
@@ -46,12 +46,12 @@ const bulkInsert = async (
           bulkInsertTeamLogStream(
             team.logStreamTableVersion,
             team._id.toString(),
-            vectorLogParser.parse(logs),
+            await vectorLogParser.parse(logs),
           ),
         ];
         if (rrwebEvents.length > 0) {
           promises.push(
-            bulkInsertRrwebEvents(vectorRrwebParser.parse(rrwebEvents)),
+            bulkInsertRrwebEvents(await vectorRrwebParser.parse(rrwebEvents)),
           );
         }
         await Promise.all(promises);
