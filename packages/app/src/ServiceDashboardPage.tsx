@@ -1,8 +1,19 @@
 import * as React from 'react';
 import Head from 'next/head';
+import { formatDistanceStrict } from 'date-fns';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { Card, Grid, Group, Select, Tabs } from '@mantine/core';
+import {
+  Badge,
+  Card,
+  Grid,
+  Group,
+  Select,
+  Skeleton,
+  Table,
+  Tabs,
+} from '@mantine/core';
 
+import api from './api';
 import AppNav from './AppNav';
 import {
   convertDateRangeToGranularityString,
@@ -23,6 +34,183 @@ import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { formatNumber } from './utils';
+
+const FormatPodStatus = ({ status }: { status?: number }) => {
+  // based on
+  // https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/documentation.md#k8spodphase
+  // Current phase of the pod (1 - Pending, 2 - Running, 3 - Succeeded, 4 - Failed, 5 - Unknown)
+  switch (status) {
+    case 1:
+      return (
+        <Badge color="yellow" fw="normal" tt="none" size="md">
+          Pending
+        </Badge>
+      );
+    case 2:
+      return (
+        <Badge color="green" fw="normal" tt="none" size="md">
+          Running
+        </Badge>
+      );
+    case 3:
+      return (
+        <Badge color="indigo" fw="normal" tt="none" size="md">
+          Succeeded
+        </Badge>
+      );
+    case 4:
+      return (
+        <Badge color="red" fw="normal" tt="none" size="md">
+          Failed
+        </Badge>
+      );
+    case 5:
+      return (
+        <Badge color="gray" fw="normal" tt="none" size="md">
+          Unknown
+        </Badge>
+      );
+    default:
+      return (
+        <Badge color="gray" fw="normal" tt="none" size="md">
+          Unknown
+        </Badge>
+      );
+  }
+};
+
+const InfraPodsStatusTable = ({
+  dateRange,
+  where,
+}: {
+  dateRange: [Date, Date];
+  where: string;
+}) => {
+  const { data, isError, isLoading } = api.useMultiSeriesChart({
+    series: [
+      {
+        table: 'metrics',
+        field: 'k8s.container.restarts - Gauge',
+        type: 'table',
+        aggFn: 'max', // TODO
+        where,
+        groupBy: ['k8s.pod.name'],
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.uptime - Sum',
+        type: 'table',
+        aggFn: 'sum',
+        where,
+        groupBy: ['k8s.pod.name'],
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.cpu.utilization - Gauge',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy: ['k8s.pod.name'],
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.memory.usage - Gauge',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy: ['k8s.pod.name'],
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.phase - Gauge',
+        type: 'table',
+        aggFn: 'max', // TODO latest
+        where,
+        groupBy: ['k8s.pod.name'],
+      },
+    ],
+    endDate: dateRange[1] ?? new Date(),
+    startDate: dateRange[0] ?? new Date(),
+    seriesReturnType: 'column',
+  });
+
+  return (
+    <Card p="md">
+      <Card.Section p="md" py="xs" withBorder>
+        Pods
+      </Card.Section>
+      <Card.Section>
+        {isError ? (
+          <div className="p-4 text-center text-slate-500 fs-8">
+            Unable to load pod metrics
+          </div>
+        ) : (
+          <Table horizontalSpacing="md" highlightOnHover>
+            <thead className="muted-thead">
+              <tr>
+                <th>Name</th>
+                <th style={{ width: 100 }}>Restarts</th>
+                {/* <th style={{ width: 120 }}>Age</th> */}
+                <th style={{ width: 100 }}>CPU Avg</th>
+                <th style={{ width: 100 }}>Mem Avg</th>
+                <th style={{ width: 130 }}>Status</th>
+              </tr>
+            </thead>
+            {isLoading ? (
+              <tbody>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <tr key={index}>
+                    <td>
+                      <Skeleton height={8} my={6} />
+                    </td>
+                    <td>
+                      <Skeleton height={8} />
+                    </td>
+                    <td>
+                      <Skeleton height={8} />
+                    </td>
+                    <td>
+                      <Skeleton height={8} />
+                    </td>
+                    <td>
+                      <Skeleton height={8} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            ) : (
+              <tbody>
+                {data?.data?.map((row: any) => (
+                  <tr key={row.group}>
+                    <td>{row.group}</td>
+                    <td>{row['series_0.data']}</td>
+                    {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                    <td>
+                      {formatNumber(
+                        row['series_2.data'],
+                        K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                      )}
+                    </td>
+                    <td>
+                      {formatNumber(
+                        row['series_3.data'],
+                        K8S_MEM_NUMBER_FORMAT,
+                      )}
+                    </td>
+                    <td>
+                      <FormatPodStatus status={row['series_4.data']} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            )}
+          </Table>
+        )}
+      </Card.Section>
+    </Card>
+  );
+};
 
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
@@ -246,6 +434,12 @@ export default function ServiceDashboardPage() {
                     </Card>
                   </Grid.Col>
                   <Grid.Col span={12}>
+                    <InfraPodsStatusTable
+                      dateRange={dateRange}
+                      where={whereClause}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={12}>
                     <Card p="md">
                       <Card.Section p="md" py="xs" withBorder>
                         Latest Kubernetes Error Events
@@ -261,28 +455,6 @@ export default function ServiceDashboardPage() {
                           setIsUTC={() => {}}
                           onPropertySearchClick={() => {}}
                         />{' '}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Debug
-                      </Card.Section>
-                      <Card.Section p="md" py="sm">
-                        <pre>
-                          {JSON.stringify(
-                            {
-                              dateRange,
-                              searchQuery,
-                              service,
-                              podNames,
-                              whereClause,
-                            },
-                            null,
-                            4,
-                          )}
-                        </pre>
                       </Card.Section>
                     </Card>
                   </Grid.Col>
