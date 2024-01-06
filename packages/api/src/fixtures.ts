@@ -161,6 +161,7 @@ export function buildEvent({
   type = LogType.Log,
   end_timestamp = 0,
   span_name,
+  service = 'test-service',
   ...properties
 }: {
   level?: string;
@@ -170,6 +171,7 @@ export function buildEvent({
   type?: LogType;
   end_timestamp?: number; //ms timestamp
   span_name?: string;
+  service?: string;
 } & {
   [key: string]: number | string | boolean;
 }): LogStreamModel {
@@ -203,6 +205,7 @@ export function buildEvent({
     observed_timestamp: `${ts}000000`,
     _source: source,
     _platform: platform,
+    _service: service,
     severity_text: level,
     // @ts-ignore
     end_timestamp: `${end_timestamp}000000`,

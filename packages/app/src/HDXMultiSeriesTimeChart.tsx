@@ -256,7 +256,7 @@ const HDXMultiSeriesLineChart = memo(
     // and a data value per series, we just need to turn them all into keys
     if (data != null) {
       for (const row of data.data) {
-        groupSet.add(row.group);
+        groupSet.add(`${row.group}`);
 
         const tsBucket = tsBucketMap.get(row.ts_bucket) ?? {};
         tsBucketMap.set(row.ts_bucket, {
@@ -394,7 +394,7 @@ const HDXMultiSeriesLineChart = memo(
               </Link>
             </div>
           ) : null}
-          {totalGroups > groupKeys.length ? (
+          {/* {totalGroups > groupKeys.length ? (
             <div
               className="bg-grey px-3 py-2 rounded fs-8"
               style={{
@@ -413,7 +413,7 @@ const HDXMultiSeriesLineChart = memo(
                 {groupKeys.length} groups shown
               </span>
             </div>
-          ) : null}
+          ) : null} */}
           <div
             className="bg-grey px-3 py-2 rounded fs-8"
             style={{
