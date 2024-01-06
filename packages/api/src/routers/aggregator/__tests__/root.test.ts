@@ -1,5 +1,7 @@
 import _ from 'lodash';
 
+import * as clickhouse from '@/clickhouse';
+import { createTeam } from '@/controllers/team';
 import {
   clearClickhouseTables,
   clearDBCollections,
@@ -7,8 +9,7 @@ import {
   getAgent,
   getServer,
 } from '@/fixtures';
-import * as clickhouse from '@/clickhouse';
-import { createTeam } from '@/controllers/team';
+import { sleep } from '@/utils/common';
 
 describe('aggregator root router', () => {
   const server = getServer('aggregator');
@@ -64,7 +65,7 @@ describe('aggregator root router', () => {
     ]);
 
     // wait for data to be committed to clickhouse
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await sleep(500);
 
     const resp = await clickhouse.client.query({
       query: `SELECT * FROM default.${clickhouse.TableName.LogStream}`,
