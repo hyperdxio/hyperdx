@@ -26,4 +26,3 @@ export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
 export const SERVER_URL = env.SERVER_URL as string;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
-export const OBFUSCATE_SQL = env.OBFUSCATE_SQL !== 'false';
