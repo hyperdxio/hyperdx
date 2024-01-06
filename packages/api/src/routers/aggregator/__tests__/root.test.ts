@@ -73,9 +73,42 @@ describe('aggregator root router', () => {
     });
     const result: any = await resp.json();
     expect(result.data.length).toBe(1);
-    expect(result.data[0]._service).toBe('hdx-oss-dev-api');
-    expect(result.data[0]._platform).toBe('nodejs');
-    expect(result.data[0].severity_text).toBe('info');
+    expect(result.data.map((row: any) => _.omit(row, ['id', '_created_at'])))
+      .toMatchInlineSnapshot(`
+Array [
+  Object {
+    "_host": "509a8b2dea19",
+    "_namespace": "",
+    "_platform": "nodejs",
+    "_service": "hdx-oss-dev-api",
+    "_source": "{\\"level\\":\\"info\\",\\"message\\":\\"Initializing ClickHouse...\\"}",
+    "bool.names": Array [],
+    "bool.values": Array [],
+    "end_timestamp": "1970-01-01T00:00:00.000000000Z",
+    "number.names": Array [],
+    "number.values": Array [],
+    "observed_timestamp": "2024-01-06T05:02:16.156579600Z",
+    "parent_span_id": "",
+    "severity_number": 0,
+    "severity_text": "info",
+    "span_id": "",
+    "span_name": "",
+    "string.names": Array [
+      "_hdx_body",
+      "level",
+      "message",
+    ],
+    "string.values": Array [
+      "Initializing ClickHouse...",
+      "info",
+      "Initializing ClickHouse...",
+    ],
+    "timestamp": "2024-01-06T05:02:14.214000000Z",
+    "trace_id": "",
+    "type": "log",
+  },
+]
+`);
   });
 
   // TODO: test metrics
