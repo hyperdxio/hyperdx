@@ -8,10 +8,12 @@ import logger from './utils/logger';
 import redisClient from './utils/redis';
 
 export default class Server {
+  protected readonly appType = config.APP_TYPE;
+
   protected httpServer!: http.Server;
 
   private async createServer() {
-    switch (config.APP_TYPE) {
+    switch (this.appType) {
       case 'api':
         return http.createServer(
           // eslint-disable-next-line n/no-unsupported-features/es-syntax
