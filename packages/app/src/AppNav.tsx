@@ -458,7 +458,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const dashboards = dashboardsData?.data ?? [];
 
   const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
-  const alerts = alertsData?.data?.alerts ?? [];
+  const alerts = alertsData?.data ?? [];
 
   const router = useRouter();
   const { pathname, query } = router;
@@ -506,6 +506,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       });
     }
   }, [meData]);
+
+  const alertState =
+    Array.isArray(alerts) && alerts.length > 0
+      ? alerts.some(a => a.state === 'ALERT')
+        ? 'alarming' // Some alerts are firing
+        : 'ok' // All alerts are green
+      : 'none'; // No alerts are set up
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -694,6 +702,48 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </a>
               </Link>
             </div>
+            <div className="my-4">
+              <Link href="/alerts">
+                <a
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/alerts'),
+                    },
+                  )}
+                >
+                  <div>
+                    <i className="bi bi-bell" />{' '}
+                    {!isCollapsed && (
+                      <div className="d-inline-flex align-items-center">
+                        <span>Alerts</span>
+                        <div
+                          className="ms-3"
+                          style={{
+                            borderRadius: 8,
+                            background:
+                              alertState == 'alarming'
+                                ? '#e74c3c'
+                                : alertState === 'ok'
+                                ? '#00d474'
+                                : 'gray',
+                            height: 8,
+                            width: 8,
+                          }}
+                          title={
+                            alertState === 'alarming'
+                              ? 'Some alerts are firing'
+                              : alertState === 'ok'
+                              ? 'All alerts are ok'
+                              : 'No alerts are set up'
+                          }
+                        ></div>
+                      </div>
+                    )}
+                  </div>
+                </a>
+              </Link>
+            </div>
             {SERVICE_DASHBOARD_ENABLED ? (
               <div className="my-4">
                 <Link href="/services">
@@ -820,55 +870,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </>
             )}
-            {showAlertSidebar ? (
-              <div className="my-4">
-                <Link href="/alerts">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
-                      {
-                        'fw-bold text-success': pathname.includes('/alerts'),
-                      },
-                    )}
-                  >
-                    <div>
-                      <i className="bi bi-exclamation-triangle" />{' '}
-                      {!isCollapsed && (
-                        <>
-                          <span>Alerts</span>
-                          {/* 
-                      This should float at the end and display a count of alerts? 
-                      or perhaps be tucked underneath with a breakdown of count in each state?
-                    */}
-                          <span className="text-end">
-                            {' '}
-                            {Array.isArray(alerts) ? alerts.length : null}
-                          </span>
-                          {Array.isArray(alerts) && alerts.length > 0 ? (
-                            alerts.some(a => a.state === 'ALERT') ? (
-                              <i
-                                className="bi bi-bell float-end text-danger"
-                                title="Has Alerts and is in ALERT state"
-                              ></i>
-                            ) : (
-                              <i
-                                className="bi bi-bell float-end"
-                                title="Has Alerts and is in OK state"
-                              ></i>
-                            )
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  </a>
-                </Link>
-              </div>
-            ) : null}
           </div>
         </div>
         {!isCollapsed && (
           <>
-            <div className="mb-4 mt-4">
+            <div className="mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
                 <span className="">Ready to use HyperDX Cloud?</span>
                 <div className="mt-3 mb-2">
@@ -923,9 +929,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </span>
                 </Link>
               </div>
-            </div>
-            <div className="d-flex justify-content-end align-items-end">
-              <span className="text-muted-hover fs-7">v{version}</span>
+              <div className="d-flex justify-content-end align-items-end">
+                <span className="text-muted-hover fs-8.5">v{version}</span>
+              </div>
             </div>
           </>
         )}
