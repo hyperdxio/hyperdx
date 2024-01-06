@@ -25,7 +25,6 @@ import { formatNumber } from './utils';
 const Table = ({
   data,
   groupColumnName,
-  numberFormat,
   columns,
   getRowSearchLink,
   onSortClick,
@@ -35,9 +34,9 @@ const Table = ({
     dataKey: string;
     displayName: string;
     sortOrder?: 'asc' | 'desc';
+    numberFormat?: NumberFormat;
   }[];
   groupColumnName: string;
-  numberFormat?: NumberFormat;
   getRowSearchLink?: (row: any) => string;
   onSortClick?: (columnNumber: number) => void;
 }) => {
@@ -52,7 +51,7 @@ const Table = ({
       header: groupColumnName,
       size: tableWidth != null ? tableWidth / numColumns : 200,
     },
-    ...columns.map(({ dataKey, displayName }, i) => ({
+    ...columns.map(({ dataKey, displayName, numberFormat }, i) => ({
       accessorKey: dataKey,
       header: displayName,
       accessorFn: (row: any) => row[dataKey],
@@ -272,13 +271,7 @@ const Table = ({
 
 const HDXMultiSeriesTableChart = memo(
   ({
-    config: {
-      series,
-      seriesReturnType = 'column',
-      dateRange,
-      numberFormat,
-      groupColumnName,
-    },
+    config: { series, seriesReturnType = 'column', dateRange, groupColumnName },
     onSettled,
     onSortClick,
   }: {
@@ -287,8 +280,6 @@ const HDXMultiSeriesTableChart = memo(
       granularity: Granularity;
       dateRange: [Date, Date];
       seriesReturnType: 'ratio' | 'column';
-      sortOrder: 'asc' | 'desc';
-      numberFormat?: NumberFormat;
       groupColumnName?: string;
     };
     onSettled?: () => void;
@@ -340,7 +331,6 @@ const HDXMultiSeriesTableChart = memo(
               : 'Group')
           }
           columns={seriesMeta}
-          numberFormat={numberFormat}
           getRowSearchLink={getRowSearchLink}
           onSortClick={onSortClick}
         />
