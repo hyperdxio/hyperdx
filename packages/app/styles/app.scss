@@ -780,3 +780,9 @@ div.react-datepicker {
   100% {
   }
 }
+
+.muted-thead tr th {
+  font-weight: normal !important;
+  font-size: 0.6em;
+  opacity: 0.8;
+}
