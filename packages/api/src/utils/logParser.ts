@@ -1,5 +1,7 @@
 import _ from 'lodash';
 
+import * as config from '@/config';
+
 import { tryJSONStringify } from './common';
 import logger from './logger';
 import { sqlObfuscator } from './sqlObfuscator';
@@ -172,7 +174,7 @@ export const mapObjectToKeyValuePairs = async (
     }
   }
 
-  if (output['string.names'].includes('db.statement')) {
+  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
     const index = output['string.names'].indexOf('db.statement');
     let obfuscated = '';
     try {
@@ -185,6 +187,7 @@ export const mapObjectToKeyValuePairs = async (
       output['string.values'].push(obfuscated);
     }
   }
+
   return output;
 };
 
