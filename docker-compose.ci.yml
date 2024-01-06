@@ -30,32 +30,6 @@ services:
       - 6379:6379
     networks:
       - internal
-  aggregator:
-    container_name: hdx-ci-aggregator
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: dev
-    ports:
-      - 8001:8001
-    environment:
-      APP_TYPE: 'aggregator'
-      CLICKHOUSE_HOST: http://ch_server:8123
-      CLICKHOUSE_PASSWORD: aggregator
-      CLICKHOUSE_USER: aggregator
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      MONGO_URI: 'mongodb://db:29999/hyperdx-test'
-      NODE_ENV: ci
-      PORT: 8001
-      REDIS_URL: redis://redis:6379
-    volumes:
-      - ./packages/api/src:/app/src
-    networks:
-      - internal
-    depends_on:
-      - ch_server
-      - db
-      - redis
   api:
     build:
       context: .
@@ -82,7 +56,6 @@ services:
     networks:
       - internal
     depends_on:
-      - aggregator
       - ch_server
       - db
       - redis
