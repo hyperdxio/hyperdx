@@ -217,7 +217,7 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
       )}
       <div>
         <div className={styles.sectionHeader}>
-          <i className="bi bi-repeat"></i> Running
+          <i className="bi bi-check-lg"></i> OK
         </div>
         {okData.length === 0 && (
           <div className="text-center text-slate-400 my-4 fs-8">No alerts</div>
@@ -266,8 +266,15 @@ export default function AlertsPage() {
                 icon={<i className="bi bi-info-circle-fill text-slate-400" />}
                 color="gray"
               >
-                Alerts can be created from dashboard charts and from saved
-                searches.
+                Alerts can be{' '}
+                <a
+                  href="https://www.hyperdx.io/docs/alerts"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  created
+                </a>{' '}
+                from dashboard charts and saved searches.
               </MAlert>
               {isLoading ? (
                 <div className="text-center text-slate-400 my-4 fs-8">

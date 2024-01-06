@@ -201,7 +201,7 @@ export type TableChartSeries = {
   type: 'table';
   table: SourceTable;
   aggFn: AggFn;
-  field: string | undefined;
+  field?: string | undefined;
   where: string;
   groupBy: string[];
   sortOrder?: 'desc' | 'asc';
