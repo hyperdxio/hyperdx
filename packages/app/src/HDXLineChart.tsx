@@ -3,6 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
 import pick from 'lodash/pick';
+import { ErrorBoundary, withErrorBoundary } from 'react-error-boundary';
 import { toast } from 'react-toastify';
 import {
   Bar,
@@ -289,31 +290,41 @@ const MemoChart = memo(function MemoChart({
   );
 });
 
-export const HDXLineChartTooltip = memo((props: any) => {
-  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
-  const tsFormat = TIME_TOKENS[timeFormat];
-  const { active, payload, label, numberFormat } = props;
-  if (active && payload && payload.length) {
-    return (
-      <div className={styles.chartTooltip}>
-        <div className={styles.chartTooltipHeader}>
-          {format(new Date(label * 1000), tsFormat)}
+export const HDXLineChartTooltip = withErrorBoundary(
+  memo((props: any) => {
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const tsFormat = TIME_TOKENS[timeFormat];
+    const { active, payload, label, numberFormat } = props;
+    if (active && payload && payload.length) {
+      return (
+        <div className={styles.chartTooltip}>
+          <div className={styles.chartTooltipHeader}>
+            {format(new Date(label * 1000), tsFormat)}
+          </div>
+          <div className={styles.chartTooltipContent}>
+            {payload
+              .sort((a: any, b: any) => b.value - a.value)
+              .map((p: any) => (
+                <div key={p.dataKey} style={{ color: p.color }}>
+                  {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
+                  {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+                </div>
+              ))}
+          </div>
         </div>
-        <div className={styles.chartTooltipContent}>
-          {payload
-            .sort((a: any, b: any) => b.value - a.value)
-            .map((p: any) => (
-              <div key={p.dataKey} style={{ color: p.color }}>
-                {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
-                {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
-              </div>
-            ))}
-        </div>
+      );
+    }
+    return null;
+  }),
+  {
+    onError: console.error,
+    fallback: (
+      <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
+        An error occurred while rendering the tooltip.
       </div>
-    );
-  }
-  return null;
-});
+    ),
+  },
+);
 
 const HDXLineChart = memo(
   ({
