@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import produce from 'immer';
 import { Button, Form, Modal } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryClient } from 'react-query';
@@ -287,31 +288,42 @@ const Tile = forwardRef(
             className="fs-7 text-muted flex-grow-1 overflow-hidden"
             onMouseDown={e => e.stopPropagation()}
           >
-            {chart.series[0].type === 'time' && config.type === 'time' && (
-              <HDXMultiSeriesLineChart config={config} />
-            )}
-            {chart.series[0].type === 'table' && config.type === 'table' && (
-              <HDXMultiSeriesTableChart config={config} />
-            )}
-            {config.type === 'histogram' && (
-              <HDXHistogramChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'markdown' && <HDXMarkdownChart config={config} />}
-            {config.type === 'number' && (
-              <HDXNumberChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'search' && (
-              <div style={{ height: '100%' }}>
-                <LogTableWithSidePanel
-                  config={config}
-                  isLive={false}
-                  isUTC={false}
-                  setIsUTC={() => {}}
-                  onPropertySearchClick={() => {}}
-                  onSettled={onSettled}
-                />
-              </div>
-            )}
+            <ErrorBoundary
+              onError={console.error}
+              fallback={
+                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                  An error occurred while rendering the chart.
+                </div>
+              }
+            >
+              {chart.series[0].type === 'time' && config.type === 'time' && (
+                <HDXMultiSeriesLineChart config={config} />
+              )}
+              {chart.series[0].type === 'table' && config.type === 'table' && (
+                <HDXMultiSeriesTableChart config={config} />
+              )}
+              {config.type === 'histogram' && (
+                <HDXHistogramChart config={config} onSettled={onSettled} />
+              )}
+              {config.type === 'markdown' && (
+                <HDXMarkdownChart config={config} />
+              )}
+              {config.type === 'number' && (
+                <HDXNumberChart config={config} onSettled={onSettled} />
+              )}
+              {config.type === 'search' && (
+                <div style={{ height: '100%' }}>
+                  <LogTableWithSidePanel
+                    config={config}
+                    isLive={false}
+                    isUTC={false}
+                    setIsUTC={() => {}}
+                    onPropertySearchClick={() => {}}
+                    onSettled={onSettled}
+                  />
+                </div>
+              )}
+            </ErrorBoundary>
           </div>
         )}
         {children}

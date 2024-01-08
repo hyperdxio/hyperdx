@@ -308,10 +308,11 @@ export const semanticKeyedColor = (key: string | number | undefined) => {
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
-  if (str.length <= maxLen) {
-    return str;
+  const coercedStr = `${str}`;
+  if (coercedStr.length <= maxLen) {
+    return coercedStr;
   }
-  return `${str.slice(0, (maxLen - 2) / 2)}..${str.slice(
+  return `${coercedStr.slice(0, (maxLen - 2) / 2)}..${coercedStr.slice(
     (-1 * (maxLen - 2)) / 2,
   )}`;
 };

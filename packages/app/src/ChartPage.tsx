@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import produce from 'immer';
 import { Button } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'react-toastify';
 import type { QueryParamConfig } from 'serialize-query-params';
 import { decodeArray, encodeArray } from 'serialize-query-params';
@@ -286,7 +287,16 @@ export default function GraphPage() {
           className="w-100 mt-4 flex-grow-1"
           style={{ height: 400, minWidth: 0 }}
         >
-          {chartConfig != null && <HDXLineChart config={chartConfig} />}
+          <ErrorBoundary
+            onError={console.error}
+            fallback={
+              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                An error occurred while rendering the chart.
+              </div>
+            }
+          >
+            {chartConfig != null && <HDXLineChart config={chartConfig} />}
+          </ErrorBoundary>
         </div>
         {chartConfig != null && chartConfig.table === 'logs' && (
           <div className="ps-2 mt-2 border-top border-dark">
