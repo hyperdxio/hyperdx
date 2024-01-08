@@ -116,7 +116,9 @@ services:
       CLICKHOUSE_USER: aggregator
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      # uncomment to allow aggregator logs
+      # disabled by default due to possible infinite loop (aggregator aggregating aggregator logs)
+      # HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       PORT: 8001
