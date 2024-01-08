@@ -598,8 +598,6 @@ Array [
       }),
     );
 
-    mockLogsPropertyTypeMappingsModel({});
-
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
       host: 'string',
