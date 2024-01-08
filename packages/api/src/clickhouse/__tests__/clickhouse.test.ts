@@ -415,15 +415,15 @@ Array [
       "group1",
     ],
     "rank": "1",
-    "series_0.data": 0.75,
+    "series_0.data": 0.6,
     "ts_bucket": "0",
   },
   Object {
     "group": Array [
       "group2",
     ],
-    "rank": "1",
-    "series_0.data": 0.75,
+    "rank": "2",
+    "series_0.data": 0.3,
     "ts_bucket": "0",
   },
 ]
