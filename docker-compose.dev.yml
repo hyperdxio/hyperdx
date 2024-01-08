@@ -75,6 +75,7 @@ services:
       context: ./docker/otel-collector
       target: dev
     environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
@@ -99,12 +100,25 @@ services:
     ports:
       - 8001:8001
     environment:
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+      HDX_NODE_BETA_MODE: 1
+      HDX_NODE_CONSOLE_CAPTURE: 1
+      SENTRY_DSN: ${SENTRY_DSN}
+      INGESTOR_API_URL: 'http://ingestor:8002'
+      MINER_API_URL: 'http://miner:5123'
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-aggregator'
       APP_TYPE: 'aggregator'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_PASSWORD: aggregator
       CLICKHOUSE_USER: aggregator
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      # uncomment to allow aggregator logs
+      # disabled by default due to possible infinite loop (aggregator aggregating aggregator logs)
+      # HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       PORT: 8001
