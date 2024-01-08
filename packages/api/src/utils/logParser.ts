@@ -5,9 +5,7 @@ import * as config from '@/config';
 import { tryJSONStringify } from './common';
 import logger from './logger';
 import { sqlObfuscator } from './sqlObfuscator';
-
-export type JSONBlob = Record<string, any>;
-
+import type { Json, JSONBlob } from './common';
 export type KeyPath = string[];
 
 export enum AggregationTemporality {
@@ -89,7 +87,7 @@ export function* traverseJson(
   currentNode: JSONBlob,
   depth = 1,
   keyPathArray?: KeyPath,
-): IterableIterator<[KeyPath, any]> {
+): IterableIterator<[KeyPath, Json]> {
   for (const [key, value] of Object.entries(currentNode)) {
     const keyPath = keyPathArray ? [...keyPathArray, key] : [key];
 
@@ -123,7 +121,7 @@ export const mapObjectToKeyValuePairs = async (
   const pushArray = (
     type: 'bool' | 'number' | 'string',
     keyPath: string,
-    value: any,
+    value: number | string, // Note that booleans are converted to 0 or 1
   ) => {
     const keyNames = `${type}.names`;
     const keyValues = `${type}.values`;
@@ -247,17 +245,26 @@ export type VectorMetric = {
   v: number; // value
 };
 
-abstract class ParsingInterface<T> {
-  abstract _parse(
-    log: T,
-    ...args: any[]
-  ): Promise<LogStreamModel | MetricModel | RrwebEventModel>;
+const convertToStringMap = (blob: JSONBlob) => {
+  const output: Record<string, string> = {};
+  for (const [keyPath, value] of traverseJson(blob)) {
+    const stringifiedValue = tryJSONStringify(value);
+    if (!stringifiedValue) {
+      continue;
+    }
+    output[keyPath.join('.')] = stringifiedValue;
+  }
+  return output;
+};
 
-  async parse(logs: T[], ...args: any[]) {
-    const parsedLogs: any[] = [];
+abstract class ParsingInterface<T, S> {
+  abstract _parse(log: T): Promise<S>;
+
+  async parse(logs: T[]) {
+    const parsedLogs: S[] = [];
     for (const log of logs) {
       try {
-        parsedLogs.push(await this._parse(log, ...args));
+        parsedLogs.push(await this._parse(log));
       } catch (e) {
         // continue if parser fails to parse single log
         console.warn(e);
@@ -267,7 +274,7 @@ abstract class ParsingInterface<T> {
   }
 }
 
-class VectorLogParser extends ParsingInterface<VectorLog> {
+class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
   getType(log: VectorLog): LogType {
     if (log.hdx_platform === LogPlatform.OtelTraces) {
       return LogType.Span;
@@ -300,10 +307,10 @@ class VectorLogParser extends ParsingInterface<VectorLog> {
   }
 }
 
-class VectorMetricParser extends ParsingInterface<VectorMetric> {
+class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
   async _parse(metric: VectorMetric): Promise<MetricModel> {
     return {
-      _string_attributes: metric.b,
+      _string_attributes: convertToStringMap(metric.b),
       data_type: metric.dt,
       is_delta: metric.at === AggregationTemporality.Delta,
       is_monotonic: metric.im,
@@ -315,7 +322,7 @@ class VectorMetricParser extends ParsingInterface<VectorMetric> {
   }
 }
 
-class VectorRrwebParser extends ParsingInterface<VectorLog> {
+class VectorRrwebParser extends ParsingInterface<VectorLog, RrwebEventModel> {
   async _parse(log: VectorLog): Promise<RrwebEventModel> {
     return {
       ...(await mapObjectToKeyValuePairs(log.b)),
