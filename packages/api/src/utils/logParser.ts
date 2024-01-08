@@ -2,10 +2,10 @@ import _ from 'lodash';
 
 import * as config from '@/config';
 
+import type { Json, JSONBlob } from './common';
 import { tryJSONStringify } from './common';
 import logger from './logger';
 import { sqlObfuscator } from './sqlObfuscator';
-import type { Json, JSONBlob } from './common';
 export type KeyPath = string[];
 
 export enum AggregationTemporality {
