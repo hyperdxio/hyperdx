@@ -1538,19 +1538,21 @@ export const getSpanPerformanceChart = async ({
 }) => {
   const tableName = getLogStreamTableName(tableVersion, teamId);
 
-  const parentSpanWhereCondition = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: parentSpanWhere,
-    startTime,
-  });
-
-  const childrenSpanWhereCondition = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: childrenSpanWhere,
-    startTime,
-  });
+  const [parentSpanWhereCondition, childrenSpanWhereCondition] =
+    await Promise.all([
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: parentSpanWhere,
+        startTime,
+      }),
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: childrenSpanWhere,
+        startTime,
+      }),
+    ]);
 
   // This needs to return in a format that matches multi-series charts
   const query = SqlString.format(
@@ -1561,7 +1563,30 @@ FROM ??
 WHERE (?)
 )
 SELECT 
-  [span_name] as "group", 
+  [
+    span_name, 
+    if(
+      span_name = 'HTTP DELETE'
+      OR span_name = 'DELETE'
+      OR span_name = 'HTTP GET'
+      OR span_name = 'GET'
+      OR span_name = 'HTTP HEAD'
+      OR span_name = 'HEAD'
+      OR span_name = 'HTTP OPTIONS'
+      OR span_name = 'OPTIONS'
+      OR span_name = 'HTTP PATCH'
+      OR span_name = 'PATCH'
+      OR span_name = 'HTTP POST'
+      OR span_name = 'POST'
+      OR span_name = 'HTTP PUT'
+      OR span_name = 'PUT',
+      COALESCE(
+        NULLIF(_string_attributes['server.address'], ''), 
+        NULLIF(_string_attributes['http.host'], '')
+      ),
+      '' 
+    )
+  ] as "group",
   sum(_duration) as "series_0.data",
   count(*) as "series_1.data", 
   avg(_duration) as "series_2.data", 
@@ -1574,7 +1599,7 @@ FROM ??
 WHERE 
   (?)
   AND trace_id IN (SELECT trace_id FROM trace_ids)
-GROUP BY span_name
+GROUP BY "group"
 ORDER BY "series_0.data" DESC
 LIMIT ?`,
     [

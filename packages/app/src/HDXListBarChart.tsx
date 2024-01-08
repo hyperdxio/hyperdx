@@ -75,7 +75,7 @@ function ListBar({
         const value = row['series_0.data'];
         const percentOfMax = (value / maxValue) * 100;
         const percentOfTotal = (value / totalValue) * 100;
-        const group = `${row.group}`;
+        const group = `${row.group.join(' ').trim()}`;
 
         const hoverCardContent =
           columns.length > 0 ? (
@@ -207,8 +207,12 @@ export const HDXSpanPerformanceBarChart = memo(
       }) ?? [];
 
     const getRowSearchLink = (row: Row) => {
+      const urlQ =
+        row.group.length > 1 && row.group[1]
+          ? ` (http.host:"${row.group[1]}" OR server.address:"${row.group[1]}")`
+          : '';
       const qparams = new URLSearchParams({
-        q: `${childrenSpanWhere} span_name:"${row.group[0]}"`.trim(),
+        q: `${childrenSpanWhere} span_name:"${row.group[0]}"${urlQ}`.trim(),
         from: `${dateRange[0].getTime()}`,
         to: `${dateRange[1].getTime()}`,
       });
