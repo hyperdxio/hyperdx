@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`logParser mapObjectToKeyValuePairs 1`] = `
+exports[`logParser mapObjectToKeyValuePairs obeys basic serialization 1`] = `
 Object {
   "bool.names": Array [
     "foo2",
@@ -31,7 +31,7 @@ Object {
 }
 `;
 
-exports[`logParser mapObjectToKeyValuePairs 2`] = `
+exports[`logParser mapObjectToKeyValuePairs obeys basic serialization 2`] = `
 Object {
   "bool.names": Array [],
   "bool.values": Array [],
