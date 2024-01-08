@@ -183,7 +183,16 @@ const api = {
     });
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
-    return useQuery<any, Error>({
+    return useQuery<
+      {
+        data: {
+          ts_bucket: string;
+          group: string[];
+          [dataKey: `series_${number}.data`]: number;
+        }[];
+      },
+      Error
+    >({
       refetchOnWindowFocus: false,
       queryKey: [
         'chart/series',
@@ -204,6 +213,54 @@ const api = {
             granularity,
             sortOrder,
             seriesReturnType,
+          },
+        }).json(),
+      retry: 1,
+      ...options,
+    });
+  },
+  useSpanPerformanceChart(
+    {
+      endDate,
+      parentSpanWhere,
+      childrenSpanWhere,
+      startDate,
+    }: {
+      endDate: Date;
+      parentSpanWhere: string;
+      childrenSpanWhere: string;
+      startDate: Date;
+    },
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    return useQuery<
+      {
+        data: {
+          ts_bucket: string;
+          group: string[];
+          [dataKey: `series_${number}.data`]: number;
+        }[];
+      },
+      Error
+    >({
+      refetchOnWindowFocus: false,
+      queryKey: [
+        'logs/chart/spanPerformance',
+        startTime,
+        endTime,
+        parentSpanWhere,
+        childrenSpanWhere,
+      ],
+      queryFn: () =>
+        server('logs/chart/spanPerformance', {
+          method: 'POST',
+          json: {
+            startTime,
+            endTime,
+            parentSpanWhere,
+            childrenSpanWhere,
           },
         }).json(),
       retry: 1,

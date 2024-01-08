@@ -274,6 +274,7 @@ const HDXMultiSeriesTableChart = memo(
     config: { series, seriesReturnType = 'column', dateRange, groupColumnName },
     onSettled,
     onSortClick,
+    getRowSearchLink,
   }: {
     config: {
       series: ChartSeries[];
@@ -284,6 +285,7 @@ const HDXMultiSeriesTableChart = memo(
     };
     onSettled?: () => void;
     onSortClick?: (seriesIndex: number) => void;
+    getRowSearchLink?: (row: any) => string;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
@@ -297,7 +299,7 @@ const HDXMultiSeriesTableChart = memo(
       seriesReturnType,
     });
 
-    const getRowSearchLink = useCallback(
+    const defaultRowSearchLink = useCallback(
       (row: { group: string }) => {
         return `/search?${seriesToUrlSearchQueryParam({
           series,
@@ -331,7 +333,7 @@ const HDXMultiSeriesTableChart = memo(
               : 'Group')
           }
           columns={seriesMeta}
-          getRowSearchLink={getRowSearchLink}
+          getRowSearchLink={getRowSearchLink ?? defaultRowSearchLink}
           onSortClick={onSortClick}
         />
       </div>
