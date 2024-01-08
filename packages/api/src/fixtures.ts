@@ -86,7 +86,24 @@ class MockServer extends Server {
   }
 }
 
-export const getServer = () => new MockServer();
+class MockAPIServer extends MockServer {
+  protected readonly appType = 'api';
+}
+
+class MockAggregatorServer extends MockServer {
+  protected readonly appType = 'aggregator';
+}
+
+export const getServer = (appType: 'api' | 'aggregator' = 'api') => {
+  switch (appType) {
+    case 'api':
+      return new MockAPIServer();
+    case 'aggregator':
+      return new MockAggregatorServer();
+    default:
+      throw new Error(`Invalid app type: ${appType}`);
+  }
+};
 
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
