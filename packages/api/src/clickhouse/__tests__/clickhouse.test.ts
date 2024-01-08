@@ -325,6 +325,80 @@ Array [
 ]
 `);
 
+    const multiGroupBysData2 = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'logs',
+            aggFn: clickhouse.AggFn.CountPerMin,
+            field: 'awesomeNumber',
+            where: `runId:${runId}`,
+            groupBy: ['testGroup', 'testOtherGroup'],
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('10m'),
+        granularity: '5 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'series_1.data',
+        'ts_bucket',
+      ]);
+    });
+    expect(multiGroupBysData2.length).toEqual(5);
+    expect(multiGroupBysData2).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "group2",
+      "otherGroup1",
+    ],
+    "series_0.data": 0.6,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup1",
+    ],
+    "series_0.data": 0.4,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 0.2,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup2",
+    ],
+    "series_0.data": 0.4,
+    "ts_bucket": 1641341100,
+  },
+  Object {
+    "group": Array [
+      "group1",
+      "otherGroup3",
+    ],
+    "series_0.data": 0.2,
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+
     const ratioData = (
       await clickhouse.getMultiSeriesChart({
         series: [
@@ -380,6 +454,51 @@ Array [
     ],
     "series_0.data": 3,
     "ts_bucket": 1641341100,
+  },
+]
+`);
+
+    const tableData = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'table',
+            table: 'logs',
+            aggFn: clickhouse.AggFn.CountPerMin,
+            where: `runId:${runId}`,
+            groupBy: ['testGroup'],
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('10m'),
+        granularity: undefined,
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket', 'rank']);
+    });
+
+    expect(tableData.length).toEqual(2);
+    expect(tableData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "group1",
+    ],
+    "rank": "1",
+    "series_0.data": 0.6,
+    "ts_bucket": "0",
+  },
+  Object {
+    "group": Array [
+      "group2",
+    ],
+    "rank": "2",
+    "series_0.data": 0.3,
+    "ts_bucket": "0",
   },
 ]
 `);
@@ -478,8 +597,6 @@ Array [
         ],
       }),
     );
-
-    mockLogsPropertyTypeMappingsModel({});
 
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
@@ -845,8 +962,6 @@ Array [
         ],
       }),
     );
-
-    mockLogsPropertyTypeMappingsModel({});
 
     mockSpyMetricPropertyTypeMappingsModel({
       runId: 'string',
