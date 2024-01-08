@@ -25,7 +25,7 @@ export default function EndpointLatencyTile({
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
-        <Flex justify="space-between">
+        <Flex justify="space-between" align="center">
           <span>Request Latency</span>
           <Box>
             <Button.Group>
@@ -90,6 +90,7 @@ export default function EndpointLatencyTile({
               ],
               seriesReturnType: 'column',
             }}
+            showDisplaySwitcher={false}
           />
         ) : (
           <HDXHistogramChart

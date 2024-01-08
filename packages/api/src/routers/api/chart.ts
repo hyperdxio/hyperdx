@@ -116,9 +116,6 @@ router.post(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      if (!isNumber(startTime) || !isNumber(endTime)) {
-        return res.sendStatus(400);
-      }
 
       const team = await getTeam(teamId);
       if (team == null) {

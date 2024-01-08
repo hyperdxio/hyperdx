@@ -1551,6 +1551,137 @@ export const getMultiSeriesChartLegacyFormat = async ({
   };
 };
 
+// This query needs to be generalized and replaced once use-case matures
+export const getSpanPerformanceChart = async ({
+  parentSpanWhere,
+  childrenSpanWhere,
+  teamId,
+  tableVersion,
+  maxNumGroups,
+  propertyTypeMappingsModel,
+  startTime,
+  endTime,
+}: {
+  parentSpanWhere: string;
+  childrenSpanWhere: string;
+  tableVersion: number | undefined;
+  teamId: string;
+  maxNumGroups: number;
+  endTime: number; // unix in ms,
+  startTime: number;
+  propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
+}) => {
+  const tableName = getLogStreamTableName(tableVersion, teamId);
+
+  const [parentSpanWhereCondition, childrenSpanWhereCondition] =
+    await Promise.all([
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: parentSpanWhere,
+        startTime,
+      }),
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: childrenSpanWhere,
+        startTime,
+      }),
+    ]);
+
+  // This needs to return in a format that matches multi-series charts
+  const query = SqlString.format(
+    `WITH trace_ids AS (
+SELECT 
+  distinct trace_id
+FROM ??
+WHERE (?)
+)
+SELECT 
+  [
+    span_name, 
+    if(
+      span_name = 'HTTP DELETE'
+      OR span_name = 'DELETE'
+      OR span_name = 'HTTP GET'
+      OR span_name = 'GET'
+      OR span_name = 'HTTP HEAD'
+      OR span_name = 'HEAD'
+      OR span_name = 'HTTP OPTIONS'
+      OR span_name = 'OPTIONS'
+      OR span_name = 'HTTP PATCH'
+      OR span_name = 'PATCH'
+      OR span_name = 'HTTP POST'
+      OR span_name = 'POST'
+      OR span_name = 'HTTP PUT'
+      OR span_name = 'PUT',
+      COALESCE(
+        NULLIF(_string_attributes['server.address'], ''), 
+        NULLIF(_string_attributes['http.host'], '')
+      ),
+      '' 
+    )
+  ] as "group",
+  sum(_duration) as "series_0.data",
+  count(*) as "series_1.data", 
+  avg(_duration) as "series_2.data", 
+  min(_duration) as "series_3.data", 
+  max(_duration) as "series_4.data",
+  count(distinct trace_id) as "series_5.data",
+  "series_1.data" / "series_5.data" as "series_6.data",
+  '0' as "ts_bucket"
+FROM ??
+WHERE 
+  (?)
+  AND trace_id IN (SELECT trace_id FROM trace_ids)
+GROUP BY "group"
+ORDER BY "series_0.data" DESC
+LIMIT ?`,
+    [
+      tableName,
+      SqlString.raw(parentSpanWhereCondition),
+      tableName,
+      SqlString.raw(childrenSpanWhereCondition),
+      maxNumGroups,
+    ],
+  );
+
+  return await tracer.startActiveSpan(
+    'clickhouse.getSpanPerformanceChart',
+    async span => {
+      try {
+        span.setAttribute('query', query);
+        logger.info({ query });
+
+        const rows = await client.query({
+          query,
+          format: 'JSON',
+          clickhouse_settings: {
+            additional_table_filters: buildLogStreamAdditionalFilters(
+              tableVersion,
+              teamId,
+            ),
+          },
+        });
+        const result = await rows.json<
+          ResponseJSON<{
+            data: string;
+            ts_bucket: number;
+            group: string[];
+          }>
+        >();
+        return result;
+      } catch (e) {
+        span.recordException(e as any);
+        span.end();
+        throw e;
+      } finally {
+        span.end();
+      }
+    },
+  );
+};
+
 export const getLogsChart = async ({
   aggFn,
   endTime,

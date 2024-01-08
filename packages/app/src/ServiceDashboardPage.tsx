@@ -26,6 +26,7 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
 import EndpointLatencyTile from './EndpointLatencyTile';
+import EndpointSidepanel from './EndpointSidePanel';
 import HDXLineChart from './HDXLineChart';
 import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
@@ -307,7 +308,7 @@ export default function ServiceDashboardPage() {
 
   const scopeWhereQuery = React.useCallback(
     (where: string) => {
-      const serviceQuery = service ? `service:${service} ` : '';
+      const serviceQuery = service ? `service:"${service}" ` : '';
       const sQuery = searchQuery ? `(${searchQuery}) ` : '';
       const whereQuery = where ? `(${where})` : '';
       return `${serviceQuery}${sQuery}${whereQuery}`;
@@ -323,6 +324,7 @@ export default function ServiceDashboardPage() {
       <div className="d-flex">
         <AppNav fixed />
         <div className="w-100">
+          <EndpointSidepanel />
           <div className="d-flex flex-column">
             <Group
               px="md"
@@ -563,6 +565,17 @@ export default function ServiceDashboardPage() {
                               },
                             ],
                           }}
+                          getRowSearchLink={row => {
+                            const searchParams = new URLSearchParams(
+                              window.location.search,
+                            );
+                            searchParams.set('endpoint', `${row.group}`);
+                            return (
+                              window.location.pathname +
+                              '?' +
+                              searchParams.toString()
+                            );
+                          }}
                         />
                       </Card.Section>
                     </Card>
@@ -580,6 +593,17 @@ export default function ServiceDashboardPage() {
                       </Card.Section>
                       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                         <HDXMultiSeriesTableChart
+                          getRowSearchLink={row => {
+                            const searchParams = new URLSearchParams(
+                              window.location.search,
+                            );
+                            searchParams.set('endpoint', `${row.group}`);
+                            return (
+                              window.location.pathname +
+                              '?' +
+                              searchParams.toString()
+                            );
+                          }}
                           config={{
                             groupColumnName: 'Endpoint',
                             dateRange,
@@ -657,28 +681,6 @@ export default function ServiceDashboardPage() {
                             seriesReturnType: 'column',
                           }}
                         />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Debug
-                      </Card.Section>
-                      <Card.Section p="md" py="sm">
-                        <pre>
-                          {JSON.stringify(
-                            {
-                              dateRange,
-                              searchQuery,
-                              service,
-                              podNames,
-                              whereClause,
-                            },
-                            null,
-                            4,
-                          )}
-                        </pre>
                       </Card.Section>
                     </Card>
                   </Grid.Col>
