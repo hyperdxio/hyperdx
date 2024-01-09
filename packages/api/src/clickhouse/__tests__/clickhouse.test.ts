@@ -4,6 +4,7 @@ import ms from 'ms';
 import {
   buildEvent,
   buildMetricSeries,
+  clearClickhouseTables,
   closeDB,
   getServer,
   mockLogsPropertyTypeMappingsModel,
@@ -25,7 +26,8 @@ describe('clickhouse', () => {
     await closeDB();
   });
 
-  beforeEach(() => {
+  afterEach(async () => {
+    await clearClickhouseTables();
     jest.clearAllMocks();
   });
 
