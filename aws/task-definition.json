@@ -1,0 +1,631 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:us-east-1:aws_account_id:task-definition/hyperdx:1",
+    "containerDefinitions": [
+        {
+            "name": "aggregator",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-api",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8001,
+                    "hostPort": 8001,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "CLICKHOUSE_USER",
+                    "value": "aggregator"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8001"
+                },
+                {
+                    "name": "HYPERDX_LOG_LEVEL",
+                    "value": "debug"
+                },
+                {
+                    "name": "CLICKHOUSE_HOST",
+                    "value": "http://localhost:8123"
+                },
+                {
+                    "name": "MONGO_URI",
+                    "value": "mongodb://localhost:27017/hyperdx"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "development"
+                },
+                {
+                    "name": "SERVER_URL",
+                    "value": "http://localhost:8000"
+                },
+                {
+                    "name": "CLICKHOUSE_PASSWORD",
+                    "value": "aggregator"
+                },
+                {
+                    "name": "APP_TYPE",
+                    "value": "aggregator"
+                },
+                {
+                    "name": "FRONTEND_URL",
+                    "value": "HYPERDX_APP_ALB_URL"
+                },
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://localhost:6379"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "api",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-api",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "HDX_NODE_BETA_MODE",
+                    "value": "1"
+                },
+                {
+                    "name": "CLICKHOUSE_USER",
+                    "value": "api"
+                },
+                {
+                    "name": "HDX_NODE_CONSOLE_CAPTURE",
+                    "value": "1"
+                },
+                {
+                    "name": "AGGREGATOR_API_URL",
+                    "value": "http://localhost:8001"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8000"
+                },
+                {
+                    "name": "CLICKHOUSE_HOST",
+                    "value": "http://localhost:8123"
+                },
+                {
+                    "name": "HYPERDX_LOG_LEVEL",
+                    "value": "debug"
+                },
+                {
+                    "name": "HDX_NODE_ADVANCED_NETWORK_CAPTURE",
+                    "value": "1"
+                },
+                {
+                    "name": "MONGO_URI",
+                    "value": "mongodb://localhost:27017/hyperdx"
+                },
+                {
+                    "name": "INGESTOR_API_URL",
+                    "value": "http://localhost:8002"
+                },
+                {
+                    "name": "EXPRESS_SESSION_SECRET",
+                    "value": "hyperdx is cool 👋"
+                },
+                {
+                    "name": "FRONTEND_URL",
+                    "value": "HYPERDX_APP_ALB_URL"
+                },
+                {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "hdx-oss-api"
+                },
+                {
+                    "name": "USAGE_STATS_ENABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "CLICKHOUSE_LOG_LEVEL",
+                    "value": "trace"
+                },
+                {
+                    "name": "MINER_API_URL",
+                    "value": "http://localhost:5123"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "development"
+                },
+                {
+                    "name": "SERVER_URL",
+                    "value": "http://localhost:8000"
+                },
+                {
+                    "name": "HYPERDX_API_KEY",
+                    "value": ""
+                },
+                {
+                    "name": "CLICKHOUSE_PASSWORD",
+                    "value": "api"
+                },
+                {
+                    "name": "APP_TYPE",
+                    "value": "api"
+                },
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://localhost:6379"
+                },
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://localhost:4318"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "app",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-app",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "PORT",
+                    "value": "8080"
+                },
+                {
+                    "name": "HYPERDX_API_KEY",
+                    "value": ""
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "development"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "ch-server",
+            "image": "clickhouse/clickhouse-server:23.7.1-alpine",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8123,
+                    "hostPort": 8123,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 9000,
+                    "hostPort": 9000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT",
+                    "value": "1"
+                }
+            ],
+            "mountPoints": [
+                {
+                    "sourceVolume": "efs_config",
+                    "containerPath": "/etc/clickhouse-server",
+                    "readOnly": false
+                },
+                {
+                    "sourceVolume": "efs_ch_data",
+                    "containerPath": "/var/lib/clickhouse",
+                    "readOnly": false
+                }
+            ],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "db",
+            "image": "mongo:7.0.2-jammy",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 27017,
+                    "hostPort": 27017,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [],
+            "mountPoints": [
+                {
+                    "sourceVolume": "efs_mongodb",
+                    "containerPath": "/data/db",
+                    "readOnly": false
+                }
+            ],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "ingestor",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-ingestor",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8002,
+                    "hostPort": 8002,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 8686,
+                    "hostPort": 8686,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "full"
+                },
+                {
+                    "name": "VECTOR_LOG",
+                    "value": "debug"
+                },
+                {
+                    "name": "VECTOR_OPENSSL_LEGACY_PROVIDER",
+                    "value": "false"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "miner",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-miner",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 5123,
+                    "hostPort": 5123,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "hdx-oss-miner"
+                },
+                {
+                    "name": "HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE",
+                    "value": "1"
+                },
+                {
+                    "name": "HYPERDX_API_KEY",
+                    "value": ""
+                },
+                {
+                    "name": "HYPERDX_LOG_LEVEL",
+                    "value": "debug"
+                },
+                {
+                    "name": "OTEL_LOG_LEVEL",
+                    "value": "debug"
+                },
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://localhost:4318"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "otel-collector",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-otel-collector",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 13133,
+                    "hostPort": 13133,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 1888,
+                    "hostPort": 1888,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 24225,
+                    "hostPort": 24225,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 4317,
+                    "hostPort": 4317,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 4318,
+                    "hostPort": 4318,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 55679,
+                    "hostPort": 55679,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 8888,
+                    "hostPort": 8888,
+                    "protocol": "tcp"
+                },
+                {
+                    "containerPort": 9411,
+                    "hostPort": 9411,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "HYPERDX_LOG_LEVEL",
+                    "value": "debug"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "redis",
+            "image": "redis:7.2.2-alpine",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 6379,
+                    "hostPort": 6379,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        },
+        {
+            "name": "task-check-alerts",
+            "image": "aws_account_id.dkr.ecr.us-east-1.amazonaws.com/hyperdx:1.1.3-api",
+            "cpu": 0,
+            "portMappings": [],
+            "essential": true,
+            "entryPoint": [
+                "node"
+            ],
+            "command": [
+                "./build/tasks/index.js",
+                "check-alerts"
+            ],
+            "environment": [
+                {
+                    "name": "HDX_NODE_BETA_MODE",
+                    "value": "0"
+                },
+                {
+                    "name": "CLICKHOUSE_USER",
+                    "value": "worker"
+                },
+                {
+                    "name": "HDX_NODE_CONSOLE_CAPTURE",
+                    "value": "1"
+                },
+                {
+                    "name": "CLICKHOUSE_HOST",
+                    "value": "http://localhost:8123"
+                },
+                {
+                    "name": "HYPERDX_LOG_LEVEL",
+                    "value": "debug"
+                },
+                {
+                    "name": "MONGO_URI",
+                    "value": "mongodb://localhost:27017/hyperdx"
+                },
+                {
+                    "name": "HDX_NODE_ADVANCED_NETWORK_CAPTURE",
+                    "value": "1"
+                },
+                {
+                    "name": "INGESTOR_API_URL",
+                    "value": "http://localhost:8002"
+                },
+                {
+                    "name": "FRONTEND_URL",
+                    "value": "HYPERDX_APP_ALB_URL"
+                },
+                {
+                    "name": "OTEL_SERVICE_NAME",
+                    "value": "hdx-oss-task-check-alerts"
+                },
+                {
+                    "name": "CLICKHOUSE_LOG_LEVEL",
+                    "value": "trace"
+                },
+                {
+                    "name": "MINER_API_URL",
+                    "value": "http://localhost:5123"
+                },
+                {
+                    "name": "NODE_ENV",
+                    "value": "development"
+                },
+                {
+                    "name": "APP_TYPE",
+                    "value": "scheduled-task"
+                },
+                {
+                    "name": "HYPERDX_API_KEY",
+                    "value": ""
+                },
+                {
+                    "name": "CLICKHOUSE_PASSWORD",
+                    "value": "worker"
+                },
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://localhost:6379"
+                },
+                {
+                    "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                    "value": "http://localhost:4318"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "linuxParameters": {
+                "capabilities": {}
+            },
+            "privileged": false,
+            "readonlyRootFilesystem": false,
+            "pseudoTerminal": false
+        }
+    ],
+    "family": "hyperdx",
+    "executionRoleArn": "arn:aws:iam::aws_account_id:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "revision": 67,
+    "volumes": [
+        {
+            "name": "efs_ch_data",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-id",
+                "rootDirectory": "/efs_ch_data",
+                "authorizationConfig": {}
+            }
+        },
+        {
+            "name": "efs_config",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-id",
+                "rootDirectory": "/efs_config",
+                "authorizationConfig": {}
+            }
+        },
+        {
+            "name": "efs_mongodb",
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-id",
+                "rootDirectory": "/efs_mongodb",
+                "authorizationConfig": {}
+            }
+        }
+    ],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "ecs.capability.efsAuth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "ecs.capability.efs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.25"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE"
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "2048",
+    "memory": "4096",
+    "runtimePlatform": {
+        "cpuArchitecture": "ARM64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "registeredAt": "2023-10-27T02:11:17.074Z",
+    "registeredBy": "arn:aws:iam::aws_account_id:user/username",
+    "tags": []
+}
