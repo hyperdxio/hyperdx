@@ -4,7 +4,6 @@ import * as config from '@/config';
 
 import { tryJSONStringify } from './common';
 import logger from './logger';
-import { sqlObfuscator } from './sqlObfuscator';
 
 export type JSONBlob = Record<string, any>;
 
@@ -171,20 +170,6 @@ export const mapObjectToKeyValuePairs = async (
         );
         break;
       }
-    }
-  }
-
-  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
-    const index = output['string.names'].indexOf('db.statement');
-    let obfuscated = '';
-    try {
-      obfuscated = await sqlObfuscator(output['string.values'][index]);
-    } catch (e) {
-      logger.error(`Normalizer error: ${e}`);
-    }
-    if (obfuscated.length > 0 && obfuscated.trim().length > 0) {
-      output['string.names'].push('db.sql.normalized');
-      output['string.values'].push(obfuscated);
     }
   }
 
