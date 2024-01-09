@@ -743,6 +743,16 @@ export const getMetricsChart = async ({
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else {
+    if (dataType === MetricsDataType.Histogram) {
+      // select
+      // quantilesTimingWeighted(0.1,0.5,0.75,0.9,0.95,0.99)(
+      //   toUInt64OrDefault(_string_attributes['le'], 18446744073709551614),
+      //   toUInt64(value)
+      // ) from metric_stream where data_type='Histogram' and name='[...]_bucket'
+      selectClause.push(
+        `quantilesTimingWeighted(0.1,0.5,0.75,0.9,0.95,0.99)(toUInt64OrDefault(_string_attributes['le'], 18446744073709551614), toUInt64(value))`,
+      );
+    }
     logger.error(`Unsupported data type: ${dataType}`);
   }
 
