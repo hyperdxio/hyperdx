@@ -205,13 +205,14 @@ const MemoChart = memo(function MemoChart({
   );
 });
 
-const HDXMultiSeriesLineChart = memo(
+const HDXMultiSeriesTimeChart = memo(
   ({
     config: { series, granularity, dateRange, seriesReturnType = 'column' },
     onSettled,
     alertThreshold,
     alertThresholdType,
     showDisplaySwitcher = true,
+    defaultDisplayType = 'line',
   }: {
     config: {
       series: ChartSeries[];
@@ -223,6 +224,7 @@ const HDXMultiSeriesLineChart = memo(
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
+    defaultDisplayType: 'stacked_bar' | 'line';
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
@@ -340,7 +342,7 @@ const HDXMultiSeriesLineChart = memo(
       series[0].type === 'time' ? series[0]?.numberFormat : undefined;
 
     const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
-      'line',
+      defaultDisplayType,
     );
 
     return isLoading ? (
@@ -469,4 +471,4 @@ const HDXMultiSeriesLineChart = memo(
   },
 );
 
-export default HDXMultiSeriesLineChart;
+export default HDXMultiSeriesTimeChart;

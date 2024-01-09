@@ -20,6 +20,7 @@ import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
+  SINGLE_DECIMAL_NUMBER_FORMAT,
 } from './ChartUtils';
 import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -30,7 +31,7 @@ import EndpointSidepanel from './EndpointSidePanel';
 import HDXLineChart from './HDXLineChart';
 import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
-import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
@@ -447,7 +448,7 @@ export default function ServiceDashboardPage() {
                         Request Error Rate
                       </Card.Section>
                       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesLineChart
+                        <HDXMultiSeriesTimeChart
                           config={{
                             dateRange,
                             granularity: convertDateRangeToGranularityString(
@@ -490,7 +491,7 @@ export default function ServiceDashboardPage() {
                         Request Throughput
                       </Card.Section>
                       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesLineChart
+                        <HDXMultiSeriesTimeChart
                           config={{
                             dateRange,
                             granularity: convertDateRangeToGranularityString(
@@ -532,70 +533,24 @@ export default function ServiceDashboardPage() {
                             ),
                             series: [
                               {
+                                displayName: 'Total',
                                 table: 'logs',
-                                type: 'time',
+                                type: 'table',
                                 aggFn: 'sum',
                                 field: 'duration',
                                 where: scopeWhereQuery('span.kind:"server"'),
                                 groupBy: ['span_name'],
-                                numberFormat: MS_NUMBER_FORMAT,
+                                sortOrder: 'desc',
+                                visible: false,
                               },
-                            ],
-                          }}
-                          getRowSearchLink={row => {
-                            const searchParams = new URLSearchParams(
-                              window.location.search,
-                            );
-                            searchParams.set('endpoint', `${row.group}`);
-                            return (
-                              window.location.pathname +
-                              '?' +
-                              searchParams.toString()
-                            );
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <EndpointLatencyTile
-                      dateRange={dateRange}
-                      scopeWhereQuery={scopeWhereQuery}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Endpoints
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesTableChart
-                          getRowSearchLink={row => {
-                            const searchParams = new URLSearchParams(
-                              window.location.search,
-                            );
-                            searchParams.set('endpoint', `${row.group}`);
-                            return (
-                              window.location.pathname +
-                              '?' +
-                              searchParams.toString()
-                            );
-                          }}
-                          config={{
-                            groupColumnName: 'Endpoint',
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
                               {
-                                displayName: 'Throughput',
+                                displayName: 'Req/Min',
                                 table: 'logs',
                                 type: 'table',
-                                aggFn: 'count',
+                                aggFn: 'count_per_min',
                                 where: scopeWhereQuery('span.kind:"server"'),
                                 groupBy: ['span_name'],
+                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
                               },
                               {
                                 displayName: 'P95',
@@ -634,6 +589,115 @@ export default function ServiceDashboardPage() {
                                 },
                               },
                               {
+                                displayName: 'Errors/Min',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'count_per_min',
+                                field: '',
+                                where: scopeWhereQuery(
+                                  'span.kind:"server" level:"error"',
+                                ),
+                                groupBy: ['span_name'],
+                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                              },
+                            ],
+                          }}
+                          getRowSearchLink={row => {
+                            const searchParams = new URLSearchParams(
+                              window.location.search,
+                            );
+                            searchParams.set('endpoint', `${row.group}`);
+                            return (
+                              window.location.pathname +
+                              '?' +
+                              searchParams.toString()
+                            );
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <EndpointLatencyTile
+                      dateRange={dateRange}
+                      scopeWhereQuery={scopeWhereQuery}
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={12}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Top 20 Most Time Consuming Endpoints
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesTableChart
+                          getRowSearchLink={row => {
+                            const searchParams = new URLSearchParams(
+                              window.location.search,
+                            );
+                            searchParams.set('endpoint', `${row.group}`);
+                            return (
+                              window.location.pathname +
+                              '?' +
+                              searchParams.toString()
+                            );
+                          }}
+                          config={{
+                            groupColumnName: 'Endpoint',
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Req/Min',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'count_per_min',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                                columnWidthPercent: 12,
+                              },
+                              {
+                                displayName: 'P95',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p95',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                                columnWidthPercent: 12,
+                              },
+                              {
+                                displayName: 'Median',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p50',
+                                field: 'duration',
+                                where: scopeWhereQuery('span.kind:"server"'),
+                                groupBy: ['span_name'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                                columnWidthPercent: 12,
+                              },
+                              {
                                 displayName: 'Total',
                                 table: 'logs',
                                 type: 'table',
@@ -642,17 +706,21 @@ export default function ServiceDashboardPage() {
                                 where: scopeWhereQuery('span.kind:"server"'),
                                 groupBy: ['span_name'],
                                 sortOrder: 'desc',
+                                columnWidthPercent: 12,
+                                visible: false,
                               },
                               {
-                                displayName: 'Errors',
+                                displayName: 'Errors/Min',
                                 table: 'logs',
                                 type: 'table',
-                                aggFn: 'count',
+                                aggFn: 'count_per_min',
                                 field: '',
                                 where: scopeWhereQuery(
                                   'span.kind:"server" level:"error"',
                                 ),
                                 groupBy: ['span_name'],
+                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                                columnWidthPercent: 12,
                               },
                             ],
                             seriesReturnType: 'column',
@@ -663,7 +731,158 @@ export default function ServiceDashboardPage() {
                   </Grid.Col>
                 </Grid>
               </Tabs.Panel>
-              <Tabs.Panel value="database">Database</Tabs.Panel>
+              <Tabs.Panel value="database">
+                <Grid>
+                  <Grid.Col span={6}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Total Time Consumed per Query
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesTimeChart
+                          defaultDisplayType="stacked_bar"
+                          config={{
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Total Query Time',
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'sum',
+                                field: 'duration',
+                                where: scopeWhereQuery('db.statement:*'),
+                                groupBy: ['db.statement'],
+                                numberFormat: MS_NUMBER_FORMAT,
+                              },
+                            ],
+                            seriesReturnType: 'column',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Throughput per Query
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesTimeChart
+                          defaultDisplayType="stacked_bar"
+                          config={{
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Total Query Count',
+                                table: 'logs',
+                                type: 'time',
+                                aggFn: 'count',
+                                where: scopeWhereQuery('db.statement:*'),
+                                groupBy: ['db.statement'],
+                                numberFormat: {
+                                  ...INTEGER_NUMBER_FORMAT,
+                                  unit: 'queries',
+                                },
+                              },
+                            ],
+                            seriesReturnType: 'column',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={12}>
+                    <Card p="md">
+                      <Card.Section p="md" py="xs" withBorder>
+                        Top 20 Most Time Consuming Queries
+                      </Card.Section>
+                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                        <HDXMultiSeriesTableChart
+                          config={{
+                            groupColumnName: 'Normalized Query',
+                            dateRange,
+                            granularity: convertDateRangeToGranularityString(
+                              dateRange,
+                              60,
+                            ),
+                            series: [
+                              {
+                                displayName: 'Queries/Min',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'count_per_min',
+                                where: scopeWhereQuery(''),
+                                groupBy: ['db.statement'],
+                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                                columnWidthPercent: 12,
+                              },
+                              {
+                                displayName: 'P95',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p95',
+                                field: 'duration',
+                                where: scopeWhereQuery(''),
+                                groupBy: ['db.statement'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                                columnWidthPercent: 12,
+                              },
+                              {
+                                displayName: 'Median',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'p50',
+                                field: 'duration',
+                                where: scopeWhereQuery(''),
+                                groupBy: ['db.statement'],
+                                numberFormat: {
+                                  factor: 1,
+                                  output: 'number',
+                                  mantissa: 2,
+                                  thousandSeparated: true,
+                                  average: false,
+                                  decimalBytes: false,
+                                  unit: 'ms',
+                                },
+                                columnWidthPercent: 12,
+                              },
+                              {
+                                visible: false,
+                                displayName: 'Total',
+                                table: 'logs',
+                                type: 'table',
+                                aggFn: 'sum',
+                                field: 'duration',
+                                where: scopeWhereQuery(''),
+                                groupBy: ['db.statement'],
+                                sortOrder: 'desc',
+                                columnWidthPercent: 12,
+                              },
+                            ],
+                            seriesReturnType: 'column',
+                          }}
+                        />
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                </Grid>
+              </Tabs.Panel>
             </div>
           </Tabs>
         </div>
