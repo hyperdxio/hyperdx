@@ -197,6 +197,8 @@ export type TimeChartSeries = {
 };
 
 export type TableChartSeries = {
+  visible?: boolean;
+  columnWidthPercent?: number;
   displayName?: string;
   type: 'table';
   table: SourceTable;

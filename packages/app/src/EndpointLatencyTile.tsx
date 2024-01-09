@@ -6,7 +6,7 @@ import {
   MS_NUMBER_FORMAT,
 } from './ChartUtils';
 import HDXHistogramChart from './HDXHistogramChart';
-import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { Histogram } from './SVGIcons';
 
 export default function EndpointLatencyTile({
@@ -54,7 +54,7 @@ export default function EndpointLatencyTile({
       </Card.Section>
       <Card.Section p="md" py="sm" h={height}>
         {chartType === 'line' ? (
-          <HDXMultiSeriesLineChart
+          <HDXMultiSeriesTimeChart
             config={{
               dateRange,
               granularity: convertDateRangeToGranularityString(dateRange, 60),

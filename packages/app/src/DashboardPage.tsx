@@ -40,7 +40,7 @@ import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
-import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
@@ -297,7 +297,7 @@ const Tile = forwardRef(
               }
             >
               {chart.series[0].type === 'time' && config.type === 'time' && (
-                <HDXMultiSeriesLineChart config={config} />
+                <HDXMultiSeriesTimeChart config={config} />
               )}
               {chart.series[0].type === 'table' && config.type === 'table' && (
                 <HDXMultiSeriesTableChart config={config} />
