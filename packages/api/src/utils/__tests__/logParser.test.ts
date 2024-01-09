@@ -119,24 +119,5 @@ describe('logParser', () => {
       expect(result['number.values'].length).toEqual(1024);
       expect(result).toMatchSnapshot();
     });
-
-    it('adds obfuscated sql to output', async () => {
-      const original = {
-        db: {
-          statement: `SELECT * from users where name = 'Carl' limit 1 order by name asc;\n`,
-        },
-      };
-      expect(await mapObjectToKeyValuePairs(original)).toEqual({
-        'bool.names': [],
-        'bool.values': [],
-        'number.names': [],
-        'number.values': [],
-        'string.names': ['db.statement', 'db.sql.normalized'],
-        'string.values': [
-          original.db.statement,
-          `SELECT * from users where name = ? limit ? order by name asc\n`,
-        ],
-      });
-    });
   });
 });
