@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Flex, Text } from '@mantine/core';
 import {
@@ -115,17 +115,18 @@ const Table = ({
   });
 
   const items = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
 
-  const [paddingTop, paddingBottom] =
-    items.length > 0
-      ? [
-          Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
-          Math.max(
-            0,
-            rowVirtualizer.getTotalSize() - items[items.length - 1].end,
-          ),
-        ]
-      : [0, 0];
+  const [paddingTop, paddingBottom] = useMemo(
+    () =>
+      items.length > 0
+        ? [
+            Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
+            Math.max(0, totalSize - items[items.length - 1].end),
+          ]
+        : [0, 0],
+    [items, rowVirtualizer.options.scrollMargin, totalSize],
+  );
 
   return (
     <div
