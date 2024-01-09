@@ -1,0 +1,749 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`clickhouse getMetricsChart gauge type Avg 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type AvgRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type Count 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "UInt64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type CountDistinct 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type CountPerHour 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type CountPerMin 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type CountPerSec 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type LastValue 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type Max 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type MaxRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type Min 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type MinRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P50 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P50Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P90 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P90Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P95 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P95Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P99 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type P99Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type Sum 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart gauge type SumRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type Avg 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type AvgRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type Count 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "UInt64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type CountDistinct 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type CountPerHour 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type CountPerMin 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type CountPerSec 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type LastValue 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type Max 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type MaxRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type Min 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type MinRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P50 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P50Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P90 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P90Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P95 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P95Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P99 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type P99Rate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type Sum 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;
+
+exports[`clickhouse getMetricsChart sum type SumRate 1`] = `
+Array [
+  Object {
+    "name": "ts_bucket",
+    "type": "UInt32",
+  },
+  Object {
+    "name": "group",
+    "type": "LowCardinality(String)",
+  },
+  Object {
+    "name": "data",
+    "type": "Float64",
+  },
+]
+`;

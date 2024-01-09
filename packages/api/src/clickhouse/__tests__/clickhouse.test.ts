@@ -1517,29 +1517,75 @@ Array [
     expect.assertions(2);
   });
 
-  // TODO: Test this with real data and new chart fn
-  it.skip('getMetricsChart avoids sending NaN to frontend', async () => {
-    jest
-      .spyOn(clickhouse.client, 'query')
-      .mockResolvedValueOnce({ json: () => Promise.resolve({}) } as any);
+  describe('getMetricsChart', () => {
+    // NB for now all of these charts are empty
+    // we should add fixture data to test this properly
+    describe('gauge type', () => {
+      Object.keys(clickhouse.AggFn).map(aggFn => {
+        it(aggFn.toString(), async () => {
+          const result = await clickhouse.getMetricsChart({
+            aggFn: clickhouse.AggFn[aggFn],
+            dataType: clickhouse.MetricsDataType.Gauge,
+            endTime: Date.now(),
+            granularity: clickhouse.Granularity.FifteenMinute,
+            name: 'test',
+            q: '',
+            startTime: Date.now() - 1000 * 60 * 60 * 24,
+            teamId: 'test',
+          });
+          // May be converted to a snapshot if/when data is added
+          result.data.map(d => {
+            // BUG - count returns data as a string, incorrectly
+            if (aggFn === 'Count') {
+              expect(d.data).toBe('0');
+            } else {
+              expect(d.data).toBe(0);
+            }
 
-    await clickhouse.getMetricsChart({
-      aggFn: clickhouse.AggFn.AvgRate,
-      dataType: clickhouse.MetricsDataType.Sum,
-      endTime: Date.now(),
-      granularity: clickhouse.Granularity.OneHour,
-      name: 'test',
-      q: '',
-      startTime: Date.now() - 1000 * 60 * 60 * 24,
-      teamId: 'test',
+            expect(d.group).toBe('');
+            // 1700000000 = 2023-11-14 aka 'before now but not zero'
+            expect(d.ts_bucket).toBeGreaterThan(1700000000);
+            // should not be in the future
+            expect(d.ts_bucket).toBeLessThan(Date.now() / 1000 + 1);
+          });
+          expect(result.meta).toMatchSnapshot();
+          expect(result.rows).toBe(96);
+        });
+      });
     });
 
-    expect(clickhouse.client.query).toHaveBeenCalledTimes(2);
-    expect(clickhouse.client.query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        format: 'JSON',
-        query: expect.stringContaining('isNaN(rate) = 0'),
-      }),
-    );
+    describe('sum type', () => {
+      Object.keys(clickhouse.AggFn).map(aggFn => {
+        it(aggFn.toString(), async () => {
+          const result = await clickhouse.getMetricsChart({
+            aggFn: clickhouse.AggFn[aggFn],
+            dataType: clickhouse.MetricsDataType.Sum,
+            endTime: Date.now(),
+            granularity: clickhouse.Granularity.FifteenMinute,
+            name: 'test',
+            q: '',
+            startTime: Date.now() - 1000 * 60 * 60 * 24,
+            teamId: 'test',
+          });
+          // May be converted to a snapshot if/when data is added
+          result.data.map(d => {
+            // BUG - count returns data as a string, incorrectly
+            if (aggFn === 'Count') {
+              expect(d.data).toBe('0');
+            } else {
+              expect(d.data).toBe(0);
+            }
+
+            expect(d.group).toBe('');
+            // 1700000000 = 2023-11-14 aka 'before now but not zero'
+            expect(d.ts_bucket).toBeGreaterThan(1700000000);
+            // should not be in the future
+            expect(d.ts_bucket).toBeLessThan(Date.now() / 1000 + 1);
+          });
+          expect(result.meta).toMatchSnapshot();
+          expect(result.rows).toBe(96);
+        });
+      });
+    });
   });
 });
