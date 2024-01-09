@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
+import { FloatingPosition } from '@mantine/core/lib/Floating';
 
 import api from './api';
 import { Granularity, MS_NUMBER_FORMAT, seriesColumns } from './ChartUtils';
@@ -13,12 +14,14 @@ function ListItem({
   color,
   percent,
   hoverCardContent,
+  hoverCardPosition = 'right',
 }: {
   title: string;
   value: string;
   color: string;
   percent: number;
   hoverCardContent?: React.ReactNode;
+  hoverCardPosition?: FloatingPosition;
 }) {
   const item = (
     <Box>
@@ -39,7 +42,12 @@ function ListItem({
     </Box>
   );
   return hoverCardContent ? (
-    <HoverCard width={280} shadow="md" position="right" withinPortal>
+    <HoverCard
+      width={380}
+      shadow="md"
+      position={hoverCardPosition}
+      withinPortal
+    >
       <HoverCard.Target>{item}</HoverCard.Target>
       <HoverCard.Dropdown>{hoverCardContent}</HoverCard.Dropdown>
     </HoverCard>
@@ -57,6 +65,7 @@ function ListBar({
   rows,
   getRowSearchLink,
   columns,
+  hoverCardPosition,
 }: {
   rows: Row[];
   getRowSearchLink?: (row: Row) => string;
@@ -66,6 +75,7 @@ function ListBar({
     numberFormat?: NumberFormat;
     visible?: boolean;
   }[];
+  hoverCardPosition?: FloatingPosition;
 }) {
   const values = (rows ?? []).map(row => row['series_0.data']);
   const maxValue = Math.max(...values);
@@ -83,14 +93,20 @@ function ListBar({
           columns.length > 0 ? (
             <Box>
               <Box mb="xs">
-                <Text fw="bold">{group}</Text>
+                <Text
+                  size="xs"
+                  style={{ overflowWrap: 'anywhere' }}
+                  lineClamp={4}
+                >
+                  {group}
+                </Text>
               </Box>
               {columns
                 .filter(c => c.visible !== false)
                 .map(column => {
                   const value = row[column.dataKey];
                   return (
-                    <Box key={column.displayName} mb="xs">
+                    <Box key={column.displayName}>
                       <Text size="xs" weight={500} span>
                         {column.displayName}:{' '}
                       </Text>
@@ -122,6 +138,7 @@ function ListBar({
                 color={semanticKeyedColor(group)}
                 percent={percentOfMax}
                 hoverCardContent={hoverCardContent}
+                hoverCardPosition={hoverCardPosition}
               />
             </Box>
           </Link>
@@ -133,6 +150,7 @@ function ListBar({
               color={semanticKeyedColor(group)}
               percent={percentOfMax}
               hoverCardContent={hoverCardContent}
+              hoverCardPosition={hoverCardPosition}
             />
           </Box>
         );
@@ -145,6 +163,7 @@ const HDXListBarChart = memo(
   ({
     config: { series, seriesReturnType = 'column', dateRange },
     getRowSearchLink,
+    hoverCardPosition,
   }: {
     config: {
       series: ChartSeries[];
@@ -156,6 +175,7 @@ const HDXListBarChart = memo(
     };
     onSettled?: () => void;
     getRowSearchLink?: (row: Row) => string;
+    hoverCardPosition?: FloatingPosition;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
@@ -184,6 +204,7 @@ const HDXListBarChart = memo(
           rows={rows}
           getRowSearchLink={getRowSearchLink}
           columns={seriesColumns({ series, seriesReturnType: 'column' })}
+          hoverCardPosition={hoverCardPosition}
         />
       </Box>
     );
