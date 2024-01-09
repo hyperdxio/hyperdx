@@ -1019,7 +1019,7 @@ Array [
     });
 
     it('sum (rate) + gauge (avg)', async () => {
-      const singleSumSeriesData = (
+      const data = (
         await clickhouse.getMultiSeriesChart({
           series: [
             {
@@ -1058,7 +1058,7 @@ Array [
         ]);
       });
 
-      expect(singleSumSeriesData).toMatchInlineSnapshot(`
+      expect(data).toMatchInlineSnapshot(`
       Array [
         Object {
           "group": Array [],
