@@ -85,7 +85,11 @@ router.get('/services', async (req, res, next) => {
         const value = values[i];
         k8sAttrs[field] = value;
       }
-      serviceMap[service].push(k8sAttrs);
+
+      // check if k8sAttrs are not empty
+      if (Object.keys(k8sAttrs).length > 0) {
+        serviceMap[service].push(k8sAttrs);
+      }
     }
 
     res.json({
