@@ -38,25 +38,28 @@ describe('charts router', () => {
       team.id,
       [
         buildEvent({
-          timestamp: now,
-          service: 'service1',
           'k8s.namespace.name': 'namespace1',
           'k8s.pod.name': 'pod1',
           'k8s.pod.uid': 'uid1',
+          level: 'ok',
+          service: 'service1',
+          timestamp: now,
         }),
         buildEvent({
-          timestamp: now,
-          service: 'service1',
           'k8s.namespace.name': 'namespace1',
           'k8s.pod.name': 'pod2',
           'k8s.pod.uid': 'uid2',
+          level: 'ok',
+          service: 'service1',
+          timestamp: now,
         }),
         buildEvent({
-          timestamp: now - ms('1d'),
-          service: 'service2',
           'k8s.namespace.name': 'namespace2',
           'k8s.pod.name': 'pod3',
           'k8s.pod.uid': 'uid3',
+          level: 'ok',
+          service: 'service2',
+          timestamp: now - ms('1d'),
         }),
       ],
     );
@@ -113,12 +116,8 @@ Object {
     const results = await agent.get('/chart/services').expect(200);
     expect(results.body.data).toMatchInlineSnapshot(`
 Object {
-  "service1": Array [
-    Object {},
-  ],
-  "service2": Array [
-    Object {},
-  ],
+  "service1": Array [],
+  "service2": Array [],
 }
 `);
   });
