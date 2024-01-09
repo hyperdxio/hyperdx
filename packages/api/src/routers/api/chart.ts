@@ -79,13 +79,17 @@ router.get('/services', async (req, res, next) => {
       if (!(service in serviceMap)) {
         serviceMap[service] = [];
       }
-      const k8sAttrs: Record<string, string> = {};
+      const attrs: Record<string, string> = {};
       for (let i = 1; i < values.length; i++) {
         const field = targetGroupByFields[i];
         const value = values[i];
-        k8sAttrs[field] = value;
+        attrs[field] = value;
       }
-      serviceMap[service].push(k8sAttrs);
+
+      // check if attrs are not empty
+      if (Object.keys(attrs).length > 0) {
+        serviceMap[service].push(attrs);
+      }
     }
 
     res.json({
