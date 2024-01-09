@@ -32,6 +32,17 @@ type ApiAlertInput = {
   chartId?: string;
 };
 
+type ServicesResponse = {
+  data: Record<
+    string,
+    Array<{
+      'k8s.namespace.name'?: string;
+      'k8s.pod.name'?: string;
+      'k8s.pod.uid'?: string;
+    }>
+  >;
+};
+
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
@@ -585,6 +596,12 @@ const api = {
       server(`dashboards/${id}`, {
         method: 'DELETE',
       }).json(),
+    );
+  },
+  useServices() {
+    return useQuery<ServicesResponse, Error>(
+      `services`,
+      () => server.get(`chart/services`).json() as Promise<ServicesResponse>,
     );
   },
   useLogDetails(
