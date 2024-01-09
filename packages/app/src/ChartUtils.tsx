@@ -131,6 +131,11 @@ export function seriesColumns({
               'sortOrder' in series[0] ? series[0].sortOrder : undefined,
             numberFormat:
               'numberFormat' in series[0] ? series[0].numberFormat : undefined,
+            columnWidthPercent:
+              'columnWidthPercent' in series[0]
+                ? series[0].columnWidthPercent
+                : undefined,
+            visible: 'visible' in series[0] ? series[0].visible : undefined,
           },
         ]
       : series.map((s, i) => {

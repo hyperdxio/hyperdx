@@ -224,7 +224,7 @@ const HDXMultiSeriesTimeChart = memo(
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
-    defaultDisplayType: 'stacked_bar' | 'line';
+    defaultDisplayType?: 'stacked_bar' | 'line';
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
