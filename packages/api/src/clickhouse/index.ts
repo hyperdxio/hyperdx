@@ -61,9 +61,10 @@ export enum AggFn {
   AvgRate = 'avg_rate',
   Count = 'count',
   CountDistinct = 'count_distinct',
-  CountPerSec = 'count_per_sec',
-  CountPerMin = 'count_per_min',
   CountPerHour = 'count_per_hour',
+  CountPerMin = 'count_per_min',
+  CountPerSec = 'count_per_sec',
+  LastValue = 'last_value',
   Max = 'max',
   MaxRate = 'max_rate',
   Min = 'min',
@@ -925,6 +926,8 @@ export const buildMetricSeriesQuery = async ({
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
+        : aggFn === AggFn.LastValue
+        ? 'LAST_VALUE(value) as data'
         : aggFn === AggFn.Sum
         ? `SUM(value) as data`
         : aggFn === AggFn.Avg
@@ -1167,6 +1170,8 @@ const buildEventSeriesQuery = async ({
             "divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data",
             [startTime / 1000, endTime / 1000],
           )
+      : aggFn === AggFn.LastValue
+      ? `toFloat64(last_value(${selectField})) as data`
       : aggFn === AggFn.Sum
       ? `toFloat64(sum(${selectField})) as data`
       : aggFn === AggFn.Avg
