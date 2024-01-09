@@ -215,44 +215,6 @@ const InfraPodsStatusTable = ({
 
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
-type MockService = {
-  value: string;
-  label: string;
-  podNames?: string[];
-};
-
-const MOCK_SERVICES: MockService[] = [
-  {
-    value: 'kube-apiserver',
-    label: 'kube-apiserver',
-    podNames: ['kube-apiserver-docker-desktop'],
-  },
-  {
-    value: 'otel-collector-daemonset-opentelemetry-collector',
-    label: 'otel-collector-daemonset-opentelemetry-collector',
-    podNames: [
-      'otel-collector-daemonset-opentelemetry-collector-57bd688cbjkxsl',
-    ],
-  },
-  { value: 'etcd', label: 'etcd', podNames: ['etcd-docker-desktop'] },
-  {
-    value: 'kube-controller-manager',
-    label: 'kube-controller-manager',
-    podNames: ['kube-controller-manager-docker-desktop'],
-  },
-  {
-    value: 'kube-scheduler',
-    label: 'kube-scheduler',
-    podNames: ['kube-scheduler-docker-desktop'],
-  },
-  {
-    value: 'coredns',
-    label: 'coredns',
-    podNames: ['coredns-5dd5756b68-tmpcp', 'coredns-5dd5756b68-wngm5'],
-  },
-  { value: 'kube', label: 'kube', podNames: ['kube-proxy-9hbxm'] },
-];
-
 const CHART_HEIGHT = 300;
 
 export default function ServiceDashboardPage() {
@@ -270,10 +232,6 @@ export default function ServiceDashboardPage() {
     withDefault(StringParam, ''),
     { updateType: 'replaceIn' },
   );
-
-  const podNames = React.useMemo(() => {
-    return MOCK_SERVICES.find(s => s.value === service)?.podNames ?? [];
-  }, [service]);
 
   const onSearchSubmit = React.useCallback(
     (e: React.FormEvent) => {
@@ -297,15 +255,33 @@ export default function ServiceDashboardPage() {
     ],
   });
 
-  // Generate chart config
+  // Fetch services
+  const { data: services, isLoading: isServicesLoading } = api.useServices();
+  const servicesOptions = React.useMemo(() => {
+    return Object.keys(services?.data ?? {}).map(name => ({
+      value: name,
+      label: name,
+    }));
+  }, [services]);
+
   const whereClause = React.useMemo(() => {
+    const podNames: Set<string> = new Set();
+    if (service) {
+      services?.data[service]?.forEach(values => {
+        if (values['k8s.pod.name']) {
+          podNames.add(values['k8s.pod.name']);
+        }
+      });
+    }
+    // TODO: Rework this query to correctly work on prod
     return [
-      podNames.map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
+      [...podNames].map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
         'k8s.pod.name:*',
       searchQuery,
     ].join(' ');
-  }, [podNames, searchQuery]);
+  }, [searchQuery, service, services]);
 
+  // Generate chart config
   const scopeWhereQuery = React.useCallback(
     (where: string) => {
       const serviceQuery = service ? `service:"${service}" ` : '';
@@ -340,7 +316,8 @@ export default function ServiceDashboardPage() {
                 allowDeselect
                 placeholder="All Services"
                 maxDropdownHeight={280}
-                data={MOCK_SERVICES}
+                data={servicesOptions}
+                disabled={isServicesLoading}
                 radius="md"
                 variant="filled"
                 value={service}
