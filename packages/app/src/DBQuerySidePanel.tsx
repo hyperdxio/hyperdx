@@ -5,11 +5,9 @@ import { Box, Card, Grid, Text } from '@mantine/core';
 
 import {
   convertDateRangeToGranularityString,
-  ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
+  MS_NUMBER_FORMAT,
 } from './ChartUtils';
-import EndpointLatencyTile from './EndpointLatencyTile';
-import { HDXSpanPerformanceBarChart } from './HDXListBarChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import SlowestEventsTile from './SlowestEventsTile';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
@@ -21,13 +19,15 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
-export default function EndpointSidePanel() {
+const DB_STATEMENT_PROPERTY = 'db.statement';
+
+export default function DBQuerySidePanel() {
   const [service] = useQueryParam('service', withDefault(StringParam, ''), {
     updateType: 'replaceIn',
   });
 
-  const [endpoint, setEndpoint] = useQueryParam(
-    'endpoint',
+  const [dbQuery, setDbQuery] = useQueryParam(
+    'db_query',
     withDefault(StringParam, ''),
     { updateType: 'replaceIn' },
   );
@@ -43,12 +43,14 @@ export default function EndpointSidePanel() {
 
   const scopeWhereQuery = React.useCallback(
     (where: string) => {
-      const spanNameQuery = endpoint ? `span_name:"${endpoint}" ` : '';
+      const spanNameQuery = dbQuery
+        ? `${DB_STATEMENT_PROPERTY}:"${dbQuery}" `
+        : '';
       const whereQuery = where ? `(${where})` : '';
       const serviceQuery = service ? `service:"${service}" ` : '';
-      return `${spanNameQuery}${serviceQuery}${whereQuery} span.kind:"server"`.trim();
+      return `${spanNameQuery}${serviceQuery}${whereQuery}`.trim();
     },
-    [endpoint, service],
+    [dbQuery, service],
   );
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -58,9 +60,9 @@ export default function EndpointSidePanel() {
       enableOverlay
       overlayOpacity={0.1}
       duration={0}
-      open={!!endpoint}
+      open={!!dbQuery}
       onClose={() => {
-        setEndpoint(undefined);
+        setDbQuery(undefined);
       }}
       direction="right"
       size={'80vw'}
@@ -69,14 +71,14 @@ export default function EndpointSidePanel() {
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
           <Box p="md">
-            <Text size="md">Details for {endpoint}</Text>
+            <Text size="md">Details for {dbQuery}</Text>
           </Box>
           <Box className="w-100 overflow-auto" px="sm">
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
-                    Request Error Rate
+                    Total Query Time
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
@@ -88,55 +90,14 @@ export default function EndpointSidePanel() {
                         ),
                         series: [
                           {
-                            displayName: 'Error Rate %',
+                            displayName: 'Total Query Time',
                             table: 'logs',
                             type: 'time',
-                            aggFn: 'count',
-                            where: scopeWhereQuery('level:"error"'),
-                            groupBy: [],
-                            numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                          },
-                          {
-                            table: 'logs',
-                            type: 'time',
-                            aggFn: 'count',
-                            field: '',
+                            aggFn: 'sum',
+                            field: 'duration',
                             where: scopeWhereQuery(''),
                             groupBy: [],
-                            numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                          },
-                        ],
-                        seriesReturnType: 'ratio',
-                      }}
-                    />
-                  </Card.Section>
-                </Card>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <Card p="md">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Request Throughput
-                  </Card.Section>
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesTimeChart
-                      config={{
-                        dateRange,
-                        granularity: convertDateRangeToGranularityString(
-                          dateRange,
-                          60,
-                        ),
-                        series: [
-                          {
-                            displayName: 'Requests',
-                            table: 'logs',
-                            type: 'time',
-                            aggFn: 'count',
-                            where: scopeWhereQuery(''),
-                            groupBy: [],
-                            numberFormat: {
-                              ...INTEGER_NUMBER_FORMAT,
-                              unit: 'requests',
-                            },
+                            numberFormat: MS_NUMBER_FORMAT,
                           },
                         ],
                         seriesReturnType: 'column',
@@ -148,34 +109,42 @@ export default function EndpointSidePanel() {
               <Grid.Col span={6}>
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
-                    20 Top Most Time Consuming Operations
+                    Query Throughput
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXSpanPerformanceBarChart
+                    <HDXMultiSeriesTimeChart
                       config={{
-                        spanName: endpoint,
                         dateRange,
-                        parentSpanWhere: scopeWhereQuery(''),
-                        childrenSpanWhere: service
-                          ? `service:"${service}"`
-                          : '',
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        series: [
+                          {
+                            displayName: 'Queries',
+                            table: 'logs',
+                            type: 'time',
+                            aggFn: 'count',
+                            where: scopeWhereQuery(''),
+                            groupBy: [],
+                            numberFormat: {
+                              ...INTEGER_NUMBER_FORMAT,
+                              unit: 'queries',
+                            },
+                          },
+                        ],
+                        seriesReturnType: 'column',
                       }}
                     />
                   </Card.Section>
                 </Card>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <EndpointLatencyTile
-                  dateRange={dateRange}
-                  height={CHART_HEIGHT}
-                />
               </Grid.Col>
               <Grid.Col span={12}>
                 <SlowestEventsTile
                   dateRange={dateRange}
                   height={CHART_HEIGHT}
                   scopeWhereQuery={scopeWhereQuery}
-                  title={<Text>Slowest 10% of Transactions</Text>}
+                  title={<Text>Slowest 10% of Queries</Text>}
                 />
               </Grid.Col>
             </Grid>
