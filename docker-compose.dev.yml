@@ -6,11 +6,13 @@ services:
       context: .
       dockerfile: ./packages/go-parser/Dockerfile
     environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OTEL_SERVICE_NAME: hdx-oss-dev-go-parser
+      PORT: 7777
     ports:
       - 7777:7777
     networks:

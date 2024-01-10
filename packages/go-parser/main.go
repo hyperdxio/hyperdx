@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/DataDog/go-sqllexer"
 	"github.com/gin-gonic/gin"
@@ -14,10 +15,10 @@ import (
 	"github.com/xwb1989/sqlparser"
 )
 
-const (
+var (
 	VERSION        = "0.0.1"
-	PORT           = "7777"
-	AGGREGATOR_URL = "http://aggregator:8001"
+	PORT           = os.Getenv("PORT")
+	AGGREGATOR_URL = os.Getenv("AGGREGATOR_API_URL")
 )
 
 type GzipJSONBinding struct {
@@ -113,8 +114,8 @@ func main() {
 			return
 		}
 
-    retryClient := retryablehttp.NewClient()
-    retryClient.RetryMax = 10
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 10
 
 		req, err := retryablehttp.NewRequest("POST", AGGREGATOR_URL, bytes.NewBuffer(jsonData))
 		if err != nil {
