@@ -20,28 +20,21 @@ export function Histogram({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <g clipPath="url(#clip0_778_1260)">
-        <line x1="0.5" y1="1.84407e-08" x2="0.499999" y2="32" stroke={color} />
-        <line x1="32" y1="31.5" y2="31.5" stroke={color} />
-        <line y1="6.5" x2="4" y2="6.5" stroke={color} />
-        <line x1="7" y1="6.5" x2="11" y2="6.5" stroke={color} />
-        <line x1="14" y1="6.5" x2="18" y2="6.5" stroke={color} />
-        <line x1="21" y1="6.5" x2="25" y2="6.5" stroke={color} />
-        <line x1="28" y1="6.5" x2="32" y2="6.5" stroke={color} />
-        <path
-          d="M0.999794 30.9999L5 30L7.5 27.5L9 24L9.5 19L10.9997 14L13.5 12L15.5 11.5"
-          stroke={color}
-        />
-        <path
-          d="M29.5214 31.2899L25.519 30.2989L23.0134 27.8046L21.5054 24.308L20.9939 19.3093L19.4828 14.3127L17.5 12L15 11.5"
-          stroke={color}
-        />
-      </g>
-      <defs>
-        <clipPath id="clip0_778_1260">
-          <rect width="32" height="32" fill="white" />
-        </clipPath>
-      </defs>
+      <line x1="0.5" y1="1.84407e-08" x2="0.499999" y2="32" stroke={color} />
+      <line x1="32" y1="31.5" y2="31.5" stroke={color} />
+      <line y1="6.5" x2="4" y2="6.5" stroke={color} />
+      <line x1="7" y1="6.5" x2="11" y2="6.5" stroke={color} />
+      <line x1="14" y1="6.5" x2="18" y2="6.5" stroke={color} />
+      <line x1="21" y1="6.5" x2="25" y2="6.5" stroke={color} />
+      <line x1="28" y1="6.5" x2="32" y2="6.5" stroke={color} />
+      <path
+        d="M0.999794 30.9999L5 30L7.5 27.5L9 24L9.5 19L10.9997 14L13.5 12L15.5 11.5"
+        stroke={color}
+      />
+      <path
+        d="M29.5214 31.2899L25.519 30.2989L23.0134 27.8046L21.5054 24.308L20.9939 19.3093L19.4828 14.3127L17.5 12L15 11.5"
+        stroke={color}
+      />
     </svg>
   );
 }

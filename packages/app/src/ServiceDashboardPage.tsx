@@ -1,16 +1,21 @@
 import * as React from 'react';
+import { useState } from 'react';
 import Head from 'next/head';
 import { formatDistanceStrict } from 'date-fns';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Badge,
+  Box,
+  Button,
   Card,
+  Flex,
   Grid,
   Group,
   Select,
   Skeleton,
   Table,
   Tabs,
+  Text,
 } from '@mantine/core';
 
 import api from './api';
@@ -26,6 +31,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
+import DBQuerySidePanel from './DBQuerySidePanel';
 import EndpointLatencyTile from './EndpointLatencyTile';
 import EndpointSidepanel from './EndpointSidePanel';
 import HDXLineChart from './HDXLineChart';
@@ -36,6 +42,7 @@ import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { ChartSeries } from './types';
 import { formatNumber } from './utils';
 
 const FormatPodStatus = ({ status }: { status?: number }) => {
@@ -251,6 +258,7 @@ const SearchInput = React.memo(
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
+const DB_STATEMENT_PROPERTY = 'db.statement';
 
 export default function ServiceDashboardPage() {
   const [searchQuery, setSearchQuery] = useQueryParam(
@@ -325,6 +333,7 @@ export default function ServiceDashboardPage() {
         <AppNav fixed />
         <div className="w-100">
           <EndpointSidepanel />
+          <DBQuerySidePanel />
           <div className="d-flex flex-column">
             <Group
               px="md"
@@ -771,8 +780,8 @@ export default function ServiceDashboardPage() {
                                 type: 'time',
                                 aggFn: 'sum',
                                 field: 'duration',
-                                where: scopeWhereQuery('db.statement:*'),
-                                groupBy: ['db.statement'],
+                                where: scopeWhereQuery(''),
+                                groupBy: [DB_STATEMENT_PROPERTY],
                                 numberFormat: MS_NUMBER_FORMAT,
                               },
                             ],
@@ -802,8 +811,8 @@ export default function ServiceDashboardPage() {
                                 table: 'logs',
                                 type: 'time',
                                 aggFn: 'count',
-                                where: scopeWhereQuery('db.statement:*'),
-                                groupBy: ['db.statement'],
+                                where: scopeWhereQuery(''),
+                                groupBy: [DB_STATEMENT_PROPERTY],
                                 numberFormat: {
                                   ...INTEGER_NUMBER_FORMAT,
                                   unit: 'queries',
@@ -817,86 +826,10 @@ export default function ServiceDashboardPage() {
                     </Card>
                   </Grid.Col>
                   <Grid.Col span={12}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Top 20 Most Time Consuming Queries
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesTableChart
-                          config={{
-                            groupColumnName: 'Normalized Query',
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
-                              {
-                                displayName: 'Queries/Min',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'count_per_min',
-                                where: scopeWhereQuery(''),
-                                groupBy: ['db.statement'],
-                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
-                                columnWidthPercent: 12,
-                              },
-                              {
-                                displayName: 'P95',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'p95',
-                                field: 'duration',
-                                where: scopeWhereQuery(''),
-                                groupBy: ['db.statement'],
-                                numberFormat: {
-                                  factor: 1,
-                                  output: 'number',
-                                  mantissa: 2,
-                                  thousandSeparated: true,
-                                  average: false,
-                                  decimalBytes: false,
-                                  unit: 'ms',
-                                },
-                                columnWidthPercent: 12,
-                              },
-                              {
-                                displayName: 'Median',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'p50',
-                                field: 'duration',
-                                where: scopeWhereQuery(''),
-                                groupBy: ['db.statement'],
-                                numberFormat: {
-                                  factor: 1,
-                                  output: 'number',
-                                  mantissa: 2,
-                                  thousandSeparated: true,
-                                  average: false,
-                                  decimalBytes: false,
-                                  unit: 'ms',
-                                },
-                                columnWidthPercent: 12,
-                              },
-                              {
-                                visible: false,
-                                displayName: 'Total',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'sum',
-                                field: 'duration',
-                                where: scopeWhereQuery(''),
-                                groupBy: ['db.statement'],
-                                sortOrder: 'desc',
-                                columnWidthPercent: 12,
-                              },
-                            ],
-                            seriesReturnType: 'column',
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
+                    <DatabaseTimeConsumingQueryCard
+                      dateRange={dateRange}
+                      scopeWhereQuery={scopeWhereQuery}
+                    />
                   </Grid.Col>
                 </Grid>
               </Tabs.Panel>
@@ -905,5 +838,143 @@ export default function ServiceDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function DatabaseTimeConsumingQueryCard({
+  scopeWhereQuery,
+  dateRange,
+}: {
+  dateRange: [Date, Date];
+  scopeWhereQuery: (where: string) => string;
+}) {
+  const [chartType, setChartType] = useState<'table' | 'list'>('list');
+
+  const series: ChartSeries[] = [
+    {
+      displayName: 'Queries/Min',
+      table: 'logs',
+      type: 'table',
+      aggFn: 'count_per_min',
+      where: scopeWhereQuery(''),
+      groupBy: [DB_STATEMENT_PROPERTY],
+      numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+      columnWidthPercent: 12,
+    },
+    {
+      displayName: 'P95',
+      table: 'logs',
+      type: 'table',
+      aggFn: 'p95',
+      field: 'duration',
+      where: scopeWhereQuery(''),
+      groupBy: [DB_STATEMENT_PROPERTY],
+      numberFormat: {
+        factor: 1,
+        output: 'number',
+        mantissa: 2,
+        thousandSeparated: true,
+        average: false,
+        decimalBytes: false,
+        unit: 'ms',
+      },
+      columnWidthPercent: 12,
+    },
+    {
+      displayName: 'Median',
+      table: 'logs',
+      type: 'table',
+      aggFn: 'p50',
+      field: 'duration',
+      where: scopeWhereQuery(''),
+      groupBy: [DB_STATEMENT_PROPERTY],
+      numberFormat: {
+        factor: 1,
+        output: 'number',
+        mantissa: 2,
+        thousandSeparated: true,
+        average: false,
+        decimalBytes: false,
+        unit: 'ms',
+      },
+      columnWidthPercent: 12,
+    },
+    {
+      visible: false,
+      displayName: 'Total',
+      table: 'logs',
+      type: 'table',
+      aggFn: 'sum',
+      field: 'duration',
+      where: scopeWhereQuery(''),
+      groupBy: [DB_STATEMENT_PROPERTY],
+      sortOrder: 'desc',
+      columnWidthPercent: 12,
+    },
+  ];
+
+  return (
+    <Card p="md">
+      <Card.Section p="md" py="xs" withBorder>
+        <Flex justify="space-between">
+          <Text>Top 20 Most Time Consuming Queries</Text>
+          <Box>
+            <Button.Group>
+              <Button
+                variant="subtle"
+                color={chartType === 'list' ? 'green' : 'dark.2'}
+                size="xs"
+                title="List"
+                onClick={() => setChartType('list')}
+              >
+                <i className="bi bi-filter-left" />
+              </Button>
+
+              <Button
+                variant="subtle"
+                color={chartType === 'table' ? 'green' : 'dark.2'}
+                size="xs"
+                title="Table"
+                onClick={() => setChartType('table')}
+              >
+                <i className="bi bi-table" />
+              </Button>
+            </Button.Group>
+          </Box>
+        </Flex>
+      </Card.Section>
+      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+        {chartType === 'list' ? (
+          <HDXListBarChart
+            hoverCardPosition="top"
+            config={{
+              dateRange,
+              granularity: convertDateRangeToGranularityString(dateRange, 60),
+              series,
+            }}
+            getRowSearchLink={row => {
+              const searchParams = new URLSearchParams(window.location.search);
+              searchParams.set('db_query', `${row.group}`);
+              return window.location.pathname + '?' + searchParams.toString();
+            }}
+          />
+        ) : (
+          <HDXMultiSeriesTableChart
+            config={{
+              groupColumnName: 'Normalized Query',
+              dateRange,
+              granularity: convertDateRangeToGranularityString(dateRange, 60),
+              series,
+              seriesReturnType: 'column',
+            }}
+            getRowSearchLink={row => {
+              const searchParams = new URLSearchParams(window.location.search);
+              searchParams.set('db_query', `${row.group}`);
+              return window.location.pathname + '?' + searchParams.toString();
+            }}
+          />
+        )}
+      </Card.Section>
+    </Card>
   );
 }
