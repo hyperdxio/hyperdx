@@ -34,11 +34,12 @@ export interface IAlert {
   channel: AlertChannel;
   cron: string;
   interval: AlertInterval;
+  source?: AlertSource;
   state: AlertState;
+  team: ObjectId;
   threshold: number;
   timezone: string;
   type: AlertType;
-  source?: AlertSource;
 
   // Log alerts
   groupBy?: string;
@@ -84,6 +85,10 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
       default: 'LOG',
+    },
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
     },
 
     // Log alerts
