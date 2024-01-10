@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/DataDog/go-sqllexer"
 	"github.com/gin-gonic/gin"
@@ -87,13 +88,10 @@ func main() {
 		// **********************************************************
 		// ****************** Parse Logs/Spans **********************
 		// **********************************************************
+    t1 := time.Now()
 		for _, log := range logs {
 			dbStatement := log["b"].(map[string]interface{})["db.statement"]
 			if dbStatement != nil {
-				if valid, err := isSQLValid(dbStatement.(string)); !valid {
-					fmt.Println("Error parsing SQL:", err)
-					continue
-				}
 				normalized, _, err := normalizer.Normalize(dbStatement.(string))
 				if err != nil {
 					fmt.Println("Error normalizing SQL:", err)
@@ -101,13 +99,15 @@ func main() {
 				}
 				obfuscator := sqllexer.NewObfuscator()
 				obfuscated := obfuscator.Obfuscate(normalized)
-				log["b"].(map[string]interface{})["db.sql.normalized"] = obfuscated
+				log["b"].(map[string]interface{})["db.normalized_statement"] = obfuscated
 			}
 		}
+		fmt.Println("Parsing", len(logs), "logs/spans took:", time.Since(t1))
 
 		// **********************************************************
 		// ************** Send Logs Back to Aggregator **************
 		// **********************************************************
+    t2 := time.Now()
 		jsonData, err := json.Marshal(logs)
 		if err != nil {
 			fmt.Println("Error marshaling JSON:", err)
@@ -137,7 +137,7 @@ func main() {
 			return
 		}
 
-		fmt.Println(len(logs), "Logs sent successfully")
+		fmt.Println("Sending", len(logs), "logs/spans took:", time.Since(t2))
 	})
 
 	if err := http.ListenAndServe(":"+PORT, router); err != nil {
