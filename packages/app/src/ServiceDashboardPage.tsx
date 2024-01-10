@@ -31,7 +31,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import DBQuerySidePanel from './DBQuerySidepanel';
+import DBQuerySidePanel from './DBQuerySidePanel';
 import EndpointLatencyTile from './EndpointLatencyTile';
 import EndpointSidepanel from './EndpointSidePanel';
 import HDXLineChart from './HDXLineChart';
