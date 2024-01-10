@@ -1,24 +1,51 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 
 	"github.com/DataDog/go-sqllexer"
 	"github.com/gin-gonic/gin"
+	"github.com/xwb1989/sqlparser"
 )
 
 const (
-	VERSION = "0.0.1"
-	PORT    = "7777"
+	VERSION        = "0.0.1"
+	PORT           = "7777"
+	AGGREGATOR_URL = "http://aggregator:8001"
 )
 
-// This is a simple command line tool that reads multiple newline-separated SQL queries from stdin
-// and normalizes and obfuscates them, then prints them one at a time (newline separated) to stdout.
-// Example:
-// $ echo "SELECT * FROM foo as foo_table limit 1; SELECT * FROM /* sql comment */ bar where name = 'bob';" | go run sql_obfuscator.go
-// SELECT * FROM foo limit ?; SELECT * FROM bar where name = ?
+type GzipJSONBinding struct {
+}
+
+func (b *GzipJSONBinding) Name() string {
+	return "gzipjson"
+}
+
+func (b *GzipJSONBinding) Bind(req *http.Request, dst interface{}) error {
+	r, err := gzip.NewReader(req.Body)
+	if err != nil {
+		return err
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, dst)
+}
+
+func isSQLValid(sql string) (bool, error) {
+    _, err := sqlparser.Parse(sql)
+    if err != nil {
+        return false, err
+    }
+    return true, nil
+}
+
 func main() {
 	normalizer := sqllexer.NewNormalizer(
 		sqllexer.WithCollectComments(false),
@@ -28,29 +55,85 @@ func main() {
 	)
 	router := gin.New()
 	router.Use(gin.Recovery()) // recover from panics
-  router.Use(gin.Logger()) // log requests to stdout
+	router.Use(gin.Logger())   // log requests to stdout
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"version": VERSION,
 		})
 	})
 
-	router.POST("/parse", func(c *gin.Context) {
-		normalized, _, err := normalizer.Normalize("select * from foo as foo_table limit 1;")
-		if err != nil {
-			// write to stderr
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err,
-			})
+	router.POST("/", func(c *gin.Context) {
+		contentEncodingHeader := c.GetHeader("Content-Encoding")
+		if contentEncodingHeader != "gzip" {
+			fmt.Println("Error: Content-Encoding must be gzip")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Content-Encoding must be gzip"})
 			return
 		}
-		obfuscator := sqllexer.NewObfuscator()
-		obfuscated := obfuscator.Obfuscate(normalized)
-		fmt.Printf("%s\n", obfuscated)
+
+		var logs []map[string]interface{}
+
+		if err := c.ShouldBindWith(&logs, &GzipJSONBinding{}); err != nil {
+			fmt.Println("Error:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"message": "pong",
+			"message": "ok",
 		})
+
+		// **********************************************************
+		// ****************** Parse Logs/Spans **********************
+		// **********************************************************
+		for _, log := range logs {
+			dbStatement := log["b"].(map[string]interface{})["db.statement"]
+			if dbStatement != nil {
+        if valid, err := isSQLValid(dbStatement.(string)); !valid {
+          fmt.Println("Error parsing SQL:", err)
+          continue
+        }
+				normalized, _, err := normalizer.Normalize(dbStatement.(string))
+				if err != nil {
+					fmt.Println("Error normalizing SQL:", err)
+					continue
+				}
+				obfuscator := sqllexer.NewObfuscator()
+				obfuscated := obfuscator.Obfuscate(normalized)
+        log["b"].(map[string]interface{})["db.sql.normalized"] = obfuscated
+			}
+		}
+
+		// **********************************************************
+		// ************** Send Logs Back to Aggregator **************
+		// **********************************************************
+		jsonData, err := json.Marshal(logs)
+		if err != nil {
+			fmt.Println("Error marshaling JSON:", err)
+			return
+		}
+		req, err := http.NewRequest("POST", AGGREGATOR_URL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			fmt.Println("Error creating request:", err)
+			return
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Println("Error sending request:", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Unexpected response status:", resp.Status)
+			return
+		}
+
+		fmt.Println(len(logs), "Logs sent successfully")
 	})
 
 	if err := http.ListenAndServe(":"+PORT, router); err != nil {
