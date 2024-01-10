@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/DataDog/go-sqllexer"
@@ -20,6 +21,28 @@ var (
 	VERSION        = "0.0.1"
 	PORT           = os.Getenv("PORT")
 	AGGREGATOR_URL = os.Getenv("AGGREGATOR_API_URL")
+	// https://opentelemetry.io/docs/specs/semconv/database/database-spans/#:~:text=db.system%20has%20the%20following%20list%20of%20well%2Dknown%20values
+	NON_SQL_DB_SYSTEMS = []string{
+		"hive",
+		"adabas",
+		"filemaker",
+		"netezza",
+		"coldfusion",
+		"cassandra",
+		"hbase",
+		"mongodb",
+		"redis",
+		"couchbase",
+		"couchdb",
+		"cosmosdb",
+		"dynamodb",
+		"neo4j",
+		"geode",
+		"elasticsearch",
+		"memcached",
+		"opensearch",
+		"trino",
+	}
 )
 
 type GzipJSONBinding struct {
@@ -88,10 +111,11 @@ func main() {
 		// **********************************************************
 		// ****************** Parse Logs/Spans **********************
 		// **********************************************************
-    t1 := time.Now()
+		t1 := time.Now()
 		for _, log := range logs {
 			dbStatement := log["b"].(map[string]interface{})["db.statement"]
-			if dbStatement != nil {
+			dbSystem := log["b"].(map[string]interface{})["db.system"]
+			if dbStatement != nil && dbSystem != nil && !slices.Contains(NON_SQL_DB_SYSTEMS, dbSystem.(string)) {
 				normalized, _, err := normalizer.Normalize(dbStatement.(string))
 				if err != nil {
 					fmt.Println("Error normalizing SQL:", err)
@@ -107,7 +131,7 @@ func main() {
 		// **********************************************************
 		// ************** Send Logs Back to Aggregator **************
 		// **********************************************************
-    t2 := time.Now()
+		t2 := time.Now()
 		jsonData, err := json.Marshal(logs)
 		if err != nil {
 			fmt.Println("Error marshaling JSON:", err)
