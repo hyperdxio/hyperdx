@@ -1,3 +1,14 @@
+[sinks.go_parser]
+type = "http"
+uri = "http://go-parser:7777"
+inputs = ["go_spans"] # only send spans for now
+compression = "gzip"
+encoding.codec = "json"
+batch.max_bytes = 10485760 # 10MB, required for rrweb payloads 
+batch.max_events = 100
+batch.timeout_secs = 1
+
+
 [sinks.dev_hdx_aggregator]
 type = "http"
 uri = "http://aggregator:8001"
