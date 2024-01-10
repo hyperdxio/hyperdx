@@ -711,14 +711,14 @@ if is_object(.r) {
 type = "filter"
 inputs = ["spans"]
 condition = '''
-  is_nullish(.b."db.statement")
+  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
 '''
 
 [transforms.go_spans]
 type = "filter"
 inputs = ["spans"]
 condition = '''
-  !is_nullish(.b."db.statement")
+  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
 '''
 # --------------------------------------------------------------------------------
 
