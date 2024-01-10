@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import Head from 'next/head';
-import { formatDistanceStrict } from 'date-fns';
+import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Badge,
@@ -24,12 +24,10 @@ import {
   convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
-  MS_NUMBER_FORMAT,
-  SINGLE_DECIMAL_NUMBER_FORMAT,
-} from './ChartUtils';
-import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
+  MS_NUMBER_FORMAT,
+  SINGLE_DECIMAL_NUMBER_FORMAT,
 } from './ChartUtils';
 import DBQuerySidePanel from './DBQuerySidePanel';
 import EndpointLatencyTile from './EndpointLatencyTile';
@@ -39,6 +37,7 @@ import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
@@ -144,6 +143,12 @@ const InfraPodsStatusTable = ({
     seriesReturnType: 'column',
   });
 
+  const getLink = (row: any) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('podName', `${row.group}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  };
+
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
@@ -191,26 +196,28 @@ const InfraPodsStatusTable = ({
             ) : (
               <tbody>
                 {data?.data?.map((row: any) => (
-                  <tr key={row.group}>
-                    <td>{row.group}</td>
-                    <td>{row['series_0.data']}</td>
-                    {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
-                    <td>
-                      {formatNumber(
-                        row['series_2.data'],
-                        K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                      )}
-                    </td>
-                    <td>
-                      {formatNumber(
-                        row['series_3.data'],
-                        K8S_MEM_NUMBER_FORMAT,
-                      )}
-                    </td>
-                    <td>
-                      <FormatPodStatus status={row['series_4.data']} />
-                    </td>
-                  </tr>
+                  <Link key={row.group} href={getLink(row)}>
+                    <tr className="cursor-pointer">
+                      <td>{row.group}</td>
+                      <td>{row['series_0.data']}</td>
+                      {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                      <td>
+                        {formatNumber(
+                          row['series_2.data'],
+                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(
+                          row['series_3.data'],
+                          K8S_MEM_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        <FormatPodStatus status={row['series_4.data']} />
+                      </td>
+                    </tr>
+                  </Link>
                 ))}
               </tbody>
             )}
@@ -334,6 +341,7 @@ export default function ServiceDashboardPage() {
         <div className="w-100">
           <EndpointSidepanel />
           <DBQuerySidePanel />
+          <PodDetailsSidePanel />
           <div className="d-flex flex-column">
             <Group
               px="md"
@@ -460,7 +468,7 @@ export default function ServiceDashboardPage() {
                           isUTC={false}
                           setIsUTC={() => {}}
                           onPropertySearchClick={() => {}}
-                        />{' '}
+                        />
                       </Card.Section>
                     </Card>
                   </Grid.Col>
