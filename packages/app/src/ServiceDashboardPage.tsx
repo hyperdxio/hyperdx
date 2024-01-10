@@ -268,6 +268,12 @@ const CHART_HEIGHT = 300;
 const DB_STATEMENT_PROPERTY = 'db.statement';
 
 export default function ServiceDashboardPage() {
+  const [activeTab, setActiveTab] = useQueryParam(
+    'tab',
+    withDefault(StringParam, 'infrastructure'),
+    { updateType: 'replaceIn' },
+  );
+
   const [searchQuery, setSearchQuery] = useQueryParam(
     'q',
     withDefault(StringParam, ''),
@@ -387,6 +393,9 @@ export default function ServiceDashboardPage() {
             variant="pills"
             defaultValue="infrastructure"
             radius="md"
+            keepMounted={false}
+            value={activeTab}
+            onTabChange={setActiveTab}
           >
             <div className="px-3 py-2 border-bottom border-dark">
               <Tabs.List>
