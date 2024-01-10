@@ -112,7 +112,11 @@ func main() {
 		for _, log := range logs {
 			dbStatement := log["b"].(map[string]interface{})["db.statement"]
 			dbSystem := log["b"].(map[string]interface{})["db.system"]
-			if dbStatement != nil && dbSystem != nil && !slices.Contains(NON_SQL_DB_SYSTEMS, dbSystem.(string)) {
+			if dbStatement != nil {
+				if dbSystem != nil && slices.Contains(NON_SQL_DB_SYSTEMS, dbSystem.(string)) {
+					fmt.Println("Skipping non-SQL DB system:", dbSystem.(string))
+					continue
+				}
 				normalized, _, err := normalizer.Normalize(dbStatement.(string))
 				if err != nil {
 					fmt.Println("Error normalizing SQL:", err)
