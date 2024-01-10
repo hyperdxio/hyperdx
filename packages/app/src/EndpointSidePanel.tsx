@@ -11,7 +11,7 @@ import {
 } from './ChartUtils';
 import EndpointLatencyTile from './EndpointLatencyTile';
 import { HDXSpanPerformanceBarChart } from './HDXListBarChart';
-import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { useZIndex, ZIndexContext } from './zIndex';
@@ -79,7 +79,7 @@ export default function EndpointSidePanel() {
                     Request Error Rate
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
@@ -120,7 +120,7 @@ export default function EndpointSidePanel() {
                     Request Throughput
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(

@@ -728,6 +728,9 @@ div.react-datepicker {
 .recharts-legend-item {
   font-size: 0.75rem;
 }
+.recharts-tooltip-cursor {
+  fill: rgba(204, 204, 204, 0.2) !important;
+}
 
 .white-text-gradient {
   background: linear-gradient(180deg, #ffffff 0%, #c1c1c1 100%);
