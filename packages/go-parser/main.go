@@ -23,10 +23,8 @@ var (
 	AGGREGATOR_URL = os.Getenv("AGGREGATOR_API_URL")
 	// https://opentelemetry.io/docs/specs/semconv/database/database-spans/#:~:text=db.system%20has%20the%20following%20list%20of%20well%2Dknown%20values
 	NON_SQL_DB_SYSTEMS = []string{
-		"hive",
 		"adabas",
 		"filemaker",
-		"netezza",
 		"coldfusion",
 		"cassandra",
 		"hbase",
@@ -41,7 +39,6 @@ var (
 		"elasticsearch",
 		"memcached",
 		"opensearch",
-		"trino",
 	}
 )
 
