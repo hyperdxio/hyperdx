@@ -9,6 +9,7 @@ import {
   closeDB,
   getLoggedInAgent,
   getServer,
+  mockLogsPropertyTypeMappingsModel,
 } from '@/fixtures';
 
 describe('charts router', () => {
@@ -112,6 +113,43 @@ Object {
         }),
       ],
     );
+
+    const results = await agent.get('/chart/services').expect(200);
+    expect(results.body.data).toMatchInlineSnapshot(`
+Object {
+  "service1": Array [],
+  "service2": Array [],
+}
+`);
+  });
+
+  it('GET /chart/services (missing data but custom attributes exist)', async () => {
+    const now = Date.now();
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await clickhouse.bulkInsertTeamLogStream(
+      team.logStreamTableVersion,
+      team.id,
+      [
+        buildEvent({
+          timestamp: now,
+          service: 'service1',
+        }),
+        buildEvent({
+          timestamp: now,
+          service: 'service1',
+        }),
+        buildEvent({
+          timestamp: now - ms('1d'),
+          service: 'service2',
+        }),
+      ],
+    );
+
+    mockLogsPropertyTypeMappingsModel({
+      service: 'string',
+      'k8s.namespace.name': 'string',
+    });
 
     const results = await agent.get('/chart/services').expect(200);
     expect(results.body.data).toMatchInlineSnapshot(`

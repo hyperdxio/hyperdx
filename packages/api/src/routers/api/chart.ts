@@ -48,37 +48,59 @@ router.get('/services', async (req, res, next) => {
     const MAX_NUM_GROUPS = 2000;
 
     const simpleCache = new SimpleCache<
-      Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>
+      Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>[]
     >(`chart-services-${teamId}`, ms('10m'), () =>
-      clickhouse.getMultiSeriesChart({
-        series: [
-          {
-            aggFn: clickhouse.AggFn.Count,
-            groupBy: targetGroupByFields,
-            table: 'logs',
-            type: 'table',
-            where: '',
-          },
-        ],
-        endTime,
-        granularity: undefined,
-        maxNumGroups: MAX_NUM_GROUPS,
-        startTime,
-        tableVersion: team.logStreamTableVersion,
-        teamId: teamId.toString(),
-        seriesReturnType: clickhouse.SeriesReturnType.Column,
-      }),
+      Promise.all([
+        clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              aggFn: clickhouse.AggFn.Count,
+              groupBy: targetGroupByFields,
+              table: 'logs',
+              type: 'table',
+              where: '',
+            },
+          ],
+          endTime,
+          granularity: undefined,
+          maxNumGroups: MAX_NUM_GROUPS,
+          startTime,
+          tableVersion: team.logStreamTableVersion,
+          teamId: teamId.toString(),
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        }),
+        clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              aggFn: clickhouse.AggFn.Count,
+              groupBy: ['service'],
+              table: 'logs',
+              type: 'table',
+              where: '',
+            },
+          ],
+          endTime,
+          granularity: undefined,
+          maxNumGroups: MAX_NUM_GROUPS,
+          startTime,
+          tableVersion: team.logStreamTableVersion,
+          teamId: teamId.toString(),
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        }),
+      ]),
     );
 
-    const results = await simpleCache.get();
+    const [customAttrsResults, servicesResults] = await simpleCache.get();
     // restructure service maps
     const serviceMap: Record<string, Record<string, string>[]> = {};
-    for (const row of results.data) {
+    for (const row of servicesResults.data) {
+      const service = row.group[0];
+      serviceMap[service] = [];
+    }
+
+    for (const row of customAttrsResults.data) {
       const values = row.group;
       const service = values[0];
-      if (!(service in serviceMap)) {
-        serviceMap[service] = [];
-      }
       const attrs: Record<string, string> = {};
       for (let i = 1; i < values.length; i++) {
         const field = targetGroupByFields[i];
