@@ -131,6 +131,11 @@ export function seriesColumns({
               'sortOrder' in series[0] ? series[0].sortOrder : undefined,
             numberFormat:
               'numberFormat' in series[0] ? series[0].numberFormat : undefined,
+            columnWidthPercent:
+              'columnWidthPercent' in series[0]
+                ? series[0].columnWidthPercent
+                : undefined,
+            visible: 'visible' in series[0] ? series[0].visible : undefined,
           },
         ]
       : series.map((s, i) => {
@@ -142,6 +147,9 @@ export function seriesColumns({
             }),
             sortOrder: 'sortOrder' in s ? s.sortOrder : undefined,
             numberFormat: 'numberFormat' in s ? s.numberFormat : undefined,
+            columnWidthPercent:
+              'columnWidthPercent' in s ? s.columnWidthPercent : undefined,
+            visible: 'visible' in s ? s.visible : undefined,
           };
         });
 
@@ -159,7 +167,9 @@ export function seriesToSearchQuery({
     .map((s, i) => {
       if (s.type === 'time' || s.type === 'table' || s.type === 'number') {
         const { where, aggFn, field } = s;
-        return `${where.trim()}${aggFn !== 'count' ? ` ${field}:*` : ''}${
+        return `${where.trim()}${
+          aggFn !== 'count' && field ? ` ${field}:*` : ''
+        }${
           'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
             ? ` ${s.groupBy}:${groupByValue}`
             : ''
@@ -1193,6 +1203,13 @@ export const INTEGER_NUMBER_FORMAT: NumberFormat = {
   factor: 1,
   output: 'number',
   mantissa: 0,
+  thousandSeparated: true,
+};
+
+export const SINGLE_DECIMAL_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 1,
   thousandSeparated: true,
 };
 
