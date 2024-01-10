@@ -33,7 +33,7 @@ import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import SearchInput from './SearchInput';
+import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { formatNumber } from './utils';
@@ -214,14 +214,45 @@ const InfraPodsStatusTable = ({
   );
 };
 
+const SearchInput = React.memo(
+  ({
+    searchQuery,
+    setSearchQuery,
+  }: {
+    searchQuery: string;
+    setSearchQuery: (q: string | null) => void;
+  }) => {
+    const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+    const onSearchSubmit = React.useCallback(
+      (e: React.FormEvent) => {
+        e.preventDefault();
+        setSearchQuery(_searchQuery || null);
+      },
+      [_searchQuery, setSearchQuery],
+    );
+
+    return (
+      <form onSubmit={onSearchSubmit}>
+        <HdxSearchInput
+          inputRef={searchInputRef}
+          placeholder="Scope dashboard to..."
+          value={_searchQuery ?? searchQuery}
+          onChange={v => _setSearchQuery(v)}
+          onSearch={() => {}}
+          showHotkey={false}
+        />
+      </form>
+    );
+  },
+);
+
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
 export default function ServiceDashboardPage() {
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
-
-  const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useQueryParam(
     'q',
     withDefault(StringParam, ''),
@@ -232,14 +263,6 @@ export default function ServiceDashboardPage() {
     'service',
     withDefault(StringParam, ''),
     { updateType: 'replaceIn' },
-  );
-
-  const onSearchSubmit = React.useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      setSearchQuery(_searchQuery || null);
-    },
-    [_searchQuery, setSearchQuery],
   );
 
   const {
@@ -326,16 +349,10 @@ export default function ServiceDashboardPage() {
                 w={300}
               />
               <div style={{ flex: 1 }}>
-                <form onSubmit={onSearchSubmit}>
-                  <SearchInput
-                    inputRef={searchInputRef}
-                    placeholder="Scope dashboard to..."
-                    value={_searchQuery ?? searchQuery}
-                    onChange={v => _setSearchQuery(v)}
-                    onSearch={() => {}}
-                    showHotkey={false}
-                  />
-                </form>
+                <SearchInput
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                />
               </div>
               <div className="d-flex" style={{ width: 350, height: 36 }}>
                 <SearchTimeRangePicker
