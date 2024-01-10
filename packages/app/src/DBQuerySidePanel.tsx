@@ -44,7 +44,7 @@ export default function DBQuerySidePanel() {
   const scopeWhereQuery = React.useCallback(
     (where: string) => {
       const spanNameQuery = dbQuery
-        ? `${DB_STATEMENT_PROPERTY}:"${dbQuery}" `
+        ? `${DB_STATEMENT_PROPERTY}:"${dbQuery.replace(/"/g, '\\"')}" `
         : '';
       const whereQuery = where ? `(${where})` : '';
       const serviceQuery = service ? `service:"${service}" ` : '';
