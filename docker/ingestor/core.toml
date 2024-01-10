@@ -706,6 +706,20 @@ if is_object(.r) {
   del(.hdx_content_type)
 }
 '''
+
+[transforms.post_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
+'''
+
+[transforms.go_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
+'''
 # --------------------------------------------------------------------------------
 
 
