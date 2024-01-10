@@ -337,6 +337,13 @@ export default function ServiceDashboardPage() {
     [service, searchQuery],
   );
 
+  // hack to fix when page shows all services even though service is selected
+  if (isServicesLoading && service) {
+    return (
+      <div className="text-center text-slate-400 m-5">Loading services...</div>
+    );
+  }
+
   return (
     <div>
       <Head>
@@ -471,7 +478,9 @@ export default function ServiceDashboardPage() {
                         <LogTableWithSidePanel
                           config={{
                             dateRange,
-                            where: whereClause + ' level:error',
+                            where:
+                              whereClause +
+                              ' k8s.resource.name:"events" level:error',
                           }}
                           isLive={false}
                           isUTC={false}
