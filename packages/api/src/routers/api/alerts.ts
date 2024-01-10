@@ -135,10 +135,14 @@ router.post(
   validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
     try {
       const alertInput = req.body;
       return res.json({
-        data: await createAlert(alertInput),
+        data: await createAlert(teamId, alertInput),
       });
     } catch (e) {
       next(e);
@@ -152,10 +156,14 @@ router.put(
   validateGroupBy,
   async (req, res, next) => {
     try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
       const { id } = req.params;
       const alertInput = req.body;
       res.json({
-        data: await updateAlert(id, alertInput),
+        data: await updateAlert(id, teamId, alertInput),
       });
     } catch (e) {
       next(e);
@@ -173,6 +181,7 @@ router.delete('/:id', async (req, res, next) => {
     if (!alertId) {
       return res.sendStatus(400);
     }
+    // FIXME: should add teamId to the find query
     await Alert.findByIdAndDelete(alertId);
     res.sendStatus(200);
   } catch (e) {
