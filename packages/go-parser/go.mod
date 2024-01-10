@@ -5,6 +5,7 @@ go 1.21.4
 require (
 	github.com/DataDog/go-sqllexer v0.0.10
 	github.com/gin-gonic/gin v1.9.1
+	github.com/hashicorp/go-retryablehttp v0.7.5
 	github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2
 )
 
@@ -18,6 +19,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.16.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/kr/pretty v0.3.0 // indirect

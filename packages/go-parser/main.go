@@ -10,6 +10,7 @@ import (
 
 	"github.com/DataDog/go-sqllexer"
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/xwb1989/sqlparser"
 )
 
@@ -39,11 +40,11 @@ func (b *GzipJSONBinding) Bind(req *http.Request, dst interface{}) error {
 }
 
 func isSQLValid(sql string) (bool, error) {
-    _, err := sqlparser.Parse(sql)
-    if err != nil {
-        return false, err
-    }
-    return true, nil
+	_, err := sqlparser.Parse(sql)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func main() {
@@ -88,10 +89,10 @@ func main() {
 		for _, log := range logs {
 			dbStatement := log["b"].(map[string]interface{})["db.statement"]
 			if dbStatement != nil {
-        if valid, err := isSQLValid(dbStatement.(string)); !valid {
-          fmt.Println("Error parsing SQL:", err)
-          continue
-        }
+				if valid, err := isSQLValid(dbStatement.(string)); !valid {
+					fmt.Println("Error parsing SQL:", err)
+					continue
+				}
 				normalized, _, err := normalizer.Normalize(dbStatement.(string))
 				if err != nil {
 					fmt.Println("Error normalizing SQL:", err)
@@ -99,7 +100,7 @@ func main() {
 				}
 				obfuscator := sqllexer.NewObfuscator()
 				obfuscated := obfuscator.Obfuscate(normalized)
-        log["b"].(map[string]interface{})["db.sql.normalized"] = obfuscated
+				log["b"].(map[string]interface{})["db.sql.normalized"] = obfuscated
 			}
 		}
 
@@ -111,7 +112,11 @@ func main() {
 			fmt.Println("Error marshaling JSON:", err)
 			return
 		}
-		req, err := http.NewRequest("POST", AGGREGATOR_URL, bytes.NewBuffer(jsonData))
+
+    retryClient := retryablehttp.NewClient()
+    retryClient.RetryMax = 10
+
+		req, err := retryablehttp.NewRequest("POST", AGGREGATOR_URL, bytes.NewBuffer(jsonData))
 		if err != nil {
 			fmt.Println("Error creating request:", err)
 			return
@@ -119,9 +124,7 @@ func main() {
 
 		req.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{}
-
-		resp, err := client.Do(req)
+		resp, err := retryClient.Do(req)
 		if err != nil {
 			fmt.Println("Error sending request:", err)
 			return
