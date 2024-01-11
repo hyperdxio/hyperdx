@@ -53,6 +53,10 @@ export default function EndpointSidePanel() {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
+  if (!endpoint) {
+    return null;
+  }
+
   return (
     <Drawer
       enableOverlay

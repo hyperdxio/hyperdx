@@ -55,6 +55,10 @@ export default function DBQuerySidePanel() {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
+  if (!dbQuery) {
+    return null;
+  }
+
   return (
     <Drawer
       enableOverlay
