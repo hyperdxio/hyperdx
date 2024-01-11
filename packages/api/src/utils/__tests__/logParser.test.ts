@@ -1,8 +1,4 @@
-import {
-  convertToStringMap,
-  mapObjectToKeyValuePairs,
-  traverseJson,
-} from '../logParser';
+import { mapObjectToKeyValuePairs, traverseJson } from '../logParser';
 
 describe('logParser', () => {
   it('traverseJson', () => {
@@ -121,45 +117,5 @@ describe('logParser', () => {
     expect(result['number.names'].length).toEqual(1024);
     expect(result['number.values'].length).toEqual(1024);
     expect(result).toMatchSnapshot();
-  });
-
-  describe('convertToStringMap', () => {
-    it('converts non string values to strings', () => {
-      expect(
-        convertToStringMap({
-          foo: '123',
-          foo1: 123,
-          foo2: false,
-          nested: { foo: 'bar' },
-          good: {
-            burrito: {
-              is: true,
-            },
-          },
-          array1: [456],
-          array2: [
-            'foo1',
-            {
-              foo2: 'bar2',
-            },
-            [
-              {
-                foo3: 'bar3',
-              },
-            ],
-          ],
-        }),
-      ).toMatchInlineSnapshot(`
-Object {
-  "array1": "[456]",
-  "array2": "[\\"foo1\\",{\\"foo2\\":\\"bar2\\"},[{\\"foo3\\":\\"bar3\\"}]]",
-  "foo": "123",
-  "foo1": "123",
-  "foo2": "0",
-  "good.burrito.is": "1",
-  "nested.foo": "bar",
-}
-`);
-    });
   });
 });
