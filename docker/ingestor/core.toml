@@ -635,6 +635,11 @@ if is_object(.r) {
   .b.process = tmp_process
   .b.__events = .r.logs
 
+  # move k8s metadata to root
+  if !is_nullish(.b.process.tag.k8s) {
+    .b.k8s = del(.b.process.tag.k8s)
+  }
+
   if (.b."span.kind" == "server") {
     if (exists(.b."http.status_code") && exists(.b."http.method") && exists(.b."http.route")) {
       .b._hdx_body = join([
