@@ -113,6 +113,8 @@ func main() {
 			dbStatement := log["b"].(map[string]interface{})["db.statement"]
 			dbSystem := log["b"].(map[string]interface{})["db.system"]
 			if dbStatement != nil {
+        // defaults to dbStatement
+				log["b"].(map[string]interface{})["db.normalized_statement"] = dbStatement
 				if dbSystem != nil && slices.Contains(NON_SQL_DB_SYSTEMS, dbSystem.(string)) {
 					fmt.Println("Skipping non-SQL DB system:", dbSystem.(string))
 					continue
