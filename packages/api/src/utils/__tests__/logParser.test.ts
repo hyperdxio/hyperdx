@@ -1,4 +1,8 @@
-import { mapObjectToKeyValuePairs, traverseJson } from '../logParser';
+import {
+  convertToStringMap,
+  mapObjectToKeyValuePairs,
+  traverseJson,
+} from '../logParser';
 
 describe('logParser', () => {
   it('traverseJson', () => {
@@ -117,5 +121,62 @@ describe('logParser', () => {
     expect(result['number.names'].length).toEqual(1024);
     expect(result['number.values'].length).toEqual(1024);
     expect(result).toMatchSnapshot();
+  });
+
+  describe('convertToStringMap', () => {
+    // export const convertToStringMap = (obj: JSONBlob) => {
+    //   const mapped = mapObjectToKeyValuePairs(obj);
+    //   const converted_string_attrs: Record<string, string> = {};
+    //   for (let i = 0; i < mapped['string.names'].length; i++) {
+    //     converted_string_attrs[mapped['string.names'][i]] = mapped['string.values'][i];
+    //   }
+    //   // at least nominally metrics should not have bool or number attributes, but we will
+    //   // handle and append them here just in case
+    //   for (let i = 0; i < mapped['number.names'].length; i++) {
+    //     converted_string_attrs[mapped['number.names'][i]] = mapped['number.values'][i].toString();
+    //   }
+    //   for (let i = 0; i < mapped['bool.names'].length; i++) {
+    //     converted_string_attrs[mapped['bool.names'][i]] = mapped['bool.values'][i].toString();
+    //   }
+    //   return converted_string_attrs;;
+    // }
+
+    it('converts non string values to strings', () => {
+      expect(
+        convertToStringMap({
+          foo: '123',
+          foo1: 123,
+          foo2: false,
+          nested: { foo: 'bar' },
+          good: {
+            burrito: {
+              is: true,
+            },
+          },
+          array1: [456],
+          array2: [
+            'foo1',
+            {
+              foo2: 'bar2',
+            },
+            [
+              {
+                foo3: 'bar3',
+              },
+            ],
+          ],
+        }),
+      ).toMatchInlineSnapshot(`
+Object {
+  "array1": "[456]",
+  "array2": "[\\"foo1\\",{\\"foo2\\":\\"bar2\\"},[{\\"foo3\\":\\"bar3\\"}]]",
+  "foo": "123",
+  "foo1": "123",
+  "foo2": "0",
+  "good.burrito.is": "1",
+  "nested.foo": "bar",
+}
+`);
+    });
   });
 });
