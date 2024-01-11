@@ -21,13 +21,19 @@ import Timestamp from 'timestamp-nano';
 import { useQueryParam } from 'use-query-params';
 import {
   ActionIcon,
+  Box,
+  Card,
   Group,
   Menu,
+  ScrollArea,
   SegmentedControl,
+  SimpleGrid,
+  Stack,
   TextInput,
 } from '@mantine/core';
 
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
+import { KubeTimeline } from './components/KubeComponents';
 import { Table } from './components/Table';
 import api from './api';
 import {
@@ -2293,7 +2299,6 @@ const ExceptionSubpanel = ({
     </div>
   );
 };
-import { Card, SimpleGrid, Stack } from '@mantine/core';
 
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 
@@ -2465,12 +2470,40 @@ const MetricsSubpanel = ({ logData }: { logData?: any }) => {
   return (
     <Stack my="md" spacing={40}>
       {podUid && (
-        <MetricsSubpanelGroup
-          title="Pod Metrics"
-          where={`k8s.pod.uid:"${podUid}"`}
-          fieldPrefix="k8s.pod."
-          timestamp={timestamp}
-        />
+        <div>
+          <MetricsSubpanelGroup
+            title="Pod Metrics"
+            where={`k8s.pod.uid:"${podUid}"`}
+            fieldPrefix="k8s.pod."
+            timestamp={timestamp}
+          />
+          <Card p="md" mt="xl">
+            <Card.Section p="md" py="xs" withBorder>
+              Pod Timeline
+            </Card.Section>
+            <Card.Section>
+              <ScrollArea
+                viewportProps={{
+                  style: { maxHeight: 280 },
+                }}
+              >
+                <Box p="md" py="sm">
+                  <KubeTimeline
+                    q={`k8s.pod.uid:"${podUid}"`}
+                    dateRange={[
+                      sub(new Date(timestamp), { days: 1 }),
+                      add(new Date(timestamp), { days: 1 }),
+                    ]}
+                    anchorEvent={{
+                      label: <div className="text-success">This Event</div>,
+                      timestamp: new Date(timestamp).toISOString(),
+                    }}
+                  />
+                </Box>
+              </ScrollArea>
+            </Card.Section>
+          </Card>
+        </div>
       )}
       {nodeName && (
         <MetricsSubpanelGroup

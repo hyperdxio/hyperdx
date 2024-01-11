@@ -11,6 +11,7 @@ import {
   Flex,
   Grid,
   Group,
+  ScrollArea,
   Select,
   Skeleton,
   Table,
@@ -155,74 +156,80 @@ const InfraPodsStatusTable = ({
         Pods
       </Card.Section>
       <Card.Section>
-        {isError ? (
-          <div className="p-4 text-center text-slate-500 fs-8">
-            Unable to load pod metrics
-          </div>
-        ) : (
-          <Table horizontalSpacing="md" highlightOnHover>
-            <thead className="muted-thead">
-              <tr>
-                <th>Name</th>
-                <th style={{ width: 100 }}>Restarts</th>
-                {/* <th style={{ width: 120 }}>Age</th> */}
-                <th style={{ width: 100 }}>CPU Avg</th>
-                <th style={{ width: 100 }}>Mem Avg</th>
-                <th style={{ width: 130 }}>Status</th>
-              </tr>
-            </thead>
-            {isLoading ? (
-              <tbody>
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <tr key={index}>
-                    <td>
-                      <Skeleton height={8} my={6} />
-                    </td>
-                    <td>
-                      <Skeleton height={8} />
-                    </td>
-                    <td>
-                      <Skeleton height={8} />
-                    </td>
-                    <td>
-                      <Skeleton height={8} />
-                    </td>
-                    <td>
-                      <Skeleton height={8} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            ) : (
-              <tbody>
-                {data?.data?.map((row: any) => (
-                  <Link key={row.group} href={getLink(row)}>
-                    <tr className="cursor-pointer">
-                      <td>{row.group}</td>
-                      <td>{row['series_0.data']}</td>
-                      {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+        <ScrollArea
+          viewportProps={{
+            style: { maxHeight: 300 },
+          }}
+        >
+          {isError ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              Unable to load pod metrics
+            </div>
+          ) : (
+            <Table horizontalSpacing="md" highlightOnHover>
+              <thead className="muted-thead">
+                <tr>
+                  <th>Name</th>
+                  <th style={{ width: 100 }}>Restarts</th>
+                  {/* <th style={{ width: 120 }}>Age</th> */}
+                  <th style={{ width: 100 }}>CPU Avg</th>
+                  <th style={{ width: 100 }}>Mem Avg</th>
+                  <th style={{ width: 130 }}>Status</th>
+                </tr>
+              </thead>
+              {isLoading ? (
+                <tbody>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <tr key={index}>
                       <td>
-                        {formatNumber(
-                          row['series_2.data'],
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
+                        <Skeleton height={8} my={6} />
                       </td>
                       <td>
-                        {formatNumber(
-                          row['series_3.data'],
-                          K8S_MEM_NUMBER_FORMAT,
-                        )}
+                        <Skeleton height={8} />
                       </td>
                       <td>
-                        <FormatPodStatus status={row['series_4.data']} />
+                        <Skeleton height={8} />
+                      </td>
+                      <td>
+                        <Skeleton height={8} />
+                      </td>
+                      <td>
+                        <Skeleton height={8} />
                       </td>
                     </tr>
-                  </Link>
-                ))}
-              </tbody>
-            )}
-          </Table>
-        )}
+                  ))}
+                </tbody>
+              ) : (
+                <tbody>
+                  {data?.data?.map((row: any) => (
+                    <Link key={row.group} href={getLink(row)}>
+                      <tr className="cursor-pointer">
+                        <td>{row.group}</td>
+                        <td>{row['series_0.data']}</td>
+                        {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                        <td>
+                          {formatNumber(
+                            row['series_2.data'],
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            row['series_3.data'],
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </td>
+                        <td>
+                          <FormatPodStatus status={row['series_4.data']} />
+                        </td>
+                      </tr>
+                    </Link>
+                  ))}
+                </tbody>
+              )}
+            </Table>
+          )}
+        </ScrollArea>
       </Card.Section>
     </Card>
   );
