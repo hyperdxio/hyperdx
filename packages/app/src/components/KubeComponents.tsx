@@ -70,7 +70,7 @@ export const KubeTimeline = ({
   anchorEvent?: AnchorEvent;
 }) => {
   const startDate = React.useMemo(
-    () => dateRange?.[0] ?? sub(new Date(), { days: 7 }),
+    () => dateRange?.[0] ?? sub(new Date(), { days: 1 }),
     [dateRange],
   );
   const endDate = React.useMemo(
@@ -147,7 +147,7 @@ export const KubeTimeline = ({
   if (anchorEvent) {
     return (
       <Timeline bulletSize={12} lineWidth={1}>
-        {podEventsBeforeAnchor.map(renderKubeEvent)}
+        {podEventsAfterAnchor.map(renderKubeEvent)}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
           <Text size={11} c="gray.6" title={anchorEvent.timestamp}>
             {format(new Date(anchorEvent.timestamp), FORMAT)}
@@ -158,7 +158,7 @@ export const KubeTimeline = ({
             </Text>
           </Group>
         </Timeline.Item>
-        {podEventsAfterAnchor.map(renderKubeEvent)}
+        {podEventsBeforeAnchor.map(renderKubeEvent)}
       </Timeline>
     );
   } else {
