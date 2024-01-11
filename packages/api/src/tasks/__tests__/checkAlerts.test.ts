@@ -179,7 +179,7 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
-      const alert = await createAlert({
+      const alert = await createAlert(team._id, {
         source: 'LOG',
         channel: {
           type: 'webhook',
@@ -353,7 +353,7 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert({
+      const alert = await createAlert(team._id, {
         source: 'CHART',
         channel: {
           type: 'webhook',
@@ -586,7 +586,7 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert({
+      const alert = await createAlert(team._id, {
         source: 'CHART',
         channel: {
           type: 'webhook',

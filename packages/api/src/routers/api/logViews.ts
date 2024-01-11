@@ -71,6 +71,7 @@ router.patch('/:id', async (req, res, next) => {
     if (!logViewId || !query) {
       return res.sendStatus(400);
     }
+    // TODO: query teamId
     const logView = await LogView.findByIdAndUpdate(
       logViewId,
       {
@@ -96,6 +97,7 @@ router.delete('/:id', async (req, res, next) => {
     if (!logViewId) {
       return res.sendStatus(400);
     }
+    // TODO: query teamId
     // delete all alerts
     await Alert.deleteMany({ logView: logViewId });
     await LogView.findByIdAndDelete(logViewId);

@@ -3,6 +3,7 @@ import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
+import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
   AlertInterval,
@@ -76,11 +77,11 @@ export const validateGroupByProperty = async ({
 
 const makeAlert = (alert: AlertInput) => {
   return {
-    source: alert.source,
     channel: alert.channel,
     interval: alert.interval,
-    type: alert.type,
+    source: alert.source,
     threshold: alert.threshold,
+    type: alert.type,
     // Log alerts
     logView: alert.logViewId,
     groupBy: alert.groupBy,
@@ -92,12 +93,20 @@ const makeAlert = (alert: AlertInput) => {
   };
 };
 
-export const createAlert = async (alertInput: AlertInput) => {
-  return new Alert(makeAlert(alertInput)).save();
+export const createAlert = async (teamId: ObjectId, alertInput: AlertInput) => {
+  return new Alert({
+    ...makeAlert(alertInput),
+    team: teamId,
+  }).save();
 };
 
 // create an update alert function based off of the above create alert function
-export const updateAlert = async (id: string, alertInput: AlertInput) => {
+export const updateAlert = async (
+  id: string,
+  teamId: ObjectId,
+  alertInput: AlertInput,
+) => {
+  // TODO: find by id and teamId
   // should consider clearing AlertHistory when updating an alert?
   return Alert.findByIdAndUpdate(id, makeAlert(alertInput), {
     returnDocument: 'after',
