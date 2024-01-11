@@ -139,6 +139,7 @@ const InfraPodsStatusTable = ({
         aggFn: 'last_value',
         where,
         groupBy: ['k8s.pod.name'],
+        sortOrder: 'asc',
       },
     ],
     endDate: dateRange[1] ?? new Date(),
@@ -501,11 +502,11 @@ export default function ServiceDashboardPage() {
                     <Card p="md">
                       <Card.Section p="md" py="xs" withBorder>
                         <Flex justify="space-between">
-                          Latest Kubernetes Error Events
+                          Latest Kubernetes Warning Events
                           <Link
                             href={`/search?q=${encodeURIComponent(
                               whereClause +
-                                ' k8s.resource.name:"events" level:error',
+                                ' k8s.resource.name:"events" -level:"normal"',
                             )}`}
                             passHref
                           >
@@ -522,7 +523,7 @@ export default function ServiceDashboardPage() {
                             dateRange,
                             where:
                               whereClause +
-                              ' k8s.resource.name:"events" level:error',
+                              ' k8s.resource.name:"events" -level:"normal"',
                           }}
                           isLive={false}
                           isUTC={false}

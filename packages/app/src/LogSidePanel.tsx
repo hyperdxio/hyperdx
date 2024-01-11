@@ -2634,7 +2634,7 @@ export default function LogSidePanel({
   const { width } = useWindowSize();
   const isSmallScreen = (width ?? 1000) < 900;
 
-  const drawerZIndex = contextZIndex + 1;
+  const drawerZIndex = contextZIndex + 10;
 
   const hasK8sContext = useMemo(() => {
     return (
