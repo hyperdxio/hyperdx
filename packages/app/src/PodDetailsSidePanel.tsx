@@ -1,7 +1,17 @@
 import * as React from 'react';
+import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { Box, Card, Grid, ScrollArea, Text } from '@mantine/core';
+import {
+  Anchor,
+  Box,
+  Card,
+  Flex,
+  Grid,
+  ScrollArea,
+  SegmentedControl,
+  Text,
+} from '@mantine/core';
 
 import { KubeTimeline } from './components/KubeComponents';
 import api from './api';
@@ -83,6 +93,60 @@ const PodDetails = ({
     </Grid.Col>
   );
 };
+
+function PodLogs({
+  where,
+  dateRange,
+}: {
+  where: string;
+  dateRange: [Date, Date];
+}) {
+  const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
+
+  const _where = where + (resultType === 'error' ? ' level:err' : '');
+
+  return (
+    <Card p="md">
+      <Card.Section p="md" py="xs" withBorder>
+        <Flex justify="space-between" align="center">
+          Latest Pod Logs & Spans
+          <Flex gap="xs" align="center">
+            <SegmentedControl
+              size="xs"
+              value={resultType}
+              onChange={(value: string) => {
+                if (value === 'all' || value === 'error') {
+                  setResultType(value);
+                }
+              }}
+              data={[
+                { label: 'All', value: 'all' },
+                { label: 'Errors', value: 'error' },
+              ]}
+            />
+            <Link href={`/search?q=${encodeURIComponent(_where)}`} passHref>
+              <Anchor size="xs" color="dimmed">
+                Search <i className="bi bi-box-arrow-up-right"></i>
+              </Anchor>
+            </Link>
+          </Flex>
+        </Flex>
+      </Card.Section>
+      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+        <LogTableWithSidePanel
+          config={{
+            dateRange,
+            where: _where,
+          }}
+          isLive={false}
+          isUTC={false}
+          setIsUTC={() => {}}
+          onPropertySearchClick={() => {}}
+        />
+      </Card.Section>
+    </Card>
+  );
+}
 
 export default function PodDetailsSidePanel() {
   const [podName, setPodName] = useQueryParam(
@@ -199,6 +263,9 @@ export default function PodDetailsSidePanel() {
                     </ScrollArea>
                   </Card.Section>
                 </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <PodLogs where={where} dateRange={dateRange} />
               </Grid.Col>
             </Grid>
           </Box>
