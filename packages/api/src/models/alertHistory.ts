@@ -47,6 +47,8 @@ AlertHistorySchema.index(
   { expireAfterSeconds: ms('30d') / 1000 },
 );
 
+AlertHistorySchema.index({ alert: 1, createdAt: -1 });
+
 export default mongoose.model<IAlertHistory>(
   'AlertHistory',
   AlertHistorySchema,
