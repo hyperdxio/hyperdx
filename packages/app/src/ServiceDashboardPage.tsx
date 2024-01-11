@@ -309,7 +309,7 @@ export default function ServiceDashboardPage() {
     }));
   }, [services]);
 
-  const whereClause = React.useMemo(() => {
+  const podNames = React.useMemo(() => {
     const podNames: Set<string> = new Set();
     if (service) {
       services?.data[service]?.forEach(values => {
@@ -318,13 +318,17 @@ export default function ServiceDashboardPage() {
         }
       });
     }
+    return [...podNames];
+  }, [service, services]);
+
+  const whereClause = React.useMemo(() => {
     // TODO: Rework this query to correctly work on prod
     return [
-      [...podNames].map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
+      podNames.map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
         'k8s.pod.name:*',
       searchQuery,
     ].join(' ');
-  }, [searchQuery, service, services]);
+  }, [podNames, searchQuery]);
 
   // Generate chart config
   const scopeWhereQuery = React.useCallback(
@@ -336,6 +340,13 @@ export default function ServiceDashboardPage() {
     },
     [service, searchQuery],
   );
+
+  // hack to fix when page shows all services even though service is selected
+  if (isServicesLoading && service) {
+    return (
+      <div className="text-center text-slate-400 m-5">Loading services...</div>
+    );
+  }
 
   return (
     <div>
@@ -408,6 +419,21 @@ export default function ServiceDashboardPage() {
             <div className="p-3">
               <Tabs.Panel value="infrastructure">
                 <Grid>
+                  {service && !podNames.length ? (
+                    <>
+                      <Grid.Col span={12}>
+                        <Card p="xl" ta="center">
+                          <Card.Section p="md" py="xs" withBorder>
+                            <div className="fs-8">
+                              <i className="bi bi-exclamation-circle-fill text-slate-400 fs-8 me-2" />
+                              No pods found for service{' '}
+                              <span className="text-white">{service}</span>
+                            </div>
+                          </Card.Section>
+                        </Card>
+                      </Grid.Col>
+                    </>
+                  ) : null}
                   <Grid.Col span={6}>
                     <Card p="md">
                       <Card.Section p="md" py="xs" withBorder>
@@ -471,7 +497,9 @@ export default function ServiceDashboardPage() {
                         <LogTableWithSidePanel
                           config={{
                             dateRange,
-                            where: whereClause + ' level:error',
+                            where:
+                              whereClause +
+                              ' k8s.resource.name:"events" level:error',
                           }}
                           isLive={false}
                           isUTC={false}
