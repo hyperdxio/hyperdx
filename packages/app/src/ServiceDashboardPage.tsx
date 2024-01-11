@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import Head from 'next/head';
-import { formatDistanceStrict } from 'date-fns';
+import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Badge,
@@ -24,12 +24,10 @@ import {
   convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
-  MS_NUMBER_FORMAT,
-  SINGLE_DECIMAL_NUMBER_FORMAT,
-} from './ChartUtils';
-import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
+  MS_NUMBER_FORMAT,
+  SINGLE_DECIMAL_NUMBER_FORMAT,
 } from './ChartUtils';
 import DBQuerySidePanel from './DBQuerySidePanel';
 import EndpointLatencyTile from './EndpointLatencyTile';
@@ -39,6 +37,7 @@ import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
@@ -144,6 +143,12 @@ const InfraPodsStatusTable = ({
     seriesReturnType: 'column',
   });
 
+  const getLink = (row: any) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('podName', `${row.group}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  };
+
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
@@ -191,26 +196,28 @@ const InfraPodsStatusTable = ({
             ) : (
               <tbody>
                 {data?.data?.map((row: any) => (
-                  <tr key={row.group}>
-                    <td>{row.group}</td>
-                    <td>{row['series_0.data']}</td>
-                    {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
-                    <td>
-                      {formatNumber(
-                        row['series_2.data'],
-                        K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                      )}
-                    </td>
-                    <td>
-                      {formatNumber(
-                        row['series_3.data'],
-                        K8S_MEM_NUMBER_FORMAT,
-                      )}
-                    </td>
-                    <td>
-                      <FormatPodStatus status={row['series_4.data']} />
-                    </td>
-                  </tr>
+                  <Link key={row.group} href={getLink(row)}>
+                    <tr className="cursor-pointer">
+                      <td>{row.group}</td>
+                      <td>{row['series_0.data']}</td>
+                      {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                      <td>
+                        {formatNumber(
+                          row['series_2.data'],
+                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(
+                          row['series_3.data'],
+                          K8S_MEM_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        <FormatPodStatus status={row['series_4.data']} />
+                      </td>
+                    </tr>
+                  </Link>
                 ))}
               </tbody>
             )}
@@ -261,6 +268,12 @@ const CHART_HEIGHT = 300;
 const DB_STATEMENT_PROPERTY = 'db.statement';
 
 export default function ServiceDashboardPage() {
+  const [activeTab, setActiveTab] = useQueryParam(
+    'tab',
+    withDefault(StringParam, 'infrastructure'),
+    { updateType: 'replaceIn' },
+  );
+
   const [searchQuery, setSearchQuery] = useQueryParam(
     'q',
     withDefault(StringParam, ''),
@@ -296,7 +309,7 @@ export default function ServiceDashboardPage() {
     }));
   }, [services]);
 
-  const whereClause = React.useMemo(() => {
+  const podNames = React.useMemo(() => {
     const podNames: Set<string> = new Set();
     if (service) {
       services?.data[service]?.forEach(values => {
@@ -305,13 +318,17 @@ export default function ServiceDashboardPage() {
         }
       });
     }
+    return [...podNames];
+  }, [service, services]);
+
+  const whereClause = React.useMemo(() => {
     // TODO: Rework this query to correctly work on prod
     return [
-      [...podNames].map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
+      podNames.map(podName => `k8s.pod.name:"${podName}"`).join(' OR ') ||
         'k8s.pod.name:*',
       searchQuery,
     ].join(' ');
-  }, [searchQuery, service, services]);
+  }, [podNames, searchQuery]);
 
   // Generate chart config
   const scopeWhereQuery = React.useCallback(
@@ -324,6 +341,13 @@ export default function ServiceDashboardPage() {
     [service, searchQuery],
   );
 
+  // hack to fix when page shows all services even though service is selected
+  if (isServicesLoading && service) {
+    return (
+      <div className="text-center text-slate-400 m-5">Loading services...</div>
+    );
+  }
+
   return (
     <div>
       <Head>
@@ -334,6 +358,7 @@ export default function ServiceDashboardPage() {
         <div className="w-100">
           <EndpointSidepanel />
           <DBQuerySidePanel />
+          <PodDetailsSidePanel />
           <div className="d-flex flex-column">
             <Group
               px="md"
@@ -379,6 +404,9 @@ export default function ServiceDashboardPage() {
             variant="pills"
             defaultValue="infrastructure"
             radius="md"
+            keepMounted={false}
+            value={activeTab}
+            onTabChange={setActiveTab}
           >
             <div className="px-3 py-2 border-bottom border-dark">
               <Tabs.List>
@@ -391,6 +419,21 @@ export default function ServiceDashboardPage() {
             <div className="p-3">
               <Tabs.Panel value="infrastructure">
                 <Grid>
+                  {service && !podNames.length ? (
+                    <>
+                      <Grid.Col span={12}>
+                        <Card p="xl" ta="center">
+                          <Card.Section p="md" py="xs" withBorder>
+                            <div className="fs-8">
+                              <i className="bi bi-exclamation-circle-fill text-slate-400 fs-8 me-2" />
+                              No pods found for service{' '}
+                              <span className="text-white">{service}</span>
+                            </div>
+                          </Card.Section>
+                        </Card>
+                      </Grid.Col>
+                    </>
+                  ) : null}
                   <Grid.Col span={6}>
                     <Card p="md">
                       <Card.Section p="md" py="xs" withBorder>
@@ -454,13 +497,15 @@ export default function ServiceDashboardPage() {
                         <LogTableWithSidePanel
                           config={{
                             dateRange,
-                            where: whereClause + ' level:error',
+                            where:
+                              whereClause +
+                              ' k8s.resource.name:"events" level:error',
                           }}
                           isLive={false}
                           isUTC={false}
                           setIsUTC={() => {}}
                           onPropertySearchClick={() => {}}
-                        />{' '}
+                        />
                       </Card.Section>
                     </Card>
                   </Grid.Col>
