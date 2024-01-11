@@ -1,8 +1,9 @@
 import * as React from 'react';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { Box, Card, Grid, Text } from '@mantine/core';
+import { Box, Card, Grid, ScrollArea, Text } from '@mantine/core';
 
+import { KubeTimeline } from './components/KubeComponents';
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -126,7 +127,7 @@ export default function PodDetailsSidePanel() {
           <Box p="md">
             <Text size="md">Details for {podName}</Text>
           </Box>
-          <Box className="w-100 overflow-auto" px="sm">
+          <Box className="w-100" px="sm">
             <Grid>
               <PodDetails podName={podName} dateRange={dateRange} />
               <Grid.Col span={6}>
@@ -180,19 +181,18 @@ export default function PodDetailsSidePanel() {
               <Grid.Col span={12}>
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
-                    Latest Kubernetes Events
+                    Latest Pod Events
                   </Card.Section>
-                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <LogTableWithSidePanel
-                      config={{
-                        dateRange,
-                        where: where + ' k8s.resource.name:"events"',
+                  <Card.Section>
+                    <ScrollArea
+                      viewportProps={{
+                        style: { maxHeight: CHART_HEIGHT },
                       }}
-                      isLive={false}
-                      isUTC={false}
-                      setIsUTC={() => {}}
-                      onPropertySearchClick={() => {}}
-                    />
+                    >
+                      <Box p="md" py="sm">
+                        <KubeTimeline q={`k8s.pod.name:"${podName}"`} />
+                      </Box>
+                    </ScrollArea>
                   </Card.Section>
                 </Card>
               </Grid.Col>
