@@ -228,13 +228,13 @@ export type VectorMetric = {
 };
 
 abstract class ParsingInterface<T, S> {
-  abstract _parse(log: T): S;
+  abstract _parse(log: T, ...args: any[]): S;
 
-  parse(logs: T[]) {
+  parse(logs: T[], ...args: any[]) {
     const parsedLogs: S[] = [];
     for (const log of logs) {
       try {
-        parsedLogs.push(this._parse(log));
+        parsedLogs.push(this._parse(log, ...args));
       } catch (e) {
         // continue if parser fails to parse single log
         console.warn(e);
