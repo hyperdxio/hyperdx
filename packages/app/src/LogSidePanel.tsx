@@ -2439,15 +2439,25 @@ const MetricsSubpanelGroup = ({
 
 const MetricsSubpanel = ({ logData }: { logData?: any }) => {
   const podUid = useMemo(() => {
-    return logData?.['string.values']?.[
-      logData?.['string.names']?.indexOf('k8s.pod.uid')
-    ];
+    return (
+      logData?.['string.values']?.[
+        logData?.['string.names']?.indexOf('k8s.pod.uid')
+      ] ??
+      logData?.['string.values']?.[
+        logData?.['string.names']?.indexOf('process.tag.k8s.pod.uid')
+      ]
+    );
   }, [logData]);
 
   const nodeName = useMemo(() => {
-    return logData?.['string.values']?.[
-      logData?.['string.names']?.indexOf('k8s.node.name')
-    ];
+    return (
+      logData?.['string.values']?.[
+        logData?.['string.names']?.indexOf('k8s.node.name')
+      ] ??
+      logData?.['string.values']?.[
+        logData?.['string.names']?.indexOf('process.tag.k8s.node.name')
+      ]
+    );
   }, [logData]);
 
   const timestamp = new Date(logData?.timestamp).getTime();
@@ -2596,7 +2606,9 @@ export default function LogSidePanel({
   const hasK8sContext = useMemo(() => {
     return (
       checkKeyExistsInLogData('k8s.pod.uid', logData) != null ||
-      checkKeyExistsInLogData('k8s.node.name', logData) != null
+      checkKeyExistsInLogData('k8s.node.name', logData) != null ||
+      checkKeyExistsInLogData('process.tag.k8s.pod.uid', logData) != null ||
+      checkKeyExistsInLogData('process.tag.k8s.node.name', logData) != null
     );
   }, [logData]);
 
