@@ -42,39 +42,24 @@ const PodDetails = ({
   podName: string;
   dateRange: [Date, Date];
 }) => {
-  const { data } = api.useMultiSeriesChart({
-    series: [
-      {
-        table: 'logs',
-        type: 'table',
-        aggFn: 'count',
-        where: `k8s.pod.name:"${podName}"`,
-        groupBy: [
-          'k8s.node.name',
-          'k8s.pod.name',
-          'k8s.pod.uid',
-          'k8s.namespace.name',
-          'k8s.deployment.name',
-        ],
-      },
-    ],
-    endDate: dateRange[1] ?? new Date(),
+  const { data } = api.useLogBatch({
+    q: `k8s.pod.name:"${podName}"`,
+    limit: 1,
     startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
+    endDate: dateRange[1] ?? new Date(),
+    extraFields: [
+      'k8s.node.name',
+      'k8s.pod.name',
+      'k8s.pod.uid',
+      'k8s.namespace.name',
+      'k8s.deployment.name',
+    ],
+    order: 'desc',
   });
 
-  const properties = React.useMemo(() => {
-    const groups = data?.data?.[0]?.group ?? [];
-    const [node, pod, podUID, namespace, deployment] = groups;
-    return {
-      node,
-      pod,
-      podUID,
-      namespace,
-      deployment,
-    };
-  }, [data]);
+  const properties = data?.pages?.[0]?.data?.[0] || {};
 
+  // If all properties are empty, don't show the panel
   if (Object.values(properties).every(v => !v)) {
     return null;
   }
@@ -82,11 +67,17 @@ const PodDetails = ({
   return (
     <Grid.Col span={12}>
       <div className="p-2 gap-2 d-flex flex-wrap">
-        <PodDetailsProperty label="Node" value={properties?.node} />
-        <PodDetailsProperty label="Pod" value={properties?.pod} />
-        <PodDetailsProperty label="Pod UID" value={properties?.podUID} />
-        <PodDetailsProperty label="Namespace" value={properties?.namespace} />
-        <PodDetailsProperty label="Deployment" value={properties?.deployment} />
+        <PodDetailsProperty label="Node" value={properties['k8s.node.name']} />
+        <PodDetailsProperty label="Pod" value={properties['k8s.pod.name']} />
+        <PodDetailsProperty label="Pod UID" value={properties['k8s.pod.uid']} />
+        <PodDetailsProperty
+          label="Namespace"
+          value={properties['k8s.namespace.name']}
+        />
+        <PodDetailsProperty
+          label="Deployment"
+          value={properties['k8s.deployment.name']}
+        />
       </div>
     </Grid.Col>
   );
