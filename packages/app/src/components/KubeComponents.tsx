@@ -1,9 +1,9 @@
 import * as React from 'react';
+import Link from 'next/link';
 import { format, sub } from 'date-fns';
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 
 import api from '../api';
-import Link from 'next/link';
 
 type KubeEvent = {
   id: string;
