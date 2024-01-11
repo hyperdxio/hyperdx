@@ -1,6 +1,7 @@
 import * as React from 'react';
+import Link from 'next/link';
 import { format, sub } from 'date-fns';
-import { Badge, Group, Text, Timeline } from '@mantine/core';
+import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 
 import api from '../api';
 
@@ -11,6 +12,7 @@ type KubeEvent = {
   'object.reason'?: string;
   'object.note'?: string;
   'object.type'?: string;
+  'k8s.pod.name'?: string;
 };
 
 type AnchorEvent = {
@@ -21,11 +23,24 @@ type AnchorEvent = {
 const FORMAT = 'MMM d hh:mm:ss a';
 
 const renderKubeEvent = (event: KubeEvent) => {
+  let href = '#';
+  try {
+    href = `/search?q=${encodeURIComponent(
+      `k8s.pod.name:"${event['k8s.pod.name']}"`,
+    )}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
+      new Date(event.timestamp).getTime() + 1
+    }`;
+  } catch (_) {
+    // ignore
+  }
+
   return (
     <Timeline.Item key={event.id}>
-      <Text size={11} c="gray.6" title={event.timestamp}>
-        {format(new Date(event.timestamp), FORMAT)}
-      </Text>
+      <Link href={href} passHref>
+        <Anchor size={11} c="gray.6" title={event.timestamp}>
+          {format(new Date(event.timestamp), FORMAT)}
+        </Anchor>
+      </Link>
       <Group spacing="xs" my={4}>
         <Text size={12} color="white" fw="bold">
           {event['object.reason']}
@@ -74,6 +89,7 @@ export const KubeTimeline = ({
       'object.note',
       'object.type',
       'type',
+      'k8s.pod.name',
     ],
     order: 'desc',
   });
