@@ -460,6 +460,36 @@ describe('searchQueryParser', () => {
       ).toEqual('(1 = 0)');
     });
 
+    it('parses escaped quotes in quoted searches', async () => {
+      const ast = parse('foo:"b\\"ar"');
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('string');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(eq("_string_attributes['foo']", 'b\\"ar'));
+    });
+
+    it('parses backslash literals', async () => {
+      const ast = parse('foo:"b\\\\ar"');
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('string');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(eq("_string_attributes['foo']", 'b\\\\ar'));
+    });
+
+    it('does not escape quotes with backslash literals', async () => {
+      expect(() => parse('foo:"b\\\\"ar"')).toThrowErrorMatchingInlineSnapshot(
+        `"Expected \\"\\\\\\"\\", \\"\\\\\\\\\\", or any character but end of input found."`,
+      );
+    });
+
     describe('negation', () => {
       it('negates property values', async () => {
         const ast = parse('-foo:bar');
