@@ -168,6 +168,7 @@ export type AggFn =
   | 'count_per_sec'
   | 'count_per_min'
   | 'count_per_hour'
+  | 'last_value'
   | 'max_rate'
   | 'max'
   | 'min_rate'

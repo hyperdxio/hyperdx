@@ -172,6 +172,7 @@ export default function EndpointSidePanel() {
                 <EndpointLatencyTile
                   dateRange={dateRange}
                   height={CHART_HEIGHT}
+                  scopeWhereQuery={scopeWhereQuery}
                 />
               </Grid.Col>
               <Grid.Col span={12}>
