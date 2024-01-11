@@ -1,11 +1,7 @@
 import _ from 'lodash';
 
-import * as config from '@/config';
-
 import type { Json, JSONBlob } from './common';
 import { tryJSONStringify } from './common';
-import logger from './logger';
-import { sqlObfuscator } from './sqlObfuscator';
 export type KeyPath = string[];
 
 export enum AggregationTemporality {
@@ -106,10 +102,10 @@ export function* traverseJson(
 }
 
 const MAX_KEY_VALUE_PAIRS_LENGTH = 1024;
-export const mapObjectToKeyValuePairs = async (
+export const mapObjectToKeyValuePairs = (
   blob: JSONBlob,
   maxArrayLength = MAX_KEY_VALUE_PAIRS_LENGTH,
-): Promise<KeyValuePairs> => {
+): KeyValuePairs => {
   const output: KeyValuePairs = {
     'bool.names': [],
     'bool.values': [],
@@ -169,20 +165,6 @@ export const mapObjectToKeyValuePairs = async (
         );
         break;
       }
-    }
-  }
-
-  if (config.OBFUSCATE_SQL && output['string.names'].includes('db.statement')) {
-    const index = output['string.names'].indexOf('db.statement');
-    let obfuscated = '';
-    try {
-      obfuscated = await sqlObfuscator(output['string.values'][index]);
-    } catch (e) {
-      logger.error(`Normalizer error: ${e}`);
-    }
-    if (obfuscated.length > 0 && obfuscated.trim().length > 0) {
-      output['string.names'].push('db.sql.normalized');
-      output['string.values'].push(obfuscated);
     }
   }
 
@@ -258,13 +240,13 @@ const convertToStringMap = (blob: JSONBlob) => {
 };
 
 abstract class ParsingInterface<T, S> {
-  abstract _parse(log: T): Promise<S>;
+  abstract _parse(log: T): S;
 
-  async parse(logs: T[]) {
+  parse(logs: T[]) {
     const parsedLogs: S[] = [];
     for (const log of logs) {
       try {
-        parsedLogs.push(await this._parse(log));
+        parsedLogs.push(this._parse(log));
       } catch (e) {
         // continue if parser fails to parse single log
         console.warn(e);
@@ -284,9 +266,9 @@ class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
     return LogType.Log;
   }
 
-  async _parse(log: VectorLog): Promise<LogStreamModel> {
+  _parse(log: VectorLog): LogStreamModel {
     return {
-      ...(await mapObjectToKeyValuePairs(log.b)),
+      ...mapObjectToKeyValuePairs(log.b),
       _platform: log.hdx_platform,
       _service: log.sv,
       _source: log.r,
@@ -308,7 +290,7 @@ class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
 }
 
 class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
-  async _parse(metric: VectorMetric): Promise<MetricModel> {
+  _parse(metric: VectorMetric): MetricModel {
     return {
       _string_attributes: convertToStringMap(metric.b),
       data_type: metric.dt,
@@ -323,9 +305,9 @@ class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
 }
 
 class VectorRrwebParser extends ParsingInterface<VectorLog, RrwebEventModel> {
-  async _parse(log: VectorLog): Promise<RrwebEventModel> {
+  _parse(log: VectorLog): RrwebEventModel {
     return {
-      ...(await mapObjectToKeyValuePairs(log.b)),
+      ...mapObjectToKeyValuePairs(log.b),
       _service: log.sv,
       _source: log.r,
       timestamp: log.ts,

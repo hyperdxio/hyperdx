@@ -23,7 +23,7 @@ import EditChartFormAlerts from './EditChartFormAlerts';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
-import HDXMultiSeriesLineChart from './HDXMultiSeriesTimeChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import type { Alert, Chart, TimeChartSeries } from './types';
@@ -1161,7 +1161,7 @@ export const EditLineChartForm = ({
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
         <div style={{ height: 400 }}>
-          <HDXMultiSeriesLineChart
+          <HDXMultiSeriesTimeChart
             config={previewConfig}
             {...(alertEnabled && {
               alertThreshold: editedAlert?.threshold,

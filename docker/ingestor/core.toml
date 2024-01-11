@@ -635,6 +635,24 @@ if is_object(.r) {
   .b.process = tmp_process
   .b.__events = .r.logs
 
+  # TODO: maybe we want to move "tag" to the root level
+  # extract k8s tags
+  if !is_nullish(.b.process.tag."k8s.pod.name") {
+    .b."k8s.pod.name" = del(.b.process.tag."k8s.pod.name")
+  }
+  if !is_nullish(.b.process.tag."k8s.pod.uid") {
+    .b."k8s.pod.uid" = del(.b.process.tag."k8s.pod.uid")
+  }
+  if !is_nullish(.b.process.tag."k8s.namespace.name") {
+    .b."k8s.namespace.name" = del(.b.process.tag."k8s.namespace.name")
+  }
+  if !is_nullish(.b.process.tag."k8s.node.name") {
+    .b."k8s.node.name" = del(.b.process.tag."k8s.node.name")
+  }
+  if !is_nullish(.b.process.tag."k8s.deployment.name") {
+    .b."k8s.deployment.name" = del(.b.process.tag."k8s.deployment.name")
+  }
+
   if (.b."span.kind" == "server") {
     if (exists(.b."http.status_code") && exists(.b."http.method") && exists(.b."http.route")) {
       .b._hdx_body = join([
@@ -705,6 +723,20 @@ if is_object(.r) {
   del(.authorization)
   del(.hdx_content_type)
 }
+'''
+
+[transforms.post_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
+'''
+
+[transforms.go_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
 '''
 # --------------------------------------------------------------------------------
 

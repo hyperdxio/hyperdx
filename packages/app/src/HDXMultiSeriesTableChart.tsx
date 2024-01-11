@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Flex, Text } from '@mantine/core';
 import {
@@ -35,65 +35,92 @@ const Table = ({
     displayName: string;
     sortOrder?: 'asc' | 'desc';
     numberFormat?: NumberFormat;
+    columnWidthPercent?: number;
+    visible?: boolean;
   }[];
   groupColumnName: string;
   getRowSearchLink?: (row: any) => string;
   onSortClick?: (columnNumber: number) => void;
 }) => {
+  const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const tableWidth = tableContainerRef.current?.clientWidth;
-  const numColumns = columns.length + 1;
+  const numColumns = columns.filter(c => c.visible !== false).length + 1;
+  const dataColumnsWidthPerc = columns
+    .filter(c => c.visible !== false)
+    .map(({ columnWidthPercent }) =>
+      Math.max(
+        tableWidth != null ? (MIN_COLUMN_WIDTH_PX / tableWidth) * 100 : 0,
+        columnWidthPercent ?? (1 / numColumns) * 100,
+      ),
+    );
+
+  const labelColumnWidthPercent = Math.min(
+    100 - dataColumnsWidthPerc.reduce((a, b) => a + b, 0),
+    75,
+  );
+
   const reactTableColumns: ColumnDef<any>[] = [
     {
       accessorKey: 'group',
       header: groupColumnName,
-      size: tableWidth != null ? tableWidth / numColumns : 200,
-    },
-    ...columns.map(({ dataKey, displayName, numberFormat }, i) => ({
-      accessorKey: dataKey,
-      header: displayName,
-      accessorFn: (row: any) => row[dataKey],
-      cell: ({
-        getValue,
-        row,
-      }: {
-        getValue: Getter<number>;
-        row: Row<any>;
-      }) => {
-        const value = getValue();
-        let formattedValue: string | number | null = value ?? null;
-        if (numberFormat) {
-          formattedValue = formatNumber(value, numberFormat);
-        }
-        if (getRowSearchLink == null) {
-          return formattedValue;
-        }
-
-        return (
-          <Link href={getRowSearchLink(row.original)} passHref>
-            <a
-              className={'align-top overflow-hidden py-1 pe-3'}
-              style={{
-                display: 'block',
-                color: 'inherit',
-                textDecoration: 'none',
-              }}
-            >
-              {formattedValue}
-            </a>
-          </Link>
-        );
-      },
       size:
-        i === columns.length - 1
-          ? UNDEFINED_WIDTH
-          : tableWidth != null
-          ? tableWidth / numColumns
+        tableWidth != null
+          ? Math.max(tableWidth * (labelColumnWidthPercent / 100), 100)
           : 200,
-      enableResizing: i !== columns.length - 1,
-    })),
+    },
+    ...columns
+      .filter(c => c.visible !== false)
+      .map(({ dataKey, displayName, numberFormat, columnWidthPercent }, i) => ({
+        accessorKey: dataKey,
+        header: displayName,
+        accessorFn: (row: any) => row[dataKey],
+        cell: ({
+          getValue,
+          row,
+        }: {
+          getValue: Getter<number>;
+          row: Row<any>;
+        }) => {
+          const value = getValue();
+          let formattedValue: string | number | null = value ?? null;
+          if (numberFormat) {
+            formattedValue = formatNumber(value, numberFormat);
+          }
+          if (getRowSearchLink == null) {
+            return formattedValue;
+          }
+
+          return (
+            <Link href={getRowSearchLink(row.original)} passHref>
+              <a
+                className={'align-top overflow-hidden py-1 pe-3'}
+                style={{
+                  display: 'block',
+                  color: 'inherit',
+                  textDecoration: 'none',
+                }}
+              >
+                {formattedValue}
+              </a>
+            </Link>
+          );
+        },
+        size:
+          i === numColumns - 2
+            ? UNDEFINED_WIDTH
+            : tableWidth != null && columnWidthPercent != null
+            ? Math.max(
+                tableWidth * (columnWidthPercent / 100),
+                MIN_COLUMN_WIDTH_PX,
+              )
+            : tableWidth != null
+            ? tableWidth / numColumns
+            : 200,
+        enableResizing: i !== numColumns - 2,
+      })),
   ];
 
   const table = useReactTable({
@@ -115,17 +142,18 @@ const Table = ({
   });
 
   const items = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
 
-  const [paddingTop, paddingBottom] =
-    items.length > 0
-      ? [
-          Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
-          Math.max(
-            0,
-            rowVirtualizer.getTotalSize() - items[items.length - 1].end,
-          ),
-        ]
-      : [0, 0];
+  const [paddingTop, paddingBottom] = useMemo(
+    () =>
+      items.length > 0
+        ? [
+            Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
+            Math.max(0, totalSize - items[items.length - 1].end),
+          ]
+        : [0, 0],
+    [items, rowVirtualizer.options.scrollMargin, totalSize],
+  );
 
   return (
     <div
@@ -227,7 +255,7 @@ const Table = ({
               >
                 {row.getVisibleCells().map(cell => {
                   return (
-                    <td key={cell.id}>
+                    <td key={cell.id} title={`${cell.getValue()}`}>
                       {getRowSearchLink == null ? (
                         <div className="align-top overflow-hidden py-1 pe-3">
                           {flexRender(
@@ -303,7 +331,9 @@ const HDXMultiSeriesTableChart = memo(
       (row: { group: string }) => {
         return `/search?${seriesToUrlSearchQueryParam({
           series,
-          groupByValue: row.group ? `"${row.group}"` : undefined,
+          groupByValue: row.group
+            ? `"${`${row.group}`.replace(/"/g, '\\"')}"`
+            : undefined,
           dateRange,
         })}`;
       },

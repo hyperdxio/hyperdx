@@ -1,9 +1,10 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
+import { FloatingPosition } from '@mantine/core/lib/Floating';
 
 import api from './api';
-import { Granularity, MS_NUMBER_FORMAT } from './ChartUtils';
+import { Granularity, MS_NUMBER_FORMAT, seriesColumns } from './ChartUtils';
 import type { ChartSeries, NumberFormat } from './types';
 import { formatNumber, semanticKeyedColor } from './utils';
 
@@ -13,12 +14,14 @@ function ListItem({
   color,
   percent,
   hoverCardContent,
+  hoverCardPosition = 'right',
 }: {
   title: string;
   value: string;
   color: string;
   percent: number;
   hoverCardContent?: React.ReactNode;
+  hoverCardPosition?: FloatingPosition;
 }) {
   const item = (
     <Box>
@@ -39,7 +42,12 @@ function ListItem({
     </Box>
   );
   return hoverCardContent ? (
-    <HoverCard width={280} shadow="md" position="right" withinPortal>
+    <HoverCard
+      width={380}
+      shadow="md"
+      position={hoverCardPosition}
+      withinPortal
+    >
       <HoverCard.Target>{item}</HoverCard.Target>
       <HoverCard.Dropdown>{hoverCardContent}</HoverCard.Dropdown>
     </HoverCard>
@@ -57,13 +65,17 @@ function ListBar({
   rows,
   getRowSearchLink,
   columns,
+  hoverCardPosition,
 }: {
   rows: Row[];
   getRowSearchLink?: (row: Row) => string;
   columns: {
+    dataKey: `series_${number}.data`;
     displayName: string;
     numberFormat?: NumberFormat;
+    visible?: boolean;
   }[];
+  hoverCardPosition?: FloatingPosition;
 }) {
   const values = (rows ?? []).map(row => row['series_0.data']);
   const maxValue = Math.max(...values);
@@ -81,23 +93,31 @@ function ListBar({
           columns.length > 0 ? (
             <Box>
               <Box mb="xs">
-                <Text fw="bold">{group}</Text>
+                <Text
+                  size="xs"
+                  style={{ overflowWrap: 'anywhere' }}
+                  lineClamp={4}
+                >
+                  {group}
+                </Text>
               </Box>
-              {columns.map((column, i) => {
-                const value = row[`series_${i}.data`];
-                return (
-                  <Box key={column.displayName} mb="xs">
-                    <Text size="xs" weight={500} span>
-                      {column.displayName}:{' '}
-                    </Text>
-                    <Text size="xs" span>
-                      {column.numberFormat != null
-                        ? formatNumber(value, column.numberFormat) ?? 'N/A'
-                        : value}
-                    </Text>
-                  </Box>
-                );
-              })}
+              {columns
+                .filter(c => c.visible !== false)
+                .map(column => {
+                  const value = row[column.dataKey];
+                  return (
+                    <Box key={column.displayName}>
+                      <Text size="xs" weight={500} span>
+                        {column.displayName}:{' '}
+                      </Text>
+                      <Text size="xs" span>
+                        {column.numberFormat != null
+                          ? formatNumber(value, column.numberFormat) ?? 'N/A'
+                          : value}
+                      </Text>
+                    </Box>
+                  );
+                })}
             </Box>
           ) : null;
 
@@ -118,6 +138,7 @@ function ListBar({
                 color={semanticKeyedColor(group)}
                 percent={percentOfMax}
                 hoverCardContent={hoverCardContent}
+                hoverCardPosition={hoverCardPosition}
               />
             </Box>
           </Link>
@@ -129,6 +150,7 @@ function ListBar({
               color={semanticKeyedColor(group)}
               percent={percentOfMax}
               hoverCardContent={hoverCardContent}
+              hoverCardPosition={hoverCardPosition}
             />
           </Box>
         );
@@ -141,9 +163,10 @@ const HDXListBarChart = memo(
   ({
     config: { series, seriesReturnType = 'column', dateRange },
     getRowSearchLink,
+    hoverCardPosition,
   }: {
     config: {
-      series: [ChartSeries];
+      series: ChartSeries[];
       granularity: Granularity;
       dateRange: [Date, Date];
       seriesReturnType?: 'ratio' | 'column';
@@ -152,6 +175,7 @@ const HDXListBarChart = memo(
     };
     onSettled?: () => void;
     getRowSearchLink?: (row: Row) => string;
+    hoverCardPosition?: FloatingPosition;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart({
       series,
@@ -176,7 +200,12 @@ const HDXListBarChart = memo(
       </div>
     ) : (
       <Box className="overflow-auto" h="100%">
-        <ListBar rows={rows} getRowSearchLink={getRowSearchLink} columns={[]} />
+        <ListBar
+          rows={rows}
+          getRowSearchLink={getRowSearchLink}
+          columns={seriesColumns({ series, seriesReturnType: 'column' })}
+          hoverCardPosition={hoverCardPosition}
+        />
       </Box>
     );
   },
@@ -240,27 +269,35 @@ export const HDXSpanPerformanceBarChart = memo(
             {
               displayName: 'Total Time Spent',
               numberFormat: MS_NUMBER_FORMAT,
+              dataKey: 'series_0.data',
+              visible: false,
             },
             {
               displayName: 'Number of Calls',
+              dataKey: 'series_1.data',
             },
             {
               displayName: 'Average Duration',
               numberFormat: MS_NUMBER_FORMAT,
+              dataKey: 'series_2.data',
             },
             {
               displayName: 'Min Duration',
               numberFormat: MS_NUMBER_FORMAT,
+              dataKey: 'series_3.data',
             },
             {
               displayName: 'Max Duration',
               numberFormat: MS_NUMBER_FORMAT,
+              dataKey: 'series_4.data',
             },
             {
               displayName: 'Number of Requests',
+              dataKey: 'series_5.data',
             },
             {
               displayName: 'Calls per Request',
+              dataKey: 'series_6.data',
             },
           ]}
         />

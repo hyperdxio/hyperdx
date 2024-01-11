@@ -11,8 +11,8 @@ import {
 import { getTeam } from '@/controllers/team';
 import Alert from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
-import { IDashboard } from '@/models/dashboard';
-import { ILogView } from '@/models/logView';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import LogView, { ILogView } from '@/models/logView';
 
 const router = express.Router();
 
@@ -82,7 +82,27 @@ router.get('/', async (req, res, next) => {
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    const alerts = await Alert.find({ team: teamId }).populate<{
+
+    // TODO: to use team field in the alert model
+    const [dashboards, logViews] = await Promise.all([
+      Dashboard.find({ team: teamId }, { _id: 1 }),
+      LogView.find({ team: teamId }, { _id: 1 }),
+    ]);
+
+    const alerts = await Alert.find({
+      $or: [
+        {
+          logView: {
+            $in: logViews.map(logView => logView._id),
+          },
+        },
+        {
+          dashboardId: {
+            $in: dashboards.map(dashboard => dashboard._id),
+          },
+        },
+      ],
+    }).populate<{
       logView: ILogView;
       dashboardId: IDashboard;
     }>(['logView', 'dashboardId']);
@@ -92,7 +112,6 @@ router.get('/', async (req, res, next) => {
         const history = await AlertHistory.find(
           {
             alert: alert._id,
-            team: teamId,
           },
           {
             __v: 0,
@@ -105,16 +124,30 @@ router.get('/', async (req, res, next) => {
 
         return {
           history,
-          dashboard: alert.dashboardId,
+          channel: _.pick(alert.channel, ['type']),
+          ...(alert.dashboardId && {
+            dashboard: {
+              charts: alert.dashboardId.charts
+                .filter(chart => chart.id === alert.chartId)
+                .map(chart => _.pick(chart, ['id', 'name'])),
+              ..._.pick(alert.dashboardId, ['_id', 'name', 'updatedAt']),
+            },
+          }),
+          ...(alert.logView && {
+            logView: _.pick(alert.logView, [
+              '_id',
+              'createdAt',
+              'name',
+              'updatedAt',
+            ]),
+          }),
           ..._.pick(alert, [
             '_id',
-            'channel',
             'interval',
             'threshold',
             'state',
             'type',
             'source',
-            'logView',
             'chartId',
             'createdAt',
             'updatedAt',
@@ -135,10 +168,14 @@ router.post(
   validateRequest({ body: zAlert }),
   validateGroupBy,
   async (req, res, next) => {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
     try {
       const alertInput = req.body;
       return res.json({
-        data: await createAlert(alertInput),
+        data: await createAlert(teamId, alertInput),
       });
     } catch (e) {
       next(e);
@@ -152,10 +189,14 @@ router.put(
   validateGroupBy,
   async (req, res, next) => {
     try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
       const { id } = req.params;
       const alertInput = req.body;
       res.json({
-        data: await updateAlert(id, alertInput),
+        data: await updateAlert(id, teamId, alertInput),
       });
     } catch (e) {
       next(e);
@@ -173,6 +214,7 @@ router.delete('/:id', async (req, res, next) => {
     if (!alertId) {
       return res.sendStatus(400);
     }
+    // FIXME: should add teamId to the find query
     await Alert.findByIdAndDelete(alertId);
     res.sendStatus(200);
   } catch (e) {
