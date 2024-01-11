@@ -1639,6 +1639,7 @@ FROM ??
 WHERE 
   (?)
   AND trace_id IN (SELECT trace_id FROM trace_ids)
+  AND _duration >= 0
 GROUP BY "group"
 ORDER BY "series_0.data" DESC
 LIMIT ?`,

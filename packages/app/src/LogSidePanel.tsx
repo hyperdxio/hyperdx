@@ -2813,7 +2813,7 @@ export default function LogSidePanel({
 
                 {/* Metrics */}
                 {displayedTab === 'metrics' ? (
-                  <div className="px-4 overflow-auto">
+                  <div className="px-4 flex-grow-1 overflow-auto">
                     <MetricsSubpanel logData={logData} />
                   </div>
                 ) : null}
