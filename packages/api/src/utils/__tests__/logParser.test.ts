@@ -124,23 +124,6 @@ describe('logParser', () => {
   });
 
   describe('convertToStringMap', () => {
-    // export const convertToStringMap = (obj: JSONBlob) => {
-    //   const mapped = mapObjectToKeyValuePairs(obj);
-    //   const converted_string_attrs: Record<string, string> = {};
-    //   for (let i = 0; i < mapped['string.names'].length; i++) {
-    //     converted_string_attrs[mapped['string.names'][i]] = mapped['string.values'][i];
-    //   }
-    //   // at least nominally metrics should not have bool or number attributes, but we will
-    //   // handle and append them here just in case
-    //   for (let i = 0; i < mapped['number.names'].length; i++) {
-    //     converted_string_attrs[mapped['number.names'][i]] = mapped['number.values'][i].toString();
-    //   }
-    //   for (let i = 0; i < mapped['bool.names'].length; i++) {
-    //     converted_string_attrs[mapped['bool.names'][i]] = mapped['bool.values'][i].toString();
-    //   }
-    //   return converted_string_attrs;;
-    // }
-
     it('converts non string values to strings', () => {
       expect(
         convertToStringMap({
