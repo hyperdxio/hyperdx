@@ -19,7 +19,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
-const DB_STATEMENT_PROPERTY = 'db.statement';
+const DB_STATEMENT_PROPERTY = 'db.normalized_statement';
 
 export default function DBQuerySidePanel() {
   const [service] = useQueryParam('service', withDefault(StringParam, ''), {
