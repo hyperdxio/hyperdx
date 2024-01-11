@@ -109,6 +109,10 @@ export default function PodDetailsSidePanel() {
     ],
   });
 
+  if (!podName) {
+    return null;
+  }
+
   return (
     <Drawer
       enableOverlay
