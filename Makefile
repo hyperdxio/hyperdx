@@ -66,7 +66,7 @@ build-local:
 	docker build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
 	docker build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
 	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
-	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser --target prod &
+	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
@@ -89,7 +89,7 @@ release:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod --push &
 	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod --push &
-	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser --target prod --push &
+	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser --push &
 	docker buildx build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
