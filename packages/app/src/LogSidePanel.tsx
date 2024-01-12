@@ -2302,7 +2302,7 @@ const ExceptionSubpanel = ({
 
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 
-const MetricsSubpanelGroup = ({
+const InfraSubpanelGroup = ({
   timestamp,
   where,
   fieldPrefix,
@@ -2442,7 +2442,7 @@ const MetricsSubpanelGroup = ({
   );
 };
 
-const MetricsSubpanel = ({ logData }: { logData?: any }) => {
+const InfraSubpanel = ({ logData }: { logData?: any }) => {
   const podUid = useMemo(() => {
     return (
       logData?.['string.values']?.[
@@ -2471,8 +2471,8 @@ const MetricsSubpanel = ({ logData }: { logData?: any }) => {
     <Stack my="md" spacing={40}>
       {podUid && (
         <div>
-          <MetricsSubpanelGroup
-            title="Pod Metrics"
+          <InfraSubpanelGroup
+            title="Pod"
             where={`k8s.pod.uid:"${podUid}"`}
             fieldPrefix="k8s.pod."
             timestamp={timestamp}
@@ -2506,8 +2506,8 @@ const MetricsSubpanel = ({ logData }: { logData?: any }) => {
         </div>
       )}
       {nodeName && (
-        <MetricsSubpanelGroup
-          title="Node Metrics"
+        <InfraSubpanelGroup
+          title="Node"
           where={`k8s.node.name:"${nodeName}"`}
           fieldPrefix="k8s.node."
           timestamp={timestamp}
@@ -2711,8 +2711,8 @@ export default function LogSidePanel({
                   ...(K8S_METRICS_ENABLED && hasK8sContext
                     ? ([
                         {
-                          text: 'Metrics',
-                          value: 'metrics',
+                          text: 'Infrastructure',
+                          value: 'infrastructure',
                         },
                       ] as const)
                     : []),
@@ -2811,10 +2811,10 @@ export default function LogSidePanel({
                   </div>
                 ) : null}
 
-                {/* Metrics */}
-                {displayedTab === 'metrics' ? (
+                {/* Infrastructure */}
+                {displayedTab === 'infrastructure' ? (
                   <div className="px-4 flex-grow-1 overflow-auto">
-                    <MetricsSubpanel logData={logData} />
+                    <InfraSubpanel logData={logData} />
                   </div>
                 ) : null}
               </ErrorBoundary>
