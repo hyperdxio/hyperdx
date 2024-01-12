@@ -48,6 +48,7 @@ services:
       - 8002:8002 # http-generic
       - 8686:8686 # healthcheck
     environment:
+      ENABLE_GO_PARSER: 'false'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
       VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
