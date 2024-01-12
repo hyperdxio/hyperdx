@@ -955,7 +955,14 @@ export const buildMetricSeriesQuery = async ({
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else {
-    logger.error(`Unsupported data type: ${dataType}`);
+    if (dataType === MetricsDataType.Histogram) {
+      if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+        throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+      }
+      selectClause.push(`max(value) as data`);
+    } else {
+      logger.error(`Unsupported data type (994): ${dataType} `);
+    }
   }
 
   const startTimeUnixTs = Math.floor(startTime / 1000);
@@ -1017,6 +1024,41 @@ export const buildMetricSeriesQuery = async ({
     ],
   );
 
+  const quantile =
+    aggFn === AggFn.P50
+      ? '0.5'
+      : aggFn === AggFn.P90
+      ? '0.90'
+      : aggFn === AggFn.P95
+      ? '0.95'
+      : '0.99';
+
+  const histogramMetricSource = SqlString.format(
+    `SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+        name,
+        quantileTimingWeighted(${quantile})
+        (
+          /* this comes in as a string either with the max value for the bucket or '+Inf' */
+          toUInt64OrDefault(??._string_attributes['le'], 18446744073709551614), /* 2^64 - 2 */
+          toUInt64(value) /* would normally be a Float64 */
+        ) as value,
+        mapFilter((k, v) -> (k != 'le'), _string_attributes) as _string_attributes
+      FROM ??
+      where name = ?
+      AND data_type = 'Histogram'
+      AND (?)
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY timestamp ASC`.trim(),
+    [granularity, tableName, tableName, name, SqlString.raw(whereClause)],
+  );
+
+  const source =
+    dataType === 'Histogram'
+      ? histogramMetricSource
+      : isRate
+      ? rateMetricSource
+      : gaugeMetricSource;
   const query = SqlString.format(
     `
       WITH metrics AS (?)
@@ -1034,7 +1076,7 @@ export const buildMetricSeriesQuery = async ({
       }
     `,
     [
-      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
+      SqlString.raw(source),
       SqlString.raw(selectClause.join(',')),
       ...(granularity != null
         ? [
