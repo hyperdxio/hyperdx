@@ -1,0 +1,45 @@
+@import './variables';
+
+.list {
+  background-color: #00000030;
+  border-top: 1px solid $slate-950;
+  border-bottom: 1px solid $slate-950;
+  overflow-x: hidden;
+  max-width: 100%;
+  padding: 4px 16px;
+  padding-bottom: 10px;
+}
+
+.listGroupName {
+  color: $slate-400;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-top: 12px;
+  padding-left: 16px;
+}
+
+.listLink {
+  display: flex;
+  justify-content: space-between;
+  text-decoration: none;
+  color: $slate-300;
+  font-size: 13px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 16px;
+  gap: 10px;
+  &:hover {
+    color: $slate-100;
+  }
+  // 'd-flex justify-content-between ms-3 mt-2 cursor-pointer text-decoration-none',
+}
+
+.listLinkActive {
+  color: $slate-100;
+  font-weight: 500;
+}

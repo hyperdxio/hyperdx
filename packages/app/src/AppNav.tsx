@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import { Button } from 'react-bootstrap';
-import { useQueryClient } from 'react-query';
 import {
   NumberParam,
   StringParam,
@@ -12,6 +11,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
+import { Button as MButton, CloseButton, Input } from '@mantine/core';
 
 import { version } from '../package.json';
 
@@ -20,7 +20,9 @@ import AuthLoadingBlocker from './AuthLoadingBlocker';
 import { API_SERVER_URL, SERVICE_DASHBOARD_ENABLED } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
-import { useWindowSize } from './utils';
+import { useLocalStorage, useWindowSize } from './utils';
+
+import styles from '../styles/AppNav.module.scss';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',
@@ -369,15 +371,12 @@ function PresetDashboardLink({
       href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
     >
       <a
-        className={cx(
-          'd-block ms-3 mt-2 cursor-pointer text-decoration-none text-muted-hover',
-          {
-            'text-success fw-bold':
-              query.config === JSON.stringify(config) &&
-              query.dashboardId == null,
-            'text-muted-hover': query.config !== JSON.stringify(config),
-          },
-        )}
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]:
+            query.config === JSON.stringify(config) &&
+            query.dashboardId == null,
+          'text-muted-hover': query.config !== JSON.stringify(config),
+        })}
       >
         {name}
       </a>
@@ -413,11 +412,9 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
       ).toString()}`}
     >
       <a
-        className={cx('d-block ms-3 mt-2 cursor-pointer text-decoration-none', {
-          'text-success fw-bold':
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]:
             routerQuery.savedSearchId == null && searchedQuery === query,
-          'text-muted-hover':
-            routerQuery.savedSearchId != null || searchedQuery !== query,
         })}
       >
         {name}
@@ -474,10 +471,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const [isSearchExpanded, setIsSearchExpanded] = useState(true);
-  const [isDashboardsExpanded, setIsDashboardExpanded] = useState(true);
-
+  const [isSearchExpanded, setIsSearchExpanded] = useLocalStorage(
+    'isSearchExpanded',
+    true,
+  );
+  const [isDashboardsExpanded, setIsDashboardExpanded] = useLocalStorage(
+    'isDashboardsExpanded',
+    true,
+  );
   const { width } = useWindowSize();
+
   const [isPreferCollapsed, setIsPreferCollapsed] = useState<
     undefined | boolean
   >(undefined);
@@ -485,7 +488,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const isSmallScreen = (width ?? 1000) < 900;
   const isCollapsed = isPreferCollapsed ?? isSmallScreen;
 
-  const navWidth = isCollapsed ? 50 : 220;
+  const navWidth = isCollapsed ? 50 : 230;
 
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
 
@@ -514,6 +517,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         : 'ok' // All alerts are green
       : 'none'; // No alerts are set up
 
+  const [searchesListQ, setSearchesListQ] = useState('');
+  const [dashboardsListQ, setDashboardsListQ] = useState('');
+
+  const filteredSearchesList = useMemo(() => {
+    if (searchesListQ === '') {
+      return logViews;
+    }
+    return logViews.filter(lv =>
+      lv.name.toLocaleLowerCase().includes(searchesListQ.toLocaleLowerCase()),
+    );
+  }, [logViews, searchesListQ]);
+
+  const filteredDashboardsList = useMemo(() => {
+    if (dashboardsListQ === '') {
+      return dashboards;
+    }
+    return dashboards.filter((d: any) =>
+      d.name.toLocaleLowerCase().includes(dashboardsListQ.toLocaleLowerCase()),
+    );
+  }, [dashboards, dashboardsListQ]);
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -532,10 +556,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               }
             : {}),
         }}
-        className="p-3 border-end border-dark d-flex flex-column justify-content-between"
+        className="border-end border-dark d-flex flex-column justify-content-between"
       >
         <div>
-          <div className="d-flex flex-wrap justify-content-between align-items-center">
+          <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
             <Link href="/search">
               <a className="text-decoration-none">
                 {isCollapsed ? (
@@ -559,11 +583,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </Button>
           </div>
           <div className="mt-5">
-            <div className="d-flex align-items-center justify-content-between mb-2">
+            <div className="px-3 d-flex align-items-center justify-content-between mb-2">
               <Link href="/search">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'text-success fw-bold':
                         pathname.includes('/search') &&
@@ -575,7 +599,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-layout-text-sidebar-reverse" />{' '}
+                    <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
                     {!isCollapsed && <span>Search</span>}
                   </span>
                 </a>
@@ -592,15 +616,33 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               )}
             </div>
-            {isSearchExpanded && !isCollapsed && (
-              <>
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">
-                  SAVED SEARCHES
-                </div>
-                {(logViews ?? []).length === 0 ? (
-                  <div className="text-muted ms-3 mt-2">No saved searches</div>
+            {!isCollapsed && isSearchExpanded && (
+              <div className={styles.list}>
+                <Input
+                  placeholder="Saved Searches"
+                  variant="unstyled"
+                  radius="xl"
+                  size="xs"
+                  icon={<i className="bi bi-search fs-8 ps-1" />}
+                  rightSection={
+                    searchesListQ && (
+                      <CloseButton
+                        size="xs"
+                        radius="xl"
+                        onClick={() => setSearchesListQ('')}
+                      />
+                    )
+                  }
+                  value={searchesListQ}
+                  onChange={e => setSearchesListQ(e.currentTarget.value)}
+                />
+
+                {logViews.length === 0 ? (
+                  <div className="text-slate-300 fs-8 p-2 px-3">
+                    No saved searches
+                  </div>
                 ) : null}
-                {(logViews ?? []).map(lv => (
+                {filteredSearchesList.map(lv => (
                   <Link
                     href={`/search/${lv._id}?${new URLSearchParams(
                       timeRangeQuery.from != -1 && timeRangeQuery.to != -1
@@ -615,12 +657,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   >
                     <a
                       className={cx(
-                        'd-flex justify-content-between ms-3 mt-2 cursor-pointer text-decoration-none',
-                        {
-                          'text-success fw-bold':
-                            lv._id === query.savedSearchId,
-                          'text-muted-hover': lv._id !== query.savedSearchId,
-                        },
+                        styles.listLink,
+                        lv._id === query.savedSearchId && styles.listLinkActive,
                       )}
                       title={lv.name}
                     >
@@ -643,7 +681,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     </a>
                   </Link>
                 ))}
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">PRESETS</div>
+                {searchesListQ && filteredSearchesList.length === 0 ? (
+                  <div className="text-slate-400 ms-3 mt-1 fs-8">
+                    No results matching <i>{searchesListQ}</i>
+                  </div>
+                ) : null}
+                <div className={styles.listGroupName}>PRESETS</div>
                 <PresetSearchLink
                   query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
                   name="All Error Events"
@@ -652,7 +695,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   query="http.status_code:>=400"
                   name="HTTP Status >= 400"
                 />
-              </>
+              </div>
             )}
             {/* <Link href="/search">
           <a
@@ -668,52 +711,52 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             Live Tail
           </a>
         </Link> */}
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/chart">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/chart'),
                     },
                   )}
                 >
                   <span>
-                    <i className="bi bi-graph-up" />{' '}
+                    <i className="bi bi-graph-up pe-1" />{' '}
                     {!isCollapsed && <span>Chart Explorer</span>}
                   </span>
                 </a>
               </Link>
             </div>
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/sessions">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/sessions'),
                     },
                   )}
                 >
                   <span>
-                    <i className="bi bi-laptop" />{' '}
+                    <i className="bi bi-laptop pe-1" />{' '}
                     {!isCollapsed && <span>Client Sessions</span>}
                   </span>
                 </a>
               </Link>
             </div>
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/alerts">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/alerts'),
                     },
                   )}
                 >
                   <div>
-                    <i className="bi bi-bell" />{' '}
+                    <i className="bi bi-bell pe-1" />{' '}
                     {!isCollapsed && (
                       <div className="d-inline-flex align-items-center">
                         <span>Alerts</span>
@@ -745,18 +788,18 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Link>
             </div>
             {SERVICE_DASHBOARD_ENABLED ? (
-              <div className="my-4">
+              <div className="px-3 my-3">
                 <Link href="/services">
                   <a
                     className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                       {
                         'fw-bold text-success': pathname.includes('/services'),
                       },
                     )}
                   >
                     <span>
-                      <i className="bi bi-heart-pulse" />{' '}
+                      <i className="bi bi-heart-pulse pe-1" />{' '}
                       {!isCollapsed && <span>Service Health</span>}
                     </span>
                   </a>
@@ -766,16 +809,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <div>
               <div
                 className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted mb-2',
+                  'px-3 text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted mb-2',
                   {
                     'fw-bold': pathname.includes('/dashboard'),
                   },
                 )}
               >
                 <Link href="/dashboards">
-                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover">
+                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover">
                     <span>
-                      <i className="bi bi-grid-1x2" />{' '}
+                      <i className="bi bi-grid-1x2 pe-1" />{' '}
                       {!isCollapsed && <span>Dashboards</span>}
                     </span>
                   </a>
@@ -793,12 +836,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               </div>
             </div>
-            {isDashboardsExpanded && !isCollapsed && (
-              <>
+            {!isCollapsed && isDashboardsExpanded && (
+              <div className={styles.list}>
                 <Link href="/dashboards">
                   <a
                     className={cx(
-                      'd-block ms-3 mt-2 cursor-pointer text-decoration-none',
+                      styles.listLink,
                       pathname.includes('/dashboard') &&
                         query.dashboardId == null &&
                         query.config !=
@@ -808,41 +851,54 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         query.config !=
                           JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
                         query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                        ? 'text-success fw-bold'
-                        : 'text-muted-hover',
+                        ? [styles.listLinkActive]
+                        : null,
                     )}
                   >
-                    <i className="bi bi-plus me-2" />
-                    New Dashboard
+                    <div className="my-1">
+                      <i className="bi bi-plus me-2" />
+                      New Dashboard
+                    </div>
                   </a>
                 </Link>
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">
-                  SAVED DASHBOARDS
-                </div>
-                {(dashboards ?? []).length === 0 ? (
-                  <div className="text-muted ms-3 mt-2">0 saved dashboards</div>
+                <Input
+                  placeholder="Saved Dashboards"
+                  variant="unstyled"
+                  size="xs"
+                  ml={4}
+                  icon={<i className="bi bi-search fs-8 ps-1" />}
+                  rightSection={
+                    dashboardsListQ && (
+                      <CloseButton
+                        size="xs"
+                        onClick={() => setDashboardsListQ('')}
+                      />
+                    )
+                  }
+                  value={dashboardsListQ}
+                  onChange={e => setDashboardsListQ(e.currentTarget.value)}
+                />
+                {dashboards.length === 0 ? (
+                  <div className="text-slate-300 fs-8 p-2 px-3">
+                    No saved dashboards
+                  </div>
                 ) : null}
-                {(dashboards ?? []).map((dashboard: any) => (
+                {filteredDashboardsList.map((dashboard: any) => (
                   <Link
                     href={`/dashboards/${dashboard._id}`}
                     key={dashboard._id}
                   >
                     <a
-                      className={cx(
-                        'd-block ms-3 mt-2 cursor-pointer text-decoration-none',
-                        {
-                          'text-success fw-bold':
-                            dashboard._id === query.dashboardId,
-                          'text-muted-hover':
-                            dashboard._id !== query.dashboardId,
-                        },
-                      )}
+                      className={cx(styles.listLink, {
+                        [styles.listLinkActive]:
+                          dashboard._id === query.dashboardId,
+                      })}
                     >
                       {dashboard.name}
                     </a>
                   </Link>
                 ))}
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">PRESETS</div>
+                <div className={styles.listGroupName}>PRESETS</div>
                 <PresetDashboardLink
                   query={query}
                   config={HYPERDX_USAGE_DASHBOARD_CONFIG}
@@ -868,24 +924,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   config={MONGO_DASHBOARD_CONFIG}
                   name="Mongo"
                 />
-              </>
+              </div>
             )}
           </div>
         </div>
         {!isCollapsed && (
           <>
-            <div className="mb-2 mt-4">
+            <div className="px-3 mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-                <span className="">Ready to use HyperDX Cloud?</span>
-                <div className="mt-3 mb-2">
+                <span className="text-slate-300 fs-8">
+                  Ready to use HyperDX Cloud?
+                </span>
+                <div className="mt-2 mb-2">
                   <Link href="https://www.hyperdx.io/register" passHref>
-                    <Button
-                      variant="outline-success"
-                      className="inter"
-                      size="sm"
-                    >
+                    <MButton variant="light" size="xs">
                       Get Started for Free
-                    </Button>
+                    </MButton>
                   </Link>
                 </div>
               </div>
