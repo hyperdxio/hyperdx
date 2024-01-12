@@ -13,6 +13,7 @@ import {
   Text,
 } from '@mantine/core';
 
+import { DrawerBody, DrawerHeader } from './components/DrawerUtils';
 import { KubeTimeline } from './components/KubeComponents';
 import api from './api';
 import {
@@ -173,6 +174,10 @@ export default function PodDetailsSidePanel() {
     ],
   });
 
+  const handleClose = React.useCallback(() => {
+    setPodName(undefined);
+  }, [setPodName]);
+
   if (!podName) {
     return null;
   }
@@ -183,19 +188,18 @@ export default function PodDetailsSidePanel() {
       overlayOpacity={0.1}
       duration={0}
       open={!!podName}
-      onClose={() => {
-        setPodName(undefined);
-      }}
+      onClose={handleClose}
       direction="right"
       size={'80vw'}
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
-          <Box p="md">
-            <Text size="md">Details for {podName}</Text>
-          </Box>
-          <Box className="w-100" px="sm">
+          <DrawerHeader
+            header={`Details for ${podName}`}
+            onClose={handleClose}
+          />
+          <DrawerBody>
             <Grid>
               <PodDetails podName={podName} dateRange={dateRange} />
               <Grid.Col span={6}>
@@ -268,7 +272,7 @@ export default function PodDetailsSidePanel() {
                 <PodLogs where={where} dateRange={dateRange} />
               </Grid.Col>
             </Grid>
-          </Box>
+          </DrawerBody>
         </div>
       </ZIndexContext.Provider>
     </Drawer>

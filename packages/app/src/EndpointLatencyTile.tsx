@@ -24,7 +24,7 @@ export default function EndpointLatencyTile({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py={5} withBorder>
         <Flex justify="space-between" align="center">
           <span>Request Latency</span>
           <Box>
