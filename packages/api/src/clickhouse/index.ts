@@ -1033,11 +1033,36 @@ export const buildMetricSeriesQuery = async ({
       ? '0.95'
       : '0.99';
 
+  const histogram_query_aggregate = `with
+      data as (
+          select 
+              toUInt64OrDefault(_string_attributes['le'], 10000000000) as le, 
+              * from ??
+          where data_type = 'Histogram' 
+              AND name=?
+              AND timestamp = ?
+          order by toUInt64OrDefault(le, 100000000000000)
+          ),
+      rank as (
+          select max(value)*0.9 as rank from data
+          ),
+      processed as (
+          select 
+              rank.rank - neighbor(data.value, -1, 0) as rank,
+              data.le as high_bound,
+              neighbor(data.le, -1, 0) as low_bound,
+              data.value - neighbor(data.value, -1, 0) as count
+          from data, rank
+          )
+      select low_bound + (high_bound - low_bound) * (rank / count) as interpolated_value 
+      from processed 
+      where count >= rank and count != 0;`;
+
   const histogramMetricSource = SqlString.format(
     `SELECT
         toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
         name,
-        quantileTimingWeighted(${quantile})
+        quantileInterpolatedWeighted(${quantile})
         (
           /* this comes in as a string either with the max value for the bucket or '+Inf' */
           toUInt64OrDefault(??._string_attributes['le'], 18446744073709551614), /* 2^64 - 2 */

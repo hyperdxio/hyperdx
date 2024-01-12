@@ -791,18 +791,14 @@ Array [
         is_delta: false,
         unit: '',
 
-        // OK this is a fun one. We want a histogram with a bunch of buckets
-        // but we need to make sure that the quantile value is some reasonable value
-        // So here's a distribution where the p50 is 50ms, p90 is 100ms, p99 is 200ms
+        // directly from the prometheus docs
+        // {le="100"}, {le="200"}, {le="300"}, and {le="400"}
+        // imagine all requests are 220ms
         points: [
-          { value: 10, timestamp: now, le: '10' },
-          { value: 20, timestamp: now, le: '30' },
-          { value: 25, timestamp: now, le: '50' },
-          { value: 15, timestamp: now, le: '100' },
-          { value: 5, timestamp: now, le: '200' },
-          { value: 0, timestamp: now, le: '300' },
-          { value: 0, timestamp: now, le: '500' },
-          { value: 0, timestamp: now, le: '1000' },
+          { value: 0, timestamp: now, le: '100' },
+          { value: 0, timestamp: now, le: '200' },
+          { value: 100, timestamp: now, le: '300' },
+          { value: 0, timestamp: now, le: '400' },
           { value: 0, timestamp: now, le: '+Inf' },
         ],
       }),
@@ -833,11 +829,13 @@ Array [
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
     });
 
+    // should be half of the 300ms bucket
+
     expect(singleHistogramSeriesDataP50).toMatchInlineSnapshot(`
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 50,
+    "series_0.data": 250,
     "ts_bucket": 1641340800,
   },
   Object {
@@ -873,11 +871,13 @@ Array [
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
     });
 
+    // should be 90% of the 300ms bucket
+
     expect(singleHistogramSeriesDataP90).toMatchInlineSnapshot(`
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 100,
+    "series_0.data": 290,
     "ts_bucket": 1641340800,
   },
   Object {
@@ -913,11 +913,13 @@ Array [
       return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
     });
 
+    // should be 99% of the 300ms bucket
+
     expect(singleHistogramSeriesDataP99).toMatchInlineSnapshot(`
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 200,
+    "series_0.data": 299,
     "ts_bucket": 1641340800,
   },
   Object {
