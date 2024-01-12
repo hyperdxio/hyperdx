@@ -3,6 +3,7 @@ import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { Box, Card, Grid, Text } from '@mantine/core';
 
+import { DrawerBody, DrawerHeader } from './components/DrawerUtils';
 import {
   convertDateRangeToGranularityString,
   INTEGER_NUMBER_FORMAT,
@@ -55,6 +56,10 @@ export default function DBQuerySidePanel() {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
+  const handleClose = React.useCallback(() => {
+    setDbQuery(undefined);
+  }, [setDbQuery]);
+
   if (!dbQuery) {
     return null;
   }
@@ -65,19 +70,18 @@ export default function DBQuerySidePanel() {
       overlayOpacity={0.1}
       duration={0}
       open={!!dbQuery}
-      onClose={() => {
-        setDbQuery(undefined);
-      }}
+      onClose={handleClose}
       direction="right"
       size={'80vw'}
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
-          <Box p="md">
-            <Text size="md">Details for {dbQuery}</Text>
-          </Box>
-          <Box className="w-100 overflow-auto" px="sm">
+          <DrawerHeader
+            header={`Details for ${dbQuery}`}
+            onClose={handleClose}
+          />
+          <DrawerBody>
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md">
@@ -152,7 +156,7 @@ export default function DBQuerySidePanel() {
                 />
               </Grid.Col>
             </Grid>
-          </Box>
+          </DrawerBody>
         </div>
       </ZIndexContext.Provider>
     </Drawer>
