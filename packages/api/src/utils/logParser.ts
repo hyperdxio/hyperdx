@@ -280,7 +280,7 @@ class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
 class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
   _parse(metric: VectorMetric): MetricModel {
     return {
-      _string_attributes: metric.b as any,
+      _string_attributes: metric.b as any, // TODO: fix conversion of metric.b to proper string map
       data_type: metric.dt,
       is_delta: metric.at === AggregationTemporality.Delta,
       is_monotonic: metric.im,
