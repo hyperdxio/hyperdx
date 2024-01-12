@@ -1,8 +1,9 @@
 import * as React from 'react';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { Box, Card, Grid, Text } from '@mantine/core';
+import { Card, Grid, Text } from '@mantine/core';
 
+import { DrawerBody, DrawerHeader } from './components/DrawerUtils';
 import {
   convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -53,6 +54,10 @@ export default function EndpointSidePanel() {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
+  const handleClose = React.useCallback(() => {
+    setEndpoint(undefined);
+  }, [setEndpoint]);
+
   if (!endpoint) {
     return null;
   }
@@ -63,19 +68,18 @@ export default function EndpointSidePanel() {
       overlayOpacity={0.1}
       duration={0}
       open={!!endpoint}
-      onClose={() => {
-        setEndpoint(undefined);
-      }}
+      onClose={handleClose}
       direction="right"
       size={'80vw'}
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
-          <Box p="md">
-            <Text size="md">Details for {endpoint}</Text>
-          </Box>
-          <Box className="w-100 overflow-auto" px="sm">
+          <DrawerHeader
+            header={`Details for ${endpoint}`}
+            onClose={handleClose}
+          />
+          <DrawerBody>
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md">
@@ -184,7 +188,7 @@ export default function EndpointSidePanel() {
                 />
               </Grid.Col>
             </Grid>
-          </Box>
+          </DrawerBody>
         </div>
       </ZIndexContext.Provider>
     </Drawer>

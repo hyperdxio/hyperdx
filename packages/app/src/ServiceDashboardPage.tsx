@@ -784,8 +784,8 @@ function EndpointTableCard({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
-        <Flex justify="space-between">
+      <Card.Section p="md" py={5} withBorder>
+        <Flex justify="space-between" align="center">
           Top 20{' '}
           {chartType === 'time' ? 'Most Time Consuming' : 'Highest Error Rate'}{' '}
           Endpoints
@@ -918,8 +918,8 @@ function RequestErrorRateCard({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
-        <Flex justify="space-between">
+      <Card.Section p="md" py={5} withBorder>
+        <Flex justify="space-between" align="center">
           Request Error Rate
           <SegmentedControl
             size="xs"
@@ -1045,8 +1045,8 @@ function DatabaseTimeConsumingQueryCard({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
-        <Flex justify="space-between">
+      <Card.Section p="md" py={5} withBorder>
+        <Flex justify="space-between" align="center">
           <Text>Top 20 Most Time Consuming Queries</Text>
           <Box>
             <Button.Group>
