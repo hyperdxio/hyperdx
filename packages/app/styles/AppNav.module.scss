@@ -15,7 +15,8 @@
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 1px;
-  margin-top: 12px;
+  margin-top: 16px;
+  margin-bottom: 6px;
   padding-left: 16px;
 }
 
@@ -36,10 +37,19 @@
   &:hover {
     color: $slate-100;
   }
-  // 'd-flex justify-content-between ms-3 mt-2 cursor-pointer text-decoration-none',
+}
+
+.listEmptyMsg {
+  color: $slate-400;
+  font-size: 12px;
+  margin: 12px 16px;
 }
 
 .listLinkActive {
-  color: $slate-100;
+  color: $green;
   font-weight: 500;
+
+  &:hover {
+    color: $green;
+  }
 }

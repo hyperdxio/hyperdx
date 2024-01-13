@@ -11,7 +11,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
-import { Button as MButton, CloseButton, Input } from '@mantine/core';
+import { Button as MButton, CloseButton, Input, Loader } from '@mantine/core';
 
 import { version } from '../package.json';
 
@@ -423,6 +423,64 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
   );
 }
 
+function SearchInput({
+  placeholder,
+  value,
+  onChange,
+}: {
+  placeholder: string;
+  value: string;
+  onChange: (arg0: string) => void;
+}) {
+  return (
+    <Input
+      placeholder={placeholder}
+      value={value}
+      onChange={e => onChange(e.currentTarget.value)}
+      icon={<i className="bi bi-search fs-8 ps-1" />}
+      rightSection={
+        value && (
+          <CloseButton size="xs" radius="xl" onClick={() => onChange('')} />
+        )
+      }
+      mt={8}
+      size="xs"
+      variant="filled"
+      radius="xl"
+      sx={{
+        input: {
+          minHeight: 28,
+          height: 28,
+          lineHeight: 28,
+        },
+      }}
+    />
+  );
+}
+
+function useSearchableList<T extends { name: string }>({
+  items,
+}: {
+  items: T[];
+}) {
+  const [q, setQ] = useState('');
+
+  const filteredList = useMemo(() => {
+    if (q === '') {
+      return items;
+    }
+    return items.filter(item =>
+      item.name.toLocaleLowerCase().includes(q.toLocaleLowerCase()),
+    );
+  }, [items, q]);
+
+  return {
+    filteredList,
+    q,
+    setQ,
+  };
+}
+
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   // TODO enable this once the alerts page is ready for public consumption
   const showAlertSidebar = false;
@@ -517,26 +575,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         : 'ok' // All alerts are green
       : 'none'; // No alerts are set up
 
-  const [searchesListQ, setSearchesListQ] = useState('');
-  const [dashboardsListQ, setDashboardsListQ] = useState('');
+  const {
+    q: searchesListQ,
+    setQ: setSearchesListQ,
+    filteredList: filteredSearchesList,
+  } = useSearchableList({ items: logViews });
 
-  const filteredSearchesList = useMemo(() => {
-    if (searchesListQ === '') {
-      return logViews;
-    }
-    return logViews.filter(lv =>
-      lv.name.toLocaleLowerCase().includes(searchesListQ.toLocaleLowerCase()),
-    );
-  }, [logViews, searchesListQ]);
-
-  const filteredDashboardsList = useMemo(() => {
-    if (dashboardsListQ === '') {
-      return dashboards;
-    }
-    return dashboards.filter((d: any) =>
-      d.name.toLocaleLowerCase().includes(dashboardsListQ.toLocaleLowerCase()),
-    );
-  }, [dashboards, dashboardsListQ]);
+  const {
+    q: dashboardsListQ,
+    setQ: setDashboardsListQ,
+    filteredList: filteredDashboardsList,
+  } = useSearchableList({ items: dashboards });
 
   return (
     <>
@@ -582,7 +631,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <i className="bi bi-arrows-angle-expand"></i>
             </Button>
           </div>
-          <div className="mt-5">
+          <div className="mt-4">
             <div className="px-3 d-flex align-items-center justify-content-between mb-2">
               <Link href="/search">
                 <a
@@ -618,74 +667,87 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </div>
             {!isCollapsed && isSearchExpanded && (
               <div className={styles.list}>
-                <Input
-                  placeholder="Saved Searches"
-                  variant="unstyled"
-                  radius="xl"
-                  size="xs"
-                  icon={<i className="bi bi-search fs-8 ps-1" />}
-                  rightSection={
-                    searchesListQ && (
-                      <CloseButton
-                        size="xs"
-                        radius="xl"
-                        onClick={() => setSearchesListQ('')}
-                      />
-                    )
-                  }
-                  value={searchesListQ}
-                  onChange={e => setSearchesListQ(e.currentTarget.value)}
-                />
-
-                {logViews.length === 0 ? (
-                  <div className="text-slate-300 fs-8 p-2 px-3">
-                    No saved searches
-                  </div>
-                ) : null}
-                {filteredSearchesList.map(lv => (
-                  <Link
-                    href={`/search/${lv._id}?${new URLSearchParams(
-                      timeRangeQuery.from != -1 && timeRangeQuery.to != -1
-                        ? {
-                            from: timeRangeQuery.from.toString(),
-                            to: timeRangeQuery.to.toString(),
-                            tq: inputTimeQuery,
-                          }
-                        : {},
-                    ).toString()}`}
-                    key={lv._id}
-                  >
+                {isLogViewsLoading ? (
+                  <Loader
+                    color="gray.7"
+                    variant="dots"
+                    mx="md"
+                    my="xs"
+                    size="sm"
+                  />
+                ) : logViews.length === 0 ? (
+                  <Link href="/search">
                     <a
                       className={cx(
                         styles.listLink,
-                        lv._id === query.savedSearchId && styles.listLinkActive,
+                        pathname.includes('search') &&
+                          Object.keys(query).length === 0 &&
+                          styles.listLinkActive,
                       )}
-                      title={lv.name}
                     >
-                      <div className="d-inline-block text-truncate">
-                        {lv.name}
+                      <div className="mt-1 ">
+                        <i className="bi me-2 bi-lightning-charge-fill" />
+                        Live Tail
                       </div>
-                      {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-                        lv.alerts.some(a => a.state === 'ALERT') ? (
-                          <i
-                            className="bi bi-bell float-end text-danger"
-                            title="Has Alerts and is in ALERT state"
-                          ></i>
-                        ) : (
-                          <i
-                            className="bi bi-bell float-end"
-                            title="Has Alerts and is in OK state"
-                          ></i>
-                        )
-                      ) : null}
                     </a>
                   </Link>
-                ))}
-                {searchesListQ && filteredSearchesList.length === 0 ? (
-                  <div className="text-slate-400 ms-3 mt-1 fs-8">
-                    No results matching <i>{searchesListQ}</i>
-                  </div>
-                ) : null}
+                ) : (
+                  <>
+                    {logViews.length > 1 && (
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                      />
+                    )}
+                    <div className={styles.listGroupName}>SAVED SEARCHES</div>
+                    {filteredSearchesList.map(lv => (
+                      <Link
+                        href={`/search/${lv._id}?${new URLSearchParams(
+                          timeRangeQuery.from != -1 && timeRangeQuery.to != -1
+                            ? {
+                                from: timeRangeQuery.from.toString(),
+                                to: timeRangeQuery.to.toString(),
+                                tq: inputTimeQuery,
+                              }
+                            : {},
+                        ).toString()}`}
+                        key={lv._id}
+                      >
+                        <a
+                          className={cx(
+                            styles.listLink,
+                            lv._id === query.savedSearchId &&
+                              styles.listLinkActive,
+                          )}
+                          title={lv.name}
+                        >
+                          <div className="d-inline-block text-truncate">
+                            {lv.name}
+                          </div>
+                          {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
+                            lv.alerts.some(a => a.state === 'ALERT') ? (
+                              <i
+                                className="bi bi-bell float-end text-danger"
+                                title="Has Alerts and is in ALERT state"
+                              ></i>
+                            ) : (
+                              <i
+                                className="bi bi-bell float-end"
+                                title="Has Alerts and is in OK state"
+                              ></i>
+                            )
+                          ) : null}
+                        </a>
+                      </Link>
+                    ))}
+                    {searchesListQ && filteredSearchesList.length === 0 ? (
+                      <div className={styles.listEmptyMsg}>
+                        No results matching <i>{searchesListQ}</i>
+                      </div>
+                    ) : null}
+                  </>
+                )}
                 <div className={styles.listGroupName}>PRESETS</div>
                 <PresetSearchLink
                   query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
@@ -697,20 +759,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               </div>
             )}
-            {/* <Link href="/search">
-          <a
-            className={cx(
-              'd-inline-block ms-3 mt-2 cursor-pointer text-decoration-none',
-              {
-                'text-success fw-bold': isLiveTail,
-                'text-muted-hover': !isLiveTail,
-              },
-            )}
-          >
-            <i className="bi bi-lightning-charge-fill me-2" />
-            Live Tail
-          </a>
-        </Link> */}
             <div className="px-3 my-3">
               <Link href="/chart">
                 <a
@@ -787,6 +835,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </a>
               </Link>
             </div>
+
             {SERVICE_DASHBOARD_ENABLED ? (
               <div className="px-3 my-3">
                 <Link href="/services">
@@ -836,6 +885,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               </div>
             </div>
+
             {!isCollapsed && isDashboardsExpanded && (
               <div className={styles.list}>
                 <Link href="/dashboards">
@@ -855,49 +905,54 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         : null,
                     )}
                   >
-                    <div className="my-1">
-                      <i className="bi bi-plus me-2" />
+                    <div className="mt-1 lh-1 py-1">
+                      <i className="bi bi-plus-lg me-2" />
                       New Dashboard
                     </div>
                   </a>
                 </Link>
-                <Input
-                  placeholder="Saved Dashboards"
-                  variant="unstyled"
-                  size="xs"
-                  ml={4}
-                  icon={<i className="bi bi-search fs-8 ps-1" />}
-                  rightSection={
-                    dashboardsListQ && (
-                      <CloseButton
-                        size="xs"
-                        onClick={() => setDashboardsListQ('')}
+
+                {isDashboardsLoading ? (
+                  <Loader
+                    color="gray.7"
+                    variant="dots"
+                    mx="md"
+                    my="xs"
+                    size="sm"
+                  />
+                ) : dashboards.length === 0 ? null : (
+                  <>
+                    {dashboards.length > 1 && (
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
                       />
-                    )
-                  }
-                  value={dashboardsListQ}
-                  onChange={e => setDashboardsListQ(e.currentTarget.value)}
-                />
-                {dashboards.length === 0 ? (
-                  <div className="text-slate-300 fs-8 p-2 px-3">
-                    No saved dashboards
-                  </div>
-                ) : null}
-                {filteredDashboardsList.map((dashboard: any) => (
-                  <Link
-                    href={`/dashboards/${dashboard._id}`}
-                    key={dashboard._id}
-                  >
-                    <a
-                      className={cx(styles.listLink, {
-                        [styles.listLinkActive]:
-                          dashboard._id === query.dashboardId,
-                      })}
-                    >
-                      {dashboard.name}
-                    </a>
-                  </Link>
-                ))}
+                    )}
+                    <div className={styles.listGroupName}>Saved Dashboards</div>
+                    {filteredDashboardsList.map((dashboard: any) => (
+                      <Link
+                        href={`/dashboards/${dashboard._id}`}
+                        key={dashboard._id}
+                      >
+                        <a
+                          className={cx(styles.listLink, {
+                            [styles.listLinkActive]:
+                              dashboard._id === query.dashboardId,
+                          })}
+                        >
+                          {dashboard.name}
+                        </a>
+                      </Link>
+                    ))}
+                    {dashboardsListQ && filteredDashboardsList.length === 0 ? (
+                      <div className={styles.listEmptyMsg}>
+                        No results matching <i>{dashboardsListQ}</i>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+
                 <div className={styles.listGroupName}>PRESETS</div>
                 <PresetDashboardLink
                   query={query}
