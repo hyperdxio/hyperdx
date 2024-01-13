@@ -33,8 +33,8 @@ import {
 } from 'use-query-params';
 
 import api from './api';
-import AppNav from './AppNav';
 import CreateLogAlertModal from './CreateLogAlertModal';
+import { withAppNav } from './layout';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
@@ -645,7 +645,7 @@ export default function SearchPage() {
   }, [setResultsMode]);
 
   return (
-    <div className="LogViewerPage d-flex" style={{ height: '100vh' }}>
+    <>
       <Head>
         <title>Search - HyperDX</title>
       </Head>
@@ -698,7 +698,7 @@ export default function SearchPage() {
           refetchLogViews();
         }}
       />
-      <AppNav />
+
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
@@ -864,6 +864,8 @@ export default function SearchPage() {
           ) : null}
         </div>
       </div>
-    </div>
+    </>
   );
 }
+
+SearchPage.getLayout = withAppNav;

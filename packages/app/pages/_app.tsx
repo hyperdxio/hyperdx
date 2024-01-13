@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
@@ -96,7 +97,15 @@ const mantineTheme: MantineThemeOverride = {
   },
 };
 
-export default function MyApp({ Component, pageProps }: AppProps) {
+export type NextPageWithLayout<P = {}, IP = P> = NextPage<P, IP> & {
+  getLayout?: (page: React.ReactElement) => React.ReactNode;
+};
+
+type AppPropsWithLayout = AppProps & {
+  Component: NextPageWithLayout;
+};
+
+export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const confirmModal = useConfirmModal();
 
   // port to react query ? (needs to wrap with QueryClientProvider)
@@ -129,6 +138,9 @@ export default function MyApp({ Component, pageProps }: AppProps) {
         // ignore
       });
   });
+
+  const getLayout = Component.getLayout ?? (page => page);
+
   return (
     <React.Fragment>
       <Head>
@@ -164,7 +176,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                   emotionCache={mantineCache}
                   theme={mantineTheme}
                 >
-                  <Component {...pageProps} />
+                  {getLayout(<Component {...pageProps} />)}
                 </MantineProvider>
                 <ReactQueryDevtools initialIsOpen={false} />
                 {confirmModal}
