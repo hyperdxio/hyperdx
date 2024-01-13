@@ -572,11 +572,11 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { name: string; query: string; charts: any[] }
-    >(async ({ name, charts, query }) =>
+      { name: string; query: string; charts: any[]; tags?: string[] }
+    >(async ({ name, charts, query, tags }) =>
       server(`dashboards`, {
         method: 'POST',
-        json: { name, charts, query },
+        json: { name, charts, query, tags },
       }).json(),
     );
   },
@@ -584,11 +584,17 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { id: string; name: string; query: string; charts: any[] }
-    >(async ({ id, name, charts, query }) =>
+      {
+        id: string;
+        name: string;
+        query: string;
+        charts: any[];
+        tags?: string[];
+      }
+    >(async ({ id, name, charts, query, tags }) =>
       server(`dashboards/${id}`, {
         method: 'PUT',
-        json: { name, charts, query },
+        json: { name, charts, query, tags },
       }).json(),
     );
   },
@@ -650,6 +656,11 @@ const api = {
     return useQuery<any, HTTPError>(`team`, () => server(`team`).json(), {
       retry: 1,
     });
+  },
+  useTags() {
+    return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
+      server(`team/tags`).json<{ data: string[] }>(),
+    );
   },
   useSaveWebhook() {
     return useMutation<

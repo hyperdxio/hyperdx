@@ -2,13 +2,17 @@ import crypto from 'crypto';
 import express from 'express';
 import isemail from 'isemail';
 import pick from 'lodash/pick';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import { getTeam, rotateTeamApiKey } from '@/controllers/team';
 import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
+import Dashboard from '@/models/dashboard';
+import LogView from '@/models/logView';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
+import { SimpleCache } from '@/utils/redis';
 
 const router = express.Router();
 
@@ -139,6 +143,45 @@ router.patch('/apiKey', async (req, res, next) => {
     }
     const team = await rotateTeamApiKey(teamId);
     res.json({ newApiKey: team?.apiKey });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/tags', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      throw new Error(`User ${req.user?._id} not associated with a team`);
+    }
+    const simpleCache = new SimpleCache(
+      `tags:${teamId}`,
+      ms('10m'),
+      async () => {
+        const _tags: string[] = [];
+        const dashboards = await Dashboard.find(
+          { team: teamId },
+          { tags: 1 },
+        ).lean();
+        dashboards?.forEach(d => {
+          if (d?.tags?.length) {
+            _tags?.push(...d.tags);
+          }
+        });
+        const logViews = await LogView.find(
+          { team: teamId },
+          { tags: 1 },
+        ).lean();
+        logViews?.forEach(lv => {
+          if (lv?.tags?.length) {
+            _tags?.push(...lv.tags);
+          }
+        });
+        return _tags;
+      },
+    );
+    const tags = await simpleCache.get();
+    return res.json({ data: tags });
   } catch (e) {
     next(e);
   }

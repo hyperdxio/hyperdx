@@ -78,6 +78,7 @@ export interface IDashboard {
   query: string;
   team: ObjectId;
   charts: Chart[];
+  tags: string[];
 }
 
 const DashboardSchema = new Schema<IDashboard>(
@@ -89,6 +90,10 @@ const DashboardSchema = new Schema<IDashboard>(
     query: String,
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     charts: { type: mongoose.Schema.Types.Mixed, required: true },
+    tags: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

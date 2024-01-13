@@ -5,6 +5,7 @@ import { validateRequest } from 'zod-express-middleware';
 
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import redisClient from '@/utils/redis';
 
 // create routes that will get and update dashboards
 const router = express.Router();
@@ -97,6 +98,7 @@ router.post(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
+      tags: z.array(z.string()).optional(),
     }),
   }),
   async (req, res, next) => {
@@ -106,15 +108,20 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { name, charts, query } = req.body ?? {};
+      const { name, charts, query, tags } = req.body ?? {};
       // Create new dashboard from name and charts
       const newDashboard = await new Dashboard({
         name,
         charts,
         query,
+        tags,
         team: teamId,
       }).save();
-
+      if (tags?.length) {
+        redisClient.del(`tags:${teamId}`).catch(e => {
+          console.error(e);
+        });
+      }
       res.json({
         data: newDashboard,
       });
@@ -131,6 +138,7 @@ router.put(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
+      tags: z.array(z.string()).optional(),
     }),
   }),
   async (req, res, next) => {
@@ -144,7 +152,8 @@ router.put(
         return res.sendStatus(400);
       }
 
-      const { name, charts, query } = req.body ?? {};
+      const { name, charts, query, tags } = req.body ?? {};
+
       // Update dashboard from name and charts
       const oldDashboard = await Dashboard.findById(dashboardId);
       const updatedDashboard = await Dashboard.findByIdAndUpdate(
@@ -153,6 +162,7 @@ router.put(
           name,
           charts,
           query,
+          tags,
         },
         { new: true },
       );
@@ -168,6 +178,12 @@ router.put(
         await Alert.deleteMany({
           dashboardId: dashboardId,
           chartId: { $in: deletedChartIds },
+        });
+      }
+
+      if (tags?.length) {
+        redisClient.del(`tags:${teamId}`).catch(e => {
+          console.error(e);
         });
       }
 
