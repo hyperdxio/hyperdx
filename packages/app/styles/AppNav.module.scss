@@ -2,8 +2,8 @@
 
 .list {
   background-color: #00000030;
-  border-top: 1px solid $slate-950;
   border-bottom: 1px solid $slate-950;
+  border-top: 1px solid $slate-950;
   overflow-x: hidden;
   max-width: 100%;
   padding: 4px 16px;
@@ -42,7 +42,7 @@
 .listEmptyMsg {
   color: $slate-400;
   font-size: 12px;
-  margin: 12px 16px;
+  margin: 8px 16px;
 }
 
 .listLinkActive {

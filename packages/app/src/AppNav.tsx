@@ -675,22 +675,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     my="xs"
                     size="sm"
                   />
-                ) : logViews.length === 0 ? (
-                  <Link href="/search">
-                    <a
-                      className={cx(
-                        styles.listLink,
-                        pathname.includes('search') &&
-                          Object.keys(query).length === 0 &&
-                          styles.listLinkActive,
-                      )}
-                    >
-                      <div className="mt-1 ">
-                        <i className="bi me-2 bi-lightning-charge-fill" />
-                        Live Tail
-                      </div>
-                    </a>
-                  </Link>
                 ) : (
                   <>
                     {logViews.length > 1 && (
@@ -701,6 +685,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       />
                     )}
                     <div className={styles.listGroupName}>SAVED SEARCHES</div>
+                    {logViews.length === 0 && (
+                      <div className={styles.listEmptyMsg}>
+                        No saved searches
+                      </div>
+                    )}
                     {filteredSearchesList.map(lv => (
                       <Link
                         href={`/search/${lv._id}?${new URLSearchParams(
@@ -920,7 +909,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     my="xs"
                     size="sm"
                   />
-                ) : dashboards.length === 0 ? null : (
+                ) : (
                   <>
                     {dashboards.length > 1 && (
                       <SearchInput
@@ -930,6 +919,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       />
                     )}
                     <div className={styles.listGroupName}>Saved Dashboards</div>
+                    {dashboards.length === 0 && (
+                      <div className={styles.listEmptyMsg}>
+                        No saved dashboards
+                      </div>
+                    )}
                     {filteredDashboardsList.map((dashboard: any) => (
                       <Link
                         href={`/dashboards/${dashboard._id}`}
