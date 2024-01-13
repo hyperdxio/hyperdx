@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
+import Fuse from 'fuse.js';
 import { Button } from 'react-bootstrap';
 import {
   NumberParam,
@@ -463,16 +464,24 @@ function useSearchableList<T extends { name: string }>({
 }: {
   items: T[];
 }) {
+  const fuse = useMemo(
+    () =>
+      new Fuse(items, {
+        keys: ['name'],
+        threshold: 0.2,
+        ignoreLocation: true,
+      }),
+    [items],
+  );
+
   const [q, setQ] = useState('');
 
   const filteredList = useMemo(() => {
     if (q === '') {
       return items;
     }
-    return items.filter(item =>
-      item.name.toLocaleLowerCase().includes(q.toLocaleLowerCase()),
-    );
-  }, [items, q]);
+    return fuse.search(q).map(result => result.item);
+  }, [fuse, items, q]);
 
   return {
     filteredList,
