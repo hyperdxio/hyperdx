@@ -16,6 +16,7 @@ import type {
   AlertSource,
   AlertType,
   ChartSeries,
+  Dashboard,
   LogView,
   Session,
 } from './types';
@@ -561,7 +562,7 @@ const api = {
     });
   },
   useDashboards(options?: UseQueryOptions<any, Error>) {
-    return useQuery<any, Error>(
+    return useQuery<{ data: Dashboard[] }, Error>(
       `dashboards`,
       () => server.get(`dashboards`).json(),
       options,

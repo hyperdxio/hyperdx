@@ -43,6 +43,16 @@ export type LogView = {
   alerts?: Alert[];
 };
 
+export type Dashboard = {
+  _id: string;
+  createdAt: string;
+  updatedAt: string;
+  name: string;
+  charts: Chart[];
+  alerts?: Alert[];
+  query?: string;
+};
+
 export type AlertType = 'presence' | 'absence';
 
 export type AlertInterval =
