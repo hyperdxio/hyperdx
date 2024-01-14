@@ -57,3 +57,14 @@
     color: $green;
   }
 }
+
+.kbd {
+  white-space: nowrap;
+  letter-spacing: -1px;
+  color: $slate-400;
+  background: $slate-950;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  margin-right: 16px;
+}

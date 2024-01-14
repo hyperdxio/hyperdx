@@ -444,6 +444,19 @@ function SearchInput({
   onChange: (arg0: string) => void;
   onEnterDown?: () => void;
 }) {
+  const kbdShortcut = useMemo(() => {
+    return (
+      <div className={styles.kbd}>
+        {window.navigator.platform?.toUpperCase().includes('MAC') ? (
+          <i className="bi bi-command" />
+        ) : (
+          <span style={{ letterSpacing: -2 }}>Ctrl</span>
+        )}
+        &nbsp;K
+      </div>
+    );
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
@@ -461,13 +474,15 @@ function SearchInput({
       icon={<i className="bi bi-search fs-8 ps-1" />}
       onKeyDown={handleKeyDown}
       rightSection={
-        value && (
+        value ? (
           <CloseButton
             tabIndex={-1}
             size="xs"
             radius="xl"
             onClick={() => onChange('')}
           />
+        ) : (
+          kbdShortcut
         )
       }
       mt={8}
@@ -517,8 +532,6 @@ function useSearchableList<T extends { name: string }>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
-  // TODO enable this once the alerts page is ready for public consumption
-  const showAlertSidebar = false;
   useEffect(() => {
     let redirectUrl;
     try {

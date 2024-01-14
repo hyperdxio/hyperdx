@@ -1,6 +1,7 @@
 import React from 'react';
 
 import AppNav from './AppNav';
+import { HDXSpotlightProvider } from './Spotlights';
 
 /**
  * Next.js layout for pages that use the AppNav component. Using the same layout
@@ -13,9 +14,11 @@ import AppNav from './AppNav';
  */
 export const withAppNav = (page: React.ReactNode) => {
   return (
-    <div className="d-flex">
-      <AppNav fixed />
-      <div className="w-100">{page}</div>
-    </div>
+    <HDXSpotlightProvider>
+      <div className="d-flex">
+        <AppNav fixed />
+        <div className="w-100">{page}</div>
+      </div>
+    </HDXSpotlightProvider>
   );
 };

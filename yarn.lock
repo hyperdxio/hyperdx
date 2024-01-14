@@ -2369,6 +2369,13 @@
     "@mantine/ssr" "6.0.21"
     "@mantine/styles" "6.0.21"
 
+"@mantine/spotlight@6":
+  version "6.0.21"
+  resolved "https://registry.yarnpkg.com/@mantine/spotlight/-/spotlight-6.0.21.tgz#98f507bd3429fee1f2b57ad5ef9f88d1d8d8ff32"
+  integrity sha512-xJqF2Vpn8s6I4mSF+iCi7IzqL8iaqbvq0RcYlF1usLZYW2HrArX31s1r11DmzqM1PIuBQUhquW8jUXx/MZy3oA==
+  dependencies:
+    "@mantine/utils" "6.0.21"
+
 "@mantine/ssr@6.0.21":
   version "6.0.21"
   resolved "https://registry.yarnpkg.com/@mantine/ssr/-/ssr-6.0.21.tgz#3e6f347af944324b01f16d852ec5850f6555ce5f"
@@ -4987,7 +4994,7 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@>=16", "@types/react@>=16.9.11", "@types/react@^17", "@types/react@^17.0.52":
+"@types/react@*", "@types/react@17.0.52", "@types/react@>=16", "@types/react@>=16.9.11", "@types/react@^17", "@types/react@^17.0.52":
   version "17.0.52"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-17.0.52.tgz#10d8b907b5c563ac014a541f289ae8eaa9bf2e9b"
   integrity sha512-vwk8QqVODi0VaZZpDXQCmEmiOuyjEFPY7Ttaw5vjM112LOq37yz1CDJGrRJwA1fYEq4Iitd5rnjd1yWAc/bT+A==
