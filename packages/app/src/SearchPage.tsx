@@ -645,7 +645,7 @@ export default function SearchPage() {
   }, [setResultsMode]);
 
   return (
-    <>
+    <div style={{ height: '100vh' }}>
       <Head>
         <title>Search - HyperDX</title>
       </Head>
@@ -864,7 +864,7 @@ export default function SearchPage() {
           ) : null}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
