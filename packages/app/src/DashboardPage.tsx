@@ -48,7 +48,7 @@ import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { FloppyIcon, Histogram } from './SVGIcons';
 import TabBar from './TabBar';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import type { Alert, Chart } from './types';
+import type { Alert, Chart, Dashboard } from './types';
 import { useConfirm } from './useConfirm';
 import { hashCode } from './utils';
 import { ZIndexContext } from './zIndex';
@@ -59,14 +59,6 @@ import 'react-resizable/css/styles.css';
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
-
-type Dashboard = {
-  id: string;
-  name: string;
-  charts: Chart[];
-  alerts?: Alert[];
-  query?: string;
-};
 
 const buildAndWhereClause = (query1: string, query2: string) => {
   if (!query1 && !query2) {

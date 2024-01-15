@@ -1,0 +1,55 @@
+@import './variables';
+
+.list {
+  background-color: #00000030;
+  border-bottom: 1px solid $slate-950;
+  border-top: 1px solid $slate-950;
+  overflow-x: hidden;
+  max-width: 100%;
+  padding: 4px 16px;
+  padding-bottom: 10px;
+}
+
+.listGroupName {
+  color: $slate-400;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 1px;
+  margin-top: 16px;
+  margin-bottom: 6px;
+  padding-left: 16px;
+}
+
+.listLink {
+  display: flex;
+  justify-content: space-between;
+  text-decoration: none;
+  color: $slate-300;
+  font-size: 13px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 16px;
+  gap: 10px;
+  &:hover {
+    color: $slate-100;
+  }
+}
+
+.listEmptyMsg {
+  color: $slate-400;
+  font-size: 12px;
+  margin: 8px 16px;
+}
+
+.listLinkActive {
+  color: $green;
+  font-weight: 500;
+
+  &:hover {
+    color: $green;
+  }
+}

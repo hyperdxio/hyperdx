@@ -6,7 +6,7 @@ import logger from '@/utils/logger';
 export type ObjectId = mongoose.Types.ObjectId;
 
 // set flags
-mongoose.set('strictQuery', true);
+mongoose.set('strictQuery', false);
 
 // Allow empty strings to be set to required fields
 // https://github.com/Automattic/mongoose/issues/7150
