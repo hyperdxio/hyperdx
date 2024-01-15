@@ -47,7 +47,7 @@ processors:
           - set(resource.attributes["metric_unit"], unit)
           - set(resource.attributes["metric_is_monotonic"], is_monotonic)
   batch:
-  memory_limite:
+  memory_limiter:
     # 80% of maximum memory up to 2G
     limit_mib: 1500
     # 25% of limit up to 2G

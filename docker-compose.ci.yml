@@ -1,5 +1,22 @@
 version: '3'
 services:
+  ingestor:
+    container_name: hdx-ci-ingestor
+    build:
+      context: ./docker/ingestor
+      target: dev
+    volumes:
+      - ./docker/ingestor:/app
+    ports:
+      - 8002:8002 # http-generic
+      - 8686:8686 # healthcheck
+    environment:
+      ENABLE_GO_PARSER: 'false'
+      RUST_BACKTRACE: full
+      VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
+      VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
+    networks:
+      - internal
   otel-collector:
     container_name: hdx-ci-otel-collector
     build:
@@ -79,11 +96,9 @@ services:
     depends_on:
       - ch_server
       - db
+      - ingestor
       - otel-collector
       - redis
-
-volumes:
-  test_mongo_data:
 
 networks:
   internal:

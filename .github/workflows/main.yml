@@ -66,3 +66,5 @@ jobs:
         run: |
           echo "Checking otel-collector"
           curl -v http://localhost:13133
+          ehco "Checking ingestor"
+          curl -v http://localhost:8686/health
