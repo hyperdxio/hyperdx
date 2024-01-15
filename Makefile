@@ -43,9 +43,11 @@ dev-int:
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
-	@echo "Checking otel-collector"
+	@echo "\n\n"
+	@echo "Checking otel-collector...\n"
 	curl -v http://localhost:13133
-	@echo "Checking ingestor"
+	@echo "\n\n"
+	@echo "Checking ingestor...\n"
 	curl -v http://localhost:8686/health
 
 .PHONY: dev-unit
