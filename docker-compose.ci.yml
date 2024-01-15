@@ -1,5 +1,26 @@
 version: '3'
 services:
+  otel-collector:
+    container_name: hdx-ci-otel-collector
+    build:
+      context: ./docker/otel-collector
+      target: dev
+    environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+    volumes:
+      - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - '13133:13133' # health_check extension
+      - '1888:1888' # pprof extension
+      - '24225:24225' # fluentd receiver
+      - '4317:4317' # OTLP gRPC receiver
+      - '4318:4318' # OTLP http receiver
+      - '55679:55679' # zpages extension
+      - '8888:8888' # metrics extension
+      - '9411:9411' # zipkin
+    networks:
+      - internal
   ch_server:
     container_name: hdx-ci-ch-server
     image: clickhouse/clickhouse-server:23.8.8-alpine
@@ -58,6 +79,7 @@ services:
     depends_on:
       - ch_server
       - db
+      - otel-collector
       - redis
 
 volumes:

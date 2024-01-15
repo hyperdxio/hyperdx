@@ -62,3 +62,7 @@ jobs:
           docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
       - name: Run integration tests
         run: make ci-int
+      - name: Run health checks
+        run: |
+          echo "Checking otel-collector"
+          curl -v http://localhost:13133
