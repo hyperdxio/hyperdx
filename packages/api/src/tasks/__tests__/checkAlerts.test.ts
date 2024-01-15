@@ -211,7 +211,7 @@ describe('checkAlerts', () => {
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
+        alert: alert._id,
       }).sort({
         createdAt: 1,
       });
@@ -383,7 +383,7 @@ describe('checkAlerts', () => {
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
+        alert: alert._id,
       }).sort({
         createdAt: 1,
       });
@@ -616,7 +616,7 @@ describe('checkAlerts', () => {
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alertId: alert._id,
+        alert: alert._id,
       }).sort({
         createdAt: 1,
       });
