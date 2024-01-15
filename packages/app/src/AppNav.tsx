@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
+import Fuse from 'fuse.js';
 import { Button } from 'react-bootstrap';
-import { useQueryClient } from 'react-query';
 import {
   NumberParam,
   StringParam,
@@ -12,6 +12,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
+import { Button as MButton, CloseButton, Input, Loader } from '@mantine/core';
 
 import { version } from '../package.json';
 
@@ -20,7 +21,9 @@ import AuthLoadingBlocker from './AuthLoadingBlocker';
 import { API_SERVER_URL, SERVICE_DASHBOARD_ENABLED } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
-import { useWindowSize } from './utils';
+import { useLocalStorage, useWindowSize } from './utils';
+
+import styles from '../styles/AppNav.module.scss';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',
@@ -369,15 +372,12 @@ function PresetDashboardLink({
       href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
     >
       <a
-        className={cx(
-          'd-block ms-3 mt-2 cursor-pointer text-decoration-none text-muted-hover',
-          {
-            'text-success fw-bold':
-              query.config === JSON.stringify(config) &&
-              query.dashboardId == null,
-            'text-muted-hover': query.config !== JSON.stringify(config),
-          },
-        )}
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]:
+            query.config === JSON.stringify(config) &&
+            query.dashboardId == null,
+          'text-muted-hover': query.config !== JSON.stringify(config),
+        })}
       >
         {name}
       </a>
@@ -413,17 +413,81 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
       ).toString()}`}
     >
       <a
-        className={cx('d-block ms-3 mt-2 cursor-pointer text-decoration-none', {
-          'text-success fw-bold':
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]:
             routerQuery.savedSearchId == null && searchedQuery === query,
-          'text-muted-hover':
-            routerQuery.savedSearchId != null || searchedQuery !== query,
         })}
       >
         {name}
       </a>
     </Link>
   );
+}
+
+function SearchInput({
+  placeholder,
+  value,
+  onChange,
+}: {
+  placeholder: string;
+  value: string;
+  onChange: (arg0: string) => void;
+}) {
+  return (
+    <Input
+      placeholder={placeholder}
+      value={value}
+      onChange={e => onChange(e.currentTarget.value)}
+      icon={<i className="bi bi-search fs-8 ps-1" />}
+      rightSection={
+        value && (
+          <CloseButton size="xs" radius="xl" onClick={() => onChange('')} />
+        )
+      }
+      mt={8}
+      size="xs"
+      variant="filled"
+      radius="xl"
+      sx={{
+        input: {
+          minHeight: 28,
+          height: 28,
+          lineHeight: 28,
+        },
+      }}
+    />
+  );
+}
+
+function useSearchableList<T extends { name: string }>({
+  items,
+}: {
+  items: T[];
+}) {
+  const fuse = useMemo(
+    () =>
+      new Fuse(items, {
+        keys: ['name'],
+        threshold: 0.2,
+        ignoreLocation: true,
+      }),
+    [items],
+  );
+
+  const [q, setQ] = useState('');
+
+  const filteredList = useMemo(() => {
+    if (q === '') {
+      return items;
+    }
+    return fuse.search(q).map(result => result.item);
+  }, [fuse, items, q]);
+
+  return {
+    filteredList,
+    q,
+    setQ,
+  };
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
@@ -474,10 +538,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const [isSearchExpanded, setIsSearchExpanded] = useState(true);
-  const [isDashboardsExpanded, setIsDashboardExpanded] = useState(true);
-
+  const [isSearchExpanded, setIsSearchExpanded] = useLocalStorage(
+    'isSearchExpanded',
+    true,
+  );
+  const [isDashboardsExpanded, setIsDashboardExpanded] = useLocalStorage(
+    'isDashboardsExpanded',
+    true,
+  );
   const { width } = useWindowSize();
+
   const [isPreferCollapsed, setIsPreferCollapsed] = useState<
     undefined | boolean
   >(undefined);
@@ -485,7 +555,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const isSmallScreen = (width ?? 1000) < 900;
   const isCollapsed = isPreferCollapsed ?? isSmallScreen;
 
-  const navWidth = isCollapsed ? 50 : 220;
+  const navWidth = isCollapsed ? 50 : 230;
 
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
 
@@ -514,6 +584,18 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         : 'ok' // All alerts are green
       : 'none'; // No alerts are set up
 
+  const {
+    q: searchesListQ,
+    setQ: setSearchesListQ,
+    filteredList: filteredSearchesList,
+  } = useSearchableList({ items: logViews });
+
+  const {
+    q: dashboardsListQ,
+    setQ: setDashboardsListQ,
+    filteredList: filteredDashboardsList,
+  } = useSearchableList({ items: dashboards });
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -532,10 +614,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               }
             : {}),
         }}
-        className="p-3 border-end border-dark d-flex flex-column justify-content-between"
+        className="border-end border-dark d-flex flex-column justify-content-between"
       >
         <div>
-          <div className="d-flex flex-wrap justify-content-between align-items-center">
+          <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
             <Link href="/search">
               <a className="text-decoration-none">
                 {isCollapsed ? (
@@ -558,12 +640,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <i className="bi bi-arrows-angle-expand"></i>
             </Button>
           </div>
-          <div className="mt-5">
-            <div className="d-flex align-items-center justify-content-between mb-2">
+          <div className="mt-4">
+            <div className="px-3 d-flex align-items-center justify-content-between mb-2">
               <Link href="/search">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'text-success fw-bold':
                         pathname.includes('/search') &&
@@ -575,7 +657,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-layout-text-sidebar-reverse" />{' '}
+                    <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
                     {!isCollapsed && <span>Search</span>}
                   </span>
                 </a>
@@ -592,58 +674,79 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 />
               )}
             </div>
-            {isSearchExpanded && !isCollapsed && (
-              <>
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">
-                  SAVED SEARCHES
-                </div>
-                {(logViews ?? []).length === 0 ? (
-                  <div className="text-muted ms-3 mt-2">No saved searches</div>
-                ) : null}
-                {(logViews ?? []).map(lv => (
-                  <Link
-                    href={`/search/${lv._id}?${new URLSearchParams(
-                      timeRangeQuery.from != -1 && timeRangeQuery.to != -1
-                        ? {
-                            from: timeRangeQuery.from.toString(),
-                            to: timeRangeQuery.to.toString(),
-                            tq: inputTimeQuery,
-                          }
-                        : {},
-                    ).toString()}`}
-                    key={lv._id}
-                  >
-                    <a
-                      className={cx(
-                        'd-flex justify-content-between ms-3 mt-2 cursor-pointer text-decoration-none',
-                        {
-                          'text-success fw-bold':
-                            lv._id === query.savedSearchId,
-                          'text-muted-hover': lv._id !== query.savedSearchId,
-                        },
-                      )}
-                      title={lv.name}
-                    >
-                      <div className="d-inline-block text-truncate">
-                        {lv.name}
+            {!isCollapsed && isSearchExpanded && (
+              <div className={styles.list}>
+                {isLogViewsLoading ? (
+                  <Loader
+                    color="gray.7"
+                    variant="dots"
+                    mx="md"
+                    my="xs"
+                    size="sm"
+                  />
+                ) : (
+                  <>
+                    {logViews.length > 1 && (
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                      />
+                    )}
+                    <div className={styles.listGroupName}>SAVED SEARCHES</div>
+                    {logViews.length === 0 && (
+                      <div className={styles.listEmptyMsg}>
+                        No saved searches
                       </div>
-                      {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-                        lv.alerts.some(a => a.state === 'ALERT') ? (
-                          <i
-                            className="bi bi-bell float-end text-danger"
-                            title="Has Alerts and is in ALERT state"
-                          ></i>
-                        ) : (
-                          <i
-                            className="bi bi-bell float-end"
-                            title="Has Alerts and is in OK state"
-                          ></i>
-                        )
-                      ) : null}
-                    </a>
-                  </Link>
-                ))}
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">PRESETS</div>
+                    )}
+                    {filteredSearchesList.map(lv => (
+                      <Link
+                        href={`/search/${lv._id}?${new URLSearchParams(
+                          timeRangeQuery.from != -1 && timeRangeQuery.to != -1
+                            ? {
+                                from: timeRangeQuery.from.toString(),
+                                to: timeRangeQuery.to.toString(),
+                                tq: inputTimeQuery,
+                              }
+                            : {},
+                        ).toString()}`}
+                        key={lv._id}
+                      >
+                        <a
+                          className={cx(
+                            styles.listLink,
+                            lv._id === query.savedSearchId &&
+                              styles.listLinkActive,
+                          )}
+                          title={lv.name}
+                        >
+                          <div className="d-inline-block text-truncate">
+                            {lv.name}
+                          </div>
+                          {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
+                            lv.alerts.some(a => a.state === 'ALERT') ? (
+                              <i
+                                className="bi bi-bell float-end text-danger"
+                                title="Has Alerts and is in ALERT state"
+                              ></i>
+                            ) : (
+                              <i
+                                className="bi bi-bell float-end"
+                                title="Has Alerts and is in OK state"
+                              ></i>
+                            )
+                          ) : null}
+                        </a>
+                      </Link>
+                    ))}
+                    {searchesListQ && filteredSearchesList.length === 0 ? (
+                      <div className={styles.listEmptyMsg}>
+                        No results matching <i>{searchesListQ}</i>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+                <div className={styles.listGroupName}>PRESETS</div>
                 <PresetSearchLink
                   query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
                   name="All Error Events"
@@ -652,68 +755,54 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   query="http.status_code:>=400"
                   name="HTTP Status >= 400"
                 />
-              </>
+              </div>
             )}
-            {/* <Link href="/search">
-          <a
-            className={cx(
-              'd-inline-block ms-3 mt-2 cursor-pointer text-decoration-none',
-              {
-                'text-success fw-bold': isLiveTail,
-                'text-muted-hover': !isLiveTail,
-              },
-            )}
-          >
-            <i className="bi bi-lightning-charge-fill me-2" />
-            Live Tail
-          </a>
-        </Link> */}
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/chart">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/chart'),
                     },
                   )}
                 >
                   <span>
-                    <i className="bi bi-graph-up" />{' '}
+                    <i className="bi bi-graph-up pe-1" />{' '}
                     {!isCollapsed && <span>Chart Explorer</span>}
                   </span>
                 </a>
               </Link>
             </div>
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/sessions">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/sessions'),
                     },
                   )}
                 >
                   <span>
-                    <i className="bi bi-laptop" />{' '}
+                    <i className="bi bi-laptop pe-1" />{' '}
                     {!isCollapsed && <span>Client Sessions</span>}
                   </span>
                 </a>
               </Link>
             </div>
-            <div className="my-4">
+            <div className="px-3 my-3">
               <Link href="/alerts">
                 <a
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/alerts'),
                     },
                   )}
                 >
                   <div>
-                    <i className="bi bi-bell" />{' '}
+                    <i className="bi bi-bell pe-1" />{' '}
                     {!isCollapsed && (
                       <div className="d-inline-flex align-items-center">
                         <span>Alerts</span>
@@ -744,19 +833,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </a>
               </Link>
             </div>
+
             {SERVICE_DASHBOARD_ENABLED ? (
-              <div className="my-4">
+              <div className="px-3 my-3">
                 <Link href="/services">
                   <a
                     className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover',
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                       {
                         'fw-bold text-success': pathname.includes('/services'),
                       },
                     )}
                   >
                     <span>
-                      <i className="bi bi-heart-pulse" />{' '}
+                      <i className="bi bi-heart-pulse pe-1" />{' '}
                       {!isCollapsed && <span>Service Health</span>}
                     </span>
                   </a>
@@ -766,16 +856,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <div>
               <div
                 className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted mb-2',
+                  'px-3 text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted mb-2',
                   {
                     'fw-bold': pathname.includes('/dashboard'),
                   },
                 )}
               >
                 <Link href="/dashboards">
-                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-6 text-muted-hover">
+                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover">
                     <span>
-                      <i className="bi bi-grid-1x2" />{' '}
+                      <i className="bi bi-grid-1x2 pe-1" />{' '}
                       {!isCollapsed && <span>Dashboards</span>}
                     </span>
                   </a>
@@ -793,12 +883,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               </div>
             </div>
-            {isDashboardsExpanded && !isCollapsed && (
-              <>
+
+            {!isCollapsed && isDashboardsExpanded && (
+              <div className={styles.list}>
                 <Link href="/dashboards">
                   <a
                     className={cx(
-                      'd-block ms-3 mt-2 cursor-pointer text-decoration-none',
+                      styles.listLink,
                       pathname.includes('/dashboard') &&
                         query.dashboardId == null &&
                         query.config !=
@@ -808,41 +899,64 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         query.config !=
                           JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
                         query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                        ? 'text-success fw-bold'
-                        : 'text-muted-hover',
+                        ? [styles.listLinkActive]
+                        : null,
                     )}
                   >
-                    <i className="bi bi-plus me-2" />
-                    New Dashboard
+                    <div className="mt-1 lh-1 py-1">
+                      <i className="bi bi-plus-lg me-2" />
+                      New Dashboard
+                    </div>
                   </a>
                 </Link>
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">
-                  SAVED DASHBOARDS
-                </div>
-                {(dashboards ?? []).length === 0 ? (
-                  <div className="text-muted ms-3 mt-2">0 saved dashboards</div>
-                ) : null}
-                {(dashboards ?? []).map((dashboard: any) => (
-                  <Link
-                    href={`/dashboards/${dashboard._id}`}
-                    key={dashboard._id}
-                  >
-                    <a
-                      className={cx(
-                        'd-block ms-3 mt-2 cursor-pointer text-decoration-none',
-                        {
-                          'text-success fw-bold':
-                            dashboard._id === query.dashboardId,
-                          'text-muted-hover':
-                            dashboard._id !== query.dashboardId,
-                        },
-                      )}
-                    >
-                      {dashboard.name}
-                    </a>
-                  </Link>
-                ))}
-                <div className="fw-bold text-light fs-8 ms-3 mt-3">PRESETS</div>
+
+                {isDashboardsLoading ? (
+                  <Loader
+                    color="gray.7"
+                    variant="dots"
+                    mx="md"
+                    my="xs"
+                    size="sm"
+                  />
+                ) : (
+                  <>
+                    {dashboards.length > 1 && (
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
+                      />
+                    )}
+                    <div className={styles.listGroupName}>Saved Dashboards</div>
+                    {dashboards.length === 0 && (
+                      <div className={styles.listEmptyMsg}>
+                        No saved dashboards
+                      </div>
+                    )}
+                    {filteredDashboardsList.map((dashboard: any) => (
+                      <Link
+                        href={`/dashboards/${dashboard._id}`}
+                        key={dashboard._id}
+                      >
+                        <a
+                          className={cx(styles.listLink, {
+                            [styles.listLinkActive]:
+                              dashboard._id === query.dashboardId,
+                          })}
+                        >
+                          {dashboard.name}
+                        </a>
+                      </Link>
+                    ))}
+                    {dashboardsListQ && filteredDashboardsList.length === 0 ? (
+                      <div className={styles.listEmptyMsg}>
+                        No results matching <i>{dashboardsListQ}</i>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+
+                <div className={styles.listGroupName}>PRESETS</div>
                 <PresetDashboardLink
                   query={query}
                   config={HYPERDX_USAGE_DASHBOARD_CONFIG}
@@ -868,24 +982,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   config={MONGO_DASHBOARD_CONFIG}
                   name="Mongo"
                 />
-              </>
+              </div>
             )}
           </div>
         </div>
         {!isCollapsed && (
           <>
-            <div className="mb-2 mt-4">
+            <div className="px-3 mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-                <span className="">Ready to use HyperDX Cloud?</span>
-                <div className="mt-3 mb-2">
+                <span className="text-slate-300 fs-8">
+                  Ready to use HyperDX Cloud?
+                </span>
+                <div className="mt-2 mb-2">
                   <Link href="https://www.hyperdx.io/register" passHref>
-                    <Button
-                      variant="outline-success"
-                      className="inter"
-                      size="sm"
-                    >
+                    <MButton variant="light" size="xs">
                       Get Started for Free
-                    </Button>
+                    </MButton>
                   </Link>
                 </div>
               </div>
