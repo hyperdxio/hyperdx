@@ -448,7 +448,8 @@ export const LogSidePanelKbdShortcuts = () => {
         <div className="d-flex align-items-center gap-3">
           <div>
             Use <Kbd>←</Kbd>
-            <Kbd>→</Kbd> arrow keys to move through events
+            <Kbd>→</Kbd> arrow keys or <Kbd>k</Kbd>
+            <Kbd>j</Kbd> to move through events
           </div>
           <div className={styles.kbdDivider} />
           <div>
