@@ -123,7 +123,7 @@ const useSpotlightActions = () => {
         title: 'Documentation',
         keywords: ['help', 'docs'],
         onTrigger: () => {
-          router.push('/help');
+          router.push('https://www.hyperdx.io/docs');
         },
       },
       {

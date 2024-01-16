@@ -1072,7 +1072,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </span>
                 <div className="mt-2 mb-2">
                   <Link href="https://www.hyperdx.io/register" passHref>
-                    <MButton variant="light" size="xs">
+                    <MButton
+                      variant="light"
+                      size="xs"
+                      component="a"
+                      sx={{
+                        ':hover': {
+                          color: 'white',
+                        },
+                      }}
+                    >
                       Get Started for Free
                     </MButton>
                   </Link>
