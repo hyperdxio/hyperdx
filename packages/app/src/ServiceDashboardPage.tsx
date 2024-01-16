@@ -22,7 +22,6 @@ import {
 } from '@mantine/core';
 
 import api from './api';
-import AppNav from './AppNav';
 import {
   convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -39,6 +38,7 @@ import HDXLineChart from './HDXLineChart';
 import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
+import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
@@ -363,412 +363,406 @@ export default function ServiceDashboardPage() {
       <Head>
         <title>Service Dashboard - HyperDX</title>
       </Head>
-      <div className="d-flex">
-        <AppNav fixed />
-        <div className="w-100">
-          <EndpointSidepanel />
-          <DBQuerySidePanel />
-          <PodDetailsSidePanel />
-          <div className="d-flex flex-column">
-            <Group
-              px="md"
-              py="xs"
-              className="border-bottom border-dark"
-              spacing="xs"
-              align="center"
-            >
-              {/* Use Autocomplete instead? */}
-              <Select
-                searchable
-                clearable
-                allowDeselect
-                placeholder="All Services"
-                maxDropdownHeight={280}
-                data={servicesOptions}
-                disabled={isServicesLoading}
-                radius="md"
-                variant="filled"
-                value={service}
-                onChange={v => setService(v)}
-                w={300}
-              />
-              <div style={{ flex: 1 }}>
-                <SearchInput
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                />
-              </div>
-              <div className="d-flex" style={{ width: 350, height: 36 }}>
-                <SearchTimeRangePicker
-                  inputValue={displayedTimeInputValue}
-                  setInputValue={setDisplayedTimeInputValue}
-                  onSearch={range => {
-                    onSearch(range);
-                  }}
-                />
-              </div>
-            </Group>
-          </div>
-          <Tabs
-            color="gray"
-            variant="pills"
-            defaultValue="infrastructure"
+      <EndpointSidepanel />
+      <DBQuerySidePanel />
+      <PodDetailsSidePanel />
+      <div className="d-flex flex-column">
+        <Group
+          px="md"
+          py="xs"
+          className="border-bottom border-dark"
+          spacing="xs"
+          align="center"
+        >
+          {/* Use Autocomplete instead? */}
+          <Select
+            searchable
+            clearable
+            allowDeselect
+            placeholder="All Services"
+            maxDropdownHeight={280}
+            data={servicesOptions}
+            disabled={isServicesLoading}
             radius="md"
-            keepMounted={false}
-            value={activeTab}
-            onTabChange={setActiveTab}
-          >
-            <div className="px-3 py-2 border-bottom border-dark">
-              <Tabs.List>
-                <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
-                <Tabs.Tab value="database">Database</Tabs.Tab>
-                <Tabs.Tab value="infrastructure">Infrastructure</Tabs.Tab>
-              </Tabs.List>
-            </div>
-
-            <div className="p-3">
-              <Tabs.Panel value="infrastructure">
-                <Grid>
-                  {service && !podNames.length ? (
-                    <>
-                      <Grid.Col span={12}>
-                        <Card p="xl" ta="center">
-                          <Card.Section p="md" py="xs" withBorder>
-                            <div className="fs-8">
-                              <i className="bi bi-exclamation-circle-fill text-slate-400 fs-8 me-2" />
-                              No pods found for service{' '}
-                              <span className="text-white">{service}</span>
-                            </div>
-                          </Card.Section>
-                        </Card>
-                      </Grid.Col>
-                    </>
-                  ) : null}
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        CPU Usage
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXLineChart
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            groupBy: 'k8s.pod.name',
-                            where: whereClause,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.cpu.utilization - Gauge',
-                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Memory Usage
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXLineChart
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            groupBy: 'k8s.pod.name',
-                            where: whereClause,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.memory.usage - Gauge',
-                            numberFormat: K8S_MEM_NUMBER_FORMAT,
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <InfraPodsStatusTable
-                      dateRange={dateRange}
-                      where={whereClause}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        <Flex justify="space-between">
-                          Latest Kubernetes Warning Events
-                          <Link
-                            href={`/search?q=${encodeURIComponent(
-                              whereClause +
-                                ' k8s.resource.name:"events" -level:"normal"',
-                            )}`}
-                            passHref
-                          >
-                            <Anchor size="xs" color="dimmed">
-                              Search{' '}
-                              <i className="bi bi-box-arrow-up-right"></i>
-                            </Anchor>
-                          </Link>
-                        </Flex>
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <LogTableWithSidePanel
-                          config={{
-                            dateRange,
-                            where:
-                              whereClause +
-                              ' k8s.resource.name:"events" -level:"normal"',
-                          }}
-                          isLive={false}
-                          isUTC={false}
-                          setIsUTC={() => {}}
-                          onPropertySearchClick={() => {}}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-              <Tabs.Panel value="http">
-                <Grid>
-                  <Grid.Col span={6}>
-                    <RequestErrorRateCard
-                      dateRange={dateRange}
-                      scopeWhereQuery={scopeWhereQuery}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Request Throughput
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesTimeChart
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
-                              {
-                                displayName: 'Requests',
-                                table: 'logs',
-                                type: 'time',
-                                aggFn: 'count',
-                                where: scopeWhereQuery('span.kind:"server"'),
-                                groupBy: [],
-                                numberFormat: {
-                                  ...INTEGER_NUMBER_FORMAT,
-                                  unit: 'requests',
-                                },
-                              },
-                            ],
-                            seriesReturnType: 'column',
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        20 Top Most Time Consuming Endpoints
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXListBarChart
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
-                              {
-                                displayName: 'Total',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'sum',
-                                field: 'duration',
-                                where: scopeWhereQuery('span.kind:"server"'),
-                                groupBy: ['span_name'],
-                                sortOrder: 'desc',
-                                visible: false,
-                              },
-                              {
-                                displayName: 'Req/Min',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'count_per_min',
-                                where: scopeWhereQuery('span.kind:"server"'),
-                                groupBy: ['span_name'],
-                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
-                              },
-                              {
-                                displayName: 'P95',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'p95',
-                                field: 'duration',
-                                where: scopeWhereQuery('span.kind:"server"'),
-                                groupBy: ['span_name'],
-                                numberFormat: {
-                                  factor: 1,
-                                  output: 'number',
-                                  mantissa: 2,
-                                  thousandSeparated: true,
-                                  average: false,
-                                  decimalBytes: false,
-                                  unit: 'ms',
-                                },
-                              },
-                              {
-                                displayName: 'Median',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'p50',
-                                field: 'duration',
-                                where: scopeWhereQuery('span.kind:"server"'),
-                                groupBy: ['span_name'],
-                                numberFormat: {
-                                  factor: 1,
-                                  output: 'number',
-                                  mantissa: 2,
-                                  thousandSeparated: true,
-                                  average: false,
-                                  decimalBytes: false,
-                                  unit: 'ms',
-                                },
-                              },
-                              {
-                                displayName: 'Errors/Min',
-                                table: 'logs',
-                                type: 'table',
-                                aggFn: 'count_per_min',
-                                field: '',
-                                where: scopeWhereQuery(
-                                  'span.kind:"server" level:"error"',
-                                ),
-                                groupBy: ['span_name'],
-                                numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
-                              },
-                            ],
-                          }}
-                          getRowSearchLink={row => {
-                            const searchParams = new URLSearchParams(
-                              window.location.search,
-                            );
-                            searchParams.set('endpoint', `${row.group}`);
-                            return (
-                              window.location.pathname +
-                              '?' +
-                              searchParams.toString()
-                            );
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <EndpointLatencyTile
-                      dateRange={dateRange}
-                      scopeWhereQuery={scopeWhereQuery}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <EndpointTableCard
-                      dateRange={dateRange}
-                      scopeWhereQuery={scopeWhereQuery}
-                    />
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-              <Tabs.Panel value="database">
-                <Grid>
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Total Time Consumed per Query
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesTimeChart
-                          defaultDisplayType="stacked_bar"
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
-                              {
-                                displayName: 'Total Query Time',
-                                table: 'logs',
-                                type: 'time',
-                                aggFn: 'sum',
-                                field: 'duration',
-                                where: scopeWhereQuery(''),
-                                groupBy: [DB_STATEMENT_PROPERTY],
-                                numberFormat: MS_NUMBER_FORMAT,
-                              },
-                            ],
-                            seriesReturnType: 'column',
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md">
-                      <Card.Section p="md" py="xs" withBorder>
-                        Throughput per Query
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        <HDXMultiSeriesTimeChart
-                          defaultDisplayType="stacked_bar"
-                          config={{
-                            dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
-                            series: [
-                              {
-                                displayName: 'Total Query Count',
-                                table: 'logs',
-                                type: 'time',
-                                aggFn: 'count',
-                                where: scopeWhereQuery(''),
-                                groupBy: [DB_STATEMENT_PROPERTY],
-                                numberFormat: {
-                                  ...INTEGER_NUMBER_FORMAT,
-                                  unit: 'queries',
-                                },
-                              },
-                            ],
-                            seriesReturnType: 'column',
-                          }}
-                        />
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <DatabaseTimeConsumingQueryCard
-                      dateRange={dateRange}
-                      scopeWhereQuery={scopeWhereQuery}
-                    />
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-            </div>
-          </Tabs>
-        </div>
+            variant="filled"
+            value={service}
+            onChange={v => setService(v)}
+            w={300}
+          />
+          <div style={{ flex: 1 }}>
+            <SearchInput
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+            />
+          </div>
+          <div className="d-flex" style={{ width: 350, height: 36 }}>
+            <SearchTimeRangePicker
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={range => {
+                onSearch(range);
+              }}
+            />
+          </div>
+        </Group>
       </div>
+      <Tabs
+        color="gray"
+        variant="pills"
+        defaultValue="infrastructure"
+        radius="md"
+        keepMounted={false}
+        value={activeTab}
+        onTabChange={setActiveTab}
+      >
+        <div className="px-3 py-2 border-bottom border-dark">
+          <Tabs.List>
+            <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
+            <Tabs.Tab value="database">Database</Tabs.Tab>
+            <Tabs.Tab value="infrastructure">Infrastructure</Tabs.Tab>
+          </Tabs.List>
+        </div>
+
+        <div className="p-3">
+          <Tabs.Panel value="infrastructure">
+            <Grid>
+              {service && !podNames.length ? (
+                <>
+                  <Grid.Col span={12}>
+                    <Card p="xl" ta="center">
+                      <Card.Section p="md" py="xs" withBorder>
+                        <div className="fs-8">
+                          <i className="bi bi-exclamation-circle-fill text-slate-400 fs-8 me-2" />
+                          No pods found for service{' '}
+                          <span className="text-white">{service}</span>
+                        </div>
+                      </Card.Section>
+                    </Card>
+                  </Grid.Col>
+                </>
+              ) : null}
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    CPU Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.pod.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'avg',
+                        field: 'k8s.pod.cpu.utilization - Gauge',
+                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Memory Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.pod.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'avg',
+                        field: 'k8s.pod.memory.usage - Gauge',
+                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <InfraPodsStatusTable
+                  dateRange={dateRange}
+                  where={whereClause}
+                />
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    <Flex justify="space-between">
+                      Latest Kubernetes Warning Events
+                      <Link
+                        href={`/search?q=${encodeURIComponent(
+                          whereClause +
+                            ' k8s.resource.name:"events" -level:"normal"',
+                        )}`}
+                        passHref
+                      >
+                        <Anchor size="xs" color="dimmed">
+                          Search <i className="bi bi-box-arrow-up-right"></i>
+                        </Anchor>
+                      </Link>
+                    </Flex>
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <LogTableWithSidePanel
+                      config={{
+                        dateRange,
+                        where:
+                          whereClause +
+                          ' k8s.resource.name:"events" -level:"normal"',
+                      }}
+                      isLive={false}
+                      isUTC={false}
+                      setIsUTC={() => {}}
+                      onPropertySearchClick={() => {}}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="http">
+            <Grid>
+              <Grid.Col span={6}>
+                <RequestErrorRateCard
+                  dateRange={dateRange}
+                  scopeWhereQuery={scopeWhereQuery}
+                />
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Request Throughput
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXMultiSeriesTimeChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        series: [
+                          {
+                            displayName: 'Requests',
+                            table: 'logs',
+                            type: 'time',
+                            aggFn: 'count',
+                            where: scopeWhereQuery('span.kind:"server"'),
+                            groupBy: [],
+                            numberFormat: {
+                              ...INTEGER_NUMBER_FORMAT,
+                              unit: 'requests',
+                            },
+                          },
+                        ],
+                        seriesReturnType: 'column',
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    20 Top Most Time Consuming Endpoints
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXListBarChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        series: [
+                          {
+                            displayName: 'Total',
+                            table: 'logs',
+                            type: 'table',
+                            aggFn: 'sum',
+                            field: 'duration',
+                            where: scopeWhereQuery('span.kind:"server"'),
+                            groupBy: ['span_name'],
+                            sortOrder: 'desc',
+                            visible: false,
+                          },
+                          {
+                            displayName: 'Req/Min',
+                            table: 'logs',
+                            type: 'table',
+                            aggFn: 'count_per_min',
+                            where: scopeWhereQuery('span.kind:"server"'),
+                            groupBy: ['span_name'],
+                            numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                          },
+                          {
+                            displayName: 'P95',
+                            table: 'logs',
+                            type: 'table',
+                            aggFn: 'p95',
+                            field: 'duration',
+                            where: scopeWhereQuery('span.kind:"server"'),
+                            groupBy: ['span_name'],
+                            numberFormat: {
+                              factor: 1,
+                              output: 'number',
+                              mantissa: 2,
+                              thousandSeparated: true,
+                              average: false,
+                              decimalBytes: false,
+                              unit: 'ms',
+                            },
+                          },
+                          {
+                            displayName: 'Median',
+                            table: 'logs',
+                            type: 'table',
+                            aggFn: 'p50',
+                            field: 'duration',
+                            where: scopeWhereQuery('span.kind:"server"'),
+                            groupBy: ['span_name'],
+                            numberFormat: {
+                              factor: 1,
+                              output: 'number',
+                              mantissa: 2,
+                              thousandSeparated: true,
+                              average: false,
+                              decimalBytes: false,
+                              unit: 'ms',
+                            },
+                          },
+                          {
+                            displayName: 'Errors/Min',
+                            table: 'logs',
+                            type: 'table',
+                            aggFn: 'count_per_min',
+                            field: '',
+                            where: scopeWhereQuery(
+                              'span.kind:"server" level:"error"',
+                            ),
+                            groupBy: ['span_name'],
+                            numberFormat: SINGLE_DECIMAL_NUMBER_FORMAT,
+                          },
+                        ],
+                      }}
+                      getRowSearchLink={row => {
+                        const searchParams = new URLSearchParams(
+                          window.location.search,
+                        );
+                        searchParams.set('endpoint', `${row.group}`);
+                        return (
+                          window.location.pathname +
+                          '?' +
+                          searchParams.toString()
+                        );
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <EndpointLatencyTile
+                  dateRange={dateRange}
+                  scopeWhereQuery={scopeWhereQuery}
+                />
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <EndpointTableCard
+                  dateRange={dateRange}
+                  scopeWhereQuery={scopeWhereQuery}
+                />
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="database">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Total Time Consumed per Query
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXMultiSeriesTimeChart
+                      defaultDisplayType="stacked_bar"
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        series: [
+                          {
+                            displayName: 'Total Query Time',
+                            table: 'logs',
+                            type: 'time',
+                            aggFn: 'sum',
+                            field: 'duration',
+                            where: scopeWhereQuery(''),
+                            groupBy: [DB_STATEMENT_PROPERTY],
+                            numberFormat: MS_NUMBER_FORMAT,
+                          },
+                        ],
+                        seriesReturnType: 'column',
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Throughput per Query
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXMultiSeriesTimeChart
+                      defaultDisplayType="stacked_bar"
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        series: [
+                          {
+                            displayName: 'Total Query Count',
+                            table: 'logs',
+                            type: 'time',
+                            aggFn: 'count',
+                            where: scopeWhereQuery(''),
+                            groupBy: [DB_STATEMENT_PROPERTY],
+                            numberFormat: {
+                              ...INTEGER_NUMBER_FORMAT,
+                              unit: 'queries',
+                            },
+                          },
+                        ],
+                        seriesReturnType: 'column',
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <DatabaseTimeConsumingQueryCard
+                  dateRange={dateRange}
+                  scopeWhereQuery={scopeWhereQuery}
+                />
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+        </div>
+      </Tabs>
     </div>
   );
 }
@@ -1108,3 +1102,5 @@ function DatabaseTimeConsumingQueryCard({
     </Card>
   );
 }
+
+ServiceDashboardPage.getLayout = withAppNav;

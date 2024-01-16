@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
@@ -12,7 +12,14 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
-import { Button as MButton, CloseButton, Input, Loader } from '@mantine/core';
+import {
+  ActionIcon,
+  Button as MButton,
+  CloseButton,
+  Collapse,
+  Input,
+  Loader,
+} from '@mantine/core';
 
 import { version } from '../package.json';
 
@@ -372,6 +379,7 @@ function PresetDashboardLink({
       href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
     >
       <a
+        tabIndex={0}
         className={cx(styles.listLink, {
           [styles.listLinkActive]:
             query.config === JSON.stringify(config) &&
@@ -413,6 +421,7 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
       ).toString()}`}
     >
       <a
+        tabIndex={0}
         className={cx(styles.listLink, {
           [styles.listLinkActive]:
             routerQuery.savedSearchId == null && searchedQuery === query,
@@ -428,20 +437,37 @@ function SearchInput({
   placeholder,
   value,
   onChange,
+  onEnterDown,
 }: {
   placeholder: string;
   value: string;
   onChange: (arg0: string) => void;
+  onEnterDown?: () => void;
 }) {
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        onEnterDown?.();
+      }
+    },
+    [onEnterDown],
+  );
+
   return (
     <Input
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
       icon={<i className="bi bi-search fs-8 ps-1" />}
+      onKeyDown={handleKeyDown}
       rightSection={
         value && (
-          <CloseButton size="xs" radius="xl" onClick={() => onChange('')} />
+          <CloseButton
+            tabIndex={-1}
+            size="xs"
+            radius="xl"
+            onClick={() => onChange('')}
+          />
         )
       }
       mt={8}
@@ -596,6 +622,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     filteredList: filteredDashboardsList,
   } = useSearchableList({ items: dashboards });
 
+  const savedSearchesResultsRef = useRef<HTMLDivElement>(null);
+  const dashboardsResultsRef = useRef<HTMLDivElement>(null);
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -663,99 +692,116 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </a>
               </Link>
               {!isCollapsed && (
-                <i
-                  role="button"
-                  className={`bi bi-chevron-${
-                    isSearchExpanded ? 'down' : 'right'
-                  } text-muted-hover`}
+                <ActionIcon
+                  variant="default"
+                  size="sm"
                   onClick={() => {
                     setIsSearchExpanded(!isSearchExpanded);
                   }}
-                />
+                >
+                  <i
+                    className={`fs-8 bi bi-chevron-${
+                      isSearchExpanded ? 'up' : 'down'
+                    } text-muted-hover`}
+                  />
+                </ActionIcon>
               )}
             </div>
-            {!isCollapsed && isSearchExpanded && (
-              <div className={styles.list}>
-                {isLogViewsLoading ? (
-                  <Loader
-                    color="gray.7"
-                    variant="dots"
-                    mx="md"
-                    my="xs"
-                    size="sm"
+            {!isCollapsed && (
+              <Collapse in={isSearchExpanded}>
+                <div className={styles.list}>
+                  {isLogViewsLoading ? (
+                    <Loader
+                      color="gray.7"
+                      variant="dots"
+                      mx="md"
+                      my="xs"
+                      size="sm"
+                    />
+                  ) : (
+                    <>
+                      {logViews.length > 1 && (
+                        <SearchInput
+                          placeholder="Saved Searches"
+                          value={searchesListQ}
+                          onChange={setSearchesListQ}
+                          onEnterDown={() => {
+                            (
+                              savedSearchesResultsRef?.current
+                                ?.firstChild as HTMLAnchorElement
+                            )?.focus?.();
+                          }}
+                        />
+                      )}
+                      <div className={styles.listGroupName}>SAVED SEARCHES</div>
+                      {logViews.length === 0 && (
+                        <div className={styles.listEmptyMsg}>
+                          No saved searches
+                        </div>
+                      )}
+                      <div ref={savedSearchesResultsRef}>
+                        {filteredSearchesList.map(lv => (
+                          <Link
+                            href={`/search/${lv._id}?${new URLSearchParams(
+                              timeRangeQuery.from != -1 &&
+                              timeRangeQuery.to != -1
+                                ? {
+                                    from: timeRangeQuery.from.toString(),
+                                    to: timeRangeQuery.to.toString(),
+                                    tq: inputTimeQuery,
+                                  }
+                                : {},
+                            ).toString()}`}
+                            key={lv._id}
+                          >
+                            <a
+                              tabIndex={0}
+                              className={cx(
+                                styles.listLink,
+                                lv._id === query.savedSearchId &&
+                                  styles.listLinkActive,
+                              )}
+                              title={lv.name}
+                            >
+                              <div className="d-inline-block text-truncate">
+                                {lv.name}
+                              </div>
+                              {Array.isArray(lv.alerts) &&
+                              lv.alerts.length > 0 ? (
+                                lv.alerts.some(a => a.state === 'ALERT') ? (
+                                  <i
+                                    className="bi bi-bell float-end text-danger"
+                                    title="Has Alerts and is in ALERT state"
+                                  ></i>
+                                ) : (
+                                  <i
+                                    className="bi bi-bell float-end"
+                                    title="Has Alerts and is in OK state"
+                                  ></i>
+                                )
+                              ) : null}
+                            </a>
+                          </Link>
+                        ))}
+                      </div>
+                      {searchesListQ && filteredSearchesList.length === 0 ? (
+                        <div className={styles.listEmptyMsg}>
+                          No results matching <i>{searchesListQ}</i>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                  <div className={styles.listGroupName}>PRESETS</div>
+                  <PresetSearchLink
+                    query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
+                    name="All Error Events"
                   />
-                ) : (
-                  <>
-                    {logViews.length > 1 && (
-                      <SearchInput
-                        placeholder="Saved Searches"
-                        value={searchesListQ}
-                        onChange={setSearchesListQ}
-                      />
-                    )}
-                    <div className={styles.listGroupName}>SAVED SEARCHES</div>
-                    {logViews.length === 0 && (
-                      <div className={styles.listEmptyMsg}>
-                        No saved searches
-                      </div>
-                    )}
-                    {filteredSearchesList.map(lv => (
-                      <Link
-                        href={`/search/${lv._id}?${new URLSearchParams(
-                          timeRangeQuery.from != -1 && timeRangeQuery.to != -1
-                            ? {
-                                from: timeRangeQuery.from.toString(),
-                                to: timeRangeQuery.to.toString(),
-                                tq: inputTimeQuery,
-                              }
-                            : {},
-                        ).toString()}`}
-                        key={lv._id}
-                      >
-                        <a
-                          className={cx(
-                            styles.listLink,
-                            lv._id === query.savedSearchId &&
-                              styles.listLinkActive,
-                          )}
-                          title={lv.name}
-                        >
-                          <div className="d-inline-block text-truncate">
-                            {lv.name}
-                          </div>
-                          {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-                            lv.alerts.some(a => a.state === 'ALERT') ? (
-                              <i
-                                className="bi bi-bell float-end text-danger"
-                                title="Has Alerts and is in ALERT state"
-                              ></i>
-                            ) : (
-                              <i
-                                className="bi bi-bell float-end"
-                                title="Has Alerts and is in OK state"
-                              ></i>
-                            )
-                          ) : null}
-                        </a>
-                      </Link>
-                    ))}
-                    {searchesListQ && filteredSearchesList.length === 0 ? (
-                      <div className={styles.listEmptyMsg}>
-                        No results matching <i>{searchesListQ}</i>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-                <div className={styles.listGroupName}>PRESETS</div>
-                <PresetSearchLink
-                  query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
-                  name="All Error Events"
-                />
-                <PresetSearchLink
-                  query="http.status_code:>=400"
-                  name="HTTP Status >= 400"
-                />
-              </div>
+                  <PresetSearchLink
+                    query="http.status_code:>=400"
+                    name="HTTP Status >= 400"
+                  />
+                </div>
+              </Collapse>
             )}
             <div className="px-3 my-3">
               <Link href="/chart">
@@ -871,118 +917,136 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </a>
                 </Link>
                 {!isCollapsed && (
-                  <i
-                    role="button"
-                    className={`bi bi-chevron-${
-                      isDashboardsExpanded ? 'down' : 'right'
-                    } text-muted-hover`}
+                  <ActionIcon
+                    variant="default"
+                    size="sm"
                     onClick={() => {
                       setIsDashboardExpanded(!isDashboardsExpanded);
                     }}
-                  />
+                  >
+                    <i
+                      className={`fs-8 bi bi-chevron-${
+                        isDashboardsExpanded ? 'up' : 'down'
+                      } text-muted-hover`}
+                    />
+                  </ActionIcon>
                 )}
               </div>
             </div>
 
-            {!isCollapsed && isDashboardsExpanded && (
-              <div className={styles.list}>
-                <Link href="/dashboards">
-                  <a
-                    className={cx(
-                      styles.listLink,
-                      pathname.includes('/dashboard') &&
-                        query.dashboardId == null &&
-                        query.config !=
-                          JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
-                        query.config !=
-                          JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
-                        query.config !=
-                          JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
-                        query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                        ? [styles.listLinkActive]
-                        : null,
-                    )}
-                  >
-                    <div className="mt-1 lh-1 py-1">
-                      <i className="bi bi-plus-lg me-2" />
-                      New Dashboard
-                    </div>
-                  </a>
-                </Link>
+            {!isCollapsed && (
+              <Collapse in={isDashboardsExpanded}>
+                <div className={styles.list}>
+                  <Link href="/dashboards">
+                    <a
+                      className={cx(
+                        styles.listLink,
+                        pathname.includes('/dashboard') &&
+                          query.dashboardId == null &&
+                          query.config !=
+                            JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
+                          query.config !=
+                            JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
+                          query.config !=
+                            JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
+                          query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
+                          ? [styles.listLinkActive]
+                          : null,
+                      )}
+                    >
+                      <div className="mt-1 lh-1 py-1">
+                        <i className="bi bi-plus-lg me-2" />
+                        New Dashboard
+                      </div>
+                    </a>
+                  </Link>
 
-                {isDashboardsLoading ? (
-                  <Loader
-                    color="gray.7"
-                    variant="dots"
-                    mx="md"
-                    my="xs"
-                    size="sm"
+                  {isDashboardsLoading ? (
+                    <Loader
+                      color="gray.7"
+                      variant="dots"
+                      mx="md"
+                      my="xs"
+                      size="sm"
+                    />
+                  ) : (
+                    <>
+                      {dashboards.length > 1 && (
+                        <SearchInput
+                          placeholder="Saved Dashboards"
+                          value={dashboardsListQ}
+                          onChange={setDashboardsListQ}
+                          onEnterDown={() => {
+                            (
+                              dashboardsResultsRef?.current
+                                ?.firstChild as HTMLAnchorElement
+                            )?.focus?.();
+                          }}
+                        />
+                      )}
+                      <div className={styles.listGroupName}>
+                        Saved Dashboards
+                      </div>
+                      {dashboards.length === 0 && (
+                        <div className={styles.listEmptyMsg}>
+                          No saved dashboards
+                        </div>
+                      )}
+                      <div ref={dashboardsResultsRef}>
+                        {filteredDashboardsList.map((dashboard: any) => (
+                          <Link
+                            href={`/dashboards/${dashboard._id}`}
+                            key={dashboard._id}
+                          >
+                            <a
+                              tabIndex={0}
+                              className={cx(styles.listLink, {
+                                [styles.listLinkActive]:
+                                  dashboard._id === query.dashboardId,
+                              })}
+                            >
+                              {dashboard.name}
+                            </a>
+                          </Link>
+                        ))}
+                      </div>
+                      {dashboardsListQ &&
+                      filteredDashboardsList.length === 0 ? (
+                        <div className={styles.listEmptyMsg}>
+                          No results matching <i>{dashboardsListQ}</i>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+
+                  <div className={styles.listGroupName}>PRESETS</div>
+                  <PresetDashboardLink
+                    query={query}
+                    config={HYPERDX_USAGE_DASHBOARD_CONFIG}
+                    name="HyperDX Usage"
                   />
-                ) : (
-                  <>
-                    {dashboards.length > 1 && (
-                      <SearchInput
-                        placeholder="Saved Dashboards"
-                        value={dashboardsListQ}
-                        onChange={setDashboardsListQ}
-                      />
-                    )}
-                    <div className={styles.listGroupName}>Saved Dashboards</div>
-                    {dashboards.length === 0 && (
-                      <div className={styles.listEmptyMsg}>
-                        No saved dashboards
-                      </div>
-                    )}
-                    {filteredDashboardsList.map((dashboard: any) => (
-                      <Link
-                        href={`/dashboards/${dashboard._id}`}
-                        key={dashboard._id}
-                      >
-                        <a
-                          className={cx(styles.listLink, {
-                            [styles.listLinkActive]:
-                              dashboard._id === query.dashboardId,
-                          })}
-                        >
-                          {dashboard.name}
-                        </a>
-                      </Link>
-                    ))}
-                    {dashboardsListQ && filteredDashboardsList.length === 0 ? (
-                      <div className={styles.listEmptyMsg}>
-                        No results matching <i>{dashboardsListQ}</i>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-
-                <div className={styles.listGroupName}>PRESETS</div>
-                <PresetDashboardLink
-                  query={query}
-                  config={HYPERDX_USAGE_DASHBOARD_CONFIG}
-                  name="HyperDX Usage"
-                />
-                <PresetDashboardLink
-                  query={query}
-                  config={APP_PERFORMANCE_DASHBOARD_CONFIG}
-                  name="App Performance"
-                />
-                <PresetDashboardLink
-                  query={query}
-                  config={HTTP_SERVER_DASHBOARD_CONFIG}
-                  name="HTTP Server"
-                />
-                <PresetDashboardLink
-                  query={query}
-                  config={REDIS_DASHBOARD_CONFIG}
-                  name="Redis"
-                />
-                <PresetDashboardLink
-                  query={query}
-                  config={MONGO_DASHBOARD_CONFIG}
-                  name="Mongo"
-                />
-              </div>
+                  <PresetDashboardLink
+                    query={query}
+                    config={APP_PERFORMANCE_DASHBOARD_CONFIG}
+                    name="App Performance"
+                  />
+                  <PresetDashboardLink
+                    query={query}
+                    config={HTTP_SERVER_DASHBOARD_CONFIG}
+                    name="HTTP Server"
+                  />
+                  <PresetDashboardLink
+                    query={query}
+                    config={REDIS_DASHBOARD_CONFIG}
+                    name="Redis"
+                  />
+                  <PresetDashboardLink
+                    query={query}
+                    config={MONGO_DASHBOARD_CONFIG}
+                    name="Mongo"
+                  />
+                </div>
+              </Collapse>
             )}
           </div>
         </div>

@@ -8,10 +8,10 @@ import type { QueryParamConfig } from 'serialize-query-params';
 import { decodeArray, encodeArray } from 'serialize-query-params';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 
-import AppNav from './AppNav';
 import { ChartSeriesForm } from './ChartUtils';
 import DSSelect from './DSSelect';
 import HDXLineChart from './HDXLineChart';
+import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchTimeRangePicker, {
   parseTimeRangeInput,
@@ -166,14 +166,13 @@ export default function GraphPage() {
   }, [chartSeries, displayedTimeInputValue, granularity, onSearch]);
 
   return (
-    <div className="LogViewerPage d-flex" style={{ height: '100vh' }}>
+    <div className="LogViewerPage">
       <Head>
         <title>Chart Explorer - HyperDX</title>
       </Head>
-      <AppNav />
       <div
-        style={{ background: '#16171D', height: '100%' }}
-        className="d-flex flex-column flex-grow-1"
+        style={{ background: '#16171D', height: '100vh' }}
+        className="d-flex flex-column"
       >
         <form className="bg-body p-3" onSubmit={e => e.preventDefault()}>
           <div className="fs-5 mb-3 fw-500">Create New Chart</div>
@@ -301,7 +300,7 @@ export default function GraphPage() {
         {chartConfig != null && chartConfig.table === 'logs' && (
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
-            <div style={{ height: 150 }} className="bg-hdx-dark">
+            <div style={{ height: 200 }} className="bg-hdx-dark">
               <LogTableWithSidePanel
                 config={{
                   ...chartConfig,
@@ -327,3 +326,5 @@ export default function GraphPage() {
     </div>
   );
 }
+
+GraphPage.getLayout = withAppNav;

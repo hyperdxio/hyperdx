@@ -26,7 +26,6 @@ import {
 import { Badge, Transition } from '@mantine/core';
 
 import api from './api';
-import AppNav from './AppNav';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import {
   EditHistogramChartForm,
@@ -42,6 +41,7 @@ import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
+import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
@@ -928,11 +928,10 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="d-flex w-100">
+    <div>
       <Head>
         <title>Dashboard - HyperDX</title>
       </Head>
-      <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
           isLocalDashboard={isLocalDashboard}
@@ -1148,3 +1147,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+DashboardPage.getLayout = withAppNav;

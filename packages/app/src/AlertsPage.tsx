@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 
 import api from './api';
-import AppNav from './AppNav';
+import { withAppNav } from './layout';
 import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
 
@@ -252,49 +252,44 @@ export default function AlertsPage() {
   // TODO: Error and loading states
 
   return (
-    <div className="AlertsPage" style={{ minHeight: '100vh' }}>
+    <div className="AlertsPage">
       <Head>
         <title>Alerts - HyperDX</title>
       </Head>
-      <div className="d-flex">
-        <AppNav fixed />
-        <div className="w-100">
-          <div className={styles.header}>Alerts</div>
-          <div className="my-4">
-            <Container>
-              <MAlert
-                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-                color="gray"
-              >
-                Alerts can be{' '}
-                <a
-                  href="https://www.hyperdx.io/docs/alerts"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  created
-                </a>{' '}
-                from dashboard charts and saved searches.
-              </MAlert>
-              {isLoading ? (
-                <div className="text-center text-slate-400 my-4 fs-8">
-                  Loading...
-                </div>
-              ) : isError ? (
-                <div className="text-center text-slate-400 my-4 fs-8">
-                  Error
-                </div>
-              ) : alerts?.length ? (
-                <AlertCardList alerts={alerts} />
-              ) : (
-                <div className="text-center text-slate-400 my-4 fs-8">
-                  No alerts created yet
-                </div>
-              )}
-            </Container>
-          </div>
-        </div>
+      <div className={styles.header}>Alerts</div>
+      <div className="my-4">
+        <Container>
+          <MAlert
+            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            color="gray"
+          >
+            Alerts can be{' '}
+            <a
+              href="https://www.hyperdx.io/docs/alerts"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              created
+            </a>{' '}
+            from dashboard charts and saved searches.
+          </MAlert>
+          {isLoading ? (
+            <div className="text-center text-slate-400 my-4 fs-8">
+              Loading...
+            </div>
+          ) : isError ? (
+            <div className="text-center text-slate-400 my-4 fs-8">Error</div>
+          ) : alerts?.length ? (
+            <AlertCardList alerts={alerts} />
+          ) : (
+            <div className="text-center text-slate-400 my-4 fs-8">
+              No alerts created yet
+            </div>
+          )}
+        </Container>
       </div>
     </div>
   );
 }
+
+AlertsPage.getLayout = withAppNav;
