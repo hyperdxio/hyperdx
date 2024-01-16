@@ -5,7 +5,6 @@ import { validateRequest } from 'zod-express-middleware';
 
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
-import redisClient from '@/utils/redis';
 
 // create routes that will get and update dashboards
 const router = express.Router();
@@ -117,11 +116,6 @@ router.post(
         tags,
         team: teamId,
       }).save();
-      if (tags?.length) {
-        redisClient.del(`tags:${teamId}`).catch(e => {
-          console.error(e);
-        });
-      }
       res.json({
         data: newDashboard,
       });
@@ -180,13 +174,6 @@ router.put(
           chartId: { $in: deletedChartIds },
         });
       }
-
-      if (tags?.length) {
-        redisClient.del(`tags:${teamId}`).catch(e => {
-          console.error(e);
-        });
-      }
-
       res.json({
         data: updatedDashboard,
       });

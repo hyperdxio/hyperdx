@@ -2,7 +2,6 @@ import express from 'express';
 
 import Alert from '@/models/alert';
 import LogView from '@/models/logView';
-import redisClient from '@/utils/redis';
 
 const router = express.Router();
 
@@ -24,11 +23,6 @@ router.post('/', async (req, res, next) => {
       team: teamId,
       creator: userId,
     }).save();
-    if (tags?.length) {
-      redisClient.del(`tags:${teamId}`).catch(e => {
-        console.error(e);
-      });
-    }
     res.json({
       data: logView,
     });
@@ -86,11 +80,6 @@ router.patch('/:id', async (req, res, next) => {
       },
       { new: true },
     );
-    if (tags?.length) {
-      redisClient.del(`tags:${teamId}`).catch(e => {
-        console.error(e);
-      });
-    }
     res.json({
       data: logView,
     });
