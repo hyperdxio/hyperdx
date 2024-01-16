@@ -798,8 +798,8 @@ Array [
           { value: 0, timestamp: now, le: '100' },
           { value: 0, timestamp: now, le: '200' },
           { value: 100, timestamp: now, le: '300' },
-          { value: 0, timestamp: now, le: '400' },
-          { value: 0, timestamp: now, le: '+Inf' },
+          { value: 100, timestamp: now, le: '400' },
+          { value: 100, timestamp: now, le: '+Inf' },
         ],
       }),
     );
