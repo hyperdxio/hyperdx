@@ -1,4 +1,5 @@
 import express from 'express';
+import { uniq } from 'lodash';
 
 import Alert from '@/models/alert';
 import LogView from '@/models/logView';
@@ -18,7 +19,7 @@ router.post('/', async (req, res, next) => {
     }
     const logView = await new LogView({
       name,
-      tags,
+      tags: tags && uniq(tags),
       query: `${query}`,
       team: teamId,
       creator: userId,
@@ -76,7 +77,7 @@ router.patch('/:id', async (req, res, next) => {
       logViewId,
       {
         query,
-        tags,
+        tags: tags && uniq(tags),
       },
       { new: true },
     );

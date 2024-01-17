@@ -62,7 +62,7 @@ Object {
         name: 'Test',
         charts: [],
         query: '',
-        tags: ['test'],
+        tags: ['test', 'test'], // make sure we dedupe
       })
       .expect(200);
     await agent

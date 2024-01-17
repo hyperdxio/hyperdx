@@ -1,5 +1,5 @@
 import express from 'express';
-import { differenceBy, groupBy } from 'lodash';
+import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -108,12 +108,13 @@ router.post(
       }
 
       const { name, charts, query, tags } = req.body ?? {};
+
       // Create new dashboard from name and charts
       const newDashboard = await new Dashboard({
         name,
         charts,
         query,
-        tags,
+        tags: tags && uniq(tags),
         team: teamId,
       }).save();
       res.json({
@@ -156,7 +157,7 @@ router.put(
           name,
           charts,
           query,
-          tags,
+          tags: tags && uniq(tags),
         },
         { new: true },
       );

@@ -35,16 +35,17 @@ export function rotateTeamApiKey(teamId: ObjectId) {
 }
 
 export async function getTags(teamId: ObjectId) {
-  const dashboardTags = await Dashboard.aggregate([
-    { $match: { team: teamId } },
-    { $unwind: '$tags' },
-    { $group: { _id: '$tags' } },
-  ]);
-
-  const logViewTags = await LogView.aggregate([
-    { $match: { team: teamId } },
-    { $unwind: '$tags' },
-    { $group: { _id: '$tags' } },
+  const [dashboardTags, logViewTags] = await Promise.all([
+    Dashboard.aggregate([
+      { $match: { team: teamId } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags' } },
+    ]),
+    LogView.aggregate([
+      { $match: { team: teamId } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags' } },
+    ]),
   ]);
 
   return [
