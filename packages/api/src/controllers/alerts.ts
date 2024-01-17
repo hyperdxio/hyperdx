@@ -5,16 +5,16 @@ import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
 import type { ObjectId } from '@/models';
 import Alert, {
-  AlertChannel,
   AlertInterval,
   AlertSource,
   AlertType,
   IAlert,
 } from '@/models/alert';
+import AlertChannel, { IAlertChannel } from '@/models/alertChannel';
 
 export type AlertInput = {
   source: AlertSource;
-  channel: AlertChannel;
+  channel: IAlertChannel;
   interval: AlertInterval;
   type: AlertType;
   threshold: number;

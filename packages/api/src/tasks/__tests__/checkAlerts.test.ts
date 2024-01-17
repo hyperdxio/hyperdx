@@ -25,6 +25,7 @@ import {
   processAlert,
   roundDownToXMinutes,
 } from '../checkAlerts';
+import { IAlertChannel } from '@/models/alertChannel';
 
 describe('checkAlerts', () => {
   it('roundDownToXMinutes', () => {
@@ -179,12 +180,14 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
+      const exampleChannel: IAlertChannel = {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+        teamId: team._id,
+      };
       const alert = await createAlert(team._id, {
         source: 'LOG',
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
-        },
+        channel: exampleChannel,
         interval: '5m',
         type: 'presence',
         threshold: 10,
@@ -358,6 +361,7 @@ describe('checkAlerts', () => {
         channel: {
           type: 'webhook',
           webhookId: webhook._id.toString(),
+          teamId: team._id,
         },
         interval: '5m',
         type: 'presence',
@@ -591,6 +595,7 @@ describe('checkAlerts', () => {
         channel: {
           type: 'webhook',
           webhookId: webhook._id.toString(),
+          teamId: team._id,
         },
         interval: '5m',
         type: 'presence',
