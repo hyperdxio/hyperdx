@@ -210,20 +210,6 @@ describe('external api v1', () => {
     });
   });
 
-  // Users should be able to CRUD dashboards, saved searches and alerts, so that they can programatically create/manage the UI for various teams.
-
-  // Ex. Team A is standing up a new service, they should be able to run a program (ex. Terraform) to automatically build all the alerts and dashboards they'd need to monitor their new service using their internal automation tools.
-
-  // To do so we'll need to expose CRUD APIs to:
-
-  // Manage alert channels (ex. Slack webhook, Opsgenie teams, etc.), possibly need to be able to import Oauth-based channels too like PD and Slack(???)
-
-  // Create (& CRUD) a saved search with an alert threshold + alert attached, tagged to the right teams or whatever. (See HDX-379)
-
-  // Create (& CRUD) a dashboard with charts that have alerts attached to them.
-
-  // Users will want to be able to customize which of those saved searches/etc go to which team.
-
   describe('alert channels', () => {
     const exampleWebhook = {
       _id: '5f9d4c4f1c9d440000000001',
