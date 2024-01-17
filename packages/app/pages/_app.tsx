@@ -33,7 +33,7 @@ const mantineTheme: MantineThemeOverride = {
   colorScheme: 'dark',
   fontFamily: 'IBM Plex Mono, sans-serif',
   primaryColor: 'green',
-  primaryShade: 9,
+  primaryShade: 8,
   white: '#fff',
   fontSizes: {
     xs: '12px',
