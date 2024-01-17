@@ -46,7 +46,9 @@ export const clearDBCollections = async () => {
   const collections = mongooseConnection.collections;
   await Promise.all(
     Object.values(collections).map(async collection => {
+      console.log('attempting to clear ' + collection.collectionName);
       await collection.deleteMany({}); // an empty mongodb selector object ({}) must be passed as the filter argument
+      console.log('successfully cleared ' + collection.collectionName);
     }),
   );
 };

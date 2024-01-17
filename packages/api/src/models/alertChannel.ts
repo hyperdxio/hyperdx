@@ -10,7 +10,6 @@ export interface IAlertChannel {
   type: AlertChannelType;
   webhookId: string;
   priority?: AlertChannelPriority;
-  teamId: ObjectId;
 }
 
 export type AlertChannelDocument = mongoose.HydratedDocument<IAlertChannel>;
@@ -30,10 +29,6 @@ const AlertChannelSchema = new Schema<IAlertChannel>(
     priority: {
       type: String,
       required: false,
-    },
-    teamId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Team',
     },
   },
   {
