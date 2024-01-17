@@ -11,7 +11,9 @@ services:
       - 8002:8002 # http-generic
       - 8686:8686 # healthcheck
     environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
       ENABLE_GO_PARSER: 'false'
+      GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
       VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
@@ -25,6 +27,7 @@ services:
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://ingestor:8002'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:

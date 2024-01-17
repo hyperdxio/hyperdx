@@ -58,15 +58,15 @@ exporters:
     loglevel: ${env:HYPERDX_LOG_LEVEL}
   logzio/traces:
     account_token: 'X' # required but we don't use it
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-traces'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-traces'
   logzio/logs:
     account_token: 'X' # required but we don't use it
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-logs'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-logs'
   # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter
   splunk_hec:
     token: 'X' # required but we don't use it
     # endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-metrics'
     # HTTP timeout when sending data. Defaults to 10s.
     timeout: 10s
     max_content_length_logs: 0
