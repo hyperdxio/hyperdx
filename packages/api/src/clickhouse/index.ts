@@ -1041,30 +1041,30 @@ export const buildMetricSeriesQuery = async ({
             toUInt64(value),
             toUInt64OrDefault(_string_attributes['le'], 18446744073709551615)
           ])) AS point,
-          mapFilter((k, v) -> (k != 'le'), _string_attributes) as filtered_string_attributes
+          mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM ??
         WHERE name = ?
         AND data_type = ?
         AND (?)
         AND mapContains(_string_attributes, 'le')
         GROUP BY timestamp, name, filtered_string_attributes
-      ), diffPoints AS (
+      ), diff_points AS (
         SELECT 
           timestamp,
           name,
-          filtered_string_attributes as _string_attributes,
+          filtered_string_attributes AS _string_attributes,
           arrayMap((x) -> x[1], point) AS _points,
           arrayMap((x) -> x[2], point) AS buckets,
           (_points - arrayShiftRight(_points, 1)) AS deltas
         FROM points
-      ), flattenPoints AS (
+      ), flatten_points AS (
         SELECT 
           timestamp,
           name,
           _string_attributes,
           (arrayJoin(arrayZip(deltas, buckets)) AS t).1 AS delta,
           t.2 AS bucket
-        FROM diffPoints
+        FROM diff_points
       )
       SELECT
         timestamp,
@@ -1075,7 +1075,7 @@ export const buildMetricSeriesQuery = async ({
           bucket,
           toUInt64(delta)
         ) as value
-      FROM flattenPoints
+      FROM flatten_points
       GROUP BY timestamp, name, _string_attributes
       ORDER BY timestamp ASC`.trim(),
     [
