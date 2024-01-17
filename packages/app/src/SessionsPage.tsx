@@ -13,8 +13,8 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
-import AppNav from './AppNav';
 import Dropdown from './Dropdown';
+import { withAppNav } from './layout';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import SessionSidePanel from './SessionSidePanel';
@@ -332,11 +332,10 @@ export default function SessionsPage() {
   const [isEmailFilterExpanded, setIsEmailFilterExpanded] = useState(true);
 
   return (
-    <div className="SessionsPage d-flex" style={{ height: '100vh' }}>
+    <div className="SessionsPage">
       <Head>
         <title>Client Sessions - HyperDX</title>
       </Head>
-      <AppNav fixed />
       {selectedSession != null && (
         <SessionSidePanel
           key={`session-page-session-side-panel-${selectedSession.id}`}
@@ -525,3 +524,5 @@ export default function SessionsPage() {
     </div>
   );
 }
+
+SessionsPage.getLayout = withAppNav;

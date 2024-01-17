@@ -1,6 +1,6 @@
 [sinks.go_parser]
 type = "http"
-uri = "http://go-parser:7777"
+uri = "${GO_PARSER_API_URL}"
 inputs = ["go_spans"] # only send spans for now
 compression = "gzip"
 encoding.codec = "json"
@@ -11,7 +11,7 @@ batch.timeout_secs = 1
 
 [sinks.dev_hdx_aggregator]
 type = "http"
-uri = "http://aggregator:8001"
+uri = "${AGGREGATOR_API_URL}"
 inputs = ["post_spans", "post_logs"]
 compression = "gzip"
 encoding.codec = "json"
@@ -22,7 +22,7 @@ batch.timeout_secs = 1
 
 [sinks.dev_hdx_metrics_aggregator]
 type = "http"
-uri = "http://aggregator:8001?telemetry=metric"
+uri = "${AGGREGATOR_API_URL}?telemetry=metric"
 inputs = ["metrics"]
 compression = "gzip"
 encoding.codec = "json"

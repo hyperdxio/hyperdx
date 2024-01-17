@@ -1,5 +1,33 @@
 # @hyperdx/api
 
+## 1.5.0
+
+### Minor Changes
+
+- a0dc1b5: Breaking Search Syntax Change: Backslashes will be treated as an
+  escape character for a double quotes (ex. message:"\"" will search for the
+  double quote character). Two backslashes will be treated as a backslash
+  literal (ex. message:\\ will search for the backslash literal)
+
+### Patch Changes
+
+- b04ee14: feat: support multi group-bys in event series query
+- f4360ed: feat: support count per sec/min/hr aggregation functions
+- 7bc4cd3: feat: add last_value agg function
+- d5fcb57: feat: introduce go-parser service
+- 2910461: Bug fix: Restore dashboard filters, use correct field lookup for
+  metrics, and remove extra log property type mapping fetches.
+- 3c29bcf: feat: display hyperdx version at the bottom of app nav bar
+- 9e617ed: ci: setup aggregator int tests
+- 5f05081: feat: api to pull service + k8s attrs linkings
+- dc88a59: fix: add db.normalized_statement default value
+- 3e885bf: fix: move span k8s tags to root
+- bfb08f8: perf: add index for pulling alert histories (GET alerts endpoint)
+- 1b4607b: fix: services endpoint should return empty array if no custom fields
+  found
+- 95ddbb8: fix: services endpoint bug (missing log lines results in no matches)
+- 76d7d73: fix: GET alerts endpoint
+
 ## 1.4.0
 
 ### Minor Changes

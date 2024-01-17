@@ -26,7 +26,6 @@ import {
 import { Badge, Transition } from '@mantine/core';
 
 import api from './api';
-import AppNav from './AppNav';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import {
   EditHistogramChartForm,
@@ -42,13 +41,14 @@ import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
+import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { FloppyIcon, Histogram } from './SVGIcons';
 import TabBar from './TabBar';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import type { Alert, Chart } from './types';
+import type { Alert, Chart, Dashboard } from './types';
 import { useConfirm } from './useConfirm';
 import { hashCode } from './utils';
 import { ZIndexContext } from './zIndex';
@@ -59,14 +59,6 @@ import 'react-resizable/css/styles.css';
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
-
-type Dashboard = {
-  id: string;
-  name: string;
-  charts: Chart[];
-  alerts?: Alert[];
-  query?: string;
-};
 
 const buildAndWhereClause = (query1: string, query2: string) => {
   if (!query1 && !query2) {
@@ -936,11 +928,10 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="d-flex w-100">
+    <div>
       <Head>
         <title>Dashboard - HyperDX</title>
       </Head>
-      <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
           isLocalDashboard={isLocalDashboard}
@@ -1156,3 +1147,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+DashboardPage.getLayout = withAppNav;
