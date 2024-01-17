@@ -78,6 +78,7 @@ services:
     container_name: hdx-oss-otel-collector
     environment:
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://ingestor:8002'
     ports:
       - '13133:13133' # health_check extension
       - '1888:1888' # pprof extension
