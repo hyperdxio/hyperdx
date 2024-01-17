@@ -9,6 +9,7 @@ import {
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
+import { IAlertChannel } from '@/models/alertChannel';
 import { LogType } from '@/utils/logParser';
 
 import * as clickhouse from '../../clickhouse';
@@ -25,7 +26,6 @@ import {
   processAlert,
   roundDownToXMinutes,
 } from '../checkAlerts';
-import { IAlertChannel } from '@/models/alertChannel';
 
 describe('checkAlerts', () => {
   it('roundDownToXMinutes', () => {

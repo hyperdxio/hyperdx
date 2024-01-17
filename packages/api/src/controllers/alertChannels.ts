@@ -1,8 +1,8 @@
 import type { ObjectId } from '@/models';
 import AlertChannel, {
-  IAlertChannel,
-  AlertChannelType,
   AlertChannelPriority,
+  AlertChannelType,
+  IAlertChannel,
 } from '@/models/alertChannel';
 
 export type AlertChannelInput = Omit<IAlertChannel, '_id' | 'teamId'>;

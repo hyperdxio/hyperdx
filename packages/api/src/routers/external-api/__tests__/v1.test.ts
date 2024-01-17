@@ -1,12 +1,17 @@
+import e from 'express';
+
 import * as clickhouse from '@/clickhouse';
-import AlertChannel from '@/models/alertChannel';
-import Webhook from '@/models/webhook';
 import {
   clearDBCollections,
   closeDB,
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import AlertChannel from '@/models/alertChannel';
+import Dashboard, { Chart } from '@/models/dashboard';
+import LogView from '@/models/logView';
+import user from '@/models/user';
+import Webhook from '@/models/webhook';
 
 describe('external api v1', () => {
   const server = getServer();
@@ -236,7 +241,7 @@ describe('external api v1', () => {
       teamId: '5f9d4c4f1c9d440000000000',
     };
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       await Webhook.create(exampleWebhook);
       await AlertChannel.create(exampleChannel);
     });
@@ -312,9 +317,292 @@ describe('external api v1', () => {
         });
       });
     });
+
+    describe('DELETE /api/v1/alert-channels/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        await agent
+          .delete(`/api/v1/alert-channels/${exampleChannel._id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        const found = await AlertChannel.findById(exampleChannel._id);
+        expect(found).toBeNull();
+      });
+    });
   });
 
-  describe('saved searches', () => {});
+  describe('saved searches', () => {
+    const exampleSearch = {
+      _id: '5f9d4c4f1c9d50000000000',
+      name: 'test',
+      query: 'test',
+      teamId: '5f9d4c4f1c9d440000000000',
+      // creator should be set, but to the dynamic user id
+    };
 
-  describe('dashboards', () => {});
+    beforeAll(async () => {
+      await LogView.create(exampleSearch);
+    });
+
+    describe('GET /api/v1/searches', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .get(`/api/v1/searches`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        expect(resp.body.data).toEqual([exampleSearch]);
+        expect(resp.body.data[0].creator).toEqual(user._id);
+      });
+    });
+
+    describe('GET /api/v1/searches/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .get(`/api/v1/saved-searches/${exampleSearch._id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        expect(resp.body.data).toEqual(exampleSearch);
+        expect(resp.body.data.creator).toEqual(user._id);
+      });
+    });
+
+    describe('POST /api/v1/searches', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .post(`/api/v1/searches`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .send({
+            name: 'test_create',
+            query: 'test_create',
+            teamId: '5f9d4c4f1c9d440000000000',
+          })
+          .expect(200);
+
+        expect(resp.body.data).toEqual({
+          _id: expect.any(String),
+          name: 'test_create',
+          query: 'test_create',
+          teamId: '5f9d4c4f1c9d440000000000',
+        });
+        expect(resp.body.data.creator).toEqual(user._id);
+      });
+    });
+
+    describe('PUT /api/v1/searches/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .put(`/api/v1/searches/${exampleSearch._id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .send({
+            name: 'test2',
+            query: 'test2',
+            teamId: '5f9d4c4f1c9d440000000000',
+          })
+          .expect(200);
+
+        expect(resp.body.data).toEqual({
+          _id: expect.any(String),
+          name: 'test2',
+          query: 'test2',
+          teamId: '5f9d4c4f1c9d440000000000',
+        });
+        expect(resp.body.data.creator).toEqual(user._id);
+      });
+    });
+
+    describe('DELETE /api/v1/searches/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        await agent
+          .delete(`/api/v1/searches/${exampleSearch._id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        const found = await LogView.findById(exampleSearch._id);
+        expect(found).toBeNull();
+      });
+    });
+  });
+
+  describe('dashboards', () => {
+    // gently borrowed from preset dashboards in frontend
+    const exampleDashboard = {
+      id: '110000000',
+      name: 'App Performance',
+      charts: [
+        {
+          id: '1624425',
+          name: 'P95 Latency by Operation',
+          x: 0,
+          y: 0,
+          w: 8,
+          h: 3,
+          series: [
+            {
+              type: 'time',
+              aggFn: 'p95',
+              field: 'duration',
+              where: '',
+              groupBy: ['span_name'],
+            },
+          ],
+        },
+        {
+          id: '401924',
+          name: 'Operations with Errors',
+          x: 8,
+          y: 0,
+          w: 4,
+          h: 3,
+          series: [
+            {
+              type: 'time',
+              aggFn: 'count',
+              where: 'level:err',
+              groupBy: ['span_name'],
+            },
+          ],
+        },
+        {
+          id: '883200',
+          name: 'Count of Operations',
+          x: 0,
+          y: 3,
+          w: 8,
+          h: 3,
+          series: [
+            {
+              type: 'time',
+              aggFn: 'count',
+              where: '',
+              groupBy: ['span_name'],
+            },
+          ],
+        },
+      ],
+    };
+
+    beforeAll(async () => {
+      await Dashboard.create(exampleDashboard);
+    });
+    describe('GET /api/v1/dashboards', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .get(`/api/v1/dashboards`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        expect(resp.body.data).toEqual([exampleDashboard]);
+      });
+    });
+
+    describe('GET /api/v1/dashboards/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .get(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        expect(resp.body.data).toEqual(exampleDashboard);
+      });
+    });
+
+    describe('POST /api/v1/dashboards', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .post(`/api/v1/dashboards`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .send({
+            name: 'test_create',
+            charts: [
+              {
+                id: '100000',
+                name: 'P99 Latency by Operation',
+                x: 0,
+                y: 0,
+                w: 8,
+                h: 3,
+                series: [
+                  {
+                    type: 'time',
+                    aggFn: 'p99',
+                    field: 'duration',
+                    where: '',
+                    groupBy: ['span_name'],
+                  },
+                ],
+              },
+            ],
+          })
+          .expect(200);
+
+        expect(resp.body.data).toEqual({
+          id: expect.any(String),
+          name: 'test_create',
+          charts: [
+            {
+              id: '100000',
+              name: 'P99 Latency by Operation',
+              x: 0,
+              y: 0,
+              w: 8,
+              h: 3,
+              series: [
+                {
+                  type: 'time',
+                  aggFn: 'p99',
+                  field: 'duration',
+                  where: '',
+                  groupBy: ['span_name'],
+                },
+              ],
+            },
+          ],
+        });
+      });
+    });
+
+    describe('PUT /api/v1/dashboard/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        const resp = await agent
+          .put(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .send({
+            ...exampleDashboard,
+            name: 'test_update',
+          })
+          .expect(200);
+
+        expect(resp.body.data).toEqual({
+          id: expect.any(String),
+          name: 'test_update',
+          charts: exampleDashboard.charts,
+        });
+      });
+    });
+
+    describe('DELETE /api/v1/dashboard/:id', () => {
+      it('success', async () => {
+        const { agent, user, team } = await getLoggedInAgent(server);
+        await agent
+          .delete(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .expect(200);
+
+        const found = await Dashboard.findById(exampleDashboard.id);
+        expect(found).toBeNull();
+      });
+    });
+  });
 });

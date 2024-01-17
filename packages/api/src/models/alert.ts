@@ -1,7 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
-
 import type { IAlertChannel } from './alertChannel';
 
 export type AlertType = 'presence' | 'absence';

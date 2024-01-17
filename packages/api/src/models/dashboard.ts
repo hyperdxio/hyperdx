@@ -18,7 +18,7 @@ type NumberFormat = {
   unit?: string;
 };
 
-type Chart = {
+export type Chart = {
   id: string;
   name: string;
   x: number;
