@@ -954,15 +954,13 @@ export const buildMetricSeriesQuery = async ({
               : '0.99'
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
-  } else {
-    if (dataType === MetricsDataType.Histogram) {
-      if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
-        throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
-      }
-      selectClause.push(`max(value) as data`);
-    } else {
-      logger.error(`Unsupported data type (994): ${dataType} `);
+  } else if (dataType === MetricsDataType.Histogram) {
+    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
+    selectClause.push(`max(value) as data`);
+  } else {
+    throw new Error(`Unsupported data type: ${dataType}`);
   }
 
   const startTimeUnixTs = Math.floor(startTime / 1000);
@@ -1034,27 +1032,64 @@ export const buildMetricSeriesQuery = async ({
       : '0.99';
 
   const histogramMetricSource = SqlString.format(
-    `SELECT
-        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+    `
+      WITH points AS (
+        SELECT
+          toStartOfInterval(timestamp, INTERVAL ?) AS timestamp,
+          name,
+          arraySort((x) -> x[2], groupArray([
+            toUInt64(value),
+            toUInt64OrDefault(_string_attributes['le'], 18446744073709551615)
+          ])) AS point,
+          mapFilter((k, v) -> (k != 'le'), _string_attributes) as filtered_string_attributes
+        FROM ??
+        WHERE name = ?
+        AND data_type = ?
+        AND (?)
+        AND mapContains(_string_attributes, 'le')
+        GROUP BY timestamp, name, filtered_string_attributes
+      ), diffPoints AS (
+        SELECT 
+          timestamp,
+          name,
+          filtered_string_attributes as _string_attributes,
+          arrayMap((x) -> x[1], point) AS _points,
+          arrayMap((x) -> x[2], point) AS buckets,
+          (_points - arrayShiftRight(_points, 1)) AS deltas
+        FROM points
+      ), flattenPoints AS (
+        SELECT 
+          timestamp,
+          name,
+          _string_attributes,
+          (arrayJoin(arrayZip(deltas, buckets)) AS t).1 AS delta,
+          t.2 AS bucket
+        FROM diffPoints
+      )
+      SELECT
+        timestamp,
         name,
-        quantileTimingWeighted(${quantile})
+        _string_attributes,
+        quantileTimingWeighted(toFloat32(?))
         (
-          /* this comes in as a string either with the max value for the bucket or '+Inf' */
-          toUInt64OrDefault(??._string_attributes['le'], 18446744073709551614), /* 2^64 - 2 */
-          toUInt64(value) /* would normally be a Float64 */
-        ) as value,
-        mapFilter((k, v) -> (k != 'le'), _string_attributes) as _string_attributes
-      FROM ??
-      where name = ?
-      AND data_type = 'Histogram'
-      AND (?)
-      GROUP BY name, _string_attributes, timestamp
+          bucket,
+          toUInt64(delta)
+        ) as value
+      FROM flattenPoints
+      GROUP BY timestamp, name, _string_attributes
       ORDER BY timestamp ASC`.trim(),
-    [granularity, tableName, tableName, name, SqlString.raw(whereClause)],
+    [
+      granularity,
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
+      quantile,
+    ],
   );
 
   const source =
-    dataType === 'Histogram'
+    dataType === MetricsDataType.Histogram
       ? histogramMetricSource
       : isRate
       ? rateMetricSource
