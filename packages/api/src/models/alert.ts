@@ -70,7 +70,7 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: true,
     },
-    channel: mongoose.Schema.Types.Mixed,
+    channel: Schema.Types.Mixed,
     state: {
       type: String,
       enum: AlertState,
@@ -82,13 +82,13 @@ const AlertSchema = new Schema<IAlert>(
       default: 'LOG',
     },
     team: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: 'Team',
     },
 
     // Log alerts
     logView: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: 'LogView',
       required: false,
     },
@@ -103,7 +103,7 @@ const AlertSchema = new Schema<IAlert>(
 
     // Chart alerts
     dashboardId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: 'Dashboard',
       required: false,
     },
