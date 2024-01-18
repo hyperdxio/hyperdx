@@ -13,11 +13,20 @@
 .listGroupName {
   color: $slate-400;
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1px;
-  margin-top: 16px;
   margin-bottom: 6px;
   padding-left: 16px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  // justify-content: space-between;
+  gap: 6px;
+
+  &:hover {
+    color: $slate-300;
+    cursor: pointer;
+  }
 }
 
 .listLink {
@@ -26,7 +35,6 @@
   text-decoration: none;
   color: $slate-300;
   font-size: 13px;
-  margin-top: 2px;
   margin-bottom: 4px;
   max-width: 100%;
   overflow: hidden;
@@ -40,6 +48,9 @@
   &:focus-visible {
     outline: none;
     border-left: 2px solid $green;
+  }
+  &:last-of-type {
+    margin-bottom: 12px;
   }
 }
 
