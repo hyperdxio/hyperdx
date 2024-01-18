@@ -12,8 +12,8 @@ import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
 
 import { AlertChannelRouter } from './alertChannels';
-import { SavedSearchesRouter } from './savedSearches';
 import { DashboardsRouter } from './dashboards';
+import { SavedSearchesRouter } from './savedSearches';
 
 const router = express.Router();
 
