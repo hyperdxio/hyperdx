@@ -21,6 +21,7 @@ import {
   Text,
 } from '@mantine/core';
 
+import { FormatPodStatus } from './components/KubeComponents';
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -46,50 +47,6 @@ import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { ChartSeries } from './types';
 import { formatNumber } from './utils';
-
-const FormatPodStatus = ({ status }: { status?: number }) => {
-  // based on
-  // https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/documentation.md#k8spodphase
-  // Current phase of the pod (1 - Pending, 2 - Running, 3 - Succeeded, 4 - Failed, 5 - Unknown)
-  switch (status) {
-    case 1:
-      return (
-        <Badge color="yellow" fw="normal" tt="none" size="md">
-          Pending
-        </Badge>
-      );
-    case 2:
-      return (
-        <Badge color="green" fw="normal" tt="none" size="md">
-          Running
-        </Badge>
-      );
-    case 3:
-      return (
-        <Badge color="indigo" fw="normal" tt="none" size="md">
-          Succeeded
-        </Badge>
-      );
-    case 4:
-      return (
-        <Badge color="red" fw="normal" tt="none" size="md">
-          Failed
-        </Badge>
-      );
-    case 5:
-      return (
-        <Badge color="gray" fw="normal" tt="none" size="md">
-          Unknown
-        </Badge>
-      );
-    default:
-      return (
-        <Badge color="gray" fw="normal" tt="none" size="md">
-          Unknown
-        </Badge>
-      );
-  }
-};
 
 const InfraPodsStatusTable = ({
   dateRange,
