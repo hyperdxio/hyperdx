@@ -1039,7 +1039,7 @@ export const buildMetricSeriesQuery = async ({
           name,
           arraySort((x) -> x[2], groupArray([
             toUInt64(value),
-            toUInt64OrDefault(_string_attributes['le'], 18446744073709551615)
+            toUInt64OrDefault(_string_attributes['le'], toUInt64(18446744073709551615))
           ])) AS point,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM ??

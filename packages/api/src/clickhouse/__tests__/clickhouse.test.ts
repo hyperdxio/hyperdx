@@ -1012,7 +1012,7 @@ Array [
             { value: 101, timestamp: now, le: '300' },
             { value: 101, timestamp: now, le: '500' },
             { value: 101, timestamp: now, le: '1000' },
-            { value: 110, timestamp: now, le: '+Inf' },
+            { value: 101, timestamp: now, le: '+Inf' },
 
             { value: 0, timestamp: now + ms('8m'), le: '10' },
             { value: 50, timestamp: now + ms('8m'), le: '30' },
@@ -1161,7 +1161,7 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": "11",
+    "series_0.data": "10",
     "ts_bucket": 1641340800,
   },
   Object {
@@ -1201,7 +1201,7 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": "29",
+    "series_0.data": "26",
     "ts_bucket": 1641340800,
   },
   Object {
@@ -1241,7 +1241,7 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": "18446744073709551615",
+    "series_0.data": "29",
     "ts_bucket": 1641340800,
   },
   Object {
