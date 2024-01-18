@@ -25,7 +25,11 @@ import { version } from '../package.json';
 
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import { API_SERVER_URL, SERVICE_DASHBOARD_ENABLED } from './config';
+import {
+  API_SERVER_URL,
+  K8S_DASHBOARD_ENABLED,
+  SERVICE_DASHBOARD_ENABLED,
+} from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import type { Dashboard, LogView } from './types';
@@ -1062,6 +1066,28 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </Link>
               </div>
             ) : null}
+
+            {K8S_DASHBOARD_ENABLED ? (
+              <div className="px-3 my-3">
+                <Link href="/kubernetes">
+                  <a
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                      {
+                        'fw-bold text-success':
+                          pathname.includes('/kubernetes'),
+                      },
+                    )}
+                  >
+                    <span>
+                      <i className="bi bi-cpu pe-1" />{' '}
+                      {!isCollapsed && <span>Kubernetes</span>}
+                    </span>
+                  </a>
+                </Link>
+              </div>
+            ) : null}
+
             <div>
               <div
                 className={cx(
