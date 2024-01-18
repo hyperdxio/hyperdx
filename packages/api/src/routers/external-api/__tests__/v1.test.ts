@@ -495,10 +495,10 @@ describe('external api v1', () => {
   });
 
   describe('dashboards', () => {
-    // gently borrowed from preset dashboards in frontend
     const exampleDashboard = {
-      id: '110000000',
       name: 'App Performance',
+      query: 'it is a query for sure',
+      // gently borrowed from preset dashboards in frontend
       charts: [
         {
           id: '1624425',
@@ -552,41 +552,64 @@ describe('external api v1', () => {
       ],
     };
 
-    beforeAll(async () => {
-      await Dashboard.create(exampleDashboard);
-    });
     describe('GET /api/v1/dashboards', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        await Dashboard.create({
+          ...exampleDashboard,
+          team: user?.team,
+        });
+
         const resp = await agent
           .get(`/api/v1/dashboards`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
-
-        expect(resp.body.data).toEqual([exampleDashboard]);
+        const expected = {
+          ...exampleDashboard,
+          __v: expect.any(Number),
+          _id: expect.any(String),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+        };
+        expect(resp.body.data).toEqual([expected]);
       });
     });
 
     describe('GET /api/v1/dashboards/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const dashboard = await Dashboard.create({
+          ...exampleDashboard,
+          team: user?.team,
+        });
         const resp = await agent
-          .get(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .get(`/api/v1/dashboards/${dashboard._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        expect(resp.body.data).toEqual(exampleDashboard);
+        const expected = {
+          ...exampleDashboard,
+          __v: expect.any(Number),
+          _id: expect.any(String),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+        };
+
+        expect(resp.body.data).toEqual(expected);
       });
     });
 
     describe('POST /api/v1/dashboards', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
         const resp = await agent
           .post(`/api/v1/dashboards`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send({
             name: 'test_create',
+            query: '',
             charts: [
               {
                 id: '100000',
@@ -608,10 +631,9 @@ describe('external api v1', () => {
             ],
           })
           .expect(200);
-
-        expect(resp.body.data).toEqual({
-          id: expect.any(String),
+        const expected = {
           name: 'test_create',
+          query: '',
           charts: [
             {
               id: '100000',
@@ -631,39 +653,66 @@ describe('external api v1', () => {
               ],
             },
           ],
-        });
+          __v: expect.any(Number),
+          _id: expect.any(String),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+        };
+
+        expect(resp.body.data).toEqual(expected);
       });
     });
 
     describe('PUT /api/v1/dashboard/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const dashboard = await Dashboard.create({
+          ...exampleDashboard,
+          team: user?.team,
+        });
+        const updatedCharts = exampleDashboard.charts.map(chart => ({
+          ...chart,
+          name: 'updated',
+        }));
         const resp = await agent
-          .put(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .put(`/api/v1/dashboards/${dashboard._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send({
-            ...exampleDashboard,
+            charts: updatedCharts,
             name: 'test_update',
+            query: 'a different query',
           })
           .expect(200);
 
         expect(resp.body.data).toEqual({
-          id: expect.any(String),
+          ...exampleDashboard,
           name: 'test_update',
-          charts: exampleDashboard.charts,
+          query: 'a different query',
+          charts: expect.any(Array),
+          __v: expect.any(Number),
+          _id: expect.any(String),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
         });
+        expect(resp.body.data.charts).toEqual(updatedCharts);
       });
     });
 
     describe('DELETE /api/v1/dashboard/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const dashboard = await Dashboard.create({
+          ...exampleDashboard,
+          team: user?.team,
+        });
         await agent
-          .delete(`/api/v1/dashboards/${exampleDashboard.id}`)
+          .delete(`/api/v1/dashboards/${dashboard.id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        const found = await Dashboard.findById(exampleDashboard.id);
+        const found = await Dashboard.findById(dashboard.id);
         expect(found).toBeNull();
       });
     });

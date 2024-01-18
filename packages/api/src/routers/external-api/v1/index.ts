@@ -13,6 +13,7 @@ import { SimpleCache } from '@/utils/redis';
 
 import { AlertChannelRouter } from './alertChannels';
 import { SavedSearchesRouter } from './savedSearches';
+import { DashboardsRouter } from './dashboards';
 
 const router = express.Router();
 
@@ -38,6 +39,7 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
 
 router.use('/alert-channels', AlertChannelRouter);
 router.use('/searches', SavedSearchesRouter);
+router.use('/dashboards', DashboardsRouter);
 
 router.get(
   '/logs/properties',
