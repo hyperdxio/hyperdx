@@ -1,3 +1,6 @@
+import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import { Handler, NextFunction, Request, Response } from 'express';
+
 export enum StatusCode {
   BAD_REQUEST = 400,
   CONFLICT = 409,
@@ -72,4 +75,19 @@ export const isOperationalError = (error: Error) => {
     return error.isOperational;
   }
   return false;
+};
+
+export const annotateSpanOnError = (
+  callback: (req: Request, res: Response, next: NextFunction) => Promise<void>,
+) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await callback(req, res, next);
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  };
 };

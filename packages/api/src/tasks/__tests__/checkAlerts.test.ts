@@ -183,7 +183,6 @@ describe('checkAlerts', () => {
       const exampleChannel: IAlertChannel = {
         type: 'webhook',
         webhookId: webhook._id.toString(),
-        teamId: team._id,
       };
       const alert = await createAlert(team._id, {
         source: 'LOG',
@@ -361,7 +360,6 @@ describe('checkAlerts', () => {
         channel: {
           type: 'webhook',
           webhookId: webhook._id.toString(),
-          teamId: team._id,
         },
         interval: '5m',
         type: 'presence',
@@ -595,7 +593,6 @@ describe('checkAlerts', () => {
         channel: {
           type: 'webhook',
           webhookId: webhook._id.toString(),
-          teamId: team._id,
         },
         interval: '5m',
         type: 'presence',

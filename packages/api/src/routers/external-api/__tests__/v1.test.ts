@@ -215,7 +215,6 @@ describe('external api v1', () => {
       _id: '5f9d4c4f1c9d440000000001',
       name: 'test',
       service: 'slack',
-      team: '5f9d4c4f1c9d440000000000',
       url: 'https://hooks.slack.com/services/1234/5678/9012',
     };
 
@@ -224,35 +223,58 @@ describe('external api v1', () => {
       type: 'webhook',
       webhookId: '5f9d4c4f1c9d440000000001',
       priority: 'P1',
-      teamId: '5f9d4c4f1c9d440000000000',
     };
-
-    beforeAll(async () => {
-      await Webhook.create(exampleWebhook);
-      await AlertChannel.create(exampleChannel);
-    });
 
     describe('GET /api/v1/alert-channels', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        await Webhook.create({
+          ...exampleWebhook,
+          team: user?.team,
+        });
+        await AlertChannel.create({
+          ...exampleChannel,
+          teamId: user?.team,
+        });
         const resp = await agent
           .get(`/api/v1/alert-channels`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        expect(resp.body.data).toEqual([exampleChannel]);
+        expect(resp.body.data.length).toEqual(1);
+        expect(resp.body.data[0]).toEqual({
+          ...exampleChannel,
+          __v: expect.any(Number),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          teamId: user.team?._id.toString(),
+        });
       });
     });
 
     describe('GET /api/v1/alert-channels/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        await Webhook.create({
+          ...exampleWebhook,
+          team: user?.team,
+        });
+        await AlertChannel.create({
+          ...exampleChannel,
+          teamId: user?.team,
+        });
         const resp = await agent
           .get(`/api/v1/alert-channels/${exampleChannel._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        expect(resp.body.data).toEqual(exampleChannel);
+        expect(resp.body.data).toEqual({
+          ...exampleChannel,
+          __v: expect.any(Number),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          teamId: user.team?._id.toString(),
+        });
       });
     });
 
@@ -266,31 +288,7 @@ describe('external api v1', () => {
             type: 'webhook',
             webhookId: '5f9d4c4f1c9d440000000001',
             priority: 'P2',
-            teamId: '5f9d4c4f1c9d440000000000',
-          })
-          .expect(200);
-
-        expect(resp.body.data).toEqual({
-          _id: expect.any(String),
-          type: 'webhook',
-          webhookId: '5f9d4c4f1c9d440000000001',
-          priority: 'P1',
-          teamId: '5f9d4c4f1c9d440000000000',
-        });
-      });
-    });
-
-    describe('PUT /api/v1/alert-channels/:id', () => {
-      it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
-        const resp = await agent
-          .put(`/api/v1/alert-channels/${exampleChannel._id}`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .send({
-            type: 'webhook',
-            webhookId: '5f9d4c4f1c9d440000000001',
-            priority: 'P2',
-            teamId: '5f9d4c4f1c9d440000000000',
+            teamId: '5f9d4c4f1c9d440000000000', // make sure they can't send teamId
           })
           .expect(200);
 
@@ -299,8 +297,50 @@ describe('external api v1', () => {
           type: 'webhook',
           webhookId: '5f9d4c4f1c9d440000000001',
           priority: 'P2',
-          teamId: '5f9d4c4f1c9d440000000000',
+          __v: expect.any(Number),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          teamId: user.team?._id.toString(),
         });
+      });
+    });
+
+    describe('PUT /api/v1/alert-channels/:id', () => {
+      it('success', async () => {
+        const { agent, user } = await getLoggedInAgent(server);
+        const webhook = await Webhook.create({
+          ...exampleWebhook,
+          team: user?.team,
+        });
+        const channel = await AlertChannel.create({
+          ...exampleChannel,
+          priority: 'P1', // ensure it is different
+          teamId: user?.team,
+        });
+        const resp = await agent
+          .put(`/api/v1/alert-channels/${channel._id}`)
+          .set('Authorization', `Bearer ${user?.accessKey}`)
+          .send({
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+            priority: 'P2',
+            teamId: '5f9d4c4f1c9d440000000000', // make sure cannot update teamId
+          })
+          .expect(200);
+
+        expect(resp.body.data).toEqual({
+          _id: expect.any(String),
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+          priority: 'P2',
+          __v: expect.any(Number),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          teamId: user.team?._id.toString(),
+        });
+
+        const updated = await AlertChannel.findById(channel._id);
+        expect(updated?.priority).toBe('P2');
       });
     });
 

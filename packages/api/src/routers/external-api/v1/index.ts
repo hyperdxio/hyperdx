@@ -1,4 +1,3 @@
-import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import { isNumber, parseInt } from 'lodash';
 import ms from 'ms';
@@ -6,11 +5,13 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
-import { getTeam } from '@/controllers/team';
+import { checkTeamId } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
-import { Api400Error, Api403Error } from '@/utils/errors';
+import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
 import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
+
+import { AlertChannelRouter } from './alertChannels';
 
 const router = express.Router();
 
@@ -34,43 +35,30 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
   });
 });
 
+router.use('/alert-channels', AlertChannelRouter);
+
 router.get(
   '/logs/properties',
   getDefaultRateLimiter(),
   validateUserAccessKey,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team.toString();
-      if (teamId == null) {
-        throw new Api403Error('Forbidden');
-      }
+  annotateSpanOnError(async (req, res, next) => {
+    const { teamId, team } = await checkTeamId(req);
 
-      const team = await getTeam(teamId);
-      if (team == null) {
-        throw new Api403Error('Forbidden');
-      }
+    const nowInMs = Date.now();
+    const propertyTypeMappingsModel =
+      await clickhouse.buildLogsPropertyTypeMappingsModel(
+        team.logStreamTableVersion,
+        teamId,
+        nowInMs - ms('1d'),
+        nowInMs,
+      );
 
-      const nowInMs = Date.now();
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId,
-          nowInMs - ms('1d'),
-          nowInMs,
-        );
-
-      const data = [...propertyTypeMappingsModel.currentPropertyTypeMappings];
-      res.json({
-        data,
-        rows: data.length,
-      });
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span?.recordException(e as Error);
-      span?.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
-    }
-  },
+    const data = [...propertyTypeMappingsModel.currentPropertyTypeMappings];
+    res.json({
+      data,
+      rows: data.length,
+    });
+  }),
 );
 
 router.get(
@@ -88,103 +76,79 @@ router.get(
     }),
   }),
   validateUserAccessKey,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team.toString();
-      const { aggFn, endTime, field, granularity, groupBy, q, startTime } =
-        req.query;
-      if (teamId == null) {
-        throw new Api403Error('Forbidden');
-      }
-      const startTimeNum = parseInt(startTime);
-      const endTimeNum = parseInt(endTime);
-      if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
-        throw new Api400Error('startTime and endTime must be numbers');
-      }
-
-      const team = await getTeam(teamId);
-      if (team == null) {
-        throw new Api403Error('Forbidden');
-      }
-
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId,
-          startTimeNum,
-          endTimeNum,
-        );
-
-      // TODO: expose this to the frontend ?
-      const MAX_NUM_GROUPS = 20;
-
-      res.json(
-        await clickhouse.getLogsChart({
-          aggFn,
-          endTime: endTimeNum,
-          // @ts-expect-error
-          field,
-          granularity,
-          // @ts-expect-error
-          groupBy,
-          maxNumGroups: MAX_NUM_GROUPS,
-          propertyTypeMappingsModel,
-          // @ts-expect-error
-          q,
-          startTime: startTimeNum,
-          tableVersion: team.logStreamTableVersion,
-          teamId,
-        }),
-      );
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span?.recordException(e as Error);
-      span?.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
+  annotateSpanOnError(async (req, res, next) => {
+    const { teamId, team } = await checkTeamId(req);
+    const { endTime, field, granularity, groupBy, q, startTime } =
+      req.query as Record<string, string>;
+    const { aggFn } = req.query as Record<string, clickhouse.AggFn>;
+    const startTimeNum = parseInt(startTime as string);
+    const endTimeNum = parseInt(endTime as string);
+    if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
+      throw new Api400Error('startTime and endTime must be numbers');
     }
-  },
+
+    const propertyTypeMappingsModel =
+      await clickhouse.buildLogsPropertyTypeMappingsModel(
+        team.logStreamTableVersion,
+        teamId,
+        startTimeNum,
+        endTimeNum,
+      );
+
+    // TODO: expose this to the frontend ?
+    const MAX_NUM_GROUPS = 20;
+
+    res.json(
+      await clickhouse.getLogsChart({
+        aggFn,
+        endTime: endTimeNum,
+
+        field,
+        granularity,
+
+        groupBy,
+        maxNumGroups: MAX_NUM_GROUPS,
+        propertyTypeMappingsModel,
+
+        q,
+        startTime: startTimeNum,
+        tableVersion: team.logStreamTableVersion,
+        teamId,
+      }),
+    );
+  }),
 );
 
 router.get(
   '/metrics/tags',
   getDefaultRateLimiter(),
   validateUserAccessKey,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        throw new Api403Error('Forbidden');
-      }
+  annotateSpanOnError(async (req, res, next) => {
+    const { teamId } = await checkTeamId(req);
 
-      const nowInMs = Date.now();
-      const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
-      >(`metrics-tags-${teamId}`, ms('10m'), () =>
-        clickhouse.getMetricsTags({
-          // FIXME: fix it 5 days ago for now
-          startTime: nowInMs - ms('5d'),
-          endTime: nowInMs,
-          teamId: teamId.toString(),
-        }),
-      );
-      const tags = await simpleCache.get();
-      res.json({
-        data: tags.data.map(tag => ({
-          // FIXME: unify the return type of both internal and external APIs
-          name: tag.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
-          type: tag.data_type,
-          tags: tag.tags,
-        })),
-        meta: tags.meta,
-        rows: tags.rows,
-      });
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span?.recordException(e as Error);
-      span?.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
-    }
-  },
+    const nowInMs = Date.now();
+    const simpleCache = new SimpleCache<
+      Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+    >(`metrics-tags-${teamId}`, ms('10m'), () =>
+      clickhouse.getMetricsTags({
+        // FIXME: fix it 5 days ago for now
+        startTime: nowInMs - ms('5d'),
+        endTime: nowInMs,
+        teamId: teamId.toString(),
+      }),
+    );
+    const tags = await simpleCache.get();
+    res.json({
+      data: tags.data.map(tag => ({
+        // FIXME: unify the return type of both internal and external APIs
+        name: tag.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
+        type: tag.data_type,
+        tags: tag.tags,
+      })),
+      meta: tags.meta,
+      rows: tags.rows,
+    });
+  }),
 );
 
 router.post(
@@ -203,41 +167,29 @@ router.post(
     }),
   }),
   validateUserAccessKey,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      const { aggFn, endTime, granularity, groupBy, name, q, startTime, type } =
-        req.body;
+  annotateSpanOnError(async (req, res, next) => {
+    const { teamId } = await checkTeamId(req);
+    const { aggFn, endTime, granularity, groupBy, name, q, startTime, type } =
+      req.body;
 
-      if (teamId == null) {
-        throw new Api403Error('Forbidden');
-      }
-
-      if (startTime > endTime) {
-        throw new Api400Error('startTime must be less than endTime');
-      }
-
-      res.json(
-        await clickhouse.getMetricsChart({
-          aggFn,
-          dataType: type,
-          endTime,
-          granularity,
-          groupBy,
-          name,
-          // @ts-expect-error
-          q,
-          startTime,
-          teamId: teamId.toString(),
-        }),
-      );
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span?.recordException(e as Error);
-      span?.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
+    if (startTime > endTime) {
+      throw new Api400Error('startTime must be less than endTime');
     }
-  },
+
+    res.json(
+      await clickhouse.getMetricsChart({
+        aggFn,
+        dataType: type,
+        endTime,
+        granularity,
+        groupBy,
+        name,
+        q,
+        startTime,
+        teamId: teamId.toString(),
+      }),
+    );
+  }),
 );
 
 export default router;

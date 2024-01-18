@@ -1,7 +1,9 @@
+import { Request } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
 import Team from '@/models/team';
+import { Api403Error } from '@/utils/errors';
 
 export async function isTeamExisting() {
   const teamCount = await Team.countDocuments({});
@@ -31,3 +33,16 @@ export function getTeamByApiKey(apiKey: string) {
 export function rotateTeamApiKey(teamId: ObjectId) {
   return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { new: true });
 }
+
+export const checkTeamId = async (req: Request) => {
+  const teamId = req.user?.team.toString();
+  if (teamId == null) {
+    throw new Api403Error('Forbidden');
+  }
+
+  const team = await getTeam(teamId);
+  if (team == null) {
+    throw new Api403Error('Forbidden');
+  }
+  return { teamId, team };
+};

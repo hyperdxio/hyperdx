@@ -61,19 +61,22 @@ export async function validateUserAccessKey(
   req: Request,
   res: Response,
   next: NextFunction,
-) {
+): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return res.sendStatus(401);
+    res.sendStatus(401);
+    return;
   }
   const key = authHeader.split('Bearer ')[1];
   if (!key) {
-    return res.sendStatus(401);
+    res.sendStatus(401);
+    return;
   }
 
   const user = await findUserByAccessKey(key);
   if (!user) {
-    return res.sendStatus(401);
+    res.sendStatus(401);
+    return;
   }
 
   req.user = user;
