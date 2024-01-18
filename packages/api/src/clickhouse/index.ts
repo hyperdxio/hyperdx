@@ -862,7 +862,6 @@ export const getMetricsChart = async ({
   return result;
 };
 
-// TODO: support multiple groupBy
 export const buildMetricSeriesQuery = async ({
   aggFn,
   dataType,
@@ -880,7 +879,7 @@ export const buildMetricSeriesQuery = async ({
   dataType: MetricsDataType;
   endTime: number; // unix in ms,
   granularity?: Granularity | string;
-  groupBy?: string;
+  groupBy: string[];
   name: string;
   q: string;
   startTime: number; // unix in ms
@@ -891,6 +890,12 @@ export const buildMetricSeriesQuery = async ({
   const tableName = `default.${TableName.Metric}`;
 
   const isRate = isRateAggFn(aggFn);
+
+  const groupByColumnNames = groupBy.map(g => {
+    return SqlString.format(`_string_attributes[?]`, [g]);
+  });
+
+  const hasGroupBy = groupByColumnNames.length > 0;
 
   const shouldModifyStartTime = isRate;
 
@@ -915,12 +920,8 @@ export const buildMetricSeriesQuery = async ({
           [granularity],
         )
       : "'0' as ts_bucket",
-    groupBy
-      ? SqlString.format(`[_string_attributes[?]] AS group`, [groupBy])
-      : '[] AS group',
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
   ];
-
-  const hasGroupBy = groupBy != '' && groupBy != null;
 
   if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
@@ -1478,7 +1479,7 @@ export const getMultiSeriesChart = async ({
           endTime,
           name: s.field,
           granularity,
-          groupBy: s.groupBy[0],
+          groupBy: s.groupBy,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           q: s.where,
           startTime,
