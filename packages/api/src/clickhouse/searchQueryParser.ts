@@ -652,3 +652,21 @@ export const buildSearchQueryWhereCondition = async ({
   builder.teamId = teamId;
   return await builder.timestampInBetween(startTime, endTime).build();
 };
+
+export const buildPostGroupWhereCondition = ({ query }: { query: string }) => {
+  // This needs to be replaced with the proper query builder
+  // after generalizing it for arbitrary field resolutions
+  // the query can only specify one field from the series and an exact match
+  const [field, value] = query.split(':', 2);
+  const seriesNumber = parseInt(field.replace('series_', ''), 10);
+  const floatValue = parseFloat(value);
+
+  if (Number.isSafeInteger(seriesNumber) === false) {
+    throw new Error('Invalid series number');
+  }
+  if (Number.isNaN(floatValue)) {
+    throw new Error('Invalid value');
+  }
+
+  return SqlString.format(`series_${seriesNumber}.data = ?`, [floatValue]);
+};

@@ -131,13 +131,20 @@ router.post(
       granularity: z.nativeEnum(clickhouse.Granularity).optional(),
       startTime: z.number(),
       seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
+      postGroupWhere: z.optional(z.string().max(1024)),
     }),
   }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      const { endTime, granularity, startTime, seriesReturnType, series } =
-        req.body;
+      const {
+        endTime,
+        granularity,
+        startTime,
+        seriesReturnType,
+        series,
+        postGroupWhere,
+      } = req.body;
 
       if (teamId == null) {
         return res.sendStatus(403);
@@ -161,6 +168,7 @@ router.post(
           tableVersion: team.logStreamTableVersion,
           teamId: teamId.toString(),
           seriesReturnType,
+          postGroupWhere,
         }),
       );
     } catch (e) {
