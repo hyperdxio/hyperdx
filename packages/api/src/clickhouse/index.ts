@@ -1055,7 +1055,7 @@ export const buildMetricSeriesQuery = async ({
           filtered_string_attributes AS _string_attributes,
           arrayMap((x) -> x[1], point) AS _points,
           arrayMap((x) -> x[2], point) AS buckets,
-          (_points - arrayShiftRight(_points, 1)) AS deltas
+          (_points - arrayShiftRight(_points, 1, 0)) AS deltas
         FROM points
       ), flatten_points AS (
         SELECT 
@@ -1070,7 +1070,7 @@ export const buildMetricSeriesQuery = async ({
         timestamp,
         name,
         _string_attributes,
-        quantileTimingWeighted(toFloat32(?))
+        quantileInterpolatedWeighted(toFloat32(?))
         (
           bucket,
           toUInt64(delta)

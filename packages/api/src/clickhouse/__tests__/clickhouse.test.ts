@@ -1003,9 +1003,6 @@ Array [
           is_monotonic: false,
           is_delta: false,
           unit: '',
-
-          // timestamp: now, p50: 100, p90: 1000, p99: 1000
-          // timestamp: now + ms('1m'), p50: 150, p90: 1500, p99: 1500
           points: [
             { value: 100, timestamp: now, le: '10' },
             { value: 101, timestamp: now, le: '30' },
@@ -1014,16 +1011,16 @@ Array [
             { value: 101, timestamp: now, le: '200' },
             { value: 101, timestamp: now, le: '300' },
             { value: 101, timestamp: now, le: '500' },
-            { value: 105, timestamp: now, le: '1000' },
-            { value: 105, timestamp: now, le: '+Inf' },
+            { value: 101, timestamp: now, le: '1000' },
+            { value: 110, timestamp: now, le: '+Inf' },
 
             { value: 0, timestamp: now + ms('8m'), le: '10' },
             { value: 50, timestamp: now + ms('8m'), le: '30' },
             { value: 100, timestamp: now + ms('8m'), le: '50' },
             { value: 100, timestamp: now + ms('8m'), le: '100' },
             { value: 100, timestamp: now + ms('8m'), le: '200' },
-            { value: 100, timestamp: now + ms('8m'), le: '300' },
-            { value: 100, timestamp: now + ms('8m'), le: '500' },
+            { value: 137, timestamp: now + ms('8m'), le: '300' },
+            { value: 137, timestamp: now + ms('8m'), le: '500' },
             { value: 150, timestamp: now + ms('8m'), le: '1000' },
             { value: 150, timestamp: now + ms('8m'), le: '+Inf' },
           ],
@@ -1134,7 +1131,7 @@ Array [
       `);
     });
 
-    it('response_time histogram (p50 + p99)', async () => {
+    it('response_time histogram (p50 + p90 + p99)', async () => {
       const p50Data = (
         await clickhouse.getMultiSeriesChart({
           series: [
@@ -1164,12 +1161,52 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 10,
+    "series_0.data": "11",
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
-    "series_0.data": 50,
+    "series_0.data": "50",
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+
+      const p90Data = (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.P90,
+              field: 'test.response_time',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('10m'),
+          granularity: '5 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(p90Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": "29",
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": "478",
     "ts_bucket": 1641341100,
   },
 ]
@@ -1204,12 +1241,12 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 1000,
+    "series_0.data": "18446744073709551615",
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
-    "series_0.data": 1000,
+    "series_0.data": "14189807193357973504",
     "ts_bucket": 1641341100,
   },
 ]
