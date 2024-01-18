@@ -327,6 +327,37 @@ describe('searchQueryParser', () => {
     });
   });
 
+  describe('operators', () => {
+    (
+      [
+        ['OR', 'OR'],
+        ['||', 'OR'],
+        ['AND', 'AND'],
+        ['&&', 'AND'],
+        [' ', 'AND'],
+        ['NOT', 'AND NOT'],
+        ['AND NOT', 'AND NOT'],
+        ['OR NOT', 'OR NOT'],
+      ] as const
+    ).forEach(([operator, sql]) => {
+      it(`parses ${operator}`, async () => {
+        const ast = parse(`foo ${operator} bar`);
+        expect(
+          await genWhereSQL(
+            ast,
+            propertyTypesMappingsModel,
+            'TEAM_ID_UNIT_TESTS',
+          ),
+        ).toEqual(
+          `${hasToken(SOURCE_COL, 'foo')} ${sql} ${hasToken(
+            SOURCE_COL,
+            'bar',
+          )}`,
+        );
+      });
+    });
+  });
+
   describe('properties', () => {
     it('parses string property values', async () => {
       const ast = parse('foo:bar');
