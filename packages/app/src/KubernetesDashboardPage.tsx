@@ -9,9 +9,11 @@ import {
   Grid,
   Group,
   ScrollArea,
+  SegmentedControl,
   Skeleton,
   Table,
   Tabs,
+  Tooltip,
 } from '@mantine/core';
 
 import { FormatPodStatus } from './components/KubeComponents';
@@ -28,6 +30,8 @@ import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { KubePhase } from './types';
+import { formatDistanceToNowStrictShort } from './utils';
 import { formatNumber } from './utils';
 
 const SearchInput = React.memo(
@@ -64,6 +68,31 @@ const SearchInput = React.memo(
   },
 );
 
+const getKubePhaseNumber = (phase: string) => {
+  switch (phase) {
+    case 'running':
+      return KubePhase.Running;
+    case 'succeeded':
+      return KubePhase.Succeeded;
+    case 'pending':
+      return KubePhase.Pending;
+    case 'failed':
+      return KubePhase.Failed;
+    default:
+      return KubePhase.Unknown;
+  }
+};
+
+type Pod = {
+  name: string;
+  restarts: number;
+  uptime: number;
+  cpuAvg: number;
+  memAvg: number;
+  memAvailable: number;
+  phase: KubePhase;
+};
+
 const InfraPodsStatusTable = ({
   dateRange,
   where,
@@ -71,6 +100,8 @@ const InfraPodsStatusTable = ({
   dateRange: [Date, Date];
   where: string;
 }) => {
+  const groupBy = ['k8s.pod.name'];
+
   const { data, isError, isLoading } = api.useMultiSeriesChart({
     series: [
       {
@@ -79,7 +110,7 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'last_value',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
       },
       {
         table: 'metrics',
@@ -87,7 +118,7 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'sum',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
       },
       {
         table: 'metrics',
@@ -95,7 +126,7 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'avg',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
       },
       {
         table: 'metrics',
@@ -103,7 +134,15 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'avg',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.memory.available - Gauge',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy,
       },
       {
         table: 'metrics',
@@ -111,7 +150,7 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'last_value',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
         sortOrder: 'asc',
       },
     ],
@@ -120,16 +159,65 @@ const InfraPodsStatusTable = ({
     seriesReturnType: 'column',
   });
 
-  const getLink = (row: any) => {
+  const podsList = React.useMemo(() => {
+    if (!data) {
+      return [];
+    }
+    return data.data.map((row: any) => {
+      const memAvailable = parseInt(row['series_4.data']);
+      const memAvg = parseInt(row['series_3.data']);
+      const memTotal = memAvailable + memAvg;
+
+      return {
+        name: row.group,
+        restarts: row['series_0.data'],
+        uptime: row['series_1.data'],
+        startedAt: new Date(Date.now() + parseInt(row['series_1.data']) * 1000), // todo: find a way to format approx. duration without converting to date
+        cpuAvg: row['series_2.data'],
+        memAvg,
+        memAvailable,
+        memPercentage: memTotal ? memAvg / memTotal : 0,
+        phase: row['series_5.data'],
+      };
+    });
+  }, [data]);
+
+  const [phaseFilter, setPhaseFilter] = React.useState('running');
+
+  const filteredPodsList = React.useMemo(() => {
+    if (phaseFilter === 'all') {
+      return podsList;
+    }
+    const phaseNumber = getKubePhaseNumber(phaseFilter);
+    return podsList.filter(row => {
+      return row.phase === phaseNumber;
+    });
+  }, [phaseFilter, podsList]);
+
+  const getLink = (pod: Pod) => {
     const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('podName', `${row.group}`);
+    searchParams.set('podName', `${pod.name}`);
     return window.location.pathname + '?' + searchParams.toString();
   };
 
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
-        Pods
+        <Group align="center" position="apart">
+          Pods
+          <SegmentedControl
+            size="xs"
+            value={phaseFilter}
+            onChange={setPhaseFilter}
+            data={[
+              { label: 'Running', value: 'running' },
+              { label: 'Succeeded', value: 'succeeded' },
+              { label: 'Pending', value: 'pending' },
+              { label: 'Failed', value: 'failed' },
+              { label: 'All', value: 'all' },
+            ]}
+          />
+        </Group>
       </Card.Section>
       <Card.Section>
         <ScrollArea
@@ -141,16 +229,21 @@ const InfraPodsStatusTable = ({
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load pod metrics
             </div>
+          ) : !isLoading && filteredPodsList.length === 0 ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              No pods found
+            </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <thead className="muted-thead">
                 <tr>
                   <th>Name</th>
-                  <th style={{ width: 100 }}>Restarts</th>
                   {/* <th style={{ width: 120 }}>Age</th> */}
-                  <th style={{ width: 100 }}>CPU Avg</th>
-                  <th style={{ width: 100 }}>Mem Avg</th>
                   <th style={{ width: 130 }}>Status</th>
+                  <th style={{ width: 100 }}>CPU Avg</th>
+                  <th style={{ width: 100 }}>Mem/Limit</th>
+                  <th style={{ width: 80 }}>Uptime</th>
+                  <th style={{ width: 100 }}>Restarts</th>
                 </tr>
               </thead>
               {isLoading ? (
@@ -177,27 +270,52 @@ const InfraPodsStatusTable = ({
                 </tbody>
               ) : (
                 <tbody>
-                  {data?.data?.map((row: any) => (
-                    <Link key={row.group} href={getLink(row)}>
+                  {filteredPodsList.map(pod => (
+                    <Link key={pod.name} href={getLink(pod)}>
                       <tr className="cursor-pointer">
-                        <td>{row.group}</td>
-                        <td>{row['series_0.data']}</td>
-                        {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                        <td>{pod.name}</td>
+                        <td>
+                          <FormatPodStatus status={pod.phase} />
+                        </td>
                         <td>
                           {formatNumber(
-                            row['series_2.data'],
+                            pod.cpuAvg,
                             K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
                           )}
                         </td>
                         <td>
-                          {formatNumber(
-                            row['series_3.data'],
-                            K8S_MEM_NUMBER_FORMAT,
-                          )}
+                          <Tooltip
+                            label={
+                              <span>
+                                {formatNumber(
+                                  pod.memAvg,
+                                  K8S_MEM_NUMBER_FORMAT,
+                                )}{' '}
+                                used
+                                <br />
+                                {formatNumber(
+                                  pod.memAvailable,
+                                  K8S_MEM_NUMBER_FORMAT,
+                                )}{' '}
+                                available
+                              </span>
+                            }
+                            color="dark"
+                          >
+                            <span>
+                              {formatNumber(
+                                pod.memPercentage,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              )}
+                            </span>
+                          </Tooltip>
                         </td>
                         <td>
-                          <FormatPodStatus status={row['series_4.data']} />
+                          {pod.startedAt
+                            ? formatDistanceToNowStrictShort(pod.startedAt)
+                            : '–'}
                         </td>
+                        <td>{pod.restarts}</td>
                       </tr>
                     </Link>
                   ))}
