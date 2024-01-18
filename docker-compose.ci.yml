@@ -7,9 +7,9 @@ services:
       target: dev
     volumes:
       - ./docker/ingestor:/app
-    # ports:
-    #   - 8002:8002 # http-generic
-    #   - 8686:8686 # healthcheck
+    ports:
+      - 28686:8686 # healthcheck
+      # - 8002:8002 # http-generic
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
       ENABLE_GO_PARSER: 'false'
@@ -30,8 +30,8 @@ services:
       INGESTOR_API_URL: 'http://ingestor:8002'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
-    # ports:
-    #   - '13133:13133' # health_check extension
+    ports:
+      - '23133:13133' # health_check extension
     #   - '1888:1888' # pprof extension
     #   - '24225:24225' # fluentd receiver
     #   - '4317:4317' # OTLP gRPC receiver
