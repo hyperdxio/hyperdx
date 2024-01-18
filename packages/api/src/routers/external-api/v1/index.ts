@@ -11,6 +11,7 @@ import { validateUserAccessKey } from '@/middleware/auth';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
+import logger from '@/utils/logger';
 
 const router = express.Router();
 
@@ -114,6 +115,17 @@ router.get(
           startTimeNum,
           endTimeNum,
         );
+
+      // TODO: hacky way to make sure the cache is update to date
+      if (
+        !clickhouse.doesLogsPropertyExist(field, propertyTypeMappingsModel) ||
+        !clickhouse.doesLogsPropertyExist(groupBy, propertyTypeMappingsModel)
+      ) {
+        logger.warn({
+          message: `getChart: Property type mappings cache is out of date (${field}, ${groupBy}})`,
+        });
+        await propertyTypeMappingsModel.refresh();
+      }
 
       // TODO: expose this to the frontend ?
       const MAX_NUM_GROUPS = 20;
