@@ -1027,6 +1027,38 @@ Array [
         }),
       );
 
+      await clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeriesHistogram({
+          name: 'test.valid_distribution',
+          tags: { host: 'test2', runId },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 0, timestamp: now, le: '10' },
+            { value: 0, timestamp: now, le: '30' },
+            { value: 0, timestamp: now, le: '50' },
+            { value: 0, timestamp: now, le: '100' },
+            { value: 0, timestamp: now, le: '200' },
+            { value: 100, timestamp: now, le: '300' },
+            { value: 100, timestamp: now, le: '500' },
+            { value: 100, timestamp: now, le: '1000' },
+            { value: 100, timestamp: now, le: '+Inf' },
+
+            { value: 0, timestamp: now + ms('8m'), le: '10' },
+            { value: 50, timestamp: now + ms('8m'), le: '30' },
+            { value: 100, timestamp: now + ms('8m'), le: '50' },
+            { value: 100, timestamp: now + ms('8m'), le: '100' },
+            { value: 100, timestamp: now + ms('8m'), le: '200' },
+            { value: 100, timestamp: now + ms('8m'), le: '300' },
+            { value: 100, timestamp: now + ms('8m'), le: '500' },
+            { value: 100, timestamp: now + ms('8m'), le: '1000' },
+            { value: 100, timestamp: now + ms('8m'), le: '+Inf' },
+          ],
+        }),
+      );
+
       mockSpyMetricPropertyTypeMappingsModel({
         runId: 'string',
         host: 'string',
@@ -1247,6 +1279,128 @@ Array [
   Object {
     "group": Array [],
     "series_0.data": "14189807193357973504",
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+    });
+
+    it('response_time histogram (p50 + p90 + p99)', async () => {
+      const p50Data = (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.P50,
+              field: 'test.valid_distribution',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('10m'),
+          granularity: '5 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(p50Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": "250",
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": "30",
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+
+      const p90Data = (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.P90,
+              field: 'test.response_time',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('10m'),
+          granularity: '5 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(p90Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": "290",
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": "46",
+    "ts_bucket": 1641341100,
+  },
+]
+`);
+
+      const p99Data = (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.P99,
+              field: 'test.response_time',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('10m'),
+          granularity: '5 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(p99Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": "299",
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": "49",
     "ts_bucket": 1641341100,
   },
 ]
