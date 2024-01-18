@@ -60,6 +60,9 @@ const zChart = z.object({
   ),
 });
 
+// TODO: Move common zod schemas to a common file?
+const zTags = z.array(z.string().max(32)).max(50).optional();
+
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -97,7 +100,7 @@ router.post(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
-      tags: z.array(z.string()).optional(),
+      tags: zTags,
     }),
   }),
   async (req, res, next) => {
@@ -133,7 +136,7 @@ router.put(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
-      tags: z.array(z.string()).optional(),
+      tags: zTags,
     }),
   }),
   async (req, res, next) => {
