@@ -12,6 +12,7 @@ import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
 
 import { AlertChannelRouter } from './alertChannels';
+import { SavedSearchesRouter } from './savedSearches';
 
 const router = express.Router();
 
@@ -36,6 +37,7 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
 });
 
 router.use('/alert-channels', AlertChannelRouter);
+router.use('/searches', SavedSearchesRouter);
 
 router.get(
   '/logs/properties',

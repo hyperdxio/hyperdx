@@ -360,98 +360,135 @@ describe('external api v1', () => {
 
   describe('saved searches', () => {
     const exampleSearch = {
-      _id: '5f9d4c4f1c9d50000000000',
       name: 'test',
       query: 'test',
-      teamId: '5f9d4c4f1c9d440000000000',
+      team: '5f9d4c4f1c9d440000000000',
       // creator should be set, but to the dynamic user id
     };
 
-    beforeAll(async () => {
-      await LogView.create(exampleSearch);
-    });
-
     describe('GET /api/v1/searches', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const search = await LogView.create({
+          ...exampleSearch,
+          team: user?.team,
+          creator: user?._id,
+        });
         const resp = await agent
           .get(`/api/v1/searches`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        expect(resp.body.data).toEqual([exampleSearch]);
-        expect(resp.body.data[0].creator).toEqual(user._id);
+        const expected = {
+          ...exampleSearch,
+          __v: expect.any(Number),
+          _id: search._id.toString(),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+          creator: user?._id.toString(),
+        };
+
+        expect(resp.body.data).toEqual([expected]);
       });
     });
 
     describe('GET /api/v1/searches/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const search = await LogView.create({
+          ...exampleSearch,
+          team: user?.team,
+          creator: user?._id,
+        });
         const resp = await agent
-          .get(`/api/v1/saved-searches/${exampleSearch._id}`)
+          .get(`/api/v1/searches/${search._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
-
-        expect(resp.body.data).toEqual(exampleSearch);
-        expect(resp.body.data.creator).toEqual(user._id);
+        const expected = {
+          ...exampleSearch,
+          __v: expect.any(Number),
+          _id: search._id.toString(),
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+          creator: user?._id.toString(),
+        };
+        expect(resp.body.data).toEqual(expected);
       });
     });
 
     describe('POST /api/v1/searches', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
         const resp = await agent
           .post(`/api/v1/searches`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send({
             name: 'test_create',
             query: 'test_create',
-            teamId: '5f9d4c4f1c9d440000000000',
           })
           .expect(200);
-
-        expect(resp.body.data).toEqual({
-          _id: expect.any(String),
+        const expected = {
+          ...exampleSearch,
           name: 'test_create',
           query: 'test_create',
-          teamId: '5f9d4c4f1c9d440000000000',
-        });
-        expect(resp.body.data.creator).toEqual(user._id);
+          __v: expect.any(Number),
+          _id: resp.body.data._id,
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+          creator: user?._id.toString(),
+        };
+        expect(resp.body.data).toEqual(expected);
       });
     });
 
     describe('PUT /api/v1/searches/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const search = await LogView.create({
+          ...exampleSearch,
+          team: user?.team,
+          creator: user?._id,
+        });
         const resp = await agent
-          .put(`/api/v1/searches/${exampleSearch._id}`)
+          .put(`/api/v1/searches/${search._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send({
-            name: 'test2',
-            query: 'test2',
-            teamId: '5f9d4c4f1c9d440000000000',
+            name: 'test_update',
+            query: 'test_update',
+            team: '5f9d4c4f1c9d440000000000', // should not change teamId
           })
           .expect(200);
 
         expect(resp.body.data).toEqual({
+          __v: expect.any(Number),
           _id: expect.any(String),
-          name: 'test2',
-          query: 'test2',
-          teamId: '5f9d4c4f1c9d440000000000',
+          name: 'test_update',
+          query: 'test_update',
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+          team: user?.team.toString(),
+          creator: user?._id.toString(), // TODO test update for different creator
         });
-        expect(resp.body.data.creator).toEqual(user._id);
       });
     });
 
     describe('DELETE /api/v1/searches/:id', () => {
       it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
+        const { agent, user } = await getLoggedInAgent(server);
+        const search = await LogView.create({
+          ...exampleSearch,
+          team: user?.team,
+          creator: user?._id,
+        });
         await agent
-          .delete(`/api/v1/searches/${exampleSearch._id}`)
+          .delete(`/api/v1/searches/${search._id}`)
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .expect(200);
 
-        const found = await LogView.findById(exampleSearch._id);
+        const found = await LogView.findById(search._id);
         expect(found).toBeNull();
       });
     });
