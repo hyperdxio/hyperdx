@@ -25,6 +25,7 @@ export function parse(query: string): lucene.AST {
 const IMPLICIT_FIELD = '<implicit>';
 
 interface Serializer {
+  operator(op: lucene.Operator): string;
   eq(field: string, term: string, isNegatedField: boolean): Promise<string>;
   isNotNull(field: string, isNegatedField: boolean): Promise<string>;
   gte(field: string, term: string): Promise<string>;
@@ -54,6 +55,27 @@ class EnglishSerializer implements Serializer {
     }
 
     return `'${field}'`;
+  }
+
+  operator(op: lucene.Operator) {
+    switch (op) {
+      case 'NOT':
+      case 'AND NOT':
+        return 'AND NOT';
+      case 'OR NOT':
+        return 'OR NOT';
+      // @ts-ignore TODO: Types need to be fixed upstream
+      case '&&':
+      case '<implicit>':
+      case 'AND':
+        return 'AND';
+      // @ts-ignore TODO: Types need to be fixed upstream
+      case '||':
+      case 'OR':
+        return 'OR';
+      default:
+        throw new Error(`Unexpected operator. ${op}`);
+    }
   }
 
   async eq(field: string, term: string, isNegatedField: boolean) {
@@ -284,8 +306,7 @@ async function serialize(
   // 2. LeftOnlyAST: Single term ex. "foo:bar"
   if ((ast as lucene.BinaryAST).right != null) {
     const binaryAST = ast as lucene.BinaryAST;
-    const operator =
-      binaryAST.operator === '<implicit>' ? 'AND' : binaryAST.operator;
+    const operator = serializer.operator(binaryAST.operator);
     const parenthesized = binaryAST.parenthesized;
     return `${parenthesized ? '(' : ''}${await serialize(
       binaryAST.left,
