@@ -258,3 +258,12 @@ export type Chart = {
   series: ChartSeries[];
   seriesReturnType: 'ratio' | 'column';
 };
+
+// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/documentation.md#k8spodphase
+export enum KubePhase {
+  Pending = 1,
+  Running = 2,
+  Succeeded = 3,
+  Failed = 4,
+  Unknown = 5,
+}

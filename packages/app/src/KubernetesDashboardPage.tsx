@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import cx from 'classnames';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Anchor,
@@ -9,9 +10,11 @@ import {
   Grid,
   Group,
   ScrollArea,
+  SegmentedControl,
   Skeleton,
   Table,
   Tabs,
+  Tooltip,
 } from '@mantine/core';
 
 import { FormatPodStatus } from './components/KubeComponents';
@@ -28,6 +31,8 @@ import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { KubePhase } from './types';
+import { formatDistanceToNowStrictShort } from './utils';
 import { formatNumber } from './utils';
 
 const SearchInput = React.memo(
@@ -64,6 +69,52 @@ const SearchInput = React.memo(
   },
 );
 
+const getKubePhaseNumber = (phase: string) => {
+  switch (phase) {
+    case 'running':
+      return KubePhase.Running;
+    case 'succeeded':
+      return KubePhase.Succeeded;
+    case 'pending':
+      return KubePhase.Pending;
+    case 'failed':
+      return KubePhase.Failed;
+    default:
+      return KubePhase.Unknown;
+  }
+};
+
+const Th = React.memo<{
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  onSort?: (sortOrder: 'asc' | 'desc') => void;
+  sort?: 'asc' | 'desc' | null;
+}>(({ children, onSort, sort, style }) => {
+  return (
+    <th
+      style={style}
+      className={cx({ 'cursor-pointer': !!onSort }, 'text-nowrap')}
+      onClick={() => onSort?.(sort === 'asc' ? 'desc' : 'asc')}
+    >
+      {children}
+      {!!sort && (
+        <i
+          className={`ps-1 text-slate-400 fs-8.5 bi bi-caret-${
+            sort === 'asc' ? 'up-fill' : 'down-fill'
+          }`}
+        />
+      )}
+    </th>
+  );
+});
+
+type InfraPodsStatusTableColumn =
+  | 'restarts'
+  | 'uptime'
+  | 'cpuLimit'
+  | 'memLimit'
+  | 'phase';
+
 const InfraPodsStatusTable = ({
   dateRange,
   where,
@@ -71,6 +122,16 @@ const InfraPodsStatusTable = ({
   dateRange: [Date, Date];
   where: string;
 }) => {
+  const [phaseFilter, setPhaseFilter] = React.useState('running');
+  const [sortState, setSortState] = React.useState<{
+    column: InfraPodsStatusTableColumn;
+    order: 'asc' | 'desc';
+  }>({
+    column: 'phase',
+    order: 'asc',
+  });
+
+  const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
   const { data, isError, isLoading } = api.useMultiSeriesChart({
     series: [
       {
@@ -79,7 +140,10 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'last_value',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
+        ...(sortState.column === 'restarts' && {
+          sortOrder: sortState.order,
+        }),
       },
       {
         table: 'metrics',
@@ -87,7 +151,10 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'sum',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
+        ...(sortState.column === 'uptime' && {
+          sortOrder: sortState.order,
+        }),
       },
       {
         table: 'metrics',
@@ -95,7 +162,18 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'avg',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.cpu_limit_utilization - Gauge',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy,
+        ...(sortState.column === 'cpuLimit' && {
+          sortOrder: sortState.order,
+        }),
       },
       {
         table: 'metrics',
@@ -103,7 +181,18 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'avg',
         where,
-        groupBy: ['k8s.pod.name'],
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.memory_limit_utilization - Gauge',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy,
+        ...(sortState.column === 'memLimit' && {
+          sortOrder: sortState.order,
+        }),
       },
       {
         table: 'metrics',
@@ -111,25 +200,77 @@ const InfraPodsStatusTable = ({
         type: 'table',
         aggFn: 'last_value',
         where,
-        groupBy: ['k8s.pod.name'],
-        sortOrder: 'asc',
+        groupBy,
+        ...(sortState.column === 'phase' && {
+          sortOrder: sortState.order,
+        }),
       },
     ],
     endDate: dateRange[1] ?? new Date(),
     startDate: dateRange[0] ?? new Date(),
     seriesReturnType: 'column',
+    ...(phaseFilter !== 'all' && {
+      postGroupWhere: `series_6:${getKubePhaseNumber(phaseFilter)}`,
+    }),
   });
 
-  const getLink = (row: any) => {
+  // TODO: Use useTable
+  const podsList = React.useMemo(() => {
+    if (!data) {
+      return [];
+    }
+
+    return data.data.map((row: any) => {
+      return {
+        name: row.group[0],
+        namespace: row.group[1],
+        node: row.group[2],
+        restarts: row['series_0.data'],
+        uptime: row['series_1.data'],
+        startedAt: new Date(Date.now() + parseInt(row['series_1.data']) * 1000), // todo: find a way to format approx. duration without converting to date
+        cpuAvg: row['series_2.data'],
+        cpuLimit: row['series_3.data'],
+        memAvg: row['series_4.data'],
+        memLimit: row['series_5.data'],
+        phase: row['series_6.data'],
+      };
+    });
+  }, [data]);
+
+  const getLink = (podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('podName', `${row.group}`);
+    searchParams.set('podName', `${podName}`);
     return window.location.pathname + '?' + searchParams.toString();
   };
+
+  const getThSortProps = (column: InfraPodsStatusTableColumn) => ({
+    onSort: (order: 'asc' | 'desc') => {
+      setSortState({
+        column,
+        order,
+      });
+    },
+    sort: sortState.column === column ? sortState.order : null,
+  });
 
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
-        Pods
+        <Group align="center" position="apart">
+          Pods
+          <SegmentedControl
+            size="xs"
+            value={phaseFilter}
+            onChange={setPhaseFilter}
+            data={[
+              { label: 'Running', value: 'running' },
+              { label: 'Succeeded', value: 'succeeded' },
+              { label: 'Pending', value: 'pending' },
+              { label: 'Failed', value: 'failed' },
+              { label: 'All', value: 'all' },
+            ]}
+          />
+        </Group>
       </Card.Section>
       <Card.Section>
         <ScrollArea
@@ -141,63 +282,97 @@ const InfraPodsStatusTable = ({
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load pod metrics
             </div>
+          ) : !isLoading && podsList.length === 0 ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              No pods found
+            </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <thead className="muted-thead">
                 <tr>
-                  <th>Name</th>
-                  <th style={{ width: 100 }}>Restarts</th>
-                  {/* <th style={{ width: 120 }}>Age</th> */}
-                  <th style={{ width: 100 }}>CPU Avg</th>
-                  <th style={{ width: 100 }}>Mem Avg</th>
-                  <th style={{ width: 130 }}>Status</th>
+                  <Th>Name</Th>
+                  <Th>Namespace</Th>
+                  <Th>Node</Th>
+                  <Th {...getThSortProps('phase')} style={{ width: 130 }}>
+                    Status
+                  </Th>
+                  <Th {...getThSortProps('cpuLimit')} style={{ width: 100 }}>
+                    CPU/Limit
+                  </Th>
+                  <Th {...getThSortProps('memLimit')} style={{ width: 100 }}>
+                    Mem/Limit
+                  </Th>
+                  <Th {...getThSortProps('uptime')} style={{ width: 80 }}>
+                    Uptime
+                  </Th>
+                  <Th {...getThSortProps('restarts')} style={{ width: 100 }}>
+                    Restarts
+                  </Th>
                 </tr>
               </thead>
               {isLoading ? (
                 <tbody>
                   {Array.from({ length: 4 }).map((_, index) => (
                     <tr key={index}>
-                      <td>
-                        <Skeleton height={8} my={6} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
+                      {Array.from({ length: 8 }).map((_, index) => (
+                        <td key={index}>
+                          <Skeleton height={8} my={6} />
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
               ) : (
                 <tbody>
-                  {data?.data?.map((row: any) => (
-                    <Link key={row.group} href={getLink(row)}>
+                  {podsList.map(pod => (
+                    <Link key={pod.name} href={getLink(pod.name)}>
                       <tr className="cursor-pointer">
-                        <td>{row.group}</td>
-                        <td>{row['series_0.data']}</td>
-                        {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
+                        <td>{pod.name}</td>
+                        <td>{pod.namespace}</td>
+                        <td>{pod.node}</td>
                         <td>
-                          {formatNumber(
-                            row['series_2.data'],
-                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          )}
+                          <FormatPodStatus status={pod.phase} />
                         </td>
                         <td>
-                          {formatNumber(
-                            row['series_3.data'],
-                            K8S_MEM_NUMBER_FORMAT,
-                          )}
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(
+                                pod.cpuAvg,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              ) + ' avg'
+                            }
+                          >
+                            <span>
+                              {formatNumber(
+                                pod.cpuLimit,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              )}
+                            </span>
+                          </Tooltip>
                         </td>
                         <td>
-                          <FormatPodStatus status={row['series_4.data']} />
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
+                              ' avg'
+                            }
+                          >
+                            <span>
+                              {formatNumber(
+                                pod.memLimit,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              )}
+                            </span>
+                          </Tooltip>
                         </td>
+                        <td>
+                          {pod.startedAt
+                            ? formatDistanceToNowStrictShort(pod.startedAt)
+                            : '–'}
+                        </td>
+                        <td>{pod.restarts}</td>
                       </tr>
                     </Link>
                   ))}
