@@ -1,12 +1,12 @@
 import { getHours, getMinutes } from 'date-fns';
+import mongoose from 'mongoose';
 import ms from 'ms';
-
 import z from 'zod';
+
 import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
 import type { ObjectId } from '@/models';
 import Alert, { AlertInterval, IAlert } from '@/models/alert';
-import mongoose from 'mongoose';
 
 // Input validation
 const zChannel = z.object({

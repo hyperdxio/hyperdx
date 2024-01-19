@@ -1,5 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import _ from 'lodash';
+import mongoose from 'mongoose';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
@@ -14,7 +15,6 @@ import Alert, { AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView, { ILogView } from '@/models/logView';
-import mongoose from 'mongoose';
 
 const router = express.Router();
 

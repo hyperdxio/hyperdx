@@ -1,9 +1,5 @@
 import express from 'express';
 
-import { validateUserAccessKey } from '@/middleware/auth';
-import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
-
-import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import {
   createLogView,
   deleteLogView,
@@ -11,6 +7,9 @@ import {
   getLogView,
   updateLogView,
 } from '@/controllers/logViews';
+import { validateUserAccessKey } from '@/middleware/auth';
+import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
+import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 
 const router = express.Router();
 

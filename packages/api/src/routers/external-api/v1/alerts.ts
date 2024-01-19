@@ -1,18 +1,17 @@
 import express from 'express';
+import { validateRequest } from 'zod-express-middleware';
 
-import { validateUserAccessKey } from '@/middleware/auth';
-import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
-
-import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import {
   createAlert,
-  updateAlert,
   deleteAlert,
   getAlert,
   getAllAlerts,
+  updateAlert,
   zAlert,
 } from '@/controllers/alerts';
-import { validateRequest } from 'zod-express-middleware';
+import { validateUserAccessKey } from '@/middleware/auth';
+import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
+import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 
 const router = express.Router();
 

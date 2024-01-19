@@ -1,9 +1,5 @@
 import express from 'express';
 
-import { validateUserAccessKey } from '@/middleware/auth';
-import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
-
-import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import {
   createDashboard,
   deleteDashboard,
@@ -11,6 +7,9 @@ import {
   getDashboard,
   updateDashboard,
 } from '@/controllers/dashboards';
+import { validateUserAccessKey } from '@/middleware/auth';
+import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
+import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 
 const router = express.Router();
 

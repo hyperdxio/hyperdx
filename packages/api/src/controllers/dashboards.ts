@@ -1,6 +1,6 @@
 import type { ObjectId } from '@/models';
-import Dashboard, { IDashboard } from '@/models/dashboard';
 import Alert from '@/models/alert';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 
 export type DashboardInput = Omit<IDashboard, '_id'>;
 

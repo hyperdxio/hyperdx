@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import ms from 'ms';
 
 import {
@@ -9,7 +10,7 @@ import {
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
-import { IAlertChannel } from '@/models/alertChannel';
+import { AlertChannel, AlertState } from '@/models/alert';
 import { LogType } from '@/utils/logParser';
 
 import * as clickhouse from '../../clickhouse';
@@ -180,7 +181,7 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
-      const exampleChannel: IAlertChannel = {
+      const exampleChannel: AlertChannel = {
         type: 'webhook',
         webhookId: webhook._id.toString(),
       };
@@ -191,7 +192,9 @@ describe('checkAlerts', () => {
         type: 'presence',
         threshold: 10,
         groupBy: 'span_name',
-        logViewId: logView._id.toString(),
+        logView: logView._id,
+        team: team._id,
+        state: AlertState.OK,
       });
 
       const now = new Date('2023-11-16T22:12:00.000Z');
@@ -364,8 +367,10 @@ describe('checkAlerts', () => {
         interval: '5m',
         type: 'presence',
         threshold: 10,
-        dashboardId: dashboard._id.toString(),
+        dashboardId: new mongoose.Types.ObjectId(dashboard._id.toString()),
         chartId: '198hki',
+        state: AlertState.OK,
+        team: team._id,
       });
 
       // should fetch 5m of logs
@@ -597,8 +602,10 @@ describe('checkAlerts', () => {
         interval: '5m',
         type: 'presence',
         threshold: 10,
-        dashboardId: dashboard._id.toString(),
+        dashboardId: dashboard._id,
         chartId: '198hki',
+        state: AlertState.OK,
+        team: team._id,
       });
 
       // shoud fetch 5m of metrics

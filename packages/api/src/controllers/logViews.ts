@@ -1,6 +1,6 @@
 import type { ObjectId } from '@/models';
-import LogView, { ILogView } from '@/models/logView';
 import Alert from '@/models/alert';
+import LogView, { ILogView } from '@/models/logView';
 
 export type LogViewInput = Omit<ILogView, '_id' | 'creator'>;
 
