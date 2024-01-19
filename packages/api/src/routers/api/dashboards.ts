@@ -72,7 +72,15 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      { _id: 1, name: 1, createdAt: 1, updatedAt: 1, charts: 1, query: 1 },
+      {
+        _id: 1,
+        name: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        charts: 1,
+        query: 1,
+        tags: 1,
+      },
     ).sort({ name: -1 });
 
     const alertsByDashboard = groupBy(
