@@ -956,8 +956,13 @@ export const buildMetricSeriesQuery = async ({
               : '0.99'
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
+  } else if (dataType === MetricsDataType.Histogram) {
+    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+    }
+    selectClause.push(`max(value) as data`);
   } else {
-    logger.error(`Unsupported data type: ${dataType}`);
+    throw new Error(`Unsupported data type: ${dataType}`);
   }
 
   const startTimeUnixTs = Math.floor(startTime / 1000);
@@ -1019,6 +1024,62 @@ export const buildMetricSeriesQuery = async ({
     ],
   );
 
+  const quantile =
+    aggFn === AggFn.P50
+      ? '0.5'
+      : aggFn === AggFn.P90
+      ? '0.90'
+      : aggFn === AggFn.P95
+      ? '0.95'
+      : '0.99';
+
+  const histogramMetricSource = SqlString.format(
+    `
+      WITH points AS (
+        SELECT
+          timestamp,
+          name,
+          arraySort((x) -> x[2], groupArray([
+            toFloat64(value),
+            toFloat64OrDefault(_string_attributes['le'], inf)
+          ])) AS point,
+          mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
+        FROM (?)
+        WHERE mapContains(_string_attributes, 'le')
+        GROUP BY timestamp, name, filtered_string_attributes
+      )
+      SELECT
+        timestamp,
+        name,
+        filtered_string_attributes AS _string_attributes,
+        point[length(point)][1] AS total,
+        toFloat64(?) * total AS rank,
+        arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+        if (
+          upper_idx = length(point),
+          point[upper_idx - 1][2],
+          if (
+            upper_idx = 1,
+            point[1][2],
+            point[upper_idx - 1][2] + (point[upper_idx][2] - point[upper_idx - 1][2]) * (
+              (rank - point[upper_idx - 1][1]) / (point[upper_idx][1] - point[upper_idx - 1][1])
+            ) 
+          )
+        ) AS value
+      FROM points
+      WHERE total > 0
+      AND length(point) > 1
+      ORDER BY timestamp ASC`.trim(),
+    [SqlString.raw(gaugeMetricSource), quantile],
+  );
+
+  const source =
+    dataType === MetricsDataType.Histogram
+      ? histogramMetricSource
+      : isRate
+      ? rateMetricSource
+      : gaugeMetricSource;
+
   const query = SqlString.format(
     `
       WITH metrics AS (?)
@@ -1036,7 +1097,7 @@ export const buildMetricSeriesQuery = async ({
       }
     `,
     [
-      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
+      SqlString.raw(source),
       SqlString.raw(selectClause.join(',')),
       ...(granularity != null
         ? [
