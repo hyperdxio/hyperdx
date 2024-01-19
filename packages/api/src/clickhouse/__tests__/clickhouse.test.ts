@@ -1014,15 +1014,15 @@ Array [
             { value: 140, timestamp: now, le: '1000' },
             { value: 150, timestamp: now, le: '+Inf' },
 
-            { value: 105, timestamp: now + ms('8m'), le: '10' },
+            { value: 100, timestamp: now + ms('8m'), le: '10' },
             { value: 105, timestamp: now + ms('8m'), le: '30' },
             { value: 110, timestamp: now + ms('8m'), le: '50' },
-            { value: 125, timestamp: now + ms('8m'), le: '100' },
-            { value: 125, timestamp: now + ms('8m'), le: '200' },
-            { value: 125, timestamp: now + ms('8m'), le: '300' },
-            { value: 125, timestamp: now + ms('8m'), le: '500' },
-            { value: 150, timestamp: now + ms('8m'), le: '1000' },
-            { value: 150, timestamp: now + ms('8m'), le: '+Inf' },
+            { value: 120, timestamp: now + ms('8m'), le: '100' },
+            { value: 120, timestamp: now + ms('8m'), le: '200' },
+            { value: 120, timestamp: now + ms('8m'), le: '300' },
+            { value: 120, timestamp: now + ms('8m'), le: '500' },
+            { value: 200, timestamp: now + ms('8m'), le: '1000' },
+            { value: 210, timestamp: now + ms('8m'), le: '+Inf' },
           ],
         }),
       );
@@ -1214,7 +1214,7 @@ Array [
   },
   Object {
     "group": Array [],
-    "series_0.data": 10,
+    "series_0.data": 750,
     "ts_bucket": 1641341100,
   },
 ]
@@ -1254,7 +1254,7 @@ Array [
   },
   Object {
     "group": Array [],
-    "series_0.data": 700,
+    "series_0.data": 950,
     "ts_bucket": 1641341100,
   },
 ]
@@ -1294,7 +1294,7 @@ Array [
   },
   Object {
     "group": Array [],
-    "series_0.data": 970,
+    "series_0.data": 995,
     "ts_bucket": 1641341100,
   },
 ]

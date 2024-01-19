@@ -1039,10 +1039,19 @@ export const buildMetricSeriesQuery = async ({
         SELECT
           timestamp,
           name,
-          arraySort((x) -> x[2], groupArray([
-            toFloat64(value),
-            toFloat64OrDefault(_string_attributes['le'], inf)
-          ])) AS point,
+          arraySort((x) -> x[2],
+            groupArray([
+              toFloat64(value),
+              toFloat64OrDefault(_string_attributes['le'], inf)
+            ])
+          ) AS _point,
+          neighbor(_point, -1) AS _prev_point,
+          length(_point) AS n,
+          if (
+            n = length(_prev_point),
+            arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point),
+            _point
+          ) AS point,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM (?)
         WHERE mapContains(_string_attributes, 'le')
@@ -1052,11 +1061,11 @@ export const buildMetricSeriesQuery = async ({
         timestamp,
         name,
         filtered_string_attributes AS _string_attributes,
-        point[length(point)][1] AS total,
+        point[n][1] AS total,
         toFloat64(?) * total AS rank,
         arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
         if (
-          upper_idx = length(point),
+          upper_idx = n,
           point[upper_idx - 1][2],
           if (
             upper_idx = 1,
