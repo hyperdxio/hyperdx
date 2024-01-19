@@ -1,5 +1,5 @@
 import express from 'express';
-import { differenceBy, groupBy } from 'lodash';
+import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -60,6 +60,9 @@ const zChart = z.object({
   ),
 });
 
+// TODO: Move common zod schemas to a common file?
+const zTags = z.array(z.string().max(32)).max(50).optional();
+
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -97,6 +100,7 @@ router.post(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
+      tags: zTags,
     }),
   }),
   async (req, res, next) => {
@@ -106,15 +110,16 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { name, charts, query } = req.body ?? {};
+      const { name, charts, query, tags } = req.body ?? {};
+
       // Create new dashboard from name and charts
       const newDashboard = await new Dashboard({
         name,
         charts,
         query,
+        tags: tags && uniq(tags),
         team: teamId,
       }).save();
-
       res.json({
         data: newDashboard,
       });
@@ -131,6 +136,7 @@ router.put(
       name: z.string(),
       charts: z.array(zChart),
       query: z.string(),
+      tags: zTags,
     }),
   }),
   async (req, res, next) => {
@@ -144,7 +150,8 @@ router.put(
         return res.sendStatus(400);
       }
 
-      const { name, charts, query } = req.body ?? {};
+      const { name, charts, query, tags } = req.body ?? {};
+
       // Update dashboard from name and charts
       const oldDashboard = await Dashboard.findById(dashboardId);
       const updatedDashboard = await Dashboard.findByIdAndUpdate(
@@ -153,6 +160,7 @@ router.put(
           name,
           charts,
           query,
+          tags: tags && uniq(tags),
         },
         { new: true },
       );
@@ -170,7 +178,6 @@ router.put(
           chartId: { $in: deletedChartIds },
         });
       }
-
       res.json({
         data: updatedDashboard,
       });
