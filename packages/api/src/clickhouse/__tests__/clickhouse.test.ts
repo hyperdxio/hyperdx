@@ -1014,6 +1014,16 @@ Array [
             { value: 140, timestamp: now, le: '1000' },
             { value: 150, timestamp: now, le: '+Inf' },
 
+            { value: 100, timestamp: now + ms('7m'), le: '10' },
+            { value: 105, timestamp: now + ms('7m'), le: '30' },
+            { value: 110, timestamp: now + ms('7m'), le: '50' },
+            { value: 120, timestamp: now + ms('7m'), le: '100' },
+            { value: 120, timestamp: now + ms('7m'), le: '200' },
+            { value: 120, timestamp: now + ms('7m'), le: '300' },
+            { value: 120, timestamp: now + ms('7m'), le: '500' },
+            { value: 145, timestamp: now + ms('7m'), le: '1000' },
+            { value: 155, timestamp: now + ms('7m'), le: '+Inf' },
+
             { value: 100, timestamp: now + ms('8m'), le: '10' },
             { value: 105, timestamp: now + ms('8m'), le: '30' },
             { value: 110, timestamp: now + ms('8m'), le: '50' },
