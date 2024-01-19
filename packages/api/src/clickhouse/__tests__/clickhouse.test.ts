@@ -1014,25 +1014,25 @@ Array [
             { value: 140, timestamp: now, le: '1000' },
             { value: 150, timestamp: now, le: '+Inf' },
 
-            { value: 100, timestamp: now + ms('7m'), le: '10' },
-            { value: 105, timestamp: now + ms('7m'), le: '30' },
-            { value: 110, timestamp: now + ms('7m'), le: '50' },
-            { value: 120, timestamp: now + ms('7m'), le: '100' },
-            { value: 120, timestamp: now + ms('7m'), le: '200' },
-            { value: 120, timestamp: now + ms('7m'), le: '300' },
-            { value: 120, timestamp: now + ms('7m'), le: '500' },
-            { value: 145, timestamp: now + ms('7m'), le: '1000' },
-            { value: 155, timestamp: now + ms('7m'), le: '+Inf' },
+            { value: 100, timestamp: now + ms('1m'), le: '10' },
+            { value: 105, timestamp: now + ms('1m'), le: '30' },
+            { value: 110, timestamp: now + ms('1m'), le: '50' },
+            { value: 125, timestamp: now + ms('1m'), le: '100' },
+            { value: 125, timestamp: now + ms('1m'), le: '200' },
+            { value: 125, timestamp: now + ms('1m'), le: '300' },
+            { value: 125, timestamp: now + ms('1m'), le: '500' },
+            { value: 145, timestamp: now + ms('1m'), le: '1000' },
+            { value: 155, timestamp: now + ms('1m'), le: '+Inf' },
 
-            { value: 100, timestamp: now + ms('8m'), le: '10' },
-            { value: 105, timestamp: now + ms('8m'), le: '30' },
-            { value: 110, timestamp: now + ms('8m'), le: '50' },
-            { value: 120, timestamp: now + ms('8m'), le: '100' },
-            { value: 120, timestamp: now + ms('8m'), le: '200' },
-            { value: 120, timestamp: now + ms('8m'), le: '300' },
-            { value: 120, timestamp: now + ms('8m'), le: '500' },
-            { value: 200, timestamp: now + ms('8m'), le: '1000' },
-            { value: 210, timestamp: now + ms('8m'), le: '+Inf' },
+            { value: 100, timestamp: now + ms('2m'), le: '10' },
+            { value: 105, timestamp: now + ms('2m'), le: '30' },
+            { value: 110, timestamp: now + ms('2m'), le: '50' },
+            { value: 125, timestamp: now + ms('2m'), le: '100' },
+            { value: 125, timestamp: now + ms('2m'), le: '200' },
+            { value: 125, timestamp: now + ms('2m'), le: '300' },
+            { value: 125, timestamp: now + ms('2m'), le: '500' },
+            { value: 200, timestamp: now + ms('2m'), le: '1000' },
+            { value: 210, timestamp: now + ms('2m'), le: '+Inf' },
           ],
         }),
       );
@@ -1206,8 +1206,8 @@ Array [
           tableVersion: undefined,
           teamId,
           startTime: now,
-          endTime: now + ms('10m'),
-          granularity: '5 minute',
+          endTime: now + ms('4m'),
+          granularity: '1 minute',
           maxNumGroups: 20,
           seriesReturnType: clickhouse.SeriesReturnType.Column,
         })
@@ -1219,13 +1219,23 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 10,
+    "series_0.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
+    "series_0.data": 75,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
     "series_0.data": 750,
-    "ts_bucket": 1641341100,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340980,
   },
 ]
 `);
@@ -1246,8 +1256,8 @@ Array [
           tableVersion: undefined,
           teamId,
           startTime: now,
-          endTime: now + ms('10m'),
-          granularity: '5 minute',
+          endTime: now + ms('4m'),
+          granularity: '1 minute',
           maxNumGroups: 20,
           seriesReturnType: clickhouse.SeriesReturnType.Column,
         })
@@ -1259,13 +1269,23 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 875,
+    "series_0.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
+    "series_0.data": 95,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
     "series_0.data": 950,
-    "ts_bucket": 1641341100,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340980,
   },
 ]
 `);
@@ -1286,8 +1306,8 @@ Array [
           tableVersion: undefined,
           teamId,
           startTime: now,
-          endTime: now + ms('10m'),
-          granularity: '5 minute',
+          endTime: now + ms('4m'),
+          granularity: '1 minute',
           maxNumGroups: 20,
           seriesReturnType: clickhouse.SeriesReturnType.Column,
         })
@@ -1299,13 +1319,23 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 1000,
+    "series_0.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
+    "series_0.data": 99.5,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
     "series_0.data": 995,
-    "ts_bucket": 1641341100,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340980,
   },
 ]
 `);

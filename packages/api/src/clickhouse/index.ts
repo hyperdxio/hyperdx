@@ -1033,6 +1033,7 @@ export const buildMetricSeriesQuery = async ({
       ? '0.95'
       : '0.99';
 
+  // TODO: handle -Inf
   const histogramMetricSource = SqlString.format(
     `
       WITH points AS (
@@ -1048,9 +1049,9 @@ export const buildMetricSeriesQuery = async ({
           neighbor(_point, -1) AS _prev_point,
           length(_point) AS n,
           if (
-            n = length(_prev_point),
+            length(_prev_point) = n,
             arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point),
-            _point
+            []
           ) AS point,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM (?)
@@ -1064,15 +1065,25 @@ export const buildMetricSeriesQuery = async ({
         point[n][1] AS total,
         toFloat64(?) * total AS rank,
         arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+        point[upper_idx][2] AS upper_bound,
         if (
-          upper_idx = n,
+          upper_idx = 1,
+          if (
+            point[upper_idx][2] > 0,
+            0,
+            inf
+          ),
+          point[upper_idx - 1][2]
+        ) AS lower_bound,
+        if (
+          upper_bound = inf,
           point[upper_idx - 1][2],
           if (
-            upper_idx = 1,
+            lower_bound = inf,
             point[1][2],
-            point[upper_idx - 1][2] + (point[upper_idx][2] - point[upper_idx - 1][2]) * (
+            lower_bound + (upper_bound - lower_bound) * (
               (rank - point[upper_idx - 1][1]) / (point[upper_idx][1] - point[upper_idx - 1][1])
-            ) 
+            )
           )
         ) AS value
       FROM points
