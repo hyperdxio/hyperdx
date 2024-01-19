@@ -37,7 +37,7 @@ export const timeChartSeriesSchema = z.object({
   aggFn: aggFnSchema,
   field: z.union([z.string(), z.undefined()]),
   where: z.string(),
-  groupBy: z.array(z.string()),
+  groupBy: z.array(z.string()).max(10),
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
 });
@@ -48,7 +48,7 @@ export const tableChartSeriesSchema = z.object({
   aggFn: aggFnSchema,
   field: z.optional(z.string()),
   where: z.string(),
-  groupBy: z.array(z.string()),
+  groupBy: z.array(z.string()).max(10),
   sortOrder: z.optional(z.union([z.literal('desc'), z.literal('asc')])),
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),

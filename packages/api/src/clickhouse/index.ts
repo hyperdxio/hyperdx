@@ -32,6 +32,7 @@ import {
   MetricsPropertyTypeMappingsModel,
 } from './propertyTypeMappingsModel';
 import {
+  buildPostGroupWhereCondition,
   buildSearchColumnName,
   buildSearchColumnName_OLD,
   buildSearchQueryWhereCondition,
@@ -862,7 +863,6 @@ export const getMetricsChart = async ({
   return result;
 };
 
-// TODO: support multiple groupBy
 export const buildMetricSeriesQuery = async ({
   aggFn,
   dataType,
@@ -880,7 +880,7 @@ export const buildMetricSeriesQuery = async ({
   dataType: MetricsDataType;
   endTime: number; // unix in ms,
   granularity?: Granularity | string;
-  groupBy?: string;
+  groupBy: string[];
   name: string;
   q: string;
   startTime: number; // unix in ms
@@ -891,6 +891,12 @@ export const buildMetricSeriesQuery = async ({
   const tableName = `default.${TableName.Metric}`;
 
   const isRate = isRateAggFn(aggFn);
+
+  const groupByColumnNames = groupBy.map(g => {
+    return SqlString.format(`_string_attributes[?]`, [g]);
+  });
+
+  const hasGroupBy = groupByColumnNames.length > 0;
 
   const shouldModifyStartTime = isRate;
 
@@ -915,12 +921,8 @@ export const buildMetricSeriesQuery = async ({
           [granularity],
         )
       : "'0' as ts_bucket",
-    groupBy
-      ? SqlString.format(`[_string_attributes[?]] AS group`, [groupBy])
-      : '[] AS group',
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
   ];
-
-  const hasGroupBy = groupBy != '' && groupBy != null;
 
   if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
@@ -1251,12 +1253,14 @@ export const queryMultiSeriesChart = async ({
   teamId,
   seriesReturnType = SeriesReturnType.Column,
   queries,
+  postGroupWhere,
 }: {
   maxNumGroups: number;
   tableVersion: number | undefined;
   teamId: string;
   seriesReturnType?: SeriesReturnType;
   queries: { query: string; hasGroupBy: boolean; sortOrder?: 'desc' | 'asc' }[];
+  postGroupWhere?: string;
 }) => {
   // For now only supports same-table series with the same groupBy
 
@@ -1296,6 +1300,10 @@ export const queryMultiSeriesChart = async ({
           .join(',\n')
       : 'series_0.data / series_1.data as "series_0.data"';
 
+  const postGroupWhereClause = postGroupWhere
+    ? buildPostGroupWhereCondition({ query: postGroupWhere })
+    : '1=1';
+
   // Return each series data as a separate column
   const query = SqlString.format(
     `WITH ? 
@@ -1306,6 +1314,7 @@ export const queryMultiSeriesChart = async ({
           series_0.group as group
         FROM series_0 AS series_0
         ?
+        WHERE ?
       ), groups AS (
         SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
         FROM raw_groups
@@ -1323,6 +1332,7 @@ export const queryMultiSeriesChart = async ({
       SqlString.raw(seriesCTEs),
       SqlString.raw(select),
       SqlString.raw(leftJoin),
+      SqlString.raw(postGroupWhereClause),
       // Setting rank_order_by_value
       SqlString.raw(sortOrder === 'asc' ? 'MIN' : 'MAX'),
       SqlString.raw(
@@ -1373,6 +1383,7 @@ export const getMultiSeriesChart = async ({
   tableVersion,
   teamId,
   seriesReturnType = SeriesReturnType.Column,
+  postGroupWhere,
 }: {
   series: z.infer<typeof chartSeriesSchema>[];
   endTime: number; // unix in ms,
@@ -1382,6 +1393,7 @@ export const getMultiSeriesChart = async ({
   tableVersion: number | undefined;
   teamId: string;
   seriesReturnType?: SeriesReturnType;
+  postGroupWhere?: string;
 }) => {
   let queries: {
     query: string;
@@ -1478,7 +1490,7 @@ export const getMultiSeriesChart = async ({
           endTime,
           name: s.field,
           granularity,
-          groupBy: s.groupBy[0],
+          groupBy: s.groupBy,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           q: s.where,
           startTime,
@@ -1496,6 +1508,7 @@ export const getMultiSeriesChart = async ({
     teamId,
     seriesReturnType,
     queries,
+    postGroupWhere,
   });
 };
 

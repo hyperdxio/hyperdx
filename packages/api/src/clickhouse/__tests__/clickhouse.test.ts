@@ -881,7 +881,7 @@ Array [
       await clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
           name: 'test.users',
-          tags: { host: 'test1', runId },
+          tags: { host: 'test1', runId, ip: '127.0.0.1' },
           data_type: clickhouse.MetricsDataType.Sum,
           is_monotonic: true,
           is_delta: true,
@@ -905,7 +905,7 @@ Array [
       await clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
           name: 'test.users',
-          tags: { host: 'test2', runId },
+          tags: { host: 'test2', runId, ip: '127.0.0.2' },
           data_type: clickhouse.MetricsDataType.Sum,
           is_monotonic: true,
           is_delta: true,
@@ -927,7 +927,7 @@ Array [
       await clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
           name: 'test.cpu',
-          tags: { host: 'test1', runId },
+          tags: { host: 'test1', runId, ip: '127.0.0.1' },
           data_type: clickhouse.MetricsDataType.Gauge,
           is_monotonic: false,
           is_delta: false,
@@ -948,7 +948,7 @@ Array [
       await clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
           name: 'test.cpu',
-          tags: { host: 'test2', runId },
+          tags: { host: 'test2', runId, ip: '127.0.0.2' },
           data_type: clickhouse.MetricsDataType.Gauge,
           is_monotonic: false,
           is_delta: false,
@@ -970,6 +970,54 @@ Array [
         runId: 'string',
         host: 'string',
       });
+    });
+
+    it('returns multiple group by labels correctly', async () => {
+      const data = (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.LastValue,
+              field: 'test.cpu',
+              where: `runId:${runId}`,
+              groupBy: ['host', 'ip'],
+              metricDataType: clickhouse.MetricsDataType.Gauge,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('20m'),
+          granularity: undefined,
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "test1",
+      "127.0.0.1",
+    ],
+    "series_0.data": 80,
+    "ts_bucket": "0",
+  },
+  Object {
+    "group": Array [
+      "test2",
+      "127.0.0.2",
+    ],
+    "series_0.data": 4,
+    "ts_bucket": "0",
+  },
+]
+`);
     });
 
     it('gauge (last value)', async () => {
@@ -1068,6 +1116,77 @@ Array [
         },
       ]
       `);
+    });
+
+    it('filters using postGroupWhere properly', async () => {
+      const queryConfig: Parameters<typeof clickhouse.getMultiSeriesChart>[0] =
+        {
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.LastValue,
+              field: 'test.cpu',
+              where: `runId:${runId}`,
+              groupBy: ['host'],
+              metricDataType: clickhouse.MetricsDataType.Gauge,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('20m'),
+          granularity: undefined,
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+          postGroupWhere: 'series_0:4',
+        };
+
+      // Exclude postGroupWhere to assert we get the test data we expect at first
+      const data = (
+        await clickhouse.getMultiSeriesChart(
+          _.omit(queryConfig, ['postGroupWhere']),
+        )
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "test1",
+    ],
+    "series_0.data": 80,
+    "ts_bucket": "0",
+  },
+  Object {
+    "group": Array [
+      "test2",
+    ],
+    "series_0.data": 4,
+    "ts_bucket": "0",
+  },
+]
+`);
+
+      const filteredData = (
+        await clickhouse.getMultiSeriesChart(queryConfig)
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      });
+
+      expect(filteredData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "test2",
+    ],
+    "series_0.data": 4,
+    "ts_bucket": "0",
+  },
+]
+`);
     });
   });
 

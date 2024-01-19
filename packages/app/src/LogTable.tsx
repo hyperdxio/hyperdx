@@ -561,10 +561,10 @@ export const RawLogTable = memo(
       [highlightedLineId, onRowExpandClick, dedupLogs],
     );
 
-    useHotkeys(['ArrowRight'], () => {
+    useHotkeys(['ArrowRight', 'j'], () => {
       shiftHighlightedLineId(1);
     });
-    useHotkeys(['ArrowLeft'], () => {
+    useHotkeys(['ArrowLeft', 'k'], () => {
       shiftHighlightedLineId(-1);
     });
 

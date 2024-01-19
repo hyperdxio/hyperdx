@@ -4,6 +4,7 @@ import { format, sub } from 'date-fns';
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 
 import api from '../api';
+import { KubePhase } from '../types';
 
 type KubeEvent = {
   id: string;
@@ -167,5 +168,46 @@ export const KubeTimeline = ({
         {allPodEvents.map(renderKubeEvent)}
       </Timeline>
     );
+  }
+};
+
+export const FormatPodStatus = ({ status }: { status?: number }) => {
+  switch (status) {
+    case KubePhase.Pending:
+      return (
+        <Badge color="yellow" fw="normal" tt="none" size="md">
+          Pending
+        </Badge>
+      );
+    case KubePhase.Running:
+      return (
+        <Badge color="green" fw="normal" tt="none" size="md">
+          Running
+        </Badge>
+      );
+    case KubePhase.Succeeded:
+      return (
+        <Badge color="indigo" fw="normal" tt="none" size="md">
+          Succeeded
+        </Badge>
+      );
+    case KubePhase.Failed:
+      return (
+        <Badge color="red" fw="normal" tt="none" size="md">
+          Failed
+        </Badge>
+      );
+    case KubePhase.Unknown:
+      return (
+        <Badge color="gray" fw="normal" tt="none" size="md">
+          Unknown
+        </Badge>
+      );
+    default:
+      return (
+        <Badge color="gray" fw="normal" tt="none" size="md">
+          Unknown
+        </Badge>
+      );
   }
 };
