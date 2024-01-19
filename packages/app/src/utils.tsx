@@ -431,3 +431,16 @@ export const formatNumber = (
     (options.unit ? ` ${options.unit}` : '')
   );
 };
+
+// format uptime as days, hours, minutes or seconds
+export const formatUptime = (seconds: number) => {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  } else if (seconds < 60 * 60) {
+    return `${Math.floor(seconds / 60)}m`;
+  } else if (seconds < 60 * 60 * 24) {
+    return `${Math.floor(seconds / 60 / 60)}h`;
+  } else {
+    return `${Math.floor(seconds / 60 / 60 / 24)}d`;
+  }
+};

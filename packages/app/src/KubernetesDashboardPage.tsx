@@ -33,7 +33,7 @@ import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
-import { formatDistanceToNowStrictShort } from './utils';
+import { formatUptime } from './utils';
 import { formatNumber } from './utils';
 
 const SearchInput = React.memo(
@@ -228,7 +228,6 @@ const InfraPodsStatusTable = ({
         node: row.group[2],
         restarts: row['series_0.data'],
         uptime: row['series_1.data'],
-        startedAt: new Date(Date.now() + parseInt(row['series_1.data']) * 1000), // todo: find a way to format approx. duration without converting to date
         cpuAvg: row['series_2.data'],
         cpuLimit: row['series_3.data'],
         memAvg: row['series_4.data'],
@@ -368,11 +367,7 @@ const InfraPodsStatusTable = ({
                             </span>
                           </Tooltip>
                         </td>
-                        <td>
-                          {pod.startedAt
-                            ? formatDistanceToNowStrictShort(pod.startedAt)
-                            : '–'}
-                        </td>
+                        <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
                         <td>{pod.restarts}</td>
                       </tr>
                     </Link>
@@ -422,6 +417,14 @@ const NodesTable = ({
         where,
         groupBy,
       },
+      {
+        table: 'metrics',
+        field: 'k8s.node.uptime - Sum',
+        type: 'table',
+        aggFn: 'avg',
+        where,
+        groupBy,
+      },
     ],
     endDate: dateRange[1] ?? new Date(),
     startDate: dateRange[0] ?? new Date(),
@@ -440,6 +443,7 @@ const NodesTable = ({
         cpuAvg: row['series_0.data'],
         memAvg: row['series_1.data'],
         ready: row['series_2.data'],
+        uptime: row['series_3.data'],
       };
     });
   }, [data]);
@@ -471,13 +475,14 @@ const NodesTable = ({
                   <th style={{ width: 130 }}>Status</th>
                   <th style={{ width: 130 }}>CPU</th>
                   <th style={{ width: 130 }}>Memory</th>
+                  <th style={{ width: 130 }}>Uptime</th>
                 </tr>
               </thead>
               {isLoading ? (
                 <tbody>
                   {Array.from({ length: 4 }).map((_, index) => (
                     <tr key={index}>
-                      {Array.from({ length: 4 }).map((_, index) => (
+                      {Array.from({ length: 5 }).map((_, index) => (
                         <td key={index}>
                           <Skeleton height={8} my={6} />
                         </td>
@@ -510,6 +515,7 @@ const NodesTable = ({
                       <td>
                         {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
                       </td>
+                      <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
                     </tr>
                   ))}
                 </tbody>
