@@ -8,6 +8,7 @@ export interface ILogView {
   name: string;
   query: string;
   team: ObjectId;
+  tags: string[];
 }
 
 const LogViewSchema = new Schema<ILogView>(
@@ -22,6 +23,10 @@ const LogViewSchema = new Schema<ILogView>(
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     creator: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    tags: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

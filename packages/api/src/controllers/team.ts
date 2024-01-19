@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
+import Dashboard from '@/models/dashboard';
+import LogView from '@/models/logView';
 import Team from '@/models/team';
 
 export async function isTeamExisting() {
@@ -30,4 +32,26 @@ export function getTeamByApiKey(apiKey: string) {
 
 export function rotateTeamApiKey(teamId: ObjectId) {
   return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { new: true });
+}
+
+export async function getTags(teamId: ObjectId) {
+  const [dashboardTags, logViewTags] = await Promise.all([
+    Dashboard.aggregate([
+      { $match: { team: teamId } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags' } },
+    ]),
+    LogView.aggregate([
+      { $match: { team: teamId } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags' } },
+    ]),
+  ]);
+
+  return [
+    ...new Set([
+      ...dashboardTags.map(t => t._id),
+      ...logViewTags.map(t => t._id),
+    ]),
+  ];
 }

@@ -41,6 +41,7 @@ export type LogView = {
   name: string;
   query: string;
   alerts?: Alert[];
+  tags: string[];
 };
 
 export type Dashboard = {
@@ -51,6 +52,7 @@ export type Dashboard = {
   charts: Chart[];
   alerts?: Alert[];
   query?: string;
+  tags: string[];
 };
 
 export type AlertType = 'presence' | 'absence';

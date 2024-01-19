@@ -1,4 +1,5 @@
 import express from 'express';
+import { uniq } from 'lodash';
 
 import Alert from '@/models/alert';
 import LogView from '@/models/logView';
@@ -9,7 +10,7 @@ router.post('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const userId = req.user?._id;
-    const { query, name } = req.body;
+    const { query, name, tags } = req.body;
     if (teamId == null) {
       return res.sendStatus(403);
     }
@@ -18,11 +19,11 @@ router.post('/', async (req, res, next) => {
     }
     const logView = await new LogView({
       name,
+      tags: tags && uniq(tags),
       query: `${query}`,
       team: teamId,
       creator: userId,
     }).save();
-
     res.json({
       data: logView,
     });
@@ -64,7 +65,7 @@ router.patch('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: logViewId } = req.params;
-    const { query } = req.body;
+    const { query, tags } = req.body;
     if (teamId == null) {
       return res.sendStatus(403);
     }
@@ -76,6 +77,7 @@ router.patch('/:id', async (req, res, next) => {
       logViewId,
       {
         query,
+        tags: tags && uniq(tags),
       },
       { new: true },
     );

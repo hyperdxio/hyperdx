@@ -45,4 +45,35 @@ Object {
 }
 `);
   });
+
+  it('GET /team/tags - no tags', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const resp = await agent.get('/team/tags').expect(200);
+
+    expect(resp.body.data).toMatchInlineSnapshot(`Array []`);
+  });
+
+  it('GET /team/tags', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test',
+        charts: [],
+        query: '',
+        tags: ['test', 'test'], // make sure we dedupe
+      })
+      .expect(200);
+    await agent
+      .post('/log-views')
+      .send({
+        name: 'Test',
+        query: '',
+        tags: ['test2'],
+      })
+      .expect(200);
+    const resp = await agent.get('/team/tags').expect(200);
+    expect(resp.body.data).toStrictEqual(['test', 'test2']);
+  });
 });

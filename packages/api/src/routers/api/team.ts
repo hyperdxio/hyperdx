@@ -5,7 +5,7 @@ import pick from 'lodash/pick';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
-import { getTeam, rotateTeamApiKey } from '@/controllers/team';
+import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
 import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
@@ -139,6 +139,20 @@ router.patch('/apiKey', async (req, res, next) => {
     }
     const team = await rotateTeamApiKey(teamId);
     res.json({ newApiKey: team?.apiKey });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/tags', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      throw new Error(`User ${req.user?._id} not associated with a team`);
+    }
+
+    const tags = await getTags(teamId);
+    return res.json({ data: tags });
   } catch (e) {
     next(e);
   }
