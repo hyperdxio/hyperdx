@@ -1,7 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
-import type { IAlertChannel } from './alertChannel';
 export type AlertType = 'presence' | 'absence';
 
 export enum AlertState {
@@ -24,9 +23,14 @@ export type AlertInterval =
 
 export type AlertSource = 'LOG' | 'CHART';
 
+export type AlertChannel = {
+  type: 'webhook';
+  webhookId: string;
+};
+
 export interface IAlert {
   _id: ObjectId;
-  channel: IAlertChannel;
+  channel: AlertChannel;
   cron: string;
   interval: AlertInterval;
   source?: AlertSource;

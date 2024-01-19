@@ -1,49 +1,22 @@
 import express, { NextFunction, Request, Response } from 'express';
 import _ from 'lodash';
-import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
+  AlertInput,
   createAlert,
   updateAlert,
   validateGroupByProperty,
+  zAlert,
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
-import Alert from '@/models/alert';
+import Alert, { AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView, { ILogView } from '@/models/logView';
+import mongoose from 'mongoose';
 
 const router = express.Router();
-
-// Input validation
-const zChannel = z.object({
-  type: z.literal('webhook'),
-  webhookId: z.string().min(1),
-});
-
-const zLogAlert = z.object({
-  source: z.literal('LOG'),
-  groupBy: z.string().optional(),
-  logViewId: z.string().min(1),
-  message: z.string().optional(),
-});
-
-const zChartAlert = z.object({
-  source: z.literal('CHART'),
-  chartId: z.string().min(1),
-  dashboardId: z.string().min(1),
-});
-
-const zAlert = z
-  .object({
-    channel: zChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    threshold: z.number().min(0),
-    type: z.enum(['presence', 'absence']),
-    source: z.enum(['LOG', 'CHART']).default('LOG'),
-  })
-  .and(zLogAlert.or(zChartAlert));
 
 // Validate groupBy property
 const validateGroupBy = async (
@@ -173,7 +146,20 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body;
+      const alertInput: AlertInput = {
+        ...req.body,
+        team: teamId,
+        state: AlertState.OK,
+        dashboardId:
+          req.body.source === 'CHART'
+            ? new mongoose.Types.ObjectId(req.body.dashboardId)
+            : undefined,
+        logView:
+          req.body.source === 'LOG'
+            ? new mongoose.Types.ObjectId(req.body.logView)
+            : undefined,
+      };
+
       return res.json({
         data: await createAlert(teamId, alertInput),
       });
@@ -194,7 +180,19 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
-      const alertInput = req.body;
+      const alertInput = {
+        ...req.body,
+        team: teamId,
+        state: AlertState.OK,
+        dashboardId:
+          req.body.source === 'CHART'
+            ? new mongoose.Types.ObjectId(req.body.dashboardId)
+            : undefined,
+        logView:
+          req.body.source === 'LOG'
+            ? new mongoose.Types.ObjectId(req.body.logView)
+            : undefined,
+      };
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });

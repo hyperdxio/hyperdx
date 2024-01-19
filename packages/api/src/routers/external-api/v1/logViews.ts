@@ -5,12 +5,12 @@ import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
 
 import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import {
-  createDashboard,
-  deleteDashboard,
-  getAllDashboards,
-  getDashboard,
-  updateDashboard,
-} from '@/controllers/dashboards';
+  createLogView,
+  deleteLogView,
+  getAllLogViews,
+  getLogView,
+  updateLogView,
+} from '@/controllers/logViews';
 
 const router = express.Router();
 
@@ -23,10 +23,10 @@ router.get(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboards = await getAllDashboards(team);
+    const logViews = await getAllLogViews(team);
     res.json({
       version: 'v1',
-      data: dashboards,
+      data: logViews,
     });
   }),
 );
@@ -40,10 +40,10 @@ router.get(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await getDashboard(req.params.id, team);
+    const logView = await getLogView(req.params.id, team);
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: logView,
     });
   }),
 );
@@ -54,13 +54,17 @@ router.post(
   validateUserAccessKey,
   annotateSpanOnError(async (req, res, next) => {
     const team = req.user?.team;
+    if (req.user == undefined) {
+      throw new Api400Error('User not found');
+    }
+
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await createDashboard(team, req.body);
+    const logView = await createLogView(req.user._id, team, req.body);
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: logView,
     });
   }),
 );
@@ -74,10 +78,10 @@ router.put(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await updateDashboard(req.params.id, team, req.body);
+    const logView = await updateLogView(req.params.id, team, req.body);
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: logView,
     });
   }),
 );
@@ -91,7 +95,7 @@ router.delete(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const deleted = await deleteDashboard(req.params.id, team);
+    const deleted = await deleteLogView(req.params.id, team);
     res.json({
       version: 'v1',
       data: deleted,
@@ -99,4 +103,4 @@ router.delete(
   }),
 );
 
-export { router as DashboardsRouter };
+export { router as LogViewsRouter };

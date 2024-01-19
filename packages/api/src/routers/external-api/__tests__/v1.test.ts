@@ -7,27 +7,41 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
-import AlertChannel from '@/models/alertChannel';
 import Dashboard, { Chart } from '@/models/dashboard';
 import LogView from '@/models/logView';
-import user from '@/models/user';
+import User from '@/models/user';
 import Webhook from '@/models/webhook';
 
 describe('external api v1', () => {
   const server = getServer();
 
   beforeAll(async () => {
-    await server.start();
+    try {
+      await server.start();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   });
 
   afterEach(async () => {
-    await clearDBCollections();
-    jest.clearAllMocks();
+    try {
+      await clearDBCollections();
+      jest.clearAllMocks();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    try {
+      await server.closeHttpServer();
+      await closeDB();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   });
 
   it('GET /api/v1', async () => {
@@ -206,154 +220,6 @@ describe('external api v1', () => {
           },
         ],
         rows: 1,
-      });
-    });
-  });
-
-  describe('alert channels', () => {
-    const exampleWebhook = {
-      _id: '5f9d4c4f1c9d440000000001',
-      name: 'test',
-      service: 'slack',
-      url: 'https://hooks.slack.com/services/1234/5678/9012',
-    };
-
-    const exampleChannel = {
-      _id: '5f9d4c4f1c9d440000000000',
-      type: 'webhook',
-      webhookId: '5f9d4c4f1c9d440000000001',
-      priority: 'P1',
-    };
-
-    describe('GET /api/v1/alert-channels', () => {
-      it('success', async () => {
-        const { agent, user } = await getLoggedInAgent(server);
-        await Webhook.create({
-          ...exampleWebhook,
-          team: user?.team,
-        });
-        await AlertChannel.create({
-          ...exampleChannel,
-          teamId: user?.team,
-        });
-        const resp = await agent
-          .get(`/api/v1/alert-channels`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .expect(200);
-
-        expect(resp.body.data.length).toEqual(1);
-        expect(resp.body.data[0]).toEqual({
-          ...exampleChannel,
-          __v: expect.any(Number),
-          createdAt: expect.any(String),
-          updatedAt: expect.any(String),
-          teamId: user.team?._id.toString(),
-        });
-      });
-    });
-
-    describe('GET /api/v1/alert-channels/:id', () => {
-      it('success', async () => {
-        const { agent, user } = await getLoggedInAgent(server);
-        await Webhook.create({
-          ...exampleWebhook,
-          team: user?.team,
-        });
-        await AlertChannel.create({
-          ...exampleChannel,
-          teamId: user?.team,
-        });
-        const resp = await agent
-          .get(`/api/v1/alert-channels/${exampleChannel._id}`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .expect(200);
-
-        expect(resp.body.data).toEqual({
-          ...exampleChannel,
-          __v: expect.any(Number),
-          createdAt: expect.any(String),
-          updatedAt: expect.any(String),
-          teamId: user.team?._id.toString(),
-        });
-      });
-    });
-
-    describe('POST /api/v1/alert-channels', () => {
-      it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
-        const resp = await agent
-          .post(`/api/v1/alert-channels`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .send({
-            type: 'webhook',
-            webhookId: '5f9d4c4f1c9d440000000001',
-            priority: 'P2',
-            teamId: '5f9d4c4f1c9d440000000000', // make sure they can't send teamId
-          })
-          .expect(200);
-
-        expect(resp.body.data).toEqual({
-          _id: expect.any(String),
-          type: 'webhook',
-          webhookId: '5f9d4c4f1c9d440000000001',
-          priority: 'P2',
-          __v: expect.any(Number),
-          createdAt: expect.any(String),
-          updatedAt: expect.any(String),
-          teamId: user.team?._id.toString(),
-        });
-      });
-    });
-
-    describe('PUT /api/v1/alert-channels/:id', () => {
-      it('success', async () => {
-        const { agent, user } = await getLoggedInAgent(server);
-        const webhook = await Webhook.create({
-          ...exampleWebhook,
-          team: user?.team,
-        });
-        const channel = await AlertChannel.create({
-          ...exampleChannel,
-          priority: 'P1', // ensure it is different
-          teamId: user?.team,
-        });
-        const resp = await agent
-          .put(`/api/v1/alert-channels/${channel._id}`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .send({
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-            priority: 'P2',
-            teamId: '5f9d4c4f1c9d440000000000', // make sure cannot update teamId
-          })
-          .expect(200);
-
-        expect(resp.body.data).toEqual({
-          _id: expect.any(String),
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
-          priority: 'P2',
-          __v: expect.any(Number),
-          createdAt: expect.any(String),
-          updatedAt: expect.any(String),
-          teamId: user.team?._id.toString(),
-        });
-
-        const updated = await AlertChannel.findById(channel._id);
-        expect(updated?.priority).toBe('P2');
-      });
-    });
-
-    describe('DELETE /api/v1/alert-channels/:id', () => {
-      it('success', async () => {
-        const { agent, user, team } = await getLoggedInAgent(server);
-        await agent
-          .delete(`/api/v1/alert-channels/${exampleChannel._id}`)
-          .set('Authorization', `Bearer ${user?.accessKey}`)
-          .expect(200);
-
-        const found = await AlertChannel.findById(exampleChannel._id);
-        expect(found).toBeNull();
       });
     });
   });

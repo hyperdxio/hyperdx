@@ -1,32 +1,43 @@
 import { getHours, getMinutes } from 'date-fns';
 import ms from 'ms';
 
+import z from 'zod';
 import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
 import type { ObjectId } from '@/models';
-import Alert, {
-  AlertInterval,
-  AlertSource,
-  AlertType,
-  IAlert,
-} from '@/models/alert';
-import AlertChannel, { IAlertChannel } from '@/models/alertChannel';
+import Alert, { AlertInterval, IAlert } from '@/models/alert';
+import mongoose from 'mongoose';
 
-export type AlertInput = {
-  source: AlertSource;
-  channel: IAlertChannel;
-  interval: AlertInterval;
-  type: AlertType;
-  threshold: number;
+// Input validation
+const zChannel = z.object({
+  type: z.literal('webhook'),
+  webhookId: z.string().min(1),
+});
 
-  // Log alerts
-  groupBy?: string;
-  logViewId?: string;
+const zLogAlert = z.object({
+  source: z.literal('LOG'),
+  groupBy: z.string().optional(),
+  logView: z.string().min(1),
+  message: z.string().optional(),
+});
 
-  // Chart alerts
-  dashboardId?: string;
-  chartId?: string;
-};
+const zChartAlert = z.object({
+  source: z.literal('CHART'),
+  chartId: z.string().min(1),
+  dashboardId: z.string().min(1),
+});
+
+export const zAlert = z
+  .object({
+    channel: zChannel,
+    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+    threshold: z.number().min(0),
+    type: z.enum(['presence', 'absence']),
+    source: z.enum(['LOG', 'CHART']).default('LOG'),
+  })
+  .and(zLogAlert.or(zChartAlert));
+
+export type AlertInput = Omit<IAlert, '_id' | 'cron' | 'timezone'>;
 
 const getCron = (interval: AlertInterval) => {
   const now = new Date();
@@ -75,7 +86,7 @@ export const validateGroupByProperty = async ({
   return !!found;
 };
 
-const makeAlert = (alert: AlertInput) => {
+const makeAlert = (alert: AlertInput, team: ObjectId): Omit<IAlert, '_id'> => {
   return {
     channel: alert.channel,
     interval: alert.interval,
@@ -83,32 +94,47 @@ const makeAlert = (alert: AlertInput) => {
     threshold: alert.threshold,
     type: alert.type,
     // Log alerts
-    logView: alert.logViewId,
+    logView: alert.logView,
     groupBy: alert.groupBy,
     // Chart alerts
-    dashboardId: alert.dashboardId,
+    dashboardId: new mongoose.Types.ObjectId(alert.dashboardId),
     chartId: alert.chartId,
     cron: getCron(alert.interval),
     timezone: 'UTC', // TODO: support different timezone
+    state: alert.state,
+    team: team,
   };
 };
 
 export const createAlert = async (teamId: ObjectId, alertInput: AlertInput) => {
   return new Alert({
-    ...makeAlert(alertInput),
+    ...makeAlert(alertInput, teamId),
     team: teamId,
   }).save();
 };
 
-// create an update alert function based off of the above create alert function
 export const updateAlert = async (
   id: string,
   teamId: ObjectId,
   alertInput: AlertInput,
 ) => {
-  // TODO: find by id and teamId
-  // should consider clearing AlertHistory when updating an alert?
-  return Alert.findByIdAndUpdate(id, makeAlert(alertInput), {
-    returnDocument: 'after',
-  });
+  const alert = await Alert.findOne({ _id: id, team: teamId });
+  return alert?.updateOne(makeAlert(alertInput, teamId));
+};
+
+export const getAlert = async (id: string, teamId: ObjectId) => {
+  return Alert.findOne({ _id: id, team: teamId });
+};
+
+export const getAllAlerts = async (teamId: ObjectId) => {
+  return Alert.find({ team: teamId });
+};
+
+export const deleteAlert = async (id: string, teamId: ObjectId) => {
+  const alert = await Alert.findOne({ _id: id, team: teamId });
+  if (alert === null) {
+    return null;
+  }
+  const result = await alert.remove();
+  return alert;
 };

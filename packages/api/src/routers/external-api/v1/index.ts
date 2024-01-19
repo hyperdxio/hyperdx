@@ -8,27 +8,14 @@ import * as clickhouse from '@/clickhouse';
 import { checkTeamId } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
 import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
-import rateLimiter from '@/utils/rateLimiter';
+import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
 
-import { AlertChannelRouter } from './alertChannels';
+import { AlertsRouter } from './alerts';
 import { DashboardsRouter } from './dashboards';
-import { SavedSearchesRouter } from './savedSearches';
+import { LogViewsRouter } from './logViews';
 
 const router = express.Router();
-
-const rateLimiterKeyGenerator = (req: express.Request) => {
-  return req.headers.authorization || req.ip;
-};
-
-const getDefaultRateLimiter = () =>
-  rateLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    max: 100, // Limit each IP to 100 requests per `window`
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    keyGenerator: rateLimiterKeyGenerator,
-  });
 
 router.get('/', validateUserAccessKey, (req, res, next) => {
   res.json({
@@ -37,8 +24,8 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
   });
 });
 
-router.use('/alert-channels', AlertChannelRouter);
-router.use('/searches', SavedSearchesRouter);
+router.use('/alerts', AlertsRouter);
+router.use('/searches', LogViewsRouter);
 router.use('/dashboards', DashboardsRouter);
 
 router.get(

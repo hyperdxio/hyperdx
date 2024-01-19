@@ -5,12 +5,14 @@ import { annotateSpanOnError, Api400Error, Api403Error } from '@/utils/errors';
 
 import { getDefaultRateLimiter } from '@/utils/rateLimiter';
 import {
-  createDashboard,
-  deleteDashboard,
-  getAllDashboards,
-  getDashboard,
-  updateDashboard,
-} from '@/controllers/dashboards';
+  createAlert,
+  updateAlert,
+  deleteAlert,
+  getAlert,
+  getAllAlerts,
+  zAlert,
+} from '@/controllers/alerts';
+import { validateRequest } from 'zod-express-middleware';
 
 const router = express.Router();
 
@@ -23,10 +25,10 @@ router.get(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboards = await getAllDashboards(team);
+    const alerts = await getAllAlerts(team);
     res.json({
       version: 'v1',
-      data: dashboards,
+      data: alerts,
     });
   }),
 );
@@ -40,10 +42,10 @@ router.get(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await getDashboard(req.params.id, team);
+    const alert = await getAlert(req.params.id, team);
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: alert,
     });
   }),
 );
@@ -51,16 +53,17 @@ router.get(
 router.post(
   '/',
   getDefaultRateLimiter(),
+  validateRequest({ body: zAlert }),
   validateUserAccessKey,
   annotateSpanOnError(async (req, res, next) => {
     const team = req.user?.team;
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await createDashboard(team, req.body);
+    const alert = await createAlert(team, req.body);
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: alert,
     });
   }),
 );
@@ -68,16 +71,19 @@ router.post(
 router.put(
   '/:id',
   getDefaultRateLimiter(),
+  validateRequest({ body: zAlert }),
   validateUserAccessKey,
   annotateSpanOnError(async (req, res, next) => {
     const team = req.user?.team;
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const dashboard = await updateDashboard(req.params.id, team, req.body);
+
+    const alert = await updateAlert(req.params.id, team, req.body);
+
     res.json({
       version: 'v1',
-      data: dashboard,
+      data: alert,
     });
   }),
 );
@@ -91,7 +97,7 @@ router.delete(
     if (team === undefined) {
       throw new Api400Error('Team not found');
     }
-    const deleted = await deleteDashboard(req.params.id, team);
+    const deleted = await deleteAlert(req.params.id, team);
     res.json({
       version: 'v1',
       data: deleted,
@@ -99,4 +105,4 @@ router.delete(
   }),
 );
 
-export { router as DashboardsRouter };
+export { router as AlertsRouter };
