@@ -171,6 +171,7 @@ const api = {
       granularity,
       endDate,
       seriesReturnType,
+      postGroupWhere,
     }: {
       series: ChartSeries[];
       endDate: Date;
@@ -178,6 +179,7 @@ const api = {
       startDate: Date;
       sortOrder?: 'asc' | 'desc';
       seriesReturnType: 'column' | 'ratio';
+      postGroupWhere?: string;
     },
     options?: UseQueryOptions<any, Error>,
   ) {
@@ -214,6 +216,7 @@ const api = {
         startTime,
         sortOrder,
         seriesReturnType,
+        postGroupWhere,
       ],
       queryFn: () =>
         server('chart/series', {
@@ -225,6 +228,7 @@ const api = {
             granularity,
             sortOrder,
             seriesReturnType,
+            postGroupWhere,
           },
         }).json(),
       retry: 1,

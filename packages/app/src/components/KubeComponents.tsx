@@ -4,6 +4,7 @@ import { format, sub } from 'date-fns';
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 
 import api from '../api';
+import { KubePhase } from '../types';
 
 type KubeEvent = {
   id: string;
@@ -171,35 +172,32 @@ export const KubeTimeline = ({
 };
 
 export const FormatPodStatus = ({ status }: { status?: number }) => {
-  // based on
-  // https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/documentation.md#k8spodphase
-  // Current phase of the pod (1 - Pending, 2 - Running, 3 - Succeeded, 4 - Failed, 5 - Unknown)
   switch (status) {
-    case 1:
+    case KubePhase.Pending:
       return (
         <Badge color="yellow" fw="normal" tt="none" size="md">
           Pending
         </Badge>
       );
-    case 2:
+    case KubePhase.Running:
       return (
         <Badge color="green" fw="normal" tt="none" size="md">
           Running
         </Badge>
       );
-    case 3:
+    case KubePhase.Succeeded:
       return (
         <Badge color="indigo" fw="normal" tt="none" size="md">
           Succeeded
         </Badge>
       );
-    case 4:
+    case KubePhase.Failed:
       return (
         <Badge color="red" fw="normal" tt="none" size="md">
           Failed
         </Badge>
       );
-    case 5:
+    case KubePhase.Unknown:
       return (
         <Badge color="gray" fw="normal" tt="none" size="md">
           Unknown
