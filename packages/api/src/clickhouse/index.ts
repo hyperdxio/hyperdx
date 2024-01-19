@@ -1051,7 +1051,7 @@ export const buildMetricSeriesQuery = async ({
           if (
             length(_prev_point) = n,
             arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point),
-            []
+            _point
           ) AS point,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM (?)

@@ -248,15 +248,15 @@ export function buildMetricSeries({
 }: {
   tags: Record<string, string>;
   name: string;
-  points: { value: number; timestamp: number }[];
+  points: { value: number; timestamp: number; le?: string }[];
   data_type: clickhouse.MetricsDataType;
   is_monotonic: boolean;
   is_delta: boolean;
   unit: string;
 }): MetricModel[] {
   // @ts-ignore TODO: Fix Timestamp types
-  return points.map(({ value, timestamp }) => ({
-    _string_attributes: tags,
+  return points.map(({ value, timestamp, le }) => ({
+    _string_attributes: { ...tags, ...(le && { le }) },
     name,
     value,
     timestamp: `${timestamp}000000`,
