@@ -1065,6 +1065,7 @@ export const buildMetricSeriesQuery = async ({
         point[n][1] AS total,
         toFloat64(?) * total AS rank,
         arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+        point[upper_idx][1] AS upper_count,
         point[upper_idx][2] AS upper_bound,
         if (
           upper_idx = 1,
@@ -1076,13 +1077,18 @@ export const buildMetricSeriesQuery = async ({
           point[upper_idx - 1][2]
         ) AS lower_bound,
         if (
+          lower_bound = 0,
+          0,
+          point[upper_idx - 1][1]
+        ) AS lower_count,
+        if (
           upper_bound = inf,
           point[upper_idx - 1][2],
           if (
             lower_bound = inf,
             point[1][2],
             lower_bound + (upper_bound - lower_bound) * (
-              (rank - point[upper_idx - 1][1]) / (point[upper_idx][1] - point[upper_idx - 1][1])
+              (rank - lower_count) / (upper_count - lower_count)
             )
           )
         ) AS value
