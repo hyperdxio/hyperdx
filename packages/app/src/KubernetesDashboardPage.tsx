@@ -692,12 +692,20 @@ export default function KubernetesDashboardPage() {
                         where:
                           whereClause +
                           ' k8s.resource.name:"events" -level:"normal"',
-                        columns: ['k8s.pod.name'],
+                        columns: [
+                          'object.regarding.kind',
+                          'object.regarding.name',
+                        ],
+                      }}
+                      columnNameMap={{
+                        'object.regarding.kind': 'Kind',
+                        'object.regarding.name': 'Name',
                       }}
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
+                      showServiceColumn={false}
                     />
                   </Card.Section>
                 </Card>
