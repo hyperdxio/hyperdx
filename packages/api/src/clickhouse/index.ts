@@ -1033,7 +1033,9 @@ export const buildMetricSeriesQuery = async ({
       ? '0.95'
       : '0.99';
 
-  // TODO: handle -Inf
+  // TODO:
+  // 1. handle -Inf
+  // 2. start timestamp offset
   const histogramMetricSource = SqlString.format(
     `
       WITH points AS (
@@ -1046,22 +1048,23 @@ export const buildMetricSeriesQuery = async ({
               toFloat64OrDefault(_string_attributes['le'], inf)
             ])
           ) AS _point,
-          neighbor(_point, -1) AS _prev_point,
-          length(_point) AS n,
-          if (
-            length(_prev_point) = n,
-            arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point),
-            _point
-          ) AS point,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM (?)
         WHERE mapContains(_string_attributes, 'le')
         GROUP BY timestamp, name, filtered_string_attributes
+        ORDER BY name, filtered_string_attributes, timestamp ASC
       )
       SELECT
         timestamp,
         name,
         filtered_string_attributes AS _string_attributes,
+        length(_point) AS n,
+        neighbor(_point, -1, []) AS _prev_point,
+        if (
+          empty(_prev_point) = 1,
+          _point,
+          arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
+        ) AS point,
         point[n][1] AS total,
         toFloat64(?) * total AS rank,
         arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
