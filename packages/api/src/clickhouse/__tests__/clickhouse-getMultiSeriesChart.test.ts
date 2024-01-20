@@ -229,6 +229,29 @@ describe('clickhouse - getMultiSeriesChart', () => {
           ],
         }),
       ),
+      clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'test.three_timestamps',
+          tags: { host: 'test2', runId },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 0, timestamp: now, le: '10' },
+            { value: 0, timestamp: now, le: '30' },
+            { value: 0, timestamp: now, le: '50' },
+
+            { value: 2, timestamp: now + ms('1m'), le: '10' },
+            { value: 4, timestamp: now + ms('1m'), le: '30' },
+            { value: 8, timestamp: now + ms('1m'), le: '50' },
+
+            { value: 10, timestamp: now + ms('2m'), le: '10' },
+            { value: 20, timestamp: now + ms('2m'), le: '30' },
+            { value: 50, timestamp: now + ms('2m'), le: '50' },
+          ],
+        }),
+      ),
     ]);
   });
 
@@ -618,13 +641,55 @@ Array [
 Array [
   Object {
     "group": Array [],
-    "series_0.data": 30,
+    "series_0.data": 0,
     "ts_bucket": 1641340800,
   },
   Object {
     "group": Array [],
     "series_0.data": 33.84615384615385,
     "ts_bucket": 1641340860,
+  },
+]
+`);
+  });
+
+  it('three_timestamps histogram (p50)', async () => {
+    const p50Data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.P50,
+            field: 'test.three_timestamps',
+            where: `runId:${runId}`,
+            groupBy: [],
+            metricDataType: clickhouse.MetricsDataType.Histogram,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now + ms('1m'),
+        endTime: now + ms('3m'),
+        granularity: '1 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+    });
+
+    expect(p50Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 30,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 33.84615384615385,
+    "ts_bucket": 1641340920,
   },
 ]
 `);

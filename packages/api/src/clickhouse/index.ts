@@ -898,7 +898,8 @@ export const buildMetricSeriesQuery = async ({
 
   const hasGroupBy = groupByColumnNames.length > 0;
 
-  const shouldModifyStartTime = isRate;
+  const shouldModifyStartTime =
+    isRate || dataType === MetricsDataType.Histogram;
 
   // If it's a rate function, then we'll need to look 1 window back to calculate
   // the initial rate value.
@@ -1035,7 +1036,6 @@ export const buildMetricSeriesQuery = async ({
 
   // TODO:
   // 1. handle -Inf
-  // 2. start timestamp offset
   const histogramMetricSource = SqlString.format(
     `
       WITH points AS (
@@ -1048,6 +1048,7 @@ export const buildMetricSeriesQuery = async ({
               toFloat64OrDefault(_string_attributes['le'], inf)
             ])
           ) AS _point,
+          length(_point) AS n,
           mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
         FROM (?)
         WHERE mapContains(_string_attributes, 'le')
@@ -1058,10 +1059,10 @@ export const buildMetricSeriesQuery = async ({
         timestamp,
         name,
         filtered_string_attributes AS _string_attributes,
-        length(_point) AS n,
         neighbor(_point, -1, []) AS _prev_point,
+        empty(_prev_point) AS is_prev_point_empty,
         if (
-          empty(_prev_point) = 1,
+          is_prev_point_empty = 1,
           _point,
           arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
         ) AS point,
@@ -1096,10 +1097,16 @@ export const buildMetricSeriesQuery = async ({
           )
         ) AS value
       FROM points
-      WHERE total > 0
+      WHERE is_prev_point_empty = 0
+      AND total > 0
       AND length(point) > 1
+      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
       ORDER BY timestamp ASC`.trim(),
-    [SqlString.raw(gaugeMetricSource), quantile],
+    [
+      SqlString.raw(gaugeMetricSource),
+      quantile,
+      ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
+    ],
   );
 
   const source =
