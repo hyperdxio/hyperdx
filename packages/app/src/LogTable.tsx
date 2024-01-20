@@ -8,6 +8,7 @@ import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import stripAnsi from 'strip-ansi';
 import {
+  CellContext,
   ColumnDef,
   ColumnResizeMode,
   flexRender,
@@ -15,7 +16,6 @@ import {
   Row as TableRow,
   TableOptions,
   useReactTable,
-  CellContext,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -439,6 +439,9 @@ export const RawLogTable = memo(
         onShowPatternsClick,
         isSmallScreen,
         columnSizeStorage,
+        showServiceColumn,
+        columnNameMap,
+        tsFormat,
       ],
     );
 

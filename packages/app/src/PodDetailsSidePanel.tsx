@@ -138,11 +138,15 @@ function PodLogs({
           config={{
             dateRange,
             where: _where,
+            columns: ['k8s.container.name'],
           }}
           isLive={false}
           isUTC={false}
           setIsUTC={() => {}}
           onPropertySearchClick={() => {}}
+          columnNameMap={{
+            'k8s.container.name': 'Container',
+          }}
         />
       </Card.Section>
     </Card>
