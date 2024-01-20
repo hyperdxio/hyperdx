@@ -15,6 +15,7 @@ import {
   Skeleton,
   Table,
   Tabs,
+  Text,
   Tooltip,
 } from '@mantine/core';
 
@@ -28,47 +29,13 @@ import {
 import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import MetricTagValueSelect from './MetricTagValueSelect';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
-import { formatUptime } from './utils';
-import { formatNumber } from './utils';
-
-const SearchInput = React.memo(
-  ({
-    searchQuery,
-    setSearchQuery,
-  }: {
-    searchQuery: string;
-    setSearchQuery: (q: string | null) => void;
-  }) => {
-    const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
-    const searchInputRef = React.useRef<HTMLInputElement>(null);
-
-    const onSearchSubmit = React.useCallback(
-      (e: React.FormEvent) => {
-        e.preventDefault();
-        setSearchQuery(_searchQuery || null);
-      },
-      [_searchQuery, setSearchQuery],
-    );
-
-    return (
-      <form onSubmit={onSearchSubmit}>
-        <HdxSearchInput
-          inputRef={searchInputRef}
-          placeholder="Scope dashboard to..."
-          value={_searchQuery ?? searchQuery}
-          onChange={v => _setSearchQuery(v)}
-          onSearch={() => {}}
-          showHotkey={false}
-        />
-      </form>
-    );
-  },
-);
+import { formatNumber, formatUptime } from './utils';
 
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
@@ -128,8 +95,8 @@ const InfraPodsStatusTable = ({
     column: InfraPodsStatusTableColumn;
     order: 'asc' | 'desc';
   }>({
-    column: 'phase',
-    order: 'asc',
+    column: 'restarts',
+    order: 'desc',
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
@@ -368,7 +335,19 @@ const InfraPodsStatusTable = ({
                           </Tooltip>
                         </td>
                         <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
-                        <td>{pod.restarts}</td>
+                        <td>
+                          <Text
+                            color={
+                              pod.restarts >= 10
+                                ? 'red.6'
+                                : pod.restarts >= 5
+                                ? 'yellow.3'
+                                : 'grey.7'
+                            }
+                          >
+                            {pod.restarts}
+                          </Text>
+                        </td>
                       </tr>
                     </Link>
                   ))}
@@ -561,6 +540,16 @@ export default function KubernetesDashboardPage() {
 
   const whereClause = searchQuery;
 
+  const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const onSearchSubmit = React.useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      setSearchQuery(_searchQuery || null);
+    },
+    [_searchQuery, setSearchQuery],
+  );
   return (
     <div>
       <Head>
@@ -575,11 +564,74 @@ export default function KubernetesDashboardPage() {
           spacing="xs"
           align="center"
         >
+          <MetricTagValueSelect
+            metricName="k8s.pod.cpu.utilization - Gauge"
+            metricAttribute="k8s.pod.name"
+            value={''}
+            onChange={v => {
+              if (v) {
+                const newQuery = `k8s.pod.name:"${v}"${
+                  searchQuery.includes('k8s.pod.name') ? ' OR' : ''
+                } ${searchQuery}`.trim();
+                setSearchQuery(newQuery);
+                _setSearchQuery(newQuery);
+              }
+            }}
+            placeholder="Pod"
+            size="sm"
+            dropdownClosedWidth={100}
+            dropdownOpenWidth={350}
+            icon={<i className="bi bi-box"></i>}
+          />
+          <MetricTagValueSelect
+            metricName="k8s.pod.cpu.utilization - Gauge"
+            metricAttribute="k8s.node.name"
+            value={''}
+            onChange={v => {
+              if (v) {
+                const newQuery = `k8s.node.name:"${v}"${
+                  searchQuery.includes('k8s.node.name') ? ' OR' : ''
+                } ${searchQuery}`.trim();
+                setSearchQuery(newQuery);
+                _setSearchQuery(newQuery);
+              }
+            }}
+            placeholder="Node"
+            size="sm"
+            dropdownClosedWidth={110}
+            dropdownOpenWidth={350}
+            icon={<i className="bi bi-hdd-rack"></i>}
+          />
+          <MetricTagValueSelect
+            metricName="k8s.pod.cpu.utilization - Gauge"
+            metricAttribute="k8s.namespace.name"
+            value={''}
+            onChange={v => {
+              if (v) {
+                const newQuery = `k8s.namespace.name:"${v}"${
+                  searchQuery.includes('k8s.namespace.name') ? ' OR' : ''
+                } ${searchQuery}`.trim();
+                setSearchQuery(newQuery);
+                _setSearchQuery(newQuery);
+              }
+            }}
+            placeholder="Namespace"
+            size="sm"
+            dropdownClosedWidth={150}
+            dropdownOpenWidth={350}
+            icon={<i className="bi bi-braces"></i>}
+          />
           <div style={{ flex: 1 }}>
-            <SearchInput
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
+            <form onSubmit={onSearchSubmit}>
+              <HdxSearchInput
+                inputRef={searchInputRef}
+                placeholder="Scope dashboard to..."
+                value={_searchQuery ?? searchQuery}
+                onChange={v => _setSearchQuery(v)}
+                onSearch={() => {}}
+                showHotkey={false}
+              />
+            </form>
           </div>
           <div className="d-flex" style={{ width: 350, height: 36 }}>
             <SearchTimeRangePicker
