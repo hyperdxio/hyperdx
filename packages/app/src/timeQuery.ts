@@ -531,3 +531,46 @@ export function getLiveTailTimeRange(): [Date, Date] {
   const end = startOfSecond(new Date());
   return [sub(end, { minutes: 15 }), end];
 }
+
+export function useLiveTail({
+  initialIsLive,
+  setTimeRange,
+  refreshInterval = LIVE_TAIL_REFRESH_INTERVAL_MS,
+  liveTailWindow = 15 * 60 * 1000, // 15 minutes
+}: {
+  initialIsLive: boolean;
+  setTimeRange: (start: Date, end: Date) => void;
+  refreshInterval?: number;
+  liveTailWindow?: number;
+}): {
+  isLive: boolean;
+  setIsLive: Dispatch<SetStateAction<boolean>>;
+} {
+  const [isLive, setIsLive] = useState(initialIsLive);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined = undefined;
+    const refreshLiveTailTimeRange = () => {
+      const end = startOfSecond(new Date());
+      const start = new Date(end.getTime() - liveTailWindow);
+      setTimeRange(start, end);
+    };
+
+    if (isLive) {
+      refreshLiveTailTimeRange();
+      interval = setInterval(refreshLiveTailTimeRange, refreshInterval);
+    }
+
+    return () => {
+      if (interval != null) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+    };
+  }, [isLive, setTimeRange, refreshInterval, liveTailWindow]);
+
+  return {
+    isLive,
+    setIsLive,
+  };
+}

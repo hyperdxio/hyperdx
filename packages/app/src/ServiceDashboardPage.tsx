@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import ms from 'ms';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Anchor,
@@ -44,7 +45,12 @@ import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
-import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import {
+  parseTimeQuery,
+  useLiveTail,
+  useNewTimeQuery,
+  useTimeQuery,
+} from './timeQuery';
 import { ChartSeries } from './types';
 import { formatNumber } from './utils';
 
@@ -229,7 +235,7 @@ const SearchInput = React.memo(
   },
 );
 
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
 const CHART_HEIGHT = 300;
 const DB_STATEMENT_PROPERTY = 'db.normalized_statement';
@@ -258,13 +264,18 @@ export default function ServiceDashboardPage() {
     displayedTimeInputValue,
     setDisplayedTimeInputValue,
     onSearch,
-  } = useTimeQuery({
+    onTimeRangeSelect,
+  } = useNewTimeQuery({
     isUTC: false,
-    defaultValue: 'Past 1h',
-    defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
-    ],
+    initialDisplayValue: 'Past 1h',
+    initialTimeRange: defaultTimeRange,
+  });
+
+  const { isLive, setIsLive } = useLiveTail({
+    initialIsLive: false,
+    setTimeRange: onTimeRangeSelect,
+    refreshInterval: ms('1m'),
+    liveTailWindow: ms('1h'),
   });
 
   // Fetch services
