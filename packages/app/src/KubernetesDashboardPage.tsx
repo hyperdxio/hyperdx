@@ -507,6 +507,43 @@ const NodesTable = ({
   );
 };
 
+const K8sMetricTagValueSelect = ({
+  metricAttribute,
+  searchQuery,
+  setSearchQuery,
+  placeholder,
+  dropdownClosedWidth,
+  icon,
+}: {
+  metricAttribute: string;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  placeholder: string;
+  dropdownClosedWidth: number;
+  icon: React.ReactNode;
+}) => {
+  return (
+    <MetricTagValueSelect
+      metricName="k8s.pod.cpu.utilization - Gauge"
+      metricAttribute={metricAttribute}
+      value={''}
+      onChange={v => {
+        if (v) {
+          const newQuery = `${metricAttribute}:"${v}"${
+            searchQuery.includes(metricAttribute) ? ' OR' : ''
+          } ${searchQuery}`.trim();
+          setSearchQuery(newQuery);
+        }
+      }}
+      placeholder={placeholder}
+      size="sm"
+      dropdownClosedWidth={dropdownClosedWidth}
+      dropdownOpenWidth={350}
+      icon={icon}
+    />
+  );
+};
+
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
@@ -564,61 +601,48 @@ export default function KubernetesDashboardPage() {
           spacing="xs"
           align="center"
         >
-          <MetricTagValueSelect
-            metricName="k8s.pod.cpu.utilization - Gauge"
+          <K8sMetricTagValueSelect
             metricAttribute="k8s.pod.name"
-            value={''}
-            onChange={v => {
-              if (v) {
-                const newQuery = `k8s.pod.name:"${v}"${
-                  searchQuery.includes('k8s.pod.name') ? ' OR' : ''
-                } ${searchQuery}`.trim();
-                setSearchQuery(newQuery);
-                _setSearchQuery(newQuery);
-              }
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
             }}
+            searchQuery={_searchQuery ?? searchQuery}
             placeholder="Pod"
-            size="sm"
             dropdownClosedWidth={100}
-            dropdownOpenWidth={350}
             icon={<i className="bi bi-box"></i>}
           />
-          <MetricTagValueSelect
-            metricName="k8s.pod.cpu.utilization - Gauge"
-            metricAttribute="k8s.node.name"
-            value={''}
-            onChange={v => {
-              if (v) {
-                const newQuery = `k8s.node.name:"${v}"${
-                  searchQuery.includes('k8s.node.name') ? ' OR' : ''
-                } ${searchQuery}`.trim();
-                setSearchQuery(newQuery);
-                _setSearchQuery(newQuery);
-              }
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.deployment.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
             }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Deployment"
+            dropdownClosedWidth={155}
+            icon={<i className="bi bi-arrow-clockwise"></i>}
+          />
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.node.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
             placeholder="Node"
-            size="sm"
             dropdownClosedWidth={110}
-            dropdownOpenWidth={350}
             icon={<i className="bi bi-hdd-rack"></i>}
           />
-          <MetricTagValueSelect
-            metricName="k8s.pod.cpu.utilization - Gauge"
-            metricAttribute="k8s.namespace.name"
-            value={''}
-            onChange={v => {
-              if (v) {
-                const newQuery = `k8s.namespace.name:"${v}"${
-                  searchQuery.includes('k8s.namespace.name') ? ' OR' : ''
-                } ${searchQuery}`.trim();
-                setSearchQuery(newQuery);
-                _setSearchQuery(newQuery);
-              }
+          <K8sMetricTagValueSelect
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
             }}
+            searchQuery={_searchQuery ?? searchQuery}
+            metricAttribute="k8s.namespace.name"
             placeholder="Namespace"
-            size="sm"
             dropdownClosedWidth={150}
-            dropdownOpenWidth={350}
             icon={<i className="bi bi-braces"></i>}
           />
           <div style={{ flex: 1 }}>
