@@ -5,23 +5,18 @@ import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Anchor,
-  Badge,
   Box,
   Button,
   Card,
   Flex,
   Grid,
   Group,
-  ScrollArea,
   SegmentedControl,
   Select,
-  Skeleton,
-  Table,
   Tabs,
   Text,
 } from '@mantine/core';
 
-import { FormatPodStatus } from './components/KubeComponents';
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -39,6 +34,7 @@ import HDXLineChart from './HDXLineChart';
 import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
+import { InfraPodsStatusTable } from './KubernetesDashboardPage';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
@@ -46,154 +42,6 @@ import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { ChartSeries } from './types';
-import { formatNumber } from './utils';
-
-const InfraPodsStatusTable = ({
-  dateRange,
-  where,
-}: {
-  dateRange: [Date, Date];
-  where: string;
-}) => {
-  const { data, isError, isLoading } = api.useMultiSeriesChart({
-    series: [
-      {
-        table: 'metrics',
-        field: 'k8s.container.restarts - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy: ['k8s.pod.name'],
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.uptime - Sum',
-        type: 'table',
-        aggFn: 'sum',
-        where,
-        groupBy: ['k8s.pod.name'],
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.cpu.utilization - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy: ['k8s.pod.name'],
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.memory.usage - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy: ['k8s.pod.name'],
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.phase - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy: ['k8s.pod.name'],
-        sortOrder: 'asc',
-      },
-    ],
-    endDate: dateRange[1] ?? new Date(),
-    startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
-  });
-
-  const getLink = (row: any) => {
-    const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('podName', `${row.group}`);
-    return window.location.pathname + '?' + searchParams.toString();
-  };
-
-  return (
-    <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
-        Pods
-      </Card.Section>
-      <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
-          }}
-        >
-          {isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
-              Unable to load pod metrics
-            </div>
-          ) : (
-            <Table horizontalSpacing="md" highlightOnHover>
-              <thead className="muted-thead">
-                <tr>
-                  <th>Name</th>
-                  <th style={{ width: 100 }}>Restarts</th>
-                  {/* <th style={{ width: 120 }}>Age</th> */}
-                  <th style={{ width: 100 }}>CPU Avg</th>
-                  <th style={{ width: 100 }}>Mem Avg</th>
-                  <th style={{ width: 130 }}>Status</th>
-                </tr>
-              </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      <td>
-                        <Skeleton height={8} my={6} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                      <td>
-                        <Skeleton height={8} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {data?.data?.map((row: any) => (
-                    <Link key={row.group} href={getLink(row)}>
-                      <tr className="cursor-pointer">
-                        <td>{row.group}</td>
-                        <td>{row['series_0.data']}</td>
-                        {/* <td>{formatDistanceStrict(row['series_1.data'] * 1000, 0)}</td> */}
-                        <td>
-                          {formatNumber(
-                            row['series_2.data'],
-                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          )}
-                        </td>
-                        <td>
-                          {formatNumber(
-                            row['series_3.data'],
-                            K8S_MEM_NUMBER_FORMAT,
-                          )}
-                        </td>
-                        <td>
-                          <FormatPodStatus status={row['series_4.data']} />
-                        </td>
-                      </tr>
-                    </Link>
-                  ))}
-                </tbody>
-              )}
-            </Table>
-          )}
-        </ScrollArea>
-      </Card.Section>
-    </Card>
-  );
-};
 
 const SearchInput = React.memo(
   ({

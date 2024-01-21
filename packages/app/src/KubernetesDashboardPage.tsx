@@ -116,7 +116,7 @@ type InfraPodsStatusTableColumn =
   | 'memLimit'
   | 'phase';
 
-const InfraPodsStatusTable = ({
+export const InfraPodsStatusTable = ({
   dateRange,
   where,
 }: {
