@@ -93,24 +93,28 @@ const NodeDetails = ({
     <Grid.Col span={12}>
       <div className="p-2 gap-2 d-flex flex-wrap">
         <PodDetailsProperty label="Node" value={name} />
-        <PodDetailsProperty
-          label="Status"
-          value={
-            properties.ready === 1 ? (
-              <Badge color="green" fw="normal" tt="none" size="md">
-                Ready
-              </Badge>
-            ) : (
-              <Badge color="red" fw="normal" tt="none" size="md">
-                Not Ready
-              </Badge>
-            )
-          }
-        />
-        <PodDetailsProperty
-          label="Uptime"
-          value={formatUptime(properties.uptime)}
-        />
+        {properties.ready !== undefined && (
+          <PodDetailsProperty
+            label="Status"
+            value={
+              properties.ready === 1 ? (
+                <Badge color="green" fw="normal" tt="none" size="md">
+                  Ready
+                </Badge>
+              ) : (
+                <Badge color="red" fw="normal" tt="none" size="md">
+                  Not Ready
+                </Badge>
+              )
+            }
+          />
+        )}
+        {properties.uptime && (
+          <PodDetailsProperty
+            label="Uptime"
+            value={formatUptime(properties.uptime)}
+          />
+        )}
       </div>
     </Grid.Col>
   );
