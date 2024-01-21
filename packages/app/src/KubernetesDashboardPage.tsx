@@ -674,9 +674,12 @@ export default function KubernetesDashboardPage() {
                       Latest Kubernetes Warning Events
                       <Link
                         href={`/search?q=${encodeURIComponent(
-                          whereClause +
-                            ' k8s.resource.name:"events" -level:"normal"',
-                        )}`}
+                          `${
+                            whereClause.trim().length > 0
+                              ? `(${whereClause.trim()}) `
+                              : ''
+                          }(k8s.resource.name:"events" -level:"normal")`,
+                        )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
                       >
                         <Anchor size="xs" color="dimmed">
@@ -689,15 +692,25 @@ export default function KubernetesDashboardPage() {
                     <LogTableWithSidePanel
                       config={{
                         dateRange,
-                        where:
-                          whereClause +
-                          ' k8s.resource.name:"events" -level:"normal"',
-                        columns: ['k8s.pod.name'],
+                        where: `${
+                          whereClause.trim().length > 0
+                            ? `(${whereClause.trim()}) `
+                            : ''
+                        }(k8s.resource.name:"events" -level:"normal")`,
+                        columns: [
+                          'object.regarding.kind',
+                          'object.regarding.name',
+                        ],
+                      }}
+                      columnNameMap={{
+                        'object.regarding.kind': 'Kind',
+                        'object.regarding.name': 'Name',
                       }}
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
+                      showServiceColumn={false}
                     />
                   </Card.Section>
                 </Card>
