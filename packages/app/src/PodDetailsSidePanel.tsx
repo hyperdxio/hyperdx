@@ -162,8 +162,13 @@ export default function PodDetailsSidePanel() {
     },
   );
 
+  // If we're in a nested side panel, we need to use a higher z-index
+  // TODO: This is a hack
+  const [nodeName] = useQueryParam('nodeName', StringParam);
+  const [namespaceName] = useQueryParam('namespaceName', StringParam);
+  const isNested = !!nodeName || !!namespaceName;
   const contextZIndex = useZIndex();
-  const drawerZIndex = contextZIndex + 10;
+  const drawerZIndex = contextZIndex + 10 + (isNested ? 100 : 0);
 
   const where = React.useMemo(() => {
     return `k8s.pod.name:"${podName}"`;
@@ -194,7 +199,7 @@ export default function PodDetailsSidePanel() {
       open={!!podName}
       onClose={handleClose}
       direction="right"
-      size={'80vw'}
+      size={isNested ? '70vw' : '80vw'}
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
