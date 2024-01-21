@@ -30,6 +30,7 @@ import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import MetricTagValueSelect from './MetricTagValueSelect';
+import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
@@ -410,6 +411,12 @@ const NodesTable = ({
     seriesReturnType: 'column',
   });
 
+  const getLink = React.useCallback((nodeName: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('nodeName', `${nodeName}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  }, []);
+
   const nodesList = React.useMemo(() => {
     if (!data) {
       return [];
@@ -472,30 +479,37 @@ const NodesTable = ({
               ) : (
                 <tbody>
                   {nodesList.map(node => (
-                    <tr key={node.name}>
-                      <td>{node.name || 'N/A'}</td>
-                      <td>
-                        {node.ready === 1 ? (
-                          <Badge color="green" fw="normal" tt="none" size="md">
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge color="red" fw="normal" tt="none" size="md">
-                            Not Ready
-                          </Badge>
-                        )}
-                      </td>
-                      <td>
-                        {formatNumber(
-                          node.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </td>
-                      <td>
-                        {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </td>
-                      <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
-                    </tr>
+                    <Link key={node.name} href={getLink(node.name)}>
+                      <tr className="cursor-pointer">
+                        <td>{node.name || 'N/A'}</td>
+                        <td>
+                          {node.ready === 1 ? (
+                            <Badge
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge color="red" fw="normal" tt="none" size="md">
+                              Not Ready
+                            </Badge>
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            node.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                        </td>
+                        <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
+                      </tr>
+                    </Link>
                   ))}
                 </tbody>
               )}
@@ -593,6 +607,7 @@ export default function KubernetesDashboardPage() {
         <title>Kubernetes Dashboard</title>
       </Head>
       <PodDetailsSidePanel />
+      <NodeDetailsSidePanel />
       <div className="d-flex flex-column">
         <Group
           px="md"
