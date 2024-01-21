@@ -282,9 +282,9 @@ export const InfraPodsStatusTable = ({
               {isLoading ? (
                 <tbody>
                   {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 8 }).map((_, index) => (
-                        <td key={index}>
+                    <tr key={index.toString()}>
+                      {Array.from({ length: 8 }).map((_, tdIndex) => (
+                        <td key={`${index}-${tdIndex}`}>
                           <Skeleton height={8} my={6} />
                         </td>
                       ))}
@@ -294,7 +294,10 @@ export const InfraPodsStatusTable = ({
               ) : (
                 <tbody>
                   {podsList.map(pod => (
-                    <Link key={pod.name} href={getLink(pod.name)}>
+                    <Link
+                      key={`${pod.name}-${phaseFilter}`}
+                      href={getLink(pod.name)}
+                    >
                       <tr className="cursor-pointer">
                         <td>{pod.name}</td>
                         <td>{pod.namespace}</td>
