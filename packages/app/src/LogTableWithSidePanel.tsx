@@ -17,6 +17,8 @@ export function LogTableWithSidePanel({
   onPropertyAddClick,
   setIsUTC,
   onSettled,
+  columnNameMap,
+  showServiceColumn,
 }: {
   config: {
     where: string;
@@ -25,6 +27,8 @@ export function LogTableWithSidePanel({
   };
   isUTC: boolean;
   isLive: boolean;
+  columnNameMap?: Record<string, string>;
+  showServiceColumn?: boolean;
 
   onPropertySearchClick: (
     property: string,
@@ -123,6 +127,8 @@ export function LogTableWithSidePanel({
         onEnd={onSettled}
         displayedColumns={displayedColumns}
         setDisplayedColumns={setDisplayedColumns}
+        columnNameMap={columnNameMap}
+        showServiceColumn={showServiceColumn}
       />
     </>
   );

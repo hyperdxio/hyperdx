@@ -32,6 +32,7 @@ import {
 } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
+import { KubernetesFlatIcon } from './SVGIcons';
 import type { Dashboard, LogView } from './types';
 import { useLocalStorage, useWindowSize } from './utils';
 
@@ -346,6 +347,9 @@ const HYPERDX_USAGE_DASHBOARD_CONFIG = {
           field: 'hyperdx_event_size',
           where: '',
           groupBy: [],
+          numberFormat: {
+            output: 'byte',
+          },
         },
       ],
     },
@@ -364,6 +368,9 @@ const HYPERDX_USAGE_DASHBOARD_CONFIG = {
           field: 'hyperdx_event_size',
           where: '',
           groupBy: [],
+          numberFormat: {
+            output: 'byte',
+          },
         },
       ],
     },
@@ -1080,7 +1087,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     )}
                   >
                     <span>
-                      <i className="bi bi-cpu pe-1" />{' '}
+                      <span
+                        className="pe-1"
+                        style={{ top: -2, position: 'relative' }}
+                      >
+                        <KubernetesFlatIcon width={16} />
+                      </span>{' '}
                       {!isCollapsed && <span>Kubernetes</span>}
                     </span>
                   </a>
