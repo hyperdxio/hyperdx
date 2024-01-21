@@ -13,6 +13,8 @@ import logger from '@/utils/logger';
 import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
 
+import alertsRouter from './alerts';
+
 const router = express.Router();
 
 const rateLimiterKeyGenerator = (req: express.Request) => {
@@ -34,6 +36,13 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
     user: req.user?.toJSON(),
   });
 });
+
+router.use(
+  '/alerts',
+  getDefaultRateLimiter(),
+  validateUserAccessKey,
+  alertsRouter,
+);
 
 router.get(
   '/logs/properties',

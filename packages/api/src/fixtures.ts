@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import request from 'supertest';
+import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import {
@@ -19,6 +20,7 @@ import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
 import Server from './server';
+import { externalAlertSchema } from './utils/zod';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -305,3 +307,62 @@ export function mockSpyMetricPropertyTypeMappingsModel(propertyMap: {
 
   return model;
 }
+
+const randomId = () => Math.random().toString(36).substring(7);
+
+export const makeChart = (opts?: { id?: string }) => ({
+  id: opts?.id ?? randomId(),
+  name: 'Test Chart',
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  series: [
+    {
+      type: 'time',
+      table: 'metrics',
+    },
+  ],
+});
+
+export const makeAlert = ({
+  dashboardId,
+  chartId,
+}: {
+  dashboardId: string;
+  chartId: string;
+}) => ({
+  channel: {
+    type: 'webhook',
+    webhookId: 'test-webhook-id',
+  },
+  interval: '15m',
+  threshold: 8,
+  type: 'presence',
+  source: 'CHART',
+  dashboardId,
+  chartId,
+});
+
+export const makeExternalAlert = ({
+  dashboardId,
+  chartId,
+  threshold = 8,
+  interval = '15m',
+}: {
+  dashboardId: string;
+  chartId: string;
+  threshold?: number;
+  interval?: '15m' | '1m' | '5m' | '30m' | '1h' | '6h' | '12h' | '1d';
+}): z.infer<typeof externalAlertSchema> => ({
+  channel: {
+    type: 'slack_webhook',
+    webhookId: '65ad876b6b08426ab4ba7830',
+  },
+  interval,
+  threshold,
+  threshold_type: 'above',
+  source: 'chart',
+  dashboardId,
+  chartId,
+});
