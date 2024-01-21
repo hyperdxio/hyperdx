@@ -34,6 +34,8 @@ if (config.SENTRY_DSN) {
 // transaction/span/breadcrumb is attached to its own Hub instance
 app.use(Sentry.Handlers.requestHandler());
 
+export const mongoStore = new MongoStore({ mongoUrl: config.MONGO_URI });
+
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
   saveUninitialized: false,
@@ -43,7 +45,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
   rolling: true,
-  store: new MongoStore({ mongoUrl: config.MONGO_URI }),
+  store: mongoStore,
 };
 
 if (config.IS_PROD) {
@@ -79,7 +81,7 @@ app.use(defaultCors);
 // ---------------------------------------------------------------------
 // ----------------------- Background Jobs -----------------------------
 // ---------------------------------------------------------------------
-if (config.USAGE_STATS_ENABLED) {
+if (config.USAGE_STATS_ENABLED && !config.IS_CI) {
   void usageStats();
   setInterval(() => {
     void usageStats();
