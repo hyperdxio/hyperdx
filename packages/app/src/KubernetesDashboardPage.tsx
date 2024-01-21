@@ -30,6 +30,7 @@ import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import MetricTagValueSelect from './MetricTagValueSelect';
+import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
@@ -447,7 +448,7 @@ const NodesTable = ({
         >
           {isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
-              Unable to load pod metrics
+              Unable to load nodes
             </div>
           ) : !isLoading && nodesList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
@@ -508,6 +509,156 @@ const NodesTable = ({
                           {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
                         </td>
                         <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
+                      </tr>
+                    </Link>
+                  ))}
+                </tbody>
+              )}
+            </Table>
+          )}
+        </ScrollArea>
+      </Card.Section>
+    </Card>
+  );
+};
+
+const NamespacesTable = ({
+  where,
+  dateRange,
+}: {
+  where: string;
+  dateRange: [Date, Date];
+}) => {
+  const groupBy = ['k8s.namespace.name'];
+
+  const { data, isError, isLoading } = api.useMultiSeriesChart({
+    series: [
+      {
+        table: 'metrics',
+        field: 'k8s.pod.cpu.utilization - Gauge',
+        type: 'table',
+        aggFn: 'sum',
+        where,
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.memory.usage - Gauge',
+        type: 'table',
+        aggFn: 'sum',
+        where,
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.namespace.phase - Gauge',
+        type: 'table',
+        aggFn: 'last_value',
+        where,
+        groupBy,
+      },
+    ],
+    endDate: dateRange[1] ?? new Date(),
+    startDate: dateRange[0] ?? new Date(),
+    seriesReturnType: 'column',
+  });
+
+  const namespacesList = React.useMemo(() => {
+    if (!data) {
+      return [];
+    }
+
+    return data.data.map((row: any) => {
+      return {
+        name: row.group[0],
+        cpuAvg: row['series_0.data'],
+        memAvg: row['series_1.data'],
+        phase: row['series_2.data'],
+      };
+    });
+  }, [data]);
+
+  const getLink = React.useCallback((namespaceName: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('namespaceName', `${namespaceName}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  }, []);
+
+  return (
+    <Card p="md">
+      <Card.Section p="md" py="xs" withBorder>
+        Namespaces
+      </Card.Section>
+      <Card.Section>
+        <ScrollArea
+          viewportProps={{
+            style: { maxHeight: 300 },
+          }}
+        >
+          {isError ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              Unable to load namespaces
+            </div>
+          ) : !isLoading && namespacesList.length === 0 ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              No namespaces found
+            </div>
+          ) : (
+            <Table horizontalSpacing="md" highlightOnHover>
+              <thead className="muted-thead">
+                <tr>
+                  <th>Namespace</th>
+                  <th style={{ width: 130 }}>Phase</th>
+                  <th style={{ width: 130 }}>CPU</th>
+                  <th style={{ width: 130 }}>Memory</th>
+                </tr>
+              </thead>
+              {isLoading ? (
+                <tbody>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <tr key={index}>
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <td key={index}>
+                          <Skeleton height={8} my={6} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              ) : (
+                <tbody>
+                  {namespacesList.map(namespace => (
+                    <Link key={namespace.name} href={getLink(namespace.name)}>
+                      <tr className="cursor-pointer">
+                        <td>{namespace.name || 'N/A'}</td>
+                        <td>
+                          {namespace.phase === 1 ? (
+                            <Badge
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge color="red" fw="normal" tt="none" size="md">
+                              Terminating
+                            </Badge>
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            namespace.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            namespace.memAvg,
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </td>
                       </tr>
                     </Link>
                   ))}
@@ -608,6 +759,7 @@ export default function KubernetesDashboardPage() {
       </Head>
       <PodDetailsSidePanel />
       <NodeDetailsSidePanel />
+      <NamespaceDetailsSidePanel />
       <div className="d-flex flex-column">
         <Group
           px="md"
@@ -697,7 +849,7 @@ export default function KubernetesDashboardPage() {
             <Tabs.Tab value="pods">Pods</Tabs.Tab>
             <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
             <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
-            <Tabs.Tab value="clusters">Clusters</Tabs.Tab>
+            {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
           </Tabs.List>
         </div>
 
@@ -863,7 +1015,61 @@ export default function KubernetesDashboardPage() {
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
-          <Tabs.Panel value="namespaces">Namespaces</Tabs.Panel>
+          <Tabs.Panel value="namespaces">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    CPU Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.namespace.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'sum',
+                        field: 'k8s.pod.cpu.utilization - Gauge',
+                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Memory Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.namespace.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'sum',
+                        field: 'k8s.pod.memory.usage - Gauge',
+                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <NamespacesTable dateRange={dateRange} where={whereClause} />
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
           <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
         </div>
       </Tabs>
