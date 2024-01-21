@@ -15,6 +15,7 @@ import {
   Skeleton,
   Table,
   Tabs,
+  Text,
   Tooltip,
 } from '@mantine/core';
 
@@ -28,47 +29,13 @@ import {
 import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import MetricTagValueSelect from './MetricTagValueSelect';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
-import { formatUptime } from './utils';
-import { formatNumber } from './utils';
-
-const SearchInput = React.memo(
-  ({
-    searchQuery,
-    setSearchQuery,
-  }: {
-    searchQuery: string;
-    setSearchQuery: (q: string | null) => void;
-  }) => {
-    const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
-    const searchInputRef = React.useRef<HTMLInputElement>(null);
-
-    const onSearchSubmit = React.useCallback(
-      (e: React.FormEvent) => {
-        e.preventDefault();
-        setSearchQuery(_searchQuery || null);
-      },
-      [_searchQuery, setSearchQuery],
-    );
-
-    return (
-      <form onSubmit={onSearchSubmit}>
-        <HdxSearchInput
-          inputRef={searchInputRef}
-          placeholder="Scope dashboard to..."
-          value={_searchQuery ?? searchQuery}
-          onChange={v => _setSearchQuery(v)}
-          onSearch={() => {}}
-          showHotkey={false}
-        />
-      </form>
-    );
-  },
-);
+import { formatNumber, formatUptime } from './utils';
 
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
@@ -116,7 +83,7 @@ type InfraPodsStatusTableColumn =
   | 'memLimit'
   | 'phase';
 
-const InfraPodsStatusTable = ({
+export const InfraPodsStatusTable = ({
   dateRange,
   where,
 }: {
@@ -128,8 +95,8 @@ const InfraPodsStatusTable = ({
     column: InfraPodsStatusTableColumn;
     order: 'asc' | 'desc';
   }>({
-    column: 'phase',
-    order: 'asc',
+    column: 'restarts',
+    order: 'desc',
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
@@ -368,7 +335,19 @@ const InfraPodsStatusTable = ({
                           </Tooltip>
                         </td>
                         <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
-                        <td>{pod.restarts}</td>
+                        <td>
+                          <Text
+                            color={
+                              pod.restarts >= 10
+                                ? 'red.6'
+                                : pod.restarts >= 5
+                                ? 'yellow.3'
+                                : 'grey.7'
+                            }
+                          >
+                            {pod.restarts}
+                          </Text>
+                        </td>
                       </tr>
                     </Link>
                   ))}
@@ -528,6 +507,43 @@ const NodesTable = ({
   );
 };
 
+const K8sMetricTagValueSelect = ({
+  metricAttribute,
+  searchQuery,
+  setSearchQuery,
+  placeholder,
+  dropdownClosedWidth,
+  icon,
+}: {
+  metricAttribute: string;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  placeholder: string;
+  dropdownClosedWidth: number;
+  icon: React.ReactNode;
+}) => {
+  return (
+    <MetricTagValueSelect
+      metricName="k8s.pod.cpu.utilization - Gauge"
+      metricAttribute={metricAttribute}
+      value={''}
+      onChange={v => {
+        if (v) {
+          const newQuery = `${metricAttribute}:"${v}"${
+            searchQuery.includes(metricAttribute) ? ' OR' : ''
+          } ${searchQuery}`.trim();
+          setSearchQuery(newQuery);
+        }
+      }}
+      placeholder={placeholder}
+      size="sm"
+      dropdownClosedWidth={dropdownClosedWidth}
+      dropdownOpenWidth={350}
+      icon={icon}
+    />
+  );
+};
+
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
@@ -561,6 +577,16 @@ export default function KubernetesDashboardPage() {
 
   const whereClause = searchQuery;
 
+  const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const onSearchSubmit = React.useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      setSearchQuery(_searchQuery || null);
+    },
+    [_searchQuery, setSearchQuery],
+  );
   return (
     <div>
       <Head>
@@ -575,11 +601,61 @@ export default function KubernetesDashboardPage() {
           spacing="xs"
           align="center"
         >
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.pod.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Pod"
+            dropdownClosedWidth={100}
+            icon={<i className="bi bi-box"></i>}
+          />
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.deployment.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Deployment"
+            dropdownClosedWidth={155}
+            icon={<i className="bi bi-arrow-clockwise"></i>}
+          />
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.node.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Node"
+            dropdownClosedWidth={110}
+            icon={<i className="bi bi-hdd-rack"></i>}
+          />
+          <K8sMetricTagValueSelect
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            metricAttribute="k8s.namespace.name"
+            placeholder="Namespace"
+            dropdownClosedWidth={150}
+            icon={<i className="bi bi-braces"></i>}
+          />
           <div style={{ flex: 1 }}>
-            <SearchInput
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
+            <form onSubmit={onSearchSubmit}>
+              <HdxSearchInput
+                inputRef={searchInputRef}
+                placeholder="Scope dashboard to..."
+                value={_searchQuery ?? searchQuery}
+                onChange={v => _setSearchQuery(v)}
+                onSearch={() => {}}
+                showHotkey={false}
+              />
+            </form>
           </div>
           <div className="d-flex" style={{ width: 350, height: 36 }}>
             <SearchTimeRangePicker
@@ -674,9 +750,12 @@ export default function KubernetesDashboardPage() {
                       Latest Kubernetes Warning Events
                       <Link
                         href={`/search?q=${encodeURIComponent(
-                          whereClause +
-                            ' k8s.resource.name:"events" -level:"normal"',
-                        )}`}
+                          `${
+                            whereClause.trim().length > 0
+                              ? `(${whereClause.trim()}) `
+                              : ''
+                          }(k8s.resource.name:"events" -level:"normal")`,
+                        )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
                       >
                         <Anchor size="xs" color="dimmed">
@@ -689,15 +768,25 @@ export default function KubernetesDashboardPage() {
                     <LogTableWithSidePanel
                       config={{
                         dateRange,
-                        where:
-                          whereClause +
-                          ' k8s.resource.name:"events" -level:"normal"',
-                        columns: ['k8s.pod.name'],
+                        where: `${
+                          whereClause.trim().length > 0
+                            ? `(${whereClause.trim()}) `
+                            : ''
+                        }(k8s.resource.name:"events" -level:"normal")`,
+                        columns: [
+                          'object.regarding.kind',
+                          'object.regarding.name',
+                        ],
+                      }}
+                      columnNameMap={{
+                        'object.regarding.kind': 'Kind',
+                        'object.regarding.name': 'Name',
                       }}
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
+                      showServiceColumn={false}
                     />
                   </Card.Section>
                 </Card>
