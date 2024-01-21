@@ -30,6 +30,7 @@ import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import MetricTagValueSelect from './MetricTagValueSelect';
+import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
@@ -577,6 +578,12 @@ const NamespacesTable = ({
     });
   }, [data]);
 
+  const getLink = React.useCallback((namespaceName: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('namespaceName', `${namespaceName}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  }, []);
+
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
@@ -621,29 +628,39 @@ const NamespacesTable = ({
               ) : (
                 <tbody>
                   {namespacesList.map(namespace => (
-                    <tr key={namespace.name}>
-                      <td>{namespace.name || 'N/A'}</td>
-                      <td>
-                        {namespace.phase === 1 ? (
-                          <Badge color="green" fw="normal" tt="none" size="md">
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge color="red" fw="normal" tt="none" size="md">
-                            Terminating
-                          </Badge>
-                        )}
-                      </td>
-                      <td>
-                        {formatNumber(
-                          namespace.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </td>
-                      <td>
-                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </td>
-                    </tr>
+                    <Link key={namespace.name} href={getLink(namespace.name)}>
+                      <tr className="cursor-pointer">
+                        <td>{namespace.name || 'N/A'}</td>
+                        <td>
+                          {namespace.phase === 1 ? (
+                            <Badge
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge color="red" fw="normal" tt="none" size="md">
+                              Terminating
+                            </Badge>
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            namespace.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </td>
+                        <td>
+                          {formatNumber(
+                            namespace.memAvg,
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </td>
+                      </tr>
+                    </Link>
                   ))}
                 </tbody>
               )}
@@ -742,6 +759,7 @@ export default function KubernetesDashboardPage() {
       </Head>
       <PodDetailsSidePanel />
       <NodeDetailsSidePanel />
+      <NamespaceDetailsSidePanel />
       <div className="d-flex flex-column">
         <Group
           px="md"
@@ -831,7 +849,7 @@ export default function KubernetesDashboardPage() {
             <Tabs.Tab value="pods">Pods</Tabs.Tab>
             <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
             <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
-            <Tabs.Tab value="clusters">Clusters</Tabs.Tab>
+            {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
           </Tabs.List>
         </div>
 
