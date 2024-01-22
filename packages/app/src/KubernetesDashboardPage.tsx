@@ -39,6 +39,8 @@ import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
 
+const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
+
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
     case 'running':
@@ -84,6 +86,35 @@ type InfraPodsStatusTableColumn =
   | 'cpuLimit'
   | 'memLimit'
   | 'phase';
+
+const TableLoading = () => {
+  return (
+    <Table horizontalSpacing="md" highlightOnHover>
+      <tbody key="table-loader">
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+      </tbody>
+    </Table>
+  );
+};
 
 export const InfraPodsStatusTable = ({
   dateRange,
@@ -192,6 +223,7 @@ export const InfraPodsStatusTable = ({
 
     return data.data.map((row: any) => {
       return {
+        id: makeId(),
         name: row.group[0],
         namespace: row.group[1],
         node: row.group[2],
@@ -206,11 +238,11 @@ export const InfraPodsStatusTable = ({
     });
   }, [data]);
 
-  const getLink = (podName: string) => {
+  const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('podName', `${podName}`);
     return window.location.pathname + '?' + searchParams.toString();
-  };
+  }, []);
 
   const getThSortProps = (column: InfraPodsStatusTableColumn) => ({
     onSort: (order: 'asc' | 'desc') => {
@@ -247,11 +279,13 @@ export const InfraPodsStatusTable = ({
             style: { maxHeight: 300 },
           }}
         >
-          {isError ? (
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load pod metrics
             </div>
-          ) : !isLoading && podsList.length === 0 ? (
+          ) : podsList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               No pods found
             </div>
@@ -279,82 +313,68 @@ export const InfraPodsStatusTable = ({
                   </Th>
                 </tr>
               </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 8 }).map((_, index) => (
-                        <td key={index}>
-                          <Skeleton height={8} my={6} />
-                        </td>
-                      ))}
+              <tbody>
+                {podsList.map(pod => (
+                  <Link key={pod.id} href={getLink(pod.name)}>
+                    <tr className="cursor-pointer">
+                      <td>{pod.name}</td>
+                      <td>{pod.namespace}</td>
+                      <td>{pod.node}</td>
+                      <td>
+                        <FormatPodStatus status={pod.phase} />
+                      </td>
+                      <td>
+                        <Tooltip
+                          color="gray"
+                          label={
+                            formatNumber(
+                              pod.cpuAvg,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            ) + ' avg'
+                          }
+                        >
+                          <span>
+                            {formatNumber(
+                              pod.cpuLimit,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            )}
+                          </span>
+                        </Tooltip>
+                      </td>
+                      <td>
+                        <Tooltip
+                          color="gray"
+                          label={
+                            formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
+                            ' avg'
+                          }
+                        >
+                          <span>
+                            {formatNumber(
+                              pod.memLimit,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            )}
+                          </span>
+                        </Tooltip>
+                      </td>
+                      <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
+                      <td>
+                        <Text
+                          color={
+                            pod.restarts >= 10
+                              ? 'red.6'
+                              : pod.restarts >= 5
+                              ? 'yellow.3'
+                              : 'grey.7'
+                          }
+                        >
+                          {pod.restarts}
+                        </Text>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {podsList.map(pod => (
-                    <Link key={pod.name} href={getLink(pod.name)}>
-                      <tr className="cursor-pointer">
-                        <td>{pod.name}</td>
-                        <td>{pod.namespace}</td>
-                        <td>{pod.node}</td>
-                        <td>
-                          <FormatPodStatus status={pod.phase} />
-                        </td>
-                        <td>
-                          <Tooltip
-                            color="gray"
-                            label={
-                              formatNumber(
-                                pod.cpuAvg,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              ) + ' avg'
-                            }
-                          >
-                            <span>
-                              {formatNumber(
-                                pod.cpuLimit,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              )}
-                            </span>
-                          </Tooltip>
-                        </td>
-                        <td>
-                          <Tooltip
-                            color="gray"
-                            label={
-                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
-                              ' avg'
-                            }
-                          >
-                            <span>
-                              {formatNumber(
-                                pod.memLimit,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              )}
-                            </span>
-                          </Tooltip>
-                        </td>
-                        <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
-                        <td>
-                          <Text
-                            color={
-                              pod.restarts >= 10
-                                ? 'red.6'
-                                : pod.restarts >= 5
-                                ? 'yellow.3'
-                                : 'grey.7'
-                            }
-                          >
-                            {pod.restarts}
-                          </Text>
-                        </td>
-                      </tr>
-                    </Link>
-                  ))}
-                </tbody>
-              )}
+                  </Link>
+                ))}
+              </tbody>
             </Table>
           )}
         </ScrollArea>
@@ -446,11 +466,13 @@ const NodesTable = ({
             style: { maxHeight: 300 },
           }}
         >
-          {isError ? (
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load nodes
             </div>
-          ) : !isLoading && nodesList.length === 0 ? (
+          ) : nodesList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               No nodes found
             </div>
@@ -465,55 +487,37 @@ const NodesTable = ({
                   <th style={{ width: 130 }}>Uptime</th>
                 </tr>
               </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <td key={index}>
-                          <Skeleton height={8} my={6} />
-                        </td>
-                      ))}
+
+              <tbody>
+                {nodesList.map(node => (
+                  <Link key={node.name} href={getLink(node.name)}>
+                    <tr className="cursor-pointer">
+                      <td>{node.name || 'N/A'}</td>
+                      <td>
+                        {node.ready === 1 ? (
+                          <Badge color="green" fw="normal" tt="none" size="md">
+                            Ready
+                          </Badge>
+                        ) : (
+                          <Badge color="red" fw="normal" tt="none" size="md">
+                            Not Ready
+                          </Badge>
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(
+                          node.cpuAvg,
+                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                      </td>
+                      <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
                     </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {nodesList.map(node => (
-                    <Link key={node.name} href={getLink(node.name)}>
-                      <tr className="cursor-pointer">
-                        <td>{node.name || 'N/A'}</td>
-                        <td>
-                          {node.ready === 1 ? (
-                            <Badge
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
-                          ) : (
-                            <Badge color="red" fw="normal" tt="none" size="md">
-                              Not Ready
-                            </Badge>
-                          )}
-                        </td>
-                        <td>
-                          {formatNumber(
-                            node.cpuAvg,
-                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          )}
-                        </td>
-                        <td>
-                          {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                        </td>
-                        <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
-                      </tr>
-                    </Link>
-                  ))}
-                </tbody>
-              )}
+                  </Link>
+                ))}
+              </tbody>
             </Table>
           )}
         </ScrollArea>
@@ -595,11 +599,13 @@ const NamespacesTable = ({
             style: { maxHeight: 300 },
           }}
         >
-          {isError ? (
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load namespaces
             </div>
-          ) : !isLoading && namespacesList.length === 0 ? (
+          ) : namespacesList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               No namespaces found
             </div>
@@ -613,57 +619,35 @@ const NamespacesTable = ({
                   <th style={{ width: 130 }}>Memory</th>
                 </tr>
               </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <td key={index}>
-                          <Skeleton height={8} my={6} />
-                        </td>
-                      ))}
+              <tbody>
+                {namespacesList.map(namespace => (
+                  <Link key={namespace.name} href={getLink(namespace.name)}>
+                    <tr className="cursor-pointer">
+                      <td>{namespace.name || 'N/A'}</td>
+                      <td>
+                        {namespace.phase === 1 ? (
+                          <Badge color="green" fw="normal" tt="none" size="md">
+                            Ready
+                          </Badge>
+                        ) : (
+                          <Badge color="red" fw="normal" tt="none" size="md">
+                            Terminating
+                          </Badge>
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(
+                          namespace.cpuAvg,
+                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {namespacesList.map(namespace => (
-                    <Link key={namespace.name} href={getLink(namespace.name)}>
-                      <tr className="cursor-pointer">
-                        <td>{namespace.name || 'N/A'}</td>
-                        <td>
-                          {namespace.phase === 1 ? (
-                            <Badge
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
-                          ) : (
-                            <Badge color="red" fw="normal" tt="none" size="md">
-                              Terminating
-                            </Badge>
-                          )}
-                        </td>
-                        <td>
-                          {formatNumber(
-                            namespace.cpuAvg,
-                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          )}
-                        </td>
-                        <td>
-                          {formatNumber(
-                            namespace.memAvg,
-                            K8S_MEM_NUMBER_FORMAT,
-                          )}
-                        </td>
-                      </tr>
-                    </Link>
-                  ))}
-                </tbody>
-              )}
+                  </Link>
+                ))}
+              </tbody>
             </Table>
           )}
         </ScrollArea>
