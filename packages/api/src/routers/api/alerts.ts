@@ -79,7 +79,12 @@ router.get('/', async (req, res, next) => {
               charts: alert.dashboardId.charts
                 .filter(chart => chart.id === alert.chartId)
                 .map(chart => _.pick(chart, ['id', 'name'])),
-              ..._.pick(alert.dashboardId, ['_id', 'name', 'updatedAt']),
+              ..._.pick(alert.dashboardId, [
+                '_id',
+                'name',
+                'updatedAt',
+                'tags',
+              ]),
             },
           }),
           ...(alert.logView && {
@@ -88,6 +93,7 @@ router.get('/', async (req, res, next) => {
               'createdAt',
               'name',
               'updatedAt',
+              'tags',
             ]),
           }),
           ..._.pick(alert, [
