@@ -780,22 +780,24 @@ export default function SearchPage() {
               setShowSaveSearchModal(true);
             }}
           />
-          <Tags
-            allowCreate
-            values={selectedSavedSearch?.tags || []}
-            onChange={handleUpdateTags}
-          >
-            <Indicator
-              label={tagsCount || '+'}
-              size={20}
-              color="gray"
-              withBorder
+          {!!selectedSavedSearch && (
+            <Tags
+              allowCreate
+              values={selectedSavedSearch.tags || []}
+              onChange={handleUpdateTags}
             >
-              <ActionIcon size="lg" variant="default" ml="xs">
-                <i className="bi bi-tags-fill text-slate-300"></i>
-              </ActionIcon>
-            </Indicator>
-          </Tags>
+              <Indicator
+                label={tagsCount || '+'}
+                size={20}
+                color="gray"
+                withBorder
+              >
+                <ActionIcon size="lg" variant="default" ml="xs">
+                  <i className="bi bi-tags-fill text-slate-300"></i>
+                </ActionIcon>
+              </Indicator>
+            </Tags>
+          )}
         </div>
         <div className="d-flex mx-4 mt-2 justify-content-between">
           <div className="fs-8 text-muted">
