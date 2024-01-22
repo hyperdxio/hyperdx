@@ -3,7 +3,10 @@ import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import deleteDashboardAndAlerts from '@/controllers/dashboard';
+import {
+  deleteDashboardAndAlerts,
+  updateDashboardAndAlerts,
+} from '@/controllers/dashboard';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
@@ -53,9 +56,9 @@ router.post(
   '/',
   validateRequest({
     body: z.object({
-      name: z.string(),
+      name: z.string().max(1024),
       charts: z.array(chartSchema),
-      query: z.string(),
+      query: z.string().max(2048),
       tags: tagsSchema,
     }),
   }),
@@ -88,10 +91,13 @@ router.post(
 router.put(
   '/:id',
   validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
     body: z.object({
-      name: z.string(),
+      name: z.string().max(1024),
       charts: z.array(chartSchema),
-      query: z.string(),
+      query: z.string().max(2048),
       tags: tagsSchema,
     }),
   }),
@@ -102,38 +108,20 @@ router.put(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      if (!dashboardId) {
-        return res.sendStatus(400);
-      }
 
       const { name, charts, query, tags } = req.body ?? {};
 
-      // Update dashboard from name and charts
-      const oldDashboard = await Dashboard.findById(dashboardId);
-      const updatedDashboard = await Dashboard.findByIdAndUpdate(
+      const updatedDashboard = await updateDashboardAndAlerts(
         dashboardId,
+        teamId,
         {
           name,
           charts,
           query,
-          tags: tags && uniq(tags),
+          tags,
         },
-        { new: true },
       );
 
-      // Delete related alerts
-      const deletedChartIds = differenceBy(
-        oldDashboard?.charts || [],
-        updatedDashboard?.charts || [],
-        'id',
-      ).map(c => c.id);
-
-      if (deletedChartIds?.length > 0) {
-        await Alert.deleteMany({
-          dashboardId: dashboardId,
-          chartId: { $in: deletedChartIds },
-        });
-      }
       res.json({
         data: updatedDashboard,
       });
