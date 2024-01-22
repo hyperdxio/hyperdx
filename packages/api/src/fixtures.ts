@@ -325,6 +325,21 @@ export const makeChart = (opts?: { id?: string }) => ({
   ],
 });
 
+export const makeExternalChart = (opts?: { id?: string }) => ({
+  name: 'Test Chart',
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  series: [
+    {
+      type: 'time',
+      data_source: 'events',
+      aggFn: 'count',
+    },
+  ],
+});
+
 export const makeAlert = ({
   dashboardId,
   chartId,

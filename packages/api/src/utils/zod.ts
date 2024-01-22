@@ -63,36 +63,46 @@ export const tableChartSeriesSchema = z.object({
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
 });
 
+export const numberChartSeriesSchema = z.object({
+  type: z.literal('number'),
+  table: z.optional(sourceTableSchema),
+  aggFn: aggFnSchema,
+  field: z.union([z.string(), z.undefined()]),
+  where: z.string(),
+  numberFormat: numberFormatSchema.optional(),
+  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+});
+
+export const histogramChartSeriesSchema = z.object({
+  table: z.optional(sourceTableSchema),
+  type: z.literal('histogram'),
+  field: z.union([z.string(), z.undefined()]),
+  where: z.string(),
+  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+});
+
+export const searchChartSeriesSchema = z.object({
+  type: z.literal('search'),
+  fields: z.array(z.string()),
+  where: z.string(),
+});
+
+export const markdownChartSeriesSchema = z.object({
+  type: z.literal('markdown'),
+  content: z.string(),
+});
+
 export const chartSeriesSchema = z.union([
   timeChartSeriesSchema,
   tableChartSeriesSchema,
-  z.object({
-    table: z.optional(sourceTableSchema),
-    type: z.literal('histogram'),
-    field: z.union([z.string(), z.undefined()]),
-    where: z.string(),
-  }),
-  z.object({
-    type: z.literal('search'),
-    fields: z.array(z.string()),
-    where: z.string(),
-  }),
-  z.object({
-    type: z.literal('number'),
-    table: z.optional(sourceTableSchema),
-    aggFn: aggFnSchema,
-    field: z.union([z.string(), z.undefined()]),
-    where: z.string(),
-    numberFormat: numberFormatSchema.optional(),
-  }),
-  z.object({
-    type: z.literal('markdown'),
-    content: z.string(),
-  }),
+  histogramChartSeriesSchema,
+  searchChartSeriesSchema,
+  numberChartSeriesSchema,
+  markdownChartSeriesSchema,
 ]);
 
 export const chartSchema = z.object({
-  id: z.string(),
+  id: z.string().max(32),
   name: z.string(),
   x: z.number(),
   y: z.number(),
@@ -112,35 +122,56 @@ export const chartSchema = z.object({
         'markdown',
       ]),
       table: z.string().optional(),
-      aggFn: z.string().optional(), // TODO: Replace with the actual AggFn schema
+      aggFn: aggFnSchema.optional(),
       field: z.union([z.string(), z.undefined()]).optional(),
+      fields: z.array(z.string()).optional(),
       where: z.string().optional(),
       groupBy: z.array(z.string()).optional(),
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
-      numberFormat: z
-        .object({
-          output: z
-            .union([
-              z.literal('currency'),
-              z.literal('percent'),
-              z.literal('byte'),
-              z.literal('time'),
-              z.literal('number'),
-            ])
-            .optional(),
-          mantissa: z.number().optional(),
-          thousandSeparated: z.boolean().optional(),
-          average: z.boolean().optional(),
-          decimalBytes: z.boolean().optional(),
-          factor: z.number().optional(),
-          currencySymbol: z.string().optional(),
-          unit: z.string().optional(),
-        })
-        .optional(),
+      numberFormat: numberFormatSchema.optional(),
+      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
     }),
   ),
+  seriesReturnType: z.enum(['ratio', 'column']).optional(),
 });
+
+export const externalChartSchema = z.object({
+  name: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+  series: z.array(
+    z.object({
+      type: z.enum([
+        'time',
+        'histogram',
+        'search',
+        'number',
+        'table',
+        'markdown',
+      ]),
+      data_source: z.enum(['events', 'metrics']).optional(),
+      aggFn: aggFnSchema.optional(),
+      field: z.union([z.string(), z.undefined()]).optional(),
+      fields: z.array(z.string()).optional(),
+      where: z.string().optional(),
+      groupBy: z.array(z.string()).optional(),
+      sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
+      content: z.string().optional(),
+      numberFormat: numberFormatSchema.optional(),
+      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+    }),
+  ),
+  asRatio: z.boolean().optional(),
+});
+export const externalChartSchemaWithId = externalChartSchema.and(
+  z.object({
+    // This isn't always a Mongo ID
+    id: z.string().max(32),
+  }),
+);
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 

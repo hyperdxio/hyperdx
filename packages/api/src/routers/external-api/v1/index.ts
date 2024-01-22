@@ -8,12 +8,12 @@ import { validateRequest } from 'zod-express-middleware';
 import * as clickhouse from '@/clickhouse';
 import { getTeam } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
+import alertsRouter from '@/routers/external-api/v1/alerts';
+import dashboardRouter from '@/routers/external-api/v1/dashboards';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import rateLimiter from '@/utils/rateLimiter';
 import { SimpleCache } from '@/utils/redis';
-
-import alertsRouter from './alerts';
 
 const router = express.Router();
 
@@ -42,6 +42,13 @@ router.use(
   getDefaultRateLimiter(),
   validateUserAccessKey,
   alertsRouter,
+);
+
+router.use(
+  '/dashboards',
+  getDefaultRateLimiter(),
+  validateUserAccessKey,
+  dashboardRouter,
 );
 
 router.get(
