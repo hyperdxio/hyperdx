@@ -3,65 +3,13 @@ import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import deleteDashboardAndAlerts from '@/controllers/dashboard';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
 const router = express.Router();
-
-const zChart = z.object({
-  id: z.string(),
-  name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  series: z.array(
-    // We can't do a strict validation here since mongo and the frontend
-    // have a bug where chart types will not delete extraneous properties
-    // when attempting to save.
-    z.object({
-      type: z.enum([
-        'time',
-        'histogram',
-        'search',
-        'number',
-        'table',
-        'markdown',
-      ]),
-      table: z.string().optional(),
-      aggFn: z.string().optional(), // TODO: Replace with the actual AggFn schema
-      field: z.union([z.string(), z.undefined()]).optional(),
-      where: z.string().optional(),
-      groupBy: z.array(z.string()).optional(),
-      sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-      content: z.string().optional(),
-      numberFormat: z
-        .object({
-          output: z
-            .union([
-              z.literal('currency'),
-              z.literal('percent'),
-              z.literal('byte'),
-              z.literal('time'),
-              z.literal('number'),
-            ])
-            .optional(),
-          mantissa: z.number().optional(),
-          thousandSeparated: z.boolean().optional(),
-          average: z.boolean().optional(),
-          decimalBytes: z.boolean().optional(),
-          factor: z.number().optional(),
-          currencySymbol: z.string().optional(),
-          unit: z.string().optional(),
-        })
-        .optional(),
-    }),
-  ),
-});
-
-// TODO: Move common zod schemas to a common file?
-const zTags = z.array(z.string().max(32)).max(50).optional();
 
 router.get('/', async (req, res, next) => {
   try {
@@ -98,9 +46,9 @@ router.post(
   validateRequest({
     body: z.object({
       name: z.string(),
-      charts: z.array(zChart),
+      charts: z.array(chartSchema),
       query: z.string(),
-      tags: zTags,
+      tags: tagsSchema,
     }),
   }),
   async (req, res, next) => {
@@ -134,9 +82,9 @@ router.put(
   validateRequest({
     body: z.object({
       name: z.string(),
-      charts: z.array(zChart),
+      charts: z.array(chartSchema),
       query: z.string(),
-      tags: zTags,
+      tags: tagsSchema,
     }),
   }),
   async (req, res, next) => {
@@ -187,22 +135,28 @@ router.put(
   },
 );
 
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { id: dashboardId } = req.params;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.delete(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { id: dashboardId } = req.params;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      await deleteDashboardAndAlerts(dashboardId, teamId);
+
+      res.json({});
+    } catch (e) {
+      next(e);
     }
-    if (!dashboardId) {
-      return res.sendStatus(400);
-    }
-    await Dashboard.findByIdAndDelete(dashboardId);
-    await Alert.deleteMany({ dashboardId: dashboardId });
-    res.json({});
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 export default router;

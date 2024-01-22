@@ -3,43 +3,9 @@ import {
   closeDB,
   getLoggedInAgent,
   getServer,
+  makeAlert,
+  makeChart,
 } from '@/fixtures';
-
-const randomId = () => Math.random().toString(36).substring(7);
-
-const makeChart = () => ({
-  id: randomId(),
-  name: 'Test Chart',
-  x: 1,
-  y: 1,
-  w: 1,
-  h: 1,
-  series: [
-    {
-      type: 'time',
-      table: 'metrics',
-    },
-  ],
-});
-
-const makeAlert = ({
-  dashboardId,
-  chartId,
-}: {
-  dashboardId: string;
-  chartId: string;
-}) => ({
-  channel: {
-    type: 'webhook',
-    webhookId: 'test-webhook-id',
-  },
-  interval: '15m',
-  threshold: 8,
-  type: 'presence',
-  source: 'CHART',
-  dashboardId,
-  chartId,
-});
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -63,7 +29,7 @@ describe('alerts router', () => {
     await closeDB();
   });
 
-  it('index has alerts attached to dashboards', async () => {
+  it('has alerts attached to dashboards', async () => {
     const { agent } = await getLoggedInAgent(server);
 
     await agent.post('/dashboards').send(MOCK_DASHBOARD).expect(200);
