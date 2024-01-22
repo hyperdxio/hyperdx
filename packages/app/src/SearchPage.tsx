@@ -31,6 +31,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { ActionIcon, Indicator } from '@mantine/core';
 
 import api from './api';
 import CreateLogAlertModal from './CreateLogAlertModal';
@@ -42,6 +43,7 @@ import SaveSearchModal from './SaveSearchModal';
 import SearchInput from './SearchInput';
 import SearchPageActionBar from './SearchPageActionBar';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
+import { Tags } from './Tags';
 import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
@@ -644,6 +646,37 @@ export default function SearchPage() {
     setResultsMode('search');
   }, [setResultsMode]);
 
+  const handleUpdateTags = useCallback(
+    newTags => {
+      if (selectedSavedSearch?._id) {
+        updateLogView.mutate(
+          {
+            id: selectedSavedSearch?._id,
+            query: displayedSearchQuery,
+            tags: newTags,
+          },
+          {
+            onSuccess: () => {
+              refetchLogViews();
+            },
+            onError: () => {
+              toast.error(
+                'An error occured. Please contact support for more details.',
+              );
+            },
+          },
+        );
+      }
+    },
+    [
+      displayedSearchQuery,
+      refetchLogViews,
+      selectedSavedSearch?._id,
+      updateLogView,
+    ],
+  );
+  const tagsCount = selectedSavedSearch?.tags?.length || 0;
+
   return (
     <div style={{ height: '100vh' }}>
       <Head>
@@ -747,6 +780,22 @@ export default function SearchPage() {
               setShowSaveSearchModal(true);
             }}
           />
+          <Tags
+            allowCreate
+            values={selectedSavedSearch?.tags || []}
+            onChange={handleUpdateTags}
+          >
+            <Indicator
+              label={tagsCount || '+'}
+              size={20}
+              color="gray"
+              withBorder
+            >
+              <ActionIcon size="lg" variant="default" ml="xs">
+                <i className="bi bi-tags-fill text-slate-300"></i>
+              </ActionIcon>
+            </Indicator>
+          </Tags>
         </div>
         <div className="d-flex mx-4 mt-2 justify-content-between">
           <div className="fs-8 text-muted">
