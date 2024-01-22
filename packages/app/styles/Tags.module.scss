@@ -1,0 +1,16 @@
+.tagWrapper {
+  padding: 2px 16px;
+  margin: -2px 0;
+  button {
+    visibility: hidden;
+  }
+  input {
+    width: 100%;
+  }
+  &:hover {
+    background-color: #ffffff11;
+    button {
+      visibility: visible;
+    }
+  }
+}

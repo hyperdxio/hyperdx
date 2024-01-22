@@ -94,6 +94,16 @@ const mantineTheme: MantineThemeOverride = {
         },
       }),
     },
+    Checkbox: {
+      styles: {
+        input: {
+          cursor: 'pointer',
+        },
+        label: {
+          cursor: 'pointer',
+        },
+      },
+    },
   },
 };
 
