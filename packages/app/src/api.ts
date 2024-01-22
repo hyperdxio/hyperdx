@@ -487,13 +487,15 @@ const api = {
       {
         name: string;
         query: string;
+        tags?: string;
       }
-    >(`log-views`, async ({ name, query }) =>
+    >(`log-views`, async ({ name, query, tags }) =>
       server('log-views', {
         method: 'POST',
         json: {
           query,
           name,
+          tags,
         },
       }).json(),
     );
@@ -505,12 +507,14 @@ const api = {
       {
         id: string;
         query: string;
+        tags?: string[];
       }
-    >(`log-views`, async ({ id, query }) =>
+    >(`log-views`, async ({ id, query, tags }) =>
       server(`log-views/${id}`, {
         method: 'PATCH',
         json: {
           query,
+          tags,
         },
       }).json(),
     );

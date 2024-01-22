@@ -41,7 +41,7 @@ export type LogView = {
   name: string;
   query: string;
   alerts?: Alert[];
-  tags: string[];
+  tags?: string[];
 };
 
 export type Dashboard = {

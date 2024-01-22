@@ -981,7 +981,7 @@ export default function DashboardPage() {
                     tt="none"
                     className="cursor-pointer"
                   >
-                    <i className="bi bi-tag me-1"></i>
+                    <i className="bi bi-tags-fill me-1"></i>
                     {!tagsCount
                       ? 'Add Tag'
                       : tagsCount === 1

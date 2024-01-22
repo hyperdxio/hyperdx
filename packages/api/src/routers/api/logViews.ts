@@ -43,6 +43,7 @@ router.get('/', async (req, res, next) => {
       {
         name: 1,
         query: 1,
+        tags: 1,
         createdAt: 1,
         updatedAt: 1,
       },
