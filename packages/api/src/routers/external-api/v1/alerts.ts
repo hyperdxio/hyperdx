@@ -6,16 +6,22 @@ import { validateRequest } from 'zod-express-middleware';
 import {
   createAlert,
   deleteAlert,
-  getAlertsWithLogViewAndDashboard,
+  getAlerts,
   updateAlert,
   validateGroupByProperty,
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
-import AlertHistory from '@/models/alertHistory';
-import { alertSchema, objectIdSchema } from '@/utils/zod';
+import { AlertDocument } from '@/models/alert';
+import {
+  alertSchema,
+  externalAlertSchema,
+  externalAlertSchemaWithId,
+  objectIdSchema,
+} from '@/utils/zod';
 
 const router = express.Router();
 
+// TODO: Dedup with private API router
 // Validate groupBy property
 const validateGroupBy = async (
   req: Request,
@@ -47,6 +53,53 @@ const validateGroupBy = async (
   next();
 };
 
+const translateExternalAlertToInternalAlert = (
+  alertInput: z.infer<typeof externalAlertSchema>,
+): z.infer<typeof alertSchema> => {
+  return {
+    interval: alertInput.interval,
+    threshold: alertInput.threshold,
+    type: alertInput.threshold_type === 'above' ? 'presence' : 'absence',
+    channel: {
+      ...alertInput.channel,
+      type: 'webhook',
+    },
+    ...(alertInput.source === 'search' && alertInput.savedSearchId
+      ? { source: 'LOG', logViewId: alertInput.savedSearchId }
+      : alertInput.source === 'chart' && alertInput.dashboardId
+      ? {
+          source: 'CHART',
+          dashboardId: alertInput.dashboardId,
+          chartId: alertInput.chartId,
+        }
+      : ({} as never)),
+  };
+};
+
+const translateAlertDocumentToExternalAlert = (
+  alertDoc: AlertDocument,
+): z.infer<typeof externalAlertSchemaWithId> => {
+  return {
+    id: alertDoc._id.toString(),
+    interval: alertDoc.interval,
+    threshold: alertDoc.threshold,
+    threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
+    channel: {
+      ...alertDoc.channel,
+      type: 'slack_webhook',
+    },
+    ...(alertDoc.source === 'LOG' && alertDoc.logView
+      ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
+      : alertDoc.source === 'CHART' && alertDoc.dashboardId
+      ? {
+          source: 'chart',
+          dashboardId: alertDoc.dashboardId.toString(),
+          chartId: alertDoc.chartId as string,
+        }
+      : ({} as never)),
+  };
+};
+
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -54,58 +107,12 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const alerts = await getAlertsWithLogViewAndDashboard(teamId);
+    const alerts = await getAlerts(teamId);
 
-    const data = await Promise.all(
-      alerts.map(async alert => {
-        const history = await AlertHistory.find(
-          {
-            alert: alert._id,
-          },
-          {
-            __v: 0,
-            _id: 0,
-            alert: 0,
-          },
-        )
-          .sort({ createdAt: -1 })
-          .limit(20);
-
-        return {
-          history,
-          channel: _.pick(alert.channel, ['type']),
-          ...(alert.dashboardId && {
-            dashboard: {
-              charts: alert.dashboardId.charts
-                .filter(chart => chart.id === alert.chartId)
-                .map(chart => _.pick(chart, ['id', 'name'])),
-              ..._.pick(alert.dashboardId, ['_id', 'name', 'updatedAt']),
-            },
-          }),
-          ...(alert.logView && {
-            logView: _.pick(alert.logView, [
-              '_id',
-              'createdAt',
-              'name',
-              'updatedAt',
-            ]),
-          }),
-          ..._.pick(alert, [
-            '_id',
-            'interval',
-            'threshold',
-            'state',
-            'type',
-            'source',
-            'chartId',
-            'createdAt',
-            'updatedAt',
-          ]),
-        };
+    return res.json({
+      data: alerts.map(alert => {
+        return translateAlertDocumentToExternalAlert(alert);
       }),
-    );
-    res.json({
-      data,
     });
   } catch (e) {
     next(e);
@@ -114,7 +121,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
-  validateRequest({ body: alertSchema }),
+  validateRequest({ body: externalAlertSchema }),
   validateGroupBy,
   async (req, res, next) => {
     const teamId = req.user?.team;
@@ -123,8 +130,13 @@ router.post(
     }
     try {
       const alertInput = req.body;
+
+      const internalAlert = translateExternalAlertToInternalAlert(alertInput);
+
       return res.json({
-        data: await createAlert(teamId, alertInput),
+        data: translateAlertDocumentToExternalAlert(
+          await createAlert(teamId, internalAlert),
+        ),
       });
     } catch (e) {
       next(e);
@@ -135,7 +147,7 @@ router.post(
 router.put(
   '/:id',
   validateRequest({
-    body: alertSchema,
+    body: externalAlertSchema,
     params: z.object({
       id: objectIdSchema,
     }),
@@ -144,13 +156,22 @@ router.put(
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
+
       if (teamId == null) {
         return res.sendStatus(403);
       }
       const { id } = req.params;
+
       const alertInput = req.body;
+      const internalAlert = translateExternalAlertToInternalAlert(alertInput);
+      const alert = await updateAlert(id, teamId, internalAlert);
+
+      if (alert == null) {
+        return res.sendStatus(404);
+      }
+
       res.json({
-        data: await updateAlert(id, teamId, alertInput),
+        data: translateAlertDocumentToExternalAlert(alert),
       });
     } catch (e) {
       next(e);
@@ -171,9 +192,6 @@ router.delete(
       const { id: alertId } = req.params;
       if (teamId == null) {
         return res.sendStatus(403);
-      }
-      if (!alertId) {
-        return res.sendStatus(400);
       }
 
       await deleteAlert(alertId, teamId);
