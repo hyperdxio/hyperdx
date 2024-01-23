@@ -21,7 +21,7 @@ export default function SearchInput({
   placeholder?: string;
   showHotkey?: boolean;
   size?: 'sm' | 'lg';
-  zIndex: number;
+  zIndex?: number;
 }) {
   const { data: propertyTypeMappingsResult } = api.usePropertyTypeMappings();
   const propertyTypeMappings = useMemo(() => {
