@@ -157,7 +157,7 @@ export const Tags = React.memo(
             <div className="ms-2 fs-8 text-slate-400">
               {values.length || 'None'} selected
             </div>
-            {values.length > 1 && (
+            {values.length >= 1 && (
               <Button
                 variant="default"
                 size="xs"
