@@ -1036,7 +1036,7 @@ export const buildMetricSeriesQuery = async ({
   // TODO:
   // 1. handle -Inf
   // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
-  //  - Any decrease in the value
+  //  - Any decrease in the value (PARTIALLY IMPLEMENTED)
   //  - Any increase/decrease in bucket resolution, etc (IMPLEMENTED)
   const histogramQuery = SqlString.format(
     `
