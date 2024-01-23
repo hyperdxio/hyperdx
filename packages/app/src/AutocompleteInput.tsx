@@ -16,6 +16,7 @@ export default function AutocompleteInput({
   belowSuggestions,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
+  zIndex = 999,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   value: string;
@@ -28,6 +29,7 @@ export default function AutocompleteInput({
   belowSuggestions?: React.ReactNode;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
+  zIndex?: number;
 }) {
   const suggestionsLimit = 10;
   const inputGroupRef = useRef<HTMLDivElement>(null);
@@ -96,7 +98,7 @@ export default function AutocompleteInput({
             ...style,
             maxWidth: inputGroupRef.current?.clientWidth ?? 720,
             width: '100%',
-            zIndex: 200000,
+            zIndex,
           }}
           {...props}
         >

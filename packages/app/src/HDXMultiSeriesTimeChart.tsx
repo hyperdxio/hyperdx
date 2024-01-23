@@ -58,30 +58,41 @@ const MemoChart = memo(function MemoChart({
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
   const lines = useMemo(() => {
-    return groupKeys
-      .slice(0, HARD_LINES_LIMIT)
-      .map((key, i) =>
-        displayType === 'stacked_bar' ? (
-          <Bar
-            key={key}
-            type="monotone"
-            dataKey={key}
-            name={lineNames[i] ?? key}
-            fill={semanticKeyedColor(lineNames[i] ?? key)}
-            stackId="1"
-          />
-        ) : (
-          <Line
-            key={key}
-            type="monotone"
-            dataKey={key}
-            name={lineNames[i] ?? key}
-            stroke={semanticKeyedColor(lineNames[i] ?? key)}
-            dot={false}
-          />
-        ),
-      );
-  }, [groupKeys, displayType, lineNames]);
+    const limitedGroupKeys = groupKeys.slice(0, HARD_LINES_LIMIT);
+
+    // Check if any group is missing from any row
+    const isContinuousGroup = graphResults.reduce((acc, row) => {
+      limitedGroupKeys.forEach(key => {
+        acc[key] = row[key] != null ? acc[key] : false;
+      });
+      return acc;
+    }, {});
+
+    return limitedGroupKeys.map((key, i) =>
+      displayType === 'stacked_bar' ? (
+        <Bar
+          key={key}
+          type="monotone"
+          dataKey={key}
+          name={lineNames[i] ?? key}
+          fill={semanticKeyedColor(lineNames[i] ?? key)}
+          stackId="1"
+        />
+      ) : (
+        <Line
+          key={key}
+          type="monotone"
+          dataKey={key}
+          name={lineNames[i] ?? key}
+          stroke={semanticKeyedColor(lineNames[i] ?? key)}
+          dot={
+            isContinuousGroup[key] === false ? { strokeWidth: 2, r: 1 } : false
+          }
+          isAnimationActive={false}
+        />
+      ),
+    );
+  }, [groupKeys, displayType, lineNames, graphResults]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const timeFormat: TimeFormat = useUserPreferences().timeFormat;
@@ -226,13 +237,24 @@ const HDXMultiSeriesTimeChart = memo(
     showDisplaySwitcher?: boolean;
     defaultDisplayType?: 'stacked_bar' | 'line';
   }) => {
-    const { data, isError, isLoading } = api.useMultiSeriesChart({
-      series,
-      granularity,
-      endDate: dateRange[1] ?? new Date(),
-      startDate: dateRange[0] ?? new Date(),
-      seriesReturnType,
-    });
+    const { data, isError, isLoading } = api.useMultiSeriesChart(
+      {
+        series,
+        granularity,
+        endDate: dateRange[1] ?? new Date(),
+        startDate: dateRange[0] ?? new Date(),
+        seriesReturnType,
+      },
+      {
+        enabled:
+          series.length > 0 &&
+          series[0].type === 'time' &&
+          series[0].table === 'metrics' &&
+          series[0].field == null
+            ? false
+            : true,
+      },
+    );
 
     const tsBucketMap = new Map();
     let graphResults: {
