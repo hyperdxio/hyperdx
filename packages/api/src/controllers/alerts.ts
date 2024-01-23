@@ -182,6 +182,26 @@ export const getAlerts = async (teamId: ObjectId) => {
   });
 };
 
+export const getAlertById = async (alertId: string, teamId: ObjectId) => {
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.findOne({
+    _id: alertId,
+    $or: [
+      {
+        logView: {
+          $in: logViewIds,
+        },
+      },
+      {
+        dashboardId: {
+          $in: dashboardIds,
+        },
+      },
+    ],
+  });
+};
+
 export const getAlertsWithLogViewAndDashboard = async (teamId: ObjectId) => {
   const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
 
