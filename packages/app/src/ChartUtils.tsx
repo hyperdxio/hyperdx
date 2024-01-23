@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
-import { Divider, Group, Paper } from '@mantine/core';
+import { Divider, Group, Paper, SegmentedControl } from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
@@ -793,6 +793,34 @@ export function TableSelect({
   );
 }
 
+export function TableToggle({
+  table,
+  setTableAndAggFn,
+}: {
+  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
+  table: string;
+}) {
+  return (
+    <SegmentedControl
+      value={table}
+      onChange={(value: string) => {
+        const val = value ?? 'logs';
+        if (val === 'logs') {
+          setTableAndAggFn('logs', 'count');
+        } else if (val === 'metrics') {
+          // TODO: This should set rate if metric field is a sum
+          // or we should just reset the field if changing tables
+          setTableAndAggFn('metrics', 'max');
+        }
+      }}
+      data={[
+        { label: 'Logs/Spans', value: 'logs' },
+        { label: 'Metrics', value: 'metrics' },
+      ]}
+    />
+  );
+}
+
 export function GroupBySelect(
   props:
     | {
@@ -891,7 +919,7 @@ export function ChartSeriesFormCompact({
         style={{ rowGap: '1rem', columnGap: '1rem' }}
       >
         {setTableAndAggFn && (
-          <TableSelect
+          <TableToggle
             table={table ?? 'logs'}
             setTableAndAggFn={setTableAndAggFn}
           />
@@ -953,6 +981,7 @@ export function ChartSeriesFormCompact({
                 onChange={v => setWhere(v)}
                 onSearch={() => {}}
                 showHotkey={false}
+                zIndex={99999}
               />
             </div>
           </div>
