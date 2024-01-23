@@ -8,6 +8,7 @@ import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import stripAnsi from 'strip-ansi';
 import {
+  CellContext,
   ColumnDef,
   ColumnResizeMode,
   flexRender,
@@ -235,6 +236,8 @@ export const RawLogTable = memo(
     onSettingsClick,
     onShowPatternsClick,
     wrapLines,
+    columnNameMap,
+    showServiceColumn = true,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -262,6 +265,8 @@ export const RawLogTable = memo(
     isLive: boolean;
     onShowPatternsClick?: () => void;
     tableId?: string;
+    columnNameMap?: Record<string, string>;
+    showServiceColumn?: boolean;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -366,24 +371,28 @@ export const RawLogTable = memo(
           ),
           size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
         },
-        {
-          accessorKey: '_service',
-          header: 'Service',
-          cell: info => (
-            <span
-            // role="button"
-            // onClick={() =>
-            //   onPropertySearchClick('service', info.getValue<string>())
-            // }
-            >
-              {info.getValue<string>()}
-            </span>
-          ),
-          size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
-        },
+        ...(showServiceColumn
+          ? [
+              {
+                accessorKey: '_service',
+                header: 'Service',
+                cell: (info: CellContext<any, unknown>) => (
+                  <span
+                  // role="button"
+                  // onClick={() =>
+                  //   onPropertySearchClick('service', info.getValue<string>())
+                  // }
+                  >
+                    {info.getValue<string>()}
+                  </span>
+                ),
+                size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
+              },
+            ]
+          : []),
         ...(displayedColumns.map(column => ({
           accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
-          header: column,
+          header: columnNameMap?.[column] ?? column,
           cell: info => {
             const value = info.getValue<string>();
             return (
@@ -430,6 +439,9 @@ export const RawLogTable = memo(
         onShowPatternsClick,
         isSmallScreen,
         columnSizeStorage,
+        showServiceColumn,
+        columnNameMap,
+        tsFormat,
       ],
     );
 
@@ -786,6 +798,8 @@ export default function LogTable({
   tableId,
   displayedColumns,
   setDisplayedColumns,
+  columnNameMap,
+  showServiceColumn,
 }: {
   config: {
     where: string;
@@ -806,6 +820,8 @@ export default function LogTable({
   tableId?: string;
   displayedColumns: string[];
   setDisplayedColumns: (columns: string[]) => void;
+  columnNameMap?: Record<string, string>;
+  showServiceColumn?: boolean;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -916,6 +932,8 @@ export default function LogTable({
         onRowExpandClick={onRowExpandClick}
         onScroll={onScroll}
         onShowPatternsClick={onShowPatternsClick}
+        columnNameMap={columnNameMap}
+        showServiceColumn={showServiceColumn}
       />
     </>
   );

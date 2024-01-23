@@ -5,45 +5,16 @@ import { validateRequest } from 'zod-express-middleware';
 
 import {
   createAlert,
+  deleteAlert,
+  getAlertsWithLogViewAndDashboard,
   updateAlert,
   validateGroupByProperty,
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
-import Alert from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
-import Dashboard, { IDashboard } from '@/models/dashboard';
-import LogView, { ILogView } from '@/models/logView';
+import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
-
-// Input validation
-const zChannel = z.object({
-  type: z.literal('webhook'),
-  webhookId: z.string().min(1),
-});
-
-const zLogAlert = z.object({
-  source: z.literal('LOG'),
-  groupBy: z.string().optional(),
-  logViewId: z.string().min(1),
-  message: z.string().optional(),
-});
-
-const zChartAlert = z.object({
-  source: z.literal('CHART'),
-  chartId: z.string().min(1),
-  dashboardId: z.string().min(1),
-});
-
-const zAlert = z
-  .object({
-    channel: zChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    threshold: z.number().min(0),
-    type: z.enum(['presence', 'absence']),
-    source: z.enum(['LOG', 'CHART']).default('LOG'),
-  })
-  .and(zLogAlert.or(zChartAlert));
 
 // Validate groupBy property
 const validateGroupBy = async (
@@ -83,29 +54,7 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    // TODO: to use team field in the alert model
-    const [dashboards, logViews] = await Promise.all([
-      Dashboard.find({ team: teamId }, { _id: 1 }),
-      LogView.find({ team: teamId }, { _id: 1 }),
-    ]);
-
-    const alerts = await Alert.find({
-      $or: [
-        {
-          logView: {
-            $in: logViews.map(logView => logView._id),
-          },
-        },
-        {
-          dashboardId: {
-            $in: dashboards.map(dashboard => dashboard._id),
-          },
-        },
-      ],
-    }).populate<{
-      logView: ILogView;
-      dashboardId: IDashboard;
-    }>(['logView', 'dashboardId']);
+    const alerts = await getAlertsWithLogViewAndDashboard(teamId);
 
     const data = await Promise.all(
       alerts.map(async alert => {
@@ -130,7 +79,12 @@ router.get('/', async (req, res, next) => {
               charts: alert.dashboardId.charts
                 .filter(chart => chart.id === alert.chartId)
                 .map(chart => _.pick(chart, ['id', 'name'])),
-              ..._.pick(alert.dashboardId, ['_id', 'name', 'updatedAt']),
+              ..._.pick(alert.dashboardId, [
+                '_id',
+                'name',
+                'updatedAt',
+                'tags',
+              ]),
             },
           }),
           ...(alert.logView && {
@@ -139,6 +93,7 @@ router.get('/', async (req, res, next) => {
               'createdAt',
               'name',
               'updatedAt',
+              'tags',
             ]),
           }),
           ..._.pick(alert, [
@@ -165,7 +120,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
-  validateRequest({ body: zAlert }),
+  validateRequest({ body: alertSchema }),
   validateGroupBy,
   async (req, res, next) => {
     const teamId = req.user?.team;
@@ -185,7 +140,12 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({ body: zAlert }),
+  validateRequest({
+    body: alertSchema,
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
   validateGroupBy,
   async (req, res, next) => {
     try {
@@ -204,22 +164,30 @@ router.put(
   },
 );
 
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { id: alertId } = req.params;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.delete(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { id: alertId } = req.params;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+      if (!alertId) {
+        return res.sendStatus(400);
+      }
+
+      await deleteAlert(alertId, teamId);
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
     }
-    if (!alertId) {
-      return res.sendStatus(400);
-    }
-    // FIXME: should add teamId to the find query
-    await Alert.findByIdAndDelete(alertId);
-    res.sendStatus(200);
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 export default router;

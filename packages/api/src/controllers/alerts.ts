@@ -1,5 +1,6 @@
 import { getHours, getMinutes } from 'date-fns';
 import ms from 'ms';
+import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import { SQLSerializer } from '@/clickhouse/searchQueryParser';
@@ -11,6 +12,9 @@ import Alert, {
   AlertType,
   IAlert,
 } from '@/models/alert';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import LogView, { ILogView } from '@/models/logView';
+import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
   source: AlertSource;
@@ -93,11 +97,38 @@ const makeAlert = (alert: AlertInput) => {
   };
 };
 
-export const createAlert = async (teamId: ObjectId, alertInput: AlertInput) => {
+export const createAlert = async (
+  teamId: ObjectId,
+  alertInput: z.infer<typeof alertSchema>,
+) => {
+  if (alertInput.source === 'CHART') {
+    if ((await Dashboard.findById(alertInput.dashboardId)) == null) {
+      throw new Error('Dashboard ID not found');
+    }
+  }
+
+  if (alertInput.source === 'LOG') {
+    if ((await LogView.findById(alertInput.logViewId)) == null) {
+      throw new Error('Saved Search ID not found');
+    }
+  }
+
   return new Alert({
     ...makeAlert(alertInput),
     team: teamId,
   }).save();
+};
+
+const dashboardLogViewIds = async (teamId: ObjectId) => {
+  const [dashboards, logViews] = await Promise.all([
+    Dashboard.find({ team: teamId }, { _id: 1 }),
+    LogView.find({ team: teamId }, { _id: 1 }),
+  ]);
+
+  return [
+    logViews.map(logView => logView._id),
+    dashboards.map(dashboard => dashboard._id),
+  ];
 };
 
 // create an update alert function based off of the above create alert function
@@ -106,9 +137,109 @@ export const updateAlert = async (
   teamId: ObjectId,
   alertInput: AlertInput,
 ) => {
-  // TODO: find by id and teamId
   // should consider clearing AlertHistory when updating an alert?
-  return Alert.findByIdAndUpdate(id, makeAlert(alertInput), {
-    returnDocument: 'after',
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.findOneAndUpdate(
+    {
+      _id: id,
+      $or: [
+        {
+          logView: {
+            $in: logViewIds,
+          },
+        },
+        {
+          dashboardId: {
+            $in: dashboardIds,
+          },
+        },
+      ],
+    },
+    makeAlert(alertInput),
+    {
+      returnDocument: 'after',
+    },
+  );
+};
+
+export const getAlerts = async (teamId: ObjectId) => {
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.find({
+    $or: [
+      {
+        logView: {
+          $in: logViewIds,
+        },
+      },
+      {
+        dashboardId: {
+          $in: dashboardIds,
+        },
+      },
+    ],
+  });
+};
+
+export const getAlertById = async (alertId: string, teamId: ObjectId) => {
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.findOne({
+    _id: alertId,
+    $or: [
+      {
+        logView: {
+          $in: logViewIds,
+        },
+      },
+      {
+        dashboardId: {
+          $in: dashboardIds,
+        },
+      },
+    ],
+  });
+};
+
+export const getAlertsWithLogViewAndDashboard = async (teamId: ObjectId) => {
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.find({
+    $or: [
+      {
+        logView: {
+          $in: logViewIds,
+        },
+      },
+      {
+        dashboardId: {
+          $in: dashboardIds,
+        },
+      },
+    ],
+  }).populate<{
+    logView: ILogView;
+    dashboardId: IDashboard;
+  }>(['logView', 'dashboardId']);
+};
+
+export const deleteAlert = async (id: string, teamId: ObjectId) => {
+  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
+
+  return Alert.deleteOne({
+    _id: id,
+    $or: [
+      {
+        logView: {
+          $in: logViewIds,
+        },
+      },
+      {
+        dashboardId: {
+          $in: dashboardIds,
+        },
+      },
+    ],
   });
 };

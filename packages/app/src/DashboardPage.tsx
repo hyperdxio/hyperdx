@@ -47,6 +47,7 @@ import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { FloppyIcon, Histogram } from './SVGIcons';
 import TabBar from './TabBar';
+import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Alert, Chart, Dashboard } from './types';
 import { useConfirm } from './useConfirm';
@@ -692,6 +693,7 @@ export default function DashboardPage() {
             name: newDashboard.name,
             charts: newDashboard.charts,
             query: newDashboard.query ?? '',
+            tags: newDashboard.tags,
           },
           {
             onSuccess: () => {
@@ -927,6 +929,8 @@ export default function DashboardPage() {
     };
   });
 
+  const tagsCount = dashboard?.tags?.length ?? 0;
+
   return (
     <div>
       <Head>
@@ -958,6 +962,34 @@ export default function DashboardPage() {
                   })
                 }
               />
+              {!isLocalDashboard && (
+                <Tags
+                  allowCreate
+                  values={dashboard.tags || []}
+                  onChange={tags => {
+                    setDashboard({
+                      ...dashboard,
+                      tags,
+                    });
+                  }}
+                >
+                  <Badge
+                    color={tagsCount ? 'blue' : 'gray'}
+                    variant={tagsCount ? 'light' : 'filled'}
+                    mx="sm"
+                    fw="normal"
+                    tt="none"
+                    className="cursor-pointer"
+                  >
+                    <i className="bi bi-tags-fill me-1"></i>
+                    {!tagsCount
+                      ? 'Add Tag'
+                      : tagsCount === 1
+                      ? dashboard.tags[0]
+                      : `${tagsCount} Tags`}
+                  </Badge>
+                </Tags>
+              )}
               <Transition mounted={isSavedNow} transition="skew-down">
                 {style => (
                   <Badge fw="normal" tt="none" ml="xs" style={style}>

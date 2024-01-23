@@ -3,65 +3,16 @@ import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import {
+  deleteDashboardAndAlerts,
+  updateDashboardAndAlerts,
+} from '@/controllers/dashboard';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
 const router = express.Router();
-
-const zChart = z.object({
-  id: z.string(),
-  name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  series: z.array(
-    // We can't do a strict validation here since mongo and the frontend
-    // have a bug where chart types will not delete extraneous properties
-    // when attempting to save.
-    z.object({
-      type: z.enum([
-        'time',
-        'histogram',
-        'search',
-        'number',
-        'table',
-        'markdown',
-      ]),
-      table: z.string().optional(),
-      aggFn: z.string().optional(), // TODO: Replace with the actual AggFn schema
-      field: z.union([z.string(), z.undefined()]).optional(),
-      where: z.string().optional(),
-      groupBy: z.array(z.string()).optional(),
-      sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-      content: z.string().optional(),
-      numberFormat: z
-        .object({
-          output: z
-            .union([
-              z.literal('currency'),
-              z.literal('percent'),
-              z.literal('byte'),
-              z.literal('time'),
-              z.literal('number'),
-            ])
-            .optional(),
-          mantissa: z.number().optional(),
-          thousandSeparated: z.boolean().optional(),
-          average: z.boolean().optional(),
-          decimalBytes: z.boolean().optional(),
-          factor: z.number().optional(),
-          currencySymbol: z.string().optional(),
-          unit: z.string().optional(),
-        })
-        .optional(),
-    }),
-  ),
-});
-
-// TODO: Move common zod schemas to a common file?
-const zTags = z.array(z.string().max(32)).max(50).optional();
 
 router.get('/', async (req, res, next) => {
   try {
@@ -72,7 +23,15 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      { _id: 1, name: 1, createdAt: 1, updatedAt: 1, charts: 1, query: 1 },
+      {
+        _id: 1,
+        name: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        charts: 1,
+        query: 1,
+        tags: 1,
+      },
     ).sort({ name: -1 });
 
     const alertsByDashboard = groupBy(
@@ -97,10 +56,10 @@ router.post(
   '/',
   validateRequest({
     body: z.object({
-      name: z.string(),
-      charts: z.array(zChart),
-      query: z.string(),
-      tags: zTags,
+      name: z.string().max(1024),
+      charts: z.array(chartSchema),
+      query: z.string().max(2048),
+      tags: tagsSchema,
     }),
   }),
   async (req, res, next) => {
@@ -132,11 +91,14 @@ router.post(
 router.put(
   '/:id',
   validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
     body: z.object({
-      name: z.string(),
-      charts: z.array(zChart),
-      query: z.string(),
-      tags: zTags,
+      name: z.string().max(1024),
+      charts: z.array(chartSchema),
+      query: z.string().max(2048),
+      tags: tagsSchema,
     }),
   }),
   async (req, res, next) => {
@@ -146,38 +108,20 @@ router.put(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      if (!dashboardId) {
-        return res.sendStatus(400);
-      }
 
       const { name, charts, query, tags } = req.body ?? {};
 
-      // Update dashboard from name and charts
-      const oldDashboard = await Dashboard.findById(dashboardId);
-      const updatedDashboard = await Dashboard.findByIdAndUpdate(
+      const updatedDashboard = await updateDashboardAndAlerts(
         dashboardId,
+        teamId,
         {
           name,
           charts,
           query,
-          tags: tags && uniq(tags),
+          tags,
         },
-        { new: true },
       );
 
-      // Delete related alerts
-      const deletedChartIds = differenceBy(
-        oldDashboard?.charts || [],
-        updatedDashboard?.charts || [],
-        'id',
-      ).map(c => c.id);
-
-      if (deletedChartIds?.length > 0) {
-        await Alert.deleteMany({
-          dashboardId: dashboardId,
-          chartId: { $in: deletedChartIds },
-        });
-      }
       res.json({
         data: updatedDashboard,
       });
@@ -187,22 +131,28 @@ router.put(
   },
 );
 
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { id: dashboardId } = req.params;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.delete(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { id: dashboardId } = req.params;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      await deleteDashboardAndAlerts(dashboardId, teamId);
+
+      res.json({});
+    } catch (e) {
+      next(e);
     }
-    if (!dashboardId) {
-      return res.sendStatus(400);
-    }
-    await Dashboard.findByIdAndDelete(dashboardId);
-    await Alert.deleteMany({ dashboardId: dashboardId });
-    res.json({});
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 export default router;

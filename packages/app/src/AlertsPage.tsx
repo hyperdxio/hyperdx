@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import { formatRelative } from 'date-fns';
+import { ArrayParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Alert as MAlert,
   Badge,
@@ -16,6 +17,7 @@ import {
 
 import api from './api';
 import { withAppNav } from './layout';
+import { Tags } from './Tags';
 import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
 
@@ -27,6 +29,7 @@ type AlertData = Alert & {
     _id: string;
     name: string;
     charts: { id: string; name: string }[];
+    tags?: string[];
   };
   logView?: LogView;
 };
@@ -168,7 +171,7 @@ function AlertDetails({ alert }: { alert: AlertData }) {
             <span className="fw-bold">{alert.threshold}</span>
             <span className="text-slate-400">&middot;</span>
             {alert.channel.type === 'webhook' && (
-              <span>Notify via Webhook</span>
+              <span>Notify via Slack Webhook</span>
             )}
           </div>
         </Stack>
@@ -203,6 +206,7 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
       alert.state === AlertState.DISABLED ||
       alert.state === AlertState.INSUFFICIENT_DATA,
   );
+
   return (
     <div className="d-flex flex-column gap-4">
       {alarmAlerts.length > 0 && (
@@ -247,9 +251,30 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
 
 export default function AlertsPage() {
   const { data, isError, isLoading } = api.useAlerts();
-  const alerts = data?.data;
+  const alerts = React.useMemo(
+    () => (data?.data || []) as AlertData[],
+    [data?.data],
+  );
 
   // TODO: Error and loading states
+
+  const [_tags, setTags] = useQueryParam(
+    'tags',
+    withDefault(ArrayParam, [] as (string | null)[]),
+    { updateType: 'replaceIn' },
+  );
+  const tags = React.useMemo(() => _tags.filter(Boolean) as string[], [_tags]);
+
+  const filteredAlerts = React.useMemo(() => {
+    if (!tags.length) {
+      return alerts;
+    }
+    return alerts.filter(alert =>
+      [...(alert.dashboard?.tags || []), ...(alert.logView?.tags || [])].some(
+        tag => tags.includes(tag),
+      ),
+    );
+  }, [tags, alerts]);
 
   return (
     <div className="AlertsPage">
@@ -280,7 +305,44 @@ export default function AlertsPage() {
           ) : isError ? (
             <div className="text-center text-slate-400 my-4 fs-8">Error</div>
           ) : alerts?.length ? (
-            <AlertCardList alerts={alerts} />
+            <>
+              <Button.Group mt="xl">
+                <Tags values={tags} onChange={setTags}>
+                  <Button
+                    size="xs"
+                    variant="default"
+                    leftIcon={
+                      <i
+                        className={cx(
+                          'bi bi-funnel-fill',
+                          tags.length ? 'text-success' : 'text-slate-400',
+                        )}
+                      />
+                    }
+                  >
+                    {tags.length ? (
+                      <>
+                        <span className="text-slate-400 me-1">Tags </span>
+                        {tags?.join(', ')}
+                      </>
+                    ) : (
+                      <span className="text-slate-400">Filter by Tags</span>
+                    )}
+                  </Button>
+                </Tags>
+                {tags.length > 0 && (
+                  <Button
+                    size="xs"
+                    variant="default"
+                    onClick={() => setTags([])}
+                    px="xs"
+                  >
+                    <i className="bi bi-x-lg" />
+                  </Button>
+                )}
+              </Button.Group>
+              <AlertCardList alerts={filteredAlerts} />
+            </>
           ) : (
             <div className="text-center text-slate-400 my-4 fs-8">
               No alerts created yet

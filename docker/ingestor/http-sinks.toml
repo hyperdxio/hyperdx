@@ -1,3 +1,18 @@
+# --------------------------------------------------------------------------------
+# ------------------------------ Transforms --------------------------------------
+# --------------------------------------------------------------------------------
+[transforms.internal_logs]
+type = "remap"
+inputs = ["vector_logs"]
+source = '''
+  . = merge(.,
+    {
+      "hdx_token": "${HYPERDX_API_KEY}",
+      "hdx_platform": "vector-internal"
+    }
+  )
+'''
+
 [sinks.go_parser]
 type = "http"
 uri = "${GO_PARSER_API_URL}"

@@ -166,7 +166,7 @@ export default function InstallInstructionModal({
           >
             Kubernetes
           </a>
-          <span className="ms-2 text-muted">(Logs)</span>
+          <span className="ms-2 text-muted">(Logs + Metrics)</span>
         </div>
         <div className="fs-5 mb-2 mt-4">Browser</div>
         <div className="fs-6 mb-2">

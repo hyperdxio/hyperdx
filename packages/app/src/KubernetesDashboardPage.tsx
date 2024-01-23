@@ -15,6 +15,7 @@ import {
   Skeleton,
   Table,
   Tabs,
+  Text,
   Tooltip,
 } from '@mantine/core';
 
@@ -28,47 +29,17 @@ import {
 import HDXLineChart from './HDXLineChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import MetricTagValueSelect from './MetricTagValueSelect';
+import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
+import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
-import { formatUptime } from './utils';
-import { formatNumber } from './utils';
+import { formatNumber, formatUptime } from './utils';
 
-const SearchInput = React.memo(
-  ({
-    searchQuery,
-    setSearchQuery,
-  }: {
-    searchQuery: string;
-    setSearchQuery: (q: string | null) => void;
-  }) => {
-    const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
-    const searchInputRef = React.useRef<HTMLInputElement>(null);
-
-    const onSearchSubmit = React.useCallback(
-      (e: React.FormEvent) => {
-        e.preventDefault();
-        setSearchQuery(_searchQuery || null);
-      },
-      [_searchQuery, setSearchQuery],
-    );
-
-    return (
-      <form onSubmit={onSearchSubmit}>
-        <HdxSearchInput
-          inputRef={searchInputRef}
-          placeholder="Scope dashboard to..."
-          value={_searchQuery ?? searchQuery}
-          onChange={v => _setSearchQuery(v)}
-          onSearch={() => {}}
-          showHotkey={false}
-        />
-      </form>
-    );
-  },
-);
+const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
@@ -116,7 +87,36 @@ type InfraPodsStatusTableColumn =
   | 'memLimit'
   | 'phase';
 
-const InfraPodsStatusTable = ({
+const TableLoading = () => {
+  return (
+    <Table horizontalSpacing="md" highlightOnHover>
+      <tbody key="table-loader">
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <Skeleton height={8} my={6} />
+          </td>
+        </tr>
+      </tbody>
+    </Table>
+  );
+};
+
+export const InfraPodsStatusTable = ({
   dateRange,
   where,
 }: {
@@ -128,8 +128,8 @@ const InfraPodsStatusTable = ({
     column: InfraPodsStatusTableColumn;
     order: 'asc' | 'desc';
   }>({
-    column: 'phase',
-    order: 'asc',
+    column: 'restarts',
+    order: 'desc',
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
@@ -223,6 +223,7 @@ const InfraPodsStatusTable = ({
 
     return data.data.map((row: any) => {
       return {
+        id: makeId(),
         name: row.group[0],
         namespace: row.group[1],
         node: row.group[2],
@@ -237,11 +238,11 @@ const InfraPodsStatusTable = ({
     });
   }, [data]);
 
-  const getLink = (podName: string) => {
+  const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('podName', `${podName}`);
     return window.location.pathname + '?' + searchParams.toString();
-  };
+  }, []);
 
   const getThSortProps = (column: InfraPodsStatusTableColumn) => ({
     onSort: (order: 'asc' | 'desc') => {
@@ -278,11 +279,13 @@ const InfraPodsStatusTable = ({
             style: { maxHeight: 300 },
           }}
         >
-          {isError ? (
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               Unable to load pod metrics
             </div>
-          ) : !isLoading && podsList.length === 0 ? (
+          ) : podsList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               No pods found
             </div>
@@ -310,70 +313,68 @@ const InfraPodsStatusTable = ({
                   </Th>
                 </tr>
               </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 8 }).map((_, index) => (
-                        <td key={index}>
-                          <Skeleton height={8} my={6} />
-                        </td>
-                      ))}
+              <tbody>
+                {podsList.map(pod => (
+                  <Link key={pod.id} href={getLink(pod.name)}>
+                    <tr className="cursor-pointer">
+                      <td>{pod.name}</td>
+                      <td>{pod.namespace}</td>
+                      <td>{pod.node}</td>
+                      <td>
+                        <FormatPodStatus status={pod.phase} />
+                      </td>
+                      <td>
+                        <Tooltip
+                          color="gray"
+                          label={
+                            formatNumber(
+                              pod.cpuAvg,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            ) + ' avg'
+                          }
+                        >
+                          <span>
+                            {formatNumber(
+                              pod.cpuLimit,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            )}
+                          </span>
+                        </Tooltip>
+                      </td>
+                      <td>
+                        <Tooltip
+                          color="gray"
+                          label={
+                            formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
+                            ' avg'
+                          }
+                        >
+                          <span>
+                            {formatNumber(
+                              pod.memLimit,
+                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            )}
+                          </span>
+                        </Tooltip>
+                      </td>
+                      <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
+                      <td>
+                        <Text
+                          color={
+                            pod.restarts >= 10
+                              ? 'red.6'
+                              : pod.restarts >= 5
+                              ? 'yellow.3'
+                              : 'grey.7'
+                          }
+                        >
+                          {pod.restarts}
+                        </Text>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {podsList.map(pod => (
-                    <Link key={pod.name} href={getLink(pod.name)}>
-                      <tr className="cursor-pointer">
-                        <td>{pod.name}</td>
-                        <td>{pod.namespace}</td>
-                        <td>{pod.node}</td>
-                        <td>
-                          <FormatPodStatus status={pod.phase} />
-                        </td>
-                        <td>
-                          <Tooltip
-                            color="gray"
-                            label={
-                              formatNumber(
-                                pod.cpuAvg,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              ) + ' avg'
-                            }
-                          >
-                            <span>
-                              {formatNumber(
-                                pod.cpuLimit,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              )}
-                            </span>
-                          </Tooltip>
-                        </td>
-                        <td>
-                          <Tooltip
-                            color="gray"
-                            label={
-                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
-                              ' avg'
-                            }
-                          >
-                            <span>
-                              {formatNumber(
-                                pod.memLimit,
-                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                              )}
-                            </span>
-                          </Tooltip>
-                        </td>
-                        <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
-                        <td>{pod.restarts}</td>
-                      </tr>
-                    </Link>
-                  ))}
-                </tbody>
-              )}
+                  </Link>
+                ))}
+              </tbody>
             </Table>
           )}
         </ScrollArea>
@@ -431,6 +432,12 @@ const NodesTable = ({
     seriesReturnType: 'column',
   });
 
+  const getLink = React.useCallback((nodeName: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('nodeName', `${nodeName}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  }, []);
+
   const nodesList = React.useMemo(() => {
     if (!data) {
       return [];
@@ -459,11 +466,13 @@ const NodesTable = ({
             style: { maxHeight: 300 },
           }}
         >
-          {isError ? (
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
             <div className="p-4 text-center text-slate-500 fs-8">
-              Unable to load pod metrics
+              Unable to load nodes
             </div>
-          ) : !isLoading && nodesList.length === 0 ? (
+          ) : nodesList.length === 0 ? (
             <div className="p-4 text-center text-slate-500 fs-8">
               No nodes found
             </div>
@@ -478,22 +487,11 @@ const NodesTable = ({
                   <th style={{ width: 130 }}>Uptime</th>
                 </tr>
               </thead>
-              {isLoading ? (
-                <tbody>
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index}>
-                      {Array.from({ length: 5 }).map((_, index) => (
-                        <td key={index}>
-                          <Skeleton height={8} my={6} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {nodesList.map(node => (
-                    <tr key={node.name}>
+
+              <tbody>
+                {nodesList.map(node => (
+                  <Link key={node.name} href={getLink(node.name)}>
+                    <tr className="cursor-pointer">
                       <td>{node.name || 'N/A'}</td>
                       <td>
                         {node.ready === 1 ? (
@@ -517,14 +515,181 @@ const NodesTable = ({
                       </td>
                       <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
                     </tr>
-                  ))}
-                </tbody>
-              )}
+                  </Link>
+                ))}
+              </tbody>
             </Table>
           )}
         </ScrollArea>
       </Card.Section>
     </Card>
+  );
+};
+
+const NamespacesTable = ({
+  where,
+  dateRange,
+}: {
+  where: string;
+  dateRange: [Date, Date];
+}) => {
+  const groupBy = ['k8s.namespace.name'];
+
+  const { data, isError, isLoading } = api.useMultiSeriesChart({
+    series: [
+      {
+        table: 'metrics',
+        field: 'k8s.pod.cpu.utilization - Gauge',
+        type: 'table',
+        aggFn: 'sum',
+        where,
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.pod.memory.usage - Gauge',
+        type: 'table',
+        aggFn: 'sum',
+        where,
+        groupBy,
+      },
+      {
+        table: 'metrics',
+        field: 'k8s.namespace.phase - Gauge',
+        type: 'table',
+        aggFn: 'last_value',
+        where,
+        groupBy,
+      },
+    ],
+    endDate: dateRange[1] ?? new Date(),
+    startDate: dateRange[0] ?? new Date(),
+    seriesReturnType: 'column',
+  });
+
+  const namespacesList = React.useMemo(() => {
+    if (!data) {
+      return [];
+    }
+
+    return data.data.map((row: any) => {
+      return {
+        name: row.group[0],
+        cpuAvg: row['series_0.data'],
+        memAvg: row['series_1.data'],
+        phase: row['series_2.data'],
+      };
+    });
+  }, [data]);
+
+  const getLink = React.useCallback((namespaceName: string) => {
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('namespaceName', `${namespaceName}`);
+    return window.location.pathname + '?' + searchParams.toString();
+  }, []);
+
+  return (
+    <Card p="md">
+      <Card.Section p="md" py="xs" withBorder>
+        Namespaces
+      </Card.Section>
+      <Card.Section>
+        <ScrollArea
+          viewportProps={{
+            style: { maxHeight: 300 },
+          }}
+        >
+          {isLoading ? (
+            <TableLoading />
+          ) : isError ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              Unable to load namespaces
+            </div>
+          ) : namespacesList.length === 0 ? (
+            <div className="p-4 text-center text-slate-500 fs-8">
+              No namespaces found
+            </div>
+          ) : (
+            <Table horizontalSpacing="md" highlightOnHover>
+              <thead className="muted-thead">
+                <tr>
+                  <th>Namespace</th>
+                  <th style={{ width: 130 }}>Phase</th>
+                  <th style={{ width: 130 }}>CPU</th>
+                  <th style={{ width: 130 }}>Memory</th>
+                </tr>
+              </thead>
+              <tbody>
+                {namespacesList.map(namespace => (
+                  <Link key={namespace.name} href={getLink(namespace.name)}>
+                    <tr className="cursor-pointer">
+                      <td>{namespace.name || 'N/A'}</td>
+                      <td>
+                        {namespace.phase === 1 ? (
+                          <Badge color="green" fw="normal" tt="none" size="md">
+                            Ready
+                          </Badge>
+                        ) : (
+                          <Badge color="red" fw="normal" tt="none" size="md">
+                            Terminating
+                          </Badge>
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(
+                          namespace.cpuAvg,
+                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        )}
+                      </td>
+                      <td>
+                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                      </td>
+                    </tr>
+                  </Link>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </ScrollArea>
+      </Card.Section>
+    </Card>
+  );
+};
+
+const K8sMetricTagValueSelect = ({
+  metricAttribute,
+  searchQuery,
+  setSearchQuery,
+  placeholder,
+  dropdownClosedWidth,
+  icon,
+}: {
+  metricAttribute: string;
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  placeholder: string;
+  dropdownClosedWidth: number;
+  icon: React.ReactNode;
+}) => {
+  return (
+    <MetricTagValueSelect
+      metricName="k8s.pod.cpu.utilization - Gauge"
+      metricAttribute={metricAttribute}
+      value={''}
+      onChange={v => {
+        if (v) {
+          const newQuery = `${metricAttribute}:"${v}"${
+            searchQuery.includes(metricAttribute) ? ' OR' : ''
+          } ${searchQuery}`.trim();
+          setSearchQuery(newQuery);
+        }
+      }}
+      placeholder={placeholder}
+      size="sm"
+      dropdownClosedWidth={dropdownClosedWidth}
+      dropdownOpenWidth={350}
+      icon={icon}
+    />
   );
 };
 
@@ -561,12 +726,24 @@ export default function KubernetesDashboardPage() {
 
   const whereClause = searchQuery;
 
+  const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const onSearchSubmit = React.useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      setSearchQuery(_searchQuery || null);
+    },
+    [_searchQuery, setSearchQuery],
+  );
   return (
     <div>
       <Head>
         <title>Kubernetes Dashboard</title>
       </Head>
       <PodDetailsSidePanel />
+      <NodeDetailsSidePanel />
+      <NamespaceDetailsSidePanel />
       <div className="d-flex flex-column">
         <Group
           px="md"
@@ -575,11 +752,61 @@ export default function KubernetesDashboardPage() {
           spacing="xs"
           align="center"
         >
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.pod.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Pod"
+            dropdownClosedWidth={100}
+            icon={<i className="bi bi-box"></i>}
+          />
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.deployment.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Deployment"
+            dropdownClosedWidth={155}
+            icon={<i className="bi bi-arrow-clockwise"></i>}
+          />
+          <K8sMetricTagValueSelect
+            metricAttribute="k8s.node.name"
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            placeholder="Node"
+            dropdownClosedWidth={110}
+            icon={<i className="bi bi-hdd-rack"></i>}
+          />
+          <K8sMetricTagValueSelect
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            metricAttribute="k8s.namespace.name"
+            placeholder="Namespace"
+            dropdownClosedWidth={150}
+            icon={<i className="bi bi-braces"></i>}
+          />
           <div style={{ flex: 1 }}>
-            <SearchInput
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
+            <form onSubmit={onSearchSubmit}>
+              <HdxSearchInput
+                inputRef={searchInputRef}
+                placeholder="Scope dashboard to..."
+                value={_searchQuery ?? searchQuery}
+                onChange={v => _setSearchQuery(v)}
+                onSearch={() => {}}
+                showHotkey={false}
+              />
+            </form>
           </div>
           <div className="d-flex" style={{ width: 350, height: 36 }}>
             <SearchTimeRangePicker
@@ -606,7 +833,7 @@ export default function KubernetesDashboardPage() {
             <Tabs.Tab value="pods">Pods</Tabs.Tab>
             <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
             <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
-            <Tabs.Tab value="clusters">Clusters</Tabs.Tab>
+            {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
           </Tabs.List>
         </div>
 
@@ -674,9 +901,12 @@ export default function KubernetesDashboardPage() {
                       Latest Kubernetes Warning Events
                       <Link
                         href={`/search?q=${encodeURIComponent(
-                          whereClause +
-                            ' k8s.resource.name:"events" -level:"normal"',
-                        )}`}
+                          `${
+                            whereClause.trim().length > 0
+                              ? `(${whereClause.trim()}) `
+                              : ''
+                          }(k8s.resource.name:"events" -level:"normal")`,
+                        )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
                       >
                         <Anchor size="xs" color="dimmed">
@@ -689,15 +919,25 @@ export default function KubernetesDashboardPage() {
                     <LogTableWithSidePanel
                       config={{
                         dateRange,
-                        where:
-                          whereClause +
-                          ' k8s.resource.name:"events" -level:"normal"',
-                        columns: ['k8s.pod.name'],
+                        where: `${
+                          whereClause.trim().length > 0
+                            ? `(${whereClause.trim()}) `
+                            : ''
+                        }(k8s.resource.name:"events" -level:"normal")`,
+                        columns: [
+                          'object.regarding.kind',
+                          'object.regarding.name',
+                        ],
+                      }}
+                      columnNameMap={{
+                        'object.regarding.kind': 'Kind',
+                        'object.regarding.name': 'Name',
                       }}
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
+                      showServiceColumn={false}
                     />
                   </Card.Section>
                 </Card>
@@ -759,7 +999,61 @@ export default function KubernetesDashboardPage() {
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
-          <Tabs.Panel value="namespaces">Namespaces</Tabs.Panel>
+          <Tabs.Panel value="namespaces">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    CPU Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.namespace.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'sum',
+                        field: 'k8s.pod.cpu.utilization - Gauge',
+                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Memory Usage
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXLineChart
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        groupBy: 'k8s.namespace.name',
+                        where: whereClause,
+                        table: 'metrics',
+                        aggFn: 'sum',
+                        field: 'k8s.pod.memory.usage - Gauge',
+                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <NamespacesTable dateRange={dateRange} where={whereClause} />
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
           <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
         </div>
       </Tabs>
