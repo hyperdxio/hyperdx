@@ -961,7 +961,6 @@ export const buildMetricSeriesQuery = async ({
     if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
       throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
-    selectClause.push(`max(value) as data`);
   } else {
     throw new Error(`Unsupported data type: ${dataType}`);
   }
@@ -1036,88 +1035,126 @@ export const buildMetricSeriesQuery = async ({
 
   // TODO:
   // 1. handle -Inf
-  const histogramMetricSource = SqlString.format(
+  // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
+  const histogramQuery = SqlString.format(
     `
-      WITH points AS (
+      WITH source AS (
+        SELECT
+          ?,
+          timestamp,
+          name,
+          toFloat64(SUM(value)) AS value,
+          toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
+        FROM (?)
+        WHERE mapContains(_string_attributes, 'le')
+        GROUP BY name, group, bucket, timestamp
+      ), points AS (
         SELECT
           timestamp,
           name,
+          group,
           arraySort((x) -> x[2],
             groupArray([
-              toFloat64(value),
-              toFloat64OrDefault(_string_attributes['le'], inf)
+              value,
+              bucket
             ])
           ) AS _point,
-          length(_point) AS n,
-          mapFilter((k, v) -> (k != 'le'), _string_attributes) AS filtered_string_attributes
-        FROM (?)
-        WHERE mapContains(_string_attributes, 'le')
-        GROUP BY timestamp, name, filtered_string_attributes
-        ORDER BY name, filtered_string_attributes, timestamp ASC
+          length(_point) AS n
+        FROM source
+        GROUP BY timestamp, name, group
+        ORDER BY name, group, timestamp ASC
+      ), metrics AS (
+        SELECT
+          timestamp,
+          name,
+          group,
+          neighbor(_point, -1, []) AS _prev_point,
+          equals(length(_prev_point), n) AS is_prev_point_valid,
+          if (
+            is_prev_point_valid = 0,
+            _point,
+            arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
+          ) AS point,
+          point[n][1] AS total,
+          arraySort((x) -> x[1], point)[1][1] AS min_value,
+          toFloat64(?) * total AS rank,
+          arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+          point[upper_idx][1] AS upper_count,
+          point[upper_idx][2] AS upper_bound,
+          if (
+            upper_idx = 1,
+            if (
+              point[upper_idx][2] > 0,
+              0,
+              inf
+            ),
+            point[upper_idx - 1][2]
+          ) AS lower_bound,
+          if (
+            lower_bound = 0,
+            0,
+            point[upper_idx - 1][1]
+          ) AS lower_count,
+          if (
+            upper_bound = inf,
+            point[upper_idx - 1][2],
+            if (
+              lower_bound = inf,
+              point[1][2],
+              lower_bound + (upper_bound - lower_bound) * (
+                (rank - lower_count) / (upper_count - lower_count)
+              )
+            )
+          ) AS value
+        FROM points
+        WHERE is_prev_point_valid = 1
+        AND length(point) > 1
+        AND total > 0
+        AND min_value >= 0
+        ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
       )
       SELECT
-        timestamp,
-        name,
-        filtered_string_attributes AS _string_attributes,
-        neighbor(_point, -1, []) AS _prev_point,
-        empty(_prev_point) AS is_prev_point_empty,
-        if (
-          is_prev_point_empty = 1,
-          _point,
-          arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
-        ) AS point,
-        point[n][1] AS total,
-        toFloat64(?) * total AS rank,
-        arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
-        point[upper_idx][1] AS upper_count,
-        point[upper_idx][2] AS upper_bound,
-        if (
-          upper_idx = 1,
-          if (
-            point[upper_idx][2] > 0,
-            0,
-            inf
-          ),
-          point[upper_idx - 1][2]
-        ) AS lower_bound,
-        if (
-          lower_bound = 0,
-          0,
-          point[upper_idx - 1][1]
-        ) AS lower_count,
-        if (
-          upper_bound = inf,
-          point[upper_idx - 1][2],
-          if (
-            lower_bound = inf,
-            point[1][2],
-            lower_bound + (upper_bound - lower_bound) * (
-              (rank - lower_count) / (upper_count - lower_count)
-            )
-          )
-        ) AS value
-      FROM points
-      WHERE is_prev_point_empty = 0
-      AND total > 0
-      AND length(point) > 1
-      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
-      ORDER BY timestamp ASC`.trim(),
+        toUnixTimestamp(timestamp) AS ts_bucket,
+        group,
+        value AS data
+      FROM metrics
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }`.trim(),
     [
+      SqlString.raw(
+        hasGroupBy
+          ? `[${groupByColumnNames.join(',')}] as group`
+          : `[] as group`,
+      ),
       SqlString.raw(gaugeMetricSource),
       quantile,
       ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
     ],
   );
 
-  const source =
+  // TODO: merge this with the histogram query
+  const source = isRate ? rateMetricSource : gaugeMetricSource;
+  const query =
     dataType === MetricsDataType.Histogram
-      ? histogramMetricSource
-      : isRate
-      ? rateMetricSource
-      : gaugeMetricSource;
-
-  const query = SqlString.format(
-    `
+      ? histogramQuery
+      : SqlString.format(
+          `
       WITH metrics AS (?)
       SELECT ?
       FROM metrics
@@ -1132,20 +1169,20 @@ export const buildMetricSeriesQuery = async ({
           : ''
       }
     `,
-    [
-      SqlString.raw(source),
-      SqlString.raw(selectClause.join(',')),
-      ...(granularity != null
-        ? [
-            startTime / 1000,
-            granularity,
-            endTime / 1000,
-            granularity,
-            ms(granularity) / 1000,
-          ]
-        : []),
-    ],
-  );
+          [
+            SqlString.raw(source),
+            SqlString.raw(selectClause.join(',')),
+            ...(granularity != null
+              ? [
+                  startTime / 1000,
+                  granularity,
+                  endTime / 1000,
+                  granularity,
+                  ms(granularity) / 1000,
+                ]
+              : []),
+          ],
+        );
 
   return {
     query,

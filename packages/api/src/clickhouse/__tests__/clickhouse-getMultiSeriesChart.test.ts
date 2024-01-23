@@ -252,6 +252,78 @@ describe('clickhouse - getMultiSeriesChart', () => {
           ],
         }),
       ),
+      clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'test.three_timestamps_group_by',
+          tags: { host: 'host-a', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 1, timestamp: now, le: '10' },
+            { value: 1, timestamp: now, le: '30' },
+            { value: 1, timestamp: now, le: '50' },
+
+            { value: 1, timestamp: now + ms('1m'), le: '10' },
+            { value: 3, timestamp: now + ms('1m'), le: '30' },
+            { value: 5, timestamp: now + ms('1m'), le: '50' },
+
+            { value: 20, timestamp: now + ms('2m'), le: '10' },
+            { value: 40, timestamp: now + ms('2m'), le: '30' },
+            { value: 80, timestamp: now + ms('2m'), le: '50' },
+          ],
+        }),
+      ),
+      clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'test.three_timestamps_group_by',
+          tags: { host: 'host-b', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 0, timestamp: now, le: '10' },
+            { value: 0, timestamp: now, le: '30' },
+            { value: 0, timestamp: now, le: '50' },
+
+            { value: 2, timestamp: now + ms('1m'), le: '10' },
+            { value: 4, timestamp: now + ms('1m'), le: '30' },
+            { value: 8, timestamp: now + ms('1m'), le: '50' },
+
+            { value: 10, timestamp: now + ms('2m'), le: '10' },
+            { value: 20, timestamp: now + ms('2m'), le: '30' },
+            { value: 50, timestamp: now + ms('2m'), le: '50' },
+          ],
+        }),
+      ),
+      clickhouse.bulkInsertTeamMetricStream(
+        buildMetricSeries({
+          name: 'test.four_timestamps',
+          tags: { host: 'test2', runId },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 0, timestamp: now, le: '10' },
+            { value: 0, timestamp: now, le: '30' },
+            { value: 0, timestamp: now, le: '50' },
+
+            { value: 1, timestamp: now + ms('1m'), le: '10' },
+            { value: 3, timestamp: now + ms('1m'), le: '30' },
+            { value: 5, timestamp: now + ms('1m'), le: '50' },
+            { value: 2, timestamp: now + ms('1m') + ms('1s'), le: '10' },
+            { value: 4, timestamp: now + ms('1m') + ms('1s'), le: '30' },
+            { value: 8, timestamp: now + ms('1m') + ms('1s'), le: '50' },
+
+            { value: 10, timestamp: now + ms('2m'), le: '10' },
+            { value: 20, timestamp: now + ms('2m'), le: '30' },
+            { value: 50, timestamp: now + ms('2m'), le: '50' },
+          ],
+        }),
+      ),
     ]);
   });
 
@@ -653,7 +725,7 @@ Array [
 `);
   });
 
-  it('three_timestamps histogram (p50)', async () => {
+  it('three_timestamps histogram (shouldModifyStartTime + p50)', async () => {
     const p50Data = (
       await clickhouse.getMultiSeriesChart({
         series: [
@@ -681,6 +753,167 @@ Array [
 
     expect(p50Data).toMatchInlineSnapshot(`
 Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 30,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 33.84615384615385,
+    "ts_bucket": 1641340920,
+  },
+]
+`);
+  });
+
+  it('three_timestamps_group_by histogram (p50)', async () => {
+    const p50DataGroupByHost = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.P50,
+            field: 'test.three_timestamps_group_by',
+            where: '',
+            groupBy: ['host'],
+            metricDataType: clickhouse.MetricsDataType.Histogram,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('3m'),
+        granularity: '1 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+    });
+
+    expect(p50DataGroupByHost).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "host-b",
+    ],
+    "series_0.data": 30,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 30,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [
+      "host-b",
+    ],
+    "series_0.data": 33.84615384615385,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 30.263157894736842,
+    "ts_bucket": 1641340920,
+  },
+]
+`);
+
+    const p50DataGroupByRegion = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.P50,
+            field: 'test.three_timestamps_group_by',
+            where: '',
+            groupBy: ['region'],
+            metricDataType: clickhouse.MetricsDataType.Histogram,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('3m'),
+        granularity: '1 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+    });
+
+    expect(p50DataGroupByRegion).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 30,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 31.71875,
+    "ts_bucket": 1641340920,
+  },
+]
+`);
+  });
+
+  it('four_timestamps histogram -> should handle granularity (p50)', async () => {
+    const p50Data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.P50,
+            field: 'test.four_timestamps',
+            where: `runId:${runId}`,
+            groupBy: [],
+            metricDataType: clickhouse.MetricsDataType.Histogram,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('3m'),
+        granularity: '1 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+    });
+
+    expect(p50Data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340800,
+  },
   Object {
     "group": Array [],
     "series_0.data": 30,
