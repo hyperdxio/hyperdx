@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Button, Form, Modal } from 'react-bootstrap';
 import { toast } from 'react-toastify';
+import { Button as MButton, Text } from '@mantine/core';
 
 import api from './api';
 import { genEnglishExplanation } from './queryv2';
@@ -64,16 +65,11 @@ export default function SaveSearchModal({
       <Modal.Body className="bg-grey rounded">
         <h5 className="text-muted">Save Search</h5>
         <Form onSubmit={onSubmitLogView}>
-          <Form.Group className="mb-2 mt-4">
-            <Form.Label className="text-start text-muted fs-7">
-              Query
-            </Form.Label>
-            <Form.Control
-              className="border-0 mb-4 px-3"
-              disabled
-              placeholder={searchQuery}
-              size="sm"
-            />
+          <Form.Group className="mb-3 mt-4">
+            <Text span fw="bold">
+              Query:
+            </Text>
+            <Text span> {searchQuery}</Text>
           </Form.Group>
           <Form.Group className="mb-2 mt-2">
             <Form.Label className="text-start text-muted fs-7">Name</Form.Label>
@@ -87,14 +83,9 @@ export default function SaveSearchModal({
               autoFocus
             />
           </Form.Group>
-          <Button
-            variant="brand-primary"
-            className="mt-2 px-4 float-end"
-            type="submit"
-            size="sm"
-          >
+          <MButton size="sm" variant="light" type="submit">
             Save
-          </Button>
+          </MButton>
         </Form>
       </Modal.Body>
     </Modal>
