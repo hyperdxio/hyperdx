@@ -146,6 +146,13 @@ Array [
 ]
 `);
 
+    const alertById = await agent
+      .get(`/api/v1/alerts/${alerts.body.data[0].id}`)
+      .set('Authorization', `Bearer ${user?.accessKey}`)
+      .expect(200);
+
+    expect(alertById.body.data).toEqual(alerts.body.data[0]);
+
     for (let i = 0; i < 4; i++) {
       await agent
         .delete(`/api/v1/alerts/${alerts.body.data[i].id}`)
