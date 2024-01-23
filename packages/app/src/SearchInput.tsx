@@ -12,6 +12,7 @@ export default function SearchInput({
   placeholder = 'Search your events for anything...',
   showHotkey = true,
   size = 'lg',
+  zIndex,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   value: string;
@@ -20,6 +21,7 @@ export default function SearchInput({
   placeholder?: string;
   showHotkey?: boolean;
   size?: 'sm' | 'lg';
+  zIndex: number;
 }) {
   const { data: propertyTypeMappingsResult } = api.usePropertyTypeMappings();
   const propertyTypeMappings = useMemo(() => {
@@ -58,6 +60,7 @@ export default function SearchInput({
       autocompleteOptions={propertyTypeMappings}
       showHotkey={showHotkey}
       size={size}
+      zIndex={zIndex}
       aboveSuggestions={
         <>
           <div className="text-muted fs-8 fw-bold me-1">Searching for:</div>
