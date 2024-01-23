@@ -1036,6 +1036,8 @@ export const buildMetricSeriesQuery = async ({
   // TODO:
   // 1. handle -Inf
   // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
+  //  - Any decrease in the value
+  //  - Any increase/decrease in bucket resolution, etc (IMPLEMENTED)
   const histogramQuery = SqlString.format(
     `
       WITH source AS (
@@ -1069,14 +1071,17 @@ export const buildMetricSeriesQuery = async ({
           name,
           group,
           neighbor(_point, -1, []) AS _prev_point,
-          equals(length(_prev_point), n) AS is_prev_point_valid,
+          notEquals(
+            arrayMap((x) -> x[2], _prev_point),
+            arrayMap((x) -> x[2], _point)
+          ) AS possible_counter_reset,
           if (
-            is_prev_point_valid = 0,
+            possible_counter_reset = 1,
             _point,
             arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
           ) AS point,
           point[n][1] AS total,
-          arraySort((x) -> x[1], point)[1][1] AS min_value,
+          arraySort((x) -> x[1], point)[1][1] AS min_point_value,
           toFloat64(?) * total AS rank,
           arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
           point[upper_idx][1] AS upper_count,
@@ -1107,10 +1112,10 @@ export const buildMetricSeriesQuery = async ({
             )
           ) AS value
         FROM points
-        WHERE is_prev_point_valid = 1
+        WHERE possible_counter_reset = 0
         AND length(point) > 1
         AND total > 0
-        AND min_value >= 0
+        AND min_point_value >= 0
         ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
       )
       SELECT
