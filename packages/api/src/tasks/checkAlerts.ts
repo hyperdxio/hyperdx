@@ -77,7 +77,7 @@ export const buildChartLink = ({
   const to = (endTime.getTime() + ms(granularity) * 7).toString();
   const queryParams = new URLSearchParams({
     from,
-    granularity,
+    granularity: clickhouse.convertMsToGranularityString(ms(granularity)),
     to,
   });
   url.search = queryParams.toString();

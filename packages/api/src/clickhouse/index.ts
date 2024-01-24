@@ -26,7 +26,6 @@ import type {
 } from '@/utils/logParser';
 import { chartSeriesSchema } from '@/utils/zod';
 
-import { redisClient } from '../utils/redis';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -488,8 +487,43 @@ export const fetchLogsPropertyTypeMappings =
   };
 
 // ******************************************************
-// ****************** Helpers ***************************
+// ******************** Utils ***************************
 // ******************************************************
+export const convertMsToGranularityString = (ms: number): Granularity => {
+  const granularitySizeSeconds = Math.ceil(ms / 1000);
+
+  if (granularitySizeSeconds <= 30) {
+    return Granularity.ThirtySecond;
+  } else if (granularitySizeSeconds <= 60) {
+    return Granularity.OneMinute;
+  } else if (granularitySizeSeconds <= 5 * 60) {
+    return Granularity.FiveMinute;
+  } else if (granularitySizeSeconds <= 10 * 60) {
+    return Granularity.TenMinute;
+  } else if (granularitySizeSeconds <= 15 * 60) {
+    return Granularity.FifteenMinute;
+  } else if (granularitySizeSeconds <= 30 * 60) {
+    return Granularity.ThirtyMinute;
+  } else if (granularitySizeSeconds <= 3600) {
+    return Granularity.OneHour;
+  } else if (granularitySizeSeconds <= 2 * 3600) {
+    return Granularity.TwoHour;
+  } else if (granularitySizeSeconds <= 6 * 3600) {
+    return Granularity.SixHour;
+  } else if (granularitySizeSeconds <= 12 * 3600) {
+    return Granularity.TwelveHour;
+  } else if (granularitySizeSeconds <= 24 * 3600) {
+    return Granularity.OneDay;
+  } else if (granularitySizeSeconds <= 2 * 24 * 3600) {
+    return Granularity.TwoDay;
+  } else if (granularitySizeSeconds <= 7 * 24 * 3600) {
+    return Granularity.SevenDay;
+  } else if (granularitySizeSeconds <= 30 * 24 * 3600) {
+    return Granularity.ThirtyDay;
+  }
+
+  return Granularity.ThirtyDay;
+};
 export const msRangeToHistogramInterval = (msRange: number, total: number) => {
   const diffSeconds = Math.floor(msRange / 1000);
   const granularitySeconds = Math.ceil(diffSeconds / total);
