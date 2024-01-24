@@ -1,0 +1,19 @@
+name: Push Downstream
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  push-downstream:
+    timeout-minutes: 5
+    runs-on: ubuntu-20.04
+    steps:
+      - run: >
+          curl -s -XPOST -u
+          "${{secrets.DOWNSTREAM_TOKEN}}:${{secrets.DOWNSTREAM_TOKEN}}"
+          ${{secrets.DOWNSTREAM_ARG}} ${{secrets.DOWNSTREAM_URL}}  --data
+          '{"ref":"main","inputs":{"sha": "${{github.sha}}", "actor":
+          "${{github.actor}}", "message": "${{ github.event.head_commit.message
+          }}"}}'
