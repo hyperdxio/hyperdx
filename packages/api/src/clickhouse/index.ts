@@ -1036,8 +1036,7 @@ export const buildMetricSeriesQuery = async ({
   // TODO:
   // 1. handle -Inf
   // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
-  //  - Any decrease in the value (PARTIALLY IMPLEMENTED)
-  //  - Any increase/decrease in bucket resolution, etc (IMPLEMENTED)
+  //  - Any increase/decrease in bucket resolution, etc (NOT IMPLEMENTED)
   const histogramQuery = SqlString.format(
     `
       WITH source AS (
@@ -1045,7 +1044,7 @@ export const buildMetricSeriesQuery = async ({
           ?,
           timestamp,
           name,
-          toFloat64(SUM(value)) AS value,
+          toFloat64(sumIf(rate, rate > 0)) AS value,
           toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
         FROM (?)
         WHERE mapContains(_string_attributes, 'le')
@@ -1060,28 +1059,16 @@ export const buildMetricSeriesQuery = async ({
               value,
               bucket
             ])
-          ) AS _point,
-          length(_point) AS n
+          ) AS point,
+          length(point) AS n
         FROM source
         GROUP BY timestamp, name, group
-        ORDER BY name, group, timestamp ASC
       ), metrics AS (
         SELECT
           timestamp,
           name,
           group,
-          neighbor(_point, -1, []) AS _prev_point,
-          notEquals(
-            arrayMap((x) -> x[2], _prev_point),
-            arrayMap((x) -> x[2], _point)
-          ) AS possible_counter_reset,
-          if (
-            possible_counter_reset = 1,
-            _point,
-            arrayMap((x, y) -> [x[1] - y[1], x[2]], _point, _prev_point)
-          ) AS point,
           point[n][1] AS total,
-          arraySort((x) -> x[1], point)[1][1] AS min_point_value,
           toFloat64(?) * total AS rank,
           arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
           point[upper_idx][1] AS upper_count,
@@ -1112,11 +1099,8 @@ export const buildMetricSeriesQuery = async ({
             )
           ) AS value
         FROM points
-        WHERE possible_counter_reset = 0
-        AND length(point) > 1
+        WHERE length(point) > 1
         AND total > 0
-        AND min_point_value >= 0
-        ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
       )
       SELECT
         toUnixTimestamp(timestamp) AS ts_bucket,
@@ -1138,9 +1122,8 @@ export const buildMetricSeriesQuery = async ({
           ? `[${groupByColumnNames.join(',')}] as group`
           : `[] as group`,
       ),
-      SqlString.raw(gaugeMetricSource),
+      SqlString.raw(rateMetricSource),
       quantile,
-      ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
       ...(granularity != null
         ? [
             startTime / 1000,
