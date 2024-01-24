@@ -898,7 +898,8 @@ export const buildMetricSeriesQuery = async ({
 
   const hasGroupBy = groupByColumnNames.length > 0;
 
-  const shouldModifyStartTime = isRate;
+  const shouldModifyStartTime =
+    isRate || dataType === MetricsDataType.Histogram;
 
   // If it's a rate function, then we'll need to look 1 window back to calculate
   // the initial rate value.
@@ -956,8 +957,12 @@ export const buildMetricSeriesQuery = async ({
               : '0.99'
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
+  } else if (dataType === MetricsDataType.Histogram) {
+    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+    }
   } else {
-    logger.error(`Unsupported data type: ${dataType}`);
+    throw new Error(`Unsupported data type: ${dataType}`);
   }
 
   const startTimeUnixTs = Math.floor(startTime / 1000);
@@ -1019,8 +1024,125 @@ export const buildMetricSeriesQuery = async ({
     ],
   );
 
-  const query = SqlString.format(
+  const quantile =
+    aggFn === AggFn.P50
+      ? '0.5'
+      : aggFn === AggFn.P90
+      ? '0.90'
+      : aggFn === AggFn.P95
+      ? '0.95'
+      : '0.99';
+
+  // TODO:
+  // 1. handle -Inf
+  // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
+  //  - Any increase/decrease in bucket resolution, etc (NOT IMPLEMENTED)
+  const histogramQuery = SqlString.format(
     `
+      WITH source AS (
+        SELECT
+          ?,
+          timestamp,
+          name,
+          toFloat64(sumIf(rate, rate > 0)) AS value,
+          toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
+        FROM (?)
+        WHERE mapContains(_string_attributes, 'le')
+        GROUP BY name, group, bucket, timestamp
+      ), points AS (
+        SELECT
+          timestamp,
+          name,
+          group,
+          arraySort((x) -> x[2],
+            groupArray([
+              value,
+              bucket
+            ])
+          ) AS point,
+          length(point) AS n
+        FROM source
+        GROUP BY timestamp, name, group
+      ), metrics AS (
+        SELECT
+          timestamp,
+          name,
+          group,
+          point[n][1] AS total,
+          toFloat64(?) * total AS rank,
+          arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+          point[upper_idx][1] AS upper_count,
+          point[upper_idx][2] AS upper_bound,
+          if (
+            upper_idx = 1,
+            if (
+              point[upper_idx][2] > 0,
+              0,
+              inf
+            ),
+            point[upper_idx - 1][2]
+          ) AS lower_bound,
+          if (
+            lower_bound = 0,
+            0,
+            point[upper_idx - 1][1]
+          ) AS lower_count,
+          if (
+            upper_bound = inf,
+            point[upper_idx - 1][2],
+            if (
+              lower_bound = inf,
+              point[1][2],
+              lower_bound + (upper_bound - lower_bound) * (
+                (rank - lower_count) / (upper_count - lower_count)
+              )
+            )
+          ) AS value
+        FROM points
+        WHERE length(point) > 1
+        AND total > 0
+      )
+      SELECT
+        toUnixTimestamp(timestamp) AS ts_bucket,
+        group,
+        value AS data
+      FROM metrics
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }`.trim(),
+    [
+      SqlString.raw(
+        hasGroupBy
+          ? `[${groupByColumnNames.join(',')}] as group`
+          : `[] as group`,
+      ),
+      SqlString.raw(rateMetricSource),
+      quantile,
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
+    ],
+  );
+
+  // TODO: merge this with the histogram query
+  const source = isRate ? rateMetricSource : gaugeMetricSource;
+  const query =
+    dataType === MetricsDataType.Histogram
+      ? histogramQuery
+      : SqlString.format(
+          `
       WITH metrics AS (?)
       SELECT ?
       FROM metrics
@@ -1035,20 +1157,20 @@ export const buildMetricSeriesQuery = async ({
           : ''
       }
     `,
-    [
-      SqlString.raw(isRate ? rateMetricSource : gaugeMetricSource),
-      SqlString.raw(selectClause.join(',')),
-      ...(granularity != null
-        ? [
-            startTime / 1000,
-            granularity,
-            endTime / 1000,
-            granularity,
-            ms(granularity) / 1000,
-          ]
-        : []),
-    ],
-  );
+          [
+            SqlString.raw(source),
+            SqlString.raw(selectClause.join(',')),
+            ...(granularity != null
+              ? [
+                  startTime / 1000,
+                  granularity,
+                  endTime / 1000,
+                  granularity,
+                  ms(granularity) / 1000,
+                ]
+              : []),
+          ],
+        );
 
   return {
     query,
