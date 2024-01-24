@@ -354,10 +354,10 @@ describe('clickhouse - getMultiSeriesChart', () => {
           ],
         }),
       ),
-      clickhouse.bulkInsertTeamMetricStream(
-        buildMetricSeries({
-          name: 'test.counter_reset',
-          tags: { host: 'test2', runId },
+      clickhouse.bulkInsertTeamMetricStream([
+        ...buildMetricSeries({
+          name: 'test.counter_might_reset',
+          tags: { host: 'host-a', region: 'region-a' },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
           is_delta: false,
@@ -384,7 +384,36 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 50, timestamp: now + ms('4m'), le: '50' },
           ],
         }),
-      ),
+        ...buildMetricSeries({
+          name: 'test.counter_might_reset',
+          tags: { host: 'host-b', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Histogram,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 0, timestamp: now, le: '10' },
+            { value: 0, timestamp: now, le: '30' },
+            { value: 0, timestamp: now, le: '50' },
+
+            { value: 5, timestamp: now + ms('1m'), le: '10' },
+            { value: 10, timestamp: now + ms('1m'), le: '30' },
+            { value: 15, timestamp: now + ms('1m'), le: '50' },
+
+            { value: 5, timestamp: now + ms('2m'), le: '10' },
+            { value: 10, timestamp: now + ms('2m'), le: '30' },
+            { value: 25, timestamp: now + ms('2m'), le: '50' },
+
+            { value: 10, timestamp: now + ms('3m'), le: '10' },
+            { value: 20, timestamp: now + ms('3m'), le: '30' },
+            { value: 40, timestamp: now + ms('3m'), le: '50' },
+
+            { value: 30, timestamp: now + ms('4m'), le: '10' },
+            { value: 50, timestamp: now + ms('4m'), le: '30' },
+            { value: 80, timestamp: now + ms('4m'), le: '50' },
+          ],
+        }),
+      ]),
     ]);
   });
 
@@ -1046,7 +1075,7 @@ Array [
 `);
   });
 
-  it('histogram (p50) counter reset', async () => {
+  it('histogram (p50) counter might reset', async () => {
     const p50Data = (
       await clickhouse.getMultiSeriesChart({
         series: [
@@ -1054,9 +1083,9 @@ Array [
             type: 'time',
             table: 'metrics',
             aggFn: clickhouse.AggFn.P50,
-            field: 'test.counter_reset',
-            where: `runId:${runId}`,
-            groupBy: [],
+            field: 'test.counter_might_reset',
+            where: '',
+            groupBy: ['region'],
             metricDataType: clickhouse.MetricsDataType.Histogram,
           },
         ],
@@ -1080,23 +1109,31 @@ Array [
     "ts_bucket": 1641340800,
   },
   Object {
-    "group": Array [],
-    "series_0.data": 30,
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 22.857142857142858,
     "ts_bucket": 1641340860,
   },
   Object {
-    "group": Array [],
-    "series_0.data": 0,
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 40,
     "ts_bucket": 1641340920,
   },
   Object {
-    "group": Array [],
-    "series_0.data": 32.5,
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 24.285714285714285,
     "ts_bucket": 1641340980,
   },
   Object {
-    "group": Array [],
-    "series_0.data": 33.84615384615385,
+    "group": Array [
+      "region-a",
+    ],
+    "series_0.data": 24.444444444444443,
     "ts_bucket": 1641341040,
   },
 ]
