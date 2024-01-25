@@ -24,4 +24,4 @@ jobs:
                 actor: '${{ github.actor }}',
                 message: '${{ github.event.head_commit.message }}'
               }
-            })
+            });
