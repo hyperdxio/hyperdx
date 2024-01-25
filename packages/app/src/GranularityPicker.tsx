@@ -16,39 +16,39 @@ export default function GranularityPicker({
           label: 'Auto Granularity',
         },
         {
-          value: '30 second' as const,
+          value: Granularity.ThirtySecond,
           label: '30 Seconds Granularity',
         },
         {
-          value: '1 minute' as const,
+          value: Granularity.OneMinute,
           label: '1 Minute Granularity',
         },
         {
-          value: '5 minute' as const,
+          value: Granularity.FiveMinute,
           label: '5 Minutes Granularity',
         },
         {
-          value: '10 minute' as const,
+          value: Granularity.TenMinute,
           label: '10 Minutes Granularity',
         },
         {
-          value: '30 minute' as const,
+          value: Granularity.ThirtyMinute,
           label: '30 Minutes Granularity',
         },
         {
-          value: '1 hour' as const,
+          value: Granularity.OneHour,
           label: '1 Hour Granularity',
         },
         {
-          value: '12 hour' as const,
+          value: Granularity.TwelveHour,
           label: '12 Hours Granularity',
         },
         {
-          value: '1 day' as const,
+          value: Granularity.OneDay,
           label: '1 Day Granularity',
         },
         {
-          value: '7 day' as const,
+          value: Granularity.SevenDay,
           label: '7 Day Granularity',
         },
       ]}
