@@ -1,4 +1,3 @@
-import Head from 'next/head';
 import {
   ForwardedRef,
   forwardRef,
@@ -8,12 +7,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import RGL, { WidthProvider } from 'react-grid-layout';
-import produce from 'immer';
-import HDXMarkdownChart from './HDXMarkdownChart';
-import { Button, Form, Modal } from 'react-bootstrap';
-import { useHotkeys } from 'react-hotkeys-hook';
+import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
+import produce from 'immer';
+import { Button, Form, Modal } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
+import RGL, { WidthProvider } from 'react-grid-layout';
+import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import {
@@ -22,47 +23,43 @@ import {
   useQueryParam,
   withDefault,
 } from 'use-query-params';
+import { Badge, Transition } from '@mantine/core';
 
-import HDXLineChart from './HDXLineChart';
-import AppNav from './AppNav';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
-import { Granularity, convertDateRangeToGranularityString } from './ChartUtils';
-import { FloppyIcon, Histogram } from './SVGIcons';
-import SearchInput from './SearchInput';
-import { hashCode } from './utils';
-import TabBar from './TabBar';
-import HDXHistogramChart from './HDXHistogramChart';
 import api from './api';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import { parseTimeQuery, useNewTimeQuery, useTimeQuery } from './timeQuery';
-import type { Alert } from './types';
+import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import {
-  EditSearchChartForm,
-  EditMarkdownChartForm,
   EditHistogramChartForm,
   EditLineChartForm,
+  EditMarkdownChartForm,
   EditNumberChartForm,
+  EditSearchChartForm,
   EditTableChartForm,
 } from './EditChartForm';
-import HDXNumberChart from './HDXNumberChart';
 import GranularityPicker from './GranularityPicker';
-import HDXTableChart from './HDXTableChart';
-
-import type { Chart } from './EditChartForm';
+import HDXHistogramChart from './HDXHistogramChart';
+import HDXMarkdownChart from './HDXMarkdownChart';
+import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
+import HDXNumberChart from './HDXNumberChart';
+import { withAppNav } from './layout';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import SearchInput from './SearchInput';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import { FloppyIcon, Histogram } from './SVGIcons';
+import TabBar from './TabBar';
+import { Tags } from './Tags';
+import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import type { Alert, Chart, Dashboard } from './types';
+import { useConfirm } from './useConfirm';
+import { hashCode } from './utils';
+import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { ZIndexContext } from './zIndex';
+
+const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
-
-type Dashboard = {
-  id: string;
-  name: string;
-  charts: Chart[];
-  alerts?: Alert[];
-  query?: string;
-};
 
 const buildAndWhereClause = (query1: string, query2: string) => {
   if (!query1 && !query2) {
@@ -80,14 +77,15 @@ const Tile = forwardRef(
   (
     {
       chart,
+      alert,
       dateRange,
+      onDuplicateClick,
       onEditClick,
       onDeleteClick,
       query,
       queued,
       onSettled,
       granularity,
-      hasAlert,
 
       // Properties forwarded by grid layout
       className,
@@ -96,16 +94,18 @@ const Tile = forwardRef(
       onMouseUp,
       onTouchEnd,
       children,
+      isHighlighed,
     }: {
       chart: Chart;
+      alert?: Alert;
       dateRange: [Date, Date];
+      onDuplicateClick: () => void;
       onEditClick: () => void;
       onDeleteClick: () => void;
       query: string;
       onSettled?: () => void;
       queued?: boolean;
       granularity: Granularity | undefined;
-      hasAlert?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -114,6 +114,7 @@ const Tile = forwardRef(
       onMouseUp?: (e: React.MouseEvent) => void;
       onTouchEnd?: (e: React.TouchEvent) => void;
       children?: React.ReactNode; // Resizer tooltip
+      isHighlighed?: boolean;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -130,6 +131,15 @@ const Tile = forwardRef(
             granularity:
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
+            seriesReturnType: chart.seriesReturnType,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'time' ? s.where : '',
+              ),
+            })),
           }
         : type === 'table'
         ? {
@@ -143,6 +153,15 @@ const Tile = forwardRef(
             granularity:
               granularity ?? convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'table' ? s.where : '',
+              ),
+            })),
+            seriesReturnType: chart.seriesReturnType,
           }
         : type === 'histogram'
         ? {
@@ -165,6 +184,7 @@ const Tile = forwardRef(
             field: chart.series[0].field ?? '', // TODO: Fix in definition
             where: buildAndWhereClause(query, chart.series[0].where),
             dateRange,
+            numberFormat: chart.series[0].numberFormat,
           }
         : {
             type,
@@ -181,9 +201,20 @@ const Tile = forwardRef(
       }
     }, [config.type, onSettled]);
 
+    useEffect(() => {
+      if (isHighlighed) {
+        document
+          .getElementById(`chart-${chart.id}`)
+          ?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, []);
+
     return (
       <div
-        className={`bg-hdx-dark p-3 ${className} d-flex flex-column`}
+        className={`bg-hdx-dark p-3 ${className} d-flex flex-column ${
+          isHighlighed && 'dashboard-chart-highlighted'
+        }`}
+        id={`chart-${chart.id}`}
         key={chart.id}
         ref={ref}
         style={style}
@@ -195,19 +226,38 @@ const Tile = forwardRef(
           <div className="fs-7 text-muted">{chart.name}</div>
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
-            {hasAlert && (
-              <div
-                className="rounded px-1 text-muted bg-grey opacity-90 cursor-default"
-                title="Has alert"
-              >
-                <span className="bi bi-bell" />
-              </div>
+            {alert && (
+              <Link href="/alerts">
+                <div
+                  className={`rounded px-1 text-muted cursor-pointer ${
+                    alert.state === 'ALERT'
+                      ? 'bg-danger effect-pulse'
+                      : 'bg-grey opacity-90'
+                  }`}
+                >
+                  <i
+                    className="bi bi-bell text-white"
+                    title={`Has alert and is in ${alert.state} state`}
+                  />
+                </div>
+              </Link>
             )}
+
+            <Button
+              variant="link"
+              className="text-muted-hover p-0"
+              size="sm"
+              onClick={onDuplicateClick}
+              title="Duplicate"
+            >
+              <i className="bi bi-copy fs-8"></i>
+            </Button>
             <Button
               variant="link"
               className="text-muted-hover p-0"
               size="sm"
               onClick={onEditClick}
+              title="Edit"
             >
               <i className="bi bi-pencil"></i>
             </Button>
@@ -216,6 +266,7 @@ const Tile = forwardRef(
               className="text-muted-hover p-0"
               size="sm"
               onClick={onDeleteClick}
+              title="Edit"
             >
               <i className="bi bi-trash"></i>
             </Button>
@@ -230,31 +281,42 @@ const Tile = forwardRef(
             className="fs-7 text-muted flex-grow-1 overflow-hidden"
             onMouseDown={e => e.stopPropagation()}
           >
-            {config.type === 'time' && (
-              <HDXLineChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'table' && (
-              <HDXTableChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'histogram' && (
-              <HDXHistogramChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'markdown' && <HDXMarkdownChart config={config} />}
-            {config.type === 'number' && (
-              <HDXNumberChart config={config} onSettled={onSettled} />
-            )}
-            {config.type === 'search' && (
-              <div style={{ height: '100%' }}>
-                <LogTableWithSidePanel
-                  config={config}
-                  isLive={false}
-                  isUTC={false}
-                  setIsUTC={() => {}}
-                  onPropertySearchClick={() => {}}
-                  onSettled={onSettled}
-                />
-              </div>
-            )}
+            <ErrorBoundary
+              onError={console.error}
+              fallback={
+                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                  An error occurred while rendering the chart.
+                </div>
+              }
+            >
+              {chart.series[0].type === 'time' && config.type === 'time' && (
+                <HDXMultiSeriesTimeChart config={config} />
+              )}
+              {chart.series[0].type === 'table' && config.type === 'table' && (
+                <HDXMultiSeriesTableChart config={config} />
+              )}
+              {config.type === 'histogram' && (
+                <HDXHistogramChart config={config} onSettled={onSettled} />
+              )}
+              {config.type === 'markdown' && (
+                <HDXMarkdownChart config={config} />
+              )}
+              {config.type === 'number' && (
+                <HDXNumberChart config={config} onSettled={onSettled} />
+              )}
+              {config.type === 'search' && (
+                <div style={{ height: '100%' }}>
+                  <LogTableWithSidePanel
+                    config={config}
+                    isLive={false}
+                    isUTC={false}
+                    setIsUTC={() => {}}
+                    onPropertySearchClick={() => {}}
+                    onSettled={onSettled}
+                  />
+                </div>
+              )}
+            </ErrorBoundary>
           </div>
         )}
         {children}
@@ -264,28 +326,40 @@ const Tile = forwardRef(
 );
 
 const EditChartModal = ({
+  isLocalDashboard,
   chart,
+  alerts,
   dateRange,
   onSave,
   show,
   onClose,
 }: {
+  isLocalDashboard: boolean;
   chart: Chart | undefined;
+  alerts: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
+  onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
   show: boolean;
 }) => {
-  const [tab, setTab] = useState<
+  type Tab =
     | 'time'
     | 'search'
     | 'histogram'
     | 'markdown'
     | 'number'
     | 'table'
-    | undefined
-  >(undefined);
+    | undefined;
+
+  const [tab, setTab] = useState<Tab>(undefined);
   const displayedTab = tab ?? chart?.series?.[0]?.type ?? 'time';
+
+  const onTabClick = useCallback(
+    (newTab: Tab) => {
+      setTab(newTab);
+    },
+    [setTab],
+  );
 
   return (
     <ZIndexContext.Provider value={1055}>
@@ -295,6 +369,7 @@ const EditChartModal = ({
         onHide={onClose}
         show={show}
         size="xl"
+        enforceFocus={false}
       >
         <Modal.Body className="bg-hdx-dark rounded">
           <TabBar
@@ -350,15 +425,17 @@ const EditChartModal = ({
               },
             ]}
             activeItem={displayedTab}
-            onClick={v => {
-              setTab(v);
-            }}
+            onClick={onTabClick}
           />
           {displayedTab === 'time' && chart != null && (
             <EditLineChartForm
+              isLocalDashboard={isLocalDashboard}
               chart={produce(chart, draft => {
-                draft.series[0].type = 'time';
+                for (const series of draft.series) {
+                  series.type = 'time';
+                }
               })}
+              alerts={alerts}
               onSave={onSave}
               onClose={onClose}
               dateRange={dateRange}
@@ -367,7 +444,9 @@ const EditChartModal = ({
           {displayedTab === 'table' && chart != null && (
             <EditTableChartForm
               chart={produce(chart, draft => {
-                draft.series[0].type = 'table';
+                for (const series of draft.series) {
+                  series.type = 'table';
+                }
               })}
               onSave={onSave}
               onClose={onClose}
@@ -553,9 +632,14 @@ export default function DashboardPage() {
     api.useDashboards();
   const updateDashboard = api.useUpdateDashboard();
   const createDashboard = api.useCreateDashboard();
+  const saveAlert = api.useSaveAlert();
+  const deleteAlert = api.useDeleteAlert();
+  const updateAlert = api.useUpdateAlert();
   const router = useRouter();
   const { dashboardId, config } = router.query;
   const queryClient = useQueryClient();
+
+  const confirm = useConfirm();
 
   const [localDashboard, setLocalDashboard] = useQueryParam<Dashboard>(
     'config',
@@ -563,6 +647,7 @@ export default function DashboardPage() {
       id: '',
       name: 'My New Dashboard',
       charts: [],
+      alerts: [],
       query: '',
     }),
     { updateType: 'pushIn', enableBatching: true },
@@ -585,6 +670,18 @@ export default function DashboardPage() {
   }, [dashboardsData, dashboardId, isLocalDashboard, localDashboard]);
 
   // Update dashboard
+  const [isSavedNow, _setSavedNow] = useState(false);
+  const savedNowTimerRef = useRef<any>(null);
+  const setSavedNow = useCallback(() => {
+    if (savedNowTimerRef.current != null) {
+      clearTimeout(savedNowTimerRef.current);
+    }
+    _setSavedNow(true);
+    savedNowTimerRef.current = setTimeout(() => {
+      _setSavedNow(false);
+    }, 1500);
+  }, []);
+
   const setDashboard = useCallback(
     (newDashboard: Dashboard) => {
       if (isLocalDashboard) {
@@ -596,21 +693,24 @@ export default function DashboardPage() {
             name: newDashboard.name,
             charts: newDashboard.charts,
             query: newDashboard.query ?? '',
+            tags: newDashboard.tags,
           },
           {
             onSuccess: () => {
               queryClient.invalidateQueries(['dashboards']);
+              setSavedNow();
             },
           },
         );
       }
     },
     [
-      dashboardId,
-      updateDashboard,
-      queryClient,
       isLocalDashboard,
       setLocalDashboard,
+      updateDashboard,
+      dashboardId,
+      queryClient,
+      setSavedNow,
     ],
   );
 
@@ -633,6 +733,10 @@ export default function DashboardPage() {
   const deleteDashboard = api.useDeleteDashboard();
 
   const [editedChart, setEditedChart] = useState<undefined | Chart>();
+  const editedChartAlerts = useMemo<Alert[]>(
+    () => dashboard?.alerts?.filter(a => a.chartId === editedChart?.id) || [],
+    [dashboard?.alerts, editedChart?.id],
+  );
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
@@ -648,7 +752,7 @@ export default function DashboardPage() {
 
   const onAddChart = () => {
     setEditedChart({
-      id: '',
+      id: makeId(),
       name: 'My New Chart',
       x: 0,
       y: 0,
@@ -664,6 +768,7 @@ export default function DashboardPage() {
           groupBy: [],
         },
       ],
+      seriesReturnType: 'column',
     });
   };
 
@@ -673,6 +778,8 @@ export default function DashboardPage() {
       onAddChart();
     }
   }, [isLocalDashboard, router, dashboard?.charts.length]);
+
+  const [highlightedChartId] = useQueryParam('highlightedChartId');
 
   const tiles = useMemo(
     () =>
@@ -685,9 +792,31 @@ export default function DashboardPage() {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedChart(chart)}
             granularity={granularityQuery}
-            hasAlert={dashboard?.alerts?.some(a => a.chartId === chart.id)}
-            onDeleteClick={() => {
+            alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
+            isHighlighed={highlightedChartId === chart.id}
+            onDuplicateClick={async () => {
               if (dashboard != null) {
+                if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {
+                  return;
+                }
+                setDashboard({
+                  ...dashboard,
+                  charts: [
+                    ...dashboard.charts,
+                    {
+                      ...chart,
+                      id: makeId(),
+                      name: `${chart.name} (Copy)`,
+                    },
+                  ],
+                });
+              }
+            }}
+            onDeleteClick={async () => {
+              if (dashboard != null) {
+                if (!(await confirm(`Delete ${chart.name}?`, 'Delete'))) {
+                  return;
+                }
                 setDashboard({
                   ...dashboard,
                   charts: dashboard.charts.filter(c => c.id !== chart.id),
@@ -699,10 +828,92 @@ export default function DashboardPage() {
       }),
     [
       dashboard,
-      searchedTimeRange,
-      setDashboard,
       dashboardQuery,
+      searchedTimeRange,
       granularityQuery,
+      highlightedChartId,
+      confirm,
+      setDashboard,
+    ],
+  );
+
+  const handleSaveChart = useCallback(
+    (newChart: Chart, newAlerts?: Alert[]) => {
+      if (dashboard == null) {
+        return;
+      }
+
+      setDashboard(
+        produce(dashboard, draft => {
+          const chartIndex = draft.charts.findIndex(
+            chart => chart.id === newChart.id,
+          );
+          // This is a new chart (probably?)
+          if (chartIndex === -1) {
+            draft.charts.push(newChart);
+          } else {
+            draft.charts[chartIndex] = newChart;
+          }
+        }),
+      );
+
+      // Using only the first alert for now
+      const [editedChartAlert] = editedChartAlerts;
+      const newAlert = newAlerts?.[0];
+
+      if (editedChartAlert?._id) {
+        // Update or delete
+        if (newAlert != null) {
+          updateAlert.mutate(
+            {
+              ...newAlert,
+              id: editedChartAlert._id,
+              dashboardId: dashboardId as string,
+              chartId: editedChart?.id,
+            },
+            {
+              onError: err => {
+                console.error(err);
+                toast.error('Failed to update alert.');
+              },
+            },
+          );
+        } else {
+          deleteAlert.mutate(editedChartAlert._id, {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to delete alert.');
+            },
+          });
+        }
+      } else if (newAlert) {
+        // Create
+        saveAlert.mutate(
+          {
+            ...newAlert,
+            dashboardId: dashboardId as string,
+            chartId: editedChart?.id,
+          },
+          {
+            onError: err => {
+              console.error(err);
+              toast.error('Failed to save alert.');
+            },
+          },
+        );
+      }
+
+      setEditedChart(undefined);
+    },
+    [
+      dashboard,
+      dashboardId,
+      deleteAlert,
+      editedChart?.id,
+      editedChartAlerts,
+      saveAlert,
+      setDashboard,
+      updateAlert,
     ],
   );
 
@@ -718,38 +929,23 @@ export default function DashboardPage() {
     };
   });
 
+  const tagsCount = dashboard?.tags?.length ?? 0;
+
   return (
-    <div className="d-flex w-100">
+    <div>
       <Head>
         <title>Dashboard - HyperDX</title>
       </Head>
-      <AppNav fixed />
       {dashboard != null ? (
         <EditChartModal
+          isLocalDashboard={isLocalDashboard}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}
+          alerts={editedChartAlerts}
           show={!!editedChart}
           onClose={() => setEditedChart(undefined)}
-          onSave={newChart => {
-            setDashboard(
-              produce(dashboard, draft => {
-                const chartIndex = draft.charts.findIndex(
-                  chart => chart.id === newChart.id,
-                );
-                if (chartIndex === -1) {
-                  // This is a new chart (probably?)
-                  draft.charts.push({
-                    ...newChart,
-                    id: Math.floor(100000000 * Math.random()).toString(36),
-                  });
-                } else {
-                  draft.charts[chartIndex] = newChart;
-                }
-              }),
-            );
-            setEditedChart(undefined);
-          }}
+          onSave={handleSaveChart}
         />
       ) : null}
       <div className="flex-grow-1">
@@ -766,6 +962,41 @@ export default function DashboardPage() {
                   })
                 }
               />
+              {!isLocalDashboard && (
+                <Tags
+                  allowCreate
+                  values={dashboard.tags || []}
+                  onChange={tags => {
+                    setDashboard({
+                      ...dashboard,
+                      tags,
+                    });
+                  }}
+                >
+                  <Badge
+                    color={tagsCount ? 'blue' : 'gray'}
+                    variant={tagsCount ? 'light' : 'filled'}
+                    mx="sm"
+                    fw="normal"
+                    tt="none"
+                    className="cursor-pointer"
+                  >
+                    <i className="bi bi-tags-fill me-1"></i>
+                    {!tagsCount
+                      ? 'Add Tag'
+                      : tagsCount === 1
+                      ? dashboard.tags[0]
+                      : `${tagsCount} Tags`}
+                  </Badge>
+                </Tags>
+              )}
+              <Transition mounted={isSavedNow} transition="skew-down">
+                {style => (
+                  <Badge fw="normal" tt="none" ml="xs" style={style}>
+                    Saved now
+                  </Badge>
+                )}
+              </Transition>
               {isLocalDashboard && (
                 <span className="text-muted ms-3">(Unsaved Dashboard)</span>
               )}
@@ -842,7 +1073,12 @@ export default function DashboardPage() {
                 variant="dark"
                 className="text-muted-hover text-nowrap"
                 size="sm"
-                onClick={() => {
+                onClick={async () => {
+                  if (
+                    !(await confirm(`Delete ${dashboard?.name}?`, 'Delete'))
+                  ) {
+                    return;
+                  }
                   deleteDashboard.mutate(
                     {
                       id: `${dashboardId}`,
@@ -896,7 +1132,7 @@ export default function DashboardPage() {
         )}
         {dashboard?.charts.length === 0 && (
           <div className="d-flex justify-content-center align-items-center mt-4 bg-hdx-dark p-4 rounded mx-3">
-            No charts added yet. Click the {'"'}Add Chart{'"'} button to get
+            No charts added yet. Click the {'"'}Add Tile{'"'} button to get
             started.
           </div>
         )}
@@ -943,3 +1179,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+DashboardPage.getLayout = withAppNav;

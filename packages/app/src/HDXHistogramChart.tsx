@@ -1,15 +1,15 @@
+import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/generateCategoricalChart';
-import { memo, useCallback, useMemo, useRef } from 'react';
-import { useHotkeys } from 'react-hotkeys-hook';
 
 import api from './api';
 import { generateSearchUrl } from './utils';
@@ -189,7 +189,7 @@ const HDXHistogramChart = memo(
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } = api.useLogsChartHistogram(
+    const { data, isError, isLoading } = api.useLogsChartHistogram(
       {
         endDate: dateRange[1] ?? new Date(),
         field,
@@ -222,6 +222,10 @@ const HDXHistogramChart = memo(
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : buckets?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

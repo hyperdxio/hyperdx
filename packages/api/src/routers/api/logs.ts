@@ -1,22 +1,22 @@
-import express from 'express';
-import ms from 'ms';
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import express from 'express';
 import { isNumber, omit, parseInt } from 'lodash';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
-import { validateRequest } from 'zod-express-middleware';
 import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { LimitedSizeQueue } from '../../utils/queue';
-import { customColumnMapType } from '../../clickhouse/searchQueryParser';
-import { getLogsPatterns } from '../../utils/miner';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { customColumnMapType } from '@/clickhouse/searchQueryParser';
+import { getTeam } from '@/controllers/team';
+import logger from '@/utils/logger';
+import { getLogsPatterns } from '@/utils/miner';
+import { LimitedSizeQueue } from '@/utils/queue';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, offset, q, startTime, order, limit } = req.query;
@@ -60,14 +60,14 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
 });
 
-router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
+router.get('/patterns', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime, sampleRate } = req.query;
@@ -200,14 +200,14 @@ router.get('/patterns', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
 });
 
-router.get('/stream', isUserAuthenticated, async (req, res, next) => {
+router.get('/stream', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, offset, q, startTime, order, limit } = req.query;
@@ -262,7 +262,7 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
       res.write('event: end\ndata:\n\n');
       res.end();
     } else {
-      stream.on('data', (rows: any[]) => {
+      stream.on('data', (rows: Row[]) => {
         resultCount += rows.length;
         logger.info(`Sending ${rows.length} rows`);
 
@@ -276,8 +276,8 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
     }
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error streaming logs',
@@ -289,46 +289,42 @@ router.get('/stream', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get(
-  '/propertyTypeMappings',
-  isUserAuthenticated,
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        return res.sendStatus(403);
-      }
-
-      const team = await getTeam(teamId);
-      if (team == null) {
-        return res.sendStatus(403);
-      }
-
-      const nowInMs = Date.now();
-      const propertyTypeMappingsModel =
-        await clickhouse.buildLogsPropertyTypeMappingsModel(
-          team.logStreamTableVersion,
-          teamId.toString(),
-          nowInMs - ms('1d'),
-          nowInMs,
-        );
-
-      res.json({
-        data: [
-          ...propertyTypeMappingsModel.currentPropertyTypeMappings,
-          ...Object.entries(omit(customColumnMapType, ['<implicit>'])),
-        ],
-      });
-    } catch (e) {
-      const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      next(e);
+router.get('/propertyTypeMappings', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
     }
-  },
-);
 
-router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
+    const team = await getTeam(teamId);
+    if (team == null) {
+      return res.sendStatus(403);
+    }
+
+    const nowInMs = Date.now();
+    const propertyTypeMappingsModel =
+      await clickhouse.buildLogsPropertyTypeMappingsModel(
+        team.logStreamTableVersion,
+        teamId.toString(),
+        nowInMs - ms('1d'),
+        nowInMs,
+      );
+
+    res.json({
+      data: [
+        ...propertyTypeMappingsModel.currentPropertyTypeMappings,
+        ...Object.entries(omit(customColumnMapType, ['<implicit>'])),
+      ],
+    });
+  } catch (e) {
+    const span = opentelemetry.trace.getActiveSpan();
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
+    next(e);
+  }
+});
+
+router.get('/chart/histogram', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, field, q, startTime } = req.query;
@@ -359,15 +355,75 @@ router.get('/chart/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });
 
+// This endpoint needs to be generalized replaced once use-case matures
+router.post(
+  '/chart/spanPerformance',
+  validateRequest({
+    body: z.object({
+      parentSpanWhere: z.string().max(1024),
+      childrenSpanWhere: z.string().max(1024),
+      endTime: z.number(),
+      startTime: z.number(),
+      maxGroups: z.optional(z.number().min(1).max(20)),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const {
+        endTime,
+        startTime,
+        parentSpanWhere,
+        childrenSpanWhere,
+        maxGroups,
+      } = req.body;
+
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const team = await getTeam(teamId);
+      if (team == null) {
+        return res.sendStatus(403);
+      }
+
+      const propertyTypeMappingsModel =
+        await clickhouse.buildLogsPropertyTypeMappingsModel(
+          team.logStreamTableVersion,
+          teamId.toString(),
+          startTime,
+          endTime,
+        );
+
+      res.json(
+        await clickhouse.getSpanPerformanceChart({
+          endTime: endTime,
+          maxNumGroups: maxGroups ?? 20,
+          startTime: startTime,
+          tableVersion: team.logStreamTableVersion,
+          teamId: teamId.toString(),
+          parentSpanWhere,
+          childrenSpanWhere,
+          propertyTypeMappingsModel,
+        }),
+      );
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  },
+);
+
 router.get(
   '/chart',
-  isUserAuthenticated,
   validateRequest({
     query: z.object({
       aggFn: z.nativeEnum(clickhouse.AggFn),
@@ -433,11 +489,14 @@ router.get(
         await clickhouse.getLogsChart({
           aggFn,
           endTime: endTimeNum,
+          // @ts-expect-error
           field,
           granularity,
+          // @ts-expect-error
           groupBy,
           maxNumGroups: MAX_NUM_GROUPS,
           propertyTypeMappingsModel,
+          // @ts-expect-error
           q,
           sortOrder,
           startTime: startTimeNum,
@@ -447,14 +506,14 @@ router.get(
       );
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
-      span.recordException(e as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
       next(e);
     }
   },
 );
 
-router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
+router.get('/histogram', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime } = req.query;
@@ -483,14 +542,14 @@ router.get('/histogram', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
 });
 
-router.get('/:id', isUserAuthenticated, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const logId = req.params.id;
@@ -517,8 +576,8 @@ router.get('/:id', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }

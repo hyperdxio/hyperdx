@@ -1,51 +1,53 @@
+import {
+  FormEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { clamp, format, sub } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+import { Button } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
+import { useHotkeys } from 'react-hotkeys-hook';
+import { toast } from 'react-toastify';
 import {
-  BarChart,
   Bar,
+  BarChart,
+  ReferenceArea,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceArea,
 } from 'recharts';
 import {
-  useQueryParam,
   StringParam,
-  withDefault,
+  useQueryParam,
   useQueryParams,
+  withDefault,
 } from 'use-query-params';
-import {
-  FormEvent,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  useMemo,
-  memo,
-} from 'react';
-import { format, sub, clamp } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
-import { toast } from 'react-toastify';
-import { useHotkeys } from 'react-hotkeys-hook';
-import { Button } from 'react-bootstrap';
-
-import 'react-modern-drawer/dist/index.css';
+import { ActionIcon, Indicator } from '@mantine/core';
 
 import api from './api';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
-import AppNav from './AppNav';
-import LogTable from './LogTable';
-import LogSidePanel from './LogSidePanel';
-import SearchInput from './SearchInput';
-import SaveSearchModal from './SaveSearchModal';
 import CreateLogAlertModal from './CreateLogAlertModal';
-import SearchPageActionBar from './SearchPageActionBar';
-import { useTimeQuery } from './timeQuery';
+import { withAppNav } from './layout';
+import LogSidePanel from './LogSidePanel';
+import LogTable from './LogTable';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
-import { ErrorBoundary } from 'react-error-boundary';
+import SaveSearchModal from './SaveSearchModal';
+import SearchInput from './SearchInput';
+import SearchPageActionBar from './SearchPageActionBar';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import { Tags } from './Tags';
+import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
+
+import 'react-modern-drawer/dist/index.css';
 
 const formatDate = (
   date: Date,
@@ -406,11 +408,16 @@ export default function SearchPage() {
     onTimeRangeSelect,
   } = useTimeQuery({ isUTC });
 
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  useEffect(() => {
+    setIsFirstLoad(false);
+  }, []);
   const [_searchedQuery, setSearchedQuery] = useQueryParam(
     'q',
     withDefault(StringParam, undefined),
     {
-      updateType: 'pushIn',
+      // prevent hijacking browser back button
+      updateType: isFirstLoad ? 'replaceIn' : 'pushIn',
       // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
       enableBatching: true,
     },
@@ -639,8 +646,39 @@ export default function SearchPage() {
     setResultsMode('search');
   }, [setResultsMode]);
 
+  const handleUpdateTags = useCallback(
+    newTags => {
+      if (selectedSavedSearch?._id) {
+        updateLogView.mutate(
+          {
+            id: selectedSavedSearch?._id,
+            query: displayedSearchQuery,
+            tags: newTags,
+          },
+          {
+            onSuccess: () => {
+              refetchLogViews();
+            },
+            onError: () => {
+              toast.error(
+                'An error occured. Please contact support for more details.',
+              );
+            },
+          },
+        );
+      }
+    },
+    [
+      displayedSearchQuery,
+      refetchLogViews,
+      selectedSavedSearch?._id,
+      updateLogView,
+    ],
+  );
+  const tagsCount = selectedSavedSearch?.tags?.length || 0;
+
   return (
-    <div className="LogViewerPage d-flex" style={{ height: '100vh' }}>
+    <div style={{ height: '100vh' }}>
       <Head>
         <title>Search - HyperDX</title>
       </Head>
@@ -693,7 +731,7 @@ export default function SearchPage() {
           refetchLogViews();
         }}
       />
-      <AppNav />
+
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
@@ -742,6 +780,24 @@ export default function SearchPage() {
               setShowSaveSearchModal(true);
             }}
           />
+          {!!selectedSavedSearch && (
+            <Tags
+              allowCreate
+              values={selectedSavedSearch.tags || []}
+              onChange={handleUpdateTags}
+            >
+              <Indicator
+                label={tagsCount || '+'}
+                size={20}
+                color="gray"
+                withBorder
+              >
+                <ActionIcon size="lg" variant="default" ml="xs">
+                  <i className="bi bi-tags-fill text-slate-300"></i>
+                </ActionIcon>
+              </Indicator>
+            </Tags>
+          )}
         </div>
         <div className="d-flex mx-4 mt-2 justify-content-between">
           <div className="fs-8 text-muted">
@@ -862,3 +918,5 @@ export default function SearchPage() {
     </div>
   );
 }
+
+SearchPage.getLayout = withAppNav;

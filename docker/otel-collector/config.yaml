@@ -30,6 +30,22 @@ processors:
       - key: __HDX_API_KEY
         from_context: authorization
         action: upsert
+  # TODO: use transform to attach __HDX_API_KEY attribute to spans/metrics/logs
+  transform:
+    error_mode: ignore
+    metric_statements:
+      - context: resource
+        statements:
+          # map metrics context to resource context (so splunk_hec will capture it)
+          - set(attributes["metric_aggregation_temporality"], "0")
+          - set(attributes["metric_unit"], "")
+          - set(attributes["metric_is_monotonic"], false)
+      - context: metric
+        statements:
+          - set(resource.attributes["metric_aggregation_temporality"],
+            aggregation_temporality)
+          - set(resource.attributes["metric_unit"], unit)
+          - set(resource.attributes["metric_is_monotonic"], is_monotonic)
   batch:
   memory_limiter:
     # 80% of maximum memory up to 2G
@@ -42,15 +58,15 @@ exporters:
     loglevel: ${env:HYPERDX_LOG_LEVEL}
   logzio/traces:
     account_token: 'X' # required but we don't use it
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-traces'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-traces'
   logzio/logs:
     account_token: 'X' # required but we don't use it
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-logs'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-logs'
   # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter
   splunk_hec:
     token: 'X' # required but we don't use it
     # endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
-    endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
+    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-metrics'
     # HTTP timeout when sending data. Defaults to 10s.
     timeout: 10s
     max_content_length_logs: 0
@@ -78,7 +94,7 @@ service:
       exporters: [logzio/traces, logging]
     metrics:
       receivers: [otlp]
-      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      processors: [attributes/attachHdxKey, transform, memory_limiter, batch]
       exporters: [splunk_hec, logging]
     logs:
       receivers: [otlp, fluentforward]

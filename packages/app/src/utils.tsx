@@ -1,11 +1,11 @@
-import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useState, useEffect, useRef } from 'react';
-import Convert from 'ansi-to-html';
-
+import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';
+import { NumberFormat } from './types';
 
 export function generateSearchUrl({
   query,
@@ -150,6 +150,11 @@ export const useDebounce = <T,>(
   }
 
   return debouncedValue;
+};
+
+export const TIME_TOKENS = {
+  '12h': 'MMM d h:mm:ss a',
+  '24h': 'MMM d HH:mm:ss.SSS',
 };
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
@@ -303,10 +308,11 @@ export const semanticKeyedColor = (key: string | number | undefined) => {
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
-  if (str.length <= maxLen) {
-    return str;
+  const coercedStr = `${str}`;
+  if (coercedStr.length <= maxLen) {
+    return coercedStr;
   }
-  return `${str.slice(0, (maxLen - 2) / 2)}..${str.slice(
+  return `${coercedStr.slice(0, (maxLen - 2) / 2)}..${coercedStr.slice(
     (-1 * (maxLen - 2)) / 2,
   )}`;
 };
@@ -392,4 +398,49 @@ export const useDrag = (
   }, [...deps, isDragging]);
 
   return { isDragging };
+};
+
+export const formatNumber = (
+  value?: number,
+  options?: NumberFormat,
+): string => {
+  if (!value && value !== 0) {
+    return 'N/A';
+  }
+
+  if (!options) {
+    return value.toString();
+  }
+
+  const numbroFormat: numbro.Format = {
+    output: options.output || 'number',
+    mantissa: options.mantissa || 0,
+    thousandSeparated: options.thousandSeparated || false,
+    average: options.average || false,
+    ...(options.output === 'byte' && {
+      base: options.decimalBytes ? 'decimal' : 'general',
+      spaceSeparated: true,
+      average: false,
+    }),
+    ...(options.output === 'currency' && {
+      currencySymbol: options.currencySymbol || '$',
+    }),
+  };
+  return (
+    numbro(value * (options.factor ?? 1)).format(numbroFormat) +
+    (options.unit ? ` ${options.unit}` : '')
+  );
+};
+
+// format uptime as days, hours, minutes or seconds
+export const formatUptime = (seconds: number) => {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  } else if (seconds < 60 * 60) {
+    return `${Math.floor(seconds / 60)}m`;
+  } else if (seconds < 60 * 60 * 24) {
+    return `${Math.floor(seconds / 60 / 60)}h`;
+  } else {
+    return `${Math.floor(seconds / 60 / 60 / 24)}d`;
+  }
 };

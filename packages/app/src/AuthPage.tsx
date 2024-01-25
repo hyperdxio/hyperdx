@@ -1,15 +1,23 @@
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { Button, Form } from 'react-bootstrap';
-import { NextSeo } from 'next-seo';
-import { API_SERVER_URL } from './config';
-import { useRouter } from 'next/router';
 import { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { NextSeo } from 'next-seo';
 import cx from 'classnames';
+import { SubmitHandler, useForm } from 'react-hook-form';
+import {
+  Button,
+  Notification,
+  Paper,
+  PasswordInput,
+  Stack,
+  TextInput,
+} from '@mantine/core';
 
-import LandingHeader from './LandingHeader';
-import * as config from './config';
 import api from './api';
+import { API_SERVER_URL } from './config';
+import * as config from './config';
+import LandingHeader from './LandingHeader';
+import { CheckOrX, PasswordCheck } from './PasswordCheck';
 
 type FormData = {
   email: string;
@@ -24,9 +32,11 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     handleSubmit,
     formState: { errors, isSubmitting },
     setError,
+    watch,
   } = useForm<FormData>({
     reValidateMode: 'onSubmit',
   });
+
   const router = useRouter();
   const { err, msg } = router.query;
 
@@ -44,6 +54,13 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       router.push('/login');
     }
   }, [installation, isRegister, router]);
+
+  const currentPassword = watch('password', '');
+  const confirmPassword = watch('confirmPassword', '');
+
+  const confirmPass = () => {
+    return currentPassword === confirmPassword;
+  };
 
   const onSubmit: SubmitHandler<FormData> = data =>
     registerPassword.mutate(
@@ -93,10 +110,13 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   return (
     <div className="AuthPage">
       <NextSeo title={title} />
-      <LandingHeader activeKey={`/${action}`} />
-      <div className="d-flex align-items-center justify-content-center vh-100 p-2">
-        <div>
-          <div className="text-center mb-4 fs-5">
+      <LandingHeader activeKey={`/${action}`} fixed />
+      <div className="d-flex justify-content-center align-items-center vh-100">
+        <div style={{ width: '26rem' }}>
+          <div
+            className="text-center mb-2 fs-5 text-slate-300"
+            style={{ marginTop: -30 }}
+          >
             {config.IS_OSS && isRegister
               ? 'Setup '
               : isRegister
@@ -105,121 +125,128 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             <span className="text-success fw-bold">HyperDX</span>
           </div>
           {action === 'login' && (
-            <div className="text-center mb-4 text-muted">Welcome back!</div>
+            <div className="text-center mb-2 text-slate-300">Welcome back!</div>
           )}
           {isRegister && config.IS_OSS === true && (
-            <div className="text-center mb-4 text-muted">
+            <div className="text-center mb-2 text-muted">
               Let{"'"}s create your user account.
             </div>
           )}
-          <div
-            className="bg-hdx-dark rounded py-4 px-3 my-3 mt-2 fs-7"
-            style={{ maxWidth: 400, minWidth: 400, width: '100%' }}
-          >
-            <div className="text-center">
-              <Form className="text-start" {...form.controller}>
-                <Form.Label
-                  htmlFor="email"
-                  className="text-start text-muted fs-7.5 mb-1"
-                >
-                  Email
-                </Form.Label>
-                <Form.Control
-                  data-test-id="form-email"
-                  id="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  className="border-0 mb-3"
-                  {...form.email}
-                />
-                <Form.Label
-                  htmlFor="password"
-                  className="text-start text-muted fs-7.5 mb-1"
-                >
-                  Password
-                </Form.Label>
-                <Form.Control
-                  data-test-id="form-password"
-                  id="password"
-                  type="password"
-                  className={cx('border-0', {
-                    'mb-3': isRegister,
-                  })}
-                  {...form.password}
-                />
-                {isRegister && (
-                  <>
-                    <Form.Label
-                      htmlFor="confirmPassword"
-                      className="text-start text-muted fs-7.5 mb-1"
-                    >
-                      Confirm Password
-                    </Form.Label>
-                    <Form.Control
-                      data-test-id="form-confirm-password"
-                      id="confirmPassword"
-                      type="password"
-                      className="border-0"
-                      {...form.confirmPassword}
-                    />
-                  </>
-                )}
-                {isRegister && Object.keys(errors).length > 0 && (
-                  <div className="text-danger mt-2">
-                    {Object.values(errors).map((error, index) => (
-                      <div key={index}>{error.message}</div>
-                    ))}
-                  </div>
-                )}
-                {err != null && (
-                  <div
-                    className="text-danger mt-2"
-                    data-test-id="auth-error-msg"
-                  >
-                    {err === 'missing'
-                      ? 'Please provide a valid email and password'
-                      : err === 'invalid'
-                      ? 'Email or password is invalid'
-                      : err === 'authFail'
-                      ? 'Failed to login with email and password, please try again.'
-                      : err === 'passwordAuthNotAllowed'
-                      ? 'Password authentication is not allowed by your team admin.'
-                      : err === 'teamAlreadyExists'
-                      ? 'Team already exists, please login instead.'
-                      : 'Unkown error occured, please try again later.'}
-                  </div>
-                )}
-                {verificationSent && (
-                  <div className="text-success mt-2" data-test-id="auth-msg">
-                    Sent verification email! Please check your email inbox
-                  </div>
-                )}
-                <div className="text-center mt-4">
+          <form className="text-start mt-4" {...form.controller}>
+            <Stack spacing="xl">
+              <Paper p={34} shadow="md" radius="md">
+                <Stack spacing="lg">
+                  <TextInput
+                    label="Email"
+                    size="md"
+                    withAsterisk={false}
+                    placeholder="you@company.com"
+                    type="email"
+                    icon={<i className="bi bi-at fs-5" />}
+                    error={errors.email?.message}
+                    required
+                    {...form.email}
+                  />
+                  <PasswordInput
+                    size="md"
+                    label="Password"
+                    withAsterisk={false}
+                    icon={<i className="bi bi-lock-fill" />}
+                    error={errors.password?.message}
+                    required
+                    placeholder="Password"
+                    {...form.password}
+                  />
+                  {isRegister && (
+                    <>
+                      <PasswordInput
+                        label={
+                          <CheckOrX
+                            handler={confirmPass}
+                            password={currentPassword}
+                          >
+                            Confirm Password
+                          </CheckOrX>
+                        }
+                        size="md"
+                        required
+                        withAsterisk={false}
+                        icon={<i className="bi bi-lock-fill" />}
+                        error={errors.confirmPassword?.message}
+                        placeholder="Confirm Password"
+                        {...form.confirmPassword}
+                      />
+                      <Notification color="gray.7" withCloseButton={false}>
+                        <PasswordCheck password={currentPassword} />
+                      </Notification>
+                    </>
+                  )}
                   <Button
-                    variant="light"
-                    className="px-6"
+                    mt={4}
                     type="submit"
-                    data-test-id="submit"
+                    variant="light"
+                    size="md"
                     disabled={isSubmitting || verificationSent}
+                    loading={isSubmitting}
+                    data-test-id="submit"
                   >
                     {isRegister ? 'Register' : 'Login'}
                   </Button>
-                </div>
-              </Form>
+                </Stack>
+              </Paper>
+
+              {err != null && (
+                <Notification
+                  withCloseButton={false}
+                  withBorder
+                  color="red"
+                  data-test-id="auth-error-msg"
+                >
+                  {err === 'missing'
+                    ? 'Please provide a valid email and password'
+                    : err === 'invalid'
+                    ? 'Email or password is invalid'
+                    : err === 'authFail'
+                    ? 'Failed to login with email and password, please try again.'
+                    : err === 'passwordAuthNotAllowed'
+                    ? 'Password authentication is not allowed by your team admin.'
+                    : err === 'teamAlreadyExists'
+                    ? 'Team already exists, please login instead.'
+                    : 'Unkown error occured, please try again later.'}
+                </Notification>
+              )}
+
+              {verificationSent && (
+                <Notification
+                  withCloseButton={false}
+                  withBorder
+                  color="green"
+                  data-test-id="auth-msg"
+                >
+                  Sent verification email! Please check your email inbox
+                </Notification>
+              )}
+
               {isRegister && config.IS_OSS === false && (
-                <div data-test-id="login-link" className="mt-4 text-muted">
+                <div
+                  data-test-id="login-link"
+                  className="text-center fs-8 text-slate-400"
+                >
                   Already have an account? <Link href="/login">Log in</Link>{' '}
                   instead.
                 </div>
               )}
               {action === 'login' && config.IS_OSS === false && (
-                <div data-test-id="register-link" className="mt-4 text-muted">
+                <div
+                  data-test-id="register-link"
+                  className="text-center fs-8 text-slate-400"
+                >
                   Don{"'"}t have an account yet?{' '}
                   <Link href="/register">Register</Link> instead.
                 </div>
               )}
-            </div>
-          </div>
+            </Stack>
+          </form>
         </div>
       </div>
     </div>

@@ -27,21 +27,19 @@ export type AlertChannel = {
   webhookId: string;
 };
 
-export enum AlertSource {
-  LOG = 'LOG',
-  CHART = 'CHART',
-}
+export type AlertSource = 'LOG' | 'CHART';
 
 export interface IAlert {
   _id: ObjectId;
   channel: AlertChannel;
   cron: string;
   interval: AlertInterval;
+  source?: AlertSource;
   state: AlertState;
+  team: ObjectId;
   threshold: number;
   timezone: string;
   type: AlertType;
-  source?: AlertSource;
 
   // Log alerts
   groupBy?: string;
@@ -52,6 +50,8 @@ export interface IAlert {
   dashboardId?: ObjectId;
   chartId?: string;
 }
+
+export type AlertDocument = mongoose.HydratedDocument<IAlert>;
 
 const AlertSchema = new Schema<IAlert>(
   {
@@ -83,15 +83,18 @@ const AlertSchema = new Schema<IAlert>(
     },
     source: {
       type: String,
-      enum: AlertSource,
       required: false,
-      default: AlertSource.LOG,
+      default: 'LOG',
+    },
+    team: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
     },
 
     // Log alerts
     logView: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Alert',
+      ref: 'LogView',
       required: false,
     },
     groupBy: {

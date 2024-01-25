@@ -1,28 +1,27 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Modal } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { useEffect, useMemo, useState } from 'react';
 
-import HDXLineChart from './HDXLineChart';
-import TabBar from './TabBar';
+import {
+  ALERT_CHANNEL_OPTIONS,
+  ALERT_INTERVAL_OPTIONS,
+  intervalToDateRange,
+  intervalToGranularity,
+  SlackChannelForm,
+} from './Alert';
 import api from './api';
 import { FieldSelect } from './ChartUtils';
-import { capitalizeFirstLetter } from './utils';
+import HDXLineChart from './HDXLineChart';
 import { genEnglishExplanation } from './queryv2';
-
+import TabBar from './TabBar';
 import type {
   AlertChannelType,
   AlertInterval,
   AlertType,
   LogView,
 } from './types';
-import {
-  intervalToGranularity,
-  intervalToDateRange,
-  ALERT_INTERVAL_OPTIONS,
-  ALERT_CHANNEL_OPTIONS,
-  SlackChannelForm,
-} from './Alert';
+import { capitalizeFirstLetter } from './utils';
 
 function AlertForm({
   alertId,
@@ -47,7 +46,7 @@ function AlertForm({
     groupBy: string | undefined;
     interval: AlertInterval;
     threshold: number;
-    type: string;
+    type: AlertType;
     webhookId: string | undefined;
   }) => void;
   onDeleteClick: () => void;
@@ -114,7 +113,7 @@ function AlertForm({
           id="threshold"
           size="sm"
           defaultValue={1}
-          {...register('threshold')}
+          {...register('threshold', { valueAsNumber: true })}
         />
         <div className="me-2 mb-2">lines appear within</div>
         <div className="me-2 mb-2">
@@ -332,6 +331,7 @@ export default function CreateLogAlertModal({
               if (savedSearchId != null) {
                 saveAlert.mutate(
                   {
+                    source: 'LOG',
                     type,
                     threshold,
                     interval,
@@ -388,6 +388,7 @@ export default function CreateLogAlertModal({
                 updateAlert.mutate(
                   {
                     id: selectedAlertId,
+                    source: 'LOG',
                     type,
                     threshold,
                     interval,

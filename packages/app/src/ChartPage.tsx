@@ -1,24 +1,24 @@
-import Head from 'next/head';
-import { Button } from 'react-bootstrap';
-import { useQueryParam, StringParam, withDefault } from 'use-query-params';
 import { useCallback, useEffect, useState } from 'react';
-import { encodeArray, decodeArray } from 'serialize-query-params';
+import Head from 'next/head';
 import produce from 'immer';
+import { Button } from 'react-bootstrap';
+import { ErrorBoundary } from 'react-error-boundary';
+import { toast } from 'react-toastify';
+import type { QueryParamConfig } from 'serialize-query-params';
+import { decodeArray, encodeArray } from 'serialize-query-params';
+import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 
-import { useQueryParam as useHDXQueryParam } from './useQueryParam';
+import { ChartSeriesForm } from './ChartUtils';
+import DSSelect from './DSSelect';
+import HDXLineChart from './HDXLineChart';
+import { withAppNav } from './layout';
+import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchTimeRangePicker, {
   parseTimeRangeInput,
 } from './SearchTimeRangePicker';
-import DSSelect from './DSSelect';
-import AppNav from './AppNav';
-
-import HDXLineChart from './HDXLineChart';
-import { ChartSeries, AggFn, ChartSeriesForm } from './ChartUtils';
-
-import type { QueryParamConfig } from 'serialize-query-params';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
-import { toast } from 'react-toastify';
+import type { AggFn, ChartSeries, SourceTable } from './types';
+import { useQueryParam as useHDXQueryParam } from './useQueryParam';
 
 export const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
   encode: (
@@ -58,21 +58,12 @@ export default function GraphPage() {
     },
   );
 
-  const setTable = (index: number, table: string) => {
-    setChartSeries(
-      produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].table = table;
-        }
-      }),
-    );
-  };
-
   const setAggFn = (index: number, fn: AggFn) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].aggFn = fn;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.aggFn = fn;
         }
       }),
     );
@@ -80,8 +71,9 @@ export default function GraphPage() {
   const setField = (index: number, field: string | undefined) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].field = field;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.field = field;
         }
       }),
     );
@@ -93,9 +85,10 @@ export default function GraphPage() {
   ) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].field = field;
-          series[index].aggFn = fn;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.field = field;
+          s.aggFn = fn;
         }
       }),
     );
@@ -103,8 +96,9 @@ export default function GraphPage() {
   const setWhere = (index: number, where: string) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].where = where;
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.where = where;
         }
       }),
     );
@@ -112,8 +106,9 @@ export default function GraphPage() {
   const setGroupBy = (index: number, groupBy: string | undefined) => {
     setChartSeries(
       produce(chartSeries, series => {
-        if (series?.[index] != null) {
-          series[index].groupBy = groupBy != null ? [groupBy] : [];
+        const s = series?.[index];
+        if (s != null && s.type === 'time') {
+          s.groupBy = groupBy != null ? [groupBy] : [];
         }
       }),
     );
@@ -150,7 +145,11 @@ export default function GraphPage() {
     onSearch(displayedTimeInputValue);
     const dateRange = parseTimeRangeInput(displayedTimeInputValue);
 
-    if (dateRange[0] != null && dateRange[1] != null) {
+    if (
+      dateRange[0] != null &&
+      dateRange[1] != null &&
+      chartSeries[0].type === 'time'
+    ) {
       setChartConfig({
         // TODO: Support multiple series
         table: chartSeries[0].table ?? 'logs',
@@ -167,18 +166,20 @@ export default function GraphPage() {
   }, [chartSeries, displayedTimeInputValue, granularity, onSearch]);
 
   return (
-    <div className="LogViewerPage d-flex" style={{ height: '100vh' }}>
+    <div className="LogViewerPage">
       <Head>
         <title>Chart Explorer - HyperDX</title>
       </Head>
-      <AppNav />
       <div
-        style={{ background: '#16171D', height: '100%' }}
-        className="d-flex flex-column flex-grow-1"
+        style={{ background: '#16171D', height: '100vh' }}
+        className="d-flex flex-column"
       >
         <form className="bg-body p-3" onSubmit={e => e.preventDefault()}>
           <div className="fs-5 mb-3 fw-500">Create New Chart</div>
           {chartSeries.map((series, index) => {
+            if (series.type !== 'time') {
+              return null;
+            }
             return (
               <ChartSeriesForm
                 key={index}
@@ -193,14 +194,14 @@ export default function GraphPage() {
                 setTableAndAggFn={(table, aggFn) => {
                   setChartSeries(
                     produce(chartSeries, series => {
-                      if (series?.[index] != null) {
-                        series[index].table = table;
-                        series[index].aggFn = aggFn;
+                      const s = series?.[index];
+                      if (s != null && s.type === 'time') {
+                        s.table = table;
+                        s.aggFn = aggFn;
                       }
                     }),
                   );
                 }}
-                setTable={table => setTable(index, table)}
                 setWhere={where => setWhere(index, where)}
                 setAggFn={fn => setAggFn(index, fn)}
                 setGroupBy={groupBy => setGroupBy(index, groupBy)}
@@ -285,12 +286,21 @@ export default function GraphPage() {
           className="w-100 mt-4 flex-grow-1"
           style={{ height: 400, minWidth: 0 }}
         >
-          {chartConfig != null && <HDXLineChart config={chartConfig} />}
+          <ErrorBoundary
+            onError={console.error}
+            fallback={
+              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                An error occurred while rendering the chart.
+              </div>
+            }
+          >
+            {chartConfig != null && <HDXLineChart config={chartConfig} />}
+          </ErrorBoundary>
         </div>
         {chartConfig != null && chartConfig.table === 'logs' && (
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
-            <div style={{ height: 150 }} className="bg-hdx-dark">
+            <div style={{ height: 200 }} className="bg-hdx-dark">
               <LogTableWithSidePanel
                 config={{
                   ...chartConfig,
@@ -316,3 +326,5 @@ export default function GraphPage() {
     </div>
   );
 }
+
+GraphPage.getLayout = withAppNav;

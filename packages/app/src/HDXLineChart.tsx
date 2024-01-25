@@ -1,47 +1,117 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import cx from 'classnames';
+import { add, format } from 'date-fns';
+import pick from 'lodash/pick';
+import { ErrorBoundary, withErrorBoundary } from 'react-error-boundary';
+import { toast } from 'react-toastify';
 import {
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
+  Bar,
+  BarChart,
+  Label,
+  Legend,
   Line,
   LineChart,
-  Legend,
-  ReferenceLine,
   ReferenceArea,
-  Label,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { format, add } from 'date-fns';
-import pick from 'lodash/pick';
+import { Popover } from '@mantine/core';
 
 import api from './api';
-import { AggFn, Granularity, convertGranularityToSeconds } from './ChartUtils';
+import { convertGranularityToSeconds, Granularity } from './ChartUtils';
+import type { AggFn, NumberFormat } from './types';
+import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { formatNumber } from './utils';
+import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
-import { semanticKeyedColor, truncateMiddle } from './utils';
-import Link from 'next/link';
+import styles from '../styles/HDXLineChart.module.scss';
 
-function ExpandableLegendItem({ value, entry }: any) {
-  const [expanded, setExpanded] = useState(false);
-  const { color } = entry;
+const MAX_LEGEND_ITEMS = 4;
 
+function CopyableLegendItem({ entry }: any) {
   return (
-    <span>
-      <span
-        style={{ color }}
-        role="button"
-        onClick={() => setExpanded(v => !v)}
-        title="Click to expand"
-      >
-        {expanded ? value : truncateMiddle(`${value}`, 45)}
-      </span>
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => {
+        window.navigator.clipboard.writeText(entry.value);
+        toast.success(`Copied to clipboard`);
+      }}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {entry.value}
     </span>
   );
 }
 
-const legendFormatter = (value: string, entry: any) => (
-  <ExpandableLegendItem value={value} entry={entry} />
-);
+function ExpandableLegendItem({ entry, expanded }: any) {
+  const [_expanded, setExpanded] = useState(false);
+  const isExpanded = _expanded || expanded;
 
+  return (
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => setExpanded(v => !v)}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
+    </span>
+  );
+}
+
+export const LegendRenderer = memo<{
+  payload?: {
+    value: string;
+    color: string;
+  }[];
+}>(props => {
+  const payload = props.payload ?? [];
+  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
+  const restItems = payload.slice(MAX_LEGEND_ITEMS);
+
+  return (
+    <div className={styles.legend}>
+      {shownItems.map((entry, index) => (
+        <ExpandableLegendItem
+          key={`item-${index}`}
+          value={entry.value}
+          entry={entry}
+        />
+      ))}
+      {restItems.length ? (
+        <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
+          <Popover.Target>
+            <div className={cx(styles.legendItem, styles.legendMoreLink)}>
+              +{restItems.length} more
+            </div>
+          </Popover.Target>
+          <Popover.Dropdown p="xs">
+            <div className={styles.legendTooltipContent}>
+              {restItems.map((entry, index) => (
+                <CopyableLegendItem
+                  key={`item-${index}`}
+                  value={entry.value}
+                  entry={entry}
+                />
+              ))}
+            </div>
+          </Popover.Dropdown>
+        </Popover>
+      ) : null}
+    </div>
+  );
+});
+
+const HARD_LINES_LIMIT = 60;
 const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -50,6 +120,9 @@ const MemoChart = memo(function MemoChart({
   groupKeys,
   alertThreshold,
   alertThresholdType,
+  logReferenceTimestamp,
+  displayType = 'line',
+  numberFormat,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -58,20 +131,56 @@ const MemoChart = memo(function MemoChart({
   groupKeys: string[];
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
+  displayType?: 'stacked_bar' | 'line';
+  numberFormat?: NumberFormat;
+  logReferenceTimestamp?: number;
 }) {
+  const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
+
   const lines = useMemo(() => {
-    return groupKeys.map(key => (
-      <Line
-        key={key}
-        type="monotone"
-        dataKey={key}
-        stroke={semanticKeyedColor(key)}
-        dot={false}
-      />
-    ));
-  }, [groupKeys]);
+    return groupKeys
+      .slice(0, HARD_LINES_LIMIT)
+      .map(key =>
+        displayType === 'stacked_bar' ? (
+          <Bar
+            key={key}
+            type="monotone"
+            dataKey={key}
+            fill={semanticKeyedColor(key)}
+            stackId="1"
+          />
+        ) : (
+          <Line
+            key={key}
+            type="monotone"
+            dataKey={key}
+            stroke={semanticKeyedColor(key)}
+            dot={false}
+          />
+        ),
+      );
+  }, [groupKeys, displayType]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
+  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const tsFormat = TIME_TOKENS[timeFormat];
+  // Gets the preffered time format from User Preferences, then converts it to a formattable token
+
+  const tickFormatter = useCallback(
+    (value: number) =>
+      numberFormat
+        ? formatNumber(value, {
+            ...numberFormat,
+            average: true,
+            mantissa: 0,
+            unit: undefined,
+          })
+        : new Intl.NumberFormat('en-US', {
+            notation: 'compact',
+            compactDisplay: 'short',
+          }).format(value),
+    [numberFormat],
+  );
 
   return (
     <ResponsiveContainer
@@ -82,7 +191,7 @@ const MemoChart = memo(function MemoChart({
         sizeRef.current = [width ?? 1, height ?? 1];
       }}
     >
-      <LineChart
+      <ChartComponent
         width={500}
         height={300}
         data={graphResults}
@@ -120,23 +229,20 @@ const MemoChart = memo(function MemoChart({
           interval="preserveStartEnd"
           scale="time"
           type="number"
-          tickFormatter={tick => format(new Date(tick * 1000), 'MMM d HH:mm')}
+          tickFormatter={tick => format(new Date(tick * 1000), tsFormat)}
           minTickGap={50}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <YAxis
-          width={35}
+          width={40}
           minTickGap={25}
-          tickFormatter={(value: number) =>
-            new Intl.NumberFormat('en-US', {
-              notation: 'compact',
-              compactDisplay: 'short',
-            }).format(value)
-          }
+          tickFormatter={tickFormatter}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         {lines}
-        <Tooltip content={<HDXLineChartTooltip />} />
+        <Tooltip
+          content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+        />
         {alertThreshold != null && alertThresholdType === 'below' && (
           <ReferenceArea
             y1={0}
@@ -165,42 +271,77 @@ const MemoChart = memo(function MemoChart({
         <Legend
           iconSize={10}
           verticalAlign="bottom"
-          formatter={legendFormatter}
+          content={<LegendRenderer />}
         />
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
         ) : null}
-      </LineChart>
+        {logReferenceTimestamp != null ? (
+          <ReferenceLine
+            x={logReferenceTimestamp}
+            stroke="#ff5d5b"
+            strokeDasharray="3 3"
+            label="Event"
+          />
+        ) : null}
+      </ChartComponent>
     </ResponsiveContainer>
   );
 });
 
-const HDXLineChartTooltip = (props: any) => {
-  const tsFormat = 'MMM d HH:mm:ss.SSS';
-  const { active, payload, label } = props;
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-grey px-3 py-2 rounded fs-8">
-        <div className="mb-2">{format(new Date(label * 1000), tsFormat)}</div>
-        {payload
-          .sort((a: any, b: any) => b.value - a.value)
-          .map((p: any) => (
-            <div key={p.name} style={{ color: p.color }}>
-              {p.dataKey}: {p.value}
-            </div>
-          ))}
+export const HDXLineChartTooltip = withErrorBoundary(
+  memo((props: any) => {
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const tsFormat = TIME_TOKENS[timeFormat];
+    const { active, payload, label, numberFormat } = props;
+    if (active && payload && payload.length) {
+      return (
+        <div className={styles.chartTooltip}>
+          <div className={styles.chartTooltipHeader}>
+            {format(new Date(label * 1000), tsFormat)}
+          </div>
+          <div className={styles.chartTooltipContent}>
+            {payload
+              .sort((a: any, b: any) => b.value - a.value)
+              .map((p: any) => (
+                <div key={p.dataKey} style={{ color: p.color }}>
+                  {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
+                  {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+                </div>
+              ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }),
+  {
+    onError: console.error,
+    fallback: (
+      <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
+        An error occurred while rendering the tooltip.
       </div>
-    );
-  }
-  return null;
-};
+    ),
+  },
+);
+
 const HDXLineChart = memo(
   ({
-    config: { table, aggFn, field, where, groupBy, granularity, dateRange },
+    config: {
+      table,
+      aggFn,
+      field,
+      where,
+      groupBy,
+      granularity,
+      dateRange,
+      numberFormat,
+    },
     onSettled,
     alertThreshold,
     alertThresholdType,
+    logReferenceTimestamp,
   }: {
     config: {
       table: string;
@@ -210,12 +351,14 @@ const HDXLineChart = memo(
       groupBy: string;
       granularity: Granularity;
       dateRange: [Date, Date];
+      numberFormat?: NumberFormat;
     };
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
+    logReferenceTimestamp?: number;
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -345,9 +488,17 @@ const HDXLineChart = memo(
       });
     }
 
+    const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
+      'line',
+    );
+
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : graphResults.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -414,6 +565,42 @@ const HDXLineChart = memo(
               </span>
             </div>
           ) : null}
+          <div
+            className="bg-grey px-3 py-2 rounded fs-8"
+            style={{
+              zIndex: 5,
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              visibility: 'visible',
+            }}
+            title={`Only the top ${groupKeys.length} groups are shown, ${
+              totalGroups - groupKeys.length
+            } groups are hidden. Try grouping by a different field.`}
+          >
+            <span
+              className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
+                'text-success': displayType === 'line',
+                'text-muted-hover': displayType !== 'line',
+              })}
+              role="button"
+              title="Display as line chart"
+              onClick={() => setDisplayType('line')}
+            >
+              <i className="bi bi-graph-up"></i>
+            </span>
+            <span
+              className={cx('text-decoration-none fs-7 cursor-pointer', {
+                'text-success': displayType === 'stacked_bar',
+                'text-muted-hover': displayType !== 'stacked_bar',
+              })}
+              role="button"
+              title="Display as bar chart"
+              onClick={() => setDisplayType('stacked_bar')}
+            >
+              <i className="bi bi-bar-chart"></i>
+            </span>
+          </div>
           <MemoChart
             graphResults={graphResults}
             groupKeys={groupKeys}
@@ -422,6 +609,9 @@ const HDXLineChart = memo(
             dateRange={dateRange}
             alertThreshold={alertThreshold}
             alertThresholdType={alertThresholdType}
+            displayType={displayType}
+            numberFormat={numberFormat}
+            logReferenceTimestamp={logReferenceTimestamp}
           />
         </div>
       </div>

@@ -1,7 +1,33 @@
+# --------------------------------------------------------------------------------
+# ------------------------------ Transforms --------------------------------------
+# --------------------------------------------------------------------------------
+[transforms.internal_logs]
+type = "remap"
+inputs = ["vector_logs"]
+source = '''
+  . = merge(.,
+    {
+      "hdx_token": "${HYPERDX_API_KEY}",
+      "hdx_platform": "vector-internal"
+    }
+  )
+'''
+
+[sinks.go_parser]
+type = "http"
+uri = "${GO_PARSER_API_URL}"
+inputs = ["go_spans"] # only send spans for now
+compression = "gzip"
+encoding.codec = "json"
+batch.max_bytes = 10485760 # 10MB, required for rrweb payloads 
+batch.max_events = 100
+batch.timeout_secs = 1
+
+
 [sinks.dev_hdx_aggregator]
 type = "http"
-uri = "http://aggregator:8001"
-inputs = ["spans", "post_logs"]
+uri = "${AGGREGATOR_API_URL}"
+inputs = ["post_spans", "post_logs"]
 compression = "gzip"
 encoding.codec = "json"
 batch.max_bytes = 10485760 # 10MB, required for rrweb payloads 
@@ -11,7 +37,7 @@ batch.timeout_secs = 1
 
 [sinks.dev_hdx_metrics_aggregator]
 type = "http"
-uri = "http://aggregator:8001?telemetry=metric"
+uri = "${AGGREGATOR_API_URL}?telemetry=metric"
 inputs = ["metrics"]
 compression = "gzip"
 encoding.codec = "json"

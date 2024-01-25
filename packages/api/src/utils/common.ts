@@ -1,6 +1,16 @@
+export type JSONBlob = Record<string, Json>;
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | Json[]
+  | { [key: string]: Json };
+
 export const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
-  let output = null;
-  let error = null;
+  let output: null | T = null;
+  let error: null | Error | unknown = null;
   try {
     output = fn();
     return [error, output];
@@ -10,9 +20,7 @@ export const useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   }
 };
 
-export const tryJSONStringify = (
-  json: Record<string, unknown> | Record<string, unknown>[],
-) => {
+export const tryJSONStringify = (json: Json) => {
   const [_, result] = useTry<string>(() => JSON.stringify(json));
   return result;
 };

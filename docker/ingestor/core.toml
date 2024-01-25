@@ -8,6 +8,14 @@ acknowledgements.enabled = true
 [api]
   enabled = true
   address = "0.0.0.0:8686"
+
+[sources.vector_logs]
+  type = "internal_logs"
+
+# [sinks.console]
+#   type = "console"
+#   inputs = ["internal_logs"]
+#   encoding.codec = "json"
 # --------------------------------------------------------------------------------
 
 
@@ -102,7 +110,7 @@ condition = '''
 
 [transforms.logs]
 type = "remap"
-inputs = ["filter_logs"]
+inputs = ["filter_logs", "internal_logs"]
 drop_on_abort = true
 drop_on_error = true
 reroute_dropped = true
@@ -193,6 +201,10 @@ if .hdx_platform == "vector-internal" {
 
     .b = {}
     .b._hdx_body = tmp_body
+    .b.heroku = {}
+    .b.heroku.app = del(.heroku_app)
+    .b.heroku.dyno = tmp_attrs."7"
+    .b.heroku.source = tmp_attrs."6"
     .ts = to_unix_timestamp(parse_timestamp(del(tmp_attrs."4"), format: "%+") ?? now(), unit: "nanoseconds")
 
     if contains(.sv, "heroku") {
@@ -303,13 +315,19 @@ if .hdx_platform == "vector-internal" {
       if tmp_level != "info" {
         .st = tmp_level
       }
-      .sv = .b.fly.app.name
       .ts = to_unix_timestamp(parse_timestamp(.b.timestamp, format: "%+") ?? now(), unit: "nanoseconds")
       .b._hdx_body = .b.message
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
       }
+
+      # use user-specifed service name by default
+      .sv = .b."service.name"
+      if is_nullish(.sv) {
+        .sv = .b.fly.app.name
+      }
+
       # TODO: maybe move this to post_logs
       if !is_nullish(.b.message) {
         .b._hdx_body = .b.message
@@ -379,13 +397,34 @@ if .hdx_platform == "vector-internal" {
       tmp_timestamp = to_int(.b."@timestamp") ?? 0
       .b._hdx_body = .b.message
       .ts = to_unix_timestamp(from_unix_timestamp(tmp_timestamp, unit: "milliseconds") ?? now(), unit: "nanoseconds")
-      .sv = del(.b.type)
-      if is_nullish(.sv) {
-        .sv = .b.logGroup
-      }
+
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
+      } else {
+        # BETA: extract json from message
+        # TODO: move this to post_logs if it's performant enough
+        if ends_with(string(.b.message) ?? "", "}") {
+          _SEARCH_CHARS_LENGTH = 64
+          left_most_bracket_index = find(slice(.b.message, start:0, end:_SEARCH_CHARS_LENGTH) ?? "", "{") ?? -1
+          if left_most_bracket_index != -1 {
+            tmp_json = slice(.b.message, start:left_most_bracket_index) ?? ""
+            structured = parse_json(tmp_json) ?? null
+            if is_object(structured) {
+              .b = merge(.b, structured, deep: true) ?? .b
+            }
+          }
+        }
+      }
+
+      # use user-specifed service name by default
+      tmp_type = del(.b.type)
+      .sv = .b."service.name"
+      if is_nullish(.sv) {
+        .sv = tmp_type
+        if is_nullish(.sv) {
+          .sv = .b.logGroup
+        }
       }
     } else if .hdx_platform == "aws-sns" {
       .st = "ok"
@@ -399,6 +438,19 @@ if .hdx_platform == "vector-internal" {
       del(.r."@timestamp")
       tmp_timestamp = del(.b."@timestamp")
       
+      # FIX: need to fix python SDK instead
+      if .b."telemetry.sdk.language" == "python" {
+        if .b."service.name" == "unknown_service" {
+          .b."service.name" = del(.b.otelServiceName)
+        }
+        if is_nullish(.b.span_id) {
+          .b.span_id = del(.b.otelSpanID)
+        }
+        if is_nullish(.b.trace_id) {
+          .b.trace_id = del(.b.otelTraceID)
+        }
+      } 
+
       .r.timestamp = tmp_timestamp
       .b.timestamp = tmp_timestamp
 
@@ -409,6 +461,34 @@ if .hdx_platform == "vector-internal" {
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
         .b = merge(.b, structured, deep: true) ?? .b
+      }
+
+      # extract k8s event metadata
+      if .b.object.apiVersion == "events.k8s.io/v1" && .b.object.kind == "Event" {
+        # set severity
+        if is_nullish(.b.level) && (.b.object.type == "Warning" || .b.object.type == "Normal") {
+          .b.level = .b.object.type
+        }
+        # transform the attributes so that the log events use the k8s.* semantic conventions 
+        # ref: https://docs.honeycomb.io/integrations/kubernetes/kubernetes-events/
+        if .b.object.regarding.kind == "Pod" {
+          .b."k8s.pod.name" = .b.object.regarding.name
+          .b."k8s.pod.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        } else if .b.object.regarding.kind == "Node" {
+          .b."k8s.node.name" = .b.object.regarding.name
+          .b."k8s.node.uid" = .b.object.regarding.uid
+        } else if .b.object.regarding.kind == "Job" {
+          .b."k8s.job.name" = .b.object.regarding.name
+          .b."k8s.job.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        } else if .b.object.regarding.kind == "CronJob" {
+          .b."k8s.cronjob.name" = .b.object.regarding.name
+          .b."k8s.cronjob.uid" = .b.object.regarding.uid
+          .b."k8s.namespace.name" = .b.object.regarding.namespace
+        }
+        # set main message
+        .b._hdx_body = .b.object.note
       }
 
       # set severity after merging structured message (to avoid conflict)
@@ -527,32 +607,34 @@ if exists(.ts) {
 if is_nullish(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
-    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""
   } else {
-    header = slice(to_string(.r) ?? "", start: 0, end: 160) ?? ""
+    header = slice(to_string(.r) ?? "", start: 0, end: 256) ?? ""
   }
-  if contains(header, "info", case_sensitive: false) {
-    .st = "info"
-  } else if contains(header, "warn", case_sensitive: false) {
-    .st = "warn"
+
+  # should infer level by the order of severity
+  if contains(header, "emerg", case_sensitive: false) {
+    .st = "emergency"
+  } else if contains(header, "alert", case_sensitive: false) {
+    .st = "alert"
+  } else if contains(header, "crit", case_sensitive: false) {
+    .st = "critical"
+  } else if contains(header, "fatal", case_sensitive: false) {
+    .st = "fatal"
   } else if contains(header, "error", case_sensitive: false) {
     .st = "error"
+  } else if contains(header, "warn", case_sensitive: false) {
+    .st = "warn"
+  } else if contains(header, "notice", case_sensitive: false) {
+    .st = "notice"
+  } else if contains(header, "info", case_sensitive: false) {
+    .st = "info"
   } else if contains(header, "debug", case_sensitive: false) {
     .st = "debug"
   } else if contains(header, "trace", case_sensitive: false) {
     .st = "trace"
-  } else if contains(header, "fatal", case_sensitive: false) {
-    .st = "fatal"
-  } else if contains(header, "notice", case_sensitive: false) {
-    .st = "notice"
-  } else if contains(header, "crit", case_sensitive: false) {
-    .st = "critical"
-  } else if contains(header, "emerg", case_sensitive: false) {
-    .st = "emergency"
-  } else if contains(header, "alert", case_sensitive: false) {
-    .st = "alert"
   } else {
-    .st = "info" # mike said that on 2023-07-23
+    .st = "info"
   }
 }
 
@@ -598,6 +680,25 @@ if is_object(.r) {
   .b = tmp_JaegerTag
   .b.process = tmp_process
   .b.__events = .r.logs
+
+  # TODO: we want to delete the redundant .b.process.tag.x fields eventually
+  # TODO: maybe we want to move "tag" to the root level
+  # extract k8s tags
+  if !is_nullish(.b.process.tag."k8s.pod.name") {
+    .b."k8s.pod.name" = .b.process.tag."k8s.pod.name"
+  }
+  if !is_nullish(.b.process.tag."k8s.pod.uid") {
+    .b."k8s.pod.uid" = .b.process.tag."k8s.pod.uid"
+  }
+  if !is_nullish(.b.process.tag."k8s.namespace.name") {
+    .b."k8s.namespace.name" = .b.process.tag."k8s.namespace.name"
+  }
+  if !is_nullish(.b.process.tag."k8s.node.name") {
+    .b."k8s.node.name" = .b.process.tag."k8s.node.name"
+  }
+  if !is_nullish(.b.process.tag."k8s.deployment.name") {
+    .b."k8s.deployment.name" = .b.process.tag."k8s.deployment.name"
+  }
 
   if (.b."span.kind" == "server") {
     if (exists(.b."http.status_code") && exists(.b."http.method") && exists(.b."http.route")) {
@@ -670,6 +771,20 @@ if is_object(.r) {
   del(.hdx_content_type)
 }
 '''
+
+[transforms.post_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
+'''
+
+[transforms.go_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
+'''
 # --------------------------------------------------------------------------------
 
 
@@ -709,8 +824,12 @@ source = '''
   if err == null && structured.event == "metric" {
     # TODO: do this at extract_token
     .hdx_token = del(structured.fields.__HDX_API_KEY)
-    .dt = structured.fields.metric_type
-    filtered_keys = ["metric_type"]
+    .at = to_int(del(structured.fields.metric_aggregation_temporality)) ?? 0
+    .dt = del(structured.fields.metric_type)
+    .im = to_bool(del(structured.fields.metric_is_monotonic)) ?? null
+    .u = del(structured.fields.metric_unit)
+
+    filtered_keys = []
     for_each(object(structured.fields) ?? {})-> |key, value| {
       if is_integer(value) || is_float(value) {
         filtered_keys = push(filtered_keys, key)
@@ -724,7 +843,68 @@ source = '''
       !includes(filtered_keys, key)
     }
     .b.host = structured.host
+
+    # Extra K8s tags
+    if .n == "k8s.pod.phase" {
+      tmp_metrics = []
+      tmp_metrics = push(tmp_metrics, .)
+      tmp_states = [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "unknown"
+      ]
+      # Create new metrics "k8s.pod.status_phase"
+      for_each(tmp_states) -> |_index, value| {
+        _tmp_metric = .
+        _tmp_metric.n = "k8s.pod.status_phase"
+        _tmp_metric.v = 0
+        _tmp_metric.b.state = value
+        if .v == 1 && value == "pending" {
+          _tmp_metric.v = 1
+        } else if .v == 2 && value == "running" {
+          _tmp_metric.v = 1
+        } else if .v == 3 && value == "succeeded" {
+          _tmp_metric.v = 1
+        } else if .v == 4 && value == "failed" {
+          _tmp_metric.v = 1
+        } else if .v == 5 && value == "unknown" {
+          _tmp_metric.v = 1
+        }
+        tmp_metrics = push(tmp_metrics, _tmp_metric)
+      }
+      .__hdx_metrics = tmp_metrics
+    }
   }
+'''
+
+[transforms.post_metrics_unnest]
+type = "remap"
+inputs = ["metrics"]
+drop_on_abort = true
+drop_on_error = true
+reroute_dropped = true
+source = '''
+if is_array(.__hdx_metrics) {
+  ., err = unnest(.__hdx_metrics)
+  if err != null {
+    log("unnest failed: " + err, level: "error")
+  }
+}
+'''
+
+[transforms.post_metrics]
+type = "remap"
+inputs = ["post_metrics_unnest"]
+drop_on_abort = true
+drop_on_error = true
+reroute_dropped = true
+source = '''
+if is_object(.__hdx_metrics) {
+  tmp = .__hdx_metrics
+  . = tmp
+}
 '''
 # --------------------------------------------------------------------------------
 
@@ -736,10 +916,12 @@ source = '''
 type = "remap"
 inputs = [
   "logs.dropped",
-  "metrics.dropped",
-  "post_logs.dropped",
   "post_logs_unnest.dropped",
-  "spans.dropped"
+  "post_logs.dropped",
+  "spans.dropped",
+  "metrics.dropped",
+  "post_metrics_unnest.dropped",
+  "post_metrics.dropped"
 ]
 source = '''
   log(., level: "error")

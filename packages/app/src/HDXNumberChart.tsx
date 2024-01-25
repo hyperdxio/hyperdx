@@ -1,11 +1,12 @@
 import { memo } from 'react';
 
 import api from './api';
-import { AggFn } from './ChartUtils';
+import type { AggFn, NumberFormat } from './types';
+import { formatNumber } from './utils';
 
 const HDXNumberChart = memo(
   ({
-    config: { table, aggFn, field, where, dateRange },
+    config: { table, aggFn, field, where, dateRange, numberFormat },
     onSettled,
   }: {
     config: {
@@ -14,10 +15,11 @@ const HDXNumberChart = memo(
       field: string;
       where: string;
       dateRange: [Date, Date];
+      numberFormat?: NumberFormat;
     };
     onSettled?: () => void;
   }) => {
-    const { data, isLoading } =
+    const { data, isError, isLoading } =
       table === 'logs'
         ? api.useLogsChart(
             {
@@ -48,11 +50,15 @@ const HDXNumberChart = memo(
             },
           );
 
-    const number = data?.data?.[0]?.data;
+    const number = formatNumber(data?.data?.[0]?.data, numberFormat);
 
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
+      </div>
+    ) : isError ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        Error loading chart, please try again or contact support.
       </div>
     ) : data?.data?.length === 0 ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

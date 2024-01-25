@@ -1,52 +1,71 @@
+import {
+  BaseResultSet,
+  createClient,
+  ErrorLogParams as _CHErrorLogParams,
+  Logger as _CHLogger,
+  LogParams as _CHLogParams,
+  ResponseJSON,
+  SettingsMap,
+} from '@clickhouse/client';
+import opentelemetry from '@opentelemetry/api';
 import * as fns from 'date-fns';
-import SqlString from 'sqlstring';
 import _ from 'lodash';
 import ms from 'ms';
-import opentelemetry from '@opentelemetry/api';
-import {
-  Logger as _CHLogger,
-  SettingsMap,
-  createClient,
-} from '@clickhouse/client';
-import {
-  LogParams as _CHLogParams,
-  ErrorLogParams as _CHErrorLogParams,
-} from '@clickhouse/client/dist/logger';
 import { serializeError } from 'serialize-error';
+import SqlString from 'sqlstring';
+import { Readable } from 'stream';
+import { z } from 'zod';
 
-import * as config from '../config';
-import logger from '../utils/logger';
-import { sleep } from '../utils/common';
+import * as config from '@/config';
+import { sleep } from '@/utils/common';
+import logger from '@/utils/logger';
+import type {
+  LogStreamModel,
+  MetricModel,
+  RrwebEventModel,
+} from '@/utils/logParser';
+import { chartSeriesSchema } from '@/utils/zod';
+
+import { redisClient } from '../utils/redis';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
 } from './propertyTypeMappingsModel';
 import {
-  SQLSerializer,
-  SearchQueryBuilder,
+  buildPostGroupWhereCondition,
   buildSearchColumnName,
   buildSearchColumnName_OLD,
   buildSearchQueryWhereCondition,
   isCustomColumn,
   msToBigIntNs,
+  SearchQueryBuilder,
+  SQLSerializer,
 } from './searchQueryParser';
-
-import type { ResponseJSON, ResultSet } from '@clickhouse/client';
-import type {
-  LogStreamModel,
-  MetricModel,
-  RrwebEventModel,
-} from '../utils/logParser';
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
 export type SortOrder = 'asc' | 'desc' | null;
+
+export enum SeriesReturnType {
+  Ratio = 'ratio',
+  Column = 'column',
+}
+
+export enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+}
 
 export enum AggFn {
   Avg = 'avg',
   AvgRate = 'avg_rate',
   Count = 'count',
   CountDistinct = 'count_distinct',
+  CountPerHour = 'count_per_hour',
+  CountPerMin = 'count_per_min',
+  CountPerSec = 'count_per_sec',
+  LastValue = 'last_value',
   Max = 'max',
   MaxRate = 'max_rate',
   Min = 'min',
@@ -180,12 +199,23 @@ export const buildLogStreamAdditionalFilters = (
   teamId: string,
 ) => SettingsMap.from({});
 
-export const healthCheck = () => client.ping();
+export const buildMetricStreamAdditionalFilters = (
+  version: number | undefined | null,
+  teamId: string,
+) => SettingsMap.from({});
+
+export const healthCheck = async () => {
+  const result = await client.ping();
+  if (!result.success) {
+    logger.error({
+      message: 'ClickHouse health check failed',
+      error: result.error,
+    });
+    throw result.error;
+  }
+};
 
 export const connect = async () => {
-  if (config.IS_CI) {
-    return;
-  }
   // FIXME: this is a hack to avoid CI failure
   logger.info('Checking connections to ClickHouse...');
   // health check
@@ -310,6 +340,8 @@ export const connect = async () => {
         value Float64 CODEC(ZSTD(1)),
         flags UInt32  CODEC(ZSTD(1)),
         unit String CODEC(ZSTD(1)),
+        is_delta Boolean CODEC(Delta, ZSTD(1)),
+        is_monotonic Boolean CODEC(Delta, ZSTD(1)),
         _string_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
         _created_at DateTime64(9, 'UTC') DEFAULT toDateTime64(now(), 9) CODEC(Delta(8), ZSTD(1)),
         _timestamp_sort_key Int64 MATERIALIZED toUnixTimestamp64Nano(coalesce(timestamp, _created_at)),
@@ -410,33 +442,6 @@ export const bulkInsertTeamMetricStream = async (metrics: MetricModel[]) => {
     values: metrics,
   });
 };
-
-// TODO: support since, until
-export const fetchMetricsPropertyTypeMappings =
-  (intervalSecs: number) =>
-  async (tableVersion: number | undefined, teamId: string) => {
-    const tableName = `default.${TableName.Metric}`;
-    const query = SqlString.format(
-      `
-    SELECT groupUniqArrayArray(mapKeys(_string_attributes)) as strings
-    FROM ??
-    WHERE fromUnixTimestamp64Nano(_timestamp_sort_key) > now() - toIntervalSecond(?)
-  `,
-      [tableName, intervalSecs], // TODO: declare as constant
-    );
-    const ts = Date.now();
-    const rows = await client.query({
-      query,
-      format: 'JSON',
-    });
-    const result = await rows.json<ResponseJSON<Record<string, any[]>>>();
-    logger.info({
-      message: 'fetchMetricsPropertyTypeMappings',
-      query,
-      took: Date.now() - ts,
-    });
-    return result;
-  };
 
 // since, until -> unix in ms
 // TODO: what if since is like 0 or the difference is too big?
@@ -551,19 +556,11 @@ export const buildLogsPropertyTypeMappingsModel = async (
 export const buildMetricsPropertyTypeMappingsModel = async (
   tableVersion: number | undefined,
   teamId: string,
-) => {
-  const model = new MetricsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    fetchMetricsPropertyTypeMappings(ms('28d') / 1000),
-  );
-  await model.init();
-  return model;
-};
+) => new MetricsPropertyTypeMappingsModel(tableVersion, teamId);
 
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
-  property: string,
+  property: string | undefined,
   model: LogsPropertyTypeMappingsModel,
 ) => {
   if (!property) {
@@ -600,36 +597,66 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async (teamId: string) => {
+export const getMetricsTags = async ({
+  teamId,
+  startTime,
+  endTime,
+}: {
+  teamId: string;
+  startTime: number; // unix in ms
+  endTime: number; // unix in ms
+}) => {
   const tableName = `default.${TableName.Metric}`;
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
     `
-        SELECT 
-          format('{} - {}', name, data_type) as name,
+        SELECT
+          any(is_delta) as is_delta,
+          any(is_monotonic) as is_monotonic,
+          any(unit) as unit,
           data_type,
+          format('{} - {}', name, data_type) as name,
           groupUniqArray(_string_attributes) AS tags
         FROM ??
+        WHERE (?)
         GROUP BY name, data_type
         ORDER BY name
     `,
-    [tableName],
+    [
+      tableName,
+      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+    ],
   );
   const ts = Date.now();
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
-  const result = await rows.json<ResponseJSON<{ names: string[] }>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      tags: Record<string, string>[];
+      unit: string;
+    }>
+  >();
   logger.info({
-    message: 'getMetricsProps',
+    message: 'getMetricsTags',
     query,
     took: Date.now() - ts,
   });
   return result;
 };
 
-const isRateAggFn = (aggFn: AggFn) => {
+export const isRateAggFn = (aggFn: AggFn) => {
   return (
     aggFn === AggFn.SumRate ||
     aggFn === AggFn.AvgRate ||
@@ -654,9 +681,9 @@ export const getMetricsChart = async ({
   teamId,
 }: {
   aggFn: AggFn;
-  dataType: string;
+  dataType: MetricsDataType;
   endTime: number; // unix in ms,
-  granularity: Granularity;
+  granularity: Granularity | string;
   groupBy?: string;
   name: string;
   q: string;
@@ -686,7 +713,7 @@ export const getMetricsChart = async ({
 
   const isRate = isRateAggFn(aggFn);
 
-  if (dataType === 'Gauge' || dataType === 'Sum') {
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
@@ -724,62 +751,59 @@ export const getMetricsChart = async ({
   // max/min don't require pre-bucketing the Sum timeseries
   const sumMetricSource = SqlString.format(
     `
-    SELECT
-      toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
-      min(value) as value,
-      _string_attributes,
-      name
-    FROM
-      ??
-    WHERE
-      name = ?
+      SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+        min(value) as value,
+        _string_attributes,
+        name
+      FROM ??
+      WHERE name = ?
       AND data_type = ?
       AND (?)
-    GROUP BY
-      name,
-      _string_attributes,
-      timestamp
-    ORDER BY
-      _string_attributes,
-      timestamp ASC
-  `.trim(),
+      GROUP BY
+        name,
+        _string_attributes,
+        timestamp
+      ORDER BY
+        _string_attributes,
+        timestamp ASC
+    `.trim(),
     [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const rateMetricSource = SqlString.format(
     `
-SELECT
-  if(
-    runningDifference(value) < 0
-    OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
-    nan,
-    runningDifference(value)
-  ) AS rate,
-  timestamp,
-  _string_attributes,
-  name
-FROM
-  (
-    ?
-  )
-`.trim(),
+      SELECT
+        if(
+          runningDifference(value) < 0
+          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+          nan,
+          runningDifference(value)
+        ) AS rate,
+        timestamp,
+        _string_attributes,
+        name
+      FROM (?)
+      WHERE isNaN(rate) = 0
+    `.trim(),
     [SqlString.raw(sumMetricSource)],
   );
 
   const gaugeMetricSource = SqlString.format(
     `
-SELECT 
-  timestamp,
-  name,
-  value,
-  _string_attributes
-FROM ??
-WHERE name = ?
-AND data_type = ?
-AND (?)
-ORDER BY _timestamp_sort_key ASC
-`.trim(),
-    [tableName, name, dataType, SqlString.raw(whereClause)],
+      SELECT
+        toStartOfInterval(timestamp, INTERVAL ?) as timestamp,
+        name,
+        last_value(value) as value,
+        _string_attributes
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (?)
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY timestamp ASC
+    `.trim(),
+    [granularity, tableName, name, dataType, SqlString.raw(whereClause)],
   );
 
   const query = SqlString.format(
@@ -816,8 +840,20 @@ ORDER BY _timestamp_sort_key ASC
   const rows = await client.query({
     query,
     format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: number;
+      group: string;
+      ts_bucket: number;
+    }>
+  >();
   logger.info({
     message: 'getMetricsChart',
     query,
@@ -825,6 +861,966 @@ ORDER BY _timestamp_sort_key ASC
     took: Date.now() - ts,
   });
   return result;
+};
+
+export const buildMetricSeriesQuery = async ({
+  aggFn,
+  dataType,
+  endTime,
+  granularity,
+  groupBy,
+  name,
+  q,
+  startTime,
+  teamId,
+  sortOrder,
+  propertyTypeMappingsModel,
+}: {
+  aggFn: AggFn;
+  dataType: MetricsDataType;
+  endTime: number; // unix in ms,
+  granularity?: Granularity | string;
+  groupBy: string[];
+  name: string;
+  q: string;
+  startTime: number; // unix in ms
+  teamId: string;
+  sortOrder?: 'asc' | 'desc';
+  propertyTypeMappingsModel: MetricsPropertyTypeMappingsModel;
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+
+  const isRate = isRateAggFn(aggFn);
+
+  const groupByColumnNames = groupBy.map(g => {
+    return SqlString.format(`_string_attributes[?]`, [g]);
+  });
+
+  const hasGroupBy = groupByColumnNames.length > 0;
+
+  const shouldModifyStartTime =
+    isRate || dataType === MetricsDataType.Histogram;
+
+  // If it's a rate function, then we'll need to look 1 window back to calculate
+  // the initial rate value.
+  // We'll filter this extra bucket out later
+  const modifiedStartTime = shouldModifyStartTime
+    ? // If granularity is not defined (tables), we'll just look behind 5min
+      startTime - ms(granularity ?? '5 minute')
+    : startTime;
+
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime: modifiedStartTime,
+  });
+  const selectClause = [
+    granularity != null
+      ? SqlString.format(
+          'toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket',
+          [granularity],
+        )
+      : "'0' as ts_bucket",
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
+  ];
+
+  if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
+    selectClause.push(
+      aggFn === AggFn.Count
+        ? 'COUNT(value) as data'
+        : aggFn === AggFn.LastValue
+        ? 'LAST_VALUE(value) as data'
+        : aggFn === AggFn.Sum
+        ? `SUM(value) as data`
+        : aggFn === AggFn.Avg
+        ? `AVG(value) as data`
+        : aggFn === AggFn.Max
+        ? `MAX(value) as data`
+        : aggFn === AggFn.Min
+        ? `MIN(value) as data`
+        : aggFn === AggFn.SumRate
+        ? `SUM(rate) as data`
+        : aggFn === AggFn.AvgRate
+        ? `AVG(rate) as data`
+        : aggFn === AggFn.MaxRate
+        ? `MAX(rate) as data`
+        : aggFn === AggFn.MinRate
+        ? `MIN(rate) as data`
+        : `quantile(${
+            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+              ? '0.5'
+              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+              ? '0.90'
+              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
+              ? '0.95'
+              : '0.99'
+          })(${isRate ? 'rate' : 'value'}) as data`,
+    );
+  } else if (dataType === MetricsDataType.Histogram) {
+    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+    }
+  } else {
+    throw new Error(`Unsupported data type: ${dataType}`);
+  }
+
+  const startTimeUnixTs = Math.floor(startTime / 1000);
+
+  // TODO: Can remove the ORDER BY _string_attributes for Gauge metrics
+  // since they don't get subjected to runningDifference afterwards
+  const gaugeMetricSource = SqlString.format(
+    `
+      SELECT
+        ?,
+        name,
+        last_value(value) as value,
+        _string_attributes
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (?)
+      GROUP BY name, _string_attributes, timestamp
+      ORDER BY _string_attributes, timestamp ASC
+    `.trim(),
+    [
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
+      ),
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
+    ],
+  );
+
+  const rateMetricSource = SqlString.format(
+    `
+      SELECT
+        if(
+          runningDifference(value) < 0
+          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
+          nan,
+          runningDifference(value)
+        ) AS rate,
+        timestamp,
+        _string_attributes,
+        name
+      FROM (?)
+      WHERE isNaN(rate) = 0
+      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
+    `.trim(),
+    [
+      SqlString.raw(gaugeMetricSource),
+      ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
+    ],
+  );
+
+  const quantile =
+    aggFn === AggFn.P50
+      ? '0.5'
+      : aggFn === AggFn.P90
+      ? '0.90'
+      : aggFn === AggFn.P95
+      ? '0.95'
+      : '0.99';
+
+  // TODO:
+  // 1. handle -Inf
+  // 2. handle counter reset (https://prometheus.io/docs/prometheus/latest/querying/functions/#resets)
+  //  - Any increase/decrease in bucket resolution, etc (NOT IMPLEMENTED)
+  const histogramQuery = SqlString.format(
+    `
+      WITH source AS (
+        SELECT
+          ?,
+          timestamp,
+          name,
+          toFloat64(sumIf(rate, rate > 0)) AS value,
+          toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
+        FROM (?)
+        WHERE mapContains(_string_attributes, 'le')
+        GROUP BY name, group, bucket, timestamp
+      ), points AS (
+        SELECT
+          timestamp,
+          name,
+          group,
+          arraySort((x) -> x[2],
+            groupArray([
+              value,
+              bucket
+            ])
+          ) AS point,
+          length(point) AS n
+        FROM source
+        GROUP BY timestamp, name, group
+      ), metrics AS (
+        SELECT
+          timestamp,
+          name,
+          group,
+          point[n][1] AS total,
+          toFloat64(?) * total AS rank,
+          arrayFirstIndex(x -> x[1] > rank, point) AS upper_idx,
+          point[upper_idx][1] AS upper_count,
+          point[upper_idx][2] AS upper_bound,
+          if (
+            upper_idx = 1,
+            if (
+              point[upper_idx][2] > 0,
+              0,
+              inf
+            ),
+            point[upper_idx - 1][2]
+          ) AS lower_bound,
+          if (
+            lower_bound = 0,
+            0,
+            point[upper_idx - 1][1]
+          ) AS lower_count,
+          if (
+            upper_bound = inf,
+            point[upper_idx - 1][2],
+            if (
+              lower_bound = inf,
+              point[1][2],
+              lower_bound + (upper_bound - lower_bound) * (
+                (rank - lower_count) / (upper_count - lower_count)
+              )
+            )
+          ) AS value
+        FROM points
+        WHERE length(point) > 1
+        AND total > 0
+      )
+      SELECT
+        toUnixTimestamp(timestamp) AS ts_bucket,
+        group,
+        value AS data
+      FROM metrics
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }`.trim(),
+    [
+      SqlString.raw(
+        hasGroupBy
+          ? `[${groupByColumnNames.join(',')}] as group`
+          : `[] as group`,
+      ),
+      SqlString.raw(rateMetricSource),
+      quantile,
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
+    ],
+  );
+
+  // TODO: merge this with the histogram query
+  const source = isRate ? rateMetricSource : gaugeMetricSource;
+  const query =
+    dataType === MetricsDataType.Histogram
+      ? histogramQuery
+      : SqlString.format(
+          `
+      WITH metrics AS (?)
+      SELECT ?
+      FROM metrics
+      GROUP BY group, ts_bucket
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }
+    `,
+          [
+            SqlString.raw(source),
+            SqlString.raw(selectClause.join(',')),
+            ...(granularity != null
+              ? [
+                  startTime / 1000,
+                  granularity,
+                  endTime / 1000,
+                  granularity,
+                  ms(granularity) / 1000,
+                ]
+              : []),
+          ],
+        );
+
+  return {
+    query,
+    hasGroupBy,
+    sortOrder,
+  };
+};
+
+const buildEventSeriesQuery = async ({
+  aggFn,
+  endTime,
+  field,
+  granularity,
+  groupBy,
+  propertyTypeMappingsModel,
+  q,
+  sortOrder,
+  startTime,
+  tableVersion,
+  teamId,
+}: {
+  aggFn: AggFn;
+  endTime: number; // unix in ms,
+  field?: string;
+  granularity: string | undefined; // can be undefined in the number chart
+  groupBy: string[];
+  propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
+  q: string;
+  sortOrder?: 'asc' | 'desc';
+  startTime: number; // unix in ms
+  tableVersion: number | undefined;
+  teamId: string;
+}) => {
+  if (isRateAggFn(aggFn)) {
+    throw new Error('Rate is not supported in logs chart');
+  }
+
+  const isCountFn =
+    aggFn === AggFn.Count ||
+    aggFn === AggFn.CountPerSec ||
+    aggFn === AggFn.CountPerMin ||
+    aggFn === AggFn.CountPerHour;
+
+  if (field == null && !isCountFn) {
+    throw new Error(
+      'Field is required for all aggregation functions except Count',
+    );
+  }
+
+  const tableName = getLogStreamTableName(tableVersion, teamId);
+  const whereClause = await buildSearchQueryWhereCondition({
+    endTime,
+    propertyTypeMappingsModel,
+    query: q,
+    startTime,
+  });
+
+  const selectField =
+    field != null
+      ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
+      : '';
+
+  const groupByColumnNames = groupBy.map(g => {
+    const columnName = buildSearchColumnName(
+      propertyTypeMappingsModel.get(g),
+      g,
+    );
+    if (columnName != null) {
+      return columnName;
+    }
+    throw new Error(`Group by field ${g} does not exist`);
+  });
+
+  const hasGroupBy = groupByColumnNames.length > 0;
+
+  const serializer = new SQLSerializer(propertyTypeMappingsModel);
+
+  // compute additional where clause for group-by fields + select field
+  let additionalSelectFieldCheck = '';
+  let additionalGroupByFieldCheck = '';
+  if (!isCountFn && field != null) {
+    const _condition = await serializer.isNotNull(field, false);
+    additionalSelectFieldCheck = ` AND (${_condition})`;
+  }
+  if (hasGroupBy) {
+    const _conditions = await Promise.all(
+      groupBy.map(g => serializer.isNotNull(g, false)),
+    );
+    additionalGroupByFieldCheck = ` AND (${_conditions.join(' AND ')})`;
+  }
+
+  const label = SqlString.escape(`${aggFn}(${field})`);
+
+  const selectClause = [
+    aggFn === AggFn.Count
+      ? 'toFloat64(count()) as data'
+      : aggFn === AggFn.CountPerSec
+      ? granularity
+        ? SqlString.format('divide(count(), ?) as data', [
+            ms(granularity) / ms('1 second'),
+          ])
+        : SqlString.format(
+            "divide(count(), age('ss', toDateTime(?), toDateTime(?))) as data",
+            [startTime / 1000, endTime / 1000],
+          )
+      : aggFn === AggFn.CountPerMin
+      ? granularity
+        ? SqlString.format('divide(count(), ?) as data', [
+            ms(granularity) / ms('1 minute'),
+          ])
+        : SqlString.format(
+            "divide(count(), age('mi', toDateTime(?), toDateTime(?))) as data",
+            [startTime / 1000, endTime / 1000],
+          )
+      : aggFn === AggFn.CountPerHour
+      ? granularity
+        ? SqlString.format('divide(count(), ?) as data', [
+            ms(granularity) / ms('1 hour'),
+          ])
+        : SqlString.format(
+            "divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data",
+            [startTime / 1000, endTime / 1000],
+          )
+      : aggFn === AggFn.LastValue
+      ? `toFloat64(last_value(${selectField})) as data`
+      : aggFn === AggFn.Sum
+      ? `toFloat64(sum(${selectField})) as data`
+      : aggFn === AggFn.Avg
+      ? `toFloat64(avg(${selectField})) as data`
+      : aggFn === AggFn.Max
+      ? `toFloat64(max(${selectField})) as data`
+      : aggFn === AggFn.Min
+      ? `toFloat64(min(${selectField})) as data`
+      : aggFn === AggFn.CountDistinct
+      ? `toFloat64(count(distinct ${selectField})) as data`
+      : `toFloat64(quantile(${
+          aggFn === AggFn.P50
+            ? '0.5'
+            : aggFn === AggFn.P90
+            ? '0.90'
+            : aggFn === AggFn.P95
+            ? '0.95'
+            : '0.99'
+        })(${selectField})) as data`,
+    granularity != null
+      ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
+      : "'0' as ts_bucket",
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`, // FIXME: should we fallback to use aggFn as group
+    `${label} as label`,
+  ].join(',');
+
+  const groupByClause = ['ts_bucket', ...groupByColumnNames].join(',');
+
+  const query = SqlString.format(
+    `
+      SELECT ?
+      FROM ??
+      WHERE ? AND (?) ? ?
+      GROUP BY ?
+      ORDER BY ts_bucket ASC
+      ${
+        granularity != null
+          ? `WITH FILL
+        FROM toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        TO toUnixTimestamp(toStartOfInterval(toDateTime(?), INTERVAL ?))
+        STEP ?`
+          : ''
+      }${
+      sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
+    }
+    `,
+    [
+      SqlString.raw(selectClause),
+      tableName,
+      buildTeamLogStreamWhereCondition(tableVersion, teamId),
+      SqlString.raw(whereClause),
+      SqlString.raw(additionalSelectFieldCheck),
+      SqlString.raw(additionalGroupByFieldCheck),
+      SqlString.raw(groupByClause),
+      ...(granularity != null
+        ? [
+            startTime / 1000,
+            granularity,
+            endTime / 1000,
+            granularity,
+            ms(granularity) / 1000,
+          ]
+        : []),
+    ],
+  );
+
+  return {
+    query,
+    hasGroupBy,
+    sortOrder,
+  };
+};
+
+export const queryMultiSeriesChart = async ({
+  maxNumGroups,
+  tableVersion,
+  teamId,
+  seriesReturnType = SeriesReturnType.Column,
+  queries,
+  postGroupWhere,
+}: {
+  maxNumGroups: number;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+  queries: { query: string; hasGroupBy: boolean; sortOrder?: 'desc' | 'asc' }[];
+  postGroupWhere?: string;
+}) => {
+  // For now only supports same-table series with the same groupBy
+
+  const seriesCTEs = queries
+    .map((q, i) => `series_${i} AS (${q.query})`)
+    .join(',\n');
+
+  // Only join on group bys if all queries have group bys
+  // TODO: This will not work for an array of group by fields
+  const allQueiesHaveGroupBy = queries.every(q => q.hasGroupBy);
+
+  let seriesIndexWithSorting = -1;
+  let sortOrder: 'asc' | 'desc' = 'desc';
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i];
+    if (q.sortOrder === 'asc' || q.sortOrder === 'desc') {
+      seriesIndexWithSorting = i;
+      sortOrder = q.sortOrder;
+      break;
+    }
+  }
+
+  let leftJoin = '';
+  // Join every series after the first one
+  for (let i = 1; i < queries.length; i++) {
+    leftJoin += `LEFT JOIN series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
+      allQueiesHaveGroupBy ? ` AND series_${i}.group = series_0.group` : ''
+    }\n`;
+  }
+
+  const select =
+    seriesReturnType === 'column'
+      ? queries
+          .map((_, i) => {
+            return `series_${i}.data as "series_${i}.data"`;
+          })
+          .join(',\n')
+      : 'series_0.data / series_1.data as "series_0.data"';
+
+  const postGroupWhereClause = postGroupWhere
+    ? buildPostGroupWhereCondition({ query: postGroupWhere })
+    : '1=1';
+
+  // Return each series data as a separate column
+  const query = SqlString.format(
+    `WITH ? 
+      ,raw_groups AS (
+        SELECT 
+          ?,
+          series_0.ts_bucket as ts_bucket, 
+          series_0.group as group
+        FROM series_0 AS series_0
+        ?
+        WHERE ?
+      ), groups AS (
+        SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
+        FROM raw_groups
+      ), final AS (
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
+        FROM groups
+      )
+      SELECT *
+      FROM final
+      WHERE rank <= ?
+      ORDER BY ts_bucket ASC
+      ?
+    `,
+    [
+      SqlString.raw(seriesCTEs),
+      SqlString.raw(select),
+      SqlString.raw(leftJoin),
+      SqlString.raw(postGroupWhereClause),
+      // Setting rank_order_by_value
+      SqlString.raw(sortOrder === 'asc' ? 'MIN' : 'MAX'),
+      SqlString.raw(
+        // If ratio, we judge on series_0
+        seriesReturnType === 'ratio'
+          ? 'series_0.data'
+          : // If the user specified a sorting order, we use that
+          seriesIndexWithSorting > -1
+          ? `series_${seriesIndexWithSorting}.data`
+          : // Otherwise we just grab the greatest value
+            `greatest(${queries.map((_, i) => `series_${i}.data`).join(', ')})`,
+      ),
+      // ORDER BY rank_order_by_value ....
+      SqlString.raw(sortOrder === 'asc' ? 'ASC' : 'DESC'),
+      maxNumGroups,
+      // Final row sort ordering
+      SqlString.raw(
+        sortOrder === 'asc' || sortOrder === 'desc'
+          ? `, series_${
+              seriesIndexWithSorting > -1 ? seriesIndexWithSorting : 0
+            }.data ${sortOrder}`
+          : '',
+      ),
+    ],
+  );
+
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+  });
+
+  const result = await rows.json<
+    ResponseJSON<{
+      ts_bucket: number;
+      group: string[];
+      [series_data: `series_${number}.data`]: number;
+    }>
+  >();
+  return result;
+};
+
+export const getMultiSeriesChart = async ({
+  series,
+  endTime,
+  granularity,
+  maxNumGroups,
+  startTime,
+  tableVersion,
+  teamId,
+  seriesReturnType = SeriesReturnType.Column,
+  postGroupWhere,
+}: {
+  series: z.infer<typeof chartSeriesSchema>[];
+  endTime: number; // unix in ms,
+  startTime: number; // unix in ms
+  granularity: string | undefined; // can be undefined in the number chart
+  maxNumGroups: number;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+  postGroupWhere?: string;
+}) => {
+  let queries: {
+    query: string;
+    hasGroupBy: boolean;
+    sortOrder?: 'desc' | 'asc';
+  }[] = [];
+  if (
+    // Default table is logs
+    ('table' in series[0] &&
+      (series[0].table === 'logs' || series[0].table == null)) ||
+    !('table' in series[0])
+  ) {
+    const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
+      tableVersion,
+      teamId.toString(),
+      startTime,
+      endTime,
+    );
+
+    const propertySet = new Set<string>();
+    series.map(s => {
+      if ('field' in s && s.field != null) {
+        propertySet.add(s.field);
+      }
+      if ('groupBy' in s && s.groupBy.length > 0) {
+        s.groupBy.map(g => propertySet.add(g));
+      }
+    });
+
+    // Hack to refresh property cache if needed
+    const properties = Array.from(propertySet);
+
+    if (
+      properties.some(p => {
+        return !doesLogsPropertyExist(p, propertyTypeMappingsModel);
+      })
+    ) {
+      logger.warn({
+        message: `getChart: Property type mappings cache is out of date (${properties.join(
+          ', ',
+        )})`,
+      });
+      await propertyTypeMappingsModel.refresh();
+    }
+
+    queries = await Promise.all(
+      series.map(s => {
+        if (s.type != 'time' && s.type != 'table') {
+          throw new Error(`Unsupported series type: ${s.type}`);
+        }
+        if (s.table != 'logs' && s.table != null) {
+          throw new Error(`All series must have the same table`);
+        }
+
+        return buildEventSeriesQuery({
+          aggFn: s.aggFn,
+          endTime,
+          field: s.field,
+          granularity,
+          groupBy: s.groupBy,
+          propertyTypeMappingsModel,
+          q: s.where,
+          sortOrder: s.type === 'table' ? s.sortOrder : undefined,
+          startTime,
+          tableVersion,
+          teamId,
+        });
+      }),
+    );
+  } else if ('table' in series[0] && series[0].table === 'metrics') {
+    const propertyTypeMappingsModel =
+      await buildMetricsPropertyTypeMappingsModel(
+        undefined, // default version
+        teamId,
+      );
+
+    queries = await Promise.all(
+      series.map(s => {
+        if (s.type != 'time' && s.type != 'table') {
+          throw new Error(`Unsupported series type: ${s.type}`);
+        }
+        if (s.table != 'metrics') {
+          throw new Error(`All series must have the same table`);
+        }
+        if (s.field == null) {
+          throw new Error('Metric name is required');
+        }
+        if (s.metricDataType == null) {
+          throw new Error('Metric data type is required');
+        }
+
+        return buildMetricSeriesQuery({
+          aggFn: s.aggFn,
+          endTime,
+          name: s.field,
+          granularity,
+          groupBy: s.groupBy,
+          sortOrder: s.type === 'table' ? s.sortOrder : undefined,
+          q: s.where,
+          startTime,
+          teamId,
+          dataType: s.metricDataType,
+          propertyTypeMappingsModel,
+        });
+      }),
+    );
+  }
+
+  return queryMultiSeriesChart({
+    maxNumGroups,
+    tableVersion,
+    teamId,
+    seriesReturnType,
+    queries,
+    postGroupWhere,
+  });
+};
+
+export const getMultiSeriesChartLegacyFormat = async ({
+  series,
+  endTime,
+  granularity,
+  maxNumGroups,
+  startTime,
+  tableVersion,
+  teamId,
+  seriesReturnType,
+}: {
+  series: z.infer<typeof chartSeriesSchema>[];
+  endTime: number; // unix in ms,
+  startTime: number; // unix in ms
+  granularity: string | undefined; // can be undefined in the number chart
+  maxNumGroups: number;
+  tableVersion: number | undefined;
+  teamId: string;
+  seriesReturnType?: SeriesReturnType;
+}) => {
+  const result = await getMultiSeriesChart({
+    series,
+    endTime,
+    granularity,
+    maxNumGroups,
+    startTime,
+    tableVersion,
+    teamId,
+    seriesReturnType,
+  });
+
+  const flatData = result.data.flatMap(row => {
+    if (seriesReturnType === 'column') {
+      return series.map((_, i) => {
+        return {
+          ts_bucket: row.ts_bucket,
+          group: row.group,
+          data: row[`series_${i}.data`],
+        };
+      });
+    }
+
+    // Ratio only has 1 series
+    return [
+      {
+        ts_bucket: row.ts_bucket,
+        group: row.group,
+        data: row['series_0.data'],
+      },
+    ];
+  });
+
+  return {
+    rows: flatData.length,
+    data: flatData,
+  };
+};
+
+// This query needs to be generalized and replaced once use-case matures
+export const getSpanPerformanceChart = async ({
+  parentSpanWhere,
+  childrenSpanWhere,
+  teamId,
+  tableVersion,
+  maxNumGroups,
+  propertyTypeMappingsModel,
+  startTime,
+  endTime,
+}: {
+  parentSpanWhere: string;
+  childrenSpanWhere: string;
+  tableVersion: number | undefined;
+  teamId: string;
+  maxNumGroups: number;
+  endTime: number; // unix in ms,
+  startTime: number;
+  propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
+}) => {
+  const tableName = getLogStreamTableName(tableVersion, teamId);
+
+  const [parentSpanWhereCondition, childrenSpanWhereCondition] =
+    await Promise.all([
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: parentSpanWhere,
+        startTime,
+      }),
+      buildSearchQueryWhereCondition({
+        endTime,
+        propertyTypeMappingsModel,
+        query: childrenSpanWhere,
+        startTime,
+      }),
+    ]);
+
+  // This needs to return in a format that matches multi-series charts
+  const query = SqlString.format(
+    `WITH trace_ids AS (
+SELECT 
+  distinct trace_id
+FROM ??
+WHERE (?)
+)
+SELECT 
+  [
+    span_name, 
+    if(
+      span_name = 'HTTP DELETE'
+      OR span_name = 'DELETE'
+      OR span_name = 'HTTP GET'
+      OR span_name = 'GET'
+      OR span_name = 'HTTP HEAD'
+      OR span_name = 'HEAD'
+      OR span_name = 'HTTP OPTIONS'
+      OR span_name = 'OPTIONS'
+      OR span_name = 'HTTP PATCH'
+      OR span_name = 'PATCH'
+      OR span_name = 'HTTP POST'
+      OR span_name = 'POST'
+      OR span_name = 'HTTP PUT'
+      OR span_name = 'PUT',
+      COALESCE(
+        NULLIF(_string_attributes['server.address'], ''), 
+        NULLIF(_string_attributes['http.host'], '')
+      ),
+      '' 
+    )
+  ] as "group",
+  sum(_duration) as "series_0.data",
+  count(*) as "series_1.data", 
+  avg(_duration) as "series_2.data", 
+  min(_duration) as "series_3.data", 
+  max(_duration) as "series_4.data",
+  count(distinct trace_id) as "series_5.data",
+  "series_1.data" / "series_5.data" as "series_6.data",
+  '0' as "ts_bucket"
+FROM ??
+WHERE 
+  (?)
+  AND trace_id IN (SELECT trace_id FROM trace_ids)
+  AND _duration >= 0
+GROUP BY "group"
+ORDER BY "series_0.data" DESC
+LIMIT ?`,
+    [
+      tableName,
+      SqlString.raw(parentSpanWhereCondition),
+      tableName,
+      SqlString.raw(childrenSpanWhereCondition),
+      maxNumGroups,
+    ],
+  );
+
+  return await tracer.startActiveSpan(
+    'clickhouse.getSpanPerformanceChart',
+    async span => {
+      try {
+        span.setAttribute('query', query);
+        logger.info({ query });
+
+        const rows = await client.query({
+          query,
+          format: 'JSON',
+          clickhouse_settings: {
+            additional_table_filters: buildLogStreamAdditionalFilters(
+              tableVersion,
+              teamId,
+            ),
+          },
+        });
+        const result = await rows.json<
+          ResponseJSON<{
+            data: string;
+            ts_bucket: number;
+            group: string[];
+          }>
+        >();
+        return result;
+      } catch (e) {
+        span.recordException(e as any);
+        span.end();
+        throw e;
+      } finally {
+        span.end();
+      }
+    },
+  );
 };
 
 export const getLogsChart = async ({
@@ -980,7 +1976,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -1119,6 +2123,12 @@ export const getSessions = async ({
     .map(props => buildCustomColumn(props[0], props[1]))
     .map(column => SqlString.raw(column));
 
+  const componentField = buildSearchColumnName('string', 'component');
+  const sessionIdField = buildSearchColumnName('string', 'rum_session_id');
+  if (!componentField || !sessionIdField) {
+    throw new Error('component or sessionId is null');
+  }
+
   const sessionsWithSearchQuery = SqlString.format(
     `SELECT
       MAX(timestamp) AS maxTimestamp,
@@ -1139,8 +2149,8 @@ export const getSessions = async ({
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
     [
-      SqlString.raw(buildSearchColumnName('string', 'component')),
-      SqlString.raw(buildSearchColumnName('string', 'rum_session_id')),
+      SqlString.raw(componentField),
+      SqlString.raw(sessionIdField),
       columns,
       tableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
@@ -1334,6 +2344,8 @@ export const getLogById = async (
   return result;
 };
 
+// TODO: support multiple group bys
+// FIXME: return 'group' field should be array type
 export const checkAlert = async ({
   endTime,
   groupBy,
@@ -1386,8 +2398,8 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as count,
-        toStartOfInterval(timestamp, INTERVAL ?) as ts_bucket
+        count(*) as data,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -1432,7 +2444,7 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ count: string; group?: string; ts_bucket: string }>
+    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
   >();
   logger.info({
     message: 'checkAlert',
@@ -1640,6 +2652,7 @@ export const getLogBatchGroupedByBody = async ({
     },
   );
 
+  // @ts-ignore
   return result;
 };
 
@@ -1711,6 +2724,7 @@ export const getLogBatch = async ({
     span.end();
   });
 
+  // @ts-ignore
   return result;
 };
 
@@ -1754,7 +2768,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -1769,6 +2783,7 @@ export const getRrwebEvents = async ({
     span.end();
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };
 
@@ -1812,7 +2827,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: ResultSet;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
@@ -1839,5 +2854,6 @@ export const getLogStream = async ({
     }
   });
 
+  // @ts-ignore
   return resultSet.stream();
 };

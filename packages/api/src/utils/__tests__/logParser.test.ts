@@ -13,8 +13,8 @@ describe('logParser', () => {
         },
       },
     });
-    const keys = [];
-    const values = [];
+    const keys: any[] = [];
+    const values: any[] = [];
     for (const [key, value] of jsonIt) {
       keys.push(key);
       values.push(value);

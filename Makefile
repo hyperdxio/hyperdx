@@ -25,19 +25,46 @@ dev-down:
 
 .PHONY: dev-lint
 dev-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t lint:fix
 
 .PHONY: ci-lint
 ci-lint:
-	./docker/ingestor/run_linting.sh && yarn workspaces run ci:lint
+	./docker/ingestor/run_linting.sh && npx nx run-many -t ci:lint
+
+.PHONY: dev-int-build
+dev-int-build:
+	docker compose -p int -f ./docker-compose.ci.yml build
 
 .PHONY: dev-int
 dev-int:
-	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int
+	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
+	@echo "\n\n"
+	@echo "Checking otel-collector...\n"
+	curl -v http://localhost:23133
+	@echo "\n\n"
+	@echo "Checking ingestor...\n"
+	curl -v http://localhost:28686/health
+
+.PHONY: dev-unit
+dev-unit:
+	npx nx run-many -t dev:unit
+
+.PHONY: ci-unit
+ci-unit:
+	npx nx run-many -t ci:unit
+
+# TODO: check db connections before running the migration CLIs
+.PHONY: dev-migrate-db
+dev-migrate-db:
+	@echo "Migrating Mongo db...\n"
+	npx nx run @hyperdx/api:dev:migrate-db
+	@echo "Migrating ClickHouse db...\n"
+	npx nx run @hyperdx/api:dev:migrate-ch
 
 .PHONY: build-local
 build-local:
@@ -45,6 +72,7 @@ build-local:
 	docker build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
 	docker build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
 	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
+	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
@@ -67,6 +95,7 @@ release:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod --push &
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod --push &
 	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod --push &
+	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser --push &
 	docker buildx build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \

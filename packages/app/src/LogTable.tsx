@@ -1,30 +1,35 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
+import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
+import curry from 'lodash/curry';
+import { Button, Modal } from 'react-bootstrap';
+import { CSVLink } from 'react-csv';
+import { useHotkeys } from 'react-hotkeys-hook';
+import stripAnsi from 'strip-ansi';
 import {
+  CellContext,
   ColumnDef,
   ColumnResizeMode,
   flexRender,
   getCoreRowModel,
-  TableOptions,
   Row as TableRow,
+  TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
-import { formatInTimeZone } from 'date-fns-tz';
-import { format } from 'date-fns';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import cx from 'classnames';
-import { Button, Modal } from 'react-bootstrap';
-import stripAnsi from 'strip-ansi';
-import { CSVLink } from 'react-csv';
-import curry from 'lodash/curry';
 
+import api from './api';
 import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
 import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
-import api from './api';
-import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { useSearchEventStream } from './search';
-import { useHotkeys } from 'react-hotkeys-hook';
+import { UNDEFINED_WIDTH } from './tableUtils';
+import type { TimeFormat } from './useUserPreferences';
+import useUserPreferences from './useUserPreferences';
+import { useLocalStorage, usePrevious, useWindowSize } from './utils';
+import { TIME_TOKENS } from './utils';
 
 import styles from '../styles/LogTable.module.scss';
 
@@ -231,6 +236,8 @@ export const RawLogTable = memo(
     onSettingsClick,
     onShowPatternsClick,
     wrapLines,
+    columnNameMap,
+    showServiceColumn = true,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -258,6 +265,8 @@ export const RawLogTable = memo(
     isLive: boolean;
     onShowPatternsClick?: () => void;
     tableId?: string;
+    columnNameMap?: Record<string, string>;
+    showServiceColumn?: boolean;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -272,15 +281,14 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
+    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const tsFormat = TIME_TOKENS[timeFormat];
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
     >(`${tableId}-column-sizes`, {});
 
-    const tsFormat = 'MMM d HH:mm:ss.SSS';
     const tsShortFormat = 'HH:mm:ss';
-    // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
-    const UNDEFINED_WIDTH = 99999;
     //once the user has scrolled within 500px of the bottom of the table, fetch more data if there is any
     const FETCH_NEXT_PAGE_PX = 500;
 
@@ -363,24 +371,28 @@ export const RawLogTable = memo(
           ),
           size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
         },
-        {
-          accessorKey: '_service',
-          header: 'Service',
-          cell: info => (
-            <span
-            // role="button"
-            // onClick={() =>
-            //   onPropertySearchClick('service', info.getValue<string>())
-            // }
-            >
-              {info.getValue<string>()}
-            </span>
-          ),
-          size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
-        },
+        ...(showServiceColumn
+          ? [
+              {
+                accessorKey: '_service',
+                header: 'Service',
+                cell: (info: CellContext<any, unknown>) => (
+                  <span
+                  // role="button"
+                  // onClick={() =>
+                  //   onPropertySearchClick('service', info.getValue<string>())
+                  // }
+                  >
+                    {info.getValue<string>()}
+                  </span>
+                ),
+                size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
+              },
+            ]
+          : []),
         ...(displayedColumns.map(column => ({
           accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
-          header: column,
+          header: columnNameMap?.[column] ?? column,
           cell: info => {
             const value = info.getValue<string>();
             return (
@@ -427,6 +439,9 @@ export const RawLogTable = memo(
         onShowPatternsClick,
         isSmallScreen,
         columnSizeStorage,
+        showServiceColumn,
+        columnNameMap,
+        tsFormat,
       ],
     );
 
@@ -497,17 +512,18 @@ export const RawLogTable = memo(
     });
 
     const items = rowVirtualizer.getVirtualItems();
+    const totalSize = rowVirtualizer.getTotalSize();
 
-    const [paddingTop, paddingBottom] =
-      items.length > 0
-        ? [
-            Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
-            Math.max(
-              0,
-              rowVirtualizer.getTotalSize() - items[items.length - 1].end,
-            ),
-          ]
-        : [0, 0];
+    const [paddingTop, paddingBottom] = useMemo(
+      () =>
+        items.length > 0
+          ? [
+              Math.max(0, items[0].start - rowVirtualizer.options.scrollMargin),
+              Math.max(0, totalSize - items[items.length - 1].end),
+            ]
+          : [0, 0],
+      [items, rowVirtualizer.options.scrollMargin, totalSize],
+    );
 
     // Scroll to log id if it's not in window yet
     useEffect(() => {
@@ -557,10 +573,10 @@ export const RawLogTable = memo(
       [highlightedLineId, onRowExpandClick, dedupLogs],
     );
 
-    useHotkeys(['ArrowRight'], () => {
+    useHotkeys(['ArrowRight', 'j'], () => {
       shiftHighlightedLineId(1);
     });
-    useHotkeys(['ArrowLeft'], () => {
+    useHotkeys(['ArrowLeft', 'k'], () => {
       shiftHighlightedLineId(-1);
     });
 
@@ -782,6 +798,8 @@ export default function LogTable({
   tableId,
   displayedColumns,
   setDisplayedColumns,
+  columnNameMap,
+  showServiceColumn,
 }: {
   config: {
     where: string;
@@ -802,6 +820,8 @@ export default function LogTable({
   tableId?: string;
   displayedColumns: string[];
   setDisplayedColumns: (columns: string[]) => void;
+  columnNameMap?: Record<string, string>;
+  showServiceColumn?: boolean;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -912,6 +932,8 @@ export default function LogTable({
         onRowExpandClick={onRowExpandClick}
         onScroll={onScroll}
         onShowPatternsClick={onShowPatternsClick}
+        columnNameMap={columnNameMap}
+        showServiceColumn={showServiceColumn}
       />
     </>
   );

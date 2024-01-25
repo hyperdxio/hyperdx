@@ -1,0 +1,54 @@
+@import './variables';
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  font-size: 11px;
+  margin-right: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  text-wrap: wrap;
+  word-break: break-all;
+  word-wrap: break-word;
+  line-height: 1.2;
+
+  &:active {
+    opacity: 0.5;
+  }
+}
+
+.legendMoreLink {
+  color: $slate-400;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: $slate-700;
+}
+
+.legendTooltipContent {
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 40vw;
+  overflow: hidden;
+}
+
+.chartTooltip {
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(2px);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.chartTooltipHeader {
+  padding: 2px 12px;
+  color: $slate-200;
+  border-bottom: 1px solid $slate-700;
+}
+
+.chartTooltipContent {
+  padding: 6px 12px;
+}

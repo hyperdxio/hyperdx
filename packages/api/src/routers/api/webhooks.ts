@@ -1,11 +1,10 @@
 import express from 'express';
 
-import Webhook from '../../models/webhook';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Webhook from '@/models/webhook';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -24,7 +23,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -56,7 +55,7 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {

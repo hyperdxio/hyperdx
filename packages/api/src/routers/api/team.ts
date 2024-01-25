@@ -1,25 +1,18 @@
 import crypto from 'crypto';
-
 import express from 'express';
 import isemail from 'isemail';
 import pick from 'lodash/pick';
 import { serializeError } from 'serialize-error';
 
-import * as config from '../../config';
-import TeamInvite from '../../models/teamInvite';
-import User from '../../models/user';
-import logger from '../../utils/logger';
-import { findUserByEmail, findUsersByTeam } from '../../controllers/user';
-import { getTeam, rotateTeamApiKey } from '../../controllers/team';
-import {
-  isUserAuthenticated,
-  redirectToDashboard,
-} from '../../middleware/auth';
-import { validatePassword } from '../../utils/validators';
+import * as config from '@/config';
+import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
+import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
+import TeamInvite from '@/models/teamInvite';
+import logger from '@/utils/logger';
 
 const router = express.Router();
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { email: toEmail, name } = req.body;
 
@@ -74,7 +67,21 @@ router.post('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
+  try {
+    const url = new URL(ingestorApiUrl);
+    url.username = apiKey.replaceAll('-', '');
+    url.pathname = '0';
+    // TODO: Set up hostname from env variable
+    url.hostname = 'localhost';
+    return url.toString();
+  } catch (e) {
+    logger.error(serializeError(e));
+    return '';
+  }
+};
+
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -117,13 +124,14 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
         name: ti.name,
         url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
       })),
+      sentryDSN: getSentryDSN(team.apiKey, config.INGESTOR_API_URL),
     });
   } catch (e) {
     next(e);
   }
 });
 
-router.patch('/apiKey', isUserAuthenticated, async (req, res, next) => {
+router.patch('/apiKey', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -136,49 +144,15 @@ router.patch('/apiKey', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.post('/setup/:token', async (req, res, next) => {
+router.get('/tags', async (req, res, next) => {
   try {
-    const { password } = req.body;
-    const { token } = req.params;
-
-    if (!validatePassword(password)) {
-      return res.redirect(
-        `${config.FRONTEND_URL}/join-team?err=invalid&token=${token}`,
-      );
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      throw new Error(`User ${req.user?._id} not associated with a team`);
     }
 
-    const teamInvite = await TeamInvite.findOne({
-      token: req.params.token,
-    });
-    if (!teamInvite) {
-      return res.status(401).send('Invalid token');
-    }
-
-    (User as any).register(
-      new User({
-        email: teamInvite.email,
-        name: teamInvite.email,
-        team: teamInvite.teamId,
-      }),
-      password, // TODO: validate password
-      async (err: Error, user: any) => {
-        if (err) {
-          logger.error(serializeError(err));
-          return res.redirect(
-            `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
-          );
-        }
-
-        await TeamInvite.findByIdAndRemove(teamInvite._id);
-
-        req.login(user, err => {
-          if (err) {
-            return next(err);
-          }
-          redirectToDashboard(req, res);
-        });
-      },
-    );
+    const tags = await getTags(teamId);
+    return res.json({ data: tags });
   } catch (e) {
     next(e);
   }

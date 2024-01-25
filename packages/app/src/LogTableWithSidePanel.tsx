@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import usePortal from 'react-useportal';
 
-import type { LogView } from './types';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
+import type { LogView } from './types';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 export function LogTableWithSidePanel({
@@ -17,13 +17,18 @@ export function LogTableWithSidePanel({
   onPropertyAddClick,
   setIsUTC,
   onSettled,
+  columnNameMap,
+  showServiceColumn,
 }: {
   config: {
     where: string;
     dateRange: [Date, Date];
+    columns?: string[];
   };
   isUTC: boolean;
   isLive: boolean;
+  columnNameMap?: Record<string, string>;
+  showServiceColumn?: boolean;
 
   onPropertySearchClick: (
     property: string,
@@ -84,7 +89,7 @@ export function LogTableWithSidePanel({
   const voidFn = useCallback(() => {}, []);
 
   const { displayedColumns, setDisplayedColumns, toggleColumn } =
-    useDisplayedColumns();
+    useDisplayedColumns(config.columns);
 
   return (
     <>
@@ -122,6 +127,8 @@ export function LogTableWithSidePanel({
         onEnd={onSettled}
         displayedColumns={displayedColumns}
         setDisplayedColumns={setDisplayedColumns}
+        columnNameMap={columnNameMap}
+        showServiceColumn={showServiceColumn}
       />
     </>
   );

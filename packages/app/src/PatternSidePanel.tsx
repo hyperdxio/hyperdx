@@ -1,15 +1,15 @@
-import Drawer from 'react-modern-drawer';
-import { useHotkeys } from 'react-hotkeys-hook';
 import { useCallback, useMemo, useState } from 'react';
+import { useHotkeys } from 'react-hotkeys-hook';
+import Drawer from 'react-modern-drawer';
 import usePortal from 'react-useportal';
 import stripAnsi from 'strip-ansi';
 
 import LogSidePanel from './LogSidePanel';
 import { RawLogTable } from './LogTable';
 import { LogView } from './types';
+import { ZIndexContext } from './zIndex';
 
 import 'react-modern-drawer/dist/index.css';
-import { ZIndexContext } from './zIndex';
 
 export type Pattern = {
   pattern: string;

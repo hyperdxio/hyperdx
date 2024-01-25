@@ -1,12 +1,14 @@
-import SqlString from 'sqlstring';
 import lucene from '@hyperdx/lucene';
 import { serializeError } from 'serialize-error';
+import SqlString from 'sqlstring';
 
-import { LogPlatform, LogType } from '../utils/logParser';
+import { LogPlatform, LogType } from '@/utils/logParser';
+
 import { PropertyTypeMappingsModel } from './propertyTypeMappingsModel';
 
 function encodeSpecialTokens(query: string): string {
   return query
+    .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
     .replace('http://', 'http_COLON_//')
     .replace('https://', 'https_COLON_//')
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
@@ -14,6 +16,8 @@ function encodeSpecialTokens(query: string): string {
 }
 function decodeSpecialTokens(query: string): string {
   return query
+    .replace(/\\"/g, '"')
+    .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
     .replace('http_COLON_//', 'http://')
     .replace('https_COLON_//', 'https://')
     .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
@@ -104,6 +108,7 @@ export const buildSearchColumnName = (
 };
 
 interface Serializer {
+  operator(op: lucene.Operator): string;
   eq(field: string, term: string, isNegatedField: boolean): Promise<string>;
   isNotNull(field: string, isNegatedField: boolean): Promise<string>;
   gte(field: string, term: string): Promise<string>;
@@ -164,7 +169,7 @@ export class SQLSerializer implements Serializer {
 
     let propertyType = this.propertyTypeMapModel.get(field);
     // TODO: Deal with ambiguous fields
-    let column: string = field;
+    let column: string | null = field;
     // refresh cache if property not found
     if (propertyType == null && !this.alreadyRefrehPropertyTypeMapModel) {
       this.alreadyRefrehPropertyTypeMapModel = true;
@@ -183,6 +188,27 @@ export class SQLSerializer implements Serializer {
       propertyType,
       found: column != null && propertyType != null,
     };
+  }
+
+  operator(op: lucene.Operator) {
+    switch (op) {
+      case 'NOT':
+      case 'AND NOT':
+        return 'AND NOT';
+      case 'OR NOT':
+        return 'OR NOT';
+      // @ts-ignore TODO: Types need to be fixed upstream
+      case '&&':
+      case '<implicit>':
+      case 'AND':
+        return 'AND';
+      // @ts-ignore TODO: Types need to be fixed upstream
+      case '||':
+      case 'OR':
+        return 'OR';
+      default:
+        throw new Error(`Unexpected operator. ${op}`);
+    }
   }
 
   async eq(field: string, term: string, isNegatedField: boolean) {
@@ -481,8 +507,7 @@ async function serialize(
   // 2. LeftOnlyAST: Single term ex. "foo:bar"
   if ((ast as lucene.BinaryAST).right != null) {
     const binaryAST = ast as lucene.BinaryAST;
-    const operator =
-      binaryAST.operator === IMPLICIT_FIELD ? 'AND' : binaryAST.operator;
+    const operator = serializer.operator(binaryAST.operator);
     const parenthesized = binaryAST.parenthesized;
     return `${parenthesized ? '(' : ''}${await serialize(
       binaryAST.left,
@@ -626,4 +651,22 @@ export const buildSearchQueryWhereCondition = async ({
   const builder = new SearchQueryBuilder(query, propertyTypeMappingsModel);
   builder.teamId = teamId;
   return await builder.timestampInBetween(startTime, endTime).build();
+};
+
+export const buildPostGroupWhereCondition = ({ query }: { query: string }) => {
+  // This needs to be replaced with the proper query builder
+  // after generalizing it for arbitrary field resolutions
+  // the query can only specify one field from the series and an exact match
+  const [field, value] = query.split(':', 2);
+  const seriesNumber = parseInt(field.replace('series_', ''), 10);
+  const floatValue = parseFloat(value);
+
+  if (Number.isSafeInteger(seriesNumber) === false) {
+    throw new Error('Invalid series number');
+  }
+  if (Number.isNaN(floatValue)) {
+    throw new Error('Invalid value');
+  }
+
+  return SqlString.format(`series_${seriesNumber}.data = ?`, [floatValue]);
 };

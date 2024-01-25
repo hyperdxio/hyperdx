@@ -1,15 +1,15 @@
-import Button from 'react-bootstrap/Button';
-import throttle from 'lodash/throttle';
-import ReactSlider from 'react-slider';
-import { OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { useMemo, useState, useRef } from 'react';
+import throttle from 'lodash/throttle';
+import { OverlayTrigger, Tooltip } from 'react-bootstrap';
+import Button from 'react-bootstrap/Button';
+import ReactSlider from 'react-slider';
 
 import Checkbox from './Checkbox';
+import { useSessionEvents } from './sessionUtils';
 import { getShortUrl, truncateText, useLocalStorage } from './utils';
 
 import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
-import { useSessionEvents } from './sessionUtils';
 
 function formatTs({
   ts,
@@ -28,7 +28,12 @@ function formatTs({
     const seconds = Math.floor((value / 1000) % 60);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   } else {
-    return format(new Date(ts), 'hh:mm:ss a');
+    try {
+      return format(new Date(ts), 'hh:mm:ss a');
+    } catch (err) {
+      console.error(err, ts);
+      return '--:--';
+    }
   }
 }
 

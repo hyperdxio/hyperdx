@@ -1,5 +1,7 @@
 import Router from 'next/router';
+import type { HTTPError } from 'ky';
 import ky from 'ky-universal';
+import type { UseQueryOptions } from 'react-query';
 import {
   useInfiniteQuery,
   useMutation,
@@ -8,10 +10,39 @@ import {
 } from 'react-query';
 
 import { API_SERVER_URL } from './config';
+import type {
+  AlertChannel,
+  AlertInterval,
+  AlertSource,
+  AlertType,
+  ChartSeries,
+  Dashboard,
+  LogView,
+  Session,
+} from './types';
 
-import type { AlertChannel, AlertInterval, LogView, Session } from './types';
-import type { HTTPError } from 'ky';
-import type { UseQueryOptions } from 'react-query';
+type ApiAlertInput = {
+  channel: AlertChannel;
+  interval: AlertInterval;
+  threshold: number;
+  type: AlertType;
+  source: AlertSource;
+  groupBy?: string;
+  logViewId?: string;
+  dashboardId?: string;
+  chartId?: string;
+};
+
+type ServicesResponse = {
+  data: Record<
+    string,
+    Array<{
+      'k8s.namespace.name'?: string;
+      'k8s.pod.name'?: string;
+      'k8s.pod.uid'?: string;
+    }>
+  >;
+};
 
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
@@ -90,7 +121,7 @@ const api = {
       aggFn: string;
       endDate: Date;
       granularity: string | undefined;
-      name: string;
+      name: string; // WARN: name consists of metric name and type
       q: string;
       startDate: Date;
       groupBy: string;
@@ -99,6 +130,10 @@ const api = {
   ) {
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
+
+    // FIXME: pass metric name and type separately
+    const [metricName, metricDataType] = name.split(' - ');
+
     return useQuery<any, Error>({
       refetchOnWindowFocus: false,
       queryKey: [
@@ -118,12 +153,133 @@ const api = {
             aggFn,
             endTime,
             granularity,
-            name,
+            groupBy,
+            name: metricName,
             q,
             startTime,
-            groupBy,
+            type: metricDataType,
           },
         }).json(),
+      ...options,
+    });
+  },
+  useMultiSeriesChart(
+    {
+      startDate,
+      series,
+      sortOrder,
+      granularity,
+      endDate,
+      seriesReturnType,
+      postGroupWhere,
+    }: {
+      series: ChartSeries[];
+      endDate: Date;
+      granularity?: string;
+      startDate: Date;
+      sortOrder?: 'asc' | 'desc';
+      seriesReturnType: 'column' | 'ratio';
+      postGroupWhere?: string;
+    },
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    const enrichedSeries = series.map(s => {
+      if (s.type != 'search' && s.type != 'markdown' && s.table === 'metrics') {
+        const [metricName, metricDataType] = (s.field ?? '').split(' - ');
+        return {
+          ...s,
+          field: metricName,
+          metricDataType,
+        };
+      }
+
+      return s;
+    });
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    return useQuery<
+      {
+        data: {
+          ts_bucket: string;
+          group: string[];
+          [dataKey: `series_${number}.data`]: number;
+        }[];
+      },
+      Error
+    >({
+      refetchOnWindowFocus: false,
+      queryKey: [
+        'chart/series',
+        enrichedSeries,
+        endTime,
+        granularity,
+        startTime,
+        sortOrder,
+        seriesReturnType,
+        postGroupWhere,
+      ],
+      queryFn: () =>
+        server('chart/series', {
+          method: 'POST',
+          json: {
+            series: enrichedSeries,
+            endTime,
+            startTime,
+            granularity,
+            sortOrder,
+            seriesReturnType,
+            postGroupWhere,
+          },
+        }).json(),
+      retry: 1,
+      ...options,
+    });
+  },
+  useSpanPerformanceChart(
+    {
+      endDate,
+      parentSpanWhere,
+      childrenSpanWhere,
+      startDate,
+    }: {
+      endDate: Date;
+      parentSpanWhere: string;
+      childrenSpanWhere: string;
+      startDate: Date;
+    },
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    return useQuery<
+      {
+        data: {
+          ts_bucket: string;
+          group: string[];
+          [dataKey: `series_${number}.data`]: number;
+        }[];
+      },
+      Error
+    >({
+      refetchOnWindowFocus: false,
+      queryKey: [
+        'logs/chart/spanPerformance',
+        startTime,
+        endTime,
+        parentSpanWhere,
+        childrenSpanWhere,
+      ],
+      queryFn: () =>
+        server('logs/chart/spanPerformance', {
+          method: 'POST',
+          json: {
+            startTime,
+            endTime,
+            parentSpanWhere,
+            childrenSpanWhere,
+          },
+        }).json(),
+      retry: 1,
       ...options,
     });
   },
@@ -331,13 +487,15 @@ const api = {
       {
         name: string;
         query: string;
+        tags?: string;
       }
-    >(`log-views`, async ({ name, query }) =>
+    >(`log-views`, async ({ name, query, tags }) =>
       server('log-views', {
         method: 'POST',
         json: {
           query,
           name,
+          tags,
         },
       }).json(),
     );
@@ -349,29 +507,23 @@ const api = {
       {
         id: string;
         query: string;
+        tags?: string[];
       }
-    >(`log-views`, async ({ id, query }) =>
+    >(`log-views`, async ({ id, query, tags }) =>
       server(`log-views/${id}`, {
         method: 'PATCH',
         json: {
           query,
+          tags,
         },
       }).json(),
     );
   },
+  useAlerts() {
+    return useQuery<any, Error>(`alerts`, () => server.get(`alerts`).json());
+  },
   useSaveAlert() {
-    return useMutation<
-      any,
-      Error,
-      {
-        channel: AlertChannel;
-        groupBy: string | undefined;
-        interval: AlertInterval;
-        logViewId: string;
-        threshold: number;
-        type: string;
-      }
-    >(`alerts`, async alert =>
+    return useMutation<any, Error, ApiAlertInput>(`alerts`, async alert =>
       server('alerts', {
         method: 'POST',
         json: alert,
@@ -379,23 +531,13 @@ const api = {
     );
   },
   useUpdateAlert() {
-    return useMutation<
-      any,
-      Error,
-      {
-        channel: AlertChannel;
-        groupBy: string | undefined;
-        id: string;
-        interval: AlertInterval;
-        logViewId: string;
-        threshold: number;
-        type: string;
-      }
-    >(`alerts`, async alert =>
-      server(`alerts/${alert.id}`, {
-        method: 'PUT',
-        json: alert,
-      }).json(),
+    return useMutation<any, Error, { id: string } & ApiAlertInput>(
+      `alerts`,
+      async alert =>
+        server(`alerts/${alert.id}`, {
+          method: 'PUT',
+          json: alert,
+        }).json(),
     );
   },
   useDeleteAlert() {
@@ -428,7 +570,7 @@ const api = {
     });
   },
   useDashboards(options?: UseQueryOptions<any, Error>) {
-    return useQuery<any, Error>(
+    return useQuery<{ data: Dashboard[] }, Error>(
       `dashboards`,
       () => server.get(`dashboards`).json(),
       options,
@@ -438,11 +580,11 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { name: string; query: string; charts: any[] }
-    >(async ({ name, charts, query }) =>
+      { name: string; query: string; charts: any[]; tags?: string[] }
+    >(async ({ name, charts, query, tags }) =>
       server(`dashboards`, {
         method: 'POST',
-        json: { name, charts, query },
+        json: { name, charts, query, tags },
       }).json(),
     );
   },
@@ -450,11 +592,17 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { id: string; name: string; query: string; charts: any[] }
-    >(async ({ id, name, charts, query }) =>
+      {
+        id: string;
+        name: string;
+        query: string;
+        charts: any[];
+        tags?: string[];
+      }
+    >(async ({ id, name, charts, query, tags }) =>
       server(`dashboards/${id}`, {
         method: 'PUT',
-        json: { name, charts, query },
+        json: { name, charts, query, tags },
       }).json(),
     );
   },
@@ -463,6 +611,12 @@ const api = {
       server(`dashboards/${id}`, {
         method: 'DELETE',
       }).json(),
+    );
+  },
+  useServices() {
+    return useQuery<ServicesResponse, Error>(
+      `services`,
+      () => server.get(`chart/services`).json() as Promise<ServicesResponse>,
     );
   },
   useLogDetails(
@@ -510,6 +664,11 @@ const api = {
     return useQuery<any, HTTPError>(`team`, () => server(`team`).json(), {
       retry: 1,
     });
+  },
+  useTags() {
+    return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
+      server(`team/tags`).json<{ data: string[] }>(),
+    );
   },
   useSaveWebhook() {
     return useMutation<

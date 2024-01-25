@@ -1,38 +1,51 @@
 import express from 'express';
+import { uniq } from 'lodash';
+import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
-import Alert from '../../models/alert';
-import LogView from '../../models/logView';
-import { isUserAuthenticated } from '../../middleware/auth';
+import Alert from '@/models/alert';
+import LogView from '@/models/logView';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 const router = express.Router();
 
-router.post('/', isUserAuthenticated, async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const userId = req.user?._id;
-    const { query, name } = req.body;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    if (query == null || !name) {
-      return res.sendStatus(400);
-    }
-    const logView = await new LogView({
-      name,
-      query: `${query}`,
-      team: teamId,
-      creator: userId,
-    }).save();
+router.post(
+  '/',
+  validateRequest({
+    body: z.object({
+      name: z.string().max(1024).min(1),
+      query: z.string().max(2048),
+      tags: tagsSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const userId = req.user?._id;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
 
-    res.json({
-      data: logView,
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+      const { query, name, tags } = req.body;
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+      const logView = await new LogView({
+        name,
+        tags: tags && uniq(tags),
+        query: `${query}`,
+        team: teamId,
+        creator: userId,
+      }).save();
+
+      res.json({
+        data: logView,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -43,6 +56,7 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
       {
         name: 1,
         query: 1,
+        tags: 1,
         createdAt: 1,
         updatedAt: 1,
       },
@@ -61,33 +75,49 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
   }
 });
 
-router.patch('/:id', isUserAuthenticated, async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { id: logViewId } = req.params;
-    const { query } = req.body;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    if (!logViewId || !query) {
-      return res.sendStatus(400);
-    }
-    const logView = await LogView.findByIdAndUpdate(
-      logViewId,
-      {
-        query,
-      },
-      { new: true },
-    );
-    res.json({
-      data: logView,
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+router.patch(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    body: z.object({
+      name: z.string().max(1024).min(1).optional(),
+      query: z.string().max(2048),
+      tags: tagsSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { id: logViewId } = req.params;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
 
-router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
+      const { query, tags, name } = req.body;
+      const logView = await LogView.findOneAndUpdate(
+        {
+          _id: logViewId,
+          team: teamId,
+        },
+        {
+          ...(name && { name }),
+          query,
+          tags: tags && uniq(tags),
+        },
+        { new: true },
+      );
+      res.json({
+        data: logView,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.delete('/:id', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { id: logViewId } = req.params;
@@ -97,6 +127,7 @@ router.delete('/:id', isUserAuthenticated, async (req, res, next) => {
     if (!logViewId) {
       return res.sendStatus(400);
     }
+    // TODO: query teamId
     // delete all alerts
     await Alert.deleteMany({ logView: logViewId });
     await LogView.findByIdAndDelete(logViewId);

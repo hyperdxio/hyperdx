@@ -2,10 +2,10 @@ import SqlString from 'sqlstring';
 
 import { LogsPropertyTypeMappingsModel } from '../propertyTypeMappingsModel';
 import {
-  SearchQueryBuilder,
   genWhereSQL,
   msToBigIntNs,
   parse,
+  SearchQueryBuilder,
 } from '../searchQueryParser';
 
 describe('searchQueryParser', () => {
@@ -327,6 +327,37 @@ describe('searchQueryParser', () => {
     });
   });
 
+  describe('operators', () => {
+    (
+      [
+        ['OR', 'OR'],
+        ['||', 'OR'],
+        ['AND', 'AND'],
+        ['&&', 'AND'],
+        [' ', 'AND'],
+        ['NOT', 'AND NOT'],
+        ['AND NOT', 'AND NOT'],
+        ['OR NOT', 'OR NOT'],
+      ] as const
+    ).forEach(([operator, sql]) => {
+      it(`parses ${operator}`, async () => {
+        const ast = parse(`foo ${operator} bar`);
+        expect(
+          await genWhereSQL(
+            ast,
+            propertyTypesMappingsModel,
+            'TEAM_ID_UNIT_TESTS',
+          ),
+        ).toEqual(
+          `${hasToken(SOURCE_COL, 'foo')} ${sql} ${hasToken(
+            SOURCE_COL,
+            'bar',
+          )}`,
+        );
+      });
+    });
+  });
+
   describe('properties', () => {
     it('parses string property values', async () => {
       const ast = parse('foo:bar');
@@ -458,6 +489,36 @@ describe('searchQueryParser', () => {
           'TEAM_ID_UNIT_TESTS',
         ),
       ).toEqual('(1 = 0)');
+    });
+
+    it('parses escaped quotes in quoted searches', async () => {
+      const ast = parse('foo:"b\\"ar"');
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('string');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(eq("_string_attributes['foo']", 'b\\"ar'));
+    });
+
+    it('parses backslash literals', async () => {
+      const ast = parse('foo:"b\\\\ar"');
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('string');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(eq("_string_attributes['foo']", 'b\\\\ar'));
+    });
+
+    it('does not escape quotes with backslash literals', async () => {
+      expect(() => parse('foo:"b\\\\"ar"')).toThrowErrorMatchingInlineSnapshot(
+        `"Expected \\"\\\\\\"\\", \\"\\\\\\\\\\", or any character but end of input found."`,
+      );
     });
 
     describe('negation', () => {

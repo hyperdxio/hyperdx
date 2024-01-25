@@ -1,24 +1,27 @@
 import http from 'http';
-
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from './clickhouse';
 import * as config from './config';
+import { connectDB, mongooseConnection } from './models';
 import logger from './utils/logger';
 import redisClient from './utils/redis';
-import { connectDB, mongooseConnection } from './models';
 
 export default class Server {
-  protected httpServer: http.Server;
+  protected readonly appType = config.APP_TYPE;
+
+  protected httpServer!: http.Server;
 
   private async createServer() {
-    switch (config.APP_TYPE) {
+    switch (this.appType) {
       case 'api':
         return http.createServer(
+          // eslint-disable-next-line n/no-unsupported-features/es-syntax
           (await import('./api-app').then(m => m.default)) as any,
         );
       case 'aggregator':
         return http.createServer(
+          // eslint-disable-next-line n/no-unsupported-features/es-syntax
           (await import('./aggregator-app').then(m => m.default)) as any,
         );
       default:

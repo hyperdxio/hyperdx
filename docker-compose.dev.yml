@@ -1,5 +1,23 @@
 version: '3'
 services:
+  go-parser:
+    container_name: hdx-oss-dev-go-parser
+    build:
+      context: .
+      dockerfile: ./packages/go-parser/Dockerfile
+    environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_HEADERS: 'authorization=${HYPERDX_API_KEY}'
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_SERVICE_NAME: hdx-oss-dev-go-parser
+      PORT: 7777
+    ports:
+      - 7777:7777
+    networks:
+      - internal
   miner:
     container_name: hdx-oss-dev-miner
     build:
@@ -45,6 +63,9 @@ services:
       - 8002:8002 # http-generic
       - 8686:8686 # healthcheck
     environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
+      ENABLE_GO_PARSER: 'true'
+      GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
       VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
@@ -75,7 +96,9 @@ services:
       context: ./docker/otel-collector
       target: dev
     environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://ingestor:8002'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -99,12 +122,25 @@ services:
     ports:
       - 8001:8001
     environment:
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+      HDX_NODE_BETA_MODE: 1
+      HDX_NODE_CONSOLE_CAPTURE: 1
+      SENTRY_DSN: ${SENTRY_DSN}
+      INGESTOR_API_URL: 'http://ingestor:8002'
+      MINER_API_URL: 'http://miner:5123'
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-aggregator'
       APP_TYPE: 'aggregator'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_PASSWORD: aggregator
       CLICKHOUSE_USER: aggregator
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      # uncomment to allow aggregator logs
+      # disabled by default due to possible infinite loop (aggregator aggregating aggregator logs)
+      # HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       PORT: 8001
@@ -129,7 +165,7 @@ services:
     environment:
       APP_TYPE: 'scheduled-task'
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: worker
       CLICKHOUSE_USER: worker
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
@@ -166,7 +202,7 @@ services:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: api
       CLICKHOUSE_USER: api
       EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
@@ -176,6 +212,7 @@ services:
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      SENTRY_DSN: ${SENTRY_DSN}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
@@ -204,7 +241,7 @@ services:
       - 8080:8080
     environment:
       NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
-      NEXT_PUBLIC_HDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
       NODE_ENV: development
@@ -222,7 +259,7 @@ services:
     depends_on:
       - api
   ch-server:
-    image: clickhouse/clickhouse-server:23.7.1-alpine
+    image: clickhouse/clickhouse-server:23.8.8-alpine
     container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api

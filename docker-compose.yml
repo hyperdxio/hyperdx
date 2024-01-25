@@ -1,5 +1,20 @@
 version: '3'
 services:
+  go-parser:
+    image: ${IMAGE_NAME}:${IMAGE_VERSION}-go-parser
+    container_name: hdx-oss-go-parser
+    environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OTEL_SERVICE_NAME: hdx-oss-go-parser
+      PORT: 7777
+    ports:
+      - 7777:7777
+    networks:
+      - internal
   miner:
     image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
     container_name: hdx-oss-miner
@@ -33,6 +48,9 @@ services:
       - 8002:8002 # http-generic
       - 8686:8686 # healthcheck
     environment:
+      AGGREGATOR_API_URL: 'http://aggregator:8001'
+      ENABLE_GO_PARSER: 'false'
+      GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
       VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
@@ -62,6 +80,7 @@ services:
     container_name: hdx-oss-otel-collector
     environment:
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      INGESTOR_API_URL: 'http://ingestor:8002'
     ports:
       - '13133:13133' # health_check extension
       - '1888:1888' # pprof extension
@@ -105,7 +124,7 @@ services:
     environment:
       APP_TYPE: 'scheduled-task'
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: worker
       CLICKHOUSE_USER: worker
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
@@ -137,7 +156,7 @@ services:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: trace
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: api
       CLICKHOUSE_USER: api
       EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
@@ -177,7 +196,7 @@ services:
     depends_on:
       - api
   ch-server:
-    image: clickhouse/clickhouse-server:23.7.1-alpine
+    image: clickhouse/clickhouse-server:23.8.8-alpine
     container_name: hdx-oss-ch-server
     ports:
       - 8123:8123 # http api

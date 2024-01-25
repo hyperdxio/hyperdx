@@ -1,22 +1,21 @@
 import express from 'express';
 import groupBy from 'lodash/groupBy';
 
-import * as config from '../../config';
-import logger from '../../utils/logger';
 import {
   bulkInsertRrwebEvents,
   bulkInsertTeamLogStream,
   bulkInsertTeamMetricStream,
-} from '../../clickhouse';
+} from '@/clickhouse';
+import * as config from '@/config';
+import { getTeamByApiKey } from '@/controllers/team';
+import logger from '@/utils/logger';
+import type { VectorLog, VectorMetric } from '@/utils/logParser';
 import {
   extractApiKey,
   vectorLogParser,
   vectorMetricParser,
   vectorRrwebParser,
-} from '../../utils/logParser';
-import { getTeamByApiKey } from '../../controllers/team';
-
-import type { VectorLog, VectorMetric } from '../../utils/logParser';
+} from '@/utils/logParser';
 
 const router = express.Router();
 
@@ -34,9 +33,9 @@ const bulkInsert = async (
         );
         break;
       default: {
-        const rrwebEvents = [];
-        const logs = [];
-        for (const log of data) {
+        const rrwebEvents: VectorLog[] = [];
+        const logs: VectorLog[] = [];
+        for (const log of data as VectorLog[]) {
           if (log.hdx_platform === 'rrweb') {
             rrwebEvents.push(log);
           } else {
@@ -47,14 +46,12 @@ const bulkInsert = async (
           bulkInsertTeamLogStream(
             team.logStreamTableVersion,
             team._id.toString(),
-            vectorLogParser.parse(logs as VectorLog[]),
+            vectorLogParser.parse(logs),
           ),
         ];
         if (rrwebEvents.length > 0) {
           promises.push(
-            bulkInsertRrwebEvents(
-              vectorRrwebParser.parse(rrwebEvents as VectorLog[]),
-            ),
+            bulkInsertRrwebEvents(vectorRrwebParser.parse(rrwebEvents)),
           );
         }
         await Promise.all(promises);

@@ -1,12 +1,13 @@
 import mongoose, { Schema } from 'mongoose';
-import { v4 as uuidv4 } from 'uuid';
 // @ts-ignore don't install the @types for this package, as it conflicts with mongoose
 import passportLocalMongoose from 'passport-local-mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 
 export interface IUser {
   _id: ObjectId;
+  accessKey: string;
   createdAt: Date;
   email: string;
   name: string;
@@ -23,6 +24,12 @@ const UserSchema = new Schema(
       required: true,
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    accessKey: {
+      type: String,
+      default: function genUUID() {
+        return uuidv4();
+      },
+    },
   },
   {
     timestamps: true,

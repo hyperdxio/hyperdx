@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["./*"]
+    },
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "esModuleInterop": true,
@@ -18,7 +22,6 @@
     "skipLibCheck": false,
     "sourceMap": true,
     "strict": true,
-    "strictNullChecks": false,
     "target": "ES2022"
   },
   "include": ["src"]

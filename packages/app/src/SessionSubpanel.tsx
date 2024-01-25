@@ -1,18 +1,18 @@
-import ReactDOM from 'react-dom';
-import throttle from 'lodash/throttle';
-import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
-import { format } from 'date-fns';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { format } from 'date-fns';
+import throttle from 'lodash/throttle';
+import ReactDOM from 'react-dom';
+import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
 import { useQueryParam } from 'use-query-params';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import DOMPlayer from './DOMPlayer';
 import LogSidePanel from './LogSidePanel';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
+import { useSessionEvents } from './sessionUtils';
 import TabBar from './TabBar';
 import { getShortUrl, usePrevious } from './utils';
-import { useSessionEvents } from './sessionUtils';
 
 function SessionEventList({
   config: { where, dateRange },
@@ -55,8 +55,10 @@ function SessionEventList({
         const component = event['component'];
         const spanName = event['span_name'];
         const locationHref = event['location.href'];
+        const otelLibraryName = event['otel.library.name'];
         const shortLocationHref = getShortUrl(locationHref);
 
+        const isCustomEvent = otelLibraryName === 'custom-action';
         const isNavigation =
           spanName === 'routeChange' || spanName === 'documentLoad';
 
@@ -73,6 +75,8 @@ function SessionEventList({
             ? 'navigation'
             : isNetworkRequest
             ? 'network'
+            : isCustomEvent
+            ? 'custom'
             : spanName === 'intercom.onShow'
             ? 'chat'
             : 'log',
@@ -84,6 +88,8 @@ function SessionEventList({
             ? 'console.error'
             : spanName === 'intercom.onShow'
             ? 'Intercom Chat Opened'
+            : isCustomEvent
+            ? spanName
             : component === 'console'
             ? spanName
             : 'console.error',
@@ -190,6 +196,8 @@ function SessionEventList({
                           ? 'arrow-left-right'
                           : row.eventSource === 'chat'
                           ? 'chat-dots'
+                          : row.eventSource === 'custom'
+                          ? 'cursor'
                           : 'terminal'
                       }`}
                     />
@@ -413,7 +421,7 @@ export default function SessionSubpanel({
 
   const playBarEventsConfig = useMemo(
     () => ({
-      where: `rum_session_id:"${rumSessionId}" (http.status_code:>299 OR component:"error" OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow") ${searchedQuery}`,
+      where: `rum_session_id:"${rumSessionId}" (http.status_code:>299 OR component:"error" OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action") ${searchedQuery}`,
       dateRange: [start, end] as [Date, Date],
     }),
     [rumSessionId, start, end, searchedQuery],
@@ -426,7 +434,7 @@ export default function SessionSubpanel({
         displayedTab === 'events' ? '0' : '299'
       } OR component:"error" ${
         displayedTab === 'events' ? 'OR component:"console"' : ''
-      } OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow") ${searchedQuery}`,
+      } OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action") ${searchedQuery}`,
       dateRange: [start, end] as [Date, Date],
     }),
     [rumSessionId, start, end, displayedTab, searchedQuery],
@@ -515,9 +523,15 @@ export default function SessionSubpanel({
           />
         </div>
       </div>
-      <div style={{ width: playerFullWidth ? '100%' : '50%' }}>
+      <div
+        style={{ width: playerFullWidth ? '100%' : '50%' }}
+        className="d-flex flex-column"
+      >
         <div className="fs-8 text-muted mt-4 mb-2">Session Player</div>
-        <div className="mt-1 border-top border-dark mb-2">
+        <div
+          className="d-flex flex-column mt-1 border-top border-dark mb-2"
+          style={{ minHeight: 0 }}
+        >
           <div className="mb-3 mt-2">
             <MemoPlaybar
               playerState={playerState}

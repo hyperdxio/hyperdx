@@ -1,6 +1,9 @@
-import User from '../models/user';
+import type { ObjectId } from '@/models';
+import User from '@/models/user';
 
-import type { ObjectId } from '../models';
+export function findUserByAccessKey(accessKey: string) {
+  return User.findOne({ accessKey });
+}
 
 export function findUserById(id: string) {
   return User.findById(id);

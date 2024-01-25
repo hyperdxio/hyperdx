@@ -1,0 +1,113 @@
+@import '../../styles/variables';
+
+$compactVerticalPadding: 6px;
+$normalVerticalPadding: 10px;
+$comfortableVerticalPadding: 14px;
+
+$horizontalPadding: 12px;
+
+.tableWrapper {
+  table {
+    width: 100%;
+    table-layout: fixed;
+
+    th,
+    td {
+      &:first-child {
+        padding-left: $horizontalPadding * 2;
+      }
+      &:last-child {
+        padding-right: $horizontalPadding * 2;
+      }
+    }
+
+    tr {
+      border-bottom: 1px solid $slate-950;
+    }
+
+    tbody {
+      tr:last-child {
+        border-bottom: none;
+      }
+    }
+
+    th {
+      color: $slate-300;
+      text-transform: uppercase;
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      padding: $normalVerticalPadding $horizontalPadding;
+    }
+
+    td {
+      font-size: 12px;
+      padding: $normalVerticalPadding $horizontalPadding;
+      word-wrap: break-word;
+      word-break: break-all;
+      vertical-align: top;
+    }
+  }
+
+  // Borderless
+  &.tableBorderless {
+    padding: 4px 0;
+    tr {
+      border-bottom: none;
+    }
+  }
+
+  // Density
+  &.tableDensityCompact {
+    th,
+    td {
+      padding: $compactVerticalPadding $horizontalPadding;
+    }
+  }
+
+  &.tableDensityComfortable {
+    th,
+    td {
+      padding: $comfortableVerticalPadding $horizontalPadding;
+    }
+  }
+
+  // Interactive
+  &.tableInteractive {
+    tr:hover td {
+      cursor: pointer;
+      background-color: #ffffff08;
+    }
+    tr:active td {
+      background-color: #00000050;
+      opacity: 0.8;
+    }
+  }
+}
+
+.emptyMessage {
+  color: $slate-500;
+  text-align: center;
+  padding: 10px;
+}
+
+.tableCellButton {
+  display: flex;
+  gap: 4px;
+  border-radius: 4px;
+  background-color: $slate-950;
+  border: 1px solid $slate-900;
+  color: $slate-300;
+  text-align: center;
+  font-size: 11px;
+
+  &:hover {
+    background-color: $slate-900;
+    border-color: $slate-800;
+  }
+
+  &:active {
+    background-color: $slate-950;
+    border-color: $slate-950;
+  }
+}

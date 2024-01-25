@@ -1,5 +1,7 @@
 @import './variables';
 @import '~bootstrap/scss/bootstrap';
+@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;700&display=swap');
 
@@ -72,6 +74,30 @@ html[class~='dark'] body {
 // Darker than text-muted
 .text-gray-600 {
   color: $gray-600;
+}
+
+.text-slate-700 {
+  color: $slate-700;
+}
+
+.text-slate-600 {
+  color: $slate-600;
+}
+
+.text-slate-500 {
+  color: $slate-500;
+}
+
+.text-slate-400 {
+  color: $slate-400;
+}
+
+.text-slate-300 {
+  color: $slate-300;
+}
+
+.text-slate-200 {
+  color: $slate-200;
 }
 
 .text-muted-hover {
@@ -604,6 +630,17 @@ div.react-datepicker {
 }
 
 .ds-select {
+  &.w-auto {
+    .ds-react-select__menu {
+      width: auto;
+    }
+  }
+  &.text-nowrap {
+    .ds-react-select__option {
+      text-wrap: nowrap;
+    }
+  }
+
   &.input-bg .ds-react-select__control {
     background: $input-bg;
   }
@@ -691,6 +728,9 @@ div.react-datepicker {
 .recharts-legend-item {
   font-size: 0.75rem;
 }
+.recharts-tooltip-cursor {
+  fill: rgba(204, 204, 204, 0.2) !important;
+}
 
 .white-text-gradient {
   background: linear-gradient(180deg, #ffffff 0%, #c1c1c1 100%);
@@ -713,4 +753,39 @@ div.react-datepicker {
       rgba(255, 255, 255, 0.045) 100%
     );
   border-radius: 4px;
+}
+
+.effect-pulse {
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+.dashboard-chart-highlighted {
+  animation: highlightedChart 1.5s forwards;
+  border: 1px solid rgba(255, 166, 0, 0.5);
+}
+
+@keyframes highlightedChart {
+  0% {
+    background-color: rgba(255, 166, 0, 0.5);
+  }
+  100% {
+  }
+}
+
+.muted-thead tr th {
+  font-weight: normal !important;
+  font-size: 0.6em;
+  opacity: 0.8;
 }

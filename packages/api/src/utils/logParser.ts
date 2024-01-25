@@ -1,10 +1,13 @@
 import _ from 'lodash';
 
+import type { Json, JSONBlob } from './common';
 import { tryJSONStringify } from './common';
-
-export type JSONBlob = Record<string, any>;
-
 export type KeyPath = string[];
+
+export enum AggregationTemporality {
+  Delta = 1,
+  Cumulative = 2,
+}
 
 export enum LogType {
   Log = 'log',
@@ -67,8 +70,11 @@ export type LogStreamModel = KeyValuePairs &
 export type MetricModel = {
   _string_attributes: Record<string, string>;
   data_type: string;
+  is_delta: boolean;
+  is_monotonic: boolean;
   name: string;
   timestamp: number;
+  unit: string;
   value: number;
 };
 
@@ -77,7 +83,7 @@ export function* traverseJson(
   currentNode: JSONBlob,
   depth = 1,
   keyPathArray?: KeyPath,
-): IterableIterator<[KeyPath, any]> {
+): IterableIterator<[KeyPath, Json]> {
   for (const [key, value] of Object.entries(currentNode)) {
     const keyPath = keyPathArray ? [...keyPathArray, key] : [key];
 
@@ -111,7 +117,7 @@ export const mapObjectToKeyValuePairs = (
   const pushArray = (
     type: 'bool' | 'number' | 'string',
     keyPath: string,
-    value: any,
+    value: number | string, // Note that booleans are converted to 0 or 1
   ) => {
     const keyNames = `${type}.names`;
     const keyValues = `${type}.values`;
@@ -207,25 +213,25 @@ export type VectorSpan = {
 };
 
 export type VectorMetric = {
+  at: number; // aggregation temporality
   authorization?: string;
   b: JSONBlob; // tags
   dt: string; // data type
   hdx_platform: string;
   hdx_token: string;
+  im: boolean; // is monotonic
   n: string; // name
   ts: number; // timestamp
   tso: number; // observed timestamp
+  u: string; // unit
   v: number; // value
 };
 
-abstract class ParsingInterface<T> {
-  abstract _parse(
-    log: T,
-    ...args: any[]
-  ): LogStreamModel | MetricModel | RrwebEventModel;
+abstract class ParsingInterface<T, S> {
+  abstract _parse(log: T, ...args: any[]): S;
 
   parse(logs: T[], ...args: any[]) {
-    const parsedLogs = [];
+    const parsedLogs: S[] = [];
     for (const log of logs) {
       try {
         parsedLogs.push(this._parse(log, ...args));
@@ -238,7 +244,7 @@ abstract class ParsingInterface<T> {
   }
 }
 
-class VectorLogParser extends ParsingInterface<VectorLog> {
+class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
   getType(log: VectorLog): LogType {
     if (log.hdx_platform === LogPlatform.OtelTraces) {
       return LogType.Span;
@@ -271,19 +277,22 @@ class VectorLogParser extends ParsingInterface<VectorLog> {
   }
 }
 
-class VectorMetricParser extends ParsingInterface<VectorMetric> {
+class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
   _parse(metric: VectorMetric): MetricModel {
     return {
-      _string_attributes: metric.b,
+      _string_attributes: metric.b as any, // TODO: fix conversion of metric.b to proper string map
       data_type: metric.dt,
+      is_delta: metric.at === AggregationTemporality.Delta,
+      is_monotonic: metric.im,
       name: metric.n,
       timestamp: metric.ts,
+      unit: metric.u,
       value: metric.v,
     };
   }
 }
 
-class VectorRrwebParser extends ParsingInterface<VectorLog> {
+class VectorRrwebParser extends ParsingInterface<VectorLog, RrwebEventModel> {
   _parse(log: VectorLog): RrwebEventModel {
     return {
       ...mapObjectToKeyValuePairs(log.b),

@@ -1,28 +1,28 @@
-import Head from 'next/head';
-import { Button, Form } from 'react-bootstrap';
-import {
-  useQueryParam,
-  StringParam,
-  withDefault,
-  useQueryParams,
-} from 'use-query-params';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NumberParam } from 'serialize-query-params';
+import Head from 'next/head';
+import { sub } from 'date-fns';
+import { Button, Form } from 'react-bootstrap';
 import { toast } from 'react-toastify';
+import { NumberParam } from 'serialize-query-params';
+import {
+  StringParam,
+  useQueryParam,
+  useQueryParams,
+  withDefault,
+} from 'use-query-params';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
-import AppNav from './AppNav';
 import Dropdown from './Dropdown';
+import { withAppNav } from './layout';
+import SearchInput from './SearchInput';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import SessionSidePanel from './SessionSidePanel';
+import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import {
   formatDistanceToNowStrictShort,
   formatHumanReadableDate,
 } from './utils';
-import { parseTimeQuery, useTimeQuery } from './timeQuery';
-import SearchInput from './SearchInput';
-import SessionSidePanel from './SessionSidePanel';
-import { sub } from 'date-fns';
-import { useVirtualizer } from '@tanstack/react-virtual';
 
 function SessionCard({
   email,
@@ -332,11 +332,10 @@ export default function SessionsPage() {
   const [isEmailFilterExpanded, setIsEmailFilterExpanded] = useState(true);
 
   return (
-    <div className="SessionsPage d-flex" style={{ height: '100vh' }}>
+    <div className="SessionsPage">
       <Head>
         <title>Client Sessions - HyperDX</title>
       </Head>
-      <AppNav fixed />
       {selectedSession != null && (
         <SessionSidePanel
           key={`session-page-session-side-panel-${selectedSession.id}`}
@@ -525,3 +524,5 @@ export default function SessionsPage() {
     </div>
   );
 }
+
+SessionsPage.getLayout = withAppNav;

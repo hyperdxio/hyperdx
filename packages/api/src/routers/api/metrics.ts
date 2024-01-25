@@ -1,68 +1,85 @@
-import express from 'express';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
-import { isNumber, parseInt } from 'lodash';
+import express from 'express';
+import ms from 'ms';
+import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
+import * as clickhouse from '@/clickhouse';
+import { SimpleCache } from '@/utils/redis';
 
 const router = express.Router();
 
-router.get('/tags', isUserAuthenticated, async (req, res, next) => {
+router.get('/tags', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    // TODO: use cache
-    res.json(await clickhouse.getMetricsTags(teamId.toString()));
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    next(e);
-  }
-});
 
-router.post('/chart', isUserAuthenticated, async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { aggFn, endTime, granularity, groupBy, name, q, startTime } =
-      req.body;
-
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    const startTimeNum = parseInt(startTime as string);
-    const endTimeNum = parseInt(endTime as string);
-    if (!isNumber(startTimeNum) || !isNumber(endTimeNum) || !name) {
-      return res.sendStatus(400);
-    }
-
-    // FIXME: separate name + dataType
-    const [metricName, metricDataType] = (name as string).split(' - ');
-    if (metricName == null || metricDataType == null) {
-      return res.sendStatus(400);
-    }
-
-    res.json(
-      await clickhouse.getMetricsChart({
-        aggFn: aggFn as clickhouse.AggFn,
-        dataType: metricDataType,
-        endTime: endTimeNum,
-        granularity,
-        groupBy: groupBy as string,
-        name: metricName,
-        q: q as string,
-        startTime: startTimeNum,
+    const nowInMs = Date.now();
+    const simpleCache = new SimpleCache<
+      Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+    >(`metrics-tags-${teamId}`, ms('10m'), () =>
+      clickhouse.getMetricsTags({
+        // FIXME: fix it 5 days ago for now
+        startTime: nowInMs - ms('5d'),
+        endTime: nowInMs,
         teamId: teamId.toString(),
       }),
     );
+    res.json(await simpleCache.get());
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     next(e);
   }
 });
+
+router.post(
+  '/chart',
+  validateRequest({
+    body: z.object({
+      aggFn: z.nativeEnum(clickhouse.AggFn),
+      endTime: z.number().int().min(0),
+      granularity: z.nativeEnum(clickhouse.Granularity),
+      groupBy: z.string().optional(),
+      name: z.string().min(1),
+      type: z.nativeEnum(clickhouse.MetricsDataType),
+      q: z.string(),
+      startTime: z.number().int().min(0),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { aggFn, endTime, granularity, groupBy, name, q, startTime, type } =
+        req.body;
+
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      res.json(
+        await clickhouse.getMetricsChart({
+          aggFn,
+          dataType: type,
+          endTime,
+          granularity,
+          groupBy,
+          name,
+          q,
+          startTime,
+          teamId: teamId.toString(),
+        }),
+      );
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  },
+);
 
 export default router;

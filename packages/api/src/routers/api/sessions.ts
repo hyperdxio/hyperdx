@@ -1,16 +1,16 @@
-import express from 'express';
+import type { Row } from '@clickhouse/client';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
+import express from 'express';
 import { isNumber, parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 
-import * as clickhouse from '../../clickhouse';
-import { isUserAuthenticated } from '../../middleware/auth';
-import logger from '../../utils/logger';
-import { getTeam } from '../../controllers/team';
+import * as clickhouse from '@/clickhouse';
+import { getTeam } from '@/controllers/team';
+import logger from '@/utils/logger';
 
 const router = express.Router();
 
-router.get('/', isUserAuthenticated, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { endTime, q, startTime } = req.query;
@@ -41,14 +41,14 @@ router.get('/', isUserAuthenticated, async (req, res, next) => {
     );
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
 
     next(e);
   }
 });
 
-router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
+router.get('/:sessionId/rrweb', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const { sessionId } = req.params;
@@ -84,7 +84,7 @@ router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
       offset: offsetNum,
     });
 
-    stream.on('data', (rows: any[]) => {
+    stream.on('data', (rows: Row[]) => {
       res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
       res.flush();
     });
@@ -96,8 +96,8 @@ router.get('/:sessionId/rrweb', isUserAuthenticated, async (req, res, next) => {
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
-    span.recordException(e as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span?.recordException(e as Error);
+    span?.setStatus({ code: SpanStatusCode.ERROR });
     // WARNING: no need to call next(e) here, as the stream will be closed
     logger.error({
       message: 'Error while streaming rrweb events',
