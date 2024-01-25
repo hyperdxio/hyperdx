@@ -48,21 +48,22 @@ export const METRIC_AGG_FNS = [
   { value: 'min' as const, label: 'Minimum' },
 ];
 
-export type Granularity =
-  | '30 second'
-  | '1 minute'
-  | '5 minute'
-  | '10 minute'
-  | '15 minute'
-  | '30 minute'
-  | '1 hour'
-  | '2 hour'
-  | '6 hour'
-  | '12 hour'
-  | '1 day'
-  | '2 day'
-  | '7 day'
-  | '30 day';
+export enum Granularity {
+  ThirtySecond = '30 second',
+  OneMinute = '1 minute',
+  FiveMinute = '5 minute',
+  TenMinute = '10 minute',
+  FifteenMinute = '15 minute',
+  ThirtyMinute = '30 minute',
+  OneHour = '1 hour',
+  TwoHour = '2 hour',
+  SixHour = '6 hour',
+  TwelveHour = '12 hour',
+  OneDay = '1 day',
+  TwoDay = '2 day',
+  SevenDay = '7 day',
+  ThirtyDay = '30 day',
+}
 
 const seriesDisplayName = (
   s: ChartSeries,
@@ -1107,36 +1108,36 @@ export function convertDateRangeToGranularityString(
   const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
 
   if (granularitySizeSeconds <= 30) {
-    return '30 second';
+    return Granularity.ThirtySecond;
   } else if (granularitySizeSeconds <= 60) {
-    return '1 minute';
+    return Granularity.OneMinute;
   } else if (granularitySizeSeconds <= 5 * 60) {
-    return '5 minute';
+    return Granularity.FiveMinute;
   } else if (granularitySizeSeconds <= 10 * 60) {
-    return '10 minute';
+    return Granularity.TenMinute;
   } else if (granularitySizeSeconds <= 15 * 60) {
-    return '15 minute';
+    return Granularity.FifteenMinute;
   } else if (granularitySizeSeconds <= 30 * 60) {
-    return '30 minute';
+    return Granularity.ThirtyMinute;
   } else if (granularitySizeSeconds <= 3600) {
-    return '1 hour';
+    return Granularity.OneHour;
   } else if (granularitySizeSeconds <= 2 * 3600) {
-    return '2 hour';
+    return Granularity.TwoHour;
   } else if (granularitySizeSeconds <= 6 * 3600) {
-    return '6 hour';
+    return Granularity.SixHour;
   } else if (granularitySizeSeconds <= 12 * 3600) {
-    return '12 hour';
+    return Granularity.TwelveHour;
   } else if (granularitySizeSeconds <= 24 * 3600) {
-    return '1 day';
+    return Granularity.OneDay;
   } else if (granularitySizeSeconds <= 2 * 24 * 3600) {
-    return '2 day';
+    return Granularity.TwoDay;
   } else if (granularitySizeSeconds <= 7 * 24 * 3600) {
-    return '7 day';
+    return Granularity.SevenDay;
   } else if (granularitySizeSeconds <= 30 * 24 * 3600) {
-    return '30 day';
+    return Granularity.ThirtyDay;
   }
 
-  return '30 day';
+  return Granularity.ThirtyDay;
 }
 
 export function convertGranularityToSeconds(granularity: Granularity): number {

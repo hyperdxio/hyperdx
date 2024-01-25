@@ -18,7 +18,7 @@ import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook from '@/models/webhook';
-import { truncateString } from '@/utils/common';
+import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
 
@@ -77,7 +77,7 @@ export const buildChartLink = ({
   const to = (endTime.getTime() + ms(granularity) * 7).toString();
   const queryParams = new URLSearchParams({
     from,
-    granularity,
+    granularity: convertMsToGranularityString(ms(granularity)),
     to,
   });
   url.search = queryParams.toString();

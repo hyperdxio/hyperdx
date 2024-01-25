@@ -2,18 +2,19 @@ import { sub } from 'date-fns';
 import { Form, FormSelectProps } from 'react-bootstrap';
 
 import api from './api';
+import { Granularity } from './ChartUtils';
 import type { AlertChannelType, AlertInterval } from './types';
 
 export function intervalToGranularity(interval: AlertInterval) {
-  if (interval === '1m') return '1 minute' as const;
-  if (interval === '5m') return '5 minute' as const;
-  if (interval === '15m') return '15 minute' as const;
-  if (interval === '30m') return '30 minute' as const;
-  if (interval === '1h') return '1 hour' as const;
-  if (interval === '6h') return '6 hour' as const;
-  if (interval === '12h') return '12 hour' as const;
-  if (interval === '1d') return '1 day' as const;
-  return '1 day';
+  if (interval === '1m') return Granularity.OneMinute;
+  if (interval === '5m') return Granularity.FiveMinute;
+  if (interval === '15m') return Granularity.FifteenMinute;
+  if (interval === '30m') return Granularity.ThirtyMinute;
+  if (interval === '1h') return Granularity.OneHour;
+  if (interval === '6h') return Granularity.SixHour;
+  if (interval === '12h') return Granularity.TwelveHour;
+  if (interval === '1d') return Granularity.OneDay;
+  return Granularity.OneDay;
 }
 
 export function intervalToDateRange(interval: AlertInterval): [Date, Date] {

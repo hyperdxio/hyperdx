@@ -26,7 +26,6 @@ import type {
 } from '@/utils/logParser';
 import { chartSeriesSchema } from '@/utils/zod';
 
-import { redisClient } from '../utils/redis';
 import {
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
@@ -82,6 +81,7 @@ export enum AggFn {
   SumRate = 'sum_rate',
 }
 
+// TODO: move this somewhere shareable across the project
 export enum Granularity {
   ThirtySecond = '30 second',
   OneMinute = '1 minute',
@@ -488,7 +488,7 @@ export const fetchLogsPropertyTypeMappings =
   };
 
 // ******************************************************
-// ****************** Helpers ***************************
+// ******************** Utils ***************************
 // ******************************************************
 export const msRangeToHistogramInterval = (msRange: number, total: number) => {
   const diffSeconds = Math.floor(msRange / 1000);
