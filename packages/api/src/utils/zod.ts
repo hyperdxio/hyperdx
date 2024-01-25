@@ -92,6 +92,16 @@ export const markdownChartSeriesSchema = z.object({
   content: z.string(),
 });
 
+export const externalQueryChartSeriesSchema = z.object({
+  dataSource: z.enum(['events', 'metrics']).optional(),
+  aggFn: aggFnSchema,
+  field: z.optional(z.string()),
+  where: z.string(),
+  groupBy: z.array(z.string()).max(10),
+  sortOrder: z.optional(z.union([z.literal('desc'), z.literal('asc')])),
+  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+});
+
 export const chartSeriesSchema = z.union([
   timeChartSeriesSchema,
   tableChartSeriesSchema,
@@ -152,7 +162,7 @@ export const externalChartSchema = z.object({
         'table',
         'markdown',
       ]),
-      data_source: z.enum(['events', 'metrics']).optional(),
+      dataSource: z.enum(['events', 'metrics']).optional(),
       aggFn: aggFnSchema.optional(),
       field: z.union([z.string(), z.undefined()]).optional(),
       fields: z.array(z.string()).optional(),

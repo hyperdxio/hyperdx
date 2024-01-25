@@ -9,6 +9,7 @@ import * as clickhouse from '@/clickhouse';
 import { getTeam } from '@/controllers/team';
 import { validateUserAccessKey } from '@/middleware/auth';
 import alertsRouter from '@/routers/external-api/v1/alerts';
+import chartsRouter from '@/routers/external-api/v1/charts';
 import dashboardRouter from '@/routers/external-api/v1/dashboards';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import logger from '@/utils/logger';
@@ -36,6 +37,13 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
     user: req.user?.toJSON(),
   });
 });
+
+router.use(
+  '/charts',
+  getDefaultRateLimiter(),
+  validateUserAccessKey,
+  chartsRouter,
+);
 
 router.use(
   '/alerts',

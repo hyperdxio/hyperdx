@@ -76,7 +76,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -93,7 +93,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -110,7 +110,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -127,7 +127,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -157,7 +157,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -174,7 +174,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -191,7 +191,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -208,7 +208,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -262,7 +262,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -279,7 +279,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -296,7 +296,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
@@ -349,14 +349,14 @@ Object {
             series: [
               {
                 type: 'time',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: '',
                 groupBy: [],
               },
               {
                 type: 'time',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: 'level:err',
                 groupBy: [],
@@ -374,14 +374,14 @@ Object {
             series: [
               {
                 type: 'time',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: '',
                 groupBy: [],
               },
               {
                 type: 'time',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: 'level:err',
                 groupBy: [],
@@ -399,7 +399,7 @@ Object {
             series: [
               {
                 type: 'table',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: '',
                 groupBy: [],
@@ -418,7 +418,7 @@ Object {
             series: [
               {
                 type: 'histogram',
-                data_source: 'events',
+                dataSource: 'events',
                 field: 'duration',
                 where: '',
               },
@@ -435,7 +435,7 @@ Object {
             series: [
               {
                 type: 'markdown',
-                data_source: 'events',
+                dataSource: 'events',
                 content: 'makedown',
               },
             ],
@@ -451,7 +451,7 @@ Object {
             series: [
               {
                 type: 'number',
-                data_source: 'events',
+                dataSource: 'events',
                 aggFn: 'count',
                 where: 'level:err OR level:warn',
               },
@@ -468,7 +468,7 @@ Object {
             series: [
               {
                 type: 'search',
-                data_source: 'events',
+                dataSource: 'events',
                 where: 'level:warn',
               },
             ],
@@ -497,14 +497,14 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
         },
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "level:err",
@@ -521,14 +521,14 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "",
         },
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "type": "time",
           "where": "level:err",
@@ -545,7 +545,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "groupBy": Array [],
           "sortOrder": "desc",
           "type": "table",
@@ -562,7 +562,7 @@ Object {
       "name": "histogram chart",
       "series": Array [
         Object {
-          "data_source": "events",
+          "dataSource": "events",
           "field": "duration",
           "type": "histogram",
           "where": "",
@@ -579,7 +579,7 @@ Object {
       "series": Array [
         Object {
           "content": "makedown",
-          "data_source": "events",
+          "dataSource": "events",
           "type": "markdown",
         },
       ],
@@ -594,7 +594,7 @@ Object {
       "series": Array [
         Object {
           "aggFn": "count",
-          "data_source": "events",
+          "dataSource": "events",
           "type": "number",
           "where": "level:err OR level:warn",
         },
@@ -609,7 +609,7 @@ Object {
       "name": "search chart",
       "series": Array [
         Object {
-          "data_source": "events",
+          "dataSource": "events",
           "type": "search",
           "where": "level:warn",
         },
