@@ -2,8 +2,6 @@ name: Push Downstream
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,7 +13,7 @@ jobs:
       - uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.DOWNSTREAM_TOKEN }}
-          script: |-
+          script: |
             const result = await github.rest.actions.createWorkflowDispatch({
               owner: '${{ secrets.DOWNSTREAM_OWNER }}',
               repo: '${{ secrets.DOWNSTREAM_REPO }}',
