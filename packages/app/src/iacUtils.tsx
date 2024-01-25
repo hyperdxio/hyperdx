@@ -129,7 +129,7 @@ resource "restapi_object" "dashboard_${getResourceName(dashboard.name)}" {
                 s.type === 'table' ||
                 s.type === 'number'
                   ? {
-                      data_source: s.table === 'logs' ? 'events' : 'metrics',
+                      dataSource: s.table === 'logs' ? 'events' : 'metrics',
                     }
                   : {}),
                 ...('numberFormat' in s
