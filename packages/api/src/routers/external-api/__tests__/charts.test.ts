@@ -117,14 +117,14 @@ describe('/api/v1/charts/series', () => {
       .send({
         series: [
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'sum',
             field: 'hyperdx_event_size',
             where: `runId: ${runId}`,
             groupBy: ['service'],
           },
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'count',
             field: '',
             where: `runId: ${runId}`,
@@ -160,7 +160,7 @@ Array [
       .send({
         series: [
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'sum',
             field: 'hyperdx_event_size',
             where: '',
@@ -170,7 +170,7 @@ Array [
             },
           },
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'count',
             field: '',
             where: '',
@@ -189,7 +189,7 @@ Array [
       .send({
         series: [
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'sum',
             field: 'hyperdx_event_size',
             where: '',
@@ -199,7 +199,7 @@ Array [
             },
           },
           {
-            data_source: 'events',
+            dataSource: 'events',
             aggFn: 'count',
             field: '',
             where: '',
@@ -211,5 +211,31 @@ Array [
         seriesReturnType: 'column',
       })
       .expect(200);
+  });
+
+  it('rejects excess series queries', async () => {
+    const series = {
+      dataSource: 'events',
+      aggFn: 'sum',
+      field: 'hyperdx_event_size',
+      where: '',
+      groupBy: ['service'],
+      numberFormat: {
+        output: 'byte',
+      },
+    };
+
+    const { agent, user } = await getLoggedInAgent(server);
+
+    await agent
+      .post('/api/v1/charts/series')
+      .set('Authorization', `Bearer ${user?.accessKey}`)
+      .send({
+        series: [series, series, series, series, series, series, series],
+        endTime: now + ms('10m'),
+        startTime: now,
+        seriesReturnType: 'column',
+      })
+      .expect(400);
   });
 });

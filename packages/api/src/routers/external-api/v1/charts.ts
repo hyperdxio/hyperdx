@@ -15,15 +15,18 @@ router.post(
   '/series',
   validateRequest({
     body: z.object({
-      series: z.array(externalQueryChartSeriesSchema).refine(
-        series => {
-          const groupByFields = series[0].groupBy;
-          return series.every(s => _.isEqual(s.groupBy, groupByFields));
-        },
-        {
-          message: 'All series must have the same groupBy fields',
-        },
-      ),
+      series: z
+        .array(externalQueryChartSeriesSchema)
+        .max(5)
+        .refine(
+          series => {
+            const groupByFields = series[0].groupBy;
+            return series.every(s => _.isEqual(s.groupBy, groupByFields));
+          },
+          {
+            message: 'All series must have the same groupBy fields',
+          },
+        ),
       endTime: z.number(),
       granularity: z.nativeEnum(clickhouse.Granularity).optional(),
       startTime: z.number(),
@@ -36,13 +39,6 @@ router.post(
       const { endTime, granularity, startTime, seriesReturnType, series } =
         req.body;
 
-      const internalSeries = series.map(s =>
-        translateExternalSeriesToInternalSeries({
-          type: 'time', // just to reuse the same fn
-          ...s,
-        }),
-      );
-
       if (teamId == null) {
         return res.sendStatus(403);
       }
@@ -51,6 +47,13 @@ router.post(
       if (team == null) {
         return res.sendStatus(403);
       }
+
+      const internalSeries = series.map(s =>
+        translateExternalSeriesToInternalSeries({
+          type: 'time', // just to reuse the same fn
+          ...s,
+        }),
+      );
 
       const MAX_NUM_GROUPS = 20;
 

@@ -18,7 +18,7 @@ export const translateExternalSeriesToInternalSeries = (
 ) => {
   const {
     type,
-    data_source,
+    dataSource,
     aggFn,
     field,
     fields,
@@ -30,7 +30,7 @@ export const translateExternalSeriesToInternalSeries = (
     metricDataType,
   } = s;
 
-  const table = data_source === 'metrics' ? 'metrics' : 'logs';
+  const table = dataSource === 'metrics' ? 'metrics' : 'logs';
 
   if (type === 'time') {
     if (aggFn == null) {
@@ -156,7 +156,7 @@ const translateChartDocumentToExternalChart = (
 
       return {
         type,
-        data_source: table === 'metrics' ? 'metrics' : 'events',
+        dataSource: table === 'metrics' ? 'metrics' : 'events',
         aggFn,
         field,
         where,
