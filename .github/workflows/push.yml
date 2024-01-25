@@ -10,10 +10,18 @@ jobs:
     timeout-minutes: 5
     runs-on: ubuntu-20.04
     steps:
-      - run: >
-          curl -s -XPOST -u
-          "${{secrets.DOWNSTREAM_TOKEN}}:${{secrets.DOWNSTREAM_TOKEN}}"
-          ${{secrets.DOWNSTREAM_ARG}} ${{secrets.DOWNSTREAM_URL}}  --data
-          '{"ref":"main","inputs":{"sha": "${{github.sha}}", "actor":
-          "${{github.actor}}", "message": "${{ github.event.head_commit.message
-          }}"}}'
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.DOWNSTREAM_TOKEN }}
+          script: |
+            const result = await github.rest.actions.createWorkflowDispatch({
+              owner: '${{ secrets.DOWNSTREAM_OWNER }}',
+              repo: '${{ secrets.DOWNSTREAM_REPO }}',
+              workflow_id: '${{ secrets.DOWNSTREAM_WORKFLOW_ID }}',
+              ref: 'main',
+              inputs: {
+                sha: '${{ github.sha }}',
+                actor: '${{ github.actor }}',
+                message: '${{ github.event.head_commit.message }}'
+              }
+            });
