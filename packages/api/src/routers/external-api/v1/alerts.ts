@@ -6,6 +6,7 @@ import { validateRequest } from 'zod-express-middleware';
 import {
   createAlert,
   deleteAlert,
+  getAlertById,
   getAlerts,
   updateAlert,
   validateGroupByProperty,
@@ -118,6 +119,35 @@ router.get('/', async (req, res, next) => {
     next(e);
   }
 });
+
+router.get(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+
+      if (alert == null) {
+        return res.sendStatus(404);
+      }
+
+      return res.json({
+        data: translateAlertDocumentToExternalAlert(alert),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   '/',
