@@ -434,7 +434,10 @@ describe('checkAlerts', () => {
     });
 
     it('CHART alert (metrics table series)', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
       const runId = Math.random().toString(); // dedup watch mode runs
+      const teamId = team._id.toString();
 
       jest
         .spyOn(slack, 'postMessageToWebhook')
@@ -477,6 +480,7 @@ describe('checkAlerts', () => {
             { value: 35, timestamp: metricNowTs + ms('10m') },
             { value: 36, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
@@ -507,6 +511,7 @@ describe('checkAlerts', () => {
             { value: 30005, timestamp: metricNowTs + ms('10m') },
             { value: 30006, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
@@ -532,10 +537,10 @@ describe('checkAlerts', () => {
             { value: 22, timestamp: metricNowTs + ms('10m') },
             { value: 23, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
-      const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
         service: 'slack',

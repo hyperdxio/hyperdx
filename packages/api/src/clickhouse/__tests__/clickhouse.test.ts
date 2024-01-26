@@ -44,35 +44,26 @@ describe('clickhouse', () => {
 
     await clickhouse.bulkInsertLogStream([
       buildEvent({
-        source: 'test',
         timestamp: now,
-        platform: LogPlatform.NodeJS,
         type: LogType.Log,
         test: 'test1',
-        runId,
       }),
       buildEvent({
-        source: 'test',
         timestamp: now + 1,
-        platform: LogPlatform.NodeJS,
         type: LogType.Log,
         test: 'test2',
         justanumber: 777,
-        runId,
       }),
       buildEvent({
-        source: 'test',
         timestamp: now + 1,
-        platform: LogPlatform.NodeJS,
         type: LogType.Log,
         justanumber: 777,
-        runId,
       }),
     ]);
 
     const data = (
       await clickhouse.getLogBatch({
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         q: `runId:${runId} test:*`,
         limit: 20,
@@ -125,21 +116,18 @@ Array [
       // Group 1, sum: 77, avg:25.666666667
       buildEvent({
         timestamp: now,
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup1',
         awesomeNumber: 1,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup1',
         awesomeNumber: 15,
       }),
       buildEvent({
         timestamp: now + ms('2m'),
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup2',
         awesomeNumber: 61,
@@ -147,21 +135,18 @@ Array [
       // Group 1, sum: 7, avg: 2.3333333
       buildEvent({
         timestamp: now + ms('6m'),
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup2',
         awesomeNumber: 4,
       }),
       buildEvent({
         timestamp: now + ms('7m'),
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup2',
         awesomeNumber: 2,
       }),
       buildEvent({
         timestamp: now + ms('8m'),
-        runId,
         testGroup: 'group1',
         testOtherGroup: 'otherGroup3',
         awesomeNumber: 1,
@@ -169,21 +154,18 @@ Array [
       // Group 2, sum: 777, avg: 259
       buildEvent({
         timestamp: now,
-        runId,
         testGroup: 'group2',
         testOtherGroup: 'otherGroup1',
         awesomeNumber: 70,
       }),
       buildEvent({
         timestamp: now + ms('4m'),
-        runId,
         testGroup: 'group2',
         testOtherGroup: 'otherGroup1',
         awesomeNumber: 700,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
-        runId,
         testGroup: 'group2',
         testOtherGroup: 'otherGroup1',
         awesomeNumber: 7,
@@ -217,7 +199,7 @@ Array [
             groupBy: ['testGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -275,7 +257,7 @@ Array [
             groupBy: ['testGroup', 'testOtherGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -349,7 +331,7 @@ Array [
             groupBy: ['testGroup', 'testOtherGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -431,7 +413,7 @@ Array [
             groupBy: ['testGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -481,7 +463,7 @@ Array [
             groupBy: ['testGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -541,6 +523,7 @@ Array [
           { value: 32, timestamp: now + ms('16m') },
           { value: 42, timestamp: now + ms('19m') }, // 42
         ],
+        team_id: teamId,
       }),
     );
 
@@ -565,6 +548,7 @@ Array [
           { value: 9323, timestamp: now + ms('16m') },
           { value: 84626, timestamp: now + ms('19m') }, // 84626
         ],
+        team_id: teamId,
       }),
     );
 
@@ -586,6 +570,7 @@ Array [
           { value: 10, timestamp: now + ms('8m') },
           { value: 80, timestamp: now + ms('9m') }, // Last 5min
         ],
+        team_id: teamId,
       }),
     );
 
@@ -607,6 +592,7 @@ Array [
           { value: 5, timestamp: now + ms('8m') },
           { value: 4, timestamp: now + ms('9m') }, // Last 5min
         ],
+        team_id: teamId,
       }),
     );
 
@@ -628,7 +614,7 @@ Array [
             metricDataType: clickhouse.MetricsDataType.Sum,
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('20m'),
@@ -678,7 +664,7 @@ Array [
             metricDataType: clickhouse.MetricsDataType.Gauge,
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -736,7 +722,7 @@ Array [
             metricDataType: clickhouse.MetricsDataType.Gauge,
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -776,7 +762,7 @@ Array [
             metricDataType: clickhouse.MetricsDataType.Gauge,
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -825,7 +811,7 @@ Array [
             metricDataType: clickhouse.MetricsDataType.Sum,
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('20m'),
@@ -938,7 +924,7 @@ Array [
             sortOrder: 'asc',
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -1025,7 +1011,7 @@ Array [
             sortOrder: 'desc',
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -1112,7 +1098,7 @@ Array [
             sortOrder: 'desc',
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('5m'),
@@ -1167,57 +1153,48 @@ Array [
       // Group 1, sum: 77, avg:25.666666667
       buildEvent({
         timestamp: now,
-        runId,
         testGroup: 'group1',
         awesomeNumber: 1,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
-        runId,
         testGroup: 'group1',
         awesomeNumber: 15,
       }),
       buildEvent({
         timestamp: now + ms('2m'),
-        runId,
         testGroup: 'group1',
         awesomeNumber: 61,
       }),
       // Group 1, sum: 7, avg: 2.3333333
       buildEvent({
         timestamp: now + ms('6m'),
-        runId,
         testGroup: 'group1',
         awesomeNumber: 4,
       }),
       buildEvent({
         timestamp: now + ms('7m'),
-        runId,
         testGroup: 'group1',
         awesomeNumber: 2,
       }),
       buildEvent({
         timestamp: now + ms('8m'),
-        runId,
         testGroup: 'group1',
         awesomeNumber: 1,
       }),
       // Group 2, sum: 777, avg: 259
       buildEvent({
         timestamp: now,
-        runId,
         testGroup: 'group2',
         awesomeNumber: 70,
       }),
       buildEvent({
         timestamp: now + ms('4m'),
-        runId,
         testGroup: 'group2',
         awesomeNumber: 700,
       }),
       buildEvent({
         timestamp: now + ms('1m'),
-        runId,
         testGroup: 'group2',
         awesomeNumber: 7,
       }),
@@ -1241,7 +1218,7 @@ Array [
             groupBy: ['testGroup'],
           },
         ],
-        tableVersion: undefined,
+        tableVersion: 1,
         teamId,
         startTime: now,
         endTime: now + ms('10m'),
@@ -1256,7 +1233,7 @@ Array [
       field: 'awesomeNumber',
       q: `runId:${runId}`,
       groupBy: 'testGroup',
-      tableVersion: undefined,
+      tableVersion: 1,
       teamId,
       startTime: now,
       endTime: now + ms('10m'),
@@ -1333,11 +1310,13 @@ Array [
     expect.assertions(2);
   });
 
-  // TODO: Test this with real data and new chart fn
   it.skip('getMetricsChart avoids sending NaN to frontend', async () => {
-    jest
-      .spyOn(clickhouse.client, 'query')
-      .mockResolvedValueOnce({ json: () => Promise.resolve({}) } as any);
+    jest.spyOn(clickhouse.client, 'query').mockResolvedValueOnce({
+      json: () =>
+        Promise.resolve({
+          data: [],
+        }),
+    } as any);
 
     await clickhouse.getMetricsChart({
       aggFn: clickhouse.AggFn.AvgRate,
@@ -1350,7 +1329,6 @@ Array [
       teamId: 'test',
     });
 
-    expect(clickhouse.client.query).toHaveBeenCalledTimes(2);
     expect(clickhouse.client.query).toHaveBeenCalledWith(
       expect.objectContaining({
         format: 'JSON',

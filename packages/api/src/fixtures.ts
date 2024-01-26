@@ -275,6 +275,7 @@ export function buildMetricSeries({
   is_delta,
   is_monotonic,
   unit,
+  team_id,
 }: {
   tags: Record<string, string>;
   name: string;
@@ -283,6 +284,7 @@ export function buildMetricSeries({
   is_monotonic: boolean;
   is_delta: boolean;
   unit: string;
+  team_id: string;
 }): MetricModel[] {
   // @ts-ignore TODO: Fix Timestamp types
   return points.map(({ value, timestamp, le }) => ({
@@ -294,6 +296,7 @@ export function buildMetricSeries({
     is_monotonic,
     is_delta,
     unit,
+    team_id,
   }));
 }
 
