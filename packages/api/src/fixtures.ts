@@ -141,6 +141,31 @@ export const getLoggedInAgent = async (server: MockServer) => {
   };
 };
 
+type BaseEvent = {
+  level?: string;
+  source?: string;
+  timestamp?: number; // ms timestamp
+  platform?: LogPlatform;
+  type?: LogType;
+  end_timestamp?: number; //ms timestamp
+  span_name?: string;
+} & {
+  [key: string]: number | string | boolean;
+};
+
+export function generateBuildTeamEventFn(
+  teamId: string,
+  commonAttributes: Partial<BaseEvent>,
+) {
+  return (attributes: Partial<BaseEvent>) => {
+    return buildEvent({
+      ...commonAttributes,
+      ...attributes,
+      team_id: teamId,
+    });
+  };
+}
+
 // ------------------------------------------------
 // ------------------ Redis -----------------------
 // ------------------------------------------------
@@ -172,7 +197,7 @@ export const clearClickhouseTables = async () => {
   await Promise.all(promises);
 };
 
-export function buildEvent({
+function buildEvent({
   level,
   source = 'test',
   timestamp,
@@ -180,12 +205,14 @@ export function buildEvent({
   type = LogType.Log,
   end_timestamp = 0,
   span_name,
+  team_id,
   service = 'test-service',
   ...properties
 }: {
   level?: string;
   source?: string;
   timestamp?: number; // ms timestamp
+  team_id: string;
   platform?: LogPlatform;
   type?: LogType;
   end_timestamp?: number; //ms timestamp
@@ -228,6 +255,7 @@ export function buildEvent({
     severity_text: level,
     // @ts-ignore
     end_timestamp: `${end_timestamp}000000`,
+    team_id,
     type,
     span_name,
     'bool.names': boolNames,

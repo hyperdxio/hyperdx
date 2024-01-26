@@ -2,11 +2,11 @@ import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
 import {
-  buildEvent,
   clearClickhouseTables,
   clearDBCollections,
   clearRedis,
   closeDB,
+  generateBuildTeamEventFn,
   getLoggedInAgent,
   getServer,
   mockLogsPropertyTypeMappingsModel,
@@ -33,6 +33,8 @@ describe('charts router', () => {
   it('GET /chart/services', async () => {
     const now = Date.now();
     const { agent, team } = await getLoggedInAgent(server);
+
+    const buildEvent = generateBuildTeamEventFn(team.id, {});
 
     await clickhouse.bulkInsertLogStream([
       buildEvent({
@@ -91,6 +93,8 @@ Object {
     const now = Date.now();
     const { agent, team } = await getLoggedInAgent(server);
 
+    const buildEvent = generateBuildTeamEventFn(team.id, {});
+
     await clickhouse.bulkInsertLogStream([
       buildEvent({
         timestamp: now,
@@ -118,6 +122,8 @@ Object {
   it('GET /chart/services (missing data but custom attributes exist)', async () => {
     const now = Date.now();
     const { agent, team } = await getLoggedInAgent(server);
+
+    const buildEvent = generateBuildTeamEventFn(team.id, {});
 
     await clickhouse.bulkInsertLogStream([
       buildEvent({

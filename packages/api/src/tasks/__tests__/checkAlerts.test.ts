@@ -1,10 +1,10 @@
 import ms from 'ms';
 
 import {
-  buildEvent,
   buildMetricSeries,
   clearDBCollections,
   closeDB,
+  generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
@@ -275,6 +275,13 @@ describe('checkAlerts', () => {
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
       const eventMs = now.getTime() - ms('5m');
+
+      const buildEvent = generateBuildTeamEventFn(teamId, {
+        runId,
+        span_name: 'HyperDX',
+        type: LogType.Span,
+        level: 'error',
+      });
 
       await clickhouse.bulkInsertLogStream([
         buildEvent({

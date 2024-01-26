@@ -2,10 +2,10 @@ import _ from 'lodash';
 import ms from 'ms';
 
 import {
-  buildEvent,
   buildMetricSeries,
   clearClickhouseTables,
   closeDB,
+  generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
@@ -35,6 +35,12 @@ describe('clickhouse', () => {
     const now = new Date('2022-01-05').getTime();
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
+
+    const buildEvent = generateBuildTeamEventFn(teamId, {
+      platform: LogPlatform.NodeJS,
+      source: 'test',
+      runId,
+    });
 
     await clickhouse.bulkInsertLogStream([
       buildEvent({
@@ -110,6 +116,10 @@ Array [
     const now = new Date('2022-01-05').getTime();
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
+
+    const buildEvent = generateBuildTeamEventFn(teamId, {
+      runId,
+    });
 
     await clickhouse.bulkInsertLogStream([
       // Group 1, sum: 77, avg:25.666666667
@@ -876,6 +886,10 @@ Array [
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
+    const buildEvent = generateBuildTeamEventFn(teamId, {
+      runId,
+    });
+
     await clickhouse.bulkInsertLogStream(
       Array(10)
         .fill(0)
@@ -1144,6 +1158,10 @@ Array [
     const now = new Date('2022-01-05').getTime();
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
+
+    const buildEvent = generateBuildTeamEventFn(teamId, {
+      runId,
+    });
 
     await clickhouse.bulkInsertLogStream([
       // Group 1, sum: 77, avg:25.666666667
