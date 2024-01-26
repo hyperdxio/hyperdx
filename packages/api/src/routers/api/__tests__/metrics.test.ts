@@ -28,6 +28,8 @@ describe('metrics router', () => {
   });
 
   it('GET /metrics/tags', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
     const now = Date.now();
     await clickhouse.bulkInsertTeamMetricStream(
       buildMetricSeries({
@@ -38,6 +40,7 @@ describe('metrics router', () => {
         is_delta: false,
         unit: 'Percent',
         points: [{ value: 1, timestamp: now }],
+        team_id: team.id,
       }),
     );
     await clickhouse.bulkInsertTeamMetricStream(
@@ -49,10 +52,10 @@ describe('metrics router', () => {
         is_delta: false,
         unit: 'Percent',
         points: [{ value: 1, timestamp: now }],
+        team_id: team.id,
       }),
     );
 
-    const { agent } = await getLoggedInAgent(server);
     const results = await agent.get('/metrics/tags').expect(200);
     expect(results.body.data).toEqual([
       {
