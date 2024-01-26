@@ -27,6 +27,10 @@ import {
 } from '../checkAlerts';
 
 describe('checkAlerts', () => {
+  afterAll(async () => {
+    await clickhouse.client.close();
+  });
+
   it('roundDownToXMinutes', () => {
     // 1 min
     const roundDownTo1Minute = roundDownToXMinutes(1);
@@ -122,12 +126,9 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    beforeEach(() => {
-      jest.resetAllMocks();
-    });
-
     afterEach(async () => {
       await clearDBCollections();
+      jest.clearAllMocks();
     });
 
     afterAll(async () => {
@@ -270,8 +271,10 @@ describe('checkAlerts', () => {
         runId: 'string',
       });
 
+      const team = await createTeam({ name: 'My Team' });
+
       const runId = Math.random().toString(); // dedup watch mode runs
-      const teamId = 'test';
+      const teamId = team._id.toString();
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
       const eventMs = now.getTime() - ms('5m');
@@ -285,24 +288,15 @@ describe('checkAlerts', () => {
 
       await clickhouse.bulkInsertLogStream([
         buildEvent({
-          span_name: 'HyperDX',
-          level: 'error',
           timestamp: eventMs,
-          runId,
           end_timestamp: eventMs + 100,
-          type: LogType.Span,
         }),
         buildEvent({
-          span_name: 'HyperDX',
-          level: 'error',
           timestamp: eventMs + 5,
-          runId,
           end_timestamp: eventMs + 7,
-          type: LogType.Span,
         }),
       ]);
 
-      const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
         service: 'slack',
