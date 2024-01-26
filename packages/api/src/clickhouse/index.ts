@@ -423,12 +423,8 @@ export const bulkInsertRrwebEvents = async (events: RrwebEventModel[]) => {
   });
 };
 
-export const bulkInsertTeamLogStream = async (
-  version: number | undefined | null,
-  teamId: string,
-  logs: LogStreamModel[],
-) => {
-  const tableName = getLogStreamTableName(version, teamId);
+export const bulkInsertLogStream = async (logs: LogStreamModel[]) => {
+  const tableName = `default.${TableName.LogStream}`;
   await clientInsertWithRetries<LogStreamModel>({
     table: tableName,
     values: logs,

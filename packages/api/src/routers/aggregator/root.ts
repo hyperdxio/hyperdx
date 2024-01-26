@@ -2,8 +2,8 @@ import express from 'express';
 import groupBy from 'lodash/groupBy';
 
 import {
+  bulkInsertLogStream,
   bulkInsertRrwebEvents,
-  bulkInsertTeamLogStream,
   bulkInsertTeamMetricStream,
 } from '@/clickhouse';
 import * as config from '@/config';
@@ -42,13 +42,7 @@ const bulkInsert = async (
             logs.push(log);
           }
         }
-        const promises = [
-          bulkInsertTeamLogStream(
-            team.logStreamTableVersion,
-            team._id.toString(),
-            vectorLogParser.parse(logs),
-          ),
-        ];
+        const promises = [bulkInsertLogStream(vectorLogParser.parse(logs))];
         if (rrwebEvents.length > 0) {
           promises.push(
             bulkInsertRrwebEvents(vectorRrwebParser.parse(rrwebEvents)),

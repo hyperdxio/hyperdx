@@ -50,6 +50,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 32, timestamp: now + ms('16m') },
             { value: 42, timestamp: now + ms('19m') }, // 42
           ],
+          team_id: teamId,
         }),
       ),
       // Rate: 11, 78, 5805, 78729
@@ -73,6 +74,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 9323, timestamp: now + ms('16m') },
             { value: 84626, timestamp: now + ms('19m') }, // 84626
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -93,6 +95,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 10, timestamp: now + ms('8m') },
             { value: 80, timestamp: now + ms('9m') }, // Last 5min
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -113,6 +116,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 5, timestamp: now + ms('8m') },
             { value: 4, timestamp: now + ms('9m') }, // Last 5min
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -132,6 +136,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 10, timestamp: now + ms('1m'), le: '30' },
             { value: 10, timestamp: now + ms('1m'), le: '+Inf' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -151,6 +156,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 10, timestamp: now + ms('1m'), le: '30' },
             { value: 10, timestamp: now + ms('1m'), le: '+Inf' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -170,6 +176,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 0, timestamp: now + ms('1m'), le: '30' },
             { value: 10, timestamp: now + ms('1m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -189,6 +196,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 0, timestamp: now + ms('1m'), le: '30' },
             { value: 10, timestamp: now + ms('1m'), le: '+Inf' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -208,6 +216,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('1m'), le: '30' },
             { value: 50, timestamp: now + ms('1m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -227,6 +236,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('1m'), le: '30' },
             { value: 50, timestamp: now + ms('1m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -250,6 +260,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('2m'), le: '30' },
             { value: 50, timestamp: now + ms('2m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -273,6 +284,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 40, timestamp: now + ms('2m'), le: '30' },
             { value: 80, timestamp: now + ms('2m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -296,6 +308,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('2m'), le: '30' },
             { value: 50, timestamp: now + ms('2m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -322,6 +335,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('2m'), le: '30' },
             { value: 50, timestamp: now + ms('2m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream(
@@ -352,6 +366,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('4m'), le: '30' },
             { value: 50, timestamp: now + ms('4m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ),
       clickhouse.bulkInsertTeamMetricStream([
@@ -383,6 +398,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 20, timestamp: now + ms('4m'), le: '30' },
             { value: 50, timestamp: now + ms('4m'), le: '50' },
           ],
+          team_id: teamId,
         }),
         ...buildMetricSeries({
           name: 'test.counter_might_reset',
@@ -412,6 +428,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
             { value: 50, timestamp: now + ms('4m'), le: '30' },
             { value: 80, timestamp: now + ms('4m'), le: '50' },
           ],
+          team_id: teamId,
         }),
       ]),
     ]);
