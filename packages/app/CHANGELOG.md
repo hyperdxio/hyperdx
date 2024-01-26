@@ -1,5 +1,27 @@
 # @hyperdx/app
 
+## 1.6.0
+
+### Minor Changes
+
+- ac667cd: Add Spotlight
+
+### Patch Changes
+
+- 82640b0: feat: implement histogram linear interpolation quantile function
+- 8de2c5c: fix: handle py span ids
+- 5d02cc3: Group saved searches and dashboards by tag
+- 8de2c5c: feat: parse lambda json message
+- 8919179: fix: Fixed parsing && and || operators in queries correctly
+- cbdbe72: AppNav improvements
+- 6321d1f: feat: support jk key bindings (to move through events)
+- e92bf4f: fix: convert fixed minute unit granularity to Granularity enum
+- 4a6db40: refactor: rename bulkInsertTeamLogStream to bulkInsertLogStream
+- 8de2c5c: feat: add new k8s.pod.status_phase metrics
+- 499c537: style: inject ingestor url (otel config file) + aggregator/go-parser
+  url (ingestor config file) through env vars
+- 8e536e1: chore: bump vector to v0.35.0
+
 ## 1.5.0
 
 ### Minor Changes

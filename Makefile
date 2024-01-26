@@ -108,3 +108,9 @@ release:
 		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
 		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push
 
+.PHONY: push-gh
+push-gh:
+	@echo "Creating git tag...\n"
+	yarn changeset tag
+	@echo "Pushing to the commit github...\n"
+	git push --follow-tags
