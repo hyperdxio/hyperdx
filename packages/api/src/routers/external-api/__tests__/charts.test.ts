@@ -35,7 +35,7 @@ describe('/api/v1/charts/series', () => {
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
-    await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+    await clickhouse.bulkInsertLogStream([
       // Group 1, sum: 77, avg:25.666666667
       buildEvent({
         timestamp: now,

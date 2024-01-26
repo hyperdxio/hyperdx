@@ -36,7 +36,7 @@ describe('clickhouse', () => {
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
-    await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+    await clickhouse.bulkInsertLogStream([
       buildEvent({
         source: 'test',
         timestamp: now,
@@ -111,7 +111,7 @@ Array [
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
-    await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+    await clickhouse.bulkInsertLogStream([
       // Group 1, sum: 77, avg:25.666666667
       buildEvent({
         timestamp: now,
@@ -876,9 +876,7 @@ Array [
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
-    await clickhouse.bulkInsertTeamLogStream(
-      undefined,
-      teamId,
+    await clickhouse.bulkInsertLogStream(
       Array(10)
         .fill(0)
         .flatMap((_, i) => [
@@ -1147,7 +1145,7 @@ Array [
     const runId = Math.random().toString(); // dedup watch mode runs
     const teamId = `test`;
 
-    await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+    await clickhouse.bulkInsertLogStream([
       // Group 1, sum: 77, avg:25.666666667
       buildEvent({
         timestamp: now,

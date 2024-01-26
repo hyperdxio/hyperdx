@@ -3,7 +3,7 @@ import groupBy from 'lodash/groupBy';
 
 import {
   bulkInsertRrwebEvents,
-  bulkInsertTeamLogStream,
+  bulkInsertLogStream,
   bulkInsertTeamMetricStream,
 } from '@/clickhouse';
 import * as config from '@/config';
@@ -43,7 +43,7 @@ const bulkInsert = async (
           }
         }
         const promises = [
-          bulkInsertTeamLogStream(
+          bulkInsertLogStream(
             team.logStreamTableVersion,
             team._id.toString(),
             vectorLogParser.parse(logs),

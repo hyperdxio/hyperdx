@@ -276,7 +276,7 @@ describe('checkAlerts', () => {
       // Send events in the last alert window 22:05 - 22:10
       const eventMs = now.getTime() - ms('5m');
 
-      await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+      await clickhouse.bulkInsertLogStream([
         buildEvent({
           span_name: 'HyperDX',
           level: 'error',
