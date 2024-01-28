@@ -20,7 +20,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
+    await server.stop();
   });
 
   afterEach(async () => {

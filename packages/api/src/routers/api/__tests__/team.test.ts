@@ -1,11 +1,6 @@
 import _ from 'lodash';
 
-import {
-  clearDBCollections,
-  closeDB,
-  getLoggedInAgent,
-  getServer,
-} from '@/fixtures';
+import { clearDBCollections, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('team router', () => {
   const server = getServer();
@@ -19,8 +14,7 @@ describe('team router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /team', async () => {

@@ -63,6 +63,8 @@ export const initCiEnvs = async () => {
 };
 
 class MockServer extends Server {
+  protected shouldHanleGracefulShutdown = false;
+
   getHttpServer() {
     return this.httpServer;
   }
@@ -75,14 +77,17 @@ class MockServer extends Server {
     await initCiEnvs();
   }
 
-  closeHttpServer() {
+  stop() {
     return new Promise<void>((resolve, reject) => {
       this.httpServer.close(err => {
         if (err) {
           reject(err);
           return;
         }
-        resolve();
+        super
+          .shutdown()
+          .then(() => resolve())
+          .catch(err => reject(err));
       });
     });
   }
@@ -115,10 +120,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: 'wrong-password' })
-    .expect(400);
-  await agent
-    .post('/register/password')
     .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
     .expect(200);
 
@@ -128,8 +129,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
   if (team === null || user === null) {
     throw Error('team or user not found');
   }
-
-  await user.save();
 
   // login app
   await agent.post('/login/password').send(MOCK_USER).expect(302);

@@ -2,7 +2,6 @@ import _ from 'lodash';
 
 import {
   clearDBCollections,
-  closeDB,
   getLoggedInAgent,
   getServer,
   makeChart,
@@ -33,8 +32,7 @@ describe('/api/v1/alerts', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('CRUD Dashboard Alerts', async () => {

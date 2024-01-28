@@ -5,7 +5,6 @@ import {
   clearClickhouseTables,
   clearDBCollections,
   clearRedis,
-  closeDB,
   generateBuildTeamEventFn,
   getLoggedInAgent,
   getServer,
@@ -26,8 +25,7 @@ describe('charts router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /chart/services', async () => {

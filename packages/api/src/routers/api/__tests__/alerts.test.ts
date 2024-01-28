@@ -1,6 +1,5 @@
 import {
   clearDBCollections,
-  closeDB,
   getLoggedInAgent,
   getServer,
   makeAlert,
@@ -25,8 +24,7 @@ describe('alerts router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('has alerts attached to dashboards', async () => {

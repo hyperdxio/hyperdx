@@ -1,10 +1,5 @@
 import * as clickhouse from '@/clickhouse';
-import {
-  clearDBCollections,
-  closeDB,
-  getLoggedInAgent,
-  getServer,
-} from '@/fixtures';
+import { clearDBCollections, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('external api v1', () => {
   const server = getServer();
@@ -19,8 +14,7 @@ describe('external api v1', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /api/v1', async () => {

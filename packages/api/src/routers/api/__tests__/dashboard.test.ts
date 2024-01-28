@@ -1,6 +1,5 @@
 import {
   clearDBCollections,
-  closeDB,
   getLoggedInAgent,
   getServer,
   makeAlert,
@@ -25,8 +24,7 @@ describe('dashboard router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('deletes attached alerts when deleting charts', async () => {

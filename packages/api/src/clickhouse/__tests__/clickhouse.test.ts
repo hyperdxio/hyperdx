@@ -22,8 +22,7 @@ describe('clickhouse', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   afterEach(async () => {

@@ -4,7 +4,6 @@ import {
   clearClickhouseTables,
   clearDBCollections,
   clearRedis,
-  closeDB,
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
@@ -23,8 +22,7 @@ describe('metrics router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /metrics/tags', async () => {

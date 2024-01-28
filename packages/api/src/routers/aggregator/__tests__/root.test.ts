@@ -5,7 +5,6 @@ import { createTeam } from '@/controllers/team';
 import {
   clearClickhouseTables,
   clearDBCollections,
-  closeDB,
   getAgent,
   getServer,
 } from '@/fixtures';
@@ -24,8 +23,7 @@ describe('aggregator root router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /health', async () => {

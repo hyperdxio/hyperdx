@@ -2,7 +2,6 @@ import _ from 'lodash';
 
 import {
   clearDBCollections,
-  closeDB,
   getLoggedInAgent,
   getServer,
   makeExternalAlert,
@@ -41,8 +40,7 @@ describe('dashboard router', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('CRUD /dashboards', async () => {

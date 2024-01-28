@@ -3,7 +3,6 @@ import ms from 'ms';
 import {
   buildMetricSeries,
   clearDBCollections,
-  closeDB,
   generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
@@ -132,8 +131,7 @@ describe('checkAlerts', () => {
     });
 
     afterAll(async () => {
-      await server.closeHttpServer();
-      await closeDB();
+      await server.stop();
     });
 
     it('LOG alert', async () => {
