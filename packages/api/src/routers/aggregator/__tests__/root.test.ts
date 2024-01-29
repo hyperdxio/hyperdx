@@ -2,13 +2,7 @@ import _ from 'lodash';
 
 import * as clickhouse from '@/clickhouse';
 import { createTeam } from '@/controllers/team';
-import {
-  clearClickhouseTables,
-  clearDBCollections,
-  closeDB,
-  getAgent,
-  getServer,
-} from '@/fixtures';
+import { getAgent, getServer } from '@/fixtures';
 import { sleep } from '@/utils/common';
 
 describe('aggregator root router', () => {
@@ -19,13 +13,11 @@ describe('aggregator root router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
-    await clearClickhouseTables();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /health', async () => {

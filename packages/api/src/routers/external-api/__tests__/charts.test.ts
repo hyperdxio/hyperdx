@@ -3,8 +3,6 @@ import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
 import {
-  clearDBCollections,
-  closeDB,
   generateBuildTeamEventFn,
   getLoggedInAgent,
   getServer,
@@ -19,12 +17,11 @@ describe('/api/v1/charts/series', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   const now = new Date('2022-01-05').getTime();

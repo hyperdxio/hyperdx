@@ -1,9 +1,9 @@
 import { serializeError } from 'serialize-error';
 
-import * as config from './config';
-import Server from './server';
-import { isOperationalError } from './utils/errors';
-import logger from './utils/logger';
+import * as config from '@/config';
+import Server from '@/server';
+import { isOperationalError } from '@/utils/errors';
+import logger from '@/utils/logger';
 
 const server = new Server();
 
@@ -20,18 +20,6 @@ process.on('uncaughtException', (err: Error) => {
 process.on('unhandledRejection', (err: any) => {
   // TODO: do we want to throw here ?
   logger.error(serializeError(err));
-});
-
-// graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received.');
-
-  if (config.IS_DEV) {
-    logger.info('Http server is forced to stop immediately.');
-    process.exit(0);
-  }
-
-  server.stop();
 });
 
 server.start().catch(e => logger.error(serializeError(e)));
