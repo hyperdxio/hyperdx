@@ -2,11 +2,7 @@ import _ from 'lodash';
 import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
-import {
-  buildMetricSeries,
-  clearClickhouseTables,
-  getServer,
-} from '@/fixtures';
+import { buildMetricSeries, getServer } from '@/fixtures';
 
 describe('clickhouse - getMultiSeriesChart', () => {
   const server = getServer();
@@ -24,7 +20,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
   });
 
   afterEach(async () => {
-    await clearClickhouseTables();
+    await server.clearDBs();
     jest.clearAllMocks();
   });
 

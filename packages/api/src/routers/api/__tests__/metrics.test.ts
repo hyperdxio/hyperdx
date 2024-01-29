@@ -1,12 +1,5 @@
 import * as clickhouse from '@/clickhouse';
-import {
-  buildMetricSeries,
-  clearClickhouseTables,
-  clearDBCollections,
-  clearRedis,
-  getLoggedInAgent,
-  getServer,
-} from '@/fixtures';
+import { buildMetricSeries, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('metrics router', () => {
   const server = getServer();
@@ -16,9 +9,7 @@ describe('metrics router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
-    await clearClickhouseTables();
-    await clearRedis();
+    await server.clearDBs();
   });
 
   afterAll(async () => {

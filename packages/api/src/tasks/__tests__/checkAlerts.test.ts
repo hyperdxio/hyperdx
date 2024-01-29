@@ -2,7 +2,6 @@ import ms from 'ms';
 
 import {
   buildMetricSeries,
-  clearDBCollections,
   generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
@@ -126,7 +125,7 @@ describe('checkAlerts', () => {
     });
 
     afterEach(async () => {
-      await clearDBCollections();
+      await server.clearDBs();
       jest.clearAllMocks();
     });
 

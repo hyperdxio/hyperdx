@@ -1,6 +1,6 @@
 import _ from 'lodash';
 
-import { clearDBCollections, getLoggedInAgent, getServer } from '@/fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('team router', () => {
   const server = getServer();
@@ -10,7 +10,7 @@ describe('team router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {

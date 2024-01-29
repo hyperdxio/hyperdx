@@ -1,10 +1,4 @@
-import {
-  clearDBCollections,
-  getLoggedInAgent,
-  getServer,
-  makeAlert,
-  makeChart,
-} from '@/fixtures';
+import { getLoggedInAgent, getServer, makeAlert, makeChart } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -20,7 +14,7 @@ describe('dashboard router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {

@@ -1,7 +1,6 @@
 import _ from 'lodash';
 
 import {
-  clearDBCollections,
   getLoggedInAgent,
   getServer,
   makeExternalAlert,
@@ -36,7 +35,7 @@ describe('dashboard router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {

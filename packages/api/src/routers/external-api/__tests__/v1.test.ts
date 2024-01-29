@@ -1,5 +1,5 @@
 import * as clickhouse from '@/clickhouse';
-import { clearDBCollections, getLoggedInAgent, getServer } from '@/fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('external api v1', () => {
   const server = getServer();
@@ -9,7 +9,7 @@ describe('external api v1', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
     jest.clearAllMocks();
   });
 

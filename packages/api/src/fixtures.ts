@@ -91,6 +91,14 @@ class MockServer extends Server {
       });
     });
   }
+
+  clearDBs() {
+    return Promise.all([
+      clearDBCollections(),
+      clearClickhouseTables(),
+      clearRedis(),
+    ]);
+  }
 }
 
 class MockAPIServer extends MockServer {

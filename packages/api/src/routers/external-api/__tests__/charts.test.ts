@@ -3,7 +3,6 @@ import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
 import {
-  clearDBCollections,
   generateBuildTeamEventFn,
   getLoggedInAgent,
   getServer,
@@ -18,7 +17,7 @@ describe('/api/v1/charts/series', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {

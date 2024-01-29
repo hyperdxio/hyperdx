@@ -1,7 +1,6 @@
 import _ from 'lodash';
 
 import {
-  clearDBCollections,
   getLoggedInAgent,
   getServer,
   makeChart,
@@ -28,7 +27,7 @@ describe('/api/v1/alerts', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
