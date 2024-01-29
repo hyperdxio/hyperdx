@@ -86,8 +86,8 @@ export default class Server {
         development: config.IS_DEV,
         forceExit: true, // triggers process.exit() at the end of shutdown process
         preShutdown: async () => {
-          console.log('preShutdown...');
-        }, // needed operation before httpConnections are shutted down
+          // needed operation before httpConnections are shutted down
+        },
         onShutdown: this.shutdown,
         finally: () => {
           logger.info('Server gracefulls shutted down...');

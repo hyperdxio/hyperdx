@@ -63,7 +63,7 @@ export const initCiEnvs = async () => {
 };
 
 class MockServer extends Server {
-  protected shouldHanleGracefulShutdown = false;
+  protected shouldHandleGracefulShutdown = false;
 
   getHttpServer() {
     return this.httpServer;
