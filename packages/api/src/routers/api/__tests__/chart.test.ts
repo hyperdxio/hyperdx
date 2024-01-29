@@ -2,10 +2,6 @@ import ms from 'ms';
 
 import * as clickhouse from '@/clickhouse';
 import {
-  clearClickhouseTables,
-  clearDBCollections,
-  clearRedis,
-  closeDB,
   generateBuildTeamEventFn,
   getLoggedInAgent,
   getServer,
@@ -20,14 +16,11 @@ describe('charts router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
-    await clearClickhouseTables();
-    await clearRedis();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /chart/services', async () => {

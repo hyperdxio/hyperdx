@@ -1,4 +1,5 @@
 import http from 'http';
+import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from './clickhouse';
@@ -9,6 +10,8 @@ import redisClient from './utils/redis';
 
 export default class Server {
   protected readonly appType = config.APP_TYPE;
+
+  protected shouldHandleGracefulShutdown = true;
 
   protected httpServer!: http.Server;
 
@@ -29,6 +32,42 @@ export default class Server {
     }
   }
 
+  protected async shutdown(signal?: string) {
+    let hasError = false;
+    logger.info('Closing all db clients...');
+    const [redisCloseResult, mongoCloseResult, clickhouseCloseResult] =
+      await Promise.allSettled([
+        redisClient.disconnect(),
+        mongooseConnection.close(false),
+        clickhouse.client.close(),
+      ]);
+
+    if (redisCloseResult.status === 'rejected') {
+      hasError = true;
+      logger.error(serializeError(redisCloseResult.reason));
+    } else {
+      logger.info('Redis client closed.');
+    }
+
+    if (mongoCloseResult.status === 'rejected') {
+      hasError = true;
+      logger.error(serializeError(mongoCloseResult.reason));
+    } else {
+      logger.info('MongoDB client closed.');
+    }
+
+    if (clickhouseCloseResult.status === 'rejected') {
+      hasError = true;
+      logger.error(serializeError(clickhouseCloseResult.reason));
+    } else {
+      logger.info('Clickhouse client closed.');
+    }
+
+    if (hasError) {
+      throw new Error('Failed to close all clients.');
+    }
+  }
+
   async start() {
     this.httpServer = await this.createServer();
     this.httpServer.keepAliveTimeout = 61000; // Ensure all inactive connections are terminated by the ALB, by setting this a few seconds higher than the ALB idle timeout
@@ -40,39 +79,26 @@ export default class Server {
       );
     });
 
+    if (this.shouldHandleGracefulShutdown) {
+      gracefulShutdown(this.httpServer, {
+        signals: 'SIGINT SIGTERM',
+        timeout: 10000, // 10 secs
+        development: config.IS_DEV,
+        forceExit: true, // triggers process.exit() at the end of shutdown process
+        preShutdown: async () => {
+          // needed operation before httpConnections are shutted down
+        },
+        onShutdown: this.shutdown,
+        finally: () => {
+          logger.info('Server gracefulls shutted down...');
+        }, // finally function (sync) - e.g. for logging
+      });
+    }
+
     await Promise.all([
       connectDB(),
       redisClient.connect(),
       clickhouse.connect(),
     ]);
-  }
-
-  // graceful shutdown
-  stop() {
-    this.httpServer.close(closeServerErr => {
-      if (closeServerErr) {
-        logger.error(serializeError(closeServerErr));
-      }
-      logger.info('Http server closed.');
-      redisClient
-        .disconnect()
-        .then(() => {
-          logger.info('Redis client disconnected.');
-        })
-        .catch((err: any) => {
-          logger.error(serializeError(err));
-        });
-      mongooseConnection.close(false, closeDBConnectionErr => {
-        if (closeDBConnectionErr) {
-          logger.error(serializeError(closeDBConnectionErr));
-        }
-        logger.info('Mongo connection closed.');
-
-        if (closeServerErr || closeDBConnectionErr) {
-          process.exit(1);
-        }
-        process.exit(0);
-      });
-    });
   }
 }
