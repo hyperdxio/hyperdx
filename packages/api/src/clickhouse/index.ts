@@ -679,6 +679,7 @@ export const getMetricsTags = async ({
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      ORDER BY tag
     `,
     [
       tableName,

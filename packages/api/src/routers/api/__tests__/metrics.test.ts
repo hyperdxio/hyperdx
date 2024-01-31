@@ -47,27 +47,32 @@ describe('metrics router', () => {
       }),
     );
 
-    const resp = await clickhouse.client.query({
-      query: 'select _timestamp_sort_key from metric_stream',
-      format: 'JSONEachRow',
-    });
-
     const names = await agent.get('/metrics/names').expect(200);
-    expect(names.body.data).toEqual([
-      {
-        is_delta: false,
-        is_monotonic: false,
-        unit: 'Percent',
-        data_type: 'Gauge',
-        name: 'test.cpu - Gauge',
-      },
-    ]);
+    expect(names.body.data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "data_type": "Gauge",
+    "is_delta": false,
+    "is_monotonic": false,
+    "name": "test.cpu - Gauge",
+    "unit": "Percent",
+  },
+]
+`);
     const tags = await agent
       .get('/metrics/tags?name=test.cpu&dataType=Gauge')
       .expect(200);
-    expect(tags.body.data).toEqual([
-      { tag: { host: 'host2', foo2: 'bar2' } },
-      { tag: { host: 'host1', foo: 'bar' } },
-    ]);
+    expect(tags.body.data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "foo": "bar",
+    "host": "host1",
+  },
+  Object {
+    "foo2": "bar2",
+    "host": "host2",
+  },
+]
+`);
   });
 });
