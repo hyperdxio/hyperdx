@@ -284,3 +284,30 @@ export function KubernetesColorIcon({ width }: IconProps) {
     </svg>
   );
 }
+
+export function TerraformFlatIcon({ width }: IconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      height={width}
+      viewBox="0 0 44 44"
+      width={width}
+    >
+      <g clip-rule="evenodd" fill-rule="evenodd">
+        <path
+          d="m16.664 7.384 10.468 6.042v12.085l-10.468-6.041z"
+          fill="currentColor"
+        />
+        <path
+          d="m28.277 13.426v12.085l10.468-6.042v-12.09z"
+          fill="currentColor"
+        />
+        <path
+          d="m5.047.634v12.085l10.468 6.048v-12.09l-10.468-6.044zm11.617 32.244 10.463 6.048v-12.09l-10.463-6.043z"
+          fill="currentColor"
+        />
+      </g>
+    </svg>
+  );
+}
