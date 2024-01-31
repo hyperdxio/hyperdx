@@ -101,12 +101,18 @@ Array [
     expect(tags.body.data).toMatchInlineSnapshot(`
 Array [
   Object {
-    "foo": "bar",
-    "host": "host1",
-  },
-  Object {
-    "foo2": "bar2",
-    "host": "host2",
+    "data_type": "Gauge",
+    "name": "test.cpu - Gauge",
+    "tags": Array [
+      Object {
+        "foo2": "bar2",
+        "host": "host2",
+      },
+      Object {
+        "foo": "bar",
+        "host": "host1",
+      },
+    ],
   },
 ]
 `);
@@ -131,8 +137,28 @@ Array [
     expect(tags.body.data).toMatchInlineSnapshot(`
 Array [
   Object {
-    "foo2": "bar2",
-    "host": "host2",
+    "data_type": "Gauge",
+    "name": "test.cpu - Gauge",
+    "tags": Array [
+      Object {
+        "foo2": "bar2",
+        "host": "host2",
+      },
+      Object {
+        "foo": "bar",
+        "host": "host1",
+      },
+    ],
+  },
+  Object {
+    "data_type": "Gauge",
+    "name": "test.cpu2 - Gauge",
+    "tags": Array [
+      Object {
+        "foo2": "bar2",
+        "host": "host2",
+      },
+    ],
   },
 ]
 `);

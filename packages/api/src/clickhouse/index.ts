@@ -766,6 +766,7 @@ export const getMetricsTags = async ({
         data_type,
         tags
       FROM (?)
+      ORDER BY name
     `,
     [SqlString.raw(unions)],
   );

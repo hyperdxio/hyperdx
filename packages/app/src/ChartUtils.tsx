@@ -262,8 +262,6 @@ function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
         Object.keys(tag).forEach(tagName => tagNameSet.add(tagName));
       });
 
-      console.log(tags);
-
       for (let i = 1; i < metricNames.length; i++) {
         const tags =
           metricTagsData?.data?.filter(
