@@ -250,11 +250,37 @@ function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
   const { data: metricTagsData } = api.useMetricsTags(metrics);
 
   const options = useMemo(() => {
-    const tags = metricTagsData?.data ?? [];
-    const tagNameSet = new Set<string>();
-    tags.forEach(tag => {
-      Object.entries(tag).forEach(([name]) => tagNameSet.add(name));
-    });
+    let tagNameSet = new Set<string>();
+    if (metricNames != null && metricNames.length > 0) {
+      const firstMetricName = metricNames[0]; // Start the set
+
+      const tags =
+        metricTagsData?.data?.filter(
+          metric => metric.name === firstMetricName,
+        )?.[0]?.tags ?? [];
+      tags.forEach(tag => {
+        Object.keys(tag).forEach(tagName => tagNameSet.add(tagName));
+      });
+
+      console.log(tags);
+
+      for (let i = 1; i < metricNames.length; i++) {
+        const tags =
+          metricTagsData?.data?.filter(
+            metric => metric.name === metricNames[i],
+          )?.[0]?.tags ?? [];
+        const intersection = new Set<string>();
+        tags.forEach(tag => {
+          Object.keys(tag).forEach(tagName => {
+            if (tagNameSet.has(tagName)) {
+              intersection.add(tagName);
+            }
+          });
+        });
+        tagNameSet = intersection;
+      }
+    }
+
     return [
       { value: undefined, label: 'None' },
       ...Array.from(tagNameSet).map(tagName => ({

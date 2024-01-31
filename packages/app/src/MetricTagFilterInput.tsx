@@ -31,7 +31,9 @@ export default function MetricTagFilterInput({
   ]);
 
   const options = useMemo(() => {
-    const tags = metricTagsData?.data ?? [];
+    const tags =
+      metricTagsData?.data?.filter(metric => metric.name === metricName)?.[0]
+        ?.tags ?? [];
     const tagNameValueSet = new Set<string>();
     tags.forEach(tag => {
       Object.entries(tag).forEach(([name, value]) =>

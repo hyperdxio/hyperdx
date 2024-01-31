@@ -119,7 +119,11 @@ const api = {
   ) {
     return useQuery<
       {
-        data: Record<string, string>[];
+        data: {
+          name: string;
+          data_type: string;
+          tags: Record<string, string>[];
+        }[];
       },
       Error
     >({

@@ -730,16 +730,22 @@ export const getMetricsTags = async ({
   teamId: string;
 }) => {
   const tableName = `default.${TableName.Metric}`;
-  const intersects = metrics
+  // TODO: theoretically, we should be able to traverse each tag's keys and values
+  // and intersect them to get the final result. Currently this is done on the client side.
+  const unions = metrics
     .map(m =>
       SqlString.format(
         `
-      SELECT DISTINCT _string_attributes AS tag
+      SELECT 
+        groupUniqArray(_string_attributes) AS tags,
+        data_type,
+        format('{} - {}', name, data_type) AS combined_name
       FROM ??
       WHERE name = ?
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      GROUP BY name, data_type
     `,
         [
           tableName,
@@ -752,17 +758,18 @@ export const getMetricsTags = async ({
         ],
       ),
     )
-    .join(' INTERSECT ');
-  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
-  // TODO: remove 'data_type' in the name field
+    .join(' UNION DISTINCT ');
   const query = SqlString.format(
     `
-      SELECT DISTINCT tag
+      SELECT 
+        combined_name AS name,
+        data_type,
+        tags
       FROM (?)
-      ORDER BY tag
     `,
-    [SqlString.raw(intersects)],
+    [SqlString.raw(unions)],
   );
+
   const ts = Date.now();
   const rows = await client.query({
     query,
@@ -776,7 +783,9 @@ export const getMetricsTags = async ({
   });
   const result = await rows.json<
     ResponseJSON<{
-      tag: Record<string, string>;
+      name: string;
+      data_type: string;
+      tags: Record<string, string>[];
     }>
   >();
   logger.info({
@@ -784,10 +793,7 @@ export const getMetricsTags = async ({
     query,
     took: Date.now() - ts,
   });
-  return {
-    ...result,
-    data: result.data.map(row => row.tag),
-  };
+  return result;
 };
 
 export const isRateAggFn = (aggFn: AggFn) => {
