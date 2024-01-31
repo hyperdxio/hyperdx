@@ -593,6 +593,66 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
+// ONLY USED IN EXTERNAL API
+export const getMetricsTagsDEPRECATED = async ({
+  teamId,
+  startTime,
+  endTime,
+}: {
+  teamId: string;
+  startTime: number; // unix in ms
+  endTime: number; // unix in ms
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // TODO: remove 'data_type' in the name field
+  const query = SqlString.format(
+    `
+        SELECT
+          any(is_delta) as is_delta,
+          any(is_monotonic) as is_monotonic,
+          any(unit) as unit,
+          data_type,
+          format('{} - {}', name, data_type) as name,
+          groupUniqArray(_string_attributes) AS tags
+        FROM ??
+        WHERE (?)
+        GROUP BY name, data_type
+        ORDER BY name
+    `,
+    [
+      tableName,
+      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+    ],
+  );
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      tags: Record<string, string>[];
+      unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsTagsDEPRECATED',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
 export const getMetricsNames = async ({
   teamId,
   startTime,

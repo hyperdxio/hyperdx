@@ -182,7 +182,7 @@ router.get(
 );
 
 router.get(
-  '/metrics/names',
+  '/metrics/tags',
   getDefaultRateLimiter(),
   validateUserAccessKey,
   async (req, res, next) => {
@@ -194,12 +194,12 @@ router.get(
 
       const nowInMs = Date.now();
       const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsNames>>
+        Awaited<ReturnType<typeof clickhouse.getMetricsTagsDEPRECATED>>
       >(
-        `metrics-names-${teamId}`,
+        `v1-api-metrics-tags-${teamId}`,
         ms('10m'),
         () =>
-          clickhouse.getMetricsNames({
+          clickhouse.getMetricsTagsDEPRECATED({
             // FIXME: fix it 5 days ago for now
             startTime: nowInMs - ms('5d'),
             endTime: nowInMs,
@@ -212,15 +212,16 @@ router.get(
           return false;
         },
       );
-      const names = await simpleCache.get();
+      const tags = await simpleCache.get();
       res.json({
-        data: names.data.map(name => ({
+        data: tags.data.map(tag => ({
           // FIXME: unify the return type of both internal and external APIs
-          name: name.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
-          type: name.data_type,
+          name: tag.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
+          type: tag.data_type,
+          tags: tag.tags,
         })),
-        meta: names.meta,
-        rows: names.rows,
+        meta: tags.meta,
+        rows: tags.rows,
       });
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
