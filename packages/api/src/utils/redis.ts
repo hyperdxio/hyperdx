@@ -12,6 +12,7 @@ client.on('error', (err: any) => {
   logger.error('Redis error: ', serializeError(err));
 });
 
+// TODO: add tests
 class SimpleCache<T> {
   constructor(
     private readonly key: string,
