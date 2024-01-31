@@ -1,13 +1,5 @@
 import * as clickhouse from '@/clickhouse';
-import {
-  buildMetricSeries,
-  clearClickhouseTables,
-  clearDBCollections,
-  clearRedis,
-  closeDB,
-  getLoggedInAgent,
-  getServer,
-} from '@/fixtures';
+import { buildMetricSeries, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('metrics router', () => {
   const server = getServer();
@@ -17,17 +9,16 @@ describe('metrics router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
-    await clearClickhouseTables();
-    await clearRedis();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /metrics/tags', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
     const now = Date.now();
     await clickhouse.bulkInsertTeamMetricStream(
       buildMetricSeries({
@@ -38,6 +29,7 @@ describe('metrics router', () => {
         is_delta: false,
         unit: 'Percent',
         points: [{ value: 1, timestamp: now }],
+        team_id: team.id,
       }),
     );
     await clickhouse.bulkInsertTeamMetricStream(
@@ -49,10 +41,10 @@ describe('metrics router', () => {
         is_delta: false,
         unit: 'Percent',
         points: [{ value: 1, timestamp: now }],
+        team_id: team.id,
       }),
     );
 
-    const { agent } = await getLoggedInAgent(server);
     const results = await agent.get('/metrics/tags').expect(200);
     expect(results.body.data).toEqual([
       {

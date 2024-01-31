@@ -1,10 +1,8 @@
 import ms from 'ms';
 
 import {
-  buildEvent,
   buildMetricSeries,
-  clearDBCollections,
-  closeDB,
+  generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
@@ -27,6 +25,10 @@ import {
 } from '../checkAlerts';
 
 describe('checkAlerts', () => {
+  afterAll(async () => {
+    await clickhouse.client.close();
+  });
+
   it('roundDownToXMinutes', () => {
     // 1 min
     const roundDownTo1Minute = roundDownToXMinutes(1);
@@ -122,17 +124,13 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    beforeEach(() => {
-      jest.resetAllMocks();
-    });
-
     afterEach(async () => {
-      await clearDBCollections();
+      await server.clearDBs();
+      jest.clearAllMocks();
     });
 
     afterAll(async () => {
-      await server.closeHttpServer();
-      await closeDB();
+      await server.stop();
     });
 
     it('LOG alert', async () => {
@@ -270,32 +268,32 @@ describe('checkAlerts', () => {
         runId: 'string',
       });
 
+      const team = await createTeam({ name: 'My Team' });
+
       const runId = Math.random().toString(); // dedup watch mode runs
-      const teamId = 'test';
+      const teamId = team._id.toString();
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
       const eventMs = now.getTime() - ms('5m');
 
-      await clickhouse.bulkInsertTeamLogStream(undefined, teamId, [
+      const buildEvent = generateBuildTeamEventFn(teamId, {
+        runId,
+        span_name: 'HyperDX',
+        type: LogType.Span,
+        level: 'error',
+      });
+
+      await clickhouse.bulkInsertLogStream([
         buildEvent({
-          span_name: 'HyperDX',
-          level: 'error',
           timestamp: eventMs,
-          runId,
           end_timestamp: eventMs + 100,
-          type: LogType.Span,
         }),
         buildEvent({
-          span_name: 'HyperDX',
-          level: 'error',
           timestamp: eventMs + 5,
-          runId,
           end_timestamp: eventMs + 7,
-          type: LogType.Span,
         }),
       ]);
 
-      const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
         service: 'slack',
@@ -427,7 +425,10 @@ describe('checkAlerts', () => {
     });
 
     it('CHART alert (metrics table series)', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
       const runId = Math.random().toString(); // dedup watch mode runs
+      const teamId = team._id.toString();
 
       jest
         .spyOn(slack, 'postMessageToWebhook')
@@ -470,6 +471,7 @@ describe('checkAlerts', () => {
             { value: 35, timestamp: metricNowTs + ms('10m') },
             { value: 36, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
@@ -500,6 +502,7 @@ describe('checkAlerts', () => {
             { value: 30005, timestamp: metricNowTs + ms('10m') },
             { value: 30006, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
@@ -525,10 +528,10 @@ describe('checkAlerts', () => {
             { value: 22, timestamp: metricNowTs + ms('10m') },
             { value: 23, timestamp: metricNowTs + ms('11m') },
           ],
+          team_id: teamId,
         }),
       );
 
-      const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
         service: 'slack',

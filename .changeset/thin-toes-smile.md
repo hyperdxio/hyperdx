@@ -3,4 +3,4 @@
 '@hyperdx/app': patch
 ---
 
-fix: handle py span ids
+fix: cache the result conditionally (SimpleCache)

@@ -63,6 +63,8 @@ export const initCiEnvs = async () => {
 };
 
 class MockServer extends Server {
+  protected shouldHandleGracefulShutdown = false;
+
   getHttpServer() {
     return this.httpServer;
   }
@@ -75,16 +77,27 @@ class MockServer extends Server {
     await initCiEnvs();
   }
 
-  closeHttpServer() {
+  stop() {
     return new Promise<void>((resolve, reject) => {
       this.httpServer.close(err => {
         if (err) {
           reject(err);
           return;
         }
-        resolve();
+        super
+          .shutdown()
+          .then(() => resolve())
+          .catch(err => reject(err));
       });
     });
+  }
+
+  clearDBs() {
+    return Promise.all([
+      clearDBCollections(),
+      clearClickhouseTables(),
+      clearRedis(),
+    ]);
   }
 }
 
@@ -115,10 +128,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: 'wrong-password' })
-    .expect(400);
-  await agent
-    .post('/register/password')
     .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
     .expect(200);
 
@@ -129,8 +138,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
     throw Error('team or user not found');
   }
 
-  await user.save();
-
   // login app
   await agent.post('/login/password').send(MOCK_USER).expect(302);
 
@@ -140,6 +147,31 @@ export const getLoggedInAgent = async (server: MockServer) => {
     user,
   };
 };
+
+type BaseEvent = {
+  level?: string;
+  source?: string;
+  timestamp?: number; // ms timestamp
+  platform?: LogPlatform;
+  type?: LogType;
+  end_timestamp?: number; //ms timestamp
+  span_name?: string;
+} & {
+  [key: string]: number | string | boolean;
+};
+
+export function generateBuildTeamEventFn(
+  teamId: string,
+  commonAttributes: Partial<BaseEvent>,
+) {
+  return (attributes: Partial<BaseEvent>) => {
+    return buildEvent({
+      ...commonAttributes,
+      ...attributes,
+      team_id: teamId,
+    });
+  };
+}
 
 // ------------------------------------------------
 // ------------------ Redis -----------------------
@@ -172,7 +204,7 @@ export const clearClickhouseTables = async () => {
   await Promise.all(promises);
 };
 
-export function buildEvent({
+function buildEvent({
   level,
   source = 'test',
   timestamp,
@@ -180,12 +212,14 @@ export function buildEvent({
   type = LogType.Log,
   end_timestamp = 0,
   span_name,
+  team_id,
   service = 'test-service',
   ...properties
 }: {
   level?: string;
   source?: string;
   timestamp?: number; // ms timestamp
+  team_id: string;
   platform?: LogPlatform;
   type?: LogType;
   end_timestamp?: number; //ms timestamp
@@ -228,6 +262,7 @@ export function buildEvent({
     severity_text: level,
     // @ts-ignore
     end_timestamp: `${end_timestamp}000000`,
+    team_id,
     type,
     span_name,
     'bool.names': boolNames,
@@ -247,6 +282,7 @@ export function buildMetricSeries({
   is_delta,
   is_monotonic,
   unit,
+  team_id,
 }: {
   tags: Record<string, string>;
   name: string;
@@ -255,6 +291,7 @@ export function buildMetricSeries({
   is_monotonic: boolean;
   is_delta: boolean;
   unit: string;
+  team_id: string;
 }): MetricModel[] {
   // @ts-ignore TODO: Fix Timestamp types
   return points.map(({ value, timestamp, le }) => ({
@@ -266,6 +303,7 @@ export function buildMetricSeries({
     is_monotonic,
     is_delta,
     unit,
+    team_id,
   }));
 }
 

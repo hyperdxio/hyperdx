@@ -14,6 +14,10 @@ fi
 
 # update root package.json version
 sed -i '' -e "s/\"version\": \".*\"/\"version\": \"$API_LATEST_VERSION\"/g" ./package.json
-
 echo "Updated root package.json version to $API_LATEST_VERSION"
+
+# update .env IMAGE_VERSION
+sed -i '' -e "s/IMAGE_VERSION=.*/IMAGE_VERSION=$API_LATEST_VERSION/g" ./.env
+echo "Updated .env IMAGE_VERSION to $API_LATEST_VERSION"
+
 echo "Run 'make release' to publish new version to GHCR"

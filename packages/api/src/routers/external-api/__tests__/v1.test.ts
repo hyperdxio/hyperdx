@@ -1,10 +1,5 @@
 import * as clickhouse from '@/clickhouse';
-import {
-  clearDBCollections,
-  closeDB,
-  getLoggedInAgent,
-  getServer,
-} from '@/fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('external api v1', () => {
   const server = getServer();
@@ -14,13 +9,12 @@ describe('external api v1', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
     jest.clearAllMocks();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('GET /api/v1', async () => {
