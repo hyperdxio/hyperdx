@@ -112,7 +112,8 @@ export const chartSeriesSchema = z.union([
 ]);
 
 export const chartSchema = z.object({
-  id: z.string().max(32),
+  // User defined ID
+  id: z.string().max(36),
   name: z.string(),
   x: z.number(),
   y: z.number(),
@@ -178,8 +179,8 @@ export const externalChartSchema = z.object({
 });
 export const externalChartSchemaWithId = externalChartSchema.and(
   z.object({
-    // This isn't always a Mongo ID
-    id: z.string().max(32),
+    // User defined ID
+    id: z.string().max(36),
   }),
 );
 
