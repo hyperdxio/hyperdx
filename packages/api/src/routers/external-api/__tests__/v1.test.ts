@@ -67,7 +67,7 @@ describe('external api v1', () => {
       .set('Authorization', `Bearer ${user?.accessKey}`)
       .expect(200);
 
-    expect(clickhouse.getMetricsTags).toBeCalledTimes(1);
+    expect(clickhouse.getMetricsNames).toBeCalledTimes(1);
     expect(resp.body).toEqual({
       data: [
         {

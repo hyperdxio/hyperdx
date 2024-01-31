@@ -182,7 +182,7 @@ router.get(
 );
 
 router.get(
-  '/metrics/tags',
+  '/metrics/names',
   getDefaultRateLimiter(),
   validateUserAccessKey,
   async (req, res, next) => {
@@ -194,12 +194,12 @@ router.get(
 
       const nowInMs = Date.now();
       const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+        Awaited<ReturnType<typeof clickhouse.getMetricsNames>>
       >(
-        `metrics-tags-${teamId}`,
+        `metrics-names-${teamId}`,
         ms('10m'),
         () =>
-          clickhouse.getMetricsTags({
+          clickhouse.getMetricsNames({
             // FIXME: fix it 5 days ago for now
             startTime: nowInMs - ms('5d'),
             endTime: nowInMs,

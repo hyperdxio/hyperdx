@@ -593,7 +593,7 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async ({
+export const getMetricsNames = async ({
   teamId,
   startTime,
   endTime,
@@ -603,24 +603,28 @@ export const getMetricsTags = async ({
   endTime: number; // unix in ms
 }) => {
   const tableName = `default.${TableName.Metric}`;
+  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
   // TODO: remove 'data_type' in the name field
   const query = SqlString.format(
     `
-        SELECT
-          any(is_delta) as is_delta,
-          any(is_monotonic) as is_monotonic,
-          any(unit) as unit,
-          data_type,
-          format('{} - {}', name, data_type) as name,
-          groupUniqArray(_string_attributes) AS tags
-        FROM ??
-        WHERE (?)
-        GROUP BY name, data_type
-        ORDER BY name
+      SELECT
+        any(is_delta) as is_delta,
+        any(is_monotonic) as is_monotonic,
+        any(unit) as unit,
+        data_type,
+        format('{} - {}', name, data_type) as name
+      FROM ??
+      WHERE (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= toDateTime(?) AND _created_at < toDateTime(?))
+      GROUP BY name, data_type
+      ORDER BY name
     `,
     [
       tableName,
-      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+      msToBigIntNs(startTime),
+      msToBigIntNs(endTime),
+      startTime / 1000,
+      endTime / 1000,
     ],
   );
   const ts = Date.now();
@@ -642,6 +646,65 @@ export const getMetricsTags = async ({
       name: string;
       tags: Record<string, string>[];
       unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsNames',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
+export const getMetricsTags = async ({
+  dataType,
+  endTime,
+  name,
+  startTime,
+  teamId,
+}: {
+  dataType: MetricsDataType;
+  endTime: number; // unix in ms
+  name: string;
+  startTime: number; // unix in ms
+  teamId: string;
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
+  // TODO: remove 'data_type' in the name field
+  const query = SqlString.format(
+    `
+      SELECT DISTINCT _string_attributes AS tag
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= toDateTime(?) AND _created_at < toDateTime(?))
+    `,
+    [
+      tableName,
+      name,
+      dataType,
+      msToBigIntNs(startTime),
+      msToBigIntNs(endTime),
+      startTime / 1000,
+      endTime / 1000,
+    ],
+  );
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      tag: Record<string, string>;
     }>
   >();
   logger.info({
