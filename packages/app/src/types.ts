@@ -198,6 +198,12 @@ export type AggFn =
 
 export type SourceTable = 'logs' | 'rrweb' | 'metrics';
 
+export enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+}
+
 export type TimeChartSeries = {
   displayName?: string;
   table: SourceTable;

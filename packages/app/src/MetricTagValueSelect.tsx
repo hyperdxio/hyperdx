@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Select } from '@mantine/core';
 
 import api from './api';
+import { legacyMetricNameToNameAndDataType } from './utils';
 
 export default function MetricTagValueSelect({
   metricName,
@@ -19,25 +20,26 @@ export default function MetricTagValueSelect({
   dropdownClosedWidth?: number;
   onChange: (value: string) => void;
 } & Partial<React.ComponentProps<typeof Select>>) {
+  const { name: mName, dataType: mDataType } =
+    legacyMetricNameToNameAndDataType(metricName);
   const { data: metricTagsData, isLoading: isMetricTagsLoading } =
-    api.useMetricsNames();
-
-  const options = useMemo(() => {
-    const tags =
-      metricTagsData?.data?.filter(metric => metric.name === metricName)?.[0]
-        ?.tags ?? [];
-
-    const valueSet = new Set<string>();
-
-    tags.forEach(tag => {
-      Object.entries(tag).forEach(([name, value]) => {
-        if (name === metricAttribute) {
-          valueSet.add(value);
-        }
-      });
+    api.useMetricsTags({
+      name: mName,
+      dataType: mDataType,
     });
 
-    return Array.from(valueSet);
+  const options = useMemo(() => {
+    const tags = (metricTagsData?.data ?? []).map(row => row.tag);
+    const tagNameValueSet = new Set<string>();
+    tags.forEach(tag => {
+      Object.entries(tag).forEach(([name, value]) =>
+        tagNameValueSet.add(`${name}:"${value}"`),
+      );
+    });
+    return Array.from(tagNameValueSet).map(tagName => ({
+      value: tagName,
+      label: tagName,
+    }));
   }, [metricTagsData, metricName]);
 
   const [dropdownOpen, setDropdownOpen] = React.useState(false);

@@ -338,7 +338,7 @@ export function MetricSelect({
   setMetricName: (value: string | undefined) => void;
 }) {
   // TODO: Dedup with metric rate checkbox
-  const { data: metricTagsData, isLoading, isError } = api.useMetricsNames();
+  const { data: metricNamesData, isLoading, isError } = api.useMetricsNames();
 
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
@@ -364,7 +364,7 @@ export function MetricSelect({
           isError={isError}
           value={metricName}
           setValue={name => {
-            const metricType = metricTagsData?.data?.find(
+            const metricType = metricNamesData?.data?.find(
               metric => metric.name === name,
             )?.data_type;
 
@@ -396,12 +396,12 @@ export function MetricRateSelect({
   setIsRate: (isRate: boolean) => void;
   metricName: string | undefined | null;
 }) {
-  const { data: metricTagsData } = api.useMetricsNames();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const metricType = useMemo(() => {
-    return metricTagsData?.data?.find(metric => metric.name === metricName)
+    return metricNamesData?.data?.find(metric => metric.name === metricName)
       ?.data_type;
-  }, [metricTagsData, metricName]);
+  }, [metricNamesData, metricName]);
 
   return (
     <>
@@ -431,16 +431,16 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
 }) {
-  const { data: metricTagsData } = api.useMetricsNames();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const options = useMemo(() => {
     return (
-      metricTagsData?.data?.map(entry => ({
+      metricNamesData?.data?.map(entry => ({
         value: entry.name,
         label: entry.name,
       })) ?? []
     );
-  }, [metricTagsData]);
+  }, [metricNamesData]);
 
   return (
     <AsyncSelect

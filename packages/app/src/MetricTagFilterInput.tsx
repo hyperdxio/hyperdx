@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 
 import api from './api';
 import AutocompleteInput from './AutocompleteInput';
+import { legacyMetricNameToNameAndDataType } from './utils';
 
 export default function MetricTagFilterInput({
   inputRef,
@@ -20,21 +21,21 @@ export default function MetricTagFilterInput({
   size?: 'sm' | 'lg';
   metricName?: string;
 }) {
-  const { data: metricTagsData } = api.useMetricsNames();
+  const { name: mName, dataType: mDataType } =
+    legacyMetricNameToNameAndDataType(metricName);
+  const { data: metricTagsData } = api.useMetricsTags({
+    name: mName,
+    dataType: mDataType,
+  });
 
   const options = useMemo(() => {
-    const tags =
-      metricTagsData?.data?.filter(metric => metric.name === metricName)?.[0]
-        ?.tags ?? [];
-
+    const tags = (metricTagsData?.data ?? []).map(row => row.tag);
     const tagNameValueSet = new Set<string>();
-
     tags.forEach(tag => {
       Object.entries(tag).forEach(([name, value]) =>
         tagNameValueSet.add(`${name}:"${value}"`),
       );
     });
-
     return Array.from(tagNameValueSet).map(tagName => ({
       value: tagName,
       label: tagName,

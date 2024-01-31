@@ -18,6 +18,7 @@ import type {
   ChartSeries,
   Dashboard,
   LogView,
+  MetricsDataType,
   Session,
 } from './types';
 
@@ -107,6 +108,33 @@ const api = {
       queryFn: () =>
         server('metrics/names', {
           method: 'GET',
+        }).json(),
+    });
+  },
+  useMetricsTags({
+    name,
+    dataType,
+  }: {
+    name: string;
+    dataType: MetricsDataType;
+  }) {
+    return useQuery<
+      {
+        data: {
+          tag: Record<string, string>;
+        }[];
+      },
+      Error
+    >({
+      refetchOnWindowFocus: false,
+      queryKey: ['metrics/tags', name, dataType],
+      queryFn: () =>
+        server('metrics/tags', {
+          method: 'GET',
+          searchParams: [
+            ['name', name],
+            ['dataType', dataType],
+          ],
         }).json(),
     });
   },
