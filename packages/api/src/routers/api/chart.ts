@@ -49,45 +49,57 @@ router.get('/services', async (req, res, next) => {
 
     const simpleCache = new SimpleCache<
       Awaited<ReturnType<typeof clickhouse.getMultiSeriesChart>>[]
-    >(`chart-services-${teamId}`, ms('10m'), () =>
-      Promise.all([
-        clickhouse.getMultiSeriesChart({
-          series: [
-            {
-              aggFn: clickhouse.AggFn.Count,
-              groupBy: targetGroupByFields,
-              table: 'logs',
-              type: 'table',
-              where: '',
-            },
-          ],
-          endTime,
-          granularity: undefined,
-          maxNumGroups: MAX_NUM_GROUPS,
-          startTime,
-          tableVersion: team.logStreamTableVersion,
-          teamId: teamId.toString(),
-          seriesReturnType: clickhouse.SeriesReturnType.Column,
-        }),
-        clickhouse.getMultiSeriesChart({
-          series: [
-            {
-              aggFn: clickhouse.AggFn.Count,
-              groupBy: ['service'],
-              table: 'logs',
-              type: 'table',
-              where: '',
-            },
-          ],
-          endTime,
-          granularity: undefined,
-          maxNumGroups: MAX_NUM_GROUPS,
-          startTime,
-          tableVersion: team.logStreamTableVersion,
-          teamId: teamId.toString(),
-          seriesReturnType: clickhouse.SeriesReturnType.Column,
-        }),
-      ]),
+    >(
+      `chart-services-${teamId}`,
+      ms('10m'),
+      () =>
+        Promise.all([
+          clickhouse.getMultiSeriesChart({
+            series: [
+              {
+                aggFn: clickhouse.AggFn.Count,
+                groupBy: targetGroupByFields,
+                table: 'logs',
+                type: 'table',
+                where: '',
+              },
+            ],
+            endTime,
+            granularity: undefined,
+            maxNumGroups: MAX_NUM_GROUPS,
+            startTime,
+            tableVersion: team.logStreamTableVersion,
+            teamId: teamId.toString(),
+            seriesReturnType: clickhouse.SeriesReturnType.Column,
+          }),
+          clickhouse.getMultiSeriesChart({
+            series: [
+              {
+                aggFn: clickhouse.AggFn.Count,
+                groupBy: ['service'],
+                table: 'logs',
+                type: 'table',
+                where: '',
+              },
+            ],
+            endTime,
+            granularity: undefined,
+            maxNumGroups: MAX_NUM_GROUPS,
+            startTime,
+            tableVersion: team.logStreamTableVersion,
+            teamId: teamId.toString(),
+            seriesReturnType: clickhouse.SeriesReturnType.Column,
+          }),
+        ]),
+      results => {
+        let hasData = false;
+        for (const result of results) {
+          if (result.rows != null && result.rows > 0) {
+            hasData = true;
+          }
+        }
+        return hasData;
+      },
     );
 
     const [customAttrsResults, servicesResults] = await simpleCache.get();

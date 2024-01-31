@@ -17,7 +17,24 @@ class SimpleCache<T> {
     private readonly key: string,
     private readonly ttlInMs: number,
     private readonly fetcher: () => Promise<T>,
+    private readonly shouldRefreshOnResult: (result: T) => boolean = () => true,
   ) {}
+
+  async refresh() {
+    const dt = Date.now();
+    const result = await this.fetcher();
+    if (this.shouldRefreshOnResult(result)) {
+      logger.info({
+        message: 'SimpleCache: refresh',
+        key: this.key,
+        duration: Date.now() - dt,
+      });
+      await client.set(this.key, JSON.stringify(result), {
+        PX: this.ttlInMs,
+      });
+    }
+    return result;
+  }
 
   async get(): Promise<T> {
     const cached = await client.get(this.key);
@@ -32,10 +49,7 @@ class SimpleCache<T> {
       message: 'SimpleCache: cache miss',
       key: this.key,
     });
-    const result = await this.fetcher();
-    await client.set(this.key, JSON.stringify(result), {
-      PX: this.ttlInMs,
-    });
+    const result = await this.refresh();
     return result;
   }
 }
