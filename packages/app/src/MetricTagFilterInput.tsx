@@ -20,7 +20,7 @@ export default function MetricTagFilterInput({
   size?: 'sm' | 'lg';
   metricName?: string;
 }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricTagsData } = api.useMetricsNames();
 
   const options = useMemo(() => {
     const tags =

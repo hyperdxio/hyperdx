@@ -89,21 +89,23 @@ const api = {
       },
     );
   },
-  useMetricsTags() {
+  useMetricsNames() {
     return useQuery<
       {
         data: {
-          name: string;
           data_type: string;
-          tags: Record<string, string>[];
+          is_delta: boolean;
+          is_monotonic: boolean;
+          name: string;
+          unit: string;
         }[];
       },
       Error
     >({
       refetchOnWindowFocus: false,
-      queryKey: ['metrics/tags'],
+      queryKey: ['metrics/names'],
       queryFn: () =>
-        server('metrics/tags', {
+        server('metrics/names', {
           method: 'GET',
         }).json(),
     });

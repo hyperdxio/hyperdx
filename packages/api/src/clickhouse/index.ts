@@ -644,7 +644,6 @@ export const getMetricsNames = async ({
       is_delta: boolean;
       is_monotonic: boolean;
       name: string;
-      tags: Record<string, string>[];
       unit: string;
     }>
   >();

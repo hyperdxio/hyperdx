@@ -20,7 +20,7 @@ export default function MetricTagValueSelect({
   onChange: (value: string) => void;
 } & Partial<React.ComponentProps<typeof Select>>) {
   const { data: metricTagsData, isLoading: isMetricTagsLoading } =
-    api.useMetricsTags();
+    api.useMetricsNames();
 
   const options = useMemo(() => {
     const tags =
