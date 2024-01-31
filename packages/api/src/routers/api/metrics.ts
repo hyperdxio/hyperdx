@@ -30,9 +30,9 @@ router.get('/names', async (req, res, next) => {
           teamId: teamId.toString(),
         }),
       result => {
-        // if (result.rows != null) {
-        //   return result.rows > 0;
-        // }
+        if (result.rows != null) {
+          return result.rows > 0;
+        }
         return false;
       },
     );
@@ -76,9 +76,9 @@ router.get(
             teamId: teamId.toString(),
           }),
         result => {
-          // if (result.rows != null) {
-          //   return result.rows > 0;
-          // }
+          if (result.rows != null) {
+            return result.rows > 0;
+          }
           return false;
         },
       );

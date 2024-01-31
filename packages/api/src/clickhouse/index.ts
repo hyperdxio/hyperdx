@@ -615,7 +615,7 @@ export const getMetricsNames = async ({
         format('{} - {}', name, data_type) as name
       FROM ??
       WHERE (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
-      AND (_created_at >= toDateTime(?) AND _created_at < toDateTime(?))
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
       GROUP BY name, data_type
       ORDER BY name
     `,
@@ -623,8 +623,8 @@ export const getMetricsNames = async ({
       tableName,
       msToBigIntNs(startTime),
       msToBigIntNs(endTime),
-      startTime / 1000,
-      endTime / 1000,
+      startTime,
+      endTime,
     ],
   );
   const ts = Date.now();
@@ -678,7 +678,7 @@ export const getMetricsTags = async ({
       WHERE name = ?
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
-      AND (_created_at >= toDateTime(?) AND _created_at < toDateTime(?))
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
     `,
     [
       tableName,
@@ -686,8 +686,8 @@ export const getMetricsTags = async ({
       dataType,
       msToBigIntNs(startTime),
       msToBigIntNs(endTime),
-      startTime / 1000,
-      endTime / 1000,
+      startTime,
+      endTime,
     ],
   );
   const ts = Date.now();
