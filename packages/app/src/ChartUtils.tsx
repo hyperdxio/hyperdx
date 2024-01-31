@@ -251,20 +251,18 @@ function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
 
   const options = useMemo(() => {
     const tags = metricTagsData?.data ?? [];
-    const tagNameValueSet = new Set<string>();
+    const tagNameSet = new Set<string>();
     tags.forEach(tag => {
-      Object.entries(tag).forEach(([name, value]) =>
-        tagNameValueSet.add(`${name}:"${value}"`),
-      );
+      Object.entries(tag).forEach(([name]) => tagNameSet.add(name));
     });
     return [
       { value: undefined, label: 'None' },
-      ...Array.from(tagNameValueSet).map(tagName => ({
+      ...Array.from(tagNameSet).map(tagName => ({
         value: tagName,
         label: tagName,
       })),
     ];
-  }, [metricTagsData, metricNames]);
+  }, [metricTagsData]);
 
   return options;
 }

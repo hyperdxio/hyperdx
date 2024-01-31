@@ -42,7 +42,7 @@ export default function MetricTagFilterInput({
       value: tagName,
       label: tagName,
     }));
-  }, [metricTagsData, metricName]);
+  }, [metricTagsData]);
 
   return (
     <AutocompleteInput
@@ -55,6 +55,7 @@ export default function MetricTagFilterInput({
       size={size}
       showSuggestionsOnEmpty
       suggestionsHeader="Tags"
+      zIndex={9999}
     />
   );
 }
