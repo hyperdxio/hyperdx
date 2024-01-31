@@ -101,25 +101,6 @@ const translateAlertDocumentToExternalAlert = (
   };
 };
 
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-
-    const alerts = await getAlerts(teamId);
-
-    return res.json({
-      data: alerts.map(alert => {
-        return translateAlertDocumentToExternalAlert(alert);
-      }),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
-
 router.get(
   '/:id',
   validateRequest({
@@ -148,6 +129,25 @@ router.get(
     }
   },
 );
+
+router.get('/', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const alerts = await getAlerts(teamId);
+
+    return res.json({
+      data: alerts.map(alert => {
+        return translateAlertDocumentToExternalAlert(alert);
+      }),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.post(
   '/',
