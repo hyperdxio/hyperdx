@@ -92,13 +92,12 @@ router.get('/services', async (req, res, next) => {
           }),
         ]),
       results => {
-        let hasData = false;
         for (const result of results) {
           if (result.rows != null && result.rows > 0) {
-            hasData = true;
+            return true;
           }
         }
-        return hasData;
+        return false;
       },
     );
 
