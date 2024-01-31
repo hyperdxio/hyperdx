@@ -212,16 +212,15 @@ router.get(
           return false;
         },
       );
-      const tags = await simpleCache.get();
+      const names = await simpleCache.get();
       res.json({
-        data: tags.data.map(tag => ({
+        data: names.data.map(name => ({
           // FIXME: unify the return type of both internal and external APIs
-          name: tag.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
-          type: tag.data_type,
-          tags: tag.tags,
+          name: name.name.split(' - ')[0], // FIXME: we want to separate name and data type into two columns
+          type: name.data_type,
         })),
-        meta: tags.meta,
-        rows: tags.rows,
+        meta: names.meta,
+        rows: names.rows,
       });
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();

@@ -5,7 +5,7 @@ import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';
-import { NumberFormat, MetricsDataType } from './types';
+import { MetricsDataType, NumberFormat } from './types';
 
 export function generateSearchUrl({
   query,

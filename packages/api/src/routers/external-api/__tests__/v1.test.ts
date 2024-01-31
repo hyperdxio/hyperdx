@@ -27,21 +27,11 @@ describe('external api v1', () => {
     expect(resp.body.user._id).toEqual(user?._id.toString());
   });
 
-  it('GET /api/v1/metrics/tags', async () => {
-    jest.spyOn(clickhouse, 'getMetricsTags').mockResolvedValueOnce({
+  it('GET /api/v1/metrics/names', async () => {
+    jest.spyOn(clickhouse, 'getMetricsNames').mockResolvedValueOnce({
       data: [
         {
           name: 'system.filesystem.usage - Sum',
-          tags: [
-            {
-              device: '/dev/vda1',
-              host: 'unknown',
-              mode: 'rw',
-              mountpoint: '/etc/resolv.conf',
-              state: 'reserved',
-              type: 'ext4',
-            },
-          ],
           data_type: 'Sum',
         },
       ],
@@ -63,7 +53,7 @@ describe('external api v1', () => {
     } as any);
     const { agent, user } = await getLoggedInAgent(server);
     const resp = await agent
-      .get(`/api/v1/metrics/tags`)
+      .get(`/api/v1/metrics/names`)
       .set('Authorization', `Bearer ${user?.accessKey}`)
       .expect(200);
 
@@ -72,16 +62,6 @@ describe('external api v1', () => {
       data: [
         {
           name: 'system.filesystem.usage',
-          tags: [
-            {
-              device: '/dev/vda1',
-              host: 'unknown',
-              mode: 'rw',
-              mountpoint: '/etc/resolv.conf',
-              state: 'reserved',
-              type: 'ext4',
-            },
-          ],
           type: 'Sum',
         },
       ],
