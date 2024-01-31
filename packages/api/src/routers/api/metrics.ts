@@ -45,12 +45,18 @@ router.get('/names', async (req, res, next) => {
   }
 });
 
-router.get(
+router.post(
   '/tags',
   validateRequest({
-    query: z.object({
-      name: z.string().min(1).max(1024),
-      dataType: z.nativeEnum(clickhouse.MetricsDataType),
+    body: z.object({
+      metrics: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(1024),
+            dataType: z.nativeEnum(clickhouse.MetricsDataType),
+          }),
+        )
+        .max(32),
     }),
   }),
   async (req, res, next) => {
@@ -59,30 +65,18 @@ router.get(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      const { name, dataType } = req.query;
+      const { metrics } = req.body;
+
       const nowInMs = Date.now();
-      const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
-      >(
-        `metrics-tags-${teamId}`,
-        ms('10m'),
-        () =>
-          clickhouse.getMetricsTags({
-            dataType,
-            name,
-            // FIXME: fix it 5 days ago for now
-            startTime: nowInMs - ms('5d'),
-            endTime: nowInMs,
-            teamId: teamId.toString(),
-          }),
-        result => {
-          if (result.rows != null) {
-            return result.rows > 0;
-          }
-          return false;
-        },
+      res.json(
+        await clickhouse.getMetricsTags({
+          metrics,
+          // FIXME: fix it 5 days ago for now
+          startTime: nowInMs - ms('5d'),
+          endTime: nowInMs,
+          teamId: teamId.toString(),
+        }),
       );
-      res.json(await simpleCache.get());
     } catch (e) {
       const span = opentelemetry.trace.getActiveSpan();
       span?.recordException(e as Error);

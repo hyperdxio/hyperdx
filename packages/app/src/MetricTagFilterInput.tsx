@@ -23,10 +23,12 @@ export default function MetricTagFilterInput({
 }) {
   const { name: mName, dataType: mDataType } =
     legacyMetricNameToNameAndDataType(metricName);
-  const { data: metricTagsData } = api.useMetricsTags({
-    name: mName,
-    dataType: mDataType,
-  });
+  const { data: metricTagsData } = api.useMetricsTags([
+    {
+      name: mName,
+      dataType: mDataType,
+    },
+  ]);
 
   const options = useMemo(() => {
     const tags = metricTagsData?.data ?? [];

@@ -111,13 +111,12 @@ const api = {
         }).json(),
     });
   },
-  useMetricsTags({
-    name,
-    dataType,
-  }: {
-    name: string;
-    dataType: MetricsDataType;
-  }) {
+  useMetricsTags(
+    metrics: {
+      name: string;
+      dataType: MetricsDataType;
+    }[],
+  ) {
     return useQuery<
       {
         data: Record<string, string>[];
@@ -125,14 +124,13 @@ const api = {
       Error
     >({
       refetchOnWindowFocus: false,
-      queryKey: ['metrics/tags', name, dataType],
+      queryKey: ['metrics/tags', metrics],
       queryFn: () =>
         server('metrics/tags', {
-          method: 'GET',
-          searchParams: [
-            ['name', name],
-            ['dataType', dataType],
-          ],
+          method: 'POST',
+          json: {
+            metrics,
+          },
         }).json(),
     });
   },

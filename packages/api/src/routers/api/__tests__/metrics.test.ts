@@ -4,6 +4,10 @@ import * as clickhouse from '@/clickhouse';
 import { buildMetricSeries, getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('metrics router', () => {
+  const now = Date.now();
+  let agent;
+  let teamId;
+
   const server = getServer();
 
   beforeAll(async () => {
@@ -18,10 +22,10 @@ describe('metrics router', () => {
     await server.stop();
   });
 
-  it('GET /metrics/names + /metrics/tags', async () => {
-    const { agent, team } = await getLoggedInAgent(server);
-
-    const now = Date.now();
+  beforeEach(async () => {
+    const { agent: _agent, team } = await getLoggedInAgent(server);
+    agent = _agent;
+    teamId = team.id;
     await clickhouse.bulkInsertTeamMetricStream(
       buildMetricSeries({
         name: 'test.cpu',
@@ -46,7 +50,21 @@ describe('metrics router', () => {
         team_id: team.id,
       }),
     );
+    await clickhouse.bulkInsertTeamMetricStream(
+      buildMetricSeries({
+        name: 'test.cpu2',
+        tags: { host: 'host2', foo2: 'bar2' },
+        data_type: clickhouse.MetricsDataType.Gauge,
+        is_monotonic: false,
+        is_delta: false,
+        unit: 'Percent',
+        points: [{ value: 1, timestamp: now - ms('1d') }],
+        team_id: team.id,
+      }),
+    );
+  });
 
+  it('GET /metrics/names', async () => {
     const names = await agent.get('/metrics/names').expect(200);
     expect(names.body.data).toMatchInlineSnapshot(`
 Array [
@@ -57,10 +75,28 @@ Array [
     "name": "test.cpu - Gauge",
     "unit": "Percent",
   },
+  Object {
+    "data_type": "Gauge",
+    "is_delta": false,
+    "is_monotonic": false,
+    "name": "test.cpu2 - Gauge",
+    "unit": "Percent",
+  },
 ]
 `);
+  });
+
+  it('GET /metrics/tags - single metric', async () => {
     const tags = await agent
-      .get('/metrics/tags?name=test.cpu&dataType=Gauge')
+      .post('/metrics/tags')
+      .send({
+        metrics: [
+          {
+            name: 'test.cpu',
+            dataType: clickhouse.MetricsDataType.Gauge,
+          },
+        ],
+      })
       .expect(200);
     expect(tags.body.data).toMatchInlineSnapshot(`
 Array [
@@ -68,6 +104,32 @@ Array [
     "foo": "bar",
     "host": "host1",
   },
+  Object {
+    "foo2": "bar2",
+    "host": "host2",
+  },
+]
+`);
+  });
+
+  it('GET /metrics/tags - multi metrics', async () => {
+    const tags = await agent
+      .post('/metrics/tags')
+      .send({
+        metrics: [
+          {
+            name: 'test.cpu',
+            dataType: clickhouse.MetricsDataType.Gauge,
+          },
+          {
+            name: 'test.cpu2',
+            dataType: clickhouse.MetricsDataType.Gauge,
+          },
+        ],
+      })
+      .expect(200);
+    expect(tags.body.data).toMatchInlineSnapshot(`
+Array [
   Object {
     "foo2": "bar2",
     "host": "host2",

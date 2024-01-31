@@ -11,6 +11,7 @@ import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
 import type { AggFn, ChartSeries, SourceTable } from './types';
 import { NumberFormat } from './types';
+import { legacyMetricNameToNameAndDataType } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -243,41 +244,22 @@ export function usePropertyOptions(types: ('number' | 'string' | 'bool')[]) {
 }
 
 function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
-  const { data: metricTagsData } = api.useMetricsNames();
+  const metrics = (metricNames ?? []).map(m => ({
+    ...legacyMetricNameToNameAndDataType(m),
+  }));
+  const { data: metricTagsData } = api.useMetricsTags(metrics);
 
   const options = useMemo(() => {
-    let tagNameSet = new Set<string>();
-    if (metricNames != null && metricNames.length > 0) {
-      const firstMetricName = metricNames[0]; // Start the set
-
-      const tags =
-        metricTagsData?.data?.filter(
-          metric => metric.name === firstMetricName,
-        )?.[0]?.tags ?? [];
-      tags.forEach(tag => {
-        Object.keys(tag).forEach(tagName => tagNameSet.add(tagName));
-      });
-
-      for (let i = 1; i < metricNames.length; i++) {
-        const tags =
-          metricTagsData?.data?.filter(
-            metric => metric.name === metricNames[i],
-          )?.[0]?.tags ?? [];
-        const intersection = new Set<string>();
-        tags.forEach(tag => {
-          Object.keys(tag).forEach(tagName => {
-            if (tagNameSet.has(tagName)) {
-              intersection.add(tagName);
-            }
-          });
-        });
-        tagNameSet = intersection;
-      }
-    }
-
+    const tags = metricTagsData?.data ?? [];
+    const tagNameValueSet = new Set<string>();
+    tags.forEach(tag => {
+      Object.entries(tag).forEach(([name, value]) =>
+        tagNameValueSet.add(`${name}:"${value}"`),
+      );
+    });
     return [
       { value: undefined, label: 'None' },
-      ...Array.from(tagNameSet).map(tagName => ({
+      ...Array.from(tagNameValueSet).map(tagName => ({
         value: tagName,
         label: tagName,
       })),

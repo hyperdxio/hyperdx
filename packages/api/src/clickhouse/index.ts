@@ -656,40 +656,52 @@ export const getMetricsNames = async ({
 };
 
 export const getMetricsTags = async ({
-  dataType,
   endTime,
-  name,
+  metrics,
   startTime,
   teamId,
 }: {
-  dataType: MetricsDataType;
   endTime: number; // unix in ms
-  name: string;
+  metrics: {
+    name: string;
+    dataType: MetricsDataType;
+  }[];
   startTime: number; // unix in ms
   teamId: string;
 }) => {
   const tableName = `default.${TableName.Metric}`;
-  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
-  // TODO: remove 'data_type' in the name field
-  const query = SqlString.format(
-    `
+  const intersects = metrics
+    .map(m =>
+      SqlString.format(
+        `
       SELECT DISTINCT _string_attributes AS tag
       FROM ??
       WHERE name = ?
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+    `,
+        [
+          tableName,
+          m.name,
+          m.dataType,
+          msToBigIntNs(startTime),
+          msToBigIntNs(endTime),
+          startTime,
+          endTime,
+        ],
+      ),
+    )
+    .join(' INTERSECT ');
+  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
+  // TODO: remove 'data_type' in the name field
+  const query = SqlString.format(
+    `
+      SELECT DISTINCT tag
+      FROM (?)
       ORDER BY tag
     `,
-    [
-      tableName,
-      name,
-      dataType,
-      msToBigIntNs(startTime),
-      msToBigIntNs(endTime),
-      startTime,
-      endTime,
-    ],
+    [SqlString.raw(intersects)],
   );
   const ts = Date.now();
   const rows = await client.query({

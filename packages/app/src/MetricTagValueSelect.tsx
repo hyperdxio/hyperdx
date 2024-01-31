@@ -23,10 +23,12 @@ export default function MetricTagValueSelect({
   const { name: mName, dataType: mDataType } =
     legacyMetricNameToNameAndDataType(metricName);
   const { data: metricTagsData, isLoading: isMetricTagsLoading } =
-    api.useMetricsTags({
-      name: mName,
-      dataType: mDataType,
-    });
+    api.useMetricsTags([
+      {
+        name: mName,
+        dataType: mDataType,
+      },
+    ]);
 
   const options = useMemo(() => {
     const tags = metricTagsData?.data ?? [];
