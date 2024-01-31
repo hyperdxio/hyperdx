@@ -6,6 +6,7 @@ import { validateRequest } from 'zod-express-middleware';
 
 import {
   deleteDashboardAndAlerts,
+  updateDashboard,
   updateDashboardAndAlerts,
 } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -151,16 +152,16 @@ router.put(
         return translateExternalChartToInternalChart(chart);
       });
 
-      const updatedDashboard = await updateDashboardAndAlerts(
-        dashboardId,
-        teamId,
-        {
-          name,
-          charts: internalCharts,
-          query,
-          tags,
-        },
-      );
+      const updatedDashboard = await updateDashboard(dashboardId, teamId, {
+        name,
+        charts: internalCharts,
+        query,
+        tags,
+      });
+
+      if (updatedDashboard == null) {
+        return res.sendStatus(404);
+      }
 
       res.json({
         data: translateDashboardDocumentToExternalDashboard(updatedDashboard),
