@@ -711,7 +711,10 @@ export const getMetricsTags = async ({
     query,
     took: Date.now() - ts,
   });
-  return result;
+  return {
+    ...result,
+    data: result.data.map(row => row.tag),
+  };
 };
 
 export const isRateAggFn = (aggFn: AggFn) => {

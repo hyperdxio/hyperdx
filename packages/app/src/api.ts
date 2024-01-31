@@ -120,9 +120,7 @@ const api = {
   }) {
     return useQuery<
       {
-        data: {
-          tag: Record<string, string>;
-        }[];
+        data: Record<string, string>[];
       },
       Error
     >({

@@ -29,7 +29,7 @@ export default function MetricTagValueSelect({
     });
 
   const options = useMemo(() => {
-    const tags = (metricTagsData?.data ?? []).map(row => row.tag);
+    const tags = metricTagsData?.data ?? [];
     const tagNameValueSet = new Set<string>();
     tags.forEach(tag => {
       Object.entries(tag).forEach(([name, value]) =>
