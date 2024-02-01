@@ -353,7 +353,7 @@ const HDXMultiSeriesTableChart = memo(
         No data found within time range.
       </div>
     ) : (
-      <div className="d-flex align-items-center justify-content-center fs-2 h-100">
+      <div className="d-flex fs-2 h-100 flex-grow-1">
         <Table
           data={data?.data ?? []}
           groupColumnName={
