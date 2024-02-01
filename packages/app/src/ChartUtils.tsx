@@ -65,6 +65,10 @@ export enum Granularity {
   ThirtyDay = '30 day',
 }
 
+export const isGranularity = (value: string): value is Granularity => {
+  return Object.values(Granularity).includes(value as Granularity);
+};
+
 const seriesDisplayName = (
   s: ChartSeries,
   {
@@ -172,7 +176,7 @@ export function seriesToSearchQuery({
           aggFn !== 'count' && field ? ` ${field}:*` : ''
         }${
           'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
-            ? ` ${s.groupBy}:${groupByValue}`
+            ? ` ${s.groupBy}:${groupByValue ?? '*'}`
             : ''
         }`.trim();
       }

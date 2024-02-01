@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Draft } from 'immer';
 import produce from 'immer';
 import { Button as BSButton, Form, InputGroup } from 'react-bootstrap';
@@ -12,6 +12,7 @@ import {
   ChartSeriesFormCompact,
   convertDateRangeToGranularityString,
   FieldSelect,
+  Granularity,
   GroupBySelect,
   seriesToSearchQuery,
   TableSelect,
@@ -20,13 +21,15 @@ import Checkbox from './Checkbox';
 import * as config from './config';
 import { METRIC_ALERTS_ENABLED } from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
+import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import type { Alert, Chart, TimeChartSeries } from './types';
+import SearchTimeRangePicker from './SearchTimeRangePicker';
+import type { Alert, Chart, ChartSeries, TimeChartSeries } from './types';
 import { useDebounce } from './utils';
 
 const DEFAULT_ALERT: Alert = {
@@ -45,8 +48,8 @@ export const EditMarkdownChartForm = ({
   onSave,
 }: {
   chart: Chart | undefined;
-  onSave: (chart: Chart) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart) => void;
+  onClose?: () => void;
 }) => {
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
 
@@ -74,7 +77,7 @@ export const EditMarkdownChartForm = ({
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave?.(editedChart);
       }}
     >
       <div className="fs-5 mb-4">Markdown</div>
@@ -118,18 +121,24 @@ export const EditMarkdownChartForm = ({
           </InputGroup>
         </div>
       </div>
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3 ps-2">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
+        </div>
+      )}
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Markdown Preview</div>
         <div style={{ height: 400 }} className="bg-hdx-dark">
@@ -148,8 +157,8 @@ export const EditSearchChartForm = ({
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart) => void;
+  onClose?: () => void;
 }) => {
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
 
@@ -178,7 +187,7 @@ export const EditSearchChartForm = ({
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave?.(editedChart);
       }}
     >
       <div className="fs-5 mb-4">Search Builder</div>
@@ -221,18 +230,24 @@ export const EditSearchChartForm = ({
           </InputGroup>
         </div>
       </div>
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3 ps-2">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
+        </div>
+      )}
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Search Preview</div>
         <div style={{ height: 400 }} className="bg-hdx-dark">
@@ -257,45 +272,61 @@ export const EditNumberChartForm = ({
   onClose,
   onSave,
   dateRange,
+  editedChart,
+  setEditedChart,
+  displayedTimeInputValue,
+  setDisplayedTimeInputValue,
+  onTimeRangeSearch,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart) => void;
+  onClose?: () => void;
+  displayedTimeInputValue?: string;
+  setDisplayedTimeInputValue?: (value: string) => void;
+  onTimeRangeSearch?: (value: string) => void;
+  editedChart?: Chart;
+  setEditedChart?: (chart: Chart) => void;
 }) => {
-  const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
+    chart,
+  );
+  const [_editedChart, _setEditedChart] =
+    editedChart != null && setEditedChart != null
+      ? [editedChart, setEditedChart]
+      : [editedChartState, setEditedChartState];
 
   const chartConfig = useMemo(() => {
-    return editedChart != null && editedChart.series[0].type === 'number'
+    return _editedChart != null && _editedChart.series[0].type === 'number'
       ? {
-          aggFn: editedChart.series[0].aggFn ?? 'count',
-          table: editedChart.series[0].table ?? 'logs',
-          field: editedChart.series[0].field ?? '', // TODO: Fix in definition
-          where: editedChart.series[0].where,
+          aggFn: _editedChart.series[0].aggFn ?? 'count',
+          table: _editedChart.series[0].table ?? 'logs',
+          field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
+          where: _editedChart.series[0].where,
           dateRange,
-          numberFormat: editedChart.series[0].numberFormat,
+          numberFormat: _editedChart.series[0].numberFormat,
         }
       : null;
-  }, [editedChart, dateRange]);
+  }, [_editedChart, dateRange]);
   const previewConfig = useDebounce(chartConfig, 500);
 
   if (
     chartConfig == null ||
-    editedChart == null ||
+    _editedChart == null ||
     previewConfig == null ||
-    editedChart.series[0].type !== 'number'
+    _editedChart.series[0].type !== 'number'
   ) {
     return null;
   }
 
   const labelWidth = 320;
-  const aggFn = editedChart.series[0].aggFn ?? 'count';
+  const aggFn = _editedChart.series[0].aggFn ?? 'count';
 
   return (
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave?.(_editedChart);
       }}
     >
       <div className="fs-5 mb-4">Number Tile Builder</div>
@@ -304,13 +335,13 @@ export const EditNumberChartForm = ({
           type="text"
           id="name"
           onChange={e =>
-            setEditedChart(
-              produce(editedChart, draft => {
+            _setEditedChart(
+              produce(_editedChart, draft => {
                 draft.name = e.target.value;
               }),
             )
           }
-          defaultValue={editedChart.name}
+          defaultValue={_editedChart.name}
           placeholder="Chart Name"
         />
       </div>
@@ -324,8 +355,8 @@ export const EditNumberChartForm = ({
             className="ds-select"
             value={AGG_FNS.find(v => v.value === aggFn)}
             onChange={opt => {
-              setEditedChart(
-                produce(editedChart, draft => {
+              _setEditedChart(
+                produce(_editedChart, draft => {
                   if (draft.series[0].type === 'number') {
                     draft.series[0].aggFn = opt?.value ?? 'count';
                   }
@@ -343,10 +374,10 @@ export const EditNumberChartForm = ({
           </div>
           <div className="ms-3 flex-grow-1">
             <FieldSelect
-              value={editedChart.series[0].field ?? ''}
+              value={_editedChart.series[0].field ?? ''}
               setValue={field =>
-                setEditedChart(
-                  produce(editedChart, draft => {
+                _setEditedChart(
+                  produce(_editedChart, draft => {
                     if (draft.series[0].type === 'number') {
                       draft.series[0].field = field;
                     }
@@ -372,10 +403,10 @@ export const EditNumberChartForm = ({
               type="text"
               placeholder={'Filter results by a search query'}
               className="border-0 fs-7"
-              value={editedChart.series[0].where}
+              value={_editedChart.series[0].where}
               onChange={event =>
-                setEditedChart(
-                  produce(editedChart, draft => {
+                _setEditedChart(
+                  produce(_editedChart, draft => {
                     if (draft.series[0].type === 'number') {
                       draft.series[0].where = event.target.value;
                     }
@@ -400,10 +431,10 @@ export const EditNumberChartForm = ({
         <Group>
           <div className="fs-8 text-slate-300">Number Format</div>
           <NumberFormatInput
-            value={editedChart.series[0].numberFormat}
+            value={_editedChart.series[0].numberFormat}
             onChange={numberFormat =>
-              setEditedChart(
-                produce(editedChart, draft => {
+              _setEditedChart(
+                produce(_editedChart, draft => {
                   if (draft.series[0].type === 'number') {
                     draft.series[0].numberFormat = numberFormat;
                   }
@@ -413,26 +444,48 @@ export const EditNumberChartForm = ({
           />
         </Group>
       </div>
-
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3 ps-2">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
+        </div>
+      )}
       <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
+        <Flex justify="space-between" align="center" mb="sm">
+          <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+            Chart Preview
+          </div>
+          {setDisplayedTimeInputValue != null &&
+            displayedTimeInputValue != null &&
+            onTimeRangeSearch != null && (
+              <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
+                <SearchTimeRangePicker
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                />
+              </div>
+            )}
+        </Flex>
         <div style={{ height: 400 }}>
           <HDXNumberChart config={previewConfig} />
         </div>
       </div>
-      {editedChart.series[0].table === 'logs' ? (
+      {_editedChart.series[0].table === 'logs' ? (
         <>
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
@@ -462,51 +515,68 @@ export const EditTableChartForm = ({
   onClose,
   onSave,
   dateRange,
+  displayedTimeInputValue,
+  setDisplayedTimeInputValue,
+  onTimeRangeSearch,
+  editedChart,
+  setEditedChart,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart) => void;
+  onClose?: () => void;
+  editedChart?: Chart;
+  setEditedChart?: (chart: Chart) => void;
+  displayedTimeInputValue?: string;
+  setDisplayedTimeInputValue?: (value: string) => void;
+  onTimeRangeSearch?: (value: string) => void;
 }) => {
   const CHART_TYPE = 'table';
 
-  const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
+    chart,
+  );
+  const [_editedChart, _setEditedChart] =
+    editedChart != null && setEditedChart != null
+      ? [editedChart, setEditedChart]
+      : [editedChartState, setEditedChartState];
 
   const chartConfig = useMemo(
     () =>
-      editedChart != null && editedChart.series?.[0]?.type === CHART_TYPE
+      _editedChart != null && _editedChart.series?.[0]?.type === CHART_TYPE
         ? {
-            table: editedChart.series[0].table ?? 'logs',
-            aggFn: editedChart.series[0].aggFn,
-            field: editedChart.series[0].field ?? '', // TODO: Fix in definition
-            groupBy: editedChart.series[0].groupBy[0],
-            where: editedChart.series[0].where,
-            sortOrder: editedChart.series[0].sortOrder ?? 'desc',
+            table: _editedChart.series[0].table ?? 'logs',
+            aggFn: _editedChart.series[0].aggFn,
+            field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
+            groupBy: _editedChart.series[0].groupBy[0],
+            where: _editedChart.series[0].where,
+            sortOrder: _editedChart.series[0].sortOrder ?? 'desc',
             granularity: convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
-            numberFormat: editedChart.series[0].numberFormat,
-            series: editedChart.series,
-            seriesReturnType: editedChart.seriesReturnType,
+            numberFormat: _editedChart.series[0].numberFormat,
+            series: _editedChart.series,
+            seriesReturnType: _editedChart.seriesReturnType,
           }
         : null,
-    [editedChart, dateRange],
+    [_editedChart, dateRange],
   );
   const previewConfig = useDebounce(chartConfig, 500);
 
   if (
     chartConfig == null ||
     previewConfig == null ||
-    editedChart == null ||
-    editedChart.series[0].type !== CHART_TYPE
+    _editedChart == null ||
+    _editedChart.series[0].type !== CHART_TYPE
   ) {
     return null;
   }
 
   return (
     <form
+      className="flex-grow-1 d-flex flex-column"
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave?.(_editedChart);
       }}
     >
       <div className="fs-5 mb-4">Table Builder</div>
@@ -515,67 +585,95 @@ export const EditTableChartForm = ({
           type="text"
           id="name"
           onChange={e =>
-            setEditedChart(
-              produce(editedChart, draft => {
+            _setEditedChart(
+              produce(_editedChart, draft => {
                 draft.name = e.target.value;
               }),
             )
           }
-          defaultValue={editedChart.name}
+          defaultValue={_editedChart.name}
           placeholder="Chart Name"
         />
       </div>
       <EditMultiSeriesChartForm
-        {...{ editedChart, setEditedChart, CHART_TYPE }}
+        {...{
+          editedChart: _editedChart,
+          setEditedChart: _setEditedChart,
+          CHART_TYPE,
+        }}
       />
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
-      <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
-        <div style={{ height: 400 }}>
-          <HDXMultiSeriesTableChart
-            config={previewConfig}
-            onSortClick={seriesIndex => {
-              setEditedChart(
-                produce(editedChart, draft => {
-                  // We need to clear out all other series sort orders first
-                  for (let i = 0; i < draft.series.length; i++) {
-                    if (i !== seriesIndex) {
-                      const s = draft.series[i];
-                      if (s.type === CHART_TYPE) {
-                        s.sortOrder = undefined;
-                      }
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3 ps-2">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
+        </div>
+      )}
+      <Flex justify="space-between" align="center" mb="sm">
+        <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+          Chart Preview
+        </div>
+        {setDisplayedTimeInputValue != null &&
+          displayedTimeInputValue != null &&
+          onTimeRangeSearch != null && (
+            <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
+              <SearchTimeRangePicker
+                inputValue={displayedTimeInputValue}
+                setInputValue={setDisplayedTimeInputValue}
+                onSearch={range => {
+                  onTimeRangeSearch(range);
+                }}
+              />
+            </div>
+          )}
+      </Flex>
+      <div
+        style={{ minHeight: 400 }}
+        className="d-flex flex-column flex-grow-1"
+      >
+        <HDXMultiSeriesTableChart
+          config={previewConfig}
+          onSortClick={seriesIndex => {
+            _setEditedChart(
+              produce(_editedChart, draft => {
+                // We need to clear out all other series sort orders first
+                for (let i = 0; i < draft.series.length; i++) {
+                  if (i !== seriesIndex) {
+                    const s = draft.series[i];
+                    if (s.type === CHART_TYPE) {
+                      s.sortOrder = undefined;
                     }
                   }
+                }
 
-                  const s = draft.series[seriesIndex];
-                  if (s.type === CHART_TYPE) {
-                    s.sortOrder =
-                      s.sortOrder == null
-                        ? 'desc'
-                        : s.sortOrder === 'asc'
-                        ? 'desc'
-                        : 'asc';
-                  }
+                const s = draft.series[seriesIndex];
+                if (s.type === CHART_TYPE) {
+                  s.sortOrder =
+                    s.sortOrder == null
+                      ? 'desc'
+                      : s.sortOrder === 'asc'
+                      ? 'desc'
+                      : 'asc';
+                }
 
-                  return;
-                }),
-              );
-            }}
-          />
-        </div>
+                return;
+              }),
+            );
+          }}
+        />
       </div>
-      {editedChart.series[0].table === 'logs' ? (
+      {_editedChart.series[0].table === 'logs' ? (
         <>
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
@@ -611,31 +709,47 @@ export const EditHistogramChartForm = ({
   onClose,
   onSave,
   dateRange,
+  displayedTimeInputValue,
+  setDisplayedTimeInputValue,
+  onTimeRangeSearch,
+  editedChart,
+  setEditedChart,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
-  onSave: (chart: Chart) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart) => void;
+  onClose?: () => void;
+  editedChart?: Chart;
+  setEditedChart?: (chart: Chart) => void;
+  displayedTimeInputValue?: string;
+  setDisplayedTimeInputValue?: (value: string) => void;
+  onTimeRangeSearch?: (value: string) => void;
 }) => {
-  const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
+    chart,
+  );
+  const [_editedChart, _setEditedChart] =
+    editedChart != null && setEditedChart != null
+      ? [editedChart, setEditedChart]
+      : [editedChartState, setEditedChartState];
 
   const chartConfig = useMemo(() => {
-    return editedChart != null && editedChart.series[0].type === 'histogram'
+    return _editedChart != null && _editedChart.series[0].type === 'histogram'
       ? {
-          table: editedChart.series[0].table ?? 'logs',
-          field: editedChart.series[0].field ?? '', // TODO: Fix in definition
-          where: editedChart.series[0].where,
+          table: _editedChart.series[0].table ?? 'logs',
+          field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
+          where: _editedChart.series[0].where,
           dateRange,
         }
       : null;
-  }, [editedChart, dateRange]);
+  }, [_editedChart, dateRange]);
   const previewConfig = useDebounce(chartConfig, 500);
 
   if (
     chartConfig == null ||
-    editedChart == null ||
+    _editedChart == null ||
     previewConfig == null ||
-    editedChart.series[0].type !== 'histogram'
+    _editedChart.series[0].type !== 'histogram'
   ) {
     return null;
   }
@@ -646,7 +760,7 @@ export const EditHistogramChartForm = ({
     <form
       onSubmit={e => {
         e.preventDefault();
-        onSave(editedChart);
+        onSave?.(_editedChart);
       }}
     >
       <div className="fs-5 mb-4">Histogram Builder</div>
@@ -655,13 +769,13 @@ export const EditHistogramChartForm = ({
           type="text"
           id="name"
           onChange={e =>
-            setEditedChart(
-              produce(editedChart, draft => {
+            _setEditedChart(
+              produce(_editedChart, draft => {
                 draft.name = e.target.value;
               }),
             )
           }
-          defaultValue={editedChart.name}
+          defaultValue={_editedChart.name}
           placeholder="Chart Name"
         />
       </div>
@@ -671,10 +785,10 @@ export const EditHistogramChartForm = ({
         </div>
         <div className="ms-3 flex-grow-1">
           <FieldSelect
-            value={editedChart.series[0].field ?? ''}
+            value={_editedChart.series[0].field ?? ''}
             setValue={field =>
-              setEditedChart(
-                produce(editedChart, draft => {
+              _setEditedChart(
+                produce(_editedChart, draft => {
                   if (draft.series[0].type === 'histogram') {
                     draft.series[0].field = field;
                   }
@@ -695,10 +809,10 @@ export const EditHistogramChartForm = ({
               type="text"
               placeholder={'Filter results by a search query'}
               className="border-0 fs-7"
-              value={editedChart.series[0].where}
+              value={_editedChart.series[0].where}
               onChange={event =>
-                setEditedChart(
-                  produce(editedChart, draft => {
+                _setEditedChart(
+                  produce(_editedChart, draft => {
                     if (draft.series[0].type === 'histogram') {
                       draft.series[0].where = event.target.value;
                     }
@@ -709,25 +823,48 @@ export const EditHistogramChartForm = ({
           </InputGroup>
         </div>
       </div>
-      <div className="d-flex justify-content-between my-3 ps-2">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3 ps-2">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
+        </div>
+      )}
       <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
+        <Flex justify="space-between" align="center" mb="sm">
+          <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+            Chart Preview
+          </div>
+          {setDisplayedTimeInputValue != null &&
+            displayedTimeInputValue != null &&
+            onTimeRangeSearch != null && (
+              <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
+                <SearchTimeRangePicker
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                />
+              </div>
+            )}
+        </Flex>
         <div style={{ height: 400 }}>
           <HDXHistogramChart config={previewConfig} />
         </div>
       </div>
-      {editedChart.series[0].table === 'logs' ? (
+      {_editedChart.series[0].table === 'logs' ? (
         <>
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
@@ -1038,61 +1175,85 @@ export const EditLineChartForm = ({
   onClose,
   onSave,
   dateRange,
+  editedChart,
+  setEditedChart,
+  granularity,
+  setGranularity,
+  setDisplayedTimeInputValue,
+  displayedTimeInputValue,
+  onTimeRangeSearch,
 }: {
   isLocalDashboard: boolean;
   chart: Chart | undefined;
-  alerts: Alert[];
+  alerts?: Alert[];
   dateRange: [Date, Date];
-  onSave: (chart: Chart, alerts?: Alert[]) => void;
-  onClose: () => void;
+  onSave?: (chart: Chart, alerts?: Alert[]) => void;
+  onClose?: () => void;
+  editedChart?: Chart;
+  setEditedChart?: (chart: Chart) => void;
+  displayedTimeInputValue?: string;
+  setDisplayedTimeInputValue?: (value: string) => void;
+  onTimeRangeSearch?: (value: string) => void;
+  granularity?: Granularity | undefined;
+  setGranularity?: (granularity: Granularity | undefined) => void;
 }) => {
   const CHART_TYPE = 'time';
-  const [alert] = alerts; // TODO: Support multiple alerts eventually
-  const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
+  const [alert] = alerts ?? []; // TODO: Support multiple alerts eventually
+  const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
+    chart,
+  );
   const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
   const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
 
+  const [_editedChart, _setEditedChart] =
+    editedChart != null && setEditedChart != null
+      ? [editedChart, setEditedChart]
+      : [editedChartState, setEditedChartState];
+
   const chartConfig = useMemo(
     () =>
-      editedChart != null && editedChart.series?.[0]?.type === CHART_TYPE
+      _editedChart != null && _editedChart.series?.[0]?.type === CHART_TYPE
         ? {
-            table: editedChart.series[0].table ?? 'logs',
-            aggFn: editedChart.series[0].aggFn,
-            field: editedChart.series[0].field ?? '', // TODO: Fix in definition
-            groupBy: editedChart.series[0].groupBy[0],
-            where: editedChart.series[0].where,
+            table: _editedChart.series[0].table ?? 'logs',
+            aggFn: _editedChart.series[0].aggFn,
+            field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
+            groupBy: _editedChart.series[0].groupBy[0],
+            where: _editedChart.series[0].where,
             granularity:
               alertEnabled && editedAlert?.interval
                 ? intervalToGranularity(editedAlert?.interval)
-                : convertDateRangeToGranularityString(dateRange, 60),
+                : granularity ??
+                  convertDateRangeToGranularityString(dateRange, 60),
             dateRange,
-            numberFormat: editedChart.series[0].numberFormat,
-            series: editedChart.series,
-            seriesReturnType: editedChart.seriesReturnType,
+            numberFormat: _editedChart.series[0].numberFormat,
+            series: _editedChart.series,
+            seriesReturnType: _editedChart.seriesReturnType,
           }
         : null,
-    [editedChart, alertEnabled, editedAlert?.interval, dateRange],
+    [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
   );
   const previewConfig = useDebounce(chartConfig, 500);
 
   if (
     chartConfig == null ||
     previewConfig == null ||
-    editedChart == null ||
-    editedChart.series[0].type !== 'time'
+    _editedChart == null ||
+    _editedChart.series[0].type !== 'time'
   ) {
     return null;
   }
 
   const isChartAlertsFeatureEnabled =
-    editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED;
+    alerts != null &&
+    (_editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED);
 
   return (
     <form
+      className="d-flex flex-column flex-grow-1"
       onSubmit={e => {
         e.preventDefault();
-        onSave(
-          editedChart,
+        onSave?.(
+          _editedChart,
           alertEnabled ? [editedAlert ?? DEFAULT_ALERT] : undefined,
         );
       }}
@@ -1103,18 +1264,22 @@ export const EditLineChartForm = ({
           type="text"
           id="name"
           onChange={e =>
-            setEditedChart(
-              produce(editedChart, draft => {
+            _setEditedChart(
+              produce(_editedChart, draft => {
                 draft.name = e.target.value;
               }),
             )
           }
-          defaultValue={editedChart.name}
+          defaultValue={_editedChart.name}
           placeholder="Chart Name"
         />
       </div>
       <EditMultiSeriesChartForm
-        {...{ editedChart, setEditedChart, CHART_TYPE }}
+        {...{
+          editedChart: _editedChart,
+          setEditedChart: _setEditedChart,
+          CHART_TYPE,
+        }}
       />
 
       {isChartAlertsFeatureEnabled && (
@@ -1137,7 +1302,7 @@ export const EditLineChartForm = ({
                   <EditChartFormAlerts
                     alert={editedAlert ?? DEFAULT_ALERT}
                     setAlert={setEditedAlert}
-                    numberFormat={editedChart.series[0].numberFormat}
+                    numberFormat={_editedChart.series[0].numberFormat}
                   />
                 </div>
               )}
@@ -1146,32 +1311,67 @@ export const EditLineChartForm = ({
         </Paper>
       )}
 
-      <div className="d-flex justify-content-between my-3">
-        <BSButton
-          variant="outline-success"
-          className="fs-7 text-muted-hover-black"
-          type="submit"
-        >
-          Save
-        </BSButton>
-        <BSButton onClick={onClose} variant="dark">
-          Cancel
-        </BSButton>
-      </div>
-      <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Chart Preview</div>
-        <div style={{ height: 400 }}>
-          <HDXMultiSeriesTimeChart
-            config={previewConfig}
-            {...(alertEnabled && {
-              alertThreshold: editedAlert?.threshold,
-              alertThresholdType:
-                editedAlert?.type === 'presence' ? 'above' : 'below',
-            })}
-          />
+      {(onSave != null || onClose != null) && (
+        <div className="d-flex justify-content-between my-3">
+          {onSave != null && (
+            <BSButton
+              variant="outline-success"
+              className="fs-7 text-muted-hover-black"
+              type="submit"
+            >
+              Save
+            </BSButton>
+          )}
+          {onClose != null && (
+            <BSButton onClick={onClose} variant="dark">
+              Cancel
+            </BSButton>
+          )}
         </div>
+      )}
+      <Flex justify="space-between" align="center" my="sm">
+        <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+          Chart Preview
+        </div>
+        <Flex align="center" style={{ marginLeft: 'auto', width: 600 }}>
+          {setDisplayedTimeInputValue != null &&
+            displayedTimeInputValue != null &&
+            onTimeRangeSearch != null && (
+              <div className="ms-3 flex-grow-1" style={{ maxWidth: 420 }}>
+                <SearchTimeRangePicker
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                />
+              </div>
+            )}
+          {setGranularity != null && (
+            <div className="ms-3" style={{ maxWidth: 360 }}>
+              <GranularityPicker
+                value={granularity}
+                onChange={setGranularity}
+              />
+            </div>
+          )}
+        </Flex>
+      </Flex>
+
+      <div
+        className="flex-grow-1 d-flex flex-column"
+        style={{ minHeight: 400 }}
+      >
+        <HDXMultiSeriesTimeChart
+          config={previewConfig}
+          {...(alertEnabled && {
+            alertThreshold: editedAlert?.threshold,
+            alertThresholdType:
+              editedAlert?.type === 'presence' ? 'above' : 'below',
+          })}
+        />
       </div>
-      {editedChart.series[0].table === 'logs' ? (
+      {_editedChart.series[0].table === 'logs' ? (
         <>
           <div className="ps-2 mt-2 border-top border-dark">
             <div className="my-3 fs-7 fw-bold">Sample Matched Events</div>
