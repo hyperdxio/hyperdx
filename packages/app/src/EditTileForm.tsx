@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import Link from 'next/link';
 import produce from 'immer';
 import { Box, Button, Flex } from '@mantine/core';
 
@@ -14,7 +15,6 @@ import {
 import { Histogram } from './SVGIcons';
 import TabBar from './TabBar';
 import type { Alert, Chart, Dashboard } from './types';
-import Link from 'next/link';
 
 const EditTileForm = ({
   isLocalDashboard,
