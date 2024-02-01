@@ -200,7 +200,14 @@ export default function ServiceDashboardPage() {
               setSearchQuery={setSearchQuery}
             />
           </div>
-          <div className="d-flex" style={{ width: 350, height: 36 }}>
+          <form
+            className="d-flex"
+            style={{ width: 350, height: 36 }}
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+            }}
+          >
             <SearchTimeRangePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
@@ -208,7 +215,7 @@ export default function ServiceDashboardPage() {
                 onSearch(range);
               }}
             />
-          </div>
+          </form>
         </Group>
       </div>
       <Tabs
