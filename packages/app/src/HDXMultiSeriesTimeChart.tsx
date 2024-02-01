@@ -47,7 +47,7 @@ const MemoChart = memo(function MemoChart({
   graphResults: any[];
   setIsClickActive: (v: any) => void;
   isClickActive: any;
-  dateRange: [Date, Date];
+  dateRange: [Date, Date] | Readonly<[Date, Date]>;
   groupKeys: string[];
   lineNames: string[];
   alertThreshold?: number;
@@ -228,7 +228,7 @@ const HDXMultiSeriesTimeChart = memo(
     config: {
       series: ChartSeries[];
       granularity: Granularity;
-      dateRange: [Date, Date];
+      dateRange: [Date, Date] | Readonly<[Date, Date]>;
       seriesReturnType: 'ratio' | 'column';
     };
     onSettled?: () => void;
@@ -386,6 +386,7 @@ const HDXMultiSeriesTimeChart = memo(
           position: 'relative',
           width: '100%',
           height: '100%',
+          flexGrow: 1,
         }}
       >
         <div
