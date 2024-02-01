@@ -593,7 +593,8 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async ({
+// ONLY USED IN EXTERNAL API
+export const getMetricsTagsDEPRECATED = async ({
   teamId,
   startTime,
   endTime,
@@ -642,6 +643,150 @@ export const getMetricsTags = async ({
       name: string;
       tags: Record<string, string>[];
       unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsTagsDEPRECATED',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
+export const getMetricsNames = async ({
+  teamId,
+  startTime,
+  endTime,
+}: {
+  teamId: string;
+  startTime: number; // unix in ms
+  endTime: number; // unix in ms
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
+  // TODO: remove 'data_type' in the name field
+  const query = SqlString.format(
+    `
+      SELECT
+        any(is_delta) as is_delta,
+        any(is_monotonic) as is_monotonic,
+        any(unit) as unit,
+        data_type,
+        format('{} - {}', name, data_type) as name
+      FROM ??
+      WHERE (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      GROUP BY name, data_type
+      ORDER BY name
+    `,
+    [
+      tableName,
+      msToBigIntNs(startTime),
+      msToBigIntNs(endTime),
+      startTime,
+      endTime,
+    ],
+  );
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsNames',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
+export const getMetricsTags = async ({
+  endTime,
+  metrics,
+  startTime,
+  teamId,
+}: {
+  endTime: number; // unix in ms
+  metrics: {
+    name: string;
+    dataType: MetricsDataType;
+  }[];
+  startTime: number; // unix in ms
+  teamId: string;
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // TODO: theoretically, we should be able to traverse each tag's keys and values
+  // and intersect them to get the final result. Currently this is done on the client side.
+  const unions = metrics
+    .map(m =>
+      SqlString.format(
+        `
+      SELECT 
+        groupUniqArray(_string_attributes) AS tags,
+        data_type,
+        format('{} - {}', name, data_type) AS combined_name
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      GROUP BY name, data_type
+    `,
+        [
+          tableName,
+          m.name,
+          m.dataType,
+          msToBigIntNs(startTime),
+          msToBigIntNs(endTime),
+          startTime,
+          endTime,
+        ],
+      ),
+    )
+    .join(' UNION DISTINCT ');
+  const query = SqlString.format(
+    `
+      SELECT 
+        combined_name AS name,
+        data_type,
+        tags
+      FROM (?)
+      ORDER BY name
+    `,
+    [SqlString.raw(unions)],
+  );
+
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      name: string;
+      data_type: string;
+      tags: Record<string, string>[];
     }>
   >();
   logger.info({
