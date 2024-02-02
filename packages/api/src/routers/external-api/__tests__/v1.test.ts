@@ -28,7 +28,7 @@ describe('external api v1', () => {
   });
 
   it('GET /api/v1/metrics/tags', async () => {
-    jest.spyOn(clickhouse, 'getMetricsTags').mockResolvedValueOnce({
+    jest.spyOn(clickhouse, 'getMetricsTagsDEPRECATED').mockResolvedValueOnce({
       data: [
         {
           name: 'system.filesystem.usage - Sum',
@@ -67,7 +67,7 @@ describe('external api v1', () => {
       .set('Authorization', `Bearer ${user?.accessKey}`)
       .expect(200);
 
-    expect(clickhouse.getMetricsTags).toBeCalledTimes(1);
+    expect(clickhouse.getMetricsTagsDEPRECATED).toBeCalledTimes(1);
     expect(resp.body).toEqual({
       data: [
         {

@@ -194,12 +194,12 @@ router.get(
 
       const nowInMs = Date.now();
       const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+        Awaited<ReturnType<typeof clickhouse.getMetricsTagsDEPRECATED>>
       >(
-        `metrics-tags-${teamId}`,
+        `v1-api-metrics-tags-${teamId}`,
         ms('10m'),
         () =>
-          clickhouse.getMetricsTags({
+          clickhouse.getMetricsTagsDEPRECATED({
             // FIXME: fix it 5 days ago for now
             startTime: nowInMs - ms('5d'),
             endTime: nowInMs,
