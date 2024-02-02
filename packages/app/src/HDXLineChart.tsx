@@ -326,6 +326,9 @@ export const HDXLineChartTooltip = withErrorBoundary(
   },
 );
 
+/**
+ * @deprecated Use HDXMultiSeriesTimeChart instead
+ */
 const HDXLineChart = memo(
   ({
     config: {

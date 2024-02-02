@@ -19,7 +19,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import HDXLineChart from './HDXLineChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { InfraPodsStatusTable } from './KubernetesDashboardPage';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
@@ -218,19 +218,25 @@ export default function NamespaceDetailsSidePanel() {
                     CPU Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -242,19 +248,25 @@ export default function NamespaceDetailsSidePanel() {
                     Memory Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
