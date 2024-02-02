@@ -7,10 +7,10 @@ import { Granularity, isGranularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
 import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import type { Chart, ChartSeries } from './types';
+import type { Chart, ChartSeries, Dashboard } from './types';
 import { useQueryParam as useHDXQueryParam } from './useQueryParam';
 
-export const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
+const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
   encode: (
     chartSeries: ChartSeries[] | undefined,
   ): (string | null)[] | null | undefined => {
@@ -25,6 +25,42 @@ export const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
     );
   },
 };
+
+function getDashboard(chart: Chart) {
+  return {
+    _id: '',
+    name: 'My New Dashboard',
+    charts: [chart],
+    alerts: [],
+    tags: [],
+    query: '',
+  };
+}
+
+function getDashboardHref({
+  chart,
+  dateRange,
+  granularity,
+  timeQuery,
+}: {
+  chart: Chart;
+  dateRange: [Date, Date];
+  timeQuery: string;
+  granularity: Granularity | undefined;
+}) {
+  const dashboard = getDashboard(chart);
+
+  const params = new URLSearchParams({
+    config: JSON.stringify(dashboard),
+    tq: timeQuery,
+    ...(dateRange[0] != null && dateRange[1] != null
+      ? { from: dateRange[0].toISOString(), to: dateRange[1].toISOString() }
+      : {}),
+    ...(granularity ? { granularity } : {}),
+  });
+
+  return `/dashboards?${params.toString()}`;
+}
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
@@ -72,8 +108,8 @@ export default function GraphPage() {
       name: 'My New Chart',
       x: 0,
       y: 0,
-      w: 4,
-      h: 2,
+      w: 6,
+      h: 3,
       series: chartSeries,
       seriesReturnType: seriesReturnType ?? 'column',
     };
@@ -120,6 +156,12 @@ export default function GraphPage() {
             onTimeRangeSearch={onSearch}
             granularity={granularity}
             setGranularity={setGranularity}
+            createDashboardHref={getDashboardHref({
+              timeQuery: displayedTimeInputValue,
+              chart: editedChart,
+              dateRange: searchedTimeRange,
+              granularity,
+            })}
             hideSearch
             hideMarkdown
           />
