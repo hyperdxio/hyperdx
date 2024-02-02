@@ -5,7 +5,7 @@ import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 
 import { dateRangeToString } from './timeQuery';
-import { NumberFormat } from './types';
+import { MetricsDataType, NumberFormat } from './types';
 
 export function generateSearchUrl({
   query,
@@ -443,4 +443,14 @@ export const formatUptime = (seconds: number) => {
   } else {
     return `${Math.floor(seconds / 60 / 60 / 24)}d`;
   }
+};
+
+// FIXME: eventually we want to separate metric name into two fields
+export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
+  const [mName, mDataType] = (metricName ?? '').split(' - ');
+
+  return {
+    name: mName,
+    dataType: mDataType as MetricsDataType,
+  };
 };

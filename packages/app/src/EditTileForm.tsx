@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
+import Link from 'next/link';
 import produce from 'immer';
+import { Box, Button, Flex } from '@mantine/core';
 
 import { Granularity } from './ChartUtils';
 import {
@@ -30,6 +32,7 @@ const EditTileForm = ({
   onTimeRangeSearch,
   hideMarkdown,
   hideSearch,
+  createDashboardHref,
 }: {
   isLocalDashboard: boolean;
   chart: Chart | undefined;
@@ -46,6 +49,7 @@ const EditTileForm = ({
   setEditedChart?: (chart: Chart) => void;
   hideMarkdown?: boolean;
   hideSearch?: boolean;
+  createDashboardHref?: string;
 }) => {
   type Tab =
     | 'time'
@@ -77,69 +81,80 @@ const EditTileForm = ({
 
   return (
     <>
-      <TabBar
-        className="fs-8 mb-3"
-        items={[
-          {
-            text: (
-              <span>
-                <i className="bi bi-graph-up" /> Line Chart
-              </span>
-            ),
-            value: 'time',
-          },
-          ...(hideSearch === true
-            ? []
-            : [
-                {
-                  text: (
-                    <span>
-                      <i className="bi bi-card-list" /> Search Results
-                    </span>
-                  ),
-                  value: 'search' as const,
-                },
-              ]),
-          {
-            text: (
-              <span>
-                <i className="bi bi-table" /> Table
-              </span>
-            ),
-            value: 'table',
-          },
-          {
-            text: (
-              <span>
-                <Histogram width={12} color="#fff" /> Histogram
-              </span>
-            ),
-            value: 'histogram',
-          },
-          {
-            text: (
-              <span>
-                <i className="bi bi-123"></i> Number
-              </span>
-            ),
-            value: 'number',
-          },
-          ...(hideMarkdown === true
-            ? []
-            : [
-                {
-                  text: (
-                    <span>
-                      <i className="bi bi-markdown"></i> Markdown
-                    </span>
-                  ),
-                  value: 'markdown' as const,
-                },
-              ]),
-        ]}
-        activeItem={displayedTab}
-        onClick={onTabClick}
-      />
+      <Flex justify="content-between" align="center" mb="sm">
+        <TabBar
+          className="fs-8 flex-grow-1"
+          items={[
+            {
+              text: (
+                <span>
+                  <i className="bi bi-graph-up" /> Line Chart
+                </span>
+              ),
+              value: 'time',
+            },
+            ...(hideSearch === true
+              ? []
+              : [
+                  {
+                    text: (
+                      <span>
+                        <i className="bi bi-card-list" /> Search Results
+                      </span>
+                    ),
+                    value: 'search' as const,
+                  },
+                ]),
+            {
+              text: (
+                <span>
+                  <i className="bi bi-table" /> Table
+                </span>
+              ),
+              value: 'table',
+            },
+            {
+              text: (
+                <span>
+                  <Histogram width={12} color="#fff" /> Histogram
+                </span>
+              ),
+              value: 'histogram',
+            },
+            {
+              text: (
+                <span>
+                  <i className="bi bi-123"></i> Number
+                </span>
+              ),
+              value: 'number',
+            },
+            ...(hideMarkdown === true
+              ? []
+              : [
+                  {
+                    text: (
+                      <span>
+                        <i className="bi bi-markdown"></i> Markdown
+                      </span>
+                    ),
+                    value: 'markdown' as const,
+                  },
+                ]),
+          ]}
+          activeItem={displayedTab}
+          onClick={onTabClick}
+        />
+        {createDashboardHref != null && (
+          <Box ml="md">
+            <Link href={createDashboardHref} passHref>
+              <Button variant="outline" size="xs" component="a">
+                Create Dashboard
+              </Button>
+            </Link>
+          </Box>
+        )}
+      </Flex>
       {displayedTab === 'time' && chart != null && (
         <EditLineChartForm
           isLocalDashboard={isLocalDashboard}

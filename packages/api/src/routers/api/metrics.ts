@@ -9,7 +9,7 @@ import { SimpleCache } from '@/utils/redis';
 
 const router = express.Router();
 
-router.get('/tags', async (req, res, next) => {
+router.get('/names', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -18,12 +18,12 @@ router.get('/tags', async (req, res, next) => {
 
     const nowInMs = Date.now();
     const simpleCache = new SimpleCache<
-      Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
+      Awaited<ReturnType<typeof clickhouse.getMetricsNames>>
     >(
-      `metrics-tags-${teamId}`,
+      `metrics-names-${teamId}`,
       ms('10m'),
       () =>
-        clickhouse.getMetricsTags({
+        clickhouse.getMetricsNames({
           // FIXME: fix it 5 days ago for now
           startTime: nowInMs - ms('5d'),
           endTime: nowInMs,
@@ -44,6 +44,47 @@ router.get('/tags', async (req, res, next) => {
     next(e);
   }
 });
+
+router.post(
+  '/tags',
+  validateRequest({
+    body: z.object({
+      metrics: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(1024),
+            dataType: z.nativeEnum(clickhouse.MetricsDataType),
+          }),
+        )
+        .max(32),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+      const { metrics } = req.body;
+
+      const nowInMs = Date.now();
+      res.json(
+        await clickhouse.getMetricsTags({
+          metrics,
+          // FIXME: fix it 5 days ago for now
+          startTime: nowInMs - ms('5d'),
+          endTime: nowInMs,
+          teamId: teamId.toString(),
+        }),
+      );
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  },
+);
 
 router.post(
   '/chart',

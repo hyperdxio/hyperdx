@@ -12,7 +12,7 @@ import {
 } from './Alert';
 import api from './api';
 import { FieldSelect } from './ChartUtils';
-import HDXLineChart from './HDXLineChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { genEnglishExplanation } from './queryv2';
 import TabBar from './TabBar';
 import type {
@@ -82,11 +82,17 @@ function AlertForm({
 
   const previewChartConfig = useMemo(() => {
     return {
-      table: 'logs' as const,
-      aggFn: 'count' as const,
-      field: '',
-      groupBy: groupBy ?? '',
-      where: query,
+      series: [
+        {
+          type: 'time' as const,
+          table: 'logs' as const,
+          aggFn: 'count' as const,
+          field: '',
+          groupBy: groupBy != null ? [groupBy] : [],
+          where: query,
+        },
+      ],
+      seriesReturnType: 'column' as const,
       dateRange: intervalToDateRange(interval),
       granularity: intervalToGranularity(interval),
     };
@@ -179,7 +185,7 @@ function AlertForm({
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">Alert Threshold Preview</div>
         <div style={{ height: 400 }}>
-          <HDXLineChart
+          <HDXMultiSeriesTimeChart
             config={previewChartConfig}
             alertThreshold={threshold}
             alertThresholdType={type === 'presence' ? 'above' : 'below'}
