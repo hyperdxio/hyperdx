@@ -44,7 +44,6 @@ import {
 } from './ChartUtils';
 import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
-import HDXLineChart from './HDXLineChart';
 import LogLevel from './LogLevel';
 import {
   breadcrumbColumns,
@@ -2301,6 +2300,7 @@ const ExceptionSubpanel = ({
 };
 
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 
 const InfraSubpanelGroup = ({
   timestamp,
@@ -2382,16 +2382,22 @@ const InfraSubpanelGroup = ({
             CPU Usage (%)
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}cpu.utilization - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}cpu.utilization - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -2402,16 +2408,22 @@ const InfraSubpanelGroup = ({
             Memory Used
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}memory.usage - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}memory.usage - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_MEM_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -2422,16 +2434,22 @@ const InfraSubpanelGroup = ({
             Disk Available
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}filesystem.available - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}filesystem.available - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
