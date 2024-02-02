@@ -327,6 +327,11 @@ if .hdx_platform == "vector-internal" {
       if is_nullish(.sv) {
         .sv = .b.fly.app.name
       }
+
+      # TODO: maybe move this to post_logs
+      if !is_nullish(.b.message) {
+        .b._hdx_body = .b.message
+      }
     } else if .hdx_platform == "vercel" {
       .h = .b.host
       .st = downcase(.b.level) ?? downcase(.b.severity) ?? null
@@ -579,11 +584,6 @@ if is_object(.b) {
     if is_object(.r) {
       .r.message = .b._hdx_body
     }
-  }
-
-  # extract message from body
-  if !is_nullish(.b.message) && contains(string(.b._hdx_body) ?? "", string(.b.message) ?? "", case_sensitive: true) {
-    .b._hdx_body = .b.message
   }
 
   # add _hdx_body to raw logs (make it searchable)
