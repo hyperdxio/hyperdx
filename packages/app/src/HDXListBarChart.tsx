@@ -26,7 +26,14 @@ function ListItem({
   const item = (
     <Box>
       <Flex justify="space-between">
-        <Text size="sm">{title}</Text>
+        <Text
+          size="sm"
+          style={{ overflowWrap: 'anywhere' }}
+          pr="xs"
+          lineClamp={2}
+        >
+          {title}
+        </Text>
         <Text size="sm">{value}</Text>
       </Flex>
       <Box pt="xs">
