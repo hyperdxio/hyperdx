@@ -1459,7 +1459,7 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`, // FIXME: should we fallback to use aggFn as group
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
     `${label} as label`,
   ].join(',');
 
@@ -1531,9 +1531,15 @@ export const queryMultiSeriesChart = async ({
     .map((q, i) => `series_${i} AS (${q.query})`)
     .join(',\n');
 
-  // Only join on group bys if all queries have group bys
-  // TODO: This will not work for an array of group by fields
-  const allQueiesHaveGroupBy = queries.every(q => q.hasGroupBy);
+  // Build a subquery of the join key (ts + group) for all series to join on
+  // fixes the case where some series have more data points than others
+  // (due to missing groups or missing metrics)
+  const joinKeysSubquery = queries
+    .map((q, i) => {
+      const series = `series_${i}`;
+      return `SELECT ${series}.ts_bucket, ${series}.group FROM ${series}`;
+    })
+    .join(' UNION DISTINCT\n');
 
   let seriesIndexWithSorting = -1;
   let sortOrder: 'asc' | 'desc' = 'desc';
@@ -1546,13 +1552,14 @@ export const queryMultiSeriesChart = async ({
     }
   }
 
-  let leftJoin = '';
-  // Join every series after the first one
-  for (let i = 1; i < queries.length; i++) {
-    leftJoin += `LEFT JOIN series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
-      allQueiesHaveGroupBy ? ` AND series_${i}.group = series_0.group` : ''
-    }\n`;
-  }
+  const leftJoin = queries
+    .map((_, i) => {
+      return (
+        `LEFT JOIN series_${i} ON series_${i}.ts_bucket=join_keys.ts_bucket ` +
+        `AND series_${i}.group = join_keys.group`
+      );
+    })
+    .join('\n');
 
   const select =
     seriesReturnType === 'column'
@@ -1573,9 +1580,9 @@ export const queryMultiSeriesChart = async ({
       ,raw_groups AS (
         SELECT 
           ?,
-          series_0.ts_bucket as ts_bucket, 
-          series_0.group as group
-        FROM series_0 AS series_0
+          join_keys.ts_bucket as ts_bucket, 
+          join_keys.group as group
+        FROM (?) as join_keys
         ?
         WHERE ?
       ), groups AS (
@@ -1594,6 +1601,7 @@ export const queryMultiSeriesChart = async ({
     [
       SqlString.raw(seriesCTEs),
       SqlString.raw(select),
+      SqlString.raw(joinKeysSubquery),
       SqlString.raw(leftJoin),
       SqlString.raw(postGroupWhereClause),
       // Setting rank_order_by_value
