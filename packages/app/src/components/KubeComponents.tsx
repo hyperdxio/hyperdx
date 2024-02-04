@@ -37,7 +37,7 @@ const renderKubeEvent = (event: KubeEvent) => {
 
   return (
     <Timeline.Item key={event.id}>
-      <Link href={href} passHref>
+      <Link href={href} passHref legacyBehavior>
         <Anchor size={11} c="gray.6" title={event.timestamp}>
           {format(new Date(event.timestamp), FORMAT)}
         </Anchor>

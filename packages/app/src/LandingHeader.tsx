@@ -52,7 +52,7 @@ export default function LandingHeader({
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
                   <div className="d-flex align-items-center mx-2">
-                    <Link href={'/register'} passHref>
+                    <Link href={'/register'} passHref legacyBehavior>
                       <Button variant="outline-success" className="fs-7.5">
                         Setup Account
                       </Button>
@@ -61,7 +61,7 @@ export default function LandingHeader({
                 )}
               {isLoggedIn && (
                 <div className="d-flex align-items-center mx-2">
-                  <Link href="/search" passHref>
+                  <Link href="/search" passHref legacyBehavior>
                     <Button
                       variant="outline-success"
                       className="px-3"

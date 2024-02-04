@@ -48,6 +48,7 @@ import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 import 'react-modern-drawer/dist/index.css';
+import dynamic from 'next/dynamic';
 
 const formatDate = (
   date: Date,
@@ -388,7 +389,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
   );
 });
 
-export default function SearchPage() {
+function SearchPage() {
   const router = useRouter();
   const savedSearchId = router.query.savedSearchId;
 
@@ -816,17 +817,15 @@ export default function SearchPage() {
           <div className="d-flex">
             <Link
               href={generateSearchUrl(searchedQuery, [zoomOutFrom, zoomOutTo])}
+              className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <a className="text-muted-hover text-decoration-none fs-8 me-3">
-                <i className="bi bi-zoom-out"></i> Zoom Out
-              </a>
+              <i className="bi bi-zoom-out"></i>Zoom Out
             </Link>
             <Link
               href={generateSearchUrl(searchedQuery, [zoomInFrom, zoomInTo])}
+              className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <a className="text-muted-hover text-decoration-none fs-8 me-3">
-                <i className="bi bi-zoom-in"></i> Zoom In
-              </a>
+              <i className="bi bi-zoom-in"></i>Zoom In
             </Link>
             <Link
               href={generateChartUrl({
@@ -835,10 +834,9 @@ export default function SearchPage() {
                 field: undefined,
                 groupBy: ['level'],
               })}
+              className="text-muted-hover text-decoration-none fs-8"
             >
-              <a className="text-muted-hover text-decoration-none fs-8">
-                <i className="bi bi-plus-circle"></i> Create Chart
-              </a>
+              <i className="bi bi-plus-circle"></i>Create Chart
             </Link>
           </div>
         </div>
@@ -920,3 +918,11 @@ export default function SearchPage() {
 }
 
 SearchPage.getLayout = withAppNav;
+
+// TODO: Restore when we fix hydration errors
+// export default SearchPage;
+
+const SearchPageDynamic = dynamic(async () => SearchPage, { ssr: false });
+SearchPageDynamic.getLayout = withAppNav;
+
+export default SearchPageDynamic;

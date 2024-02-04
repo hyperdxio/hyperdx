@@ -9,6 +9,7 @@ import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Chart, ChartSeries, Dashboard } from './types';
 import { useQueryParam as useHDXQueryParam } from './useQueryParam';
+import dynamic from 'next/dynamic';
 
 const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
   encode: (
@@ -64,7 +65,7 @@ function getDashboardHref({
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-export default function GraphPage() {
+function GraphPage() {
   const [chartSeries, setChartSeries] = useHDXQueryParam<ChartSeries[]>(
     'series',
     [
@@ -174,3 +175,11 @@ export default function GraphPage() {
 }
 
 GraphPage.getLayout = withAppNav;
+
+// TODO: Restore when we fix hydratrion errors
+// export default GraphPage;
+
+const GraphPageDynamic = dynamic(async () => GraphPage, { ssr: false });
+GraphPageDynamic.getLayout = withAppNav;
+
+export default GraphPageDynamic;
