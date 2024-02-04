@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import type { QueryParamConfig } from 'serialize-query-params';
 import { decodeArray, encodeArray } from 'serialize-query-params';
@@ -9,7 +10,6 @@ import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Chart, ChartSeries, Dashboard } from './types';
 import { useQueryParam as useHDXQueryParam } from './useQueryParam';
-import dynamic from 'next/dynamic';
 
 const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
   encode: (
@@ -180,6 +180,7 @@ GraphPage.getLayout = withAppNav;
 // export default GraphPage;
 
 const GraphPageDynamic = dynamic(async () => GraphPage, { ssr: false });
+// @ts-ignore
 GraphPageDynamic.getLayout = withAppNav;
 
 export default GraphPageDynamic;

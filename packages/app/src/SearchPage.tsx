@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -48,7 +49,6 @@ import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 import 'react-modern-drawer/dist/index.css';
-import dynamic from 'next/dynamic';
 
 const formatDate = (
   date: Date,
@@ -563,7 +563,7 @@ function SearchPage() {
   );
 
   const generateChartUrl = useCallback(
-    ({ aggFn, field, groupBy, table }) => {
+    ({ aggFn, field, groupBy, table }: any) => {
       return `/chart?series=${encodeURIComponent(
         JSON.stringify({
           aggFn,
@@ -648,7 +648,7 @@ function SearchPage() {
   }, [setResultsMode]);
 
   const handleUpdateTags = useCallback(
-    newTags => {
+    (newTags: string[]) => {
       if (selectedSavedSearch?._id) {
         updateLogView.mutate(
           {
@@ -732,7 +732,6 @@ function SearchPage() {
           refetchLogViews();
         }}
       />
-
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
@@ -923,6 +922,7 @@ SearchPage.getLayout = withAppNav;
 // export default SearchPage;
 
 const SearchPageDynamic = dynamic(async () => SearchPage, { ssr: false });
+// @ts-ignore
 SearchPageDynamic.getLayout = withAppNav;
 
 export default SearchPageDynamic;

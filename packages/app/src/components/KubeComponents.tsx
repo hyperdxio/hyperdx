@@ -121,7 +121,7 @@ export const KubeTimeline = ({
   }, [allPodEvents, anchorEvent]);
 
   // Scroll to anchor event if it exists
-  const anchorRef = React.useCallback(node => {
+  const anchorRef = React.useCallback((node: any) => {
     if (node !== null) {
       // setting block to center causes the entire view to scroll
       // todo - figure out how to scroll just the timeline and center the anchor event
