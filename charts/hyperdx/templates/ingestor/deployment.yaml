@@ -1,0 +1,155 @@
+{{- if .Values.ingestor.enabled }}
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "hyperdx.ingestor.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: ingestor
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.ingestor.replicaCount }}
+  {{- if .Values.ingestor.updateStrategy }}
+  strategy: {{- toYaml .Values.ingestor.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.ingestor.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+      app.kubernetes.io/component: ingestor
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.ingestor.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        checksum/default-configmap: {{ include (print $.Template.BasePath "/ingestor/default-configmap.yaml") . | sha256sum }}
+        {{- if .Values.ingestor.extraConfig }}
+        checksum/extra-configmap: {{ include (print $.Template.BasePath "/ingestor/extra-configmap.yaml") . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+        app.kubernetes.io/component: ingestor
+    spec:
+      serviceAccountName: {{ template "hyperdx.serviceAccountName" . }}
+      {{- include "hyperdx.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.ingestor.automountServiceAccountToken }}
+      {{- if .Values.ingestor.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.ingestor.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.ingestor.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.ingestor.podAffinityPreset "component" "ingestor" "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.ingestor.podAntiAffinityPreset "component" "ingestor" "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.ingestor.nodeAffinityPreset.type "key" .Values.ingestor.nodeAffinityPreset.key "values" .Values.ingestor.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.ingestor.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.ingestor.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.ingestor.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.tolerations "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.ingestor.priorityClassName }}
+      priorityClassName: {{ .Values.ingestor.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.ingestor.schedulerName }}
+      schedulerName: {{ .Values.ingestor.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.ingestor.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.ingestor.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.ingestor.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.ingestor.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.ingestor.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: hdx-oss-ingestor
+          image: {{ template "hyperdx.ingestor.image" . }}
+          imagePullPolicy: {{ .Values.ingestor.image.pullPolicy }}
+          {{- if .Values.ingestor.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.ingestor.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.ingestor.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.ingestor.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.ingestor.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyperdx.ingestor.defaultConfigmapName" . }}
+            {{- if .Values.ingestor.extraConfigExistingConfigmap }}
+            - configMapRef:
+                name: {{ include "hyperdx.ingestor.extraConfigmapName" . }}
+            {{- end }}
+            {{- if .Values.ingestor.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.ingestor.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.ingestor.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.ingestor.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- if .Values.ingestor.resources }}
+          resources: {{- toYaml .Values.ingestor.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ingestor.containerPorts.http }}
+            - name: http-health
+              containerPort: {{ .Values.ingestor.containerPorts.health }}
+              protocol: TCP
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.ingestor.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.ingestor.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.ingestor.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http-health
+          {{- end }}
+          {{- if .Values.ingestor.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.ingestor.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.ingestor.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http-health
+          {{- end }}
+          {{- if .Values.ingestor.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.ingestor.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.ingestor.startupProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http-health
+          {{- end }}
+          {{- end }}
+          {{- if .Values.ingestor.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          {{- if .Values.ingestor.extraVolumeMounts }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.extraVolumeMounts "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.ingestor.sidecars }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.ingestor.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.ingestor.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}

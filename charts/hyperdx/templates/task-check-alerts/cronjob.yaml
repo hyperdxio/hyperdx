@@ -1,0 +1,67 @@
+{{- if .Values.taskCheckAlerts.enabled  }}
+apiVersion: {{ include "common.capabilities.cronjob.apiVersion" . }}
+kind: CronJob
+metadata:
+  name: {{ template "hyperdx.taskCheckAlerts.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" . | nindent 4 }}
+    {{- if .Values.commonLabels }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+    {{- end }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ .Values.taskCheckAlerts.cronjob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.taskCheckAlerts.cronjob.concurrencyPolicy }}
+  failedJobsHistoryLimit: {{ .Values.taskCheckAlerts.cronjob.failedJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.taskCheckAlerts.cronjob.successfulJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      {{- if .Values.taskCheckAlerts.cronjob.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.taskCheckAlerts.cronjob.ttlSecondsAfterFinished }}
+      {{- end }}
+      template:
+        metadata:
+          labels: {{- include "common.labels.standard" . | nindent 12 }}
+            app.kubernetes.io/component: task-check-alerts 
+            {{- if .Values.taskCheckAlerts.cronjob.podLabels }}
+            {{- include "common.tplvalues.render" ( dict "value" .Values.taskCheckAlerts.cronjob.podLabels "context" $ ) | nindent 12 }}
+            {{- end }}
+          {{- if .Values.taskCheckAlerts.cronjob.podAnnotations }}
+          annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.taskCheckAlerts.cronjob.podAnnotations "context" $ ) | nindent 12 }}
+          {{- end }}
+        spec:
+          {{- include "hyperdx.imagePullSecrets" . | nindent 10 }}
+          {{- if .Values.taskCheckAlerts.cronjob.affinity }}
+          affinity: {{- include "common.tplvalues.render" (dict "value" .Values.taskCheckAlerts.cronjob.affinity "context" $) | nindent 12 }}
+          {{- end }}
+          restartPolicy: {{ .Values.taskCheckAlerts.cronjob.restartPolicy }}
+          containers:
+            - name: {{ template "hyperdx.taskCheckAlerts.fullname" . }}
+              image: {{ template "hyperdx.taskCheckAlerts.image" . }}
+              imagePullPolicy: {{ .Values.taskCheckAlerts.cronjob.image.pullPolicy }}
+              {{- if .Values.taskCheckAlerts.cronjob.containerSecurityContext.enabled }}
+              securityContext: {{- omit .Values.taskCheckAlerts.cronjob.containerSecurityContext "enabled" | toYaml | nindent 16 }}
+              {{- end }}
+              {{- if .Values.taskCheckAlerts.cronjob.command }}
+              command: {{- include "common.tplvalues.render" (dict "value" .Values.taskCheckAlerts.cronjob.command "context" $) | nindent 16 }}
+              {{- else }}
+              command:
+                - /bin/bash
+                - -c
+              {{- end }}
+              {{- if .Values.taskCheckAlerts.cronjob.args }}
+              args: {{- include "common.tplvalues.render" (dict "value" .Values.taskCheckAlerts.cronjob.args "context" $) | nindent 16 }}
+              {{- else }}
+              args:
+                - node ./build/tasks/index.js check-alerts
+              {{- end }}
+              env:
+                {{/* Currently, when NODE_ENV === development the cronjob scheduling is builtin and the app never exits. Always override this here to prevent accidental continuous spawning of non-exiting jobs. */}}
+                - name: NODE_ENV 
+                  value: "production" 
+              envFrom:
+                - configMapRef:
+                    name: {{ include "hyperdx.taskCheckAlerts.defaultConfigmapName" . }}
+{{- end }}

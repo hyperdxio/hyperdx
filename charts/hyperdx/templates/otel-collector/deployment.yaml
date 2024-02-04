@@ -1,0 +1,154 @@
+{{- if .Values.otelCollector.enabled }}
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "hyperdx.otelCollector.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: otel-collector
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.otelCollector.replicaCount }}
+  {{- if .Values.otelCollector.updateStrategy }}
+  strategy: {{- toYaml .Values.otelCollector.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.otelCollector.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+      app.kubernetes.io/component: otel-collector
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.otelCollector.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        checksum/default-configmap: {{ include (print $.Template.BasePath "/otel-collector/default-configmap.yaml") . | sha256sum }}
+        {{- if .Values.otelCollector.extraConfig }}
+        checksum/extra-configmap: {{ include (print $.Template.BasePath "/otel-collector/extra-configmap.yaml") . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+        app.kubernetes.io/component: otel-collector
+    spec:
+      serviceAccountName: {{ template "hyperdx.serviceAccountName" . }}
+      {{- include "hyperdx.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.otelCollector.automountServiceAccountToken }}
+      {{- if .Values.otelCollector.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.otelCollector.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.otelCollector.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.otelCollector.podAffinityPreset "component" "otelCollector" "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.otelCollector.podAntiAffinityPreset "component" "otelCollector" "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.otelCollector.nodeAffinityPreset.type "key" .Values.otelCollector.nodeAffinityPreset.key "values" .Values.otelCollector.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.otelCollector.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.otelCollector.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.otelCollector.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.tolerations "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.otelCollector.priorityClassName }}
+      priorityClassName: {{ .Values.otelCollector.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.otelCollector.schedulerName }}
+      schedulerName: {{ .Values.otelCollector.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.otelCollector.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.otelCollector.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.otelCollector.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.otelCollector.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.otelCollector.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: hdx-oss-otel-collector
+          image: {{ template "hyperdx.otelCollector.image" . }}
+          imagePullPolicy: {{ .Values.otelCollector.image.pullPolicy }}
+          {{- if .Values.otelCollector.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.otelCollector.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.otelCollector.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.otelCollector.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.otelCollector.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyperdx.otelCollector.defaultConfigmapName" . }}
+            {{- if .Values.otelCollector.extraConfigExistingConfigmap }}
+            - configMapRef:
+                name: {{ include "hyperdx.otelCollector.extraConfigmapName" . }}
+            {{- end }}
+            {{- if .Values.otelCollector.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.otelCollector.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.otelCollector.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.otelCollector.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- if .Values.otelCollector.resources }}
+          resources: {{- toYaml .Values.otelCollector.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            {{- range $name, $port := .Values.otelCollector.containerPorts }}
+            - name: {{ $name }} 
+              containerPort: {{ $port }}
+            {{- end }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.otelCollector.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.otelCollector.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.otelCollector.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /
+              port: health
+          {{- end }}
+          {{- if .Values.otelCollector.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.otelCollector.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.otelCollector.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /
+              port: health
+          {{- end }}
+          {{- if .Values.otelCollector.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.otelCollector.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.otelCollector.startupProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /
+              port: health
+          {{- end }}
+          {{- end }}
+          {{- if .Values.otelCollector.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          {{- if .Values.otelCollector.extraVolumeMounts }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.extraVolumeMounts "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.otelCollector.sidecars }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.otelCollector.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.otelCollector.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.otelCollector.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}

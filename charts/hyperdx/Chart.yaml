@@ -1,0 +1,46 @@
+apiVersion: v2
+name: hyperdx
+description: A Helm chart for hyperdx
+type: application
+
+# This is the chart version. This version number should be incremented each time you make changes
+# to the chart and its templates, including the app version.
+# Versions are expected to follow Semantic Versioning (https://semver.org/)
+version: 0.1.0
+
+# This is the version number of the application being deployed. This version number should be
+# incremented each time you make changes to the application. Versions are not expected to
+# follow Semantic Versioning. They should reflect the version the application is using.
+# It is recommended to use it with quotes.
+appVersion: '1.6.0'
+
+home: https://hyperdx.io
+
+dependencies:
+  - name: common
+    repository: oci://registry-1.docker.io/bitnamicharts
+    tags:
+      - bitnami-common
+    version: 2.x.x
+  - name: redis
+    repository: oci://registry-1.docker.io/bitnamicharts
+    tags:
+      - redis
+    version: 18.x.x
+    condition: redis.enabled
+  - name: clickhouse
+    repository: oci://registry-1.docker.io/bitnamicharts
+    tags:
+      - clickhouse
+    version: 4.x.x 
+    condition: clickhouse.enabled
+  - name: mongodb
+    repository: oci://registry-1.docker.io/bitnamicharts
+    tags:
+      - mongodb
+    version: 14.x.x 
+    condition: mongodb.enabled
+  - condition: kong.enabled
+    name: kong
+    repository: oci://registry-1.docker.io/bitnamicharts
+    version: 10.x.x

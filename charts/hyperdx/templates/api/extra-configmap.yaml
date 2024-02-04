@@ -1,0 +1,14 @@
+{{- if and .Values.api.enabled .Values.api.extraConfig (not .Values.api.extraConfigExistingConfigmap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-extra" (include "hyperdx.api.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    api.kubernetes.io/part-of: hyperdx
+    api.kubernetes.io/component: api
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data: {{- include "common.tplvalues.render" (dict "value" .Values.api.extraConfig "context" $) | nindent 2 }}
+{{- end }}

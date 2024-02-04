@@ -1,0 +1,49 @@
+{{- if and .Values.kong.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "hyperdx-kong-declarative-conf"
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx 
+    app.kubernetes.io/component: kong
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data:
+  kong.yml.tpl: |
+    _format_version: "1.1"
+
+    services:
+      - name: api-v1
+        _comment: "api: /api/v1/* -> {{ include "hyperdx.api.url" . }}"
+        url: {{ include "hyperdx.api.url" . }}
+        routes:
+          - name: api-all 
+            strip_path: true
+            paths:
+              - /api/v1/
+        plugins:
+          - name: cors
+
+      - name: app 
+        _comment: "dashboard-app: /* -> {{ include "hyperdx.app.url" . }}"
+        url: {{ include "hyperdx.app.url" . }}
+        routes:
+          - name: app-all
+            strip_path: false
+            paths:
+              - /
+        plugins:
+          - name: cors
+
+      - name: otel-collector 
+        _comment: "otel-collector: /collector/ -> {{ include "hyperdx.otelCollector.url" . }}"
+        url: {{ include "hyperdx.otelCollector.url" . }}
+        routes:
+          - name: collector-all 
+            strip_path: true
+            paths:
+              - /collector/
+        plugins:
+          - name: cors
+{{- end }}

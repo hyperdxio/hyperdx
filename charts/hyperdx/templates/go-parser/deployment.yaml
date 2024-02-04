@@ -1,0 +1,152 @@
+{{- if .Values.goParser.enabled }}
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "hyperdx.goParser.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: go-parser
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.goParser.replicaCount }}
+  {{- if .Values.goParser.updateStrategy }}
+  strategy: {{- toYaml .Values.goParser.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.goParser.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+      app.kubernetes.io/component: go-parser
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.goParser.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.goParser.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        checksum/default-configmap: {{ include (print $.Template.BasePath "/go-parser/default-configmap.yaml") . | sha256sum }}
+        {{- if .Values.goParser.extraConfig }}
+        checksum/extra-configmap: {{ include (print $.Template.BasePath "/go-parser/extra-configmap.yaml") . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+        app.kubernetes.io/component: go-parser
+    spec:
+      serviceAccountName: {{ template "hyperdx.serviceAccountName" . }}
+      {{- include "hyperdx.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.goParser.automountServiceAccountToken }}
+      {{- if .Values.goParser.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.goParser.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.goParser.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.goParser.podAffinityPreset "component" "go-parser" "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.goParser.podAntiAffinityPreset "component" "go-parser" "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.goParser.nodeAffinityPreset.type "key" .Values.goParser.nodeAffinityPreset.key "values" .Values.goParser.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.goParser.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.goParser.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.goParser.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.tolerations "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.goParser.priorityClassName }}
+      priorityClassName: {{ .Values.goParser.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.goParser.schedulerName }}
+      schedulerName: {{ .Values.goParser.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.goParser.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.goParser.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.goParser.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.goParser.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.goParser.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: hdx-oss-go-parser 
+          image: {{ template "hyperdx.goParser.image" . }}
+          imagePullPolicy: {{ .Values.goParser.image.pullPolicy }}
+          {{- if .Values.goParser.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.goParser.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.goParser.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.goParser.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.goParser.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.goParser.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyperdx.goParser.defaultConfigmapName" . }}
+            {{- if .Values.goParser.extraConfigExistingConfigmap }}
+            - configMapRef:
+                name: {{ include "hyperdx.goParser.extraConfigmapName" . }}
+            {{- end }}
+            {{- if .Values.goParser.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.goParser.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.goParser.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.goParser.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- if .Values.goParser.resources }}
+          resources: {{- toYaml .Values.goParser.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.goParser.containerPorts.http }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.goParser.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.goParser.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.goParser.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.goParser.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.goParser.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.goParser.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.goParser.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.goParser.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.goParser.startupProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- end }}
+          {{- if .Values.goParser.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.goParser.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          {{- if .Values.goParser.extraVolumeMounts }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.goParser.extraVolumeMounts "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.goParser.sidecars }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.goParser.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.goParser.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.goParser.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}
