@@ -1,29 +1,52 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
-import type { QueryParamConfig } from 'serialize-query-params';
+import { queryTypes, useQueryStates } from 'next-usequerystate';
 import { decodeArray, encodeArray } from 'serialize-query-params';
 
-import { Granularity, isGranularity } from './ChartUtils';
+import { Granularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
 import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import type { Chart, ChartSeries, Dashboard } from './types';
-import { useQueryParam as useHDXQueryParam } from './useQueryParam';
+import type { Chart, ChartSeries } from './types';
 
-const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
-  encode: (
-    chartSeries: ChartSeries[] | undefined,
-  ): (string | null)[] | null | undefined => {
-    return encodeArray(chartSeries?.map(chart => JSON.stringify(chart)));
+const ChartSeriesParam = {
+  serialize: (chartSeries: ChartSeries[] | undefined): string => {
+    return encodeArray(
+      chartSeries?.map(chart => JSON.stringify(chart)),
+    ) as unknown as string;
   },
-  decode: (
-    input: string | (string | null)[] | null | undefined,
-  ): ChartSeries[] | undefined => {
+  parse: (query: string): ChartSeries[] => {
+    console.log('q', query);
+
+    if (query == null || query == '') {
+      console.log('hi!');
+
+      return [
+        {
+          table: 'logs',
+          type: 'time',
+          aggFn: 'count',
+          field: undefined,
+          where: '',
+          groupBy: [],
+        },
+      ];
+    }
     // TODO: Validation
-    return decodeArray(input)?.flatMap(series =>
+    return decodeArray(query)?.flatMap(series =>
       series != null ? [JSON.parse(series)] : [],
     );
   },
+  defaultValue: [
+    {
+      table: 'logs',
+      type: 'time',
+      aggFn: 'count',
+      field: undefined,
+      where: '',
+      groupBy: [],
+    },
+  ],
 };
 
 function getDashboard(chart: Chart) {
@@ -65,42 +88,42 @@ function getDashboardHref({
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 export default function GraphPage() {
-  const [chartSeries, setChartSeries] = useHDXQueryParam<ChartSeries[]>(
-    'series',
-    [
-      {
-        table: 'logs',
-        type: 'time',
-        aggFn: 'count',
-        field: undefined,
-        where: '',
-        groupBy: [],
-      },
-    ],
-    {
-      queryParamConfig: ChartSeriesParam,
+  const [queryState, setQueryState] = useQueryStates({
+    // series: queryTypes.json<ChartSeries[]>().withDefault([
+    //   {
+    //     table: 'logs',
+    //     type: 'time',
+    //     aggFn: 'count',
+    //     field: undefined,
+    //     where: '',
+    //     groupBy: [],
+    //   },
+    // ]),
+    series: ChartSeriesParam,
+    granularity: queryTypes.stringEnum<Granularity>([
+      ...Object.values(Granularity),
+    ]),
+    seriesReturnType: queryTypes.stringEnum<'ratio' | 'column'>([
+      'ratio',
+      'column',
+    ]),
+  });
+
+  const setGranularity = useCallback(
+    (granularity: Granularity | undefined) => {
+      setQueryState({ granularity: granularity ?? null });
     },
+    [setQueryState],
   );
 
-  const [granularity, setGranularity] = useHDXQueryParam<
-    Granularity | undefined
-  >('granularity', undefined, {
-    queryParamConfig: {
-      encode: (value: Granularity | undefined) => value ?? undefined,
-      decode: (input: string | (string | null)[] | null | undefined) =>
-        typeof input === 'string' && isGranularity(input) ? input : undefined,
-    },
-  });
-
-  const [seriesReturnType, setSeriesReturnType] = useHDXQueryParam<
-    'ratio' | 'column' | undefined
-  >('seriesReturnType', undefined, {
-    queryParamConfig: {
-      encode: (value: 'ratio' | 'column' | undefined) => value ?? undefined,
-      decode: (input: string | (string | null)[] | null | undefined) =>
-        input === 'ratio' ? 'ratio' : 'column',
-    },
-  });
+  const chartSeries = queryState.series;
+  console.log(chartSeries, queryState);
+  const granularity =
+    queryState.granularity == null ? undefined : queryState.granularity;
+  const seriesReturnType =
+    queryState.seriesReturnType == null
+      ? undefined
+      : queryState.seriesReturnType;
 
   const editedChart = useMemo<Chart>(() => {
     return {
@@ -117,10 +140,12 @@ export default function GraphPage() {
 
   const setEditedChart = useCallback(
     (chart: Chart) => {
-      setChartSeries(chart.series);
-      setSeriesReturnType(chart.seriesReturnType);
+      setQueryState({
+        series: chart.series,
+        seriesReturnType: chart.seriesReturnType,
+      });
     },
-    [setChartSeries, setSeriesReturnType],
+    [setQueryState],
   );
 
   const { isReady, searchedTimeRange, displayedTimeInputValue, onSearch } =

@@ -147,7 +147,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       .catch(err => {
         // ignore
       });
-  });
+  }, []);
 
   const getLayout = Component.getLayout ?? (page => page);
 

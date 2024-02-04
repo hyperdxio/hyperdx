@@ -46,6 +46,7 @@
     "next": "^12.3.4",
     "next-query-params": "^4.1.0",
     "next-seo": "^4.28.1",
+    "next-usequerystate": "1.7.3",
     "nextra": "2.0.1",
     "nextra-theme-docs": "^2.0.2",
     "normalize-url": "4",
