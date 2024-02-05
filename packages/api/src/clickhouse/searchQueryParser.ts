@@ -54,6 +54,11 @@ const customColumnMap: { [level: string]: string } = {
   userEmail: '_user_email',
   userId: '_user_id',
   userName: '_user_name',
+  // TODO: eventually we might want to materialize these fields
+  'object.regarding.kind':
+    "coalesce(_string_attributes['object.regarding.kind'], _string_attributes['object.involvedObject.kind'])",
+  'object.regarding.name':
+    "coalesce(_string_attributes['object.regarding.name'], _string_attributes['object.involvedObject.name'])",
 };
 export const customColumnMapType: {
   [property: string]: 'string' | 'number' | 'bool';
