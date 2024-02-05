@@ -194,14 +194,23 @@ router.get(
 
       const nowInMs = Date.now();
       const simpleCache = new SimpleCache<
-        Awaited<ReturnType<typeof clickhouse.getMetricsTags>>
-      >(`metrics-tags-${teamId}`, ms('10m'), () =>
-        clickhouse.getMetricsTags({
-          // FIXME: fix it 5 days ago for now
-          startTime: nowInMs - ms('5d'),
-          endTime: nowInMs,
-          teamId: teamId.toString(),
-        }),
+        Awaited<ReturnType<typeof clickhouse.getMetricsTagsDEPRECATED>>
+      >(
+        `v1-api-metrics-tags-${teamId}`,
+        ms('10m'),
+        () =>
+          clickhouse.getMetricsTagsDEPRECATED({
+            // FIXME: fix it 5 days ago for now
+            startTime: nowInMs - ms('5d'),
+            endTime: nowInMs,
+            teamId: teamId.toString(),
+          }),
+        result => {
+          if (result.rows != null) {
+            return result.rows > 0;
+          }
+          return false;
+        },
       );
       const tags = await simpleCache.get();
       res.json({

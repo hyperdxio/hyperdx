@@ -23,30 +23,36 @@ import {
   useQueryParam,
   withDefault,
 } from 'use-query-params';
-import { Badge, Transition } from '@mantine/core';
+import {
+  Badge,
+  Box,
+  Button as MButton,
+  CopyButton,
+  Flex,
+  Group,
+  Paper,
+  Popover,
+  ScrollArea,
+  Text,
+  Tooltip,
+  Transition,
+} from '@mantine/core';
 
 import api from './api';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
-import {
-  EditHistogramChartForm,
-  EditLineChartForm,
-  EditMarkdownChartForm,
-  EditNumberChartForm,
-  EditSearchChartForm,
-  EditTableChartForm,
-} from './EditChartForm';
+import EditTileForm from './EditTileForm';
 import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
+import { dashboardToTerraform, dashboardToTerraformImport } from './iacUtils';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
-import { FloppyIcon, Histogram } from './SVGIcons';
-import TabBar from './TabBar';
+import { FloppyIcon, TerraformFlatIcon } from './SVGIcons';
 import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Alert, Chart, Dashboard } from './types';
@@ -325,7 +331,7 @@ const Tile = forwardRef(
   },
 );
 
-const EditChartModal = ({
+const EditTileModal = ({
   isLocalDashboard,
   chart,
   alerts,
@@ -342,25 +348,6 @@ const EditChartModal = ({
   onClose: () => void;
   show: boolean;
 }) => {
-  type Tab =
-    | 'time'
-    | 'search'
-    | 'histogram'
-    | 'markdown'
-    | 'number'
-    | 'table'
-    | undefined;
-
-  const [tab, setTab] = useState<Tab>(undefined);
-  const displayedTab = tab ?? chart?.series?.[0]?.type ?? 'time';
-
-  const onTabClick = useCallback(
-    (newTab: Tab) => {
-      setTab(newTab);
-    },
-    [setTab],
-  );
-
   return (
     <ZIndexContext.Provider value={1055}>
       <Modal
@@ -371,127 +358,18 @@ const EditChartModal = ({
         size="xl"
         enforceFocus={false}
       >
-        <Modal.Body className="bg-hdx-dark rounded">
-          <TabBar
-            className="fs-8 mb-3"
-            items={[
-              {
-                text: (
-                  <span>
-                    <i className="bi bi-graph-up" /> Line Chart
-                  </span>
-                ),
-                value: 'time',
-              },
-              {
-                text: (
-                  <span>
-                    <i className="bi bi-card-list" /> Search Results
-                  </span>
-                ),
-                value: 'search',
-              },
-              {
-                text: (
-                  <span>
-                    <i className="bi bi-table" /> Table
-                  </span>
-                ),
-                value: 'table',
-              },
-              {
-                text: (
-                  <span>
-                    <Histogram width={12} color="#fff" /> Histogram
-                  </span>
-                ),
-                value: 'histogram',
-              },
-              {
-                text: (
-                  <span>
-                    <i className="bi bi-123"></i> Number
-                  </span>
-                ),
-                value: 'number',
-              },
-              {
-                text: (
-                  <span>
-                    <i className="bi bi-markdown"></i> Markdown
-                  </span>
-                ),
-                value: 'markdown',
-              },
-            ]}
-            activeItem={displayedTab}
-            onClick={onTabClick}
+        <Modal.Body
+          className="bg-hdx-dark rounded d-flex flex-column"
+          style={{ minHeight: '80vh' }}
+        >
+          <EditTileForm
+            isLocalDashboard={isLocalDashboard}
+            chart={chart}
+            alerts={alerts}
+            onSave={onSave}
+            onClose={onClose}
+            dateRange={dateRange}
           />
-          {displayedTab === 'time' && chart != null && (
-            <EditLineChartForm
-              isLocalDashboard={isLocalDashboard}
-              chart={produce(chart, draft => {
-                for (const series of draft.series) {
-                  series.type = 'time';
-                }
-              })}
-              alerts={alerts}
-              onSave={onSave}
-              onClose={onClose}
-              dateRange={dateRange}
-            />
-          )}
-          {displayedTab === 'table' && chart != null && (
-            <EditTableChartForm
-              chart={produce(chart, draft => {
-                for (const series of draft.series) {
-                  series.type = 'table';
-                }
-              })}
-              onSave={onSave}
-              onClose={onClose}
-              dateRange={dateRange}
-            />
-          )}
-          {displayedTab === 'histogram' && chart != null && (
-            <EditHistogramChartForm
-              chart={produce(chart, draft => {
-                draft.series[0].type = 'histogram';
-              })}
-              onSave={onSave}
-              onClose={onClose}
-              dateRange={dateRange}
-            />
-          )}
-          {displayedTab === 'search' && chart != null && (
-            <EditSearchChartForm
-              chart={produce(chart, draft => {
-                draft.series[0].type = 'search';
-              })}
-              onSave={onSave}
-              onClose={onClose}
-              dateRange={dateRange}
-            />
-          )}
-          {displayedTab === 'number' && chart != null && (
-            <EditNumberChartForm
-              chart={produce(chart, draft => {
-                draft.series[0].type = 'number';
-              })}
-              onSave={onSave}
-              onClose={onClose}
-              dateRange={dateRange}
-            />
-          )}
-          {displayedTab === 'markdown' && chart != null && (
-            <EditMarkdownChartForm
-              chart={produce(chart, draft => {
-                draft.series[0].type = 'markdown';
-              })}
-              onSave={onSave}
-              onClose={onClose}
-            />
-          )}
         </Modal.Body>
       </Modal>
     </ZIndexContext.Provider>
@@ -548,7 +426,10 @@ function DashboardName({
           </Button>
         </form>
       ) : (
-        <div className="fs-4 d-flex align-items-center">
+        <div
+          className="fs-4 d-flex align-items-center"
+          style={{ minWidth: 100 }}
+        >
           <div className="text-truncate" style={{ minWidth: 100 }}>
             {name}
           </div>
@@ -630,6 +511,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 export default function DashboardPage() {
   const { data: dashboardsData, isLoading: isDashboardsLoading } =
     api.useDashboards();
+  const { data: meData } = api.useMe();
   const updateDashboard = api.useUpdateDashboard();
   const createDashboard = api.useCreateDashboard();
   const saveAlert = api.useSaveAlert();
@@ -937,7 +819,7 @@ export default function DashboardPage() {
         <title>Dashboard - HyperDX</title>
       </Head>
       {dashboard != null ? (
-        <EditChartModal
+        <EditTileModal
           isLocalDashboard={isLocalDashboard}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
@@ -951,7 +833,10 @@ export default function DashboardPage() {
       <div className="flex-grow-1">
         <div className="d-flex justify-content-between p-3 align-items-center">
           {dashboard != null && (
-            <div className="d-flex align-items-center">
+            <div
+              className="d-flex align-items-center"
+              style={{ minWidth: 150 }}
+            >
               <DashboardName
                 key={`${dashboardHash}`}
                 name={dashboard?.name}
@@ -1037,11 +922,96 @@ export default function DashboardPage() {
                 />
               </form>
             </div>
+            <Popover width={700} position="bottom" withArrow shadow="md">
+              <Popover.Target>
+                <Tooltip
+                  label="Get Terraform configuration for this dashboard"
+                  color="dark"
+                >
+                  <Button
+                    variant="dark"
+                    className="text-muted-hover-black me-2 text-nowrap"
+                    size="sm"
+                  >
+                    <TerraformFlatIcon width={14} />
+                  </Button>
+                </Tooltip>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Badge size="xs" mb="sm">
+                  Beta
+                </Badge>
+                {dashboard?._id != null && (
+                  <>
+                    <Flex justify="space-between" align="center" mb="md">
+                      <Text size="lg" c="gray.4" span>
+                        Terraform Resource Import Commands
+                      </Text>
+                      <CopyButton value={dashboardToTerraformImport(dashboard)}>
+                        {({ copied, copy }) => (
+                          <MButton
+                            color={copied ? 'green' : 'dark.1'}
+                            size="xs"
+                            variant="subtle"
+                            onClick={copy}
+                          >
+                            {copied
+                              ? 'Commands Copied'
+                              : 'Copy Import Commands'}
+                          </MButton>
+                        )}
+                      </CopyButton>
+                    </Flex>
+                    <Paper shadow="none" radius="md" bg="dark.8" mb="md">
+                      <ScrollArea p="sm">
+                        <pre style={{ margin: 0 }}>
+                          {dashboardToTerraformImport(dashboard)}
+                        </pre>
+                      </ScrollArea>
+                    </Paper>
+                  </>
+                )}
+                <Flex justify="space-between" align="center" mb="md">
+                  <Text size="lg" c="gray.4" span>
+                    Dashboard Configuration
+                  </Text>
+                  <CopyButton
+                    value={dashboardToTerraform(
+                      dashboard,
+                      meData?.accessKey ?? 'YOUR_PERSONAL_API_ACCESS_KEY',
+                    )}
+                  >
+                    {({ copied, copy }) => (
+                      <MButton
+                        color={copied ? 'green' : 'dark.1'}
+                        size="xs"
+                        variant="subtle"
+                        onClick={copy}
+                      >
+                        {copied ? 'Configuration Copied' : 'Copy Configuration'}
+                      </MButton>
+                    )}
+                  </CopyButton>
+                </Flex>
+
+                <Paper shadow="none" radius="md" bg="dark.8">
+                  <ScrollArea h={450} p="sm">
+                    <pre>
+                      {dashboardToTerraform(
+                        dashboard,
+                        meData?.accessKey ?? 'YOUR_PERSONAL_API_ACCESS_KEY',
+                      )}
+                    </pre>
+                  </ScrollArea>
+                </Paper>
+              </Popover.Dropdown>
+            </Popover>
             <Button
               variant="outline-success"
               className="text-muted-hover-black me-2 text-nowrap"
               size="sm"
               onClick={onAddChart}
+              style={{ minWidth: 120 }}
             >
               <i className="bi bi-plus me-1"></i>
               Add Tile

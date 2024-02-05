@@ -11,6 +11,7 @@ import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
 import type { AggFn, ChartSeries, SourceTable } from './types';
 import { NumberFormat } from './types';
+import { legacyMetricNameToNameAndDataType } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -64,6 +65,10 @@ export enum Granularity {
   SevenDay = '7 day',
   ThirtyDay = '30 day',
 }
+
+export const isGranularity = (value: string): value is Granularity => {
+  return Object.values(Granularity).includes(value as Granularity);
+};
 
 const seriesDisplayName = (
   s: ChartSeries,
@@ -172,7 +177,7 @@ export function seriesToSearchQuery({
           aggFn !== 'count' && field ? ` ${field}:*` : ''
         }${
           'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
-            ? ` ${s.groupBy}:${groupByValue}`
+            ? ` ${s.groupBy}:${groupByValue ?? '*'}`
             : ''
         }`.trim();
       }
@@ -243,7 +248,10 @@ export function usePropertyOptions(types: ('number' | 'string' | 'bool')[]) {
 }
 
 function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const metrics = (metricNames ?? []).map(m => ({
+    ...legacyMetricNameToNameAndDataType(m),
+  }));
+  const { data: metricTagsData } = api.useMetricsTags(metrics);
 
   const options = useMemo(() => {
     let tagNameSet = new Set<string>();
@@ -282,7 +290,7 @@ function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
         label: tagName,
       })),
     ];
-  }, [metricTagsData, metricNames]);
+  }, [metricTagsData]);
 
   return options;
 }
@@ -338,7 +346,7 @@ export function MetricSelect({
   setMetricName: (value: string | undefined) => void;
 }) {
   // TODO: Dedup with metric rate checkbox
-  const { data: metricTagsData, isLoading, isError } = api.useMetricsTags();
+  const { data: metricNamesData, isLoading, isError } = api.useMetricsNames();
 
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
@@ -364,7 +372,7 @@ export function MetricSelect({
           isError={isError}
           value={metricName}
           setValue={name => {
-            const metricType = metricTagsData?.data?.find(
+            const metricType = metricNamesData?.data?.find(
               metric => metric.name === name,
             )?.data_type;
 
@@ -396,12 +404,12 @@ export function MetricRateSelect({
   setIsRate: (isRate: boolean) => void;
   metricName: string | undefined | null;
 }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const metricType = useMemo(() => {
-    return metricTagsData?.data?.find(metric => metric.name === metricName)
+    return metricNamesData?.data?.find(metric => metric.name === metricName)
       ?.data_type;
-  }, [metricTagsData, metricName]);
+  }, [metricNamesData, metricName]);
 
   return (
     <>
@@ -431,16 +439,16 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
 }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const options = useMemo(() => {
     return (
-      metricTagsData?.data?.map(entry => ({
+      metricNamesData?.data?.map(entry => ({
         value: entry.name,
         label: entry.name,
       })) ?? []
     );
-  }, [metricTagsData]);
+  }, [metricNamesData]);
 
   return (
     <AsyncSelect
