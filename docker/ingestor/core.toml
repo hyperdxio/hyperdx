@@ -471,7 +471,7 @@ if .hdx_platform == "vector-internal" {
           .b.level = .b.object.type
         }
 
-        # check event format (cluster event vs raw event)
+        # check event format (cluster legacy v1 vs v1 events)
         _targetObject = {}
         if .b.object.apiVersion == "events.k8s.io/v1" && is_object(.b.object.regarding) {
           _targetObject = .b.object.regarding
