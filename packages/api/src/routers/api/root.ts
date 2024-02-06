@@ -27,7 +27,7 @@ const registrationSchema = z
         'Password must include at least one number',
       )
       .refine(
-        pass => /[!@#$%^&*(),.?":{}|<>-;]/.test(pass),
+        pass => /[!@#$%^&*(),.?":{}|<>;-]/.test(pass),
         'Password must include at least one special character',
       ),
     confirmPassword: z.string(),
