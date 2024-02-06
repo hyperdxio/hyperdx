@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 drain3 = "^0.9.11"
-fastapi = "^0.98.0"
+fastapi = "^0.109.1"
 gunicorn = "^20.1.0"
 uvicorn = "^0.22.0"
 hyperdx-opentelemetry = "0.0.4"
