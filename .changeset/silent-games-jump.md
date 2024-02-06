@@ -2,4 +2,4 @@
 '@hyperdx/api': patch
 ---
 
-Support '-' in password
+Support '-' and ';' in password
