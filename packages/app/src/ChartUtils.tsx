@@ -9,7 +9,7 @@ import api from './api';
 import Checkbox from './Checkbox';
 import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
-import type { AggFn, ChartSeries, SourceTable } from './types';
+import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';
 import { legacyMetricNameToNameAndDataType } from './utils';
 
@@ -38,16 +38,27 @@ export const AGG_FNS = [
   { value: 'count_distinct' as const, label: 'Count Distinct' },
 ];
 
-export const METRIC_AGG_FNS = [
-  { value: 'sum' as const, label: 'Sum' },
-  { value: 'p99' as const, label: '99th Percentile' },
-  { value: 'p95' as const, label: '95th Percentile' },
-  { value: 'p90' as const, label: '90th Percentile' },
-  { value: 'p50' as const, label: 'Median' },
-  { value: 'avg' as const, label: 'Average' },
-  { value: 'max' as const, label: 'Maximum' },
-  { value: 'min' as const, label: 'Minimum' },
-];
+export const getMetricAggFns = (dataType: MetricsDataType) => {
+  if (dataType === MetricsDataType.Histogram) {
+    return [
+      { value: 'p99' as const, label: '99th Percentile' },
+      { value: 'p95' as const, label: '95th Percentile' },
+      { value: 'p90' as const, label: '90th Percentile' },
+      { value: 'p50' as const, label: 'Median' },
+    ];
+  }
+
+  return [
+    { value: 'sum' as const, label: 'Sum' },
+    { value: 'p99' as const, label: '99th Percentile' },
+    { value: 'p95' as const, label: '95th Percentile' },
+    { value: 'p90' as const, label: '90th Percentile' },
+    { value: 'p50' as const, label: 'Median' },
+    { value: 'avg' as const, label: 'Average' },
+    { value: 'max' as const, label: 'Maximum' },
+    { value: 'min' as const, label: 'Minimum' },
+  ];
+};
 
 export enum Granularity {
   ThirtySecond = '30 second',
@@ -583,6 +594,9 @@ export function ChartSeriesForm({
       }
     }
   };
+  const metricAggFns = getMetricAggFns(
+    legacyMetricNameToNameAndDataType(field)?.dataType,
+  );
 
   return (
     <div>
@@ -616,9 +630,9 @@ export function ChartSeriesForm({
             />
           ) : (
             <Select
-              options={METRIC_AGG_FNS}
+              options={metricAggFns}
               className="ds-select"
-              value={METRIC_AGG_FNS.find(
+              value={metricAggFns.find(
                 v => v.value === aggFn.replace('_rate', ''),
               )}
               onChange={opt => _setAggFn(opt?.value ?? 'sum')}
@@ -920,6 +934,9 @@ export function ChartSeriesFormCompact({
       }
     }
   };
+  const metricAggFns = getMetricAggFns(
+    legacyMetricNameToNameAndDataType(field)?.dataType,
+  );
 
   return (
     <div>
@@ -944,9 +961,9 @@ export function ChartSeriesFormCompact({
             />
           ) : (
             <Select
-              options={METRIC_AGG_FNS}
+              options={metricAggFns}
               className="ds-select w-auto text-nowrap"
-              value={METRIC_AGG_FNS.find(
+              value={metricAggFns.find(
                 v => v.value === aggFn.replace('_rate', ''),
               )}
               onChange={opt => _setAggFn(opt?.value ?? 'sum')}
