@@ -1592,7 +1592,7 @@ export const queryMultiSeriesChart = async ({
         SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
         FROM raw_groups
       ), final AS (
-        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?, group) as rank
         FROM groups
       )
       SELECT *
