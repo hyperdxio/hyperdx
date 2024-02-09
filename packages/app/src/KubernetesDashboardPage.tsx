@@ -315,7 +315,7 @@ export const InfraPodsStatusTable = ({
               </thead>
               <tbody>
                 {podsList.map(pod => (
-                  <Link key={pod.id} href={getLink(pod.name)}>
+                  <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
                     <tr className="cursor-pointer">
                       <td>{pod.name}</td>
                       <td>{pod.namespace}</td>
@@ -490,7 +490,11 @@ const NodesTable = ({
 
               <tbody>
                 {nodesList.map(node => (
-                  <Link key={node.name} href={getLink(node.name)}>
+                  <Link
+                    key={node.name}
+                    href={getLink(node.name)}
+                    legacyBehavior
+                  >
                     <tr className="cursor-pointer">
                       <td>{node.name || 'N/A'}</td>
                       <td>
@@ -621,7 +625,11 @@ const NamespacesTable = ({
               </thead>
               <tbody>
                 {namespacesList.map(namespace => (
-                  <Link key={namespace.name} href={getLink(namespace.name)}>
+                  <Link
+                    key={namespace.name}
+                    href={getLink(namespace.name)}
+                    legacyBehavior
+                  >
                     <tr className="cursor-pointer">
                       <td>{namespace.name || 'N/A'}</td>
                       <td>
@@ -927,6 +935,7 @@ export default function KubernetesDashboardPage() {
                           }(k8s.resource.name:"events" -level:"normal")`,
                         )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
+                        legacyBehavior
                       >
                         <Anchor size="xs" color="dimmed">
                           Search <i className="bi bi-box-arrow-up-right"></i>

@@ -147,7 +147,7 @@ const EditTileForm = ({
         />
         {createDashboardHref != null && (
           <Box ml="md">
-            <Link href={createDashboardHref} passHref>
+            <Link href={createDashboardHref} passHref legacyBehavior>
               <Button variant="outline" size="xs" component="a">
                 Create Dashboard
               </Button>

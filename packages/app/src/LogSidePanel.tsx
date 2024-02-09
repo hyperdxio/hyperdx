@@ -806,6 +806,7 @@ function EventTag({
                 `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
               )}
               passHref
+              legacyBehavior
             >
               <Button
                 className="fs-8 text-muted-hover child-hover-trigger py-0"
@@ -1131,7 +1132,7 @@ function NetworkPropertySubpanel({
             Copy Request as Curl
           </Button>
         </CopyToClipboard>
-        <Link href={trendsDashboardUrl} passHref>
+        <Link href={trendsDashboardUrl} passHref legacyBehavior>
           <Button
             variant="dark"
             className="text-muted-hover fs-8"
@@ -1816,6 +1817,7 @@ function PropertySubpanel({
                           }`,
                         )}
                         passHref
+                        legacyBehavior
                       >
                         <Button
                           className="fs-8 text-muted-hover child-hover-trigger p-0"
@@ -1837,6 +1839,7 @@ function PropertySubpanel({
                             table: 'logs',
                           })}
                           passHref
+                          legacyBehavior
                         >
                           <Button
                             className="fs-8 text-muted-hover child-hover-trigger p-0"
@@ -2060,6 +2063,7 @@ function SidePanelHeader({
                   to: end.getTime().toString(),
                 }).toString()}`}
                 passHref
+                legacyBehavior
               >
                 <Button
                   variant="dark"

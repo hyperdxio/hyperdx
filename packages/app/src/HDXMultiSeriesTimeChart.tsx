@@ -510,10 +510,11 @@ const HDXMultiSeriesTimeChart = memo(
                 }px, ${activeClickPayload?.y ?? 0}px)`,
               }}
             >
-              <Link href={`/search?${qparams?.toString()}`}>
-                <a className="text-white-hover text-decoration-none">
-                  <i className="bi bi-search"></i> View Events
-                </a>
+              <Link
+                href={`/search?${qparams?.toString()}`}
+                className="text-white-hover text-decoration-none"
+              >
+                <i className="bi bi-search"></i>View Events
               </Link>
             </div>
           ) : null}

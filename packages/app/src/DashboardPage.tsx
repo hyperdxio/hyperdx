@@ -233,7 +233,7 @@ const Tile = forwardRef(
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
             {alert && (
-              <Link href="/alerts">
+              <Link href="/alerts" legacyBehavior>
                 <div
                   className={`rounded px-1 text-muted cursor-pointer ${
                     alert.state === 'ALERT'

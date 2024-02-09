@@ -159,13 +159,12 @@ const HDXHistogramChartTooltip = (props: any) => {
           </div>
         ))}
         <div className="mt-2">
-          <Link href={generateSearchUrl(lower, upper)}>
-            <a
-              className="text-muted-hover cursor-pointer"
-              onClick={e => e.stopPropagation()}
-            >
-              View Events
-            </a>
+          <Link
+            href={generateSearchUrl(lower, upper)}
+            className="text-muted-hover cursor-pointer"
+            onClick={e => e.stopPropagation()}
+          >
+            View Events
           </Link>
         </div>
         <div className="text-muted fs-9 mt-2">

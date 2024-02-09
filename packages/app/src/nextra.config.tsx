@@ -1,14 +1,14 @@
 import React from 'react';
 
 import Logo from './Logo';
-import NextraMain from './NextraMain';
+// import NextraMain from './NextraMain';
 import useNextraSeoProps from './useNextraSeoProps';
 
 const theme = {
   useNextSeoProps: useNextraSeoProps,
   logo: <Logo />,
   footer: {
-    text: 'Made with ♥ in San Francisco, © 2023 DeploySentinel, Inc.',
+    text: 'Made with ♥ in San Francisco, © 2024 DeploySentinel, Inc.',
   },
   head: null,
   editLink: {
@@ -21,7 +21,7 @@ const theme = {
     defaultTheme: 'dark',
   },
   components: {},
-  main: NextraMain,
+  // main: NextraMain,
   gitTimestamp: null,
 };
 export default theme;

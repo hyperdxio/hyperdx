@@ -507,7 +507,7 @@ export default function SessionSubpanel({
           <MemoSessionEventList
             config={sessionEventListConfig}
             onClick={useCallback(
-              (id, sortKey) => {
+              (id: any, sortKey: any) => {
                 setDrawerOpen(true);
                 setSelectedLog({ id, sortKey });
               },

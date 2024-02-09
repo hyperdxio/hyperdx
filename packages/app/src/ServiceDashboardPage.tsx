@@ -332,6 +332,7 @@ export default function ServiceDashboardPage() {
                           }(k8s.resource.name:"events" -level:"normal")`,
                         )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
+                        legacyBehavior
                       >
                         <Anchor size="xs" color="dimmed">
                           Search <i className="bi bi-box-arrow-up-right"></i>

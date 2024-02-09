@@ -37,10 +37,9 @@ export const CollapsibleSection = ({
   );
 };
 
-export const SectionWrapper: React.FC<{ title?: React.ReactNode }> = ({
-  children,
-  title,
-}) => (
+export const SectionWrapper: React.FC<
+  React.PropsWithChildren<{ title?: React.ReactNode }>
+> = ({ children, title }) => (
   <div className={styles.panelSectionWrapper}>
     {title && <div className={styles.panelSectionWrapperTitle}>{title}</div>}
     {children}
@@ -375,7 +374,7 @@ export const NetworkBody = ({
   emptyMessage?: string;
   notCollectedMessage?: string;
 }) => {
-  const valueRenderer = React.useCallback(raw => {
+  const valueRenderer = React.useCallback((raw: any) => {
     return (
       <pre
         className="d-inline text-break"

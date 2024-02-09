@@ -317,17 +317,20 @@ export default function SessionsPage() {
     [],
   );
 
-  const generateChartUrl = useCallback(({ aggFn, field, where, groupBy }) => {
-    return `/chart?series=${encodeURIComponent(
-      JSON.stringify({
-        type: 'time',
-        aggFn,
-        field,
-        where,
-        groupBy,
-      }),
-    )}`;
-  }, []);
+  const generateChartUrl = useCallback(
+    ({ aggFn, field, where, groupBy }: any) => {
+      return `/chart?series=${encodeURIComponent(
+        JSON.stringify({
+          type: 'time',
+          aggFn,
+          field,
+          where,
+          groupBy,
+        }),
+      )}`;
+    },
+    [],
+  );
 
   const [isEmailFilterExpanded, setIsEmailFilterExpanded] = useState(true);
 

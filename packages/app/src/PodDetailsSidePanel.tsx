@@ -125,7 +125,11 @@ function PodLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            <Link href={`/search?q=${encodeURIComponent(_where)}`} passHref>
+            <Link
+              href={`/search?q=${encodeURIComponent(_where)}`}
+              passHref
+              legacyBehavior
+            >
               <Anchor size="xs" color="dimmed">
                 Search <i className="bi bi-box-arrow-up-right"></i>
               </Anchor>

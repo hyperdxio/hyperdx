@@ -389,18 +389,14 @@ function PresetDashboardLink({
   return (
     <Link
       href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
+      tabIndex={0}
+      className={cx(styles.listLink, {
+        [styles.listLinkActive]:
+          query.config === JSON.stringify(config) && query.dashboardId == null,
+        'text-muted-hover': query.config !== JSON.stringify(config),
+      })}
     >
-      <a
-        tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]:
-            query.config === JSON.stringify(config) &&
-            query.dashboardId == null,
-          'text-muted-hover': query.config !== JSON.stringify(config),
-        })}
-      >
-        {name}
-      </a>
+      {name}
     </Link>
   );
 }
@@ -431,16 +427,13 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
               q: query,
             },
       ).toString()}`}
+      tabIndex={0}
+      className={cx(styles.listLink, {
+        [styles.listLinkActive]:
+          routerQuery.savedSearchId == null && searchedQuery === query,
+      })}
     >
-      <a
-        tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]:
-            routerQuery.savedSearchId == null && searchedQuery === query,
-        })}
-      >
-        {name}
-      </a>
+      {name}
     </Link>
   );
 }
@@ -777,30 +770,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             : {},
         ).toString()}`}
         key={lv._id}
+        tabIndex={0}
+        className={cx(
+          styles.listLink,
+          lv._id === query.savedSearchId && styles.listLinkActive,
+        )}
+        title={lv.name}
       >
-        <a
-          tabIndex={0}
-          className={cx(
-            styles.listLink,
-            lv._id === query.savedSearchId && styles.listLinkActive,
-          )}
-          title={lv.name}
-        >
-          <div className="d-inline-block text-truncate">{lv.name}</div>
-          {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-            lv.alerts.some(a => a.state === 'ALERT') ? (
-              <i
-                className="bi bi-bell float-end text-danger"
-                title="Has Alerts and is in ALERT state"
-              ></i>
-            ) : (
-              <i
-                className="bi bi-bell float-end"
-                title="Has Alerts and is in OK state"
-              ></i>
-            )
-          ) : null}
-        </a>
+        <div className="d-inline-block text-truncate">{lv.name}</div>
+        {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
+          lv.alerts.some(a => a.state === 'ALERT') ? (
+            <i
+              className="bi bi-bell float-end text-danger"
+              title="Has Alerts and is in ALERT state"
+            ></i>
+          ) : (
+            <i
+              className="bi bi-bell float-end"
+              title="Has Alerts and is in OK state"
+            ></i>
+          )
+        ) : null}
       </Link>
     ),
     [
@@ -813,15 +803,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => (
-      <Link href={`/dashboards/${dashboard._id}`} key={dashboard._id}>
-        <a
-          tabIndex={0}
-          className={cx(styles.listLink, {
-            [styles.listLinkActive]: dashboard._id === query.dashboardId,
-          })}
-        >
-          {dashboard.name}
-        </a>
+      <Link
+        href={`/dashboards/${dashboard._id}`}
+        key={dashboard._id}
+        tabIndex={0}
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]: dashboard._id === query.dashboardId,
+        })}
+      >
+        {dashboard.name}
       </Link>
     ),
     [query.dashboardId],
@@ -849,16 +839,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       >
         <div>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
-            <Link href="/search">
-              <a className="text-decoration-none">
-                {isCollapsed ? (
-                  <div style={{ marginLeft: '-0.15rem' }}>
-                    <Icon size={22} />
-                  </div>
-                ) : (
-                  <Logo />
-                )}
-              </a>
+            <Link href="/search" className="text-decoration-none">
+              {isCollapsed ? (
+                <div style={{ marginLeft: '-0.15rem' }}>
+                  <Icon size={22} />
+                </div>
+              ) : (
+                <Logo />
+              )}
             </Link>
             <Button
               variant="dark"
@@ -873,25 +861,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           </div>
           <div className="mt-4">
             <div className="px-3 d-flex align-items-center justify-content-between mb-2">
-              <Link href="/search">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'text-success fw-bold':
-                        pathname.includes('/search') &&
-                        query.savedSearchId == null,
-                      'fw-bold':
-                        pathname.includes('/search') &&
-                        query.savedSearchId != null,
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
-                    {!isCollapsed && <span>Search</span>}
-                  </span>
-                </a>
+              <Link
+                href="/search"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'text-success fw-bold':
+                      pathname.includes('/search') &&
+                      query.savedSearchId == null,
+                    'fw-bold':
+                      pathname.includes('/search') &&
+                      query.savedSearchId != null,
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
+                  {!isCollapsed && <span>Search</span>}
+                </span>
               </Link>
               {!isCollapsed && (
                 <ActionIcon
@@ -978,124 +965,118 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Collapse>
             )}
             <div className="px-3 my-3">
-              <Link href="/chart">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/chart'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-graph-up pe-1" />{' '}
-                    {!isCollapsed && <span>Chart Explorer</span>}
-                  </span>
-                </a>
+              <Link
+                href="/chart"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/chart'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-graph-up pe-1" />{' '}
+                  {!isCollapsed && <span>Chart Explorer</span>}
+                </span>
               </Link>
             </div>
             <div className="px-3 my-3">
-              <Link href="/sessions">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/sessions'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-laptop pe-1" />{' '}
-                    {!isCollapsed && <span>Client Sessions</span>}
-                  </span>
-                </a>
+              <Link
+                href="/sessions"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/sessions'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-laptop pe-1" />{' '}
+                  {!isCollapsed && <span>Client Sessions</span>}
+                </span>
               </Link>
             </div>
             <div className="px-3 my-3">
-              <Link href="/alerts">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/alerts'),
-                    },
-                  )}
-                >
-                  <div>
-                    <i className="bi bi-bell pe-1" />{' '}
-                    {!isCollapsed && (
-                      <div className="d-inline-flex align-items-center">
-                        <span>Alerts</span>
-                        <div
-                          className="ms-3"
-                          style={{
-                            borderRadius: 8,
-                            background:
-                              alertState == 'alarming'
-                                ? '#e74c3c'
-                                : alertState === 'ok'
-                                ? '#00d474'
-                                : 'gray',
-                            height: 8,
-                            width: 8,
-                          }}
-                          title={
-                            alertState === 'alarming'
-                              ? 'Some alerts are firing'
+              <Link
+                href="/alerts"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/alerts'),
+                  },
+                )}
+              >
+                <div>
+                  <i className="bi bi-bell pe-1" />{' '}
+                  {!isCollapsed && (
+                    <div className="d-inline-flex align-items-center">
+                      <span>Alerts</span>
+                      <div
+                        className="ms-3"
+                        style={{
+                          borderRadius: 8,
+                          background:
+                            alertState == 'alarming'
+                              ? '#e74c3c'
                               : alertState === 'ok'
-                              ? 'All alerts are ok'
-                              : 'No alerts are set up'
-                          }
-                        ></div>
-                      </div>
-                    )}
-                  </div>
-                </a>
+                              ? '#00d474'
+                              : 'gray',
+                          height: 8,
+                          width: 8,
+                        }}
+                        title={
+                          alertState === 'alarming'
+                            ? 'Some alerts are firing'
+                            : alertState === 'ok'
+                            ? 'All alerts are ok'
+                            : 'No alerts are set up'
+                        }
+                      ></div>
+                    </div>
+                  )}
+                </div>
               </Link>
             </div>
 
             {SERVICE_DASHBOARD_ENABLED ? (
               <div className="px-3 my-3">
-                <Link href="/services">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                      {
-                        'fw-bold text-success': pathname.includes('/services'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <i className="bi bi-heart-pulse pe-1" />{' '}
-                      {!isCollapsed && <span>Service Health</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/services"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/services'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-heart-pulse pe-1" />{' '}
+                    {!isCollapsed && <span>Service Health</span>}
+                  </span>
                 </Link>
               </div>
             ) : null}
 
             {K8S_DASHBOARD_ENABLED ? (
               <div className="px-3 my-3">
-                <Link href="/kubernetes">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                      {
-                        'fw-bold text-success':
-                          pathname.includes('/kubernetes'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <span
-                        className="pe-1"
-                        style={{ top: -2, position: 'relative' }}
-                      >
-                        <KubernetesFlatIcon width={16} />
-                      </span>{' '}
-                      {!isCollapsed && <span>Kubernetes</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/kubernetes"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/kubernetes'),
+                    },
+                  )}
+                >
+                  <span>
+                    <span
+                      className="pe-1"
+                      style={{ top: -2, position: 'relative' }}
+                    >
+                      <KubernetesFlatIcon width={16} />
+                    </span>{' '}
+                    {!isCollapsed && <span>Kubernetes</span>}
+                  </span>
                 </Link>
               </div>
             ) : null}
@@ -1109,13 +1090,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   },
                 )}
               >
-                <Link href="/dashboards">
-                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover">
-                    <span>
-                      <i className="bi bi-grid-1x2 pe-1" />{' '}
-                      {!isCollapsed && <span>Dashboards</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/dashboards"
+                  className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
+                >
+                  <span>
+                    <i className="bi bi-grid-1x2 pe-1" />{' '}
+                    {!isCollapsed && <span>Dashboards</span>}
+                  </span>
                 </Link>
                 {!isCollapsed && (
                   <ActionIcon
@@ -1138,28 +1120,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             {!isCollapsed && (
               <Collapse in={isDashboardsExpanded}>
                 <div className={styles.list}>
-                  <Link href="/dashboards">
-                    <a
-                      className={cx(
-                        styles.listLink,
-                        pathname.includes('/dashboard') &&
-                          query.dashboardId == null &&
-                          query.config !=
-                            JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
-                          query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                          ? [styles.listLinkActive]
-                          : null,
-                      )}
-                    >
-                      <div className="mt-1 lh-1 py-1">
-                        <i className="bi bi-plus-lg me-2" />
-                        New Dashboard
-                      </div>
-                    </a>
+                  <Link
+                    href="/dashboards"
+                    className={cx(
+                      styles.listLink,
+                      pathname.includes('/dashboard') &&
+                        query.dashboardId == null &&
+                        query.config !=
+                          JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
+                        query.config !=
+                          JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
+                        query.config !=
+                          JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
+                        query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
+                        ? [styles.listLinkActive]
+                        : null,
+                    )}
+                  >
+                    <div className="mt-1 lh-1 py-1">
+                      <i className="bi bi-plus-lg me-2" />
+                      New Dashboard
+                    </div>
                   </Link>
 
                   {isDashboardsLoading ? (
@@ -1257,7 +1238,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   Ready to use HyperDX Cloud?
                 </span>
                 <div className="mt-2 mb-2">
-                  <Link href="https://www.hyperdx.io/register" passHref>
+                  <Link
+                    href="https://www.hyperdx.io/register"
+                    passHref
+                    legacyBehavior
+                  >
                     <MButton
                       variant="light"
                       size="xs"
@@ -1274,39 +1259,37 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </div>
               </div>
               <div className="my-3">
-                <Link href="/team">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                      {
-                        'fw-bold text-success': pathname.includes('/team'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <i className="bi bi-gear" />{' '}
-                      {!isCollapsed && <span>Team Settings</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/team"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/team'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-gear" />{' '}
+                    {!isCollapsed && <span>Team Settings</span>}
+                  </span>
                 </Link>
               </div>
               <div className="my-3">
-                <Link href="https://hyperdx.io/docs">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                    )}
-                    target="_blank"
-                  >
-                    <span>
-                      <i className="bi bi-book" />{' '}
-                      {!isCollapsed && <span>Documentation</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="https://hyperdx.io/docs"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                  )}
+                  target="_blank"
+                >
+                  <span>
+                    <i className="bi bi-book" />{' '}
+                    {!isCollapsed && <span>Documentation</span>}
+                  </span>
                 </Link>
               </div>
               <div className="my-4">
-                <Link href={`${API_SERVER_URL}/logout`}>
+                <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
                   <span role="button" className="text-muted-hover">
                     <i className="bi bi-box-arrow-left" />{' '}
                     {!isCollapsed && <span>Logout</span>}

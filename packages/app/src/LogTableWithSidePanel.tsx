@@ -72,7 +72,7 @@ export function LogTableWithSidePanel({
   );
 
   const generateChartUrl = useCallback(
-    ({ aggFn, field, groupBy }) => {
+    ({ aggFn, field, groupBy }: any) => {
       return `/chart?series=${encodeURIComponent(
         JSON.stringify({
           type: 'time',

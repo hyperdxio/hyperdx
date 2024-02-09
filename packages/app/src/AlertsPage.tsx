@@ -147,22 +147,21 @@ function AlertDetails({ alert }: { alert: AlertData }) {
 
         <Stack spacing={2}>
           <div>
-            <Link href={alertUrl}>
-              <a
-                className={styles.alertLink}
-                title={
-                  alert.source === 'CHART' ? 'Dashboard chart' : 'Saved search'
-                }
-              >
-                <i
-                  className={`bi ${
-                    alert.source === 'CHART'
-                      ? 'bi-graph-up'
-                      : 'bi-layout-text-sidebar-reverse'
-                  } text-slate-200 me-2 fs-8`}
-                />
-                {alertName}
-              </a>
+            <Link
+              href={alertUrl}
+              className={styles.alertLink}
+              title={
+                alert.source === 'CHART' ? 'Dashboard chart' : 'Saved search'
+              }
+            >
+              <i
+                className={`bi ${
+                  alert.source === 'CHART'
+                    ? 'bi-graph-up'
+                    : 'bi-layout-text-sidebar-reverse'
+                } text-slate-200 me-2 fs-8`}
+              />
+              {alertName}
             </Link>
           </div>
           <div className="text-slate-400 fs-8 d-flex gap-2">

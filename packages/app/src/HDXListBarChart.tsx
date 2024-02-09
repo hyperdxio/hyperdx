@@ -129,7 +129,7 @@ function ListBar({
           ) : null;
 
         return getRowSearchLink ? (
-          <Link href={getRowSearchLink(row)} passHref>
+          <Link href={getRowSearchLink(row)} passHref legacyBehavior>
             <Box
               mb="sm"
               key={group}

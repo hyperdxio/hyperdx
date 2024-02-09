@@ -66,7 +66,7 @@ export default function PatternSidePanel({
   );
 
   const generateChartUrl = useCallback(
-    ({ aggFn, field, groupBy }) => {
+    ({ aggFn, field, groupBy }: any) => {
       return `/chart?series=${encodeURIComponent(
         JSON.stringify({
           type: 'time',
@@ -150,7 +150,7 @@ export default function PatternSidePanel({
             )}
             displayedColumns={[]}
             onRowExpandClick={useCallback(
-              (id, sortKey) => {
+              (id: any, sortKey: any) => {
                 setOpenedLog({ id, sortKey });
               },
               [setOpenedLog],
