@@ -54,6 +54,7 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
+  // TODO: support 'Summary' and 'ExponentialHistogram'
 }
 
 export enum AggFn {
@@ -674,13 +675,15 @@ export const getMetricsNames = async ({
         data_type,
         format('{} - {}', name, data_type) as name
       FROM ??
-      WHERE (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      WHERE data_type IN (?)
+      AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
       GROUP BY name, data_type
       ORDER BY name
     `,
     [
       tableName,
+      Object.values(MetricsDataType),
       msToBigIntNs(startTime),
       msToBigIntNs(endTime),
       startTime,
@@ -1589,7 +1592,7 @@ export const queryMultiSeriesChart = async ({
         SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
         FROM raw_groups
       ), final AS (
-        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?, group) as rank
         FROM groups
       )
       SELECT *
