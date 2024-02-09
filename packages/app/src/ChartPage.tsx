@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import type { QueryParamConfig } from 'serialize-query-params';
 import { decodeArray, encodeArray } from 'serialize-query-params';
@@ -64,7 +65,7 @@ function getDashboardHref({
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-export default function GraphPage() {
+function GraphPage() {
   const [chartSeries, setChartSeries] = useHDXQueryParam<ChartSeries[]>(
     'series',
     [
@@ -174,3 +175,12 @@ export default function GraphPage() {
 }
 
 GraphPage.getLayout = withAppNav;
+
+// TODO: Restore when we fix hydratrion errors
+// export default GraphPage;
+
+const GraphPageDynamic = dynamic(async () => GraphPage, { ssr: false });
+// @ts-ignore
+GraphPageDynamic.getLayout = withAppNav;
+
+export default GraphPageDynamic;
