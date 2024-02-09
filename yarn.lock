@@ -13541,13 +13541,14 @@ passport-strategy@1.x.x:
   resolved "https://registry.yarnpkg.com/passport-strategy/-/passport-strategy-1.0.0.tgz#b5539aa8fc225a3d1ad179476ddf236b440f52e4"
   integrity sha512-CB97UUvDKJde2V0KDWWB3lyf6PC3FaZP7YxZ2G8OAtn9p4HI9j9JLP9qjOGZFvyl8uwNT8qM+hGnz/n16NI7oA==
 
-passport@^0.5.3:
-  version "0.5.3"
-  resolved "https://registry.yarnpkg.com/passport/-/passport-0.5.3.tgz#e69b46c9bb3290660bc2b3299330d78710b198cc"
-  integrity sha512-gGc+70h4gGdBWNsR3FuV3byLDY6KBTJAIExGFXTpQaYfbbcHCBlRRKx7RBQSpqEqc5Hh2qVzRs7ssvSfOpkUEA==
+passport@^0.6.0:
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/passport/-/passport-0.6.0.tgz#e869579fab465b5c0b291e841e6cc95c005fac9d"
+  integrity sha512-0fe+p3ZnrWRW74fe8+SvCyf4a3Pb2/h7gFkQ8yTJpAO50gDzlfjZUZTO1k5Eg9kUct22OxHLqDZoKUWRHOh9ug==
   dependencies:
     passport-strategy "1.x.x"
     pause "0.0.1"
+    utils-merge "^1.0.1"
 
 path-exists@^3.0.0:
   version "3.0.0"
@@ -16830,7 +16831,7 @@ util.promisify@^1.0.0:
     has-symbols "^1.0.1"
     object.getownpropertydescriptors "^2.1.1"
 
-utils-merge@1.0.1:
+utils-merge@1.0.1, utils-merge@^1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/utils-merge/-/utils-merge-1.0.1.tgz#9f95710f50a267947b2ccc124741c1028427e713"
   integrity sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==
