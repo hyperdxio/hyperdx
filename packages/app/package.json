@@ -16,14 +16,11 @@
     "ci:unit": "jest --ci --coverage"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.1",
-    "@emotion/server": "^11.11.0",
     "@hyperdx/browser": "^0.18.4",
     "@hyperdx/lucene": "^3.1.1",
-    "@mantine/core": "6.0.21",
-    "@mantine/hooks": "6.0.21",
-    "@mantine/next": "6.0.21",
-    "@mantine/spotlight": "6",
+    "@mantine/core": "7.5.2",
+    "@mantine/hooks": "7.5.2",
+    "@mantine/spotlight": "7.5.2",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@monaco-editor/react": "^4.3.1",
     "@tanstack/react-table": "^8.7.9",
@@ -122,6 +119,7 @@
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-simple-import-sort": "^10.0.0",
     "jest": "^28.1.3",
+    "postcss": "^8.4.35",
     "ts-jest": "^28.0.7",
     "typescript": "^4.9.5"
   },
