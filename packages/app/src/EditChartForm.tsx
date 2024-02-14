@@ -88,11 +88,16 @@ const DashboardFilterApplied = ({
 }: {
   dashboardQuery: string;
 }) => (
-  <Tooltip
-    label={`Dashboard filter is applied: ${dashboardQuery}`}
-    color="gray"
-  >
-    <i className="bi bi-funnel-fill me-2 text-slate-400 fs-8" />
+  <Tooltip label="Dashboard filter is applied" color="gray">
+    <span className="d-inline-block">
+      <i className="bi bi-funnel-fill ms-2 me-1 text-success fs-8.5" />
+      <span
+        className="d-inline-block lh-1 text-slate-400 fs-8.5 me-2 text-truncate"
+        style={{ maxWidth: 340 }}
+      >
+        {dashboardQuery}
+      </span>
+    </span>
   </Tooltip>
 );
 
@@ -309,10 +314,10 @@ export const EditSearchChartForm = ({
       )}
       <div className="mt-4">
         <div className="mb-3 text-muted ps-2 fs-7">
+          Search Preview
           {!!dashboardQuery && (
             <DashboardFilterApplied dashboardQuery={dashboardQuery} />
           )}
-          Search Preview
         </div>
         <div style={{ height: 400 }} className="bg-hdx-dark">
           <LogTableWithSidePanel
@@ -534,10 +539,10 @@ export const EditNumberChartForm = ({
       <div className="mt-4">
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+            Chart Preview
             {!!dashboardQuery && (
               <DashboardFilterApplied dashboardQuery={dashboardQuery} />
             )}
-            Chart Preview
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -699,10 +704,10 @@ export const EditTableChartForm = ({
       )}
       <Flex justify="space-between" align="center" mb="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+          Chart Preview
           {!!dashboardQuery && (
             <DashboardFilterApplied dashboardQuery={dashboardQuery} />
           )}
-          Chart Preview
         </div>
         {setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&
@@ -929,10 +934,10 @@ export const EditHistogramChartForm = ({
       <div className="mt-4">
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+            Chart Preview
             {!!dashboardQuery && (
               <DashboardFilterApplied dashboardQuery={dashboardQuery} />
             )}
-            Chart Preview
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -1424,10 +1429,10 @@ export const EditLineChartForm = ({
       )}
       <Flex justify="space-between" align="center" my="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
+          Chart Preview
           {!!dashboardQuery && (
             <DashboardFilterApplied dashboardQuery={dashboardQuery} />
           )}
-          Chart Preview
         </div>
         <Flex align="center" style={{ marginLeft: 'auto', width: 600 }}>
           {setDisplayedTimeInputValue != null &&
