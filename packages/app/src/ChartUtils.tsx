@@ -693,7 +693,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <FieldSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -732,7 +732,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <MetricTagSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -1015,7 +1015,7 @@ export function ChartSeriesFormCompact({
         {table === 'logs' && setGroupBy != null && (
           <div className="d-flex align-items-center">
             <div className="text-muted">Group By</div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <GroupBySelect
                 groupBy={groupBy}
                 table={table}
@@ -1058,7 +1058,7 @@ export function ChartSeriesFormCompact({
             {setGroupBy != null && (
               <div className="d-flex align-items-center">
                 <div className="text-muted fw-500">Group By</div>
-                <div className="ms-3 flex-grow-1">
+                <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
                   <GroupBySelect
                     groupBy={groupBy}
                     fields={field != null ? [field] : []}
