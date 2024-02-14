@@ -37,12 +37,14 @@ export default function SearchTimeRangePicker({
   inputValue,
   setInputValue,
   onSearch,
+  onSubmit,
   showLive = false,
   timeFormat = '12h',
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
   onSearch: (rangeStr: string) => void;
+  onSubmit?: (rangeStr: string) => void;
   showLive?: boolean;
   timeFormat?: TimeFormat;
 }) {
@@ -185,6 +187,10 @@ export default function SearchTimeRangePicker({
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={e => {
+              if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+                onSubmit?.(e.target.value);
+                setIsDatePickerOpen(false);
+              }
               if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
                 e.target.blur();
               }
