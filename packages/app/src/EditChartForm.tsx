@@ -554,6 +554,9 @@ export const EditNumberChartForm = ({
                   onSearch={range => {
                     onTimeRangeSearch(range);
                   }}
+                  onSubmit={range => {
+                    onTimeRangeSearch(range);
+                  }}
                 />
               </div>
             )}
@@ -717,6 +720,9 @@ export const EditTableChartForm = ({
                 inputValue={displayedTimeInputValue}
                 setInputValue={setDisplayedTimeInputValue}
                 onSearch={range => {
+                  onTimeRangeSearch(range);
+                }}
+                onSubmit={range => {
                   onTimeRangeSearch(range);
                 }}
               />
@@ -947,6 +953,9 @@ export const EditHistogramChartForm = ({
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
                     onTimeRangeSearch(range);
                   }}
                 />
@@ -1443,6 +1452,9 @@ export const EditLineChartForm = ({
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
                     onTimeRangeSearch(range);
                   }}
                 />
