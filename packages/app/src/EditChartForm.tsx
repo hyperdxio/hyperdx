@@ -3,7 +3,15 @@ import type { Draft } from 'immer';
 import produce from 'immer';
 import { Button as BSButton, Form, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
-import { Button, Divider, Flex, Group, Paper, Switch } from '@mantine/core';
+import {
+  Button,
+  Divider,
+  Flex,
+  Group,
+  Paper,
+  Switch,
+  Tooltip,
+} from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
@@ -41,6 +49,57 @@ const DEFAULT_ALERT: Alert = {
   type: 'presence',
   source: 'CHART',
 };
+
+const buildAndWhereClause = (query1 = '', query2 = '') => {
+  if (!query1 && !query2) {
+    return '';
+  } else if (!query1) {
+    return query2;
+  } else if (!query2) {
+    return query1;
+  } else {
+    return `${query1} (${query2})`;
+  }
+};
+
+const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
+  chartConfig: T | null,
+  dashboardQuery?: string,
+) => {
+  return chartConfig
+    ? {
+        ...chartConfig,
+        where: buildAndWhereClause(dashboardQuery, chartConfig?.where),
+        series: chartConfig?.series
+          ? chartConfig.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                dashboardQuery,
+                s.type === 'time' || s.type === 'table' ? s.where : '',
+              ),
+            }))
+          : undefined,
+      }
+    : null;
+};
+
+const DashboardFilterApplied = ({
+  dashboardQuery,
+}: {
+  dashboardQuery: string;
+}) => (
+  <Tooltip label="Dashboard filter is applied" color="gray">
+    <span className="d-inline-block">
+      <i className="bi bi-funnel-fill ms-2 me-1 text-success fs-8.5" />
+      <span
+        className="d-inline-block lh-1 text-slate-400 fs-8.5 me-2 text-truncate"
+        style={{ maxWidth: 340 }}
+      >
+        {dashboardQuery}
+      </span>
+    </span>
+  </Tooltip>
+);
 
 export const EditMarkdownChartForm = ({
   chart,
@@ -154,11 +213,13 @@ export const EditSearchChartForm = ({
   onClose,
   onSave,
   dateRange,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
   onSave?: (chart: Chart) => void;
   onClose?: () => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
 
@@ -170,7 +231,10 @@ export const EditSearchChartForm = ({
         }
       : null;
   }, [editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -249,7 +313,12 @@ export const EditSearchChartForm = ({
         </div>
       )}
       <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Search Preview</div>
+        <div className="mb-3 text-muted ps-2 fs-7">
+          Search Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
+        </div>
         <div style={{ height: 400 }} className="bg-hdx-dark">
           <LogTableWithSidePanel
             config={{
@@ -277,6 +346,7 @@ export const EditNumberChartForm = ({
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -287,6 +357,7 @@ export const EditNumberChartForm = ({
   onTimeRangeSearch?: (value: string) => void;
   editedChart?: Chart;
   setEditedChart?: (chart: Chart) => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
     chart,
@@ -308,7 +379,10 @@ export const EditNumberChartForm = ({
         }
       : null;
   }, [_editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -466,6 +540,9 @@ export const EditNumberChartForm = ({
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
             Chart Preview
+            {!!dashboardQuery && (
+              <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+            )}
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -523,6 +600,7 @@ export const EditTableChartForm = ({
   onTimeRangeSearch,
   editedChart,
   setEditedChart,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -533,6 +611,7 @@ export const EditTableChartForm = ({
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  dashboardQuery?: string;
 }) => {
   const CHART_TYPE = 'table';
 
@@ -563,7 +642,10 @@ export const EditTableChartForm = ({
         : null,
     [_editedChart, dateRange],
   );
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -626,6 +708,9 @@ export const EditTableChartForm = ({
       <Flex justify="space-between" align="center" mb="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
           Chart Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
         </div>
         {setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&
@@ -720,6 +805,7 @@ export const EditHistogramChartForm = ({
   onTimeRangeSearch,
   editedChart,
   setEditedChart,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -730,6 +816,7 @@ export const EditHistogramChartForm = ({
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
     chart,
@@ -749,7 +836,10 @@ export const EditHistogramChartForm = ({
         }
       : null;
   }, [_editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -851,6 +941,9 @@ export const EditHistogramChartForm = ({
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
             Chart Preview
+            {!!dashboardQuery && (
+              <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+            )}
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -1191,6 +1284,7 @@ export const EditLineChartForm = ({
   setDisplayedTimeInputValue,
   displayedTimeInputValue,
   onTimeRangeSearch,
+  dashboardQuery,
 }: {
   isLocalDashboard: boolean;
   chart: Chart | undefined;
@@ -1205,6 +1299,7 @@ export const EditLineChartForm = ({
   onTimeRangeSearch?: (value: string) => void;
   granularity?: Granularity | undefined;
   setGranularity?: (granularity: Granularity | undefined) => void;
+  dashboardQuery?: string;
 }) => {
   const CHART_TYPE = 'time';
   const [alert] = alerts ?? []; // TODO: Support multiple alerts eventually
@@ -1241,7 +1336,10 @@ export const EditLineChartForm = ({
         : null,
     [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
   );
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -1341,6 +1439,9 @@ export const EditLineChartForm = ({
       <Flex justify="space-between" align="center" my="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
           Chart Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
         </div>
         <Flex align="center" style={{ marginLeft: 'auto', width: 600 }}>
           {setDisplayedTimeInputValue != null &&
