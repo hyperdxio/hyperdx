@@ -33,6 +33,7 @@ const EditTileForm = ({
   hideMarkdown,
   hideSearch,
   createDashboardHref,
+  dashboardQuery,
 }: {
   isLocalDashboard: boolean;
   chart: Chart | undefined;
@@ -50,6 +51,7 @@ const EditTileForm = ({
   hideMarkdown?: boolean;
   hideSearch?: boolean;
   createDashboardHref?: string;
+  dashboardQuery?: string;
 }) => {
   type Tab =
     | 'time'
@@ -174,6 +176,7 @@ const EditTileForm = ({
           onTimeRangeSearch={onTimeRangeSearch}
           granularity={granularity}
           setGranularity={setGranularity}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'table' && chart != null && (
@@ -191,6 +194,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'histogram' && chart != null && (
@@ -206,6 +210,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'search' && chart != null && (
@@ -216,6 +221,7 @@ const EditTileForm = ({
           onSave={onSave}
           onClose={onClose}
           dateRange={dateRange}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'number' && chart != null && (
@@ -231,6 +237,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'markdown' && chart != null && (
