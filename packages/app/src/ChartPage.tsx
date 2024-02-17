@@ -1,31 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import type { QueryParamConfig } from 'serialize-query-params';
-import { decodeArray, encodeArray } from 'serialize-query-params';
+import {
+  parseAsJson,
+  parseAsStringEnum,
+  parseAsStringLiteral,
+  useQueryState,
+} from 'nuqs';
 
-import { Granularity, isGranularity } from './ChartUtils';
+import { Granularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
 import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
-import type { Chart, ChartSeries, Dashboard } from './types';
-import { useQueryParam as useHDXQueryParam } from './useQueryParam';
-
-const ChartSeriesParam: QueryParamConfig<ChartSeries[] | undefined> = {
-  encode: (
-    chartSeries: ChartSeries[] | undefined,
-  ): (string | null)[] | null | undefined => {
-    return encodeArray(chartSeries?.map(chart => JSON.stringify(chart)));
-  },
-  decode: (
-    input: string | (string | null)[] | null | undefined,
-  ): ChartSeries[] | undefined => {
-    // TODO: Validation
-    return decodeArray(input)?.flatMap(series =>
-      series != null ? [JSON.parse(series)] : [],
-    );
-  },
-};
+import type { Chart, ChartSeries } from './types';
 
 function getDashboard(chart: Chart) {
   return {
@@ -63,45 +50,69 @@ function getDashboardHref({
   return `/dashboards?${params.toString()}`;
 }
 
+const DEFAULT_SERIES: ChartSeries[] = [
+  {
+    table: 'logs',
+    type: 'time',
+    aggFn: 'count',
+    field: undefined,
+    where: '',
+    groupBy: [],
+  },
+];
+
+const getLegacySeriesQueryParam = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const series = params.getAll('series');
+    return series?.flatMap(series =>
+      series != null ? [JSON.parse(series)] : [],
+    );
+  } catch (e) {
+    console.warn('Failed to parse legacy query param', e);
+  }
+};
+
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
 function GraphPage() {
-  const [chartSeries, setChartSeries] = useHDXQueryParam<ChartSeries[]>(
-    'series',
-    [
-      {
-        table: 'logs',
-        type: 'time',
-        aggFn: 'count',
-        field: undefined,
-        where: '',
-        groupBy: [],
-      },
-    ],
-    {
-      queryParamConfig: ChartSeriesParam,
-    },
+  const [_granularity, _setGranularity] = useQueryState(
+    'granularity',
+    parseAsStringEnum<Granularity>(Object.values(Granularity)),
   );
 
-  const [granularity, setGranularity] = useHDXQueryParam<
-    Granularity | undefined
-  >('granularity', undefined, {
-    queryParamConfig: {
-      encode: (value: Granularity | undefined) => value ?? undefined,
-      decode: (input: string | (string | null)[] | null | undefined) =>
-        typeof input === 'string' && isGranularity(input) ? input : undefined,
+  const granularity = _granularity ?? undefined;
+  const setGranularity = useCallback(
+    (value: Granularity | undefined) => {
+      _setGranularity(value || null);
     },
+    [_setGranularity],
+  );
+
+  const [seriesReturnType, setSeriesReturnType] = useQueryState(
+    'seriesReturnType',
+    parseAsStringLiteral(['ratio', 'column'] as const),
+  );
+
+  const [chartSeries, setChartSeries] = useQueryState(
+    'chartSeries',
+    parseAsJson<ChartSeries[]>().withDefault(DEFAULT_SERIES),
+  );
+
+  // Support for legacy query param
+  const [_, setLegacySeries] = useQueryState('series', {
+    shallow: true,
   });
 
-  const [seriesReturnType, setSeriesReturnType] = useHDXQueryParam<
-    'ratio' | 'column' | undefined
-  >('seriesReturnType', undefined, {
-    queryParamConfig: {
-      encode: (value: 'ratio' | 'column' | undefined) => value ?? undefined,
-      decode: (input: string | (string | null)[] | null | undefined) =>
-        input === 'ratio' ? 'ratio' : 'column',
-    },
-  });
+  useEffect(() => {
+    const legacySeries = getLegacySeriesQueryParam();
+    if (legacySeries?.length) {
+      // Clear the legacy query param
+      setChartSeries(legacySeries);
+      setLegacySeries(null);
+    }
+  }, []);
 
   const editedChart = useMemo<Chart>(() => {
     return {
@@ -111,7 +122,7 @@ function GraphPage() {
       y: 0,
       w: 6,
       h: 3,
-      series: chartSeries,
+      series: chartSeries.length ? chartSeries : DEFAULT_SERIES,
       seriesReturnType: seriesReturnType ?? 'column',
     };
   }, [chartSeries, seriesReturnType]);
