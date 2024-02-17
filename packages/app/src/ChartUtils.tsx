@@ -82,7 +82,7 @@ export const isGranularity = (value: string): value is Granularity => {
 };
 
 const seriesDisplayName = (
-  s: ChartSeries,
+  s: ChartSeries | undefined,
   {
     showAggFn,
     showField,
@@ -93,6 +93,9 @@ const seriesDisplayName = (
     showWhere?: boolean;
   } = {},
 ) => {
+  if (!s) {
+    return '';
+  }
   if (s.type === 'time' || s.type === 'table') {
     if (s.displayName != null) {
       return s.displayName;
