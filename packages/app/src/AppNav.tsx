@@ -19,6 +19,7 @@ import {
   Collapse,
   Input,
   Loader,
+  ScrollArea,
 } from '@mantine/core';
 
 import { version } from '../package.json';
@@ -479,7 +480,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      icon={<i className="bi bi-search fs-8 ps-1" />}
+      icon={<i className="bi bi-search fs-8 ps-1 text-slate-400" />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -915,12 +916,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     <>
       <AuthLoadingBlocker />
       {fixed && <div style={{ width: navWidth, minWidth: navWidth }}></div>}
-      <div
+      <ScrollArea
+        type="scroll"
+        scrollbarSize={8}
         style={{
           minWidth: navWidth,
           width: navWidth,
           maxHeight: '100vh',
-          overflowY: 'auto',
           height: '100%',
           ...(fixed
             ? {
@@ -970,7 +972,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
+                  <i className="bi bi-layout-text-sidebar-reverse pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Search</span>}
                 </span>
               </Link>
@@ -1003,19 +1005,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {logViews.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Searches"
-                          value={searchesListQ}
-                          onChange={setSearchesListQ}
-                          onEnterDown={() => {
-                            (
-                              savedSearchesResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                        onEnterDown={() => {
+                          (
+                            savedSearchesResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       {logViews.length === 0 && (
                         <div className={styles.listEmptyMsg}>
@@ -1070,7 +1070,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-graph-up pe-1" />{' '}
+                  <i className="bi bi-graph-up pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Chart Explorer</span>}
                 </span>
               </Link>
@@ -1086,7 +1086,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-laptop pe-1" />{' '}
+                  <i className="bi bi-laptop pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Client Sessions</span>}
                 </span>
               </Link>
@@ -1102,7 +1102,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <div>
-                  <i className="bi bi-bell pe-1" />{' '}
+                  <i className="bi bi-bell pe-1 text-slate-300" />{' '}
                   {!isCollapsed && (
                     <div className="d-inline-flex align-items-center">
                       <span>Alerts</span>
@@ -1145,7 +1145,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-heart-pulse pe-1" />{' '}
+                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
                     {!isCollapsed && <span>Service Health</span>}
                   </span>
                 </Link>
@@ -1165,7 +1165,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 >
                   <span>
                     <span
-                      className="pe-1"
+                      className="pe-1 text-slate-300"
                       style={{ top: -2, position: 'relative' }}
                     >
                       <KubernetesFlatIcon width={16} />
@@ -1190,7 +1190,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
                 >
                   <span>
-                    <i className="bi bi-grid-1x2 pe-1" />{' '}
+                    <i className="bi bi-grid-1x2 pe-1 text-slate-300" />{' '}
                     {!isCollapsed && <span>Dashboards</span>}
                   </span>
                 </Link>
@@ -1248,19 +1248,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {dashboards.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
+                        onEnterDown={() => {
+                          (
+                            dashboardsResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       <AppNavLinkGroups
                         name="dashboards"
@@ -1365,7 +1363,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-gear" />{' '}
+                    <i className="bi bi-gear text-slate-300" />{' '}
                     {!isCollapsed && <span>Team Settings</span>}
                   </span>
                 </Link>
@@ -1379,7 +1377,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   target="_blank"
                 >
                   <span>
-                    <i className="bi bi-book" />{' '}
+                    <i className="bi bi-book text-slate-300" />{' '}
                     {!isCollapsed && <span>Documentation</span>}
                   </span>
                 </Link>
@@ -1387,7 +1385,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <div className="my-4">
                 <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
                   <span role="button" className="text-muted-hover">
-                    <i className="bi bi-box-arrow-left" />{' '}
+                    <i className="bi bi-box-arrow-left text-slate-300" />{' '}
                     {!isCollapsed && <span>Logout</span>}
                   </span>
                 </Link>
@@ -1398,7 +1396,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </div>
           </>
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 }

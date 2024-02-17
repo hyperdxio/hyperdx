@@ -791,6 +791,7 @@ function SearchPage() {
                 size={20}
                 color="gray"
                 withBorder
+                zIndex={1}
               >
                 <ActionIcon size="lg" variant="default" ml="xs">
                   <i className="bi bi-tags-fill text-slate-300"></i>
@@ -818,13 +819,13 @@ function SearchPage() {
               href={generateSearchUrl(searchedQuery, [zoomOutFrom, zoomOutTo])}
               className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <i className="bi bi-zoom-out"></i>Zoom Out
+              <i className="bi bi-zoom-out me-1"></i>Zoom Out
             </Link>
             <Link
               href={generateSearchUrl(searchedQuery, [zoomInFrom, zoomInTo])}
               className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <i className="bi bi-zoom-in"></i>Zoom In
+              <i className="bi bi-zoom-in me-1"></i>Zoom In
             </Link>
             <Link
               href={generateChartUrl({
@@ -835,7 +836,7 @@ function SearchPage() {
               })}
               className="text-muted-hover text-decoration-none fs-8"
             >
-              <i className="bi bi-plus-circle"></i>Create Chart
+              <i className="bi bi-plus-circle me-1"></i>Create Chart
             </Link>
           </div>
         </div>
