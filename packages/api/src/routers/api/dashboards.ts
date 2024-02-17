@@ -95,9 +95,9 @@ router.put(
       id: objectIdSchema,
     }),
     body: z.object({
-      name: z.string().max(1024),
-      charts: z.array(chartSchema),
-      query: z.string().max(2048),
+      name: z.string().max(1024).optional(),
+      charts: z.array(chartSchema).optional(),
+      query: z.string().max(2048).optional(),
       tags: tagsSchema,
     }),
   }),

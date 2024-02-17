@@ -39,6 +39,9 @@ import { useLocalStorage, useWindowSize } from './utils';
 
 import styles from '../styles/AppNav.module.scss';
 
+const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
+const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
+
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',
   name: 'App Performance',
@@ -539,11 +542,13 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
   name,
   groups,
   renderLink,
+  onDragEnd,
   forceExpandGroups = false,
 }: {
   name: string;
   groups: AppNavLinkGroup<T>[];
   renderLink: (item: T) => React.ReactNode;
+  onDragEnd?: (target: HTMLElement | null, newGroup: string | null) => void;
   forceExpandGroups?: boolean;
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useLocalStorage<
@@ -560,10 +565,27 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
     [collapsedGroups, setCollapsedGroups],
   );
 
+  const [draggingOver, setDraggingOver] = useState<string | null>(null);
+
   return (
     <>
       {groups.map(group => (
-        <div key={group.name}>
+        <div
+          key={group.name}
+          className={cx(
+            draggingOver === group.name && styles.listGroupDragEnter,
+          )}
+          onDragOver={e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDraggingOver(group.name);
+          }}
+          onDragEnd={e => {
+            e.preventDefault();
+            onDragEnd?.(e.target as HTMLElement, draggingOver);
+            setDraggingOver(null);
+          }}
+        >
           <AppNavGroupLabel
             onClick={() => handleToggleGroup(group.name)}
             name={group.name}
@@ -621,10 +643,20 @@ function useSearchableList<T extends AppNavLinkItem>({
     if (untaggedItems.length) {
       groupedItems[untaggedGroupName] = untaggedItems;
     }
-    return Object.entries(groupedItems).map(([name, items]) => ({
-      name,
-      items,
-    }));
+    return Object.entries(groupedItems)
+      .map(([name, items]) => ({
+        name,
+        items,
+      }))
+      .sort((a, b) => {
+        if (a.name === untaggedGroupName) {
+          return 1;
+        }
+        if (b.name === untaggedGroupName) {
+          return -1;
+        }
+        return a.name.localeCompare(b.name);
+      });
   }, [filteredList, untaggedGroupName]);
 
   return {
@@ -660,8 +692,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   } = api.useLogViews();
   const logViews = logViewsData?.data ?? [];
 
-  const { data: dashboardsData, isLoading: isDashboardsLoading } =
-    api.useDashboards();
+  const updateDashboard = api.useUpdateDashboard();
+  const updateLogView = api.useUpdateLogView();
+
+  const {
+    data: dashboardsData,
+    isLoading: isDashboardsLoading,
+    refetch: refetchDashboards,
+  } = api.useDashboards();
   const dashboards = dashboardsData?.data ?? [];
 
   const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
@@ -734,7 +772,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredSearchesList,
   } = useSearchableList({
     items: logViews,
-    untaggedGroupName: 'Saved Searches',
+    untaggedGroupName: UNTAGGED_SEARCHES_GROUP_NAME,
   });
 
   const [isSearchPresetsCollapsed, setSearchPresetsCollapsed] = useLocalStorage(
@@ -749,7 +787,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredDashboardsList,
   } = useSearchableList({
     items: dashboards,
-    untaggedGroupName: 'Saved Dashboards',
+    untaggedGroupName: UNTAGGED_DASHBOARDS_GROUP_NAME,
   });
 
   const [isDashboardsPresetsCollapsed, setDashboardsPresetsCollapsed] =
@@ -777,6 +815,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           lv._id === query.savedSearchId && styles.listLinkActive,
         )}
         title={lv.name}
+        draggable
+        data-savedsearchid={lv._id}
       >
         <div className="d-inline-block text-truncate">{lv.name}</div>
         {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
@@ -802,6 +842,32 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     ],
   );
 
+  const handleLogViewDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.savedsearchid || name == null) {
+        return;
+      }
+      const logView = logViews.find(
+        lv => lv._id === target.dataset.savedsearchid,
+      );
+      if (logView?.tags?.includes(name)) {
+        return;
+      }
+      updateLogView.mutate(
+        {
+          id: target.dataset.savedsearchid,
+          tags: name === UNTAGGED_SEARCHES_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchLogViews();
+          },
+        },
+      );
+    },
+    [logViews, refetchLogViews, updateLogView],
+  );
+
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => (
       <Link
@@ -811,11 +877,39 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         className={cx(styles.listLink, {
           [styles.listLinkActive]: dashboard._id === query.dashboardId,
         })}
+        draggable
+        data-dashboardid={dashboard._id}
       >
         {dashboard.name}
       </Link>
     ),
     [query.dashboardId],
+  );
+
+  const handleDashboardDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.dashboardid || name == null) {
+        return;
+      }
+      const dashboard = dashboards.find(
+        d => d._id === target.dataset.dashboardid,
+      );
+      if (dashboard?.tags?.includes(name)) {
+        return;
+      }
+      updateDashboard.mutate(
+        {
+          id: target.dataset.dashboardid,
+          tags: name === UNTAGGED_DASHBOARDS_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchDashboards();
+          },
+        },
+      );
+    },
+    [dashboards, refetchDashboards, updateDashboard],
   );
 
   return (
@@ -934,6 +1028,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                           groups={groupedFilteredSearchesList}
                           renderLink={renderLogViewLink}
                           forceExpandGroups={!!searchesListQ}
+                          onDragEnd={handleLogViewDragEnd}
                         />
                       </div>
 
@@ -1170,6 +1265,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         groups={groupedFilteredDashboardsList}
                         renderLink={renderDashboardLink}
                         forceExpandGroups={!!dashboardsListQ}
+                        onDragEnd={handleDashboardDragEnd}
                       />
 
                       {dashboards.length === 0 && (

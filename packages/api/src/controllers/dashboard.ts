@@ -60,10 +60,10 @@ export async function updateDashboardAndAlerts(
     query,
     tags,
   }: {
-    name: string;
-    charts: z.infer<typeof chartSchema>[];
-    query: string;
-    tags: z.infer<typeof tagsSchema>;
+    name?: string;
+    charts?: z.infer<typeof chartSchema>[];
+    query?: string;
+    tags?: z.infer<typeof tagsSchema>;
   },
 ) {
   const oldDashboard = await Dashboard.findOne({

@@ -536,7 +536,7 @@ const api = {
       Error,
       {
         id: string;
-        query: string;
+        query?: string;
         tags?: string[];
       }
     >(`log-views`, async ({ id, query, tags }) =>
@@ -624,9 +624,9 @@ const api = {
       HTTPError,
       {
         id: string;
-        name: string;
-        query: string;
-        charts: any[];
+        name?: string;
+        query?: string;
+        charts?: any[];
         tags?: string[];
       }
     >(async ({ id, name, charts, query, tags }) =>

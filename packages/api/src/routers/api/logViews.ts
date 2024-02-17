@@ -83,7 +83,7 @@ router.patch(
     }),
     body: z.object({
       name: z.string().max(1024).min(1).optional(),
-      query: z.string().max(2048),
+      query: z.string().max(2048).optional(),
       tags: tagsSchema,
     }),
   }),
@@ -103,7 +103,7 @@ router.patch(
         },
         {
           ...(name && { name }),
-          query,
+          ...(query && { query }),
           tags: tags && uniq(tags),
         },
         { new: true },
