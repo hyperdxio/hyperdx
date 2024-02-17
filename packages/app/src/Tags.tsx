@@ -5,8 +5,8 @@ import {
   Checkbox,
   CloseButton,
   Group,
-  HoverCard,
   Input,
+  Popover,
   ScrollArea,
   Stack,
 } from '@mantine/core';
@@ -37,7 +37,7 @@ export const Tags = React.memo(
     const tags = React.useMemo(() => {
       return Array.from(
         new Set([...values, ...(prefetchedOptionsData?.data || [])]),
-      );
+      ).sort();
     }, [prefetchedOptionsData, values]);
 
     const [q, setQ] = React.useState('');
@@ -64,7 +64,7 @@ export const Tags = React.memo(
     );
 
     return (
-      <HoverCard
+      <Popover
         withinPortal
         width={240}
         keepMounted={false}
@@ -73,9 +73,9 @@ export const Tags = React.memo(
           refetch(); // todo: better to use queryClient.invalidateQueries('tags')
           setQ('');
         }}
-        withArrow
+        position="bottom-start"
       >
-        <HoverCard.Target>
+        <Popover.Target>
           {children || (
             <ActionIcon
               variant="filled"
@@ -86,8 +86,8 @@ export const Tags = React.memo(
               <i className="bi bi-tags text-slate-300 fs-7" />
             </ActionIcon>
           )}
-        </HoverCard.Target>
-        <HoverCard.Dropdown p={0} bg="dark">
+        </Popover.Target>
+        <Popover.Dropdown p={0} bg="dark">
           {isLoading && 'Loading'}
           {isError && 'Error'}
           <Input
@@ -169,8 +169,8 @@ export const Tags = React.memo(
               </Button>
             )}
           </div>
-        </HoverCard.Dropdown>
-      </HoverCard>
+        </Popover.Dropdown>
+      </Popover>
     );
   },
 );

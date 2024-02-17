@@ -883,26 +883,26 @@ export default function DashboardPage() {
                     });
                   }}
                 >
-                  <Badge
-                    color={tagsCount ? 'blue' : 'gray'}
-                    variant={tagsCount ? 'light' : 'filled'}
+                  <MButton
+                    compact
+                    color="blue"
+                    radius="xl"
+                    variant={tagsCount > 0 ? 'light' : 'default'}
+                    size="xs"
                     mx="sm"
-                    fw="normal"
-                    tt="none"
-                    className="cursor-pointer"
+                    leftIcon={<i className="bi bi-tags-fill" />}
                   >
-                    <i className="bi bi-tags-fill me-1"></i>
                     {!tagsCount
                       ? 'Add Tag'
                       : tagsCount === 1
                       ? dashboard.tags[0]
                       : `${tagsCount} Tags`}
-                  </Badge>
+                  </MButton>
                 </Tags>
               )}
               <Transition mounted={isSavedNow} transition="skew-down">
                 {style => (
-                  <Badge fw="normal" tt="none" ml="xs" style={style}>
+                  <Badge fw="normal" tt="none" style={style}>
                     Saved now
                   </Badge>
                 )}
