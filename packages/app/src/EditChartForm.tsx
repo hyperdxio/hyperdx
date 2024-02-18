@@ -376,6 +376,8 @@ export const EditNumberChartForm = ({
           where: _editedChart.series[0].where,
           dateRange,
           numberFormat: _editedChart.series[0].numberFormat,
+          series: _editedChart.series,
+          granularity: convertDateRangeToGranularityString(dateRange, 60),
         }
       : null;
   }, [_editedChart, dateRange]);
@@ -392,9 +394,6 @@ export const EditNumberChartForm = ({
   ) {
     return null;
   }
-
-  const labelWidth = 320;
-  const aggFn = _editedChart.series[0].aggFn ?? 'count';
 
   return (
     <form
@@ -419,105 +418,14 @@ export const EditNumberChartForm = ({
           placeholder="Chart Name"
         />
       </div>
-      <div className="d-flex mt-3 align-items-center">
-        <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-          Aggregation Function
-        </div>
-        <div className="ms-3 flex-grow-1">
-          <Select
-            options={AGG_FNS}
-            className="ds-select"
-            value={AGG_FNS.find(v => v.value === aggFn)}
-            onChange={opt => {
-              _setEditedChart(
-                produce(_editedChart, draft => {
-                  if (draft.series[0].type === 'number') {
-                    draft.series[0].aggFn = opt?.value ?? 'count';
-                  }
-                }),
-              );
-            }}
-            classNamePrefix="ds-react-select"
-          />
-        </div>
-      </div>
-      {aggFn !== 'count' && (
-        <div className="d-flex mt-3 align-items-center">
-          <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-            Field
-          </div>
-          <div className="ms-3 flex-grow-1">
-            <FieldSelect
-              value={_editedChart.series[0].field ?? ''}
-              setValue={field =>
-                _setEditedChart(
-                  produce(_editedChart, draft => {
-                    if (draft.series[0].type === 'number') {
-                      draft.series[0].field = field;
-                    }
-                  }),
-                )
-              }
-              types={
-                aggFn === 'count_distinct'
-                  ? ['number', 'string', 'bool']
-                  : ['number']
-              }
-            />
-          </div>
-        </div>
-      )}
-      <div className="d-flex mt-3 align-items-center">
-        <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-          Where
-        </div>
-        <div className="ms-3 flex-grow-1">
-          <InputGroup>
-            <Form.Control
-              type="text"
-              placeholder={'Filter results by a search query'}
-              className="border-0 fs-7"
-              value={_editedChart.series[0].where}
-              onChange={event =>
-                _setEditedChart(
-                  produce(_editedChart, draft => {
-                    if (draft.series[0].type === 'number') {
-                      draft.series[0].where = event.target.value;
-                    }
-                  }),
-                )
-              }
-            />
-          </InputGroup>
-        </div>
-      </div>
-      <div className="ms-2 mt-2 mb-3">
-        <Divider
-          label={
-            <>
-              <i className="bi bi-gear me-1" />
-              Chart Settings
-            </>
-          }
-          c="dark.2"
-          mb={8}
-        />
-        <Group>
-          <div className="fs-8 text-slate-300">Number Format</div>
-          <NumberFormatInput
-            value={_editedChart.series[0].numberFormat}
-            onChange={numberFormat =>
-              _setEditedChart(
-                produce(_editedChart, draft => {
-                  if (draft.series[0].type === 'number') {
-                    draft.series[0].numberFormat = numberFormat;
-                  }
-                }),
-              )
-            }
-          />
-        </Group>
-      </div>
+      <EditMultiSeriesChartForm
+        {...{
+          editedChart: _editedChart,
+          setEditedChart: _setEditedChart,
+          chartType: 'number',
+        }}
+      />
+
       {(onSave != null || onClose != null) && (
         <div className="d-flex justify-content-between my-3 ps-2">
           {onSave != null && (
@@ -684,7 +592,7 @@ export const EditTableChartForm = ({
         {...{
           editedChart: _editedChart,
           setEditedChart: _setEditedChart,
-          CHART_TYPE,
+          chartType: CHART_TYPE,
         }}
       />
       {(onSave != null || onClose != null) && (
@@ -1008,13 +916,13 @@ function pushNewSeries(draft: Draft<Chart>) {
 export const EditMultiSeriesChartForm = ({
   editedChart,
   setEditedChart,
-  CHART_TYPE,
+  chartType,
 }: {
   editedChart: Chart;
   setEditedChart: (chart: Chart) => void;
-  CHART_TYPE: 'time' | 'table';
+  chartType: 'time' | 'table' | 'number';
 }) => {
-  if (editedChart.series[0].type !== CHART_TYPE) {
+  if (editedChart.series[0].type !== chartType) {
     return null;
   }
 
@@ -1033,7 +941,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     draft.series.forEach((series, i) => {
-                      if (series.type === CHART_TYPE) {
+                      if (series.type === chartType) {
                         series.table = table;
                         series.aggFn = aggFn;
                       }
@@ -1046,7 +954,7 @@ export const EditMultiSeriesChartForm = ({
         </Flex>
       )}
       {editedChart.series.map((series, i) => {
-        if (series.type !== CHART_TYPE) {
+        if (series.type !== chartType) {
           return null;
         }
 
@@ -1072,7 +980,7 @@ export const EditMultiSeriesChartForm = ({
                       }}
                     >
                       <i className="bi bi-trash me-2" />
-                      Remove Series
+                      Remove {series.type === 'number' ? 'Ratio' : 'Series'}
                     </Button>
                   )}
                 </>
@@ -1085,14 +993,14 @@ export const EditMultiSeriesChartForm = ({
               table={series.table ?? 'logs'}
               aggFn={series.aggFn}
               where={series.where}
-              groupBy={series.groupBy[0]}
+              groupBy={series.type !== 'number' ? series.groupBy[0] : undefined}
               field={series.field ?? ''}
               numberFormat={series.numberFormat}
               setAggFn={aggFn =>
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.aggFn = aggFn;
                     }
                   }),
@@ -1102,19 +1010,22 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.where = where;
                     }
                   }),
                 )
               }
               setGroupBy={
-                editedChart.series.length === 1
+                editedChart.series.length === 1 && series.type !== 'number'
                   ? groupBy =>
                       setEditedChart(
                         produce(editedChart, draft => {
                           const draftSeries = draft.series[i];
-                          if (draftSeries.type === CHART_TYPE) {
+                          if (
+                            draftSeries.type === chartType &&
+                            draftSeries.type !== 'number'
+                          ) {
                             if (groupBy != undefined) {
                               draftSeries.groupBy[0] = groupBy;
                             } else {
@@ -1129,7 +1040,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.field = field;
                     }
                   }),
@@ -1141,7 +1052,7 @@ export const EditMultiSeriesChartForm = ({
                       setEditedChart(
                         produce(editedChart, draft => {
                           const draftSeries = draft.series[i];
-                          if (draftSeries.type === CHART_TYPE) {
+                          if (draftSeries.type === chartType) {
                             draftSeries.table = table;
                             draftSeries.aggFn = aggFn;
                           }
@@ -1154,7 +1065,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.field = field;
                       draftSeries.aggFn = aggFn;
                     }
@@ -1166,37 +1077,41 @@ export const EditMultiSeriesChartForm = ({
         );
       })}
       <Divider my="md" />
-      {editedChart.series.length > 1 && (
-        <Flex align="center" gap="md" mb="sm">
-          <div className="text-muted">Group By</div>
-          <div className="flex-grow-1">
-            <GroupBySelect
-              table={editedChart.series[0].table ?? 'logs'}
-              groupBy={editedChart.series[0].groupBy[0]}
-              fields={
-                editedChart.series
-                  .map(s => (s as TimeChartSeries).field)
-                  .filter(f => f != null) as string[]
-              }
-              setGroupBy={groupBy => {
-                setEditedChart(
-                  produce(editedChart, draft => {
-                    draft.series.forEach((series, i) => {
-                      if (series.type === CHART_TYPE) {
-                        if (groupBy != undefined) {
-                          series.groupBy[0] = groupBy;
-                        } else {
-                          series.groupBy = [];
+      {editedChart.series.length > 1 &&
+        editedChart.series[0].type !== 'number' && (
+          <Flex align="center" gap="md" mb="sm">
+            <div className="text-muted">Group By</div>
+            <div className="flex-grow-1">
+              <GroupBySelect
+                table={editedChart.series[0].table ?? 'logs'}
+                groupBy={editedChart.series[0].groupBy[0]}
+                fields={
+                  editedChart.series
+                    .map(s => (s as TimeChartSeries).field)
+                    .filter(f => f != null) as string[]
+                }
+                setGroupBy={groupBy => {
+                  setEditedChart(
+                    produce(editedChart, draft => {
+                      draft.series.forEach((series, i) => {
+                        if (
+                          series.type === chartType &&
+                          series.type !== 'number'
+                        ) {
+                          if (groupBy != undefined) {
+                            series.groupBy[0] = groupBy;
+                          } else {
+                            series.groupBy = [];
+                          }
                         }
-                      }
-                    });
-                  }),
-                );
-              }}
-            />
-          </div>
-        </Flex>
-      )}
+                      });
+                    }),
+                  );
+                }}
+              />
+            </div>
+          </Flex>
+        )}
       <Flex justify="space-between">
         <Flex gap="md" align="center">
           {editedChart.series.length === 1 && (
@@ -1218,24 +1133,26 @@ export const EditMultiSeriesChartForm = ({
               Add Ratio
             </Button>
           )}
-          <Button
-            mt={4}
-            variant="subtle"
-            size="sm"
-            color="gray"
-            onClick={() => {
-              setEditedChart(
-                produce(editedChart, draft => {
-                  pushNewSeries(draft);
-                  draft.seriesReturnType = 'column';
-                }),
-              );
-            }}
-          >
-            <i className="bi bi-plus-circle me-2" />
-            Add Series
-          </Button>
-          {editedChart.series.length == 2 && (
+          {chartType !== 'number' && (
+            <Button
+              mt={4}
+              variant="subtle"
+              size="sm"
+              color="gray"
+              onClick={() => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    pushNewSeries(draft);
+                    draft.seriesReturnType = 'column';
+                  }),
+                );
+              }}
+            >
+              <i className="bi bi-plus-circle me-2" />
+              Add Series
+            </Button>
+          )}
+          {editedChart.series.length == 2 && chartType !== 'number' && (
             <Switch
               label="As Ratio"
               checked={editedChart.seriesReturnType === 'ratio'}
@@ -1257,7 +1174,7 @@ export const EditMultiSeriesChartForm = ({
             setEditedChart(
               produce(editedChart, draft => {
                 draft.series.forEach((series, i) => {
-                  if (series.type === CHART_TYPE) {
+                  if (series.type === chartType) {
                     series.numberFormat = numberFormat;
                   }
                 });
@@ -1385,7 +1302,7 @@ export const EditLineChartForm = ({
         {...{
           editedChart: _editedChart,
           setEditedChart: _setEditedChart,
-          CHART_TYPE,
+          chartType: CHART_TYPE,
         }}
       />
 

@@ -1,56 +1,75 @@
 import { memo } from 'react';
 
 import api from './api';
-import type { AggFn, NumberFormat } from './types';
+import { Granularity } from './ChartUtils';
+import type { AggFn, ChartSeries, NumberFormat } from './types';
 import { formatNumber } from './utils';
 
 const HDXNumberChart = memo(
   ({
-    config: { table, aggFn, field, where, dateRange, numberFormat },
+    config: {
+      series,
+      table,
+      aggFn,
+      field,
+      where,
+      dateRange,
+      numberFormat,
+      granularity,
+    },
     onSettled,
   }: {
     config: {
+      series: ChartSeries[];
       table: string;
       aggFn: AggFn;
       field: string;
       where: string;
       dateRange: [Date, Date];
       numberFormat?: NumberFormat;
+      granularity?: Granularity;
     };
     onSettled?: () => void;
   }) => {
-    const { data, isError, isLoading } =
-      table === 'logs'
-        ? api.useLogsChart(
-            {
-              aggFn,
-              endDate: dateRange[1] ?? new Date(),
-              field,
-              granularity: undefined,
-              groupBy: '',
-              q: where,
-              startDate: dateRange[0] ?? new Date(),
-            },
-            {
-              onSettled,
-            },
-          )
-        : api.useMetricsChart(
-            {
-              aggFn,
-              endDate: dateRange[1] ?? new Date(),
-              granularity: undefined,
-              name: field,
-              q: where,
-              startDate: dateRange[0] ?? new Date(),
-              groupBy: '',
-            },
-            {
-              onSettled,
-            },
-          );
+    const isLogsChartApi = table === 'logs' && series.length === 1;
 
-    const number = formatNumber(data?.data?.[0]?.data, numberFormat);
+    const { data, isError, isLoading } = isLogsChartApi
+      ? api.useLogsChart(
+          {
+            aggFn,
+            endDate: dateRange[1] ?? new Date(),
+            field,
+            granularity: undefined,
+            groupBy: '',
+            q: where,
+            startDate: dateRange[0] ?? new Date(),
+          },
+          {
+            onSettled,
+          },
+        )
+      : api.useMultiSeriesChart(
+          {
+            series,
+            startDate: dateRange[0] ?? new Date(),
+            endDate: dateRange[1] ?? new Date(),
+            granularity,
+            seriesReturnType: series.length > 1 ? 'ratio' : 'column',
+          },
+          {
+            onSettled,
+          },
+        );
+    const sortedData = data?.data?.sort(
+      (a: any, b: any) => b?.ts_bucket - a?.ts_bucket,
+    );
+
+    const number = formatNumber(
+      isLogsChartApi
+        ? sortedData?.[0]?.data
+        : sortedData?.[0]?.['series_0.data'],
+      numberFormat,
+    );
 
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
