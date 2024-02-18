@@ -65,6 +65,8 @@
   color: $slate-400;
   font-size: 12px;
   margin: 8px 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .listLinkActive {
