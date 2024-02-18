@@ -917,11 +917,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       <AuthLoadingBlocker />
       {fixed && <div style={{ width: navWidth, minWidth: navWidth }}></div>}
       <ScrollArea
-        type="scroll"
+        type="hover"
         scrollbarSize={8}
         style={{
-          minWidth: navWidth,
-          width: navWidth,
           maxHeight: '100vh',
           height: '100%',
           ...(fixed
@@ -933,7 +931,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         }}
         className="border-end border-dark d-flex flex-column justify-content-between"
       >
-        <div>
+        <div style={{ width: navWidth }}>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
             <Link href="/search" className="text-decoration-none">
               {isCollapsed ? (
@@ -1326,7 +1324,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </div>
         {!isCollapsed && (
           <>
-            <div className="px-3 mb-2 mt-4">
+            <div style={{ width: navWidth }} className="px-3 mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
                 <span className="text-slate-300 fs-8">
                   Ready to use HyperDX Cloud?
