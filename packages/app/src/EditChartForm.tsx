@@ -370,10 +370,7 @@ export const EditNumberChartForm = ({
   const chartConfig = useMemo(() => {
     return _editedChart != null && _editedChart.series[0].type === 'number'
       ? {
-          aggFn: _editedChart.series[0].aggFn ?? 'count',
-          table: _editedChart.series[0].table ?? 'logs',
           field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
-          where: _editedChart.series[0].where,
           dateRange,
           numberFormat: _editedChart.series[0].numberFormat,
           series: _editedChart.series,
