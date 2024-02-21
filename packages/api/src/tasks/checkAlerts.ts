@@ -105,10 +105,8 @@ const buildChartEventSlackMessage = ({
   // should be only 1 chart
   const chart = dashboard.charts[0];
 
-  const mrkdwn = Mustache.render(
-    `*<{{{chartLink}}} | Alert for "{{chart.name}}" in "{{dashboard.name}}">*
-{{#group}}Group: "{{group}}"{{/group}}
-{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
+  const title = Mustache.render(
+    `*<{{{chartLink}}} | Alert for "{{chart.name}}" in "{{dashboard.name}}">*`,
     {
       chartLink: buildChartLink({
         dashboardId: dashboard._id.toString(),
@@ -118,6 +116,13 @@ const buildChartEventSlackMessage = ({
       }),
       chart,
       dashboard,
+    },
+  );
+
+  const body = Mustache.render(
+    `{{#group}}Group: "{{group}}"{{/group}}
+{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
+    {
       group,
       value,
       doesExceedThreshold: doesExceedThreshold(alert, value),
@@ -141,7 +146,10 @@ const buildChartEventSlackMessage = ({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: mrkdwn,
+          text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
+            title,
+            body,
+          }),
         },
       },
     ],
@@ -178,15 +186,8 @@ const buildLogEventSlackMessage = async ({
     teamId: logView.team._id.toString(),
   });
 
-  const mrkdwn = Mustache.render(
-    `*<{{{logSearchLink}}} | Alert for "{{logView.name}}">*
-{{#group}}Group: "{{group}}"{{/group}}
-{{value}} lines found, expected {{#isPresence}}less than{{/isPresence}}{{^isPresence}}greater than{{/isPresence}} {{threshold}} lines
-{{#results}}
-\`\`\`
-{{{results}}}
-\`\`\`
-{{/results}}`,
+  const title = Mustache.render(
+    `*<{{{logSearchLink}}} | Alert for "{{logView.name}}">*`,
     {
       logSearchLink: buildLogSearchLink({
         endTime,
@@ -195,6 +196,18 @@ const buildLogEventSlackMessage = async ({
         startTime,
       }),
       logView,
+    },
+  );
+
+  const body = Mustache.render(
+    `{{#group}}Group: "{{group}}"{{/group}}
+{{value}} lines found, expected {{#isPresence}}less than{{/isPresence}}{{^isPresence}}greater than{{/isPresence}} {{threshold}} lines
+{{#results}}
+\`\`\`
+{{{results}}}
+\`\`\`
+{{/results}}`,
+    {
       group,
       value,
       isPresence: alert.type === 'presence',
@@ -233,7 +246,10 @@ const buildLogEventSlackMessage = async ({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: mrkdwn,
+          text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
+            title,
+            body,
+          }),
         },
       },
     ],
