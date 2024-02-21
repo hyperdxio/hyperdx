@@ -77,7 +77,7 @@ const translateExternalAlertToInternalAlert = (
   };
 };
 
-const translateAlertDocumentToExternalAlert = (
+export const translateAlertDocumentToExternalAlert = (
   alertDoc: AlertDocument,
 ): z.infer<typeof externalAlertSchemaWithId> => {
   return {

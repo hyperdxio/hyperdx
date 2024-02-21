@@ -79,42 +79,10 @@ describe('checkAlerts', () => {
   });
 
   it('doesExceedThreshold', () => {
-    expect(
-      doesExceedThreshold(
-        {
-          type: 'presence',
-          threshold: 10,
-        } as any,
-        11,
-      ),
-    ).toBe(true);
-    expect(
-      doesExceedThreshold(
-        {
-          type: 'presence',
-          threshold: 10,
-        } as any,
-        10,
-      ),
-    ).toBe(true);
-    expect(
-      doesExceedThreshold(
-        {
-          type: 'absence',
-          threshold: 10,
-        } as any,
-        9,
-      ),
-    ).toBe(true);
-    expect(
-      doesExceedThreshold(
-        {
-          type: 'absence',
-          threshold: 10,
-        } as any,
-        10,
-      ),
-    ).toBe(false);
+    expect(doesExceedThreshold(true, 10, 11)).toBe(true);
+    expect(doesExceedThreshold(true, 10, 10)).toBe(true);
+    expect(doesExceedThreshold(false, 10, 9)).toBe(true);
+    expect(doesExceedThreshold(false, 10, 10)).toBe(false);
   });
 
   describe('processAlert', () => {

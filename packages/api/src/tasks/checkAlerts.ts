@@ -5,7 +5,6 @@ import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import { isString } from 'lodash';
 import ms from 'ms';
-import Mustache from 'mustache';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 import { z } from 'zod';
@@ -19,9 +18,16 @@ import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook from '@/models/webhook';
+import { translateAlertDocumentToExternalAlert } from '@/routers/external-api/v1/alerts';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
+import { externalAlertSchema } from '@/utils/zod';
+
+// IMPLEMENT ME
+const renderTemplate = (template: string | null | undefined, view: any) => {
+  return template ?? '';
+};
 
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
@@ -85,11 +91,25 @@ export const buildChartLink = ({
   return url.toString();
 };
 
+export const doesExceedThreshold = (
+  isThresholdTypeAbove: boolean,
+  threshold: number,
+  value: number,
+) => {
+  if (isThresholdTypeAbove && value >= threshold) {
+    return true;
+  } else if (!isThresholdTypeAbove && value < threshold) {
+    return true;
+  }
+  return false;
+};
+
 // ------------------------------------------------------------
 // ----------------- Alert Message Template -------------------
 // ------------------------------------------------------------
+// should match the external alert schema
 type AlertMessageTemplateDefaultView = {
-  alert: AlertDocument;
+  alert: z.infer<typeof externalAlertSchema>;
   dashboard: EnhancedDashboard | null;
   endTime: Date;
   granularity: string;
@@ -107,7 +127,7 @@ export const buildAlertMessageTemplateHdxLink = ({
   logView,
   startTime,
 }: AlertMessageTemplateDefaultView) => {
-  if (alert.source === 'LOG') {
+  if (alert.source === 'search') {
     if (logView == null) {
       throw new Error('Source is LOG but logView is null');
     }
@@ -120,7 +140,7 @@ export const buildAlertMessageTemplateHdxLink = ({
       q: searchQuery,
       startTime,
     });
-  } else if (alert.source === 'CHART') {
+  } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
@@ -131,8 +151,6 @@ export const buildAlertMessageTemplateHdxLink = ({
       startTime,
     });
   }
-
-  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 export const buildAlertMessageTemplateTitle = ({
   template,
@@ -142,25 +160,24 @@ export const buildAlertMessageTemplateTitle = ({
   view: AlertMessageTemplateDefaultView;
 }) => {
   const { alert, logView, dashboard } = view;
-  if (alert.source === 'LOG') {
+  if (alert.source === 'search') {
     if (logView == null) {
       throw new Error('Source is LOG but logView is null');
     }
-    return Mustache.render(template ?? `Alert for "{{logView.name}}"`, view);
-  } else if (alert.source === 'CHART') {
+
+    // TODO: using template engine to render the title
+    return template
+      ? renderTemplate(template, view)
+      : `Alert for "${logView.name}"`;
+  } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    return Mustache.render(
-      template ?? `Alert for "{{chart.name}}" in "{{dashboard.name}}"`,
-      {
-        ...view,
-        chart: dashboard.charts[0], // should be only 1 chart
-      },
-    );
+    const chart = dashboard.charts[0];
+    return template
+      ? renderTemplate(template, view)
+      : `Alert for "${chart.name}" in "${dashboard.name}"`;
   }
-
-  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 export const buildAlertMessageTemplateBody = async ({
   template,
@@ -170,8 +187,7 @@ export const buildAlertMessageTemplateBody = async ({
   view: AlertMessageTemplateDefaultView;
 }) => {
   const { alert, dashboard, endTime, group, logView, startTime, value } = view;
-
-  if (alert.source === 'LOG') {
+  if (alert.source === 'search') {
     if (logView == null) {
       throw new Error('Source is LOG but logView is null');
     }
@@ -189,57 +205,45 @@ export const buildAlertMessageTemplateBody = async ({
       tableVersion: logView.team.logStreamTableVersion,
       teamId: logView.team._id.toString(),
     });
-    return Mustache.render(
-      `{{#group}}Group: "{{group}}"{{/group}}
-{{value}} lines found, expected {{#isPresence}}less than{{/isPresence}}{{^isPresence}}greater than{{/isPresence}} {{threshold}} lines
-{{customTemplate}}
-{{#results}}
-\`\`\`
-{{{results}}}
-\`\`\`
-{{/results}}`,
-      {
-        group,
-        value,
-        isPresence: alert.type === 'presence',
-        threshold: alert.threshold,
-        customTemplate: Mustache.render(template || '', view),
-        results:
-          results?.rows != null && value > 0
-            ? truncateString(
-                results.data
-                  .map(row => {
-                    return `${fnsTz.formatInTimeZone(
-                      new Date(row.timestamp),
-                      'Etc/UTC',
-                      'MMM d HH:mm:ss',
-                    )}Z [${row.severity_text}] ${truncateString(
-                      row.body,
-                      MAX_MESSAGE_LENGTH,
-                    )}`;
-                  })
-                  .join('\n'),
-                2500,
-              )
-            : null,
-      },
+    const truncatedResults = truncateString(
+      results.data
+        .map(row => {
+          return `${fnsTz.formatInTimeZone(
+            new Date(row.timestamp),
+            'Etc/UTC',
+            'MMM d HH:mm:ss',
+          )}Z [${row.severity_text}] ${truncateString(
+            row.body,
+            MAX_MESSAGE_LENGTH,
+          )}`;
+        })
+        .join('\n'),
+      2500,
     );
-  } else if (alert.source === 'CHART') {
+    return `Group: "${group}"
+${value} lines found, expected ${
+      alert.threshold_type === 'below' ? 'less than' : 'greater than'
+    } ${alert.threshold} lines
+${renderTemplate(template, view)}
+\`\`\`
+${truncatedResults}
+\`\`\`
+`;
+  } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    return Mustache.render(
-      `{{#group}}Group: "{{group}}"{{/group}}
-{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}
-{{customTemplate}}`,
-      {
-        group,
+    return `Group: "${group}"
+${value} ${
+      doesExceedThreshold(
+        alert.threshold_type === 'above',
+        alert.threshold,
         value,
-        doesExceedThreshold: doesExceedThreshold(alert, value),
-        threshold: alert.threshold,
-        customTemplate: Mustache.render(template || '', view),
-      },
-    );
+      )
+        ? 'exceeds'
+        : 'falls below'
+    } ${alert.threshold}
+${renderTemplate(template || '', view)}`;
   }
 };
 // ------------------------------------------------------------
@@ -264,7 +268,7 @@ const fireChannelEvent = async ({
   windowSizeInMins: number;
 }) => {
   const templateView: AlertMessageTemplateDefaultView = {
-    alert,
+    alert: translateAlertDocumentToExternalAlert(alert),
     dashboard,
     endTime,
     granularity: `${windowSizeInMins} minute`,
@@ -289,13 +293,6 @@ const fireChannelEvent = async ({
       });
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
-        const slackMessageTitle = Mustache.render(
-          `*<{{{hdxLink}}} | {{{title}}}>*`,
-          {
-            hdxLink,
-            title,
-          },
-        );
         await slack.postMessageToWebhook(webhook.url, {
           text: title,
           blocks: [
@@ -303,10 +300,7 @@ const fireChannelEvent = async ({
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
-                  title: slackMessageTitle,
-                  body,
-                }),
+                text: `*<${hdxLink} | ${title}>*\n${body}`,
               },
             },
           ],
@@ -319,18 +313,6 @@ const fireChannelEvent = async ({
         `Unsupported channel type: ${(alert.channel as any).any}`,
       );
   }
-};
-
-export const doesExceedThreshold = (
-  alert: AlertDocument,
-  totalCount: number,
-) => {
-  if (alert.type === 'presence' && totalCount >= alert.threshold) {
-    return true;
-  } else if (alert.type === 'absence' && totalCount < alert.threshold) {
-    return true;
-  }
-  return false;
 };
 
 export const roundDownTo = (roundTo: number) => (x: Date) =>
@@ -501,7 +483,13 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           ? parseInt(checkData.data)
           : checkData.data;
         const bucketStart = new Date(checkData.ts_bucket * 1000);
-        if (doesExceedThreshold(alert, totalCount)) {
+        if (
+          doesExceedThreshold(
+            alert.type === 'presence',
+            alert.threshold,
+            totalCount,
+          )
+        ) {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
