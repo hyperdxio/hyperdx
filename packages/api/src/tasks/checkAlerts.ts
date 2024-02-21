@@ -5,6 +5,7 @@ import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import { isString } from 'lodash';
 import ms from 'ms';
+import Mustache from 'mustache';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 import { z } from 'zod';
@@ -91,7 +92,7 @@ const buildChartEventSlackMessage = ({
   granularity,
   group,
   startTime,
-  totalCount,
+  value,
 }: {
   alert: AlertDocument;
   endTime: Date;
@@ -99,27 +100,42 @@ const buildChartEventSlackMessage = ({
   granularity: string;
   group?: string;
   startTime: Date;
-  totalCount: number;
+  value: number;
 }) => {
   // should be only 1 chart
   const chart = dashboard.charts[0];
-  const mrkdwn = [
-    `*<${buildChartLink({
-      dashboardId: dashboard._id.toString(),
-      endTime,
-      granularity,
-      startTime,
-    })} | Alert for "${chart.name}" in "${dashboard.name}">*`,
-    ...(group != null ? [`Group: "${group}"`] : []),
-    `${totalCount} ${
-      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
-    } ${alert.threshold}`,
-  ].join('\n');
+
+  const mrkdwn = Mustache.render(
+    `*<{{{chartLink}}} | Alert for "{{chart.name}}" in "{{dashboard.name}}">*
+{{#group}}Group: "{{group}}"{{/group}}
+{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
+    {
+      chartLink: buildChartLink({
+        dashboardId: dashboard._id.toString(),
+        endTime,
+        granularity,
+        startTime,
+      }),
+      chart,
+      dashboard,
+      group,
+      value,
+      doesExceedThreshold: doesExceedThreshold(alert, value),
+      threshold: alert.threshold,
+    },
+  );
 
   return {
-    text: `Alert for "${chart.name}" in "${dashboard.name}" - ${totalCount} ${
-      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
-    } ${alert.threshold}`,
+    text: Mustache.render(
+      `Alert for "{{chart.name}}" in "{{dashboard.name}}" - {{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
+      {
+        chart,
+        dashboard,
+        value,
+        doesExceedThreshold: doesExceedThreshold(alert, value),
+        threshold: alert.threshold,
+      },
+    ),
     blocks: [
       {
         type: 'section',
@@ -138,14 +154,14 @@ const buildLogEventSlackMessage = async ({
   group,
   logView,
   startTime,
-  totalCount,
+  value,
 }: {
   alert: AlertDocument;
   endTime: Date;
   group?: string;
   logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
   startTime: Date;
-  totalCount: number;
+  value: number;
 }) => {
   const searchQuery = alert.groupBy
     ? `${logView.query} ${alert.groupBy}:"${group}"`
@@ -162,42 +178,56 @@ const buildLogEventSlackMessage = async ({
     teamId: logView.team._id.toString(),
   });
 
-  const mrkdwn = [
-    `*<${buildLogSearchLink({
-      endTime,
+  const mrkdwn = Mustache.render(
+    `*<{{{logSearchLink}}} | Alert for "{{logView.name}}">*
+{{#group}}Group: "{{group}}"{{/group}}
+{{value}} lines found, expected {{#isPresence}}less than{{/isPresence}}{{^isPresence}}greater than{{/isPresence}} {{threshold}} lines
+{{#results}}
+\`\`\`
+{{{results}}}
+\`\`\`
+{{/results}}`,
+    {
+      logSearchLink: buildLogSearchLink({
+        endTime,
+        logView,
+        q: searchQuery,
+        startTime,
+      }),
       logView,
-      q: searchQuery,
-      startTime,
-    })} | Alert for ${logView.name}>*`,
-    ...(group != null ? [`Group: "${group}"`] : []),
-    `${totalCount} lines found, expected ${
-      alert.type === 'presence' ? 'less than' : 'greater than'
-    } ${alert.threshold} lines`,
-    ...(results?.rows != null && totalCount > 0
-      ? [
-          `\`\`\``,
-          truncateString(
-            results.data
-              .map(row => {
-                return `${fnsTz.formatInTimeZone(
-                  new Date(row.timestamp),
-                  'Etc/UTC',
-                  'MMM d HH:mm:ss',
-                )}Z [${row.severity_text}] ${truncateString(
-                  row.body,
-                  MAX_MESSAGE_LENGTH,
-                )}`;
-              })
-              .join('\n'),
-            2500,
-          ),
-          `\`\`\``,
-        ]
-      : []),
-  ].join('\n');
+      group,
+      value,
+      isPresence: alert.type === 'presence',
+      threshold: alert.threshold,
+      results:
+        results?.rows != null && value > 0
+          ? truncateString(
+              results.data
+                .map(row => {
+                  return `${fnsTz.formatInTimeZone(
+                    new Date(row.timestamp),
+                    'Etc/UTC',
+                    'MMM d HH:mm:ss',
+                  )}Z [${row.severity_text}] ${truncateString(
+                    row.body,
+                    MAX_MESSAGE_LENGTH,
+                  )}`;
+                })
+                .join('\n'),
+              2500,
+            )
+          : null,
+    },
+  );
 
   return {
-    text: `Alert for ${logView.name} - ${totalCount} lines found`,
+    text: Mustache.render(
+      `Alert for {{logView.name}} - {{value}} lines found`,
+      {
+        logView,
+        value,
+      },
+    ),
     blocks: [
       {
         type: 'section',
@@ -254,7 +284,7 @@ const fireChannelEvent = async ({
             group,
             logView,
             startTime,
-            totalCount,
+            value: totalCount,
           });
         } else if (alert.source === 'CHART' && dashboard) {
           message = buildChartEventSlackMessage({
@@ -264,7 +294,7 @@ const fireChannelEvent = async ({
             granularity: `${windowSizeInMins} minute`,
             group,
             startTime,
-            totalCount,
+            value: totalCount,
           });
         }
 
