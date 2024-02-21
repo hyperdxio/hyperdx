@@ -300,7 +300,6 @@ const fireChannelEvent = async ({
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
         await slack.postMessageToWebhook(webhook.url, {
-          text: title,
           blocks: [
             {
               type: 'section',

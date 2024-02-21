@@ -207,7 +207,6 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Log View"',
           blocks: [
             {
               text: {
@@ -374,7 +373,6 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Max Duration" in "My Dashboard"',
           blocks: [
             {
               text: {
@@ -611,7 +609,6 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Redis Memory" in "My Dashboard"',
           blocks: [
             {
               text: {
