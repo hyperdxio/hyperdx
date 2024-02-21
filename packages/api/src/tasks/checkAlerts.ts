@@ -18,11 +18,13 @@ import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook from '@/models/webhook';
-import { translateAlertDocumentToExternalAlert } from '@/routers/external-api/v1/alerts';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
-import { externalAlertSchema } from '@/utils/zod';
+import {
+  externalAlertSchema,
+  translateAlertDocumentToExternalAlert,
+} from '@/utils/zod';
 
 // IMPLEMENT ME
 const renderTemplate = (template: string | null | undefined, view: any) => {
@@ -220,9 +222,9 @@ export const buildAlertMessageTemplateBody = async ({
         .join('\n'),
       2500,
     );
-    return `Group: "${group}"
+    return `Group: "${group ?? ''}"
 ${value} lines found, expected ${
-      alert.threshold_type === 'below' ? 'less than' : 'greater than'
+      alert.threshold_type === 'above' ? 'less than' : 'greater than'
     } ${alert.threshold} lines
 ${renderTemplate(template, view)}
 \`\`\`
@@ -233,7 +235,7 @@ ${truncatedResults}
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    return `Group: "${group}"
+    return `Group: "${group ?? ''}"
 ${value} ${
       doesExceedThreshold(
         alert.threshold_type === 'above',

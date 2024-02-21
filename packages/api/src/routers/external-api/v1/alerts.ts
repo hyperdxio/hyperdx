@@ -12,12 +12,11 @@ import {
   validateGroupByProperty,
 } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
-import { AlertDocument } from '@/models/alert';
 import {
-  alertSchema,
   externalAlertSchema,
-  externalAlertSchemaWithId,
   objectIdSchema,
+  translateAlertDocumentToExternalAlert,
+  translateExternalAlertToInternalAlert,
 } from '@/utils/zod';
 
 const router = express.Router();
@@ -52,53 +51,6 @@ const validateGroupBy = async (
     }
   }
   next();
-};
-
-const translateExternalAlertToInternalAlert = (
-  alertInput: z.infer<typeof externalAlertSchema>,
-): z.infer<typeof alertSchema> => {
-  return {
-    interval: alertInput.interval,
-    threshold: alertInput.threshold,
-    type: alertInput.threshold_type === 'above' ? 'presence' : 'absence',
-    channel: {
-      ...alertInput.channel,
-      type: 'webhook',
-    },
-    ...(alertInput.source === 'search' && alertInput.savedSearchId
-      ? { source: 'LOG', logViewId: alertInput.savedSearchId }
-      : alertInput.source === 'chart' && alertInput.dashboardId
-      ? {
-          source: 'CHART',
-          dashboardId: alertInput.dashboardId,
-          chartId: alertInput.chartId,
-        }
-      : ({} as never)),
-  };
-};
-
-export const translateAlertDocumentToExternalAlert = (
-  alertDoc: AlertDocument,
-): z.infer<typeof externalAlertSchemaWithId> => {
-  return {
-    id: alertDoc._id.toString(),
-    interval: alertDoc.interval,
-    threshold: alertDoc.threshold,
-    threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
-    channel: {
-      ...alertDoc.channel,
-      type: 'slack_webhook',
-    },
-    ...(alertDoc.source === 'LOG' && alertDoc.logView
-      ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
-      : alertDoc.source === 'CHART' && alertDoc.dashboardId
-      ? {
-          source: 'chart',
-          dashboardId: alertDoc.dashboardId.toString(),
-          chartId: alertDoc.chartId as string,
-        }
-      : ({} as never)),
-  };
 };
 
 router.get(
