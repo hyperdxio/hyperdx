@@ -222,7 +222,7 @@ export const buildAlertMessageTemplateBody = async ({
         .join('\n'),
       2500,
     );
-    return `Group: "${group ?? ''}"
+    return `${group ? `Group: "${group}"` : ''}
 ${value} lines found, expected ${
       alert.threshold_type === 'above' ? 'less than' : 'greater than'
     } ${alert.threshold} lines
@@ -235,7 +235,7 @@ ${truncatedResults}
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    return `Group: "${group ?? ''}"
+    return `${group ? `Group: "${group}"` : ''}
 ${value} ${
       doesExceedThreshold(
         alert.threshold_type === 'above',
@@ -245,7 +245,7 @@ ${value} ${
         ? 'exceeds'
         : 'falls below'
     } ${alert.threshold}
-${renderTemplate(template || '', view)}`;
+${renderTemplate(template, view)}`;
   }
 };
 // ------------------------------------------------------------
