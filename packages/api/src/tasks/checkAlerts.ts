@@ -111,7 +111,8 @@ export const doesExceedThreshold = (
 // ------------------------------------------------------------
 // should match the external alert schema
 type AlertMessageTemplateDefaultView = {
-  alert: z.infer<typeof externalAlertSchema>;
+  // FIXME: do we want to include groupBy in the external alert schema?
+  alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
   dashboard: EnhancedDashboard | null;
   endTime: Date;
   granularity: string;
@@ -270,7 +271,10 @@ const fireChannelEvent = async ({
   windowSizeInMins: number;
 }) => {
   const templateView: AlertMessageTemplateDefaultView = {
-    alert: translateAlertDocumentToExternalAlert(alert),
+    alert: {
+      ...translateAlertDocumentToExternalAlert(alert),
+      groupBy: alert.groupBy,
+    },
     dashboard,
     endTime,
     granularity: `${windowSizeInMins} minute`,

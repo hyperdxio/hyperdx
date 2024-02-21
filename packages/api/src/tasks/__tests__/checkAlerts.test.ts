@@ -207,17 +207,19 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for My Log View - 11 lines found',
+          text: 'Alert for "My Log View"',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for My Log View>*`,
+                  `*<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View">*`,
                   'Group: "HyperDX"',
                   '11 lines found, expected less than 10 lines',
+                  '',
                   '```',
                   'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
                   '```',
+                  '',
                 ].join('\n'),
                 type: 'mrkdwn',
               },
@@ -372,7 +374,7 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10',
+          text: 'Alert for "Max Duration" in "My Dashboard"',
           blocks: [
             {
               text: {
@@ -380,6 +382,7 @@ describe('checkAlerts', () => {
                   `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard">*`,
                   'Group: "HyperDX"',
                   '102 exceeds 10',
+                  '',
                 ].join('\n'),
                 type: 'mrkdwn',
               },
@@ -608,7 +611,7 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10',
+          text: 'Alert for "Redis Memory" in "My Dashboard"',
           blocks: [
             {
               text: {
@@ -616,6 +619,7 @@ describe('checkAlerts', () => {
                   `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard">*`,
                   'Group: "HyperDX"',
                   '395.3421052631579 exceeds 10',
+                  '',
                 ].join('\n'),
                 type: 'mrkdwn',
               },
