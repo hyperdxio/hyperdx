@@ -3,7 +3,7 @@ package env
 import "os"
 
 var (
-	VERSION        = "0.0.1"
+	VERSION        = "0.0.2"
 	PORT           = os.Getenv("PORT")
 	AGGREGATOR_URL = os.Getenv("AGGREGATOR_API_URL")
 	SERVICE_NAME   = os.Getenv("OTEL_SERVICE_NAME")
