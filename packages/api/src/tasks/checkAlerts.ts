@@ -85,176 +85,164 @@ export const buildChartLink = ({
   return url.toString();
 };
 
-const buildChartEventSlackMessage = ({
+// ------------------------------------------------------------
+// ----------------- Alert Message Template -------------------
+// ------------------------------------------------------------
+type AlertMessageTemplateDefaultView = {
+  alert: AlertDocument;
+  dashboard: EnhancedDashboard | null;
+  endTime: Date;
+  granularity: string;
+  group?: string;
+  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
+  startTime: Date;
+  value: number;
+};
+export const buildAlertMessageTemplateHdxLink = ({
   alert,
   dashboard,
   endTime,
   granularity,
   group,
-  startTime,
-  value,
-}: {
-  alert: AlertDocument;
-  endTime: Date;
-  dashboard: EnhancedDashboard;
-  granularity: string;
-  group?: string;
-  startTime: Date;
-  value: number;
-}) => {
-  // should be only 1 chart
-  const chart = dashboard.charts[0];
-
-  const title = Mustache.render(
-    `*<{{{chartLink}}} | Alert for "{{chart.name}}" in "{{dashboard.name}}">*`,
-    {
-      chartLink: buildChartLink({
-        dashboardId: dashboard._id.toString(),
-        endTime,
-        granularity,
-        startTime,
-      }),
-      chart,
-      dashboard,
-    },
-  );
-
-  const body = Mustache.render(
-    `{{#group}}Group: "{{group}}"{{/group}}
-{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
-    {
-      group,
-      value,
-      doesExceedThreshold: doesExceedThreshold(alert, value),
-      threshold: alert.threshold,
-    },
-  );
-
-  return {
-    text: Mustache.render(
-      `Alert for "{{chart.name}}" in "{{dashboard.name}}" - {{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}`,
-      {
-        chart,
-        dashboard,
-        value,
-        doesExceedThreshold: doesExceedThreshold(alert, value),
-        threshold: alert.threshold,
-      },
-    ),
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
-            title,
-            body,
-          }),
-        },
-      },
-    ],
-  };
-};
-
-const buildLogEventSlackMessage = async ({
-  alert,
-  endTime,
-  group,
   logView,
   startTime,
-  value,
-}: {
-  alert: AlertDocument;
-  endTime: Date;
-  group?: string;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
-  startTime: Date;
-  value: number;
-}) => {
-  const searchQuery = alert.groupBy
-    ? `${logView.query} ${alert.groupBy}:"${group}"`
-    : logView.query;
-  // TODO: show group + total count for group-by alerts
-  const results = await clickhouse.getLogBatch({
-    endTime: endTime.getTime(),
-    limit: 5,
-    offset: 0,
-    order: 'desc',
-    q: searchQuery,
-    startTime: startTime.getTime(),
-    tableVersion: logView.team.logStreamTableVersion,
-    teamId: logView.team._id.toString(),
-  });
-
-  const title = Mustache.render(
-    `*<{{{logSearchLink}}} | Alert for "{{logView.name}}">*`,
-    {
-      logSearchLink: buildLogSearchLink({
-        endTime,
-        logView,
-        q: searchQuery,
-        startTime,
-      }),
+}: AlertMessageTemplateDefaultView) => {
+  if (alert.source === 'LOG') {
+    if (logView == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    const searchQuery = alert.groupBy
+      ? `${logView.query} ${alert.groupBy}:"${group}"`
+      : logView.query;
+    return buildLogSearchLink({
+      endTime,
       logView,
-    },
-  );
+      q: searchQuery,
+      startTime,
+    });
+  } else if (alert.source === 'CHART') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    return buildChartLink({
+      dashboardId: dashboard._id.toString(),
+      endTime,
+      granularity,
+      startTime,
+    });
+  }
 
-  const body = Mustache.render(
-    `{{#group}}Group: "{{group}}"{{/group}}
+  throw new Error(`Unsupported alert source: ${alert.source}`);
+};
+export const buildAlertMessageTemplateTitle = ({
+  template,
+  view,
+}: {
+  template?: string;
+  view: AlertMessageTemplateDefaultView;
+}) => {
+  const { alert, logView, dashboard } = view;
+  if (alert.source === 'LOG') {
+    if (logView == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    return Mustache.render(template ?? `Alert for "{{logView.name}}"`, view);
+  } else if (alert.source === 'CHART') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    return Mustache.render(
+      template ?? `Alert for "{{chart.name}}" in "{{dashboard.name}}"`,
+      {
+        ...view,
+        chart: dashboard.charts[0], // should be only 1 chart
+      },
+    );
+  }
+
+  throw new Error(`Unsupported alert source: ${alert.source}`);
+};
+export const buildAlertMessageTemplateBody = async ({
+  template,
+  view,
+}: {
+  template?: string;
+  view: AlertMessageTemplateDefaultView;
+}) => {
+  const { alert, dashboard, endTime, group, logView, startTime, value } = view;
+
+  if (alert.source === 'LOG') {
+    if (logView == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    const searchQuery = alert.groupBy
+      ? `${logView.query} ${alert.groupBy}:"${group}"`
+      : logView.query;
+    // TODO: show group + total count for group-by alerts
+    const results = await clickhouse.getLogBatch({
+      endTime: endTime.getTime(),
+      limit: 5,
+      offset: 0,
+      order: 'desc',
+      q: searchQuery,
+      startTime: startTime.getTime(),
+      tableVersion: logView.team.logStreamTableVersion,
+      teamId: logView.team._id.toString(),
+    });
+    return Mustache.render(
+      `{{#group}}Group: "{{group}}"{{/group}}
 {{value}} lines found, expected {{#isPresence}}less than{{/isPresence}}{{^isPresence}}greater than{{/isPresence}} {{threshold}} lines
+{{customTemplate}}
 {{#results}}
 \`\`\`
 {{{results}}}
 \`\`\`
 {{/results}}`,
-    {
-      group,
-      value,
-      isPresence: alert.type === 'presence',
-      threshold: alert.threshold,
-      results:
-        results?.rows != null && value > 0
-          ? truncateString(
-              results.data
-                .map(row => {
-                  return `${fnsTz.formatInTimeZone(
-                    new Date(row.timestamp),
-                    'Etc/UTC',
-                    'MMM d HH:mm:ss',
-                  )}Z [${row.severity_text}] ${truncateString(
-                    row.body,
-                    MAX_MESSAGE_LENGTH,
-                  )}`;
-                })
-                .join('\n'),
-              2500,
-            )
-          : null,
-    },
-  );
-
-  return {
-    text: Mustache.render(
-      `Alert for {{logView.name}} - {{value}} lines found`,
       {
-        logView,
+        group,
         value,
+        isPresence: alert.type === 'presence',
+        threshold: alert.threshold,
+        customTemplate: Mustache.render(template || '', view),
+        results:
+          results?.rows != null && value > 0
+            ? truncateString(
+                results.data
+                  .map(row => {
+                    return `${fnsTz.formatInTimeZone(
+                      new Date(row.timestamp),
+                      'Etc/UTC',
+                      'MMM d HH:mm:ss',
+                    )}Z [${row.severity_text}] ${truncateString(
+                      row.body,
+                      MAX_MESSAGE_LENGTH,
+                    )}`;
+                  })
+                  .join('\n'),
+                2500,
+              )
+            : null,
       },
-    ),
-    blocks: [
+    );
+  } else if (alert.source === 'CHART') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    return Mustache.render(
+      `{{#group}}Group: "{{group}}"{{/group}}
+{{value}} {{#doesExceedThreshold}}exceeds{{/doesExceedThreshold}}{{^doesExceedThreshold}}falls below{{/doesExceedThreshold}} {{threshold}}
+{{customTemplate}}`,
       {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
-            title,
-            body,
-          }),
-        },
+        group,
+        value,
+        doesExceedThreshold: doesExceedThreshold(alert, value),
+        threshold: alert.threshold,
+        customTemplate: Mustache.render(template || '', view),
       },
-    ],
-  };
+    );
+  }
 };
+// ------------------------------------------------------------
 
 const fireChannelEvent = async ({
   alert,
@@ -275,6 +263,25 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
 }) => {
+  const templateView: AlertMessageTemplateDefaultView = {
+    alert,
+    dashboard,
+    endTime,
+    granularity: `${windowSizeInMins} minute`,
+    group,
+    logView,
+    startTime,
+    value: totalCount,
+  };
+  const hdxLink = buildAlertMessageTemplateHdxLink(templateView);
+  const title = buildAlertMessageTemplateTitle({
+    template: alert.templateTitle,
+    view: templateView,
+  });
+  const body = await buildAlertMessageTemplateBody({
+    template: alert.templateBody,
+    view: templateView,
+  });
   switch (alert.channel.type) {
     case 'webhook': {
       const webhook = await Webhook.findOne({
@@ -282,48 +289,28 @@ const fireChannelEvent = async ({
       });
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
-        let message: {
-          text: string;
-          blocks?: {
-            type: string;
-            text: {
-              type: string;
-              text: string;
-            };
-          }[];
-        } | null = null;
-
-        if (alert.source === 'LOG' && logView) {
-          message = await buildLogEventSlackMessage({
-            alert,
-            endTime,
-            group,
-            logView,
-            startTime,
-            value: totalCount,
-          });
-        } else if (alert.source === 'CHART' && dashboard) {
-          message = buildChartEventSlackMessage({
-            alert,
-            dashboard,
-            endTime,
-            granularity: `${windowSizeInMins} minute`,
-            group,
-            startTime,
-            value: totalCount,
-          });
-        }
-
-        if (message !== null) {
-          await slack.postMessageToWebhook(webhook.url, message);
-        } else {
-          logger.error({
-            alert,
-            dashboard,
-            logView,
-            message: 'Unsupported alert source',
-          });
-        }
+        const slackMessageTitle = Mustache.render(
+          `*<{{{hdxLink}}} | {{{title}}}>*`,
+          {
+            hdxLink,
+            title,
+          },
+        );
+        await slack.postMessageToWebhook(webhook.url, {
+          text: title,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: Mustache.render(`{{{title}}}\n{{{body}}}`, {
+                  title: slackMessageTitle,
+                  body,
+                }),
+              },
+            },
+          ],
+        });
       }
       break;
     }
