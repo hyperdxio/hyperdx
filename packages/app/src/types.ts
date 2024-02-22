@@ -96,6 +96,7 @@ export type Alert = {
   timezone?: string;
   type: AlertType;
   source: AlertSource;
+  silencedUntil?: string;
 
   // Log alerts
   logView?: string;

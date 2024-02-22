@@ -503,24 +503,32 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             checkData,
           });
 
-          try {
-            await fireChannelEvent({
+          if ((alert.silencedUntil?.getTime() ?? 0) <= now.getTime()) {
+            try {
+              await fireChannelEvent({
+                alert,
+                dashboard: targetDashboard,
+                endTime: fns.addMinutes(bucketStart, windowSizeInMins),
+                group: Array.isArray(checkData.group)
+                  ? checkData.group.join(', ')
+                  : checkData.group,
+                logView,
+                startTime: bucketStart,
+                totalCount,
+                windowSizeInMins,
+              });
+            } catch (e) {
+              logger.error({
+                message: 'Failed to fire channel event',
+                alert,
+                error: serializeError(e),
+              });
+            }
+          } else {
+            logger.info({
+              message: 'Skipped firing alert due to silence',
               alert,
-              dashboard: targetDashboard,
-              endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: Array.isArray(checkData.group)
-                ? checkData.group.join(', ')
-                : checkData.group,
-              logView,
-              startTime: bucketStart,
-              totalCount,
-              windowSizeInMins,
-            });
-          } catch (e) {
-            logger.error({
-              message: 'Failed to fire channel event',
-              alert,
-              error: serializeError(e),
+              silencedUntil: alert.silencedUntil,
             });
           }
 

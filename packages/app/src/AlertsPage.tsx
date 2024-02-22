@@ -3,6 +3,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import { formatRelative } from 'date-fns';
+import { useQueryState } from 'nuqs';
+import { useQueryClient } from 'react-query';
+import { toast } from 'react-toastify';
 import { ArrayParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Alert as MAlert,
@@ -22,7 +25,6 @@ import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
 
 import styles from '../styles/AlertsPage.module.scss';
-
 type AlertData = Alert & {
   history: AlertHistory[];
   dashboard?: {
@@ -130,6 +132,9 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     return '';
   }, [alert]);
 
+  const silencedUntilDate = new Date(alert.silencedUntil);
+  const isSilenced = silencedUntilDate.getTime() > Date.now();
+
   return (
     <div className={styles.alertRow}>
       <Group>
@@ -139,6 +144,18 @@ function AlertDetails({ alert }: { alert: AlertData }) {
           </Badge>
         )}
         {alert.state === AlertState.OK && <Badge size="sm">Ok</Badge>}
+        {isSilenced && (
+          <Badge
+            color="gray"
+            size="sm"
+            title={`Acknowledged, silenced until ${formatRelative(
+              silencedUntilDate,
+              new Date(),
+            )}`}
+          >
+            Ack
+          </Badge>
+        )}
         {alert.state === AlertState.DISABLED && (
           <Badge color="gray" size="sm">
             Disabled
@@ -249,6 +266,30 @@ function AlertCardList({ alerts }: { alerts: AlertData[] }) {
 }
 
 export default function AlertsPage() {
+  const queryClient = useQueryClient();
+
+  const [silenceAlertToken, setSilenceAlertToken] =
+    useQueryState('silenceAlertToken');
+
+  const silenceAlert = api.useSilenceAlert();
+  React.useEffect(() => {
+    if (silenceAlertToken) {
+      silenceAlert.mutate(
+        { token: silenceAlertToken },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries('alerts');
+            toast.success('Alert silenced.');
+          },
+          onError: () => {
+            toast.error('Failed to silence alert, please try again later.');
+          },
+        },
+      );
+      setSilenceAlertToken(null);
+    }
+  }, [silenceAlertToken, setSilenceAlertToken, queryClient, silenceAlert]);
+
   const { data, isError, isLoading } = api.useAlerts();
   const alerts = React.useMemo(
     () => (data?.data || []) as AlertData[],

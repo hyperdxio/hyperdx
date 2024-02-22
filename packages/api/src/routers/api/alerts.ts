@@ -7,6 +7,7 @@ import {
   createAlert,
   deleteAlert,
   getAlertsWithLogViewAndDashboard,
+  silenceAlertFromTokenAndTeam,
   updateAlert,
   validateGroupByProperty,
 } from '@/controllers/alerts';
@@ -106,6 +107,7 @@ router.get('/', async (req, res, next) => {
             'chartId',
             'createdAt',
             'updatedAt',
+            'silencedUntil',
           ]),
         };
       }),
@@ -184,6 +186,28 @@ router.delete(
 
       await deleteAlert(alertId, teamId);
       res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  '/silence',
+  validateRequest({
+    body: z.object({
+      token: z.string().max(512).min(1),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      await silenceAlertFromTokenAndTeam(req.body.token, teamId);
+      res.json({});
     } catch (e) {
       next(e);
     }

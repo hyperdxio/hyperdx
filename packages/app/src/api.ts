@@ -577,6 +577,14 @@ const api = {
       }),
     );
   },
+  useSilenceAlert() {
+    return useMutation<any, Error, { token: string }>(`alerts`, async token =>
+      server(`alerts/silence`, {
+        method: 'POST',
+        json: token,
+      }).json(),
+    );
+  },
   useLogHistogram(
     q: string,
     startDate: Date,

@@ -1,4 +1,5 @@
 import { getHours, getMinutes } from 'date-fns';
+import { sign, verify } from 'jsonwebtoken';
 import ms from 'ms';
 import { z } from 'zod';
 
@@ -14,6 +15,7 @@ import Alert, {
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView, { ILogView } from '@/models/logView';
+import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
@@ -242,4 +244,68 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
       },
     ],
   });
+};
+
+export const generateSignedAlertSilenceToken = async (
+  id: string,
+  teamId: ObjectId,
+) => {
+  const secret = process.env.EXPRESS_SESSION_SECRET;
+
+  if (!secret) {
+    logger.error(
+      'EXPRESS_SESSION_SECRET is not set for signing token, skipping alert silence JWT generation',
+    );
+    return '';
+  }
+
+  const alert = await getAlertById(id, teamId);
+  if (alert == null) {
+    throw new Error('Alert not found');
+  }
+
+  const token = sign(
+    { silenceAlertId: alert._id.toString() },
+    process.env.EXPRESS_SESSION_SECRET,
+    {
+      expiresIn: '1h',
+    },
+  );
+
+  // Slack does not accept ids longer than 255 characters
+  if (token.length > 255) {
+    logger.error(
+      'Alert silence JWT length is greater than 255 characters, this may cause issues with some clients.',
+    );
+  }
+
+  return token;
+};
+
+export const silenceAlertFromTokenAndTeam = async (
+  token: string,
+  teamId: ObjectId,
+) => {
+  const secret = process.env.EXPRESS_SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error('EXPRESS_SESSION_SECRET is not set for verifying token');
+  }
+
+  const decoded = verify(token, process.env.EXPRESS_SESSION_SECRET, {
+    algorithms: ['HS256'],
+  });
+  const alertId = (decoded as { silenceAlertId: string }).silenceAlertId;
+
+  if (alertId == null) {
+    throw new Error('Invalid token');
+  }
+
+  const alert = await getAlertById(alertId, teamId);
+  if (alert == null) {
+    throw new Error('Alert not found');
+  }
+
+  alert.silencedUntil = new Date(Date.now() + ms('30m'));
+  return alert.save();
 };

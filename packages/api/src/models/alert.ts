@@ -34,6 +34,7 @@ export interface IAlert {
   channel: AlertChannel;
   cron: string;
   interval: AlertInterval;
+  silencedUntil?: Date;
   source?: AlertSource;
   state: AlertState;
   team: ObjectId;
@@ -80,6 +81,10 @@ const AlertSchema = new Schema<IAlert>(
       required: true,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
+    silencedUntil: {
+      type: Date,
+      required: false,
+    },
     state: {
       type: String,
       enum: AlertState,
