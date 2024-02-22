@@ -41,6 +41,10 @@ export interface IAlert {
   timezone: string;
   type: AlertType;
 
+  // Message template
+  templateTitle?: string;
+  templateBody?: string;
+
   // Log alerts
   groupBy?: string;
   logView?: ObjectId;
@@ -89,6 +93,16 @@ const AlertSchema = new Schema<IAlert>(
     team: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team',
+    },
+
+    // Message template
+    templateTitle: {
+      type: String,
+      required: false,
+    },
+    templateBody: {
+      type: String,
+      required: false,
     },
 
     // Log alerts

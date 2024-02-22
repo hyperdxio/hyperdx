@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import { AggFn, MetricsDataType } from '@/clickhouse';
+import { AlertDocument } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
@@ -254,3 +255,52 @@ export const externalAlertSchemaWithId = externalAlertSchema.and(
     id: objectIdSchema,
   }),
 );
+
+// TODO: move this to utils file since its not zod instance
+export const translateExternalAlertToInternalAlert = (
+  alertInput: z.infer<typeof externalAlertSchema>,
+): z.infer<typeof alertSchema> => {
+  return {
+    interval: alertInput.interval,
+    threshold: alertInput.threshold,
+    type: alertInput.threshold_type === 'above' ? 'presence' : 'absence',
+    channel: {
+      ...alertInput.channel,
+      type: 'webhook',
+    },
+    ...(alertInput.source === 'search' && alertInput.savedSearchId
+      ? { source: 'LOG', logViewId: alertInput.savedSearchId }
+      : alertInput.source === 'chart' && alertInput.dashboardId
+      ? {
+          source: 'CHART',
+          dashboardId: alertInput.dashboardId,
+          chartId: alertInput.chartId,
+        }
+      : ({} as never)),
+  };
+};
+
+// TODO: move this to utils file since its not zod instance
+export const translateAlertDocumentToExternalAlert = (
+  alertDoc: AlertDocument,
+): z.infer<typeof externalAlertSchemaWithId> => {
+  return {
+    id: alertDoc._id.toString(),
+    interval: alertDoc.interval,
+    threshold: alertDoc.threshold,
+    threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
+    channel: {
+      ...alertDoc.channel,
+      type: 'slack_webhook',
+    },
+    ...(alertDoc.source === 'LOG' && alertDoc.logView
+      ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
+      : alertDoc.source === 'CHART' && alertDoc.dashboardId
+      ? {
+          source: 'chart',
+          dashboardId: alertDoc.dashboardId.toString(),
+          chartId: alertDoc.chartId as string,
+        }
+      : ({} as never)),
+  };
+};
