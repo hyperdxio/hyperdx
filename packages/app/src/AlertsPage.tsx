@@ -132,8 +132,13 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     return '';
   }, [alert]);
 
-  const silencedUntilDate = new Date(alert.silencedUntil);
-  const isSilenced = silencedUntilDate.getTime() > Date.now();
+  const silencedUntilDate = alert.silencedUntil
+    ? new Date(alert.silencedUntil)
+    : undefined;
+  const isSilenced =
+    silencedUntilDate != null
+      ? silencedUntilDate.getTime() > Date.now()
+      : undefined;
 
   return (
     <div className={styles.alertRow}>
@@ -148,10 +153,11 @@ function AlertDetails({ alert }: { alert: AlertData }) {
           <Badge
             color="gray"
             size="sm"
-            title={`Acknowledged, silenced until ${formatRelative(
-              silencedUntilDate,
-              new Date(),
-            )}`}
+            title={`Acknowledged, silenced until ${
+              silencedUntilDate
+                ? formatRelative(silencedUntilDate, new Date())
+                : ''
+            }`}
           >
             Ack
           </Badge>
