@@ -256,6 +256,7 @@ export const externalAlertSchemaWithId = externalAlertSchema.and(
   }),
 );
 
+// TODO: move this to utils file since its not zod instance
 export const translateExternalAlertToInternalAlert = (
   alertInput: z.infer<typeof externalAlertSchema>,
 ): z.infer<typeof alertSchema> => {
@@ -279,6 +280,7 @@ export const translateExternalAlertToInternalAlert = (
   };
 };
 
+// TODO: move this to utils file since its not zod instance
 export const translateAlertDocumentToExternalAlert = (
   alertDoc: AlertDocument,
 ): z.infer<typeof externalAlertSchemaWithId> => {
