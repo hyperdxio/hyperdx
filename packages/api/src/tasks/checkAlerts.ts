@@ -19,6 +19,7 @@ import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
+import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
 import {
@@ -47,16 +48,16 @@ const getLogViewEnhanced = async (logViewId: ObjectId) => {
 
 export const buildLogSearchLink = ({
   endTime,
-  logView,
+  logViewId,
   q,
   startTime,
 }: {
   endTime: Date;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
+  logViewId: string;
   q?: string;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${logView._id}`);
+  const url = new URL(`${config.FRONTEND_URL}/search/${logViewId}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
@@ -113,12 +114,23 @@ export const doesExceedThreshold = (
 type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
   alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
-  dashboard: EnhancedDashboard | null;
+  dashboard: ReturnType<
+    typeof translateDashboardDocumentToExternalDashboard
+  > | null;
   endTime: Date;
   granularity: string;
   group?: string;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
+  // TODO: use a translation function ?
+  savedSearch: {
+    id: string;
+    name: string;
+    query: string;
+  } | null;
   startTime: Date;
+  team: {
+    id: string;
+    logStreamTableVersion?: number;
+  };
   value: number;
 };
 export const buildAlertMessageTemplateHdxLink = ({
@@ -127,19 +139,19 @@ export const buildAlertMessageTemplateHdxLink = ({
   endTime,
   granularity,
   group,
-  logView,
+  savedSearch,
   startTime,
 }: AlertMessageTemplateDefaultView) => {
   if (alert.source === 'search') {
-    if (logView == null) {
+    if (savedSearch == null) {
       throw new Error('Source is LOG but logView is null');
     }
     const searchQuery = alert.groupBy
-      ? `${logView.query} ${alert.groupBy}:"${group}"`
-      : logView.query;
+      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
+      : savedSearch.query;
     return buildLogSearchLink({
       endTime,
-      logView,
+      logViewId: savedSearch.id,
       q: searchQuery,
       startTime,
     });
@@ -148,7 +160,7 @@ export const buildAlertMessageTemplateHdxLink = ({
       throw new Error('Source is CHART but dashboard is null');
     }
     return buildChartLink({
-      dashboardId: dashboard._id.toString(),
+      dashboardId: dashboard.id,
       endTime,
       granularity,
       startTime,
@@ -164,16 +176,16 @@ export const buildAlertMessageTemplateTitle = ({
   template?: string;
   view: AlertMessageTemplateDefaultView;
 }) => {
-  const { alert, dashboard, logView, value } = view;
+  const { alert, dashboard, savedSearch, value } = view;
   if (alert.source === 'search') {
-    if (logView == null) {
+    if (savedSearch == null) {
       throw new Error('Source is LOG but logView is null');
     }
 
     // TODO: using template engine to render the title
     return template
       ? renderTemplate(template, view)
-      : `Alert for "${logView.name}" - ${value} lines found`;
+      : `Alert for "${savedSearch.name}" - ${value} lines found`;
   } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
@@ -201,14 +213,23 @@ export const buildAlertMessageTemplateBody = async ({
   template?: string;
   view: AlertMessageTemplateDefaultView;
 }) => {
-  const { alert, dashboard, endTime, group, logView, startTime, value } = view;
+  const {
+    alert,
+    dashboard,
+    endTime,
+    group,
+    savedSearch,
+    startTime,
+    team,
+    value,
+  } = view;
   if (alert.source === 'search') {
-    if (logView == null) {
+    if (savedSearch == null) {
       throw new Error('Source is LOG but logView is null');
     }
     const searchQuery = alert.groupBy
-      ? `${logView.query} ${alert.groupBy}:"${group}"`
-      : logView.query;
+      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
+      : savedSearch.query;
     // TODO: show group + total count for group-by alerts
     const results = await clickhouse.getLogBatch({
       endTime: endTime.getTime(),
@@ -217,8 +238,8 @@ export const buildAlertMessageTemplateBody = async ({
       order: 'desc',
       q: searchQuery,
       startTime: startTime.getTime(),
-      tableVersion: logView.team.logStreamTableVersion,
-      teamId: logView.team._id.toString(),
+      tableVersion: team.logStreamTableVersion,
+      teamId: team.id,
     });
     const truncatedResults = truncateString(
       results.data
@@ -284,16 +305,39 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
 }) => {
+  const team = logView?.team ?? dashboard?.team;
+  if (team == null) {
+    throw new Error('Team not found');
+  }
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       ...translateAlertDocumentToExternalAlert(alert),
       groupBy: alert.groupBy,
     },
-    dashboard,
+    dashboard: dashboard
+      ? translateDashboardDocumentToExternalDashboard({
+          _id: dashboard._id,
+          name: dashboard.name,
+          query: dashboard.query,
+          team: team._id,
+          charts: dashboard.charts,
+          tags: dashboard.tags,
+        })
+      : null,
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    logView,
+    savedSearch: logView
+      ? {
+          id: logView._id.toString(),
+          name: logView.name,
+          query: logView.query,
+        }
+      : null,
+    team: {
+      id: team._id.toString(),
+      logStreamTableVersion: team.logStreamTableVersion,
+    },
     startTime,
     value: totalCount,
   };

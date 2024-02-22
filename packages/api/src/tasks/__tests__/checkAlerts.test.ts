@@ -57,9 +57,7 @@ describe('checkAlerts', () => {
       buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
-        logView: {
-          _id: 123,
-        } as any,
+        logViewId: '123',
       }),
     ).toBe(
       'http://localhost:9090/search/123?from=1679091183103&to=1679091239103',
@@ -68,9 +66,7 @@ describe('checkAlerts', () => {
       buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
-        logView: {
-          _id: 123,
-        } as any,
+        logViewId: '123',
         q: '🐱 foo:"bar"',
       }),
     ).toBe(
