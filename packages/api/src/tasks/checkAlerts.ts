@@ -284,6 +284,58 @@ ${renderTemplate(template, view)}`;
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
+const extractChannels = (template: string) => {
+  const matches = template.match(/@([a-zA-Z0-9_-]+)/g);
+  return matches
+    ? matches.map(match => {
+        // @webhook-1234_5678
+        const [channel, id] = match.substring(1).split('-');
+        return {
+          channel,
+          id,
+        };
+      })
+    : [];
+};
+const notifyChannel = async ({
+  channel,
+  id,
+  message,
+}: {
+  channel: string;
+  id: string;
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  };
+}) => {
+  switch (channel) {
+    case 'webhook': {
+      const webhook = await Webhook.findOne({
+        _id: id,
+      });
+      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
+      if (webhook?.service === 'slack') {
+        await slack.postMessageToWebhook(webhook.url, {
+          text: message.title,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+              },
+            },
+          ],
+        });
+      }
+      break;
+    }
+    default:
+      throw new Error(`Unsupported channel type: ${channel}`);
+  }
+};
 // ------------------------------------------------------------
 
 const fireChannelEvent = async ({
@@ -350,33 +402,24 @@ const fireChannelEvent = async ({
     template: alert.templateBody,
     view: templateView,
   });
-  switch (alert.channel.type) {
-    case 'webhook': {
-      const webhook = await Webhook.findOne({
-        _id: alert.channel.webhookId,
-      });
-      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
-      if (webhook?.service === 'slack') {
-        await slack.postMessageToWebhook(webhook.url, {
-          text: title,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*<${hdxLink} | ${title}>*\n${body}`,
-              },
-            },
-          ],
-        });
-      }
-      break;
-    }
-    default:
-      throw new Error(
-        `Unsupported channel type: ${(alert.channel as any).any}`,
-      );
-  }
+
+  // TODO: support advanced routing with template engine
+  // users should be able to use '@' syntax to trigger alerts
+  const defaultTemplate = `@${alert.channel.type}-${alert.channel.webhookId}`;
+  const channels = extractChannels(defaultTemplate);
+  await Promise.all(
+    channels.map(channel =>
+      notifyChannel({
+        channel: channel.channel,
+        id: channel.id,
+        message: {
+          hdxLink,
+          title,
+          body,
+        },
+      }),
+    ),
+  );
 };
 
 export const roundDownTo = (roundTo: number) => (x: Date) =>
