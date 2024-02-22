@@ -407,6 +407,7 @@ const fireChannelEvent = async ({
   // users should be able to use '@' syntax to trigger alerts
   const defaultTemplate = `@${alert.channel.type}-${alert.channel.webhookId}`;
   const channels = extractChannels(defaultTemplate);
+  // TODO: should try to notify all channels instead of aborting on the first error
   await Promise.all(
     channels.map(channel =>
       notifyChannel({
