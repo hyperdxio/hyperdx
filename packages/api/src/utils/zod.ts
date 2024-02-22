@@ -215,8 +215,8 @@ export const alertSchema = z
     threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
     source: z.enum(['LOG', 'CHART']).default('LOG'),
-    templateTitle: z.string().min(1).max(512).nullable().optional(),
-    templateBody: z.string().min(1).max(4096).nullable().optional(),
+    templateTitle: z.string().min(1).max(512).nullish(),
+    templateBody: z.string().min(1).max(4096).nullish(),
   })
   .and(zLogAlert.or(zChartAlert));
 
@@ -233,7 +233,6 @@ export const externalSearchAlertSchema = z.object({
   source: z.literal('search'),
   groupBy: z.string().optional(),
   savedSearchId: objectIdSchema,
-  message: z.string().optional(),
 });
 
 export const externalChartAlertSchema = z.object({
@@ -249,8 +248,8 @@ export const externalAlertSchema = z
     threshold: z.number().min(0),
     threshold_type: z.enum(['above', 'below']),
     source: z.enum(['search', 'chart']).default('search'),
-    name: z.string().min(1).max(512).nullable().optional(),
-    message: z.string().min(1).max(4096).nullable().optional(),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
   })
   .and(externalSearchAlertSchema.or(externalChartAlertSchema));
 
