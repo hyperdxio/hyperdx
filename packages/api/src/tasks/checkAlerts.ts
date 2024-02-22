@@ -154,6 +154,8 @@ export const buildAlertMessageTemplateHdxLink = ({
       startTime,
     });
   }
+
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
 export const buildAlertMessageTemplateTitle = ({
   template,
@@ -162,7 +164,7 @@ export const buildAlertMessageTemplateTitle = ({
   template?: string;
   view: AlertMessageTemplateDefaultView;
 }) => {
-  const { alert, logView, dashboard } = view;
+  const { alert, dashboard, logView, value } = view;
   if (alert.source === 'search') {
     if (logView == null) {
       throw new Error('Source is LOG but logView is null');
@@ -171,7 +173,7 @@ export const buildAlertMessageTemplateTitle = ({
     // TODO: using template engine to render the title
     return template
       ? renderTemplate(template, view)
-      : `Alert for "${logView.name}"`;
+      : `Alert for "${logView.name}" - ${value} lines found`;
   } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
@@ -179,8 +181,18 @@ export const buildAlertMessageTemplateTitle = ({
     const chart = dashboard.charts[0];
     return template
       ? renderTemplate(template, view)
-      : `Alert for "${chart.name}" in "${dashboard.name}"`;
+      : `Alert for "${chart.name}" in "${dashboard.name}" - ${value} ${
+          doesExceedThreshold(
+            alert.threshold_type === 'above',
+            alert.threshold,
+            value,
+          )
+            ? 'exceeds'
+            : 'falls below'
+        } ${alert.threshold}`;
   }
+
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
 export const buildAlertMessageTemplateBody = async ({
   template,
@@ -248,6 +260,8 @@ ${value} ${
     } ${alert.threshold}
 ${renderTemplate(template, view)}`;
   }
+
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
 // ------------------------------------------------------------
 
@@ -300,6 +314,7 @@ const fireChannelEvent = async ({
       // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
         await slack.postMessageToWebhook(webhook.url, {
+          text: title,
           blocks: [
             {
               type: 'section',

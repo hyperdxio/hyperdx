@@ -207,11 +207,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
+          text: 'Alert for "My Log View" - 11 lines found',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View">*`,
+                  `*<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found>*`,
                   'Group: "HyperDX"',
                   '11 lines found, expected less than 10 lines',
                   '',
@@ -373,11 +374,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
+          text: 'Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard">*`,
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10>*`,
                   'Group: "HyperDX"',
                   '102 exceeds 10',
                   '',
@@ -609,11 +611,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
+          text: 'Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard">*`,
+                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10>*`,
                   'Group: "HyperDX"',
                   '395.3421052631579 exceeds 10',
                   '',
