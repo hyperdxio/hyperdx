@@ -173,7 +173,7 @@ export const buildAlertMessageTemplateTitle = ({
   template,
   view,
 }: {
-  template?: string;
+  template?: string | null;
   view: AlertMessageTemplateDefaultView;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
@@ -210,7 +210,7 @@ export const buildAlertMessageTemplateBody = async ({
   template,
   view,
 }: {
-  template?: string;
+  template?: string | null;
   view: AlertMessageTemplateDefaultView;
 }) => {
   const {

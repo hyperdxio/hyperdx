@@ -42,8 +42,8 @@ export interface IAlert {
   type: AlertType;
 
   // Message template
-  templateTitle?: string;
-  templateBody?: string;
+  templateTitle?: string | null;
+  templateBody?: string | null;
 
   // Log alerts
   groupBy?: string;

@@ -402,11 +402,15 @@ export const makeExternalAlert = ({
   chartId,
   threshold = 8,
   interval = '15m',
+  name,
+  message,
 }: {
   dashboardId: string;
   chartId: string;
   threshold?: number;
   interval?: '15m' | '1m' | '5m' | '30m' | '1h' | '6h' | '12h' | '1d';
+  name?: string;
+  message?: string;
 }): z.infer<typeof externalAlertSchema> => ({
   channel: {
     type: 'slack_webhook',
@@ -418,4 +422,6 @@ export const makeExternalAlert = ({
   source: 'chart',
   dashboardId,
   chartId,
+  name,
+  message,
 });
