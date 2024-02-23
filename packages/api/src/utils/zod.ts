@@ -215,6 +215,8 @@ export const alertSchema = z
     threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
     source: z.enum(['LOG', 'CHART']).default('LOG'),
+    templateTitle: z.string().min(1).max(512).nullish(),
+    templateBody: z.string().min(1).max(4096).nullish(),
   })
   .and(zLogAlert.or(zChartAlert));
 
@@ -231,7 +233,6 @@ export const externalSearchAlertSchema = z.object({
   source: z.literal('search'),
   groupBy: z.string().optional(),
   savedSearchId: objectIdSchema,
-  message: z.string().optional(),
 });
 
 export const externalChartAlertSchema = z.object({
@@ -247,6 +248,8 @@ export const externalAlertSchema = z
     threshold: z.number().min(0),
     threshold_type: z.enum(['above', 'below']),
     source: z.enum(['search', 'chart']).default('search'),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
   })
   .and(externalSearchAlertSchema.or(externalChartAlertSchema));
 
@@ -268,6 +271,8 @@ export const translateExternalAlertToInternalAlert = (
       ...alertInput.channel,
       type: 'webhook',
     },
+    templateTitle: alertInput.name,
+    templateBody: alertInput.message,
     ...(alertInput.source === 'search' && alertInput.savedSearchId
       ? { source: 'LOG', logViewId: alertInput.savedSearchId }
       : alertInput.source === 'chart' && alertInput.dashboardId
@@ -293,6 +298,8 @@ export const translateAlertDocumentToExternalAlert = (
       ...alertDoc.channel,
       type: 'slack_webhook',
     },
+    name: alertDoc.templateTitle,
+    message: alertDoc.templateBody,
     ...(alertDoc.source === 'LOG' && alertDoc.logView
       ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
       : alertDoc.source === 'CHART' && alertDoc.dashboardId
