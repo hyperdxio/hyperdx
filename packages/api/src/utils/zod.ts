@@ -199,7 +199,6 @@ export const zLogAlert = z.object({
   source: z.literal('LOG'),
   groupBy: z.string().optional(),
   logViewId: z.string().min(1),
-  message: z.string().optional(),
 });
 
 export const zChartAlert = z.object({
@@ -215,8 +214,8 @@ export const alertSchema = z
     threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
     source: z.enum(['LOG', 'CHART']).default('LOG'),
-    templateTitle: z.string().min(1).max(512).nullish(),
-    templateBody: z.string().min(1).max(4096).nullish(),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
   })
   .and(zLogAlert.or(zChartAlert));
 
@@ -271,8 +270,8 @@ export const translateExternalAlertToInternalAlert = (
       ...alertInput.channel,
       type: 'webhook',
     },
-    templateTitle: alertInput.name,
-    templateBody: alertInput.message,
+    name: alertInput.name,
+    message: alertInput.message,
     ...(alertInput.source === 'search' && alertInput.savedSearchId
       ? { source: 'LOG', logViewId: alertInput.savedSearchId }
       : alertInput.source === 'chart' && alertInput.dashboardId
@@ -298,8 +297,8 @@ export const translateAlertDocumentToExternalAlert = (
       ...alertDoc.channel,
       type: 'slack_webhook',
     },
-    name: alertDoc.templateTitle,
-    message: alertDoc.templateBody,
+    name: alertDoc.name,
+    message: alertDoc.message,
     ...(alertDoc.source === 'LOG' && alertDoc.logView
       ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
       : alertDoc.source === 'CHART' && alertDoc.dashboardId

@@ -395,11 +395,11 @@ const fireChannelEvent = async ({
   };
   const hdxLink = buildAlertMessageTemplateHdxLink(templateView);
   const title = buildAlertMessageTemplateTitle({
-    template: alert.templateTitle,
+    template: alert.name,
     view: templateView,
   });
   const body = await buildAlertMessageTemplateBody({
-    template: alert.templateBody,
+    template: alert.message,
     view: templateView,
   });
 
