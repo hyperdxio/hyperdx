@@ -24,8 +24,8 @@ export type AlertInput = {
   threshold: number;
 
   // Message template
-  templateTitle?: string | null;
-  templateBody?: string | null;
+  name?: string | null;
+  message?: string | null;
 
   // Log alerts
   groupBy?: string;
@@ -95,8 +95,8 @@ const makeAlert = (alert: AlertInput) => {
     // If they're undefined/null, set it to null so we clear out the field
     // due to mongoose behavior:
     // https://mongoosejs.com/docs/migrating_to_6.html#removed-omitundefined
-    templateTitle: alert.templateTitle == null ? null : alert.templateTitle,
-    templateBody: alert.templateBody == null ? null : alert.templateBody,
+    name: alert.name == null ? null : alert.name,
+    message: alert.message == null ? null : alert.message,
 
     // Log alerts
     logView: alert.logViewId,

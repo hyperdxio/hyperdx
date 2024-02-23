@@ -42,13 +42,12 @@ export interface IAlert {
   type: AlertType;
 
   // Message template
-  templateTitle?: string | null;
-  templateBody?: string | null;
+  name?: string | null;
+  message?: string | null;
 
   // Log alerts
   groupBy?: string;
   logView?: ObjectId;
-  message?: string;
 
   // Chart alerts
   dashboardId?: ObjectId;
@@ -96,11 +95,11 @@ const AlertSchema = new Schema<IAlert>(
     },
 
     // Message template
-    templateTitle: {
+    name: {
       type: String,
       required: false,
     },
-    templateBody: {
+    message: {
       type: String,
       required: false,
     },
@@ -112,10 +111,6 @@ const AlertSchema = new Schema<IAlert>(
       required: false,
     },
     groupBy: {
-      type: String,
-      required: false,
-    },
-    message: {
       type: String,
       required: false,
     },
