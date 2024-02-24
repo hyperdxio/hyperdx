@@ -507,7 +507,7 @@ function DashboardFilter({
         <MButton
           variant="default"
           type="submit"
-          leftIcon={<i className="bi bi-funnel-fill text-slate-300"></i>}
+          leftSection={<i className="bi bi-funnel-fill text-slate-300"></i>}
         >
           Filter
         </MButton>
@@ -884,13 +884,12 @@ export default function DashboardPage() {
                   }}
                 >
                   <MButton
-                    compact
                     color="blue"
                     radius="xl"
                     variant={tagsCount > 0 ? 'light' : 'default'}
-                    size="xs"
+                    size="compact-xs"
                     mx="sm"
-                    leftIcon={<i className="bi bi-tags-fill" />}
+                    leftSection={<i className="bi bi-tags-fill" />}
                   >
                     {!tagsCount
                       ? 'Add Tag'
