@@ -88,3 +88,11 @@
   font-size: 10px;
   margin-right: 16px;
 }
+
+.searchInput {
+  input {
+    min-height: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+}

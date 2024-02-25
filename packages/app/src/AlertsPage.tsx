@@ -134,18 +134,22 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     <div className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
-          <Badge color="red" size="sm">
+          <Badge variant="light" color="red" size="sm">
             Alert
           </Badge>
         )}
-        {alert.state === AlertState.OK && <Badge size="sm">Ok</Badge>}
+        {alert.state === AlertState.OK && (
+          <Badge variant="light" size="sm">
+            Ok
+          </Badge>
+        )}
         {alert.state === AlertState.DISABLED && (
-          <Badge color="gray" size="sm">
+          <Badge variant="light" color="gray" size="sm">
             Disabled
           </Badge>
         )}
 
-        <Stack spacing={2}>
+        <Stack gap={2}>
           <div>
             <Link
               href={alertUrl}
@@ -182,8 +186,7 @@ function AlertDetails({ alert }: { alert: AlertData }) {
         {/* also, will make the alert jump from under the cursor to the disabled area */}
         {DISABLE_ALERTS_ENABLED ? (
           <Button
-            size="xs"
-            compact
+            size="compact-xs"
             color="gray"
             onClick={() => {
               disableAlert(alert._id);
@@ -310,7 +313,7 @@ export default function AlertsPage() {
                   <Button
                     size="xs"
                     variant="default"
-                    leftIcon={
+                    leftSection={
                       <i
                         className={cx(
                           'bi bi-funnel-fill',

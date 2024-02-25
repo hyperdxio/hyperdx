@@ -152,6 +152,8 @@ html[class~='dark'] body {
 
 :root {
   --toastify-toast-width: 400px;
+  --mantine-webkit-font-smoothing: inherit;
+  --mantine-moz-font-smoothing: inherit;
   color-scheme: dark;
 }
 
@@ -786,6 +788,12 @@ div.react-datepicker {
 
 .muted-thead tr th {
   font-weight: normal !important;
-  font-size: 0.6em;
+  font-size: 0.8rem;
   opacity: 0.8;
+}
+
+.hover-color-white {
+  &:hover {
+    color: white;
+  }
 }
