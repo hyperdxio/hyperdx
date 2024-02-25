@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
-import { FloatingPosition } from '@mantine/core/lib/Floating';
+import { FloatingPosition } from '@mantine/core/lib/components/Floating';
 
 import api from './api';
 import { Granularity, MS_NUMBER_FORMAT, seriesColumns } from './ChartUtils';
@@ -114,7 +114,7 @@ function ListBar({
                   const value = row[column.dataKey];
                   return (
                     <Box key={column.displayName}>
-                      <Text size="xs" weight={500} span>
+                      <Text size="xs" fw={500} span>
                         {column.displayName}:{' '}
                       </Text>
                       <Text size="xs" span>

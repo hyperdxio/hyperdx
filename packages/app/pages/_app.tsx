@@ -9,7 +9,7 @@ import { ReactQueryDevtools } from 'react-query/devtools';
 import { ToastContainer } from 'react-toastify';
 import { QueryParamProvider } from 'use-query-params';
 import {
-  createEmotionCache,
+  ColorSchemeScript,
   MantineProvider,
   MantineThemeOverride,
 } from '@mantine/core';
@@ -19,6 +19,7 @@ import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
 import { UserPreferencesProvider } from '../src/useUserPreferences';
 
+import '@mantine/core/styles.css';
 import 'react-toastify/dist/ReactToastify.css';
 import '../styles/globals.css';
 import '../styles/app.scss';
@@ -27,10 +28,7 @@ import '../src/LandingPage.scss';
 const queryClient = new QueryClient();
 import HyperDX from '@hyperdx/browser';
 
-const mantineCache = createEmotionCache({ key: 'mantine', prepend: true });
-
 const mantineTheme: MantineThemeOverride = {
-  colorScheme: 'dark',
   fontFamily: 'IBM Plex Mono, sans-serif',
   primaryColor: 'green',
   primaryShade: 8,
@@ -54,6 +52,18 @@ const mantineTheme: MantineThemeOverride = {
       '#00dd3a',
       '#00c531',
       '#00aa23',
+    ],
+    dark: [
+      '#C1C2C5',
+      '#A6A7AB',
+      '#909296',
+      '#5C5F66',
+      '#373A40',
+      '#2C2E33',
+      '#25262B',
+      '#1A1B1E',
+      '#141517',
+      '#101113',
     ],
   },
   headings: {
@@ -85,14 +95,6 @@ const mantineTheme: MantineThemeOverride = {
           backgroundColor: '#191B1F',
         },
       },
-    },
-    Table: {
-      styles: theme => ({
-        td: {
-          color: theme.colors.dark[3],
-          fontWeight: 'normal',
-        },
-      }),
     },
     Checkbox: {
       styles: {
@@ -174,6 +176,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           content="width=device-width, initial-scale=0.75"
         />
         <meta name="theme-color" content="#25292e"></meta>
+        <ColorSchemeScript forceColorScheme="dark" />
       </Head>
 
       <SSRProvider>
@@ -182,10 +185,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             <QueryClientProvider client={queryClient}>
               <UserPreferencesProvider>
                 <ToastContainer position="bottom-right" theme="dark" />
-                <MantineProvider
-                  emotionCache={mantineCache}
-                  theme={mantineTheme}
-                >
+                <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
                   {getLayout(<Component {...pageProps} />)}
                 </MantineProvider>
                 <ReactQueryDevtools initialIsOpen={false} />

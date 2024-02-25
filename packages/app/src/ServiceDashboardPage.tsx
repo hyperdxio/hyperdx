@@ -175,7 +175,7 @@ export default function ServiceDashboardPage() {
           px="md"
           py="xs"
           className="border-bottom border-dark"
-          spacing="xs"
+          gap="xs"
           align="center"
         >
           {/* Use Autocomplete instead? */}
@@ -224,7 +224,7 @@ export default function ServiceDashboardPage() {
         radius="md"
         keepMounted={false}
         value={activeTab}
-        onTabChange={setActiveTab}
+        onChange={setActiveTab}
       >
         <div className="px-3 py-2 border-bottom border-dark">
           <Tabs.List>

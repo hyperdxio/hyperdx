@@ -133,16 +133,16 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             </div>
           )}
           <form className="text-start mt-4" {...form.controller}>
-            <Stack spacing="xl">
+            <Stack gap="xl">
               <Paper p={34} shadow="md" radius="md">
-                <Stack spacing="lg">
+                <Stack gap="lg">
                   <TextInput
                     label="Email"
                     size="md"
                     withAsterisk={false}
                     placeholder="you@company.com"
                     type="email"
-                    icon={<i className="bi bi-at fs-5" />}
+                    leftSection={<i className="bi bi-at fs-5" />}
                     error={errors.email?.message}
                     required
                     {...form.email}
@@ -151,7 +151,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     size="md"
                     label="Password"
                     withAsterisk={false}
-                    icon={<i className="bi bi-lock-fill" />}
+                    leftSection={<i className="bi bi-lock-fill" />}
                     error={errors.password?.message}
                     required
                     placeholder="Password"
@@ -171,7 +171,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                         size="md"
                         required
                         withAsterisk={false}
-                        icon={<i className="bi bi-lock-fill" />}
+                        leftSection={<i className="bi bi-lock-fill" />}
                         error={errors.confirmPassword?.message}
                         placeholder="Confirm Password"
                         {...form.confirmPassword}

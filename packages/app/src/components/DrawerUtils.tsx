@@ -11,7 +11,7 @@ export const DrawerHeader = React.memo<{
 
   return (
     <Box px="md" py="xs" className="border-bottom border-dark">
-      <Group position="apart" align="center">
+      <Group justify="space-between" align="center">
         <Text size="md">{header}</Text>
         <CloseButton
           onClick={onClose}

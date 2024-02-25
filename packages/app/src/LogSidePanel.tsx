@@ -1584,7 +1584,7 @@ function PropertySubpanel({
               borderBottom: '1px solid #21262C',
             }}
           >
-            <Group align="center" position="apart">
+            <Group align="center" justify="space-between">
               <SegmentedControl
                 size="sm"
                 data={[
@@ -1603,7 +1603,7 @@ function PropertySubpanel({
                 }}
               />
 
-              <Group position="right" spacing="xs" style={{ flex: 1 }}>
+              <Group justify="flex-end" gap="xs" style={{ flex: 1 }}>
                 {isNestedView === false && (
                   <TextInput
                     style={{ flex: 1 }}
@@ -1625,7 +1625,7 @@ function PropertySubpanel({
                 )}
                 <Menu width={240}>
                   <Menu.Target>
-                    <ActionIcon size="md" variant="filled">
+                    <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
                     </ActionIcon>
                   </Menu.Target>
@@ -2349,7 +2349,7 @@ const InfraSubpanelGroup = ({
 
   return (
     <div>
-      <Group position="apart" align="center">
+      <Group justify="space-between" align="center">
         <Group align="center">
           <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
           <SegmentedControl
@@ -2490,7 +2490,7 @@ const InfraSubpanel = ({ logData }: { logData?: any }) => {
   const timestamp = new Date(logData?.timestamp).getTime();
 
   return (
-    <Stack my="md" spacing={40}>
+    <Stack my="md" gap={40}>
       {podUid && (
         <div>
           <InfraSubpanelGroup

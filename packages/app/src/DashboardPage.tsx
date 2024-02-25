@@ -507,7 +507,7 @@ function DashboardFilter({
         <MButton
           variant="default"
           type="submit"
-          leftIcon={<i className="bi bi-funnel-fill text-slate-300"></i>}
+          leftSection={<i className="bi bi-funnel-fill text-slate-300"></i>}
         >
           Filter
         </MButton>
@@ -884,13 +884,12 @@ export default function DashboardPage() {
                   }}
                 >
                   <MButton
-                    compact
                     color="blue"
                     radius="xl"
                     variant={tagsCount > 0 ? 'light' : 'default'}
-                    size="xs"
+                    size="compact-xs"
                     mx="sm"
-                    leftIcon={<i className="bi bi-tags-fill" />}
+                    leftSection={<i className="bi bi-tags-fill" />}
                   >
                     {!tagsCount
                       ? 'Add Tag'
@@ -902,7 +901,7 @@ export default function DashboardPage() {
               )}
               <Transition mounted={isSavedNow} transition="skew-down">
                 {style => (
-                  <Badge fw="normal" tt="none" style={style}>
+                  <Badge variant="light" fw="normal" tt="none" style={style}>
                     Saved now
                   </Badge>
                 )}
@@ -963,7 +962,7 @@ export default function DashboardPage() {
                 </Tooltip>
               </Popover.Target>
               <Popover.Dropdown>
-                <Badge size="xs" mb="sm">
+                <Badge variant="light" size="xs" mb="sm">
                   Beta
                 </Badge>
                 {dashboard?._id != null && (

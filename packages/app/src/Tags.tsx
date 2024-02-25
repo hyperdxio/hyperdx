@@ -81,7 +81,7 @@ export const Tags = React.memo(
               variant="filled"
               size="sm"
               color="gray"
-              sx={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer' }}
             >
               <i className="bi bi-tags text-slate-300 fs-7" />
             </ActionIcon>
@@ -94,7 +94,7 @@ export const Tags = React.memo(
             size="xs"
             placeholder={allowCreate ? 'Search or create tag' : 'Search tag'}
             variant="filled"
-            icon={<i className="bi bi-search" />}
+            leftSection={<i className="bi bi-search" />}
             autoFocus
             m={8}
             mb={0}
@@ -126,20 +126,19 @@ export const Tags = React.memo(
               size="xs"
               my="sm"
             >
-              <Stack spacing={4}>
+              <Stack gap={4}>
                 {filtered.map(tag => (
                   <Group
                     key={tag}
-                    position="apart"
+                    justify="space-between"
                     className={styles.tagWrapper}
                   >
-                    <Checkbox label={tag} value={tag} />
+                    <Checkbox label={tag} value={tag} size="xs" />
                     {tags.length >= 2 && (
                       <Button
                         variant="filled"
                         color="gray"
-                        size="xs"
-                        compact
+                        size="compact-xs"
                         fw="normal"
                         onClick={() => {
                           onChange([tag]);
@@ -160,8 +159,7 @@ export const Tags = React.memo(
             {values.length >= 1 && (
               <Button
                 variant="default"
-                size="xs"
-                compact
+                size="compact-xs"
                 fw="normal"
                 onClick={handleClearAll}
               >

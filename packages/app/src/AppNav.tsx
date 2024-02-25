@@ -480,7 +480,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      icon={<i className="bi bi-search fs-8 ps-1 text-slate-400" />}
+      leftSection={<i className="bi bi-search fs-8 ps-1" text-slate-400 />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -499,13 +499,7 @@ function SearchInput({
       size="xs"
       variant="filled"
       radius="xl"
-      sx={{
-        input: {
-          minHeight: 28,
-          height: 28,
-          lineHeight: 28,
-        },
-      }}
+      className={styles.searchInput}
     />
   );
 }
@@ -1339,11 +1333,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       variant="light"
                       size="xs"
                       component="a"
-                      sx={{
-                        ':hover': {
-                          color: 'white',
-                        },
-                      }}
+                      className="hover-color-white"
                     >
                       Get Started for Free
                     </MButton>
