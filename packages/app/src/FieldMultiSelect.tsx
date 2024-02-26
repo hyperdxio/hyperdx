@@ -117,7 +117,9 @@ export default function FieldMultiSelect({
       })}
       onChange={onChange}
       components={{
+        // @ts-ignore
         MultiValue: SortableMultiValue,
+        // @ts-ignore
         MultiValueLabel: SortableMultiValueLabel,
       }}
       closeMenuOnSelect={false}

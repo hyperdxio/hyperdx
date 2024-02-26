@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
-import { FloatingPosition } from '@mantine/core/lib/Floating';
+import { FloatingPosition } from '@mantine/core/lib/components/Floating';
 
 import api from './api';
 import { Granularity, MS_NUMBER_FORMAT, seriesColumns } from './ChartUtils';
@@ -26,7 +26,14 @@ function ListItem({
   const item = (
     <Box>
       <Flex justify="space-between">
-        <Text size="sm">{title}</Text>
+        <Text
+          size="sm"
+          style={{ overflowWrap: 'anywhere' }}
+          pr="xs"
+          lineClamp={2}
+        >
+          {title}
+        </Text>
         <Text size="sm">{value}</Text>
       </Flex>
       <Box pt="xs">
@@ -107,7 +114,7 @@ function ListBar({
                   const value = row[column.dataKey];
                   return (
                     <Box key={column.displayName}>
-                      <Text size="xs" weight={500} span>
+                      <Text size="xs" fw={500} span>
                         {column.displayName}:{' '}
                       </Text>
                       <Text size="xs" span>
@@ -122,7 +129,7 @@ function ListBar({
           ) : null;
 
         return getRowSearchLink ? (
-          <Link href={getRowSearchLink(row)} passHref>
+          <Link href={getRowSearchLink(row)} passHref legacyBehavior>
             <Box
               mb="sm"
               key={group}

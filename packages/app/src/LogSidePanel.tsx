@@ -44,7 +44,6 @@ import {
 } from './ChartUtils';
 import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
-import HDXLineChart from './HDXLineChart';
 import LogLevel from './LogLevel';
 import {
   breadcrumbColumns,
@@ -807,6 +806,7 @@ function EventTag({
                 `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
               )}
               passHref
+              legacyBehavior
             >
               <Button
                 className="fs-8 text-muted-hover child-hover-trigger py-0"
@@ -1132,7 +1132,7 @@ function NetworkPropertySubpanel({
             Copy Request as Curl
           </Button>
         </CopyToClipboard>
-        <Link href={trendsDashboardUrl} passHref>
+        <Link href={trendsDashboardUrl} passHref legacyBehavior>
           <Button
             variant="dark"
             className="text-muted-hover fs-8"
@@ -1584,7 +1584,7 @@ function PropertySubpanel({
               borderBottom: '1px solid #21262C',
             }}
           >
-            <Group align="center" position="apart">
+            <Group align="center" justify="space-between">
               <SegmentedControl
                 size="sm"
                 data={[
@@ -1603,7 +1603,7 @@ function PropertySubpanel({
                 }}
               />
 
-              <Group position="right" spacing="xs" style={{ flex: 1 }}>
+              <Group justify="flex-end" gap="xs" style={{ flex: 1 }}>
                 {isNestedView === false && (
                   <TextInput
                     style={{ flex: 1 }}
@@ -1625,7 +1625,7 @@ function PropertySubpanel({
                 )}
                 <Menu width={240}>
                   <Menu.Target>
-                    <ActionIcon size="md" variant="filled">
+                    <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
                     </ActionIcon>
                   </Menu.Target>
@@ -1817,6 +1817,7 @@ function PropertySubpanel({
                           }`,
                         )}
                         passHref
+                        legacyBehavior
                       >
                         <Button
                           className="fs-8 text-muted-hover child-hover-trigger p-0"
@@ -1838,6 +1839,7 @@ function PropertySubpanel({
                             table: 'logs',
                           })}
                           passHref
+                          legacyBehavior
                         >
                           <Button
                             className="fs-8 text-muted-hover child-hover-trigger p-0"
@@ -2061,6 +2063,7 @@ function SidePanelHeader({
                   to: end.getTime().toString(),
                 }).toString()}`}
                 passHref
+                legacyBehavior
               >
                 <Button
                   variant="dark"
@@ -2301,6 +2304,7 @@ const ExceptionSubpanel = ({
 };
 
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 
 const InfraSubpanelGroup = ({
   timestamp,
@@ -2345,7 +2349,7 @@ const InfraSubpanelGroup = ({
 
   return (
     <div>
-      <Group position="apart" align="center">
+      <Group justify="space-between" align="center">
         <Group align="center">
           <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
           <SegmentedControl
@@ -2382,16 +2386,22 @@ const InfraSubpanelGroup = ({
             CPU Usage (%)
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}cpu.utilization - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}cpu.utilization - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -2402,16 +2412,22 @@ const InfraSubpanelGroup = ({
             Memory Used
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}memory.usage - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}memory.usage - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_MEM_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -2422,16 +2438,22 @@ const InfraSubpanelGroup = ({
             Disk Available
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
-            <HDXLineChart
+            <HDXMultiSeriesTimeChart
               config={{
                 dateRange,
                 granularity,
-                where,
-                groupBy: '',
-                aggFn: 'avg',
-                field: `${fieldPrefix}filesystem.available - Gauge`,
-                table: 'metrics',
-                numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+                seriesReturnType: 'column',
+                series: [
+                  {
+                    type: 'time',
+                    where,
+                    groupBy: [],
+                    aggFn: 'avg',
+                    field: `${fieldPrefix}filesystem.available - Gauge`,
+                    table: 'metrics',
+                    numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+                  },
+                ],
               }}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -2468,7 +2490,7 @@ const InfraSubpanel = ({ logData }: { logData?: any }) => {
   const timestamp = new Date(logData?.timestamp).getTime();
 
   return (
-    <Stack my="md" spacing={40}>
+    <Stack my="md" gap={40}>
       {podUid && (
         <div>
           <InfraSubpanelGroup

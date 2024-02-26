@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { useRouter } from 'next/router';
-import { SpotlightAction, SpotlightProvider } from '@mantine/spotlight';
+import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
 
 import api from './api';
 import { SERVICE_DASHBOARD_ENABLED } from './config';
 import Logo from './Icon';
+
+import '@mantine/spotlight/styles.css';
 
 const useSpotlightActions = () => {
   const router = useRouter();
@@ -12,21 +14,22 @@ const useSpotlightActions = () => {
   const { data: logViewsData } = api.useLogViews();
   const { data: dashboardsData } = api.useDashboards();
 
-  const actions = React.useMemo<SpotlightAction[]>(() => {
+  const actions = React.useMemo<SpotlightActionData[]>(() => {
     const logViews = logViewsData?.data ?? [];
     const dashboards = dashboardsData?.data ?? [];
 
-    const logViewActions: SpotlightAction[] = [];
+    const logViewActions: SpotlightActionData[] = [];
 
     // Saved searches
     logViews.forEach(logView => {
       logViewActions.push({
+        id: logView._id,
         group: 'Saved searches',
-        icon: <i className="bi bi-layout-text-sidebar-reverse" />,
+        leftSection: <i className="bi bi-layout-text-sidebar-reverse" />,
         description: logView.query,
-        title: logView.name,
+        label: logView.name,
         keywords: ['search', 'log', 'saved'],
-        onTrigger: () => {
+        onClick: () => {
           router.push(`/search/${logView._id}`);
         },
       });
@@ -35,11 +38,12 @@ const useSpotlightActions = () => {
     // Dashboards
     dashboards.forEach(dashboard => {
       logViewActions.push({
+        id: dashboard._id,
         group: 'Dashboards',
-        icon: <i className="bi bi-grid-1x2" />,
-        title: dashboard.name,
+        leftSection: <i className="bi bi-grid-1x2" />,
+        label: dashboard.name,
         keywords: ['dashboard'],
-        onTrigger: () => {
+        onClick: () => {
           router.push(`/dashboards/${dashboard._id}`);
         },
       });
@@ -47,92 +51,101 @@ const useSpotlightActions = () => {
 
     logViewActions.push(
       {
+        id: 'search',
         group: 'Menu',
-        icon: <i className="bi bi-layout-text-sidebar-reverse" />,
-        title: 'Search',
+        leftSection: <i className="bi bi-layout-text-sidebar-reverse" />,
+        label: 'Search',
         description: 'Start a new search',
         keywords: ['log', 'events', 'logs'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('/search');
         },
       },
       {
+        id: 'chart-explorer',
         group: 'Menu',
-        icon: <i className="bi bi-graph-up" />,
-        title: 'Chart Explorer',
+        leftSection: <i className="bi bi-graph-up" />,
+        label: 'Chart Explorer',
         description: 'Explore your data',
         keywords: ['graph', 'metrics'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('/chart');
         },
       },
       {
+        id: 'new-dashboard',
         group: 'Menu',
-        icon: <i className="bi bi-grid-1x2" />,
-        title: 'New Dashboard',
+        leftSection: <i className="bi bi-grid-1x2" />,
+        label: 'New Dashboard',
         description: 'Create a new dashboard',
         keywords: ['graph'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('/dashboards');
         },
       },
       {
+        id: 'sessions',
         group: 'Menu',
-        icon: <i className="bi bi-laptop" />,
-        title: 'Client Sessions',
+        leftSection: <i className="bi bi-laptop" />,
+        label: 'Client Sessions',
         description: 'View client sessions',
         keywords: ['browser', 'web'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('/sessions');
         },
       },
       {
+        id: 'alerts',
         group: 'Menu',
-        icon: <i className="bi bi-bell" />,
-        title: 'Alerts',
+        leftSection: <i className="bi bi-bell" />,
+        label: 'Alerts',
         description: 'View and manage alerts',
-        onTrigger: () => {
+        onClick: () => {
           router.push('/alerts');
         },
       },
       ...(SERVICE_DASHBOARD_ENABLED
         ? [
             {
+              id: 'service-health',
               group: 'Menu',
-              title: 'Service Health',
-              icon: <i className="bi bi-heart-pulse" />,
+              label: 'Service Health',
+              leftSection: <i className="bi bi-heart-pulse" />,
               description: 'HTTP, Database and Infrastructure metrics',
-              onTrigger: () => {
+              onClick: () => {
                 router.push('/services');
               },
             },
           ]
         : []),
       {
+        id: 'team-settings',
         group: 'Menu',
-        icon: <i className="bi bi-gear" />,
-        title: 'Team Settings',
+        leftSection: <i className="bi bi-gear" />,
+        label: 'Team Settings',
 
-        onTrigger: () => {
+        onClick: () => {
           router.push('/team');
         },
       },
       {
+        id: 'documentation',
         group: 'Menu',
-        icon: <i className="bi bi-question-circle" />,
-        title: 'Documentation',
+        leftSection: <i className="bi bi-question-circle" />,
+        label: 'Documentation',
         keywords: ['help', 'docs'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('https://www.hyperdx.io/docs');
         },
       },
       {
+        id: 'cloud',
         group: 'Menu',
-        icon: <Logo />,
-        title: 'HyperDX Cloud',
+        leftSection: <Logo />,
+        label: 'HyperDX Cloud',
         description: 'Ready to use HyperDX Cloud? Get started for free.',
         keywords: ['account', 'profile'],
-        onTrigger: () => {
+        onClick: () => {
           router.push('https://hyperdx.io/register');
         },
       },
@@ -152,17 +165,22 @@ export const HDXSpotlightProvider = ({
   const { actions } = useSpotlightActions();
 
   return (
-    <SpotlightProvider
-      shortcut="mod + K"
-      searchPlaceholder="Search"
-      searchIcon={<i className="bi bi-search" />}
-      nothingFoundMessage="Nothing found"
-      zIndex={200001} // above the autocomplete
-      tagsToIgnore={[]}
-      highlightQuery
-      actions={actions}
-    >
+    <>
       {children}
-    </SpotlightProvider>
+      <Spotlight
+        shortcut="mod + K"
+        searchProps={{
+          leftSection: <i className="bi bi-search" />,
+          placeholder: 'Search',
+        }}
+        nothingFound="Nothing found"
+        zIndex={200001} // above the autocomplete
+        tagsToIgnore={[]}
+        highlightQuery
+        actions={actions}
+        limit={7}
+        scrollable
+      />
+    </>
   );
 };

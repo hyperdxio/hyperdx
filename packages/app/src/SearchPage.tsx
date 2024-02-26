@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -388,7 +389,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
   );
 });
 
-export default function SearchPage() {
+function SearchPage() {
   const router = useRouter();
   const savedSearchId = router.query.savedSearchId;
 
@@ -562,7 +563,7 @@ export default function SearchPage() {
   );
 
   const generateChartUrl = useCallback(
-    ({ aggFn, field, groupBy, table }) => {
+    ({ aggFn, field, groupBy, table }: any) => {
       return `/chart?series=${encodeURIComponent(
         JSON.stringify({
           aggFn,
@@ -647,7 +648,7 @@ export default function SearchPage() {
   }, [setResultsMode]);
 
   const handleUpdateTags = useCallback(
-    newTags => {
+    (newTags: string[]) => {
       if (selectedSavedSearch?._id) {
         updateLogView.mutate(
           {
@@ -731,7 +732,6 @@ export default function SearchPage() {
           refetchLogViews();
         }}
       />
-
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
@@ -791,6 +791,7 @@ export default function SearchPage() {
                 size={20}
                 color="gray"
                 withBorder
+                zIndex={1}
               >
                 <ActionIcon size="lg" variant="default" ml="xs">
                   <i className="bi bi-tags-fill text-slate-300"></i>
@@ -816,17 +817,15 @@ export default function SearchPage() {
           <div className="d-flex">
             <Link
               href={generateSearchUrl(searchedQuery, [zoomOutFrom, zoomOutTo])}
+              className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <a className="text-muted-hover text-decoration-none fs-8 me-3">
-                <i className="bi bi-zoom-out"></i> Zoom Out
-              </a>
+              <i className="bi bi-zoom-out me-1"></i>Zoom Out
             </Link>
             <Link
               href={generateSearchUrl(searchedQuery, [zoomInFrom, zoomInTo])}
+              className="text-muted-hover text-decoration-none fs-8 me-3"
             >
-              <a className="text-muted-hover text-decoration-none fs-8 me-3">
-                <i className="bi bi-zoom-in"></i> Zoom In
-              </a>
+              <i className="bi bi-zoom-in me-1"></i>Zoom In
             </Link>
             <Link
               href={generateChartUrl({
@@ -835,10 +834,9 @@ export default function SearchPage() {
                 field: undefined,
                 groupBy: ['level'],
               })}
+              className="text-muted-hover text-decoration-none fs-8"
             >
-              <a className="text-muted-hover text-decoration-none fs-8">
-                <i className="bi bi-plus-circle"></i> Create Chart
-              </a>
+              <i className="bi bi-plus-circle me-1"></i>Create Chart
             </Link>
           </div>
         </div>
@@ -920,3 +918,12 @@ export default function SearchPage() {
 }
 
 SearchPage.getLayout = withAppNav;
+
+// TODO: Restore when we fix hydration errors
+// export default SearchPage;
+
+const SearchPageDynamic = dynamic(async () => SearchPage, { ssr: false });
+// @ts-ignore
+SearchPageDynamic.getLayout = withAppNav;
+
+export default SearchPageDynamic;

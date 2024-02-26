@@ -37,17 +37,18 @@ const renderKubeEvent = (event: KubeEvent) => {
 
   return (
     <Timeline.Item key={event.id}>
-      <Link href={href} passHref>
-        <Anchor size={11} c="gray.6" title={event.timestamp}>
+      <Link href={href} passHref legacyBehavior>
+        <Anchor size="11" c="gray.6" title={event.timestamp}>
           {format(new Date(event.timestamp), FORMAT)}
         </Anchor>
       </Link>
-      <Group spacing="xs" my={4}>
-        <Text size={12} color="white" fw="bold">
+      <Group gap="xs" my={4}>
+        <Text size="12" color="white" fw="bold">
           {event['object.reason']}
         </Text>
         {event['object.type'] && (
           <Badge
+            variant="light"
             size="xs"
             fw="normal"
             color={event['object.type'] === 'Normal' ? 'green' : 'yellow'}
@@ -121,7 +122,7 @@ export const KubeTimeline = ({
   }, [allPodEvents, anchorEvent]);
 
   // Scroll to anchor event if it exists
-  const anchorRef = React.useCallback(node => {
+  const anchorRef = React.useCallback((node: any) => {
     if (node !== null) {
       // setting block to center causes the entire view to scroll
       // todo - figure out how to scroll just the timeline and center the anchor event
@@ -150,11 +151,11 @@ export const KubeTimeline = ({
       <Timeline bulletSize={12} lineWidth={1}>
         {podEventsAfterAnchor.map(renderKubeEvent)}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
-          <Text size={11} c="gray.6" title={anchorEvent.timestamp}>
+          <Text size="11" c="gray.6" title={anchorEvent.timestamp}>
             {format(new Date(anchorEvent.timestamp), FORMAT)}
           </Text>
-          <Group spacing="xs" my={4}>
-            <Text size={12} color="white" fw="bold">
+          <Group gap="xs" my={4}>
+            <Text size="12" c="white" fw="bold">
               {anchorEvent.label}
             </Text>
           </Group>
@@ -175,37 +176,37 @@ export const FormatPodStatus = ({ status }: { status?: number }) => {
   switch (status) {
     case KubePhase.Pending:
       return (
-        <Badge color="yellow" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="yellow" fw="normal" tt="none" size="md">
           Pending
         </Badge>
       );
     case KubePhase.Running:
       return (
-        <Badge color="green" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="green" fw="normal" tt="none" size="md">
           Running
         </Badge>
       );
     case KubePhase.Succeeded:
       return (
-        <Badge color="indigo" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="indigo" fw="normal" tt="none" size="md">
           Succeeded
         </Badge>
       );
     case KubePhase.Failed:
       return (
-        <Badge color="red" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="red" fw="normal" tt="none" size="md">
           Failed
         </Badge>
       );
     case KubePhase.Unknown:
       return (
-        <Badge color="gray" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
           Unknown
         </Badge>
       );
     default:
       return (
-        <Badge color="gray" fw="normal" tt="none" size="md">
+        <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
           Unknown
         </Badge>
       );

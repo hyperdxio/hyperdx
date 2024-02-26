@@ -25,6 +25,7 @@
     "express-session": "^1.17.3",
     "express-winston": "^4.2.0",
     "extract-domain": "^2.4.1",
+    "http-graceful-shutdown": "^3.1.13",
     "isemail": "^3.2.0",
     "jsonwebtoken": "^9.0.0",
     "lodash": "^4.17.21",
@@ -92,7 +93,7 @@
   "scripts": {
     "start": "node ./build/index.js",
     "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
-    "dev:task": "ts-node -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
+    "dev:task": "ts-node -r tsconfig-paths/register ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

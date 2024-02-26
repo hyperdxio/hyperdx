@@ -19,6 +19,7 @@ import {
   Collapse,
   Input,
   Loader,
+  ScrollArea,
 } from '@mantine/core';
 
 import { version } from '../package.json';
@@ -37,6 +38,9 @@ import type { Dashboard, LogView } from './types';
 import { useLocalStorage, useWindowSize } from './utils';
 
 import styles from '../styles/AppNav.module.scss';
+
+const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
+const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',
@@ -389,18 +393,14 @@ function PresetDashboardLink({
   return (
     <Link
       href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
+      tabIndex={0}
+      className={cx(styles.listLink, {
+        [styles.listLinkActive]:
+          query.config === JSON.stringify(config) && query.dashboardId == null,
+        'text-muted-hover': query.config !== JSON.stringify(config),
+      })}
     >
-      <a
-        tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]:
-            query.config === JSON.stringify(config) &&
-            query.dashboardId == null,
-          'text-muted-hover': query.config !== JSON.stringify(config),
-        })}
-      >
-        {name}
-      </a>
+      {name}
     </Link>
   );
 }
@@ -431,16 +431,13 @@ function PresetSearchLink({ query, name }: { query: string; name: string }) {
               q: query,
             },
       ).toString()}`}
+      tabIndex={0}
+      className={cx(styles.listLink, {
+        [styles.listLinkActive]:
+          routerQuery.savedSearchId == null && searchedQuery === query,
+      })}
     >
-      <a
-        tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]:
-            routerQuery.savedSearchId == null && searchedQuery === query,
-        })}
-      >
-        {name}
-      </a>
+      {name}
     </Link>
   );
 }
@@ -483,7 +480,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      icon={<i className="bi bi-search fs-8 ps-1" />}
+      leftSection={<i className="bi bi-search fs-8 ps-1" text-slate-400 />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -502,13 +499,7 @@ function SearchInput({
       size="xs"
       variant="filled"
       radius="xl"
-      sx={{
-        input: {
-          minHeight: 28,
-          height: 28,
-          lineHeight: 28,
-        },
-      }}
+      className={styles.searchInput}
     />
   );
 }
@@ -545,11 +536,13 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
   name,
   groups,
   renderLink,
+  onDragEnd,
   forceExpandGroups = false,
 }: {
   name: string;
   groups: AppNavLinkGroup<T>[];
   renderLink: (item: T) => React.ReactNode;
+  onDragEnd?: (target: HTMLElement | null, newGroup: string | null) => void;
   forceExpandGroups?: boolean;
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useLocalStorage<
@@ -566,10 +559,27 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
     [collapsedGroups, setCollapsedGroups],
   );
 
+  const [draggingOver, setDraggingOver] = useState<string | null>(null);
+
   return (
     <>
       {groups.map(group => (
-        <div key={group.name}>
+        <div
+          key={group.name}
+          className={cx(
+            draggingOver === group.name && styles.listGroupDragEnter,
+          )}
+          onDragOver={e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDraggingOver(group.name);
+          }}
+          onDragEnd={e => {
+            e.preventDefault();
+            onDragEnd?.(e.target as HTMLElement, draggingOver);
+            setDraggingOver(null);
+          }}
+        >
           <AppNavGroupLabel
             onClick={() => handleToggleGroup(group.name)}
             name={group.name}
@@ -627,10 +637,20 @@ function useSearchableList<T extends AppNavLinkItem>({
     if (untaggedItems.length) {
       groupedItems[untaggedGroupName] = untaggedItems;
     }
-    return Object.entries(groupedItems).map(([name, items]) => ({
-      name,
-      items,
-    }));
+    return Object.entries(groupedItems)
+      .map(([name, items]) => ({
+        name,
+        items,
+      }))
+      .sort((a, b) => {
+        if (a.name === untaggedGroupName) {
+          return 1;
+        }
+        if (b.name === untaggedGroupName) {
+          return -1;
+        }
+        return a.name.localeCompare(b.name);
+      });
   }, [filteredList, untaggedGroupName]);
 
   return {
@@ -666,8 +686,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   } = api.useLogViews();
   const logViews = logViewsData?.data ?? [];
 
-  const { data: dashboardsData, isLoading: isDashboardsLoading } =
-    api.useDashboards();
+  const updateDashboard = api.useUpdateDashboard();
+  const updateLogView = api.useUpdateLogView();
+
+  const {
+    data: dashboardsData,
+    isLoading: isDashboardsLoading,
+    refetch: refetchDashboards,
+  } = api.useDashboards();
   const dashboards = dashboardsData?.data ?? [];
 
   const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
@@ -740,7 +766,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredSearchesList,
   } = useSearchableList({
     items: logViews,
-    untaggedGroupName: 'Saved Searches',
+    untaggedGroupName: UNTAGGED_SEARCHES_GROUP_NAME,
   });
 
   const [isSearchPresetsCollapsed, setSearchPresetsCollapsed] = useLocalStorage(
@@ -755,7 +781,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredDashboardsList,
   } = useSearchableList({
     items: dashboards,
-    untaggedGroupName: 'Saved Dashboards',
+    untaggedGroupName: UNTAGGED_DASHBOARDS_GROUP_NAME,
   });
 
   const [isDashboardsPresetsCollapsed, setDashboardsPresetsCollapsed] =
@@ -777,30 +803,29 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             : {},
         ).toString()}`}
         key={lv._id}
+        tabIndex={0}
+        className={cx(
+          styles.listLink,
+          lv._id === query.savedSearchId && styles.listLinkActive,
+        )}
+        title={lv.name}
+        draggable
+        data-savedsearchid={lv._id}
       >
-        <a
-          tabIndex={0}
-          className={cx(
-            styles.listLink,
-            lv._id === query.savedSearchId && styles.listLinkActive,
-          )}
-          title={lv.name}
-        >
-          <div className="d-inline-block text-truncate">{lv.name}</div>
-          {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-            lv.alerts.some(a => a.state === 'ALERT') ? (
-              <i
-                className="bi bi-bell float-end text-danger"
-                title="Has Alerts and is in ALERT state"
-              ></i>
-            ) : (
-              <i
-                className="bi bi-bell float-end"
-                title="Has Alerts and is in OK state"
-              ></i>
-            )
-          ) : null}
-        </a>
+        <div className="d-inline-block text-truncate">{lv.name}</div>
+        {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
+          lv.alerts.some(a => a.state === 'ALERT') ? (
+            <i
+              className="bi bi-bell float-end text-danger"
+              title="Has Alerts and is in ALERT state"
+            ></i>
+          ) : (
+            <i
+              className="bi bi-bell float-end"
+              title="Has Alerts and is in OK state"
+            ></i>
+          )
+        ) : null}
       </Link>
     ),
     [
@@ -811,32 +836,85 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     ],
   );
 
+  const handleLogViewDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.savedsearchid || name == null) {
+        return;
+      }
+      const logView = logViews.find(
+        lv => lv._id === target.dataset.savedsearchid,
+      );
+      if (logView?.tags?.includes(name)) {
+        return;
+      }
+      updateLogView.mutate(
+        {
+          id: target.dataset.savedsearchid,
+          tags: name === UNTAGGED_SEARCHES_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchLogViews();
+          },
+        },
+      );
+    },
+    [logViews, refetchLogViews, updateLogView],
+  );
+
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => (
-      <Link href={`/dashboards/${dashboard._id}`} key={dashboard._id}>
-        <a
-          tabIndex={0}
-          className={cx(styles.listLink, {
-            [styles.listLinkActive]: dashboard._id === query.dashboardId,
-          })}
-        >
-          {dashboard.name}
-        </a>
+      <Link
+        href={`/dashboards/${dashboard._id}`}
+        key={dashboard._id}
+        tabIndex={0}
+        className={cx(styles.listLink, {
+          [styles.listLinkActive]: dashboard._id === query.dashboardId,
+        })}
+        draggable
+        data-dashboardid={dashboard._id}
+      >
+        {dashboard.name}
       </Link>
     ),
     [query.dashboardId],
+  );
+
+  const handleDashboardDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.dashboardid || name == null) {
+        return;
+      }
+      const dashboard = dashboards.find(
+        d => d._id === target.dataset.dashboardid,
+      );
+      if (dashboard?.tags?.includes(name)) {
+        return;
+      }
+      updateDashboard.mutate(
+        {
+          id: target.dataset.dashboardid,
+          tags: name === UNTAGGED_DASHBOARDS_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchDashboards();
+          },
+        },
+      );
+    },
+    [dashboards, refetchDashboards, updateDashboard],
   );
 
   return (
     <>
       <AuthLoadingBlocker />
       {fixed && <div style={{ width: navWidth, minWidth: navWidth }}></div>}
-      <div
+      <ScrollArea
+        type="hover"
+        scrollbarSize={8}
         style={{
-          minWidth: navWidth,
-          width: navWidth,
           maxHeight: '100vh',
-          overflowY: 'auto',
           height: '100%',
           ...(fixed
             ? {
@@ -847,18 +925,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         }}
         className="border-end border-dark d-flex flex-column justify-content-between"
       >
-        <div>
+        <div style={{ width: navWidth }}>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
-            <Link href="/search">
-              <a className="text-decoration-none">
-                {isCollapsed ? (
-                  <div style={{ marginLeft: '-0.15rem' }}>
-                    <Icon size={22} />
-                  </div>
-                ) : (
-                  <Logo />
-                )}
-              </a>
+            <Link href="/search" className="text-decoration-none">
+              {isCollapsed ? (
+                <div style={{ marginLeft: '-0.15rem' }}>
+                  <Icon size={22} />
+                </div>
+              ) : (
+                <Logo />
+              )}
             </Link>
             <Button
               variant="dark"
@@ -873,25 +949,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           </div>
           <div className="mt-4">
             <div className="px-3 d-flex align-items-center justify-content-between mb-2">
-              <Link href="/search">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'text-success fw-bold':
-                        pathname.includes('/search') &&
-                        query.savedSearchId == null,
-                      'fw-bold':
-                        pathname.includes('/search') &&
-                        query.savedSearchId != null,
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
-                    {!isCollapsed && <span>Search</span>}
-                  </span>
-                </a>
+              <Link
+                href="/search"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'text-success fw-bold':
+                      pathname.includes('/search') &&
+                      query.savedSearchId == null,
+                    'fw-bold':
+                      pathname.includes('/search') &&
+                      query.savedSearchId != null,
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-layout-text-sidebar-reverse pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && <span>Search</span>}
+                </span>
               </Link>
               {!isCollapsed && (
                 <ActionIcon
@@ -922,19 +997,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {logViews.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Searches"
-                          value={searchesListQ}
-                          onChange={setSearchesListQ}
-                          onEnterDown={() => {
-                            (
-                              savedSearchesResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                        onEnterDown={() => {
+                          (
+                            savedSearchesResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       {logViews.length === 0 && (
                         <div className={styles.listEmptyMsg}>
@@ -947,6 +1020,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                           groups={groupedFilteredSearchesList}
                           renderLink={renderLogViewLink}
                           forceExpandGroups={!!searchesListQ}
+                          onDragEnd={handleLogViewDragEnd}
                         />
                       </div>
 
@@ -978,124 +1052,118 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Collapse>
             )}
             <div className="px-3 my-3">
-              <Link href="/chart">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/chart'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-graph-up pe-1" />{' '}
-                    {!isCollapsed && <span>Chart Explorer</span>}
-                  </span>
-                </a>
+              <Link
+                href="/chart"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/chart'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-graph-up pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && <span>Chart Explorer</span>}
+                </span>
               </Link>
             </div>
             <div className="px-3 my-3">
-              <Link href="/sessions">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/sessions'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-laptop pe-1" />{' '}
-                    {!isCollapsed && <span>Client Sessions</span>}
-                  </span>
-                </a>
+              <Link
+                href="/sessions"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/sessions'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-laptop pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && <span>Client Sessions</span>}
+                </span>
               </Link>
             </div>
             <div className="px-3 my-3">
-              <Link href="/alerts">
-                <a
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/alerts'),
-                    },
-                  )}
-                >
-                  <div>
-                    <i className="bi bi-bell pe-1" />{' '}
-                    {!isCollapsed && (
-                      <div className="d-inline-flex align-items-center">
-                        <span>Alerts</span>
-                        <div
-                          className="ms-3"
-                          style={{
-                            borderRadius: 8,
-                            background:
-                              alertState == 'alarming'
-                                ? '#e74c3c'
-                                : alertState === 'ok'
-                                ? '#00d474'
-                                : 'gray',
-                            height: 8,
-                            width: 8,
-                          }}
-                          title={
-                            alertState === 'alarming'
-                              ? 'Some alerts are firing'
+              <Link
+                href="/alerts"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/alerts'),
+                  },
+                )}
+              >
+                <div>
+                  <i className="bi bi-bell pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && (
+                    <div className="d-inline-flex align-items-center">
+                      <span>Alerts</span>
+                      <div
+                        className="ms-3"
+                        style={{
+                          borderRadius: 8,
+                          background:
+                            alertState == 'alarming'
+                              ? '#e74c3c'
                               : alertState === 'ok'
-                              ? 'All alerts are ok'
-                              : 'No alerts are set up'
-                          }
-                        ></div>
-                      </div>
-                    )}
-                  </div>
-                </a>
+                              ? '#00d474'
+                              : 'gray',
+                          height: 8,
+                          width: 8,
+                        }}
+                        title={
+                          alertState === 'alarming'
+                            ? 'Some alerts are firing'
+                            : alertState === 'ok'
+                            ? 'All alerts are ok'
+                            : 'No alerts are set up'
+                        }
+                      ></div>
+                    </div>
+                  )}
+                </div>
               </Link>
             </div>
 
             {SERVICE_DASHBOARD_ENABLED ? (
               <div className="px-3 my-3">
-                <Link href="/services">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                      {
-                        'fw-bold text-success': pathname.includes('/services'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <i className="bi bi-heart-pulse pe-1" />{' '}
-                      {!isCollapsed && <span>Service Health</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/services"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/services'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Service Health</span>}
+                  </span>
                 </Link>
               </div>
             ) : null}
 
             {K8S_DASHBOARD_ENABLED ? (
               <div className="px-3 my-3">
-                <Link href="/kubernetes">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                      {
-                        'fw-bold text-success':
-                          pathname.includes('/kubernetes'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <span
-                        className="pe-1"
-                        style={{ top: -2, position: 'relative' }}
-                      >
-                        <KubernetesFlatIcon width={16} />
-                      </span>{' '}
-                      {!isCollapsed && <span>Kubernetes</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/kubernetes"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/kubernetes'),
+                    },
+                  )}
+                >
+                  <span>
+                    <span
+                      className="pe-1 text-slate-300"
+                      style={{ top: -2, position: 'relative' }}
+                    >
+                      <KubernetesFlatIcon width={16} />
+                    </span>{' '}
+                    {!isCollapsed && <span>Kubernetes</span>}
+                  </span>
                 </Link>
               </div>
             ) : null}
@@ -1109,13 +1177,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   },
                 )}
               >
-                <Link href="/dashboards">
-                  <a className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover">
-                    <span>
-                      <i className="bi bi-grid-1x2 pe-1" />{' '}
-                      {!isCollapsed && <span>Dashboards</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/dashboards"
+                  className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
+                >
+                  <span>
+                    <i className="bi bi-grid-1x2 pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Dashboards</span>}
+                  </span>
                 </Link>
                 {!isCollapsed && (
                   <ActionIcon
@@ -1138,28 +1207,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             {!isCollapsed && (
               <Collapse in={isDashboardsExpanded}>
                 <div className={styles.list}>
-                  <Link href="/dashboards">
-                    <a
-                      className={cx(
-                        styles.listLink,
-                        pathname.includes('/dashboard') &&
-                          query.dashboardId == null &&
-                          query.config !=
-                            JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
-                          query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                          ? [styles.listLinkActive]
-                          : null,
-                      )}
-                    >
-                      <div className="mt-1 lh-1 py-1">
-                        <i className="bi bi-plus-lg me-2" />
-                        New Dashboard
-                      </div>
-                    </a>
+                  <Link
+                    href="/dashboards"
+                    className={cx(
+                      styles.listLink,
+                      pathname.includes('/dashboard') &&
+                        query.dashboardId == null &&
+                        query.config !=
+                          JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
+                        query.config !=
+                          JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
+                        query.config !=
+                          JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
+                        query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
+                        ? [styles.listLinkActive]
+                        : null,
+                    )}
+                  >
+                    <div className="mt-1 lh-1 py-1">
+                      <i className="bi bi-plus-lg me-2" />
+                      New Dashboard
+                    </div>
                   </Link>
 
                   {isDashboardsLoading ? (
@@ -1172,25 +1240,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {dashboards.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
+                        onEnterDown={() => {
+                          (
+                            dashboardsResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       <AppNavLinkGroups
                         name="dashboards"
                         groups={groupedFilteredDashboardsList}
                         renderLink={renderDashboardLink}
                         forceExpandGroups={!!dashboardsListQ}
+                        onDragEnd={handleDashboardDragEnd}
                       />
 
                       {dashboards.length === 0 && (
@@ -1251,22 +1318,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </div>
         {!isCollapsed && (
           <>
-            <div className="px-3 mb-2 mt-4">
+            <div style={{ width: navWidth }} className="px-3 mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
                 <span className="text-slate-300 fs-8">
                   Ready to use HyperDX Cloud?
                 </span>
                 <div className="mt-2 mb-2">
-                  <Link href="https://www.hyperdx.io/register" passHref>
+                  <Link
+                    href="https://www.hyperdx.io/register"
+                    passHref
+                    legacyBehavior
+                  >
                     <MButton
                       variant="light"
                       size="xs"
                       component="a"
-                      sx={{
-                        ':hover': {
-                          color: 'white',
-                        },
-                      }}
+                      className="hover-color-white"
                     >
                       Get Started for Free
                     </MButton>
@@ -1274,41 +1341,39 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </div>
               </div>
               <div className="my-3">
-                <Link href="/team">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                      {
-                        'fw-bold text-success': pathname.includes('/team'),
-                      },
-                    )}
-                  >
-                    <span>
-                      <i className="bi bi-gear" />{' '}
-                      {!isCollapsed && <span>Team Settings</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="/team"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/team'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-gear text-slate-300" />{' '}
+                    {!isCollapsed && <span>Team Settings</span>}
+                  </span>
                 </Link>
               </div>
               <div className="my-3">
-                <Link href="https://hyperdx.io/docs">
-                  <a
-                    className={cx(
-                      'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                    )}
-                    target="_blank"
-                  >
-                    <span>
-                      <i className="bi bi-book" />{' '}
-                      {!isCollapsed && <span>Documentation</span>}
-                    </span>
-                  </a>
+                <Link
+                  href="https://hyperdx.io/docs"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                  )}
+                  target="_blank"
+                >
+                  <span>
+                    <i className="bi bi-book text-slate-300" />{' '}
+                    {!isCollapsed && <span>Documentation</span>}
+                  </span>
                 </Link>
               </div>
               <div className="my-4">
-                <Link href={`${API_SERVER_URL}/logout`}>
+                <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
                   <span role="button" className="text-muted-hover">
-                    <i className="bi bi-box-arrow-left" />{' '}
+                    <i className="bi bi-box-arrow-left text-slate-300" />{' '}
                     {!isCollapsed && <span>Logout</span>}
                   </span>
                 </Link>
@@ -1319,7 +1384,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </div>
           </>
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 }

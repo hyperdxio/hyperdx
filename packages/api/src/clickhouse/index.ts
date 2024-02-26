@@ -54,6 +54,7 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
+  // TODO: support 'Summary' and 'ExponentialHistogram'
 }
 
 export enum AggFn {
@@ -593,7 +594,8 @@ export const getCHServerMetrics = async () => {
     }, {});
 };
 
-export const getMetricsTags = async ({
+// ONLY USED IN EXTERNAL API
+export const getMetricsTagsDEPRECATED = async ({
   teamId,
   startTime,
   endTime,
@@ -642,6 +644,152 @@ export const getMetricsTags = async ({
       name: string;
       tags: Record<string, string>[];
       unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsTagsDEPRECATED',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
+export const getMetricsNames = async ({
+  teamId,
+  startTime,
+  endTime,
+}: {
+  teamId: string;
+  startTime: number; // unix in ms
+  endTime: number; // unix in ms
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // WARNING: _created_at is ciritcal for the query to work efficiently (by using partitioning)
+  // TODO: remove 'data_type' in the name field
+  const query = SqlString.format(
+    `
+      SELECT
+        any(is_delta) as is_delta,
+        any(is_monotonic) as is_monotonic,
+        any(unit) as unit,
+        data_type,
+        format('{} - {}', name, data_type) as name
+      FROM ??
+      WHERE data_type IN (?)
+      AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      GROUP BY name, data_type
+      ORDER BY name
+    `,
+    [
+      tableName,
+      Object.values(MetricsDataType),
+      msToBigIntNs(startTime),
+      msToBigIntNs(endTime),
+      startTime,
+      endTime,
+    ],
+  );
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      unit: string;
+    }>
+  >();
+  logger.info({
+    message: 'getMetricsNames',
+    query,
+    took: Date.now() - ts,
+  });
+  return result;
+};
+
+export const getMetricsTags = async ({
+  endTime,
+  metrics,
+  startTime,
+  teamId,
+}: {
+  endTime: number; // unix in ms
+  metrics: {
+    name: string;
+    dataType: MetricsDataType;
+  }[];
+  startTime: number; // unix in ms
+  teamId: string;
+}) => {
+  const tableName = `default.${TableName.Metric}`;
+  // TODO: theoretically, we should be able to traverse each tag's keys and values
+  // and intersect them to get the final result. Currently this is done on the client side.
+  const unions = metrics
+    .map(m =>
+      SqlString.format(
+        `
+      SELECT 
+        groupUniqArray(_string_attributes) AS tags,
+        data_type,
+        format('{} - {}', name, data_type) AS combined_name
+      FROM ??
+      WHERE name = ?
+      AND data_type = ?
+      AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
+      AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
+      GROUP BY name, data_type
+    `,
+        [
+          tableName,
+          m.name,
+          m.dataType,
+          msToBigIntNs(startTime),
+          msToBigIntNs(endTime),
+          startTime,
+          endTime,
+        ],
+      ),
+    )
+    .join(' UNION DISTINCT ');
+  const query = SqlString.format(
+    `
+      SELECT 
+        combined_name AS name,
+        data_type,
+        tags
+      FROM (?)
+      ORDER BY name
+    `,
+    [SqlString.raw(unions)],
+  );
+
+  const ts = Date.now();
+  const rows = await client.query({
+    query,
+    format: 'JSON',
+    clickhouse_settings: {
+      additional_table_filters: buildMetricStreamAdditionalFilters(
+        null,
+        teamId,
+      ),
+    },
+  });
+  const result = await rows.json<
+    ResponseJSON<{
+      name: string;
+      data_type: string;
+      tags: Record<string, string>[];
     }>
   >();
   logger.info({
@@ -1314,7 +1462,7 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`, // FIXME: should we fallback to use aggFn as group
+    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
     `${label} as label`,
   ].join(',');
 
@@ -1386,9 +1534,15 @@ export const queryMultiSeriesChart = async ({
     .map((q, i) => `series_${i} AS (${q.query})`)
     .join(',\n');
 
-  // Only join on group bys if all queries have group bys
-  // TODO: This will not work for an array of group by fields
-  const allQueiesHaveGroupBy = queries.every(q => q.hasGroupBy);
+  // Build a subquery of the join key (ts + group) for all series to join on
+  // fixes the case where some series have more data points than others
+  // (due to missing groups or missing metrics)
+  const joinKeysSubquery = queries
+    .map((q, i) => {
+      const series = `series_${i}`;
+      return `SELECT ${series}.ts_bucket, ${series}.group FROM ${series}`;
+    })
+    .join(' UNION DISTINCT\n');
 
   let seriesIndexWithSorting = -1;
   let sortOrder: 'asc' | 'desc' = 'desc';
@@ -1401,13 +1555,14 @@ export const queryMultiSeriesChart = async ({
     }
   }
 
-  let leftJoin = '';
-  // Join every series after the first one
-  for (let i = 1; i < queries.length; i++) {
-    leftJoin += `LEFT JOIN series_${i} ON series_${i}.ts_bucket=series_0.ts_bucket${
-      allQueiesHaveGroupBy ? ` AND series_${i}.group = series_0.group` : ''
-    }\n`;
-  }
+  const leftJoin = queries
+    .map((_, i) => {
+      return (
+        `LEFT JOIN series_${i} ON series_${i}.ts_bucket=join_keys.ts_bucket ` +
+        `AND series_${i}.group = join_keys.group`
+      );
+    })
+    .join('\n');
 
   const select =
     seriesReturnType === 'column'
@@ -1428,16 +1583,16 @@ export const queryMultiSeriesChart = async ({
       ,raw_groups AS (
         SELECT 
           ?,
-          series_0.ts_bucket as ts_bucket, 
-          series_0.group as group
-        FROM series_0 AS series_0
+          join_keys.ts_bucket as ts_bucket, 
+          join_keys.group as group
+        FROM (?) as join_keys
         ?
         WHERE ?
       ), groups AS (
         SELECT *, ?(?) OVER (PARTITION BY group) as rank_order_by_value
         FROM raw_groups
       ), final AS (
-        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?) as rank
+        SELECT *, DENSE_RANK() OVER (ORDER BY rank_order_by_value ?, group) as rank
         FROM groups
       )
       SELECT *
@@ -1449,6 +1604,7 @@ export const queryMultiSeriesChart = async ({
     [
       SqlString.raw(seriesCTEs),
       SqlString.raw(select),
+      SqlString.raw(joinKeysSubquery),
       SqlString.raw(leftJoin),
       SqlString.raw(postGroupWhereClause),
       // Setting rank_order_by_value

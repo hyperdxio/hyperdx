@@ -3,8 +3,6 @@ import ms from 'ms';
 
 import {
   buildMetricSeries,
-  clearClickhouseTables,
-  closeDB,
   generateBuildTeamEventFn,
   getServer,
   mockLogsPropertyTypeMappingsModel,
@@ -22,12 +20,11 @@ describe('clickhouse', () => {
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   afterEach(async () => {
-    await clearClickhouseTables();
+    await server.clearDBs();
     jest.clearAllMocks();
   });
 
@@ -854,9 +851,37 @@ Array [
     "ts_bucket": 1641341100,
   },
   Object {
+    "group": Array [
+      "test1",
+    ],
+    "series_0.data": 0,
+    "ts_bucket": 1641341400,
+  },
+  Object {
+    "group": Array [
+      "test2",
+    ],
+    "series_0.data": 0,
+    "ts_bucket": 1641341400,
+  },
+  Object {
     "group": Array [],
     "series_0.data": null,
     "ts_bucket": 1641341400,
+  },
+  Object {
+    "group": Array [
+      "test1",
+    ],
+    "series_0.data": 0,
+    "ts_bucket": 1641341700,
+  },
+  Object {
+    "group": Array [
+      "test2",
+    ],
+    "series_0.data": 0,
+    "ts_bucket": 1641341700,
   },
   Object {
     "group": Array [],

@@ -26,7 +26,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import HDXLineChart from './HDXLineChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import MetricTagValueSelect from './MetricTagValueSelect';
@@ -63,7 +63,7 @@ const Th = React.memo<{
   sort?: 'asc' | 'desc' | null;
 }>(({ children, onSort, sort, style }) => {
   return (
-    <th
+    <Table.Th
       style={style}
       className={cx({ 'cursor-pointer': !!onSort }, 'text-nowrap')}
       onClick={() => onSort?.(sort === 'asc' ? 'desc' : 'asc')}
@@ -76,7 +76,7 @@ const Th = React.memo<{
           }`}
         />
       )}
-    </th>
+    </Table.Th>
   );
 });
 
@@ -90,28 +90,28 @@ type InfraPodsStatusTableColumn =
 const TableLoading = () => {
   return (
     <Table horizontalSpacing="md" highlightOnHover>
-      <tbody key="table-loader">
-        <tr>
-          <td>
+      <Table.Tbody key="table-loader">
+        <Table.Tr>
+          <Table.Td>
             <Skeleton height={8} my={6} />
-          </td>
-        </tr>
-        <tr>
-          <td>
+          </Table.Td>
+        </Table.Tr>
+        <Table.Tr>
+          <Table.Td>
             <Skeleton height={8} my={6} />
-          </td>
-        </tr>
-        <tr>
-          <td>
+          </Table.Td>
+        </Table.Tr>
+        <Table.Tr>
+          <Table.Td>
             <Skeleton height={8} my={6} />
-          </td>
-        </tr>
-        <tr>
-          <td>
+          </Table.Td>
+        </Table.Tr>
+        <Table.Tr>
+          <Table.Td>
             <Skeleton height={8} my={6} />
-          </td>
-        </tr>
-      </tbody>
+          </Table.Td>
+        </Table.Tr>
+      </Table.Tbody>
     </Table>
   );
 };
@@ -257,7 +257,7 @@ export const InfraPodsStatusTable = ({
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
-        <Group align="center" position="apart">
+        <Group align="center" justify="space-between">
           Pods
           <SegmentedControl
             size="xs"
@@ -291,8 +291,8 @@ export const InfraPodsStatusTable = ({
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
-              <thead className="muted-thead">
-                <tr>
+              <Table.Thead className="muted-thead">
+                <Table.Tr>
                   <Th>Name</Th>
                   <Th>Namespace</Th>
                   <Th>Node</Th>
@@ -311,19 +311,19 @@ export const InfraPodsStatusTable = ({
                   <Th {...getThSortProps('restarts')} style={{ width: 100 }}>
                     Restarts
                   </Th>
-                </tr>
-              </thead>
-              <tbody>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
                 {podsList.map(pod => (
-                  <Link key={pod.id} href={getLink(pod.name)}>
-                    <tr className="cursor-pointer">
-                      <td>{pod.name}</td>
-                      <td>{pod.namespace}</td>
-                      <td>{pod.node}</td>
-                      <td>
+                  <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
+                    <Table.Tr className="cursor-pointer">
+                      <Table.Td>{pod.name}</Table.Td>
+                      <Table.Td>{pod.namespace}</Table.Td>
+                      <Table.Td>{pod.node}</Table.Td>
+                      <Table.Td>
                         <FormatPodStatus status={pod.phase} />
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         <Tooltip
                           color="gray"
                           label={
@@ -340,8 +340,8 @@ export const InfraPodsStatusTable = ({
                             )}
                           </span>
                         </Tooltip>
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         <Tooltip
                           color="gray"
                           label={
@@ -356,11 +356,14 @@ export const InfraPodsStatusTable = ({
                             )}
                           </span>
                         </Tooltip>
-                      </td>
-                      <td>{pod.uptime ? formatUptime(pod.uptime) : '–'}</td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
+                        {pod.uptime ? formatUptime(pod.uptime) : '–'}
+                      </Table.Td>
+                      <Table.Td>
                         <Text
-                          color={
+                          size="sm"
+                          c={
                             pod.restarts >= 10
                               ? 'red.6'
                               : pod.restarts >= 5
@@ -370,11 +373,11 @@ export const InfraPodsStatusTable = ({
                         >
                           {pod.restarts}
                         </Text>
-                      </td>
-                    </tr>
+                      </Table.Td>
+                    </Table.Tr>
                   </Link>
                 ))}
-              </tbody>
+              </Table.Tbody>
             </Table>
           )}
         </ScrollArea>
@@ -478,46 +481,64 @@ const NodesTable = ({
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
-              <thead className="muted-thead">
-                <tr>
-                  <th>Node</th>
-                  <th style={{ width: 130 }}>Status</th>
-                  <th style={{ width: 130 }}>CPU</th>
-                  <th style={{ width: 130 }}>Memory</th>
-                  <th style={{ width: 130 }}>Uptime</th>
-                </tr>
-              </thead>
+              <Table.Thead className="muted-thead">
+                <Table.Tr>
+                  <Table.Th>Node</Table.Th>
+                  <Table.Th style={{ width: 130 }}>Status</Table.Th>
+                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
+                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
+                  <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
 
-              <tbody>
+              <Table.Tbody>
                 {nodesList.map(node => (
-                  <Link key={node.name} href={getLink(node.name)}>
-                    <tr className="cursor-pointer">
-                      <td>{node.name || 'N/A'}</td>
-                      <td>
+                  <Link
+                    key={node.name}
+                    href={getLink(node.name)}
+                    legacyBehavior
+                  >
+                    <Table.Tr className="cursor-pointer">
+                      <Table.Td>{node.name || 'N/A'}</Table.Td>
+                      <Table.Td>
                         {node.ready === 1 ? (
-                          <Badge color="green" fw="normal" tt="none" size="md">
+                          <Badge
+                            variant="light"
+                            color="green"
+                            fw="normal"
+                            tt="none"
+                            size="md"
+                          >
                             Ready
                           </Badge>
                         ) : (
-                          <Badge color="red" fw="normal" tt="none" size="md">
+                          <Badge
+                            variant="light"
+                            color="red"
+                            fw="normal"
+                            tt="none"
+                            size="md"
+                          >
                             Not Ready
                           </Badge>
                         )}
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         {formatNumber(
                           node.cpuAvg,
                           K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
                         )}
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </td>
-                      <td>{node.uptime ? formatUptime(node.uptime) : '–'}</td>
-                    </tr>
+                      </Table.Td>
+                      <Table.Td>
+                        {node.uptime ? formatUptime(node.uptime) : '–'}
+                      </Table.Td>
+                    </Table.Tr>
                   </Link>
                 ))}
-              </tbody>
+              </Table.Tbody>
             </Table>
           )}
         </ScrollArea>
@@ -611,43 +632,59 @@ const NamespacesTable = ({
             </div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
-              <thead className="muted-thead">
-                <tr>
-                  <th>Namespace</th>
-                  <th style={{ width: 130 }}>Phase</th>
-                  <th style={{ width: 130 }}>CPU</th>
-                  <th style={{ width: 130 }}>Memory</th>
-                </tr>
-              </thead>
-              <tbody>
+              <Table.Thead className="muted-thead">
+                <Table.Tr>
+                  <Table.Th>Namespace</Table.Th>
+                  <Table.Th style={{ width: 130 }}>Phase</Table.Th>
+                  <Table.Th style={{ width: 130 }}>CPU</Table.Th>
+                  <Table.Th style={{ width: 130 }}>Memory</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
                 {namespacesList.map(namespace => (
-                  <Link key={namespace.name} href={getLink(namespace.name)}>
-                    <tr className="cursor-pointer">
-                      <td>{namespace.name || 'N/A'}</td>
-                      <td>
+                  <Link
+                    key={namespace.name}
+                    href={getLink(namespace.name)}
+                    legacyBehavior
+                  >
+                    <Table.Tr className="cursor-pointer">
+                      <Table.Td>{namespace.name || 'N/A'}</Table.Td>
+                      <Table.Td>
                         {namespace.phase === 1 ? (
-                          <Badge color="green" fw="normal" tt="none" size="md">
+                          <Badge
+                            variant="light"
+                            color="green"
+                            fw="normal"
+                            tt="none"
+                            size="md"
+                          >
                             Ready
                           </Badge>
                         ) : (
-                          <Badge color="red" fw="normal" tt="none" size="md">
+                          <Badge
+                            variant="light"
+                            color="red"
+                            fw="normal"
+                            tt="none"
+                            size="md"
+                          >
                             Terminating
                           </Badge>
                         )}
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         {formatNumber(
                           namespace.cpuAvg,
                           K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
                         )}
-                      </td>
-                      <td>
+                      </Table.Td>
+                      <Table.Td>
                         {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </td>
-                    </tr>
+                      </Table.Td>
+                    </Table.Tr>
                   </Link>
                 ))}
-              </tbody>
+              </Table.Tbody>
             </Table>
           )}
         </ScrollArea>
@@ -688,7 +725,7 @@ const K8sMetricTagValueSelect = ({
       size="sm"
       dropdownClosedWidth={dropdownClosedWidth}
       dropdownOpenWidth={350}
-      icon={icon}
+      leftSection={icon}
     />
   );
 };
@@ -749,7 +786,7 @@ export default function KubernetesDashboardPage() {
           px="md"
           py="xs"
           className="border-bottom border-dark"
-          spacing="xs"
+          gap="xs"
           align="center"
         >
           <K8sMetricTagValueSelect
@@ -808,7 +845,14 @@ export default function KubernetesDashboardPage() {
               />
             </form>
           </div>
-          <div className="d-flex" style={{ width: 350, height: 36 }}>
+          <form
+            className="d-flex"
+            style={{ width: 350, height: 36 }}
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+            }}
+          >
             <SearchTimeRangePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
@@ -816,7 +860,7 @@ export default function KubernetesDashboardPage() {
                 onSearch(range);
               }}
             />
-          </div>
+          </form>
         </Group>
       </div>
       <Tabs
@@ -826,7 +870,7 @@ export default function KubernetesDashboardPage() {
         radius="md"
         keepMounted={false}
         value={activeTab}
-        onTabChange={setActiveTab}
+        onChange={setActiveTab}
       >
         <div className="px-3 py-2 border-bottom border-dark">
           <Tabs.List>
@@ -846,19 +890,25 @@ export default function KubernetesDashboardPage() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -870,19 +920,25 @@ export default function KubernetesDashboardPage() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -908,6 +964,7 @@ export default function KubernetesDashboardPage() {
                           }(k8s.resource.name:"events" -level:"normal")`,
                         )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
+                        legacyBehavior
                       >
                         <Anchor size="xs" color="dimmed">
                           Search <i className="bi bi-box-arrow-up-right"></i>
@@ -952,19 +1009,25 @@ export default function KubernetesDashboardPage() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.node.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.node.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.node.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.node.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -976,19 +1039,25 @@ export default function KubernetesDashboardPage() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.node.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.node.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.node.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.node.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -1007,19 +1076,25 @@ export default function KubernetesDashboardPage() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.namespace.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'sum',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.namespace.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'sum',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -1031,19 +1106,25 @@ export default function KubernetesDashboardPage() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.namespace.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'sum',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.namespace.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'sum',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>

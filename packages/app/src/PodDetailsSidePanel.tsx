@@ -21,7 +21,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import HDXLineChart from './HDXLineChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { useZIndex, ZIndexContext } from './zIndex';
@@ -125,7 +125,11 @@ function PodLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            <Link href={`/search?q=${encodeURIComponent(_where)}`} passHref>
+            <Link
+              href={`/search?q=${encodeURIComponent(_where)}`}
+              passHref
+              legacyBehavior
+            >
               <Anchor size="xs" color="dimmed">
                 Search <i className="bi bi-box-arrow-up-right"></i>
               </Anchor>
@@ -217,19 +221,25 @@ export default function PodDetailsSidePanel() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -241,19 +251,25 @@ export default function PodDetailsSidePanel() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>

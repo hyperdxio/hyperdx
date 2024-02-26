@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
+import { toast } from 'react-toastify';
 import {
   Bar,
   BarChart,
@@ -16,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { Popover } from '@mantine/core';
 
 import api from './api';
 import {
@@ -24,12 +26,94 @@ import {
   seriesColumns,
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
-import { LegendRenderer } from './HDXLineChart';
 import { HDXLineChartTooltip } from './HDXLineChart';
 import type { ChartSeries, NumberFormat } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { formatNumber } from './utils';
-import { semanticKeyedColor, TIME_TOKENS } from './utils';
+import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
+
+import styles from '../styles/HDXLineChart.module.scss';
+
+const MAX_LEGEND_ITEMS = 4;
+
+function CopyableLegendItem({ entry }: any) {
+  return (
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => {
+        window.navigator.clipboard.writeText(entry.value);
+        toast.success(`Copied to clipboard`);
+      }}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {entry.value}
+    </span>
+  );
+}
+
+function ExpandableLegendItem({ entry, expanded }: any) {
+  const [_expanded, setExpanded] = useState(false);
+  const isExpanded = _expanded || expanded;
+
+  return (
+    <span
+      className={styles.legendItem}
+      style={{ color: entry.color }}
+      role="button"
+      onClick={() => setExpanded(v => !v)}
+      title="Click to expand"
+    >
+      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
+    </span>
+  );
+}
+
+export const LegendRenderer = memo<{
+  payload?: {
+    value: string;
+    color: string;
+  }[];
+}>(props => {
+  const payload = props.payload ?? [];
+  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
+  const restItems = payload.slice(MAX_LEGEND_ITEMS);
+
+  return (
+    <div className={styles.legend}>
+      {shownItems.map((entry, index) => (
+        <ExpandableLegendItem
+          key={`item-${index}`}
+          value={entry.value}
+          entry={entry}
+        />
+      ))}
+      {restItems.length ? (
+        <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
+          <Popover.Target>
+            <div className={cx(styles.legendItem, styles.legendMoreLink)}>
+              +{restItems.length} more
+            </div>
+          </Popover.Target>
+          <Popover.Dropdown p="xs">
+            <div className={styles.legendTooltipContent}>
+              {restItems.map((entry, index) => (
+                <CopyableLegendItem
+                  key={`item-${index}`}
+                  value={entry.value}
+                  entry={entry}
+                />
+              ))}
+            </div>
+          </Popover.Dropdown>
+        </Popover>
+      ) : null}
+    </div>
+  );
+});
 
 const HARD_LINES_LIMIT = 60;
 const MemoChart = memo(function MemoChart({
@@ -41,19 +125,21 @@ const MemoChart = memo(function MemoChart({
   lineNames,
   alertThreshold,
   alertThresholdType,
+  logReferenceTimestamp,
   displayType = 'line',
   numberFormat,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
   isClickActive: any;
-  dateRange: [Date, Date];
+  dateRange: [Date, Date] | Readonly<[Date, Date]>;
   groupKeys: string[];
   lineNames: string[];
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
   displayType?: 'stacked_bar' | 'line';
   numberFormat?: NumberFormat;
+  logReferenceTimestamp?: number;
 }) {
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
@@ -211,6 +297,14 @@ const MemoChart = memo(function MemoChart({
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
         ) : null}
+        {logReferenceTimestamp != null ? (
+          <ReferenceLine
+            x={logReferenceTimestamp}
+            stroke="#ff5d5b"
+            strokeDasharray="3 3"
+            label="Event"
+          />
+        ) : null}
       </ChartComponent>
     </ResponsiveContainer>
   );
@@ -224,11 +318,12 @@ const HDXMultiSeriesTimeChart = memo(
     alertThresholdType,
     showDisplaySwitcher = true,
     defaultDisplayType = 'line',
+    logReferenceTimestamp,
   }: {
     config: {
       series: ChartSeries[];
       granularity: Granularity;
-      dateRange: [Date, Date];
+      dateRange: [Date, Date] | Readonly<[Date, Date]>;
       seriesReturnType: 'ratio' | 'column';
     };
     onSettled?: () => void;
@@ -236,6 +331,7 @@ const HDXMultiSeriesTimeChart = memo(
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
     defaultDisplayType?: 'stacked_bar' | 'line';
+    logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart(
       {
@@ -386,6 +482,7 @@ const HDXMultiSeriesTimeChart = memo(
           position: 'relative',
           width: '100%',
           height: '100%',
+          flexGrow: 1,
         }}
       >
         <div
@@ -413,10 +510,11 @@ const HDXMultiSeriesTimeChart = memo(
                 }px, ${activeClickPayload?.y ?? 0}px)`,
               }}
             >
-              <Link href={`/search?${qparams?.toString()}`}>
-                <a className="text-white-hover text-decoration-none">
-                  <i className="bi bi-search"></i> View Events
-                </a>
+              <Link
+                href={`/search?${qparams?.toString()}`}
+                className="text-white-hover text-decoration-none"
+              >
+                <i className="bi bi-search"></i>View Events
               </Link>
             </div>
           ) : null}
@@ -486,6 +584,7 @@ const HDXMultiSeriesTimeChart = memo(
             alertThresholdType={alertThresholdType}
             displayType={displayType}
             numberFormat={numberFormat}
+            logReferenceTimestamp={logReferenceTimestamp}
           />
         </div>
       </div>

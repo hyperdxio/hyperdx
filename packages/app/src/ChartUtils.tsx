@@ -9,8 +9,9 @@ import api from './api';
 import Checkbox from './Checkbox';
 import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
-import type { AggFn, ChartSeries, SourceTable } from './types';
+import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';
+import { legacyMetricNameToNameAndDataType } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -37,16 +38,27 @@ export const AGG_FNS = [
   { value: 'count_distinct' as const, label: 'Count Distinct' },
 ];
 
-export const METRIC_AGG_FNS = [
-  { value: 'sum' as const, label: 'Sum' },
-  { value: 'p99' as const, label: '99th Percentile' },
-  { value: 'p95' as const, label: '95th Percentile' },
-  { value: 'p90' as const, label: '90th Percentile' },
-  { value: 'p50' as const, label: 'Median' },
-  { value: 'avg' as const, label: 'Average' },
-  { value: 'max' as const, label: 'Maximum' },
-  { value: 'min' as const, label: 'Minimum' },
-];
+export const getMetricAggFns = (dataType: MetricsDataType) => {
+  if (dataType === MetricsDataType.Histogram) {
+    return [
+      { value: 'p99' as const, label: '99th Percentile' },
+      { value: 'p95' as const, label: '95th Percentile' },
+      { value: 'p90' as const, label: '90th Percentile' },
+      { value: 'p50' as const, label: 'Median' },
+    ];
+  }
+
+  return [
+    { value: 'sum' as const, label: 'Sum' },
+    { value: 'p99' as const, label: '99th Percentile' },
+    { value: 'p95' as const, label: '95th Percentile' },
+    { value: 'p90' as const, label: '90th Percentile' },
+    { value: 'p50' as const, label: 'Median' },
+    { value: 'avg' as const, label: 'Average' },
+    { value: 'max' as const, label: 'Maximum' },
+    { value: 'min' as const, label: 'Minimum' },
+  ];
+};
 
 export enum Granularity {
   ThirtySecond = '30 second',
@@ -65,8 +77,12 @@ export enum Granularity {
   ThirtyDay = '30 day',
 }
 
+export const isGranularity = (value: string): value is Granularity => {
+  return Object.values(Granularity).includes(value as Granularity);
+};
+
 const seriesDisplayName = (
-  s: ChartSeries,
+  s: ChartSeries | undefined,
   {
     showAggFn,
     showField,
@@ -77,6 +93,9 @@ const seriesDisplayName = (
     showWhere?: boolean;
   } = {},
 ) => {
+  if (!s) {
+    return '';
+  }
   if (s.type === 'time' || s.type === 'table') {
     if (s.displayName != null) {
       return s.displayName;
@@ -172,7 +191,7 @@ export function seriesToSearchQuery({
           aggFn !== 'count' && field ? ` ${field}:*` : ''
         }${
           'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
-            ? ` ${s.groupBy}:${groupByValue}`
+            ? ` ${s.groupBy}:${groupByValue ?? '*'}`
             : ''
         }`.trim();
       }
@@ -243,7 +262,10 @@ export function usePropertyOptions(types: ('number' | 'string' | 'bool')[]) {
 }
 
 function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const metrics = (metricNames ?? []).map(m => ({
+    ...legacyMetricNameToNameAndDataType(m),
+  }));
+  const { data: metricTagsData } = api.useMetricsTags(metrics);
 
   const options = useMemo(() => {
     let tagNameSet = new Set<string>();
@@ -282,7 +304,7 @@ function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
         label: tagName,
       })),
     ];
-  }, [metricTagsData, metricNames]);
+  }, [metricTagsData]);
 
   return options;
 }
@@ -338,7 +360,7 @@ export function MetricSelect({
   setMetricName: (value: string | undefined) => void;
 }) {
   // TODO: Dedup with metric rate checkbox
-  const { data: metricTagsData, isLoading, isError } = api.useMetricsTags();
+  const { data: metricNamesData, isLoading, isError } = api.useMetricsNames();
 
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
@@ -364,7 +386,7 @@ export function MetricSelect({
           isError={isError}
           value={metricName}
           setValue={name => {
-            const metricType = metricTagsData?.data?.find(
+            const metricType = metricNamesData?.data?.find(
               metric => metric.name === name,
             )?.data_type;
 
@@ -396,12 +418,12 @@ export function MetricRateSelect({
   setIsRate: (isRate: boolean) => void;
   metricName: string | undefined | null;
 }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const metricType = useMemo(() => {
-    return metricTagsData?.data?.find(metric => metric.name === metricName)
+    return metricNamesData?.data?.find(metric => metric.name === metricName)
       ?.data_type;
-  }, [metricTagsData, metricName]);
+  }, [metricNamesData, metricName]);
 
   return (
     <>
@@ -431,16 +453,16 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
 }) {
-  const { data: metricTagsData } = api.useMetricsTags();
+  const { data: metricNamesData } = api.useMetricsNames();
 
   const options = useMemo(() => {
     return (
-      metricTagsData?.data?.map(entry => ({
+      metricNamesData?.data?.map(entry => ({
         value: entry.name,
         label: entry.name,
       })) ?? []
     );
-  }, [metricTagsData]);
+  }, [metricNamesData]);
 
   return (
     <AsyncSelect
@@ -575,6 +597,9 @@ export function ChartSeriesForm({
       }
     }
   };
+  const metricAggFns = getMetricAggFns(
+    legacyMetricNameToNameAndDataType(field)?.dataType,
+  );
 
   return (
     <div>
@@ -608,9 +633,9 @@ export function ChartSeriesForm({
             />
           ) : (
             <Select
-              options={METRIC_AGG_FNS}
+              options={metricAggFns}
               className="ds-select"
-              value={METRIC_AGG_FNS.find(
+              value={metricAggFns.find(
                 v => v.value === aggFn.replace('_rate', ''),
               )}
               onChange={opt => _setAggFn(opt?.value ?? 'sum')}
@@ -671,7 +696,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <FieldSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -710,7 +735,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <MetricTagSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -912,6 +937,9 @@ export function ChartSeriesFormCompact({
       }
     }
   };
+  const metricAggFns = getMetricAggFns(
+    legacyMetricNameToNameAndDataType(field)?.dataType,
+  );
 
   return (
     <div>
@@ -936,9 +964,9 @@ export function ChartSeriesFormCompact({
             />
           ) : (
             <Select
-              options={METRIC_AGG_FNS}
+              options={metricAggFns}
               className="ds-select w-auto text-nowrap"
-              value={METRIC_AGG_FNS.find(
+              value={metricAggFns.find(
                 v => v.value === aggFn.replace('_rate', ''),
               )}
               onChange={opt => _setAggFn(opt?.value ?? 'sum')}
@@ -990,7 +1018,7 @@ export function ChartSeriesFormCompact({
         {table === 'logs' && setGroupBy != null && (
           <div className="d-flex align-items-center">
             <div className="text-muted">Group By</div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <GroupBySelect
                 groupBy={groupBy}
                 table={table}
@@ -1033,7 +1061,7 @@ export function ChartSeriesFormCompact({
             {setGroupBy != null && (
               <div className="d-flex align-items-center">
                 <div className="text-muted fw-500">Group By</div>
-                <div className="ms-3 flex-grow-1">
+                <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
                   <GroupBySelect
                     groupBy={groupBy}
                     fields={field != null ? [field] : []}

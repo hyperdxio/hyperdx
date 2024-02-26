@@ -30,7 +30,6 @@ import {
 import DBQuerySidePanel from './DBQuerySidePanel';
 import EndpointLatencyTile from './EndpointLatencyTile';
 import EndpointSidepanel from './EndpointSidePanel';
-import HDXLineChart from './HDXLineChart';
 import HDXListBarChart from './HDXListBarChart';
 import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
@@ -176,7 +175,7 @@ export default function ServiceDashboardPage() {
           px="md"
           py="xs"
           className="border-bottom border-dark"
-          spacing="xs"
+          gap="xs"
           align="center"
         >
           {/* Use Autocomplete instead? */}
@@ -200,7 +199,14 @@ export default function ServiceDashboardPage() {
               setSearchQuery={setSearchQuery}
             />
           </div>
-          <div className="d-flex" style={{ width: 350, height: 36 }}>
+          <form
+            className="d-flex"
+            style={{ width: 350, height: 36 }}
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+            }}
+          >
             <SearchTimeRangePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
@@ -208,7 +214,7 @@ export default function ServiceDashboardPage() {
                 onSearch(range);
               }}
             />
-          </div>
+          </form>
         </Group>
       </div>
       <Tabs
@@ -218,7 +224,7 @@ export default function ServiceDashboardPage() {
         radius="md"
         keepMounted={false}
         value={activeTab}
-        onTabChange={setActiveTab}
+        onChange={setActiveTab}
       >
         <div className="px-3 py-2 border-bottom border-dark">
           <Tabs.List>
@@ -252,19 +258,25 @@ export default function ServiceDashboardPage() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -276,19 +288,25 @@ export default function ServiceDashboardPage() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where: whereClause,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where: whereClause,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -314,6 +332,7 @@ export default function ServiceDashboardPage() {
                           }(k8s.resource.name:"events" -level:"normal")`,
                         )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
                         passHref
+                        legacyBehavior
                       >
                         <Anchor size="xs" color="dimmed">
                           Search <i className="bi bi-box-arrow-up-right"></i>

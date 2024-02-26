@@ -18,6 +18,7 @@ import type {
   ChartSeries,
   Dashboard,
   LogView,
+  MetricsDataType,
   Session,
 } from './types';
 
@@ -89,7 +90,33 @@ const api = {
       },
     );
   },
-  useMetricsTags() {
+  useMetricsNames() {
+    return useQuery<
+      {
+        data: {
+          data_type: string;
+          is_delta: boolean;
+          is_monotonic: boolean;
+          name: string;
+          unit: string;
+        }[];
+      },
+      Error
+    >({
+      refetchOnWindowFocus: false,
+      queryKey: ['metrics/names'],
+      queryFn: () =>
+        server('metrics/names', {
+          method: 'GET',
+        }).json(),
+    });
+  },
+  useMetricsTags(
+    metrics: {
+      name: string;
+      dataType: MetricsDataType;
+    }[],
+  ) {
     return useQuery<
       {
         data: {
@@ -101,10 +128,13 @@ const api = {
       Error
     >({
       refetchOnWindowFocus: false,
-      queryKey: ['metrics/tags'],
+      queryKey: ['metrics/tags', metrics],
       queryFn: () =>
         server('metrics/tags', {
-          method: 'GET',
+          method: 'POST',
+          json: {
+            metrics,
+          },
         }).json(),
     });
   },
@@ -506,7 +536,7 @@ const api = {
       Error,
       {
         id: string;
-        query: string;
+        query?: string;
         tags?: string[];
       }
     >(`log-views`, async ({ id, query, tags }) =>
@@ -594,9 +624,9 @@ const api = {
       HTTPError,
       {
         id: string;
-        name: string;
-        query: string;
-        charts: any[];
+        name?: string;
+        query?: string;
+        charts?: any[];
         tags?: string[];
       }
     >(async ({ id, name, charts, query, tags }) =>

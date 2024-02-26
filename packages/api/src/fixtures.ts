@@ -63,6 +63,8 @@ export const initCiEnvs = async () => {
 };
 
 class MockServer extends Server {
+  protected shouldHandleGracefulShutdown = false;
+
   getHttpServer() {
     return this.httpServer;
   }
@@ -75,16 +77,27 @@ class MockServer extends Server {
     await initCiEnvs();
   }
 
-  closeHttpServer() {
+  stop() {
     return new Promise<void>((resolve, reject) => {
       this.httpServer.close(err => {
         if (err) {
           reject(err);
           return;
         }
-        resolve();
+        super
+          .shutdown()
+          .then(() => resolve())
+          .catch(err => reject(err));
       });
     });
+  }
+
+  clearDBs() {
+    return Promise.all([
+      clearDBCollections(),
+      clearClickhouseTables(),
+      clearRedis(),
+    ]);
   }
 }
 
@@ -115,10 +128,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: 'wrong-password' })
-    .expect(400);
-  await agent
-    .post('/register/password')
     .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
     .expect(200);
 
@@ -128,8 +137,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
   if (team === null || user === null) {
     throw Error('team or user not found');
   }
-
-  await user.save();
 
   // login app
   await agent.post('/login/password').send(MOCK_USER).expect(302);
@@ -395,11 +402,15 @@ export const makeExternalAlert = ({
   chartId,
   threshold = 8,
   interval = '15m',
+  name,
+  message,
 }: {
   dashboardId: string;
   chartId: string;
   threshold?: number;
   interval?: '15m' | '1m' | '5m' | '30m' | '1h' | '6h' | '12h' | '1d';
+  name?: string;
+  message?: string;
 }): z.infer<typeof externalAlertSchema> => ({
   channel: {
     type: 'slack_webhook',
@@ -411,4 +422,6 @@ export const makeExternalAlert = ({
   source: 'chart',
   dashboardId,
   chartId,
+  name,
+  message,
 });

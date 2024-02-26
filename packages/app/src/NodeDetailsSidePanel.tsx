@@ -19,7 +19,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import HDXLineChart from './HDXLineChart';
+import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { InfraPodsStatusTable } from './KubernetesDashboardPage';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
@@ -98,11 +98,23 @@ const NodeDetails = ({
             label="Status"
             value={
               properties.ready === 1 ? (
-                <Badge color="green" fw="normal" tt="none" size="md">
+                <Badge
+                  variant="light"
+                  color="green"
+                  fw="normal"
+                  tt="none"
+                  size="md"
+                >
                   Ready
                 </Badge>
               ) : (
-                <Badge color="red" fw="normal" tt="none" size="md">
+                <Badge
+                  variant="light"
+                  color="red"
+                  fw="normal"
+                  tt="none"
+                  size="md"
+                >
                   Not Ready
                 </Badge>
               )
@@ -150,7 +162,11 @@ function NodeLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            <Link href={`/search?q=${encodeURIComponent(_where)}`} passHref>
+            <Link
+              href={`/search?q=${encodeURIComponent(_where)}`}
+              passHref
+              legacyBehavior
+            >
               <Anchor size="xs" color="dimmed">
                 Search <i className="bi bi-box-arrow-up-right"></i>
               </Anchor>
@@ -233,19 +249,25 @@ export default function NodeDetailsSidePanel() {
                     CPU Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.cpu.utilization - Gauge',
-                        numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.cpu.utilization - Gauge',
+                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>
@@ -257,19 +279,25 @@ export default function NodeDetailsSidePanel() {
                     Memory Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXLineChart
+                    <HDXMultiSeriesTimeChart
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
-                        groupBy: 'k8s.pod.name',
-                        where,
-                        table: 'metrics',
-                        aggFn: 'avg',
-                        field: 'k8s.pod.memory.usage - Gauge',
-                        numberFormat: K8S_MEM_NUMBER_FORMAT,
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['k8s.pod.name'],
+                            where,
+                            table: 'metrics',
+                            aggFn: 'avg',
+                            field: 'k8s.pod.memory.usage - Gauge',
+                            numberFormat: K8S_MEM_NUMBER_FORMAT,
+                          },
+                        ],
                       }}
                     />
                   </Card.Section>

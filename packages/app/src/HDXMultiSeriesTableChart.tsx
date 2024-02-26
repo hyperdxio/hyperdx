@@ -94,17 +94,17 @@ const Table = ({
           }
 
           return (
-            <Link href={getRowSearchLink(row.original)} passHref>
-              <a
-                className={'align-top overflow-hidden py-1 pe-3'}
-                style={{
-                  display: 'block',
-                  color: 'inherit',
-                  textDecoration: 'none',
-                }}
-              >
-                {formattedValue}
-              </a>
+            <Link
+              href={getRowSearchLink(row.original)}
+              passHref
+              className={'align-top overflow-hidden py-1 pe-3'}
+              style={{
+                display: 'block',
+                color: 'inherit',
+                textDecoration: 'none',
+              }}
+            >
+              {formattedValue}
             </Link>
           );
         },
@@ -264,20 +264,20 @@ const Table = ({
                           )}
                         </div>
                       ) : (
-                        <Link href={getRowSearchLink(row.original)} passHref>
-                          <a
-                            className="align-top overflow-hidden py-1 pe-3"
-                            style={{
-                              display: 'block',
-                              color: 'inherit',
-                              textDecoration: 'none',
-                            }}
-                          >
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )}
-                          </a>
+                        <Link
+                          href={getRowSearchLink(row.original)}
+                          passHref
+                          className="align-top overflow-hidden py-1 pe-3"
+                          style={{
+                            display: 'block',
+                            color: 'inherit',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
                         </Link>
                       )}
                     </td>
@@ -353,7 +353,7 @@ const HDXMultiSeriesTableChart = memo(
         No data found within time range.
       </div>
     ) : (
-      <div className="d-flex align-items-center justify-content-center fs-2 h-100">
+      <div className="d-flex fs-2 h-100 flex-grow-1">
         <Table
           data={data?.data ?? []}
           groupColumnName={

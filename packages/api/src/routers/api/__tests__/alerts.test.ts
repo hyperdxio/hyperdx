@@ -1,11 +1,4 @@
-import {
-  clearDBCollections,
-  closeDB,
-  getLoggedInAgent,
-  getServer,
-  makeAlert,
-  makeChart,
-} from '@/fixtures';
+import { getLoggedInAgent, getServer, makeAlert, makeChart } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -21,12 +14,11 @@ describe('alerts router', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('has alerts attached to dashboards', async () => {

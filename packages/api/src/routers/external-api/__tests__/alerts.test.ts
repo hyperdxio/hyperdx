@@ -1,8 +1,6 @@
 import _ from 'lodash';
 
 import {
-  clearDBCollections,
-  closeDB,
   getLoggedInAgent,
   getServer,
   makeChart,
@@ -29,12 +27,11 @@ describe('/api/v1/alerts', () => {
   });
 
   afterEach(async () => {
-    await clearDBCollections();
+    await server.clearDBs();
   });
 
   afterAll(async () => {
-    await server.closeHttpServer();
-    await closeDB();
+    await server.stop();
   });
 
   it('CRUD Dashboard Alerts', async () => {
@@ -46,7 +43,7 @@ describe('/api/v1/alerts', () => {
     // Create alerts for all charts
     const dashboard = initialDashboards.body.data[0];
     await Promise.all(
-      dashboard.charts.map(chart =>
+      dashboard.charts.map((chart, i) =>
         agent
           .post('/api/v1/alerts')
           .set('Authorization', `Bearer ${user?.accessKey}`)
@@ -54,6 +51,12 @@ describe('/api/v1/alerts', () => {
             makeExternalAlert({
               dashboardId: dashboard._id,
               chartId: chart.id,
+              ...(i % 2 == 0
+                ? {
+                    name: 'test {{hello}}',
+                    message: 'my message {{hello}}',
+                  }
+                : undefined),
             }),
           )
           .expect(200),
@@ -95,6 +98,8 @@ Array [
     },
     "chartId": "aaaaaaa",
     "interval": "15m",
+    "message": "my message {{hello}}",
+    "name": "test {{hello}}",
     "source": "chart",
     "threshold": 8,
     "threshold_type": "above",
@@ -106,6 +111,8 @@ Array [
     },
     "chartId": "bbbbbbb",
     "interval": "15m",
+    "message": null,
+    "name": null,
     "source": "chart",
     "threshold": 8,
     "threshold_type": "above",
@@ -117,6 +124,8 @@ Array [
     },
     "chartId": "ccccccc",
     "interval": "15m",
+    "message": "my message {{hello}}",
+    "name": "test {{hello}}",
     "source": "chart",
     "threshold": 8,
     "threshold_type": "above",
@@ -128,6 +137,8 @@ Array [
     },
     "chartId": "ddddddd",
     "interval": "15m",
+    "message": null,
+    "name": null,
     "source": "chart",
     "threshold": 8,
     "threshold_type": "above",
@@ -139,6 +150,8 @@ Array [
     },
     "chartId": "eeeeeee",
     "interval": "15m",
+    "message": "my message {{hello}}",
+    "name": "test {{hello}}",
     "source": "chart",
     "threshold": 8,
     "threshold_type": "above",
@@ -182,6 +195,8 @@ Object {
     "webhookId": "65ad876b6b08426ab4ba7830",
   },
   "interval": "1h",
+  "message": null,
+  "name": null,
   "source": "chart",
   "threshold": 1000,
   "threshold_type": "above",
@@ -203,6 +218,8 @@ Object {
     "webhookId": "65ad876b6b08426ab4ba7830",
   },
   "interval": "1h",
+  "message": null,
+  "name": null,
   "source": "chart",
   "threshold": 1000,
   "threshold_type": "above",

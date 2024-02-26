@@ -83,7 +83,7 @@ export const NumberFormatForm: React.VFC<{
         >
           <NativeSelect
             label="Output format"
-            icon={
+            leftSection={
               values.output && (
                 <i className={`bi bi-${FORMAT_ICONS[values.output]}`} />
               )
@@ -149,7 +149,7 @@ export const NumberFormatForm: React.VFC<{
             />
           </div>
         )}
-        <Stack spacing="xs">
+        <Stack gap="xs">
           {values.output === 'byte' ? (
             <MCheckbox
               size="xs"
@@ -174,7 +174,7 @@ export const NumberFormatForm: React.VFC<{
             </>
           )}
         </Stack>
-        <Stack spacing="xs" mt="xs">
+        <Stack gap="xs" mt="xs">
           <Button type="submit" onClick={handleSubmit(onApply)}>
             Apply
           </Button>
@@ -222,27 +222,20 @@ export const NumberFormatInput: React.VFC<{
       <Button.Group>
         <Button
           onClick={open}
-          compact
-          size="sm"
+          size="compact-sm"
           color="dark"
           variant="default"
-          leftIcon={
+          leftSection={
             value?.output && (
               <i className={`bi bi-${FORMAT_ICONS[value.output]}`} />
             )
           }
-          // rightIcon={
-          //   value?.output && (
-          //     <div className="text-slate-300 fs-8 fw-bold">{example}</div>
-          //   )
-          // }
         >
           {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
         </Button>
         {value?.output && (
           <Button
-            compact
-            size="sm"
+            size="compact-sm"
             color="dark"
             variant="default"
             px="xs"

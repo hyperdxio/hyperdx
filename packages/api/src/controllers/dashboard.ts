@@ -19,7 +19,7 @@ export async function deleteDashboardAndAlerts(
   }
 }
 
-export async function updateDashboardAndAlerts(
+export async function updateDashboard(
   dashboardId: string,
   teamId: ObjectId,
   {
@@ -32,6 +32,38 @@ export async function updateDashboardAndAlerts(
     charts: z.infer<typeof chartSchema>[];
     query: string;
     tags: z.infer<typeof tagsSchema>;
+  },
+) {
+  const updatedDashboard = await Dashboard.findOneAndUpdate(
+    {
+      _id: dashboardId,
+      team: teamId,
+    },
+    {
+      name,
+      charts,
+      query,
+      tags: tags && uniq(tags),
+    },
+    { new: true },
+  );
+
+  return updatedDashboard;
+}
+
+export async function updateDashboardAndAlerts(
+  dashboardId: string,
+  teamId: ObjectId,
+  {
+    name,
+    charts,
+    query,
+    tags,
+  }: {
+    name?: string;
+    charts?: z.infer<typeof chartSchema>[];
+    query?: string;
+    tags?: z.infer<typeof tagsSchema>;
   },
 ) {
   const oldDashboard = await Dashboard.findOne({
