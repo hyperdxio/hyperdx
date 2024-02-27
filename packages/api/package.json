@@ -40,6 +40,7 @@
     "passport-local": "^1.0.0",
     "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
+    "promised-handlebars": "^2.0.1",
     "rate-limit-redis": "^3.0.2",
     "redis": "^4.6.8",
     "semver": "^7.5.2",

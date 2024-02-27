@@ -6794,6 +6794,13 @@ dedent@^0.7.0:
   resolved "https://registry.yarnpkg.com/dedent/-/dedent-0.7.0.tgz#2495ddbaf6eb874abb0e1be9df22d2e5a544326c"
   integrity sha512-Q6fKUPqnAHAyhiUgFU7BUzLiv0kd8saH9al7tnu5Q/okj6dnupxyTgFIBjVzJATdfIAm9NAsvXNzjaKa+bxVyA==
 
+deep-aplus@^1.0.2:
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/deep-aplus/-/deep-aplus-1.0.4.tgz#e1ec4c10a00b5046b59e0ddd0519d101ae315e8f"
+  integrity sha512-M2leWJ3xdxBxnmCM2xmac7OrB/hdyal+bBMUTfMFmZIfevho1PqKKtFA9dVM05BL5JYlKKHn2s5ga2AjsvcSiA==
+  dependencies:
+    lodash.isplainobject "^4.0.6"
+
 deep-equal@^2.0.5:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/deep-equal/-/deep-equal-2.2.0.tgz#5caeace9c781028b9ff459f33b779346637c43e6"
@@ -11164,6 +11171,11 @@ lodash.isequal@^4.0.0:
   resolved "https://registry.yarnpkg.com/lodash.isequal/-/lodash.isequal-4.5.0.tgz#415c4478f2bcc30120c22ce10ed3226f7d3e18e0"
   integrity sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==
 
+lodash.isplainobject@^4.0.6:
+  version "4.0.6"
+  resolved "https://registry.yarnpkg.com/lodash.isplainobject/-/lodash.isplainobject-4.0.6.tgz#7c526a52d89b45c45cc690b88163be0497f550cb"
+  integrity sha512-oSXzaWypCMHkPC3NvBEaPHf0KsA5mvPrOPgQWDsbg8n7orZ290M0BmC/jgRZ4vcJ6DTAhjrsSYgdsW/F+MFOBA==
+
 lodash.memoize@4.x:
   version "4.1.2"
   resolved "https://registry.yarnpkg.com/lodash.memoize/-/lodash.memoize-4.1.2.tgz#bcc6c49a42a2840ed997f323eada5ecd182e0bfe"
@@ -13360,6 +13372,13 @@ process@^0.11.10:
   version "0.11.10"
   resolved "https://registry.yarnpkg.com/process/-/process-0.11.10.tgz#7332300e840161bda3e69a1d1d91a7d4bc16f182"
   integrity sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==
+
+promised-handlebars@^2.0.1:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/promised-handlebars/-/promised-handlebars-2.0.1.tgz#a662a4278895b4c13f815ecf223691ac3ca7fdca"
+  integrity sha512-idhuCYZulsjgBssopKqsV6lpJXFEzK+vjoCa+bDmbUG7lUz9kO+25GgcZKw+xbXrPfJxV8PwKrS5CIPmhbLgBg==
+  dependencies:
+    deep-aplus "^1.0.2"
 
 prompts@^2.0.1:
   version "2.4.2"
