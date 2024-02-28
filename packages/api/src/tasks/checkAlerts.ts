@@ -3,8 +3,11 @@
 // --------------------------------------------------------
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import { isString } from 'lodash';
+import Handlebars from 'handlebars';
+import { escapeRegExp, isString } from 'lodash';
+import mongoose from 'mongoose';
 import ms from 'ms';
+import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 import { z } from 'zod';
@@ -27,14 +30,10 @@ import {
   translateAlertDocumentToExternalAlert,
 } from '@/utils/zod';
 
-// IMPLEMENT ME
-const renderTemplate = (template: string | null | undefined, view: any) => {
-  return template ?? '';
-};
-
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
 const MAX_MESSAGE_LENGTH = 500;
+const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
   const logView = await LogView.findById(logViewId).populate<{
@@ -133,6 +132,55 @@ type AlertMessageTemplateDefaultView = {
   };
   value: number;
 };
+export const notifyChannel = async ({
+  channel,
+  id,
+  message,
+  teamId,
+}: {
+  channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
+  id: string;
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  };
+  teamId: string;
+}) => {
+  switch (channel) {
+    case 'slack_webhook': {
+      const webhook = await Webhook.findOne({
+        team: teamId,
+        ...(mongoose.isValidObjectId(id)
+          ? { _id: id }
+          : {
+              name: {
+                $regex: new RegExp(`^${escapeRegExp(id)}`), // FIXME: a hacky way to match the prefix
+              },
+            }),
+      });
+
+      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
+      if (webhook?.service === 'slack') {
+        await slack.postMessageToWebhook(webhook.url, {
+          text: message.title,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+              },
+            },
+          ],
+        });
+      }
+      break;
+    }
+    default:
+      throw new Error(`Unsupported channel type: ${channel}`);
+  }
+};
 export const buildAlertMessageTemplateHdxLink = ({
   alert,
   dashboard,
@@ -177,14 +225,14 @@ export const buildAlertMessageTemplateTitle = ({
   view: AlertMessageTemplateDefaultView;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
+  const handlebars = Handlebars.create();
   if (alert.source === 'search') {
     if (savedSearch == null) {
       throw new Error('Source is LOG but logView is null');
     }
-
     // TODO: using template engine to render the title
     return template
-      ? renderTemplate(template, view)
+      ? handlebars.compile(template)(view)
       : `Alert for "${savedSearch.name}" - ${value} lines found`;
   } else if (alert.source === 'chart') {
     if (dashboard == null) {
@@ -192,25 +240,56 @@ export const buildAlertMessageTemplateTitle = ({
     }
     const chart = dashboard.charts[0];
     return template
-      ? renderTemplate(template, view)
+      ? handlebars.compile(template)(view)
       : `Alert for "${chart.name}" in "${dashboard.name}" - ${value} ${
           doesExceedThreshold(
             alert.threshold_type === 'above',
             alert.threshold,
             value,
           )
-            ? 'exceeds'
-            : 'falls below'
+            ? alert.threshold_type === 'above'
+              ? 'exceeds'
+              : 'falls below'
+            : alert.threshold_type === 'above'
+            ? 'falls below'
+            : 'exceeds'
         } ${alert.threshold}`;
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
-export const buildAlertMessageTemplateBody = async ({
+
+export const getDefaultExternalAction = (
+  alert: AlertMessageTemplateDefaultView['alert'],
+) => {
+  if (
+    alert.channel.type === 'slack_webhook' &&
+    alert.channel.webhookId != null
+  ) {
+    return `@${alert.channel.type}-${alert.channel.webhookId}`;
+  }
+  return null;
+};
+
+export const translateExternalActionsToInternal = (template: string) => {
+  // ex: @slack_webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="slack_webhook" id="1234_5678}}"
+  return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
+    const prefix = match.startsWith(' ') ? ' ' : '';
+    const [channel, ...ids] = input.split('-');
+    const id = ids.join('-');
+    // TODO: sanity check ??
+    return `${prefix}{{${NOTIFY_FN_NAME} channel="${channel}" id="${id}"}}`;
+  });
+};
+
+// this method will build the body of the alert message and will be used to send the alert to the channel
+export const renderAlertTemplate = async ({
   template,
+  title,
   view,
 }: {
   template?: string | null;
+  title: string;
   view: AlertMessageTemplateDefaultView;
 }) => {
   const {
@@ -223,6 +302,49 @@ export const buildAlertMessageTemplateBody = async ({
     team,
     value,
   } = view;
+
+  const defaultExternalAction = getDefaultExternalAction(alert);
+  const targetTemplate =
+    defaultExternalAction !== null
+      ? // if the default external action is used, actions in the template won't be used
+        `${template ?? ''} ${translateExternalActionsToInternal(
+          defaultExternalAction,
+        )}`.trim()
+      : translateExternalActionsToInternal(template ?? '');
+
+  const _hb = Handlebars.create();
+  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  const hb = PromisedHandlebars(Handlebars);
+  const registerHelpers = (rawTemplateBody: string) => {
+    hb.registerHelper(
+      NOTIFY_FN_NAME,
+      async (options: { hash: Record<string, string> }) => {
+        const { channel, id } = options.hash;
+        // const [channel, id] = input.split('-');
+        if (channel !== 'slack_webhook') {
+          throw new Error(`Unsupported channel type: ${channel}`);
+        }
+        // rendered body template
+        const compiledTemplateBody = _hb.compile(rawTemplateBody);
+
+        await notifyChannel({
+          channel,
+          id,
+          message: {
+            hdxLink: buildAlertMessageTemplateHdxLink(view),
+            title,
+            body: compiledTemplateBody(view),
+          },
+          teamId: team.id,
+        });
+      },
+    );
+  };
+
+  let rawTemplateBody;
+
+  // TODO: support advanced routing with template engine
+  // users should be able to use '@' syntax to trigger alerts
   if (alert.source === 'search') {
     if (savedSearch == null) {
       throw new Error('Source is LOG but logView is null');
@@ -256,85 +378,43 @@ export const buildAlertMessageTemplateBody = async ({
         .join('\n'),
       2500,
     );
-    return `${group ? `Group: "${group}"` : ''}
+    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} lines found, expected ${
       alert.threshold_type === 'above' ? 'less than' : 'greater than'
     } ${alert.threshold} lines
-${renderTemplate(template, view)}
+${targetTemplate}
 \`\`\`
 ${truncatedResults}
-\`\`\`
-`;
+\`\`\``;
   } else if (alert.source === 'chart') {
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    return `${group ? `Group: "${group}"` : ''}
+    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} ${
       doesExceedThreshold(
         alert.threshold_type === 'above',
         alert.threshold,
         value,
       )
-        ? 'exceeds'
-        : 'falls below'
+        ? alert.threshold_type === 'above'
+          ? 'exceeds'
+          : 'falls below'
+        : alert.threshold_type === 'above'
+        ? 'falls below'
+        : 'exceeds'
     } ${alert.threshold}
-${renderTemplate(template, view)}`;
+${targetTemplate}`;
+  }
+
+  // render the template
+  if (rawTemplateBody) {
+    registerHelpers(rawTemplateBody);
+    const compiledTemplate = hb.compile(rawTemplateBody);
+    return compiledTemplate(view);
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
-};
-const extractChannels = (template: string) => {
-  const matches = template.match(/@([a-zA-Z0-9_-]+)/g);
-  return matches
-    ? matches.map(match => {
-        // @webhook-1234_5678
-        const [channel, id] = match.substring(1).split('-');
-        return {
-          channel,
-          id,
-        };
-      })
-    : [];
-};
-const notifyChannel = async ({
-  channel,
-  id,
-  message,
-}: {
-  channel: string;
-  id: string;
-  message: {
-    hdxLink: string;
-    title: string;
-    body: string;
-  };
-}) => {
-  switch (channel) {
-    case 'webhook': {
-      const webhook = await Webhook.findOne({
-        _id: id,
-      });
-      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
-      if (webhook?.service === 'slack') {
-        await slack.postMessageToWebhook(webhook.url, {
-          text: message.title,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
-              },
-            },
-          ],
-        });
-      }
-      break;
-    }
-    default:
-      throw new Error(`Unsupported channel type: ${channel}`);
-  }
 };
 // ------------------------------------------------------------
 
@@ -393,34 +473,15 @@ const fireChannelEvent = async ({
     startTime,
     value: totalCount,
   };
-  const hdxLink = buildAlertMessageTemplateHdxLink(templateView);
-  const title = buildAlertMessageTemplateTitle({
-    template: alert.name,
-    view: templateView,
-  });
-  const body = await buildAlertMessageTemplateBody({
+
+  await renderAlertTemplate({
+    title: buildAlertMessageTemplateTitle({
+      template: alert.name,
+      view: templateView,
+    }),
     template: alert.message,
     view: templateView,
   });
-
-  // TODO: support advanced routing with template engine
-  // users should be able to use '@' syntax to trigger alerts
-  const defaultTemplate = `@${alert.channel.type}-${alert.channel.webhookId}`;
-  const channels = extractChannels(defaultTemplate);
-  // TODO: should try to notify all channels instead of aborting on the first error
-  await Promise.all(
-    channels.map(channel =>
-      notifyChannel({
-        channel: channel.channel,
-        id: channel.id,
-        message: {
-          hdxLink,
-          title,
-          body,
-        },
-      }),
-    ),
-  );
 };
 
 export const roundDownTo = (roundTo: number) => (x: Date) =>
