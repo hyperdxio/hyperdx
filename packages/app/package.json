@@ -16,7 +16,7 @@
     "ci:unit": "jest --ci --coverage"
   },
   "dependencies": {
-    "@hyperdx/browser": "^0.18.4",
+    "@hyperdx/browser": "^0.20.0",
     "@hyperdx/lucene": "^3.1.1",
     "@mantine/core": "7.5.2",
     "@mantine/hooks": "7.5.2",
