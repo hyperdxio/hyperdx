@@ -91,7 +91,6 @@
     "use-query-params": "^2.1.2"
   },
   "devDependencies": {
-    "@deploysentinel/jest-rtl-debugger": "^0.2.3",
     "@jedmao/location": "^3.0.0",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^12.1.4",
@@ -119,6 +118,7 @@
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-simple-import-sort": "^10.0.0",
     "jest": "^28.1.3",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.4.35",
     "ts-jest": "^28.0.7",
     "typescript": "^4.9.5"
