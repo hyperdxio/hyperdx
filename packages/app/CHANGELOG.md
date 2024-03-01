@@ -1,5 +1,25 @@
 # @hyperdx/app
 
+## 1.7.0
+
+### Minor Changes
+
+- 396468c: fix: Use nuqs for ChartPage url query params
+
+### Patch Changes
+
+- dba8a43: Allow to drag and drop saved searches and dashhoards between groups
+- 95ccfa1: Add multi-series line/table charts as well as histogram/number charts
+  to the chart explorer.
+- 095ec0e: fix: histogram AggFn values to be only valid ones (UI)
+- 41d80de: feat: parse legacy k8s v1 cluster events
+- f9521a5: Upgrade to React 18 and Next 13
+- b87c4d7: fix: dense rank should be computed base on rank value and group
+  (multi-series chart)
+- 95f5041: Minor UI fixes
+- a49726e: fix: cache the result conditionally (SimpleCache)
+- b83e51f: refactor + perf: decouple and performance opt metrics tags endpoints
+
 ## 1.6.0
 
 ### Minor Changes

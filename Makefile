@@ -1,5 +1,5 @@
 LATEST_VERSION := $$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json)
-BUILD_PLATFORMS = linux/arm64/v8,linux/amd64
+BUILD_PLATFORMS = linux/arm64,linux/amd64
 
 include .env
 
