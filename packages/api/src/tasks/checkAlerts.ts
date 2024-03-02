@@ -3,8 +3,11 @@
 // --------------------------------------------------------
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import { isString } from 'lodash';
+import Handlebars from 'handlebars';
+import { escapeRegExp, isString } from 'lodash';
+import mongoose from 'mongoose';
 import ms from 'ms';
+import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 import { z } from 'zod';
@@ -19,12 +22,18 @@ import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
+import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
+import {
+  externalAlertSchema,
+  translateAlertDocumentToExternalAlert,
+} from '@/utils/zod';
 
 type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
 const MAX_MESSAGE_LENGTH = 500;
+const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
   const logView = await LogView.findById(logViewId).populate<{
@@ -38,16 +47,16 @@ const getLogViewEnhanced = async (logViewId: ObjectId) => {
 
 export const buildLogSearchLink = ({
   endTime,
-  logView,
+  logViewId,
   q,
   startTime,
 }: {
   endTime: Date;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
+  logViewId: string;
   q?: string;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${logView._id}`);
+  const url = new URL(`${config.FRONTEND_URL}/search/${logViewId}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
@@ -84,131 +93,330 @@ export const buildChartLink = ({
   return url.toString();
 };
 
-const buildChartEventSlackMessage = ({
+export const doesExceedThreshold = (
+  isThresholdTypeAbove: boolean,
+  threshold: number,
+  value: number,
+) => {
+  if (isThresholdTypeAbove && value >= threshold) {
+    return true;
+  } else if (!isThresholdTypeAbove && value < threshold) {
+    return true;
+  }
+  return false;
+};
+
+// ------------------------------------------------------------
+// ----------------- Alert Message Template -------------------
+// ------------------------------------------------------------
+// should match the external alert schema
+type AlertMessageTemplateDefaultView = {
+  // FIXME: do we want to include groupBy in the external alert schema?
+  alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
+  dashboard: ReturnType<
+    typeof translateDashboardDocumentToExternalDashboard
+  > | null;
+  endTime: Date;
+  granularity: string;
+  group?: string;
+  // TODO: use a translation function ?
+  savedSearch: {
+    id: string;
+    name: string;
+    query: string;
+  } | null;
+  startTime: Date;
+  team: {
+    id: string;
+    logStreamTableVersion?: number;
+  };
+  value: number;
+};
+export const notifyChannel = async ({
+  channel,
+  id,
+  message,
+  teamId,
+}: {
+  channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
+  id: string;
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  };
+  teamId: string;
+}) => {
+  switch (channel) {
+    case 'slack_webhook': {
+      const webhook = await Webhook.findOne({
+        team: teamId,
+        ...(mongoose.isValidObjectId(id)
+          ? { _id: id }
+          : {
+              name: {
+                $regex: new RegExp(`^${escapeRegExp(id)}`), // FIXME: a hacky way to match the prefix
+              },
+            }),
+      });
+
+      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
+      if (webhook?.service === 'slack') {
+        await slack.postMessageToWebhook(webhook.url, {
+          text: message.title,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+              },
+            },
+          ],
+        });
+      }
+      break;
+    }
+    default:
+      throw new Error(`Unsupported channel type: ${channel}`);
+  }
+};
+export const buildAlertMessageTemplateHdxLink = ({
   alert,
   dashboard,
   endTime,
   granularity,
   group,
+  savedSearch,
   startTime,
-  totalCount,
-}: {
-  alert: AlertDocument;
-  endTime: Date;
-  dashboard: EnhancedDashboard;
-  granularity: string;
-  group?: string;
-  startTime: Date;
-  totalCount: number;
-}) => {
-  // should be only 1 chart
-  const chart = dashboard.charts[0];
-  const mrkdwn = [
-    `*<${buildChartLink({
-      dashboardId: dashboard._id.toString(),
+}: AlertMessageTemplateDefaultView) => {
+  if (alert.source === 'search') {
+    if (savedSearch == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    const searchQuery = alert.groupBy
+      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
+      : savedSearch.query;
+    return buildLogSearchLink({
+      endTime,
+      logViewId: savedSearch.id,
+      q: searchQuery,
+      startTime,
+    });
+  } else if (alert.source === 'chart') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    return buildChartLink({
+      dashboardId: dashboard.id,
       endTime,
       granularity,
       startTime,
-    })} | Alert for "${chart.name}" in "${dashboard.name}">*`,
-    ...(group != null ? [`Group: "${group}"`] : []),
-    `${totalCount} ${
-      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
-    } ${alert.threshold}`,
-  ].join('\n');
+    });
+  }
 
-  return {
-    text: `Alert for "${chart.name}" in "${dashboard.name}" - ${totalCount} ${
-      doesExceedThreshold(alert, totalCount) ? 'exceeds' : 'falls below'
-    } ${alert.threshold}`,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: mrkdwn,
-        },
-      },
-    ],
-  };
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
-
-const buildLogEventSlackMessage = async ({
-  alert,
-  endTime,
-  group,
-  logView,
-  startTime,
-  totalCount,
+export const buildAlertMessageTemplateTitle = ({
+  template,
+  view,
 }: {
-  alert: AlertDocument;
-  endTime: Date;
-  group?: string;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>>;
-  startTime: Date;
-  totalCount: number;
+  template?: string | null;
+  view: AlertMessageTemplateDefaultView;
 }) => {
-  const searchQuery = alert.groupBy
-    ? `${logView.query} ${alert.groupBy}:"${group}"`
-    : logView.query;
-  // TODO: show group + total count for group-by alerts
-  const results = await clickhouse.getLogBatch({
-    endTime: endTime.getTime(),
-    limit: 5,
-    offset: 0,
-    order: 'desc',
-    q: searchQuery,
-    startTime: startTime.getTime(),
-    tableVersion: logView.team.logStreamTableVersion,
-    teamId: logView.team._id.toString(),
-  });
+  const { alert, dashboard, savedSearch, value } = view;
+  const handlebars = Handlebars.create();
+  if (alert.source === 'search') {
+    if (savedSearch == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    // TODO: using template engine to render the title
+    return template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+  } else if (alert.source === 'chart') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    const chart = dashboard.charts[0];
+    return template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${chart.name}" in "${dashboard.name}" - ${value} ${
+          doesExceedThreshold(
+            alert.threshold_type === 'above',
+            alert.threshold,
+            value,
+          )
+            ? alert.threshold_type === 'above'
+              ? 'exceeds'
+              : 'falls below'
+            : alert.threshold_type === 'above'
+            ? 'falls below'
+            : 'exceeds'
+        } ${alert.threshold}`;
+  }
 
-  const mrkdwn = [
-    `*<${buildLogSearchLink({
-      endTime,
-      logView,
-      q: searchQuery,
-      startTime,
-    })} | Alert for ${logView.name}>*`,
-    ...(group != null ? [`Group: "${group}"`] : []),
-    `${totalCount} lines found, expected ${
-      alert.type === 'presence' ? 'less than' : 'greater than'
-    } ${alert.threshold} lines`,
-    ...(results?.rows != null && totalCount > 0
-      ? [
-          `\`\`\``,
-          truncateString(
-            results.data
-              .map(row => {
-                return `${fnsTz.formatInTimeZone(
-                  new Date(row.timestamp),
-                  'Etc/UTC',
-                  'MMM d HH:mm:ss',
-                )}Z [${row.severity_text}] ${truncateString(
-                  row.body,
-                  MAX_MESSAGE_LENGTH,
-                )}`;
-              })
-              .join('\n'),
-            2500,
-          ),
-          `\`\`\``,
-        ]
-      : []),
-  ].join('\n');
-
-  return {
-    text: `Alert for ${logView.name} - ${totalCount} lines found`,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: mrkdwn,
-        },
-      },
-    ],
-  };
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
+
+export const getDefaultExternalAction = (
+  alert: AlertMessageTemplateDefaultView['alert'],
+) => {
+  if (
+    alert.channel.type === 'slack_webhook' &&
+    alert.channel.webhookId != null
+  ) {
+    return `@${alert.channel.type}-${alert.channel.webhookId}`;
+  }
+  return null;
+};
+
+export const translateExternalActionsToInternal = (template: string) => {
+  // ex: @slack_webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="slack_webhook" id="1234_5678}}"
+  return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
+    const prefix = match.startsWith(' ') ? ' ' : '';
+    const [channel, ...ids] = input.split('-');
+    const id = ids.join('-');
+    // TODO: sanity check ??
+    return `${prefix}{{${NOTIFY_FN_NAME} channel="${channel}" id="${id}"}}`;
+  });
+};
+
+// this method will build the body of the alert message and will be used to send the alert to the channel
+export const renderAlertTemplate = async ({
+  template,
+  title,
+  view,
+}: {
+  template?: string | null;
+  title: string;
+  view: AlertMessageTemplateDefaultView;
+}) => {
+  const {
+    alert,
+    dashboard,
+    endTime,
+    group,
+    savedSearch,
+    startTime,
+    team,
+    value,
+  } = view;
+
+  const defaultExternalAction = getDefaultExternalAction(alert);
+  const targetTemplate =
+    defaultExternalAction !== null
+      ? // if the default external action is used, actions in the template won't be used
+        `${template ?? ''} ${translateExternalActionsToInternal(
+          defaultExternalAction,
+        )}`.trim()
+      : translateExternalActionsToInternal(template ?? '');
+
+  const _hb = Handlebars.create();
+  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  const hb = PromisedHandlebars(Handlebars);
+  const registerHelpers = (rawTemplateBody: string) => {
+    hb.registerHelper(
+      NOTIFY_FN_NAME,
+      async (options: { hash: Record<string, string> }) => {
+        const { channel, id } = options.hash;
+        // const [channel, id] = input.split('-');
+        if (channel !== 'slack_webhook') {
+          throw new Error(`Unsupported channel type: ${channel}`);
+        }
+        // rendered body template
+        const compiledTemplateBody = _hb.compile(rawTemplateBody);
+
+        await notifyChannel({
+          channel,
+          id,
+          message: {
+            hdxLink: buildAlertMessageTemplateHdxLink(view),
+            title,
+            body: compiledTemplateBody(view),
+          },
+          teamId: team.id,
+        });
+      },
+    );
+  };
+
+  let rawTemplateBody;
+
+  // TODO: support advanced routing with template engine
+  // users should be able to use '@' syntax to trigger alerts
+  if (alert.source === 'search') {
+    if (savedSearch == null) {
+      throw new Error('Source is LOG but logView is null');
+    }
+    const searchQuery = alert.groupBy
+      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
+      : savedSearch.query;
+    // TODO: show group + total count for group-by alerts
+    const results = await clickhouse.getLogBatch({
+      endTime: endTime.getTime(),
+      limit: 5,
+      offset: 0,
+      order: 'desc',
+      q: searchQuery,
+      startTime: startTime.getTime(),
+      tableVersion: team.logStreamTableVersion,
+      teamId: team.id,
+    });
+    const truncatedResults = truncateString(
+      results.data
+        .map(row => {
+          return `${fnsTz.formatInTimeZone(
+            new Date(row.timestamp),
+            'Etc/UTC',
+            'MMM d HH:mm:ss',
+          )}Z [${row.severity_text}] ${truncateString(
+            row.body,
+            MAX_MESSAGE_LENGTH,
+          )}`;
+        })
+        .join('\n'),
+      2500,
+    );
+    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
+${value} lines found, expected ${
+      alert.threshold_type === 'above' ? 'less than' : 'greater than'
+    } ${alert.threshold} lines
+${targetTemplate}
+\`\`\`
+${truncatedResults}
+\`\`\``;
+  } else if (alert.source === 'chart') {
+    if (dashboard == null) {
+      throw new Error('Source is CHART but dashboard is null');
+    }
+    rawTemplateBody = `${group ? `Group: "${group}"` : ''}
+${value} ${
+      doesExceedThreshold(
+        alert.threshold_type === 'above',
+        alert.threshold,
+        value,
+      )
+        ? alert.threshold_type === 'above'
+          ? 'exceeds'
+          : 'falls below'
+        : alert.threshold_type === 'above'
+        ? 'falls below'
+        : 'exceeds'
+    } ${alert.threshold}
+${targetTemplate}`;
+  }
+
+  // render the template
+  if (rawTemplateBody) {
+    registerHelpers(rawTemplateBody);
+    const compiledTemplate = hb.compile(rawTemplateBody);
+    return compiledTemplate(view);
+  }
+
+  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+};
+// ------------------------------------------------------------
 
 const fireChannelEvent = async ({
   alert,
@@ -229,75 +437,51 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
 }) => {
-  switch (alert.channel.type) {
-    case 'webhook': {
-      const webhook = await Webhook.findOne({
-        _id: alert.channel.webhookId,
-      });
-      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
-      if (webhook?.service === 'slack') {
-        let message: {
-          text: string;
-          blocks?: {
-            type: string;
-            text: {
-              type: string;
-              text: string;
-            };
-          }[];
-        } | null = null;
-
-        if (alert.source === 'LOG' && logView) {
-          message = await buildLogEventSlackMessage({
-            alert,
-            endTime,
-            group,
-            logView,
-            startTime,
-            totalCount,
-          });
-        } else if (alert.source === 'CHART' && dashboard) {
-          message = buildChartEventSlackMessage({
-            alert,
-            dashboard,
-            endTime,
-            granularity: `${windowSizeInMins} minute`,
-            group,
-            startTime,
-            totalCount,
-          });
-        }
-
-        if (message !== null) {
-          await slack.postMessageToWebhook(webhook.url, message);
-        } else {
-          logger.error({
-            alert,
-            dashboard,
-            logView,
-            message: 'Unsupported alert source',
-          });
-        }
-      }
-      break;
-    }
-    default:
-      throw new Error(
-        `Unsupported channel type: ${(alert.channel as any).any}`,
-      );
+  const team = logView?.team ?? dashboard?.team;
+  if (team == null) {
+    throw new Error('Team not found');
   }
-};
+  const templateView: AlertMessageTemplateDefaultView = {
+    alert: {
+      ...translateAlertDocumentToExternalAlert(alert),
+      groupBy: alert.groupBy,
+    },
+    dashboard: dashboard
+      ? translateDashboardDocumentToExternalDashboard({
+          _id: dashboard._id,
+          name: dashboard.name,
+          query: dashboard.query,
+          team: team._id,
+          charts: dashboard.charts,
+          tags: dashboard.tags,
+        })
+      : null,
+    endTime,
+    granularity: `${windowSizeInMins} minute`,
+    group,
+    savedSearch: logView
+      ? {
+          id: logView._id.toString(),
+          name: logView.name,
+          query: logView.query,
+        }
+      : null,
+    team: {
+      id: team._id.toString(),
+      logStreamTableVersion: team.logStreamTableVersion,
+    },
+    startTime,
+    value: totalCount,
+  };
 
-export const doesExceedThreshold = (
-  alert: AlertDocument,
-  totalCount: number,
-) => {
-  if (alert.type === 'presence' && totalCount >= alert.threshold) {
-    return true;
-  } else if (alert.type === 'absence' && totalCount < alert.threshold) {
-    return true;
-  }
-  return false;
+  await renderAlertTemplate({
+    title: buildAlertMessageTemplateTitle({
+      template: alert.name,
+      view: templateView,
+    }),
+    template: alert.message,
+    view: templateView,
+  });
 };
 
 export const roundDownTo = (roundTo: number) => (x: Date) =>
@@ -468,7 +652,13 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           ? parseInt(checkData.data)
           : checkData.data;
         const bucketStart = new Date(checkData.ts_bucket * 1000);
-        if (doesExceedThreshold(alert, totalCount)) {
+        if (
+          doesExceedThreshold(
+            alert.type === 'presence',
+            alert.threshold,
+            totalCount,
+          )
+        ) {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
