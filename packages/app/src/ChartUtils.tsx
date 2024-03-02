@@ -2,7 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
-import { Divider, Group, Paper, SegmentedControl } from '@mantine/core';
+import {
+  Divider,
+  Group,
+  Paper,
+  SegmentedControl,
+  Select as MSelect,
+} from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
@@ -465,9 +471,9 @@ export function MetricNameSelect({
   }, [metricNamesData]);
 
   return (
-    <AsyncSelect
-      isLoading={isLoading}
-      isDisabled={isError}
+    <MSelect
+      disabled={isLoading || isError}
+      variant="filled"
       placeholder={
         isLoading
           ? 'Loading...'
@@ -475,24 +481,16 @@ export function MetricNameSelect({
           ? 'Unable to load metrics'
           : 'Select a metric...'
       }
-      loadOptions={input => {
-        return Promise.resolve(
-          options.filter(v =>
-            input.length > 0
-              ? v.value.toLowerCase().includes(input.toLowerCase())
-              : true,
-          ),
-        );
+      data={options}
+      limit={100}
+      comboboxProps={{
+        position: 'bottom-start',
+        width: 'auto',
       }}
-      defaultOptions={options}
-      value={
-        value != null
-          ? options.find(v => v.value === value)
-          : { value: undefined, label: 'None' }
-      }
-      onChange={opt => setValue(opt?.value)}
-      className="ds-select"
-      classNamePrefix="ds-react-select"
+      value={value ?? undefined}
+      searchable
+      clearable
+      onChange={value => setValue(value ?? undefined)}
     />
   );
 }
