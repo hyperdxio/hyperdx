@@ -1715,7 +1715,7 @@ export const getMultiSeriesChart = async ({
 
     queries = await Promise.all(
       series.map(s => {
-        if (s.type != 'time' && s.type != 'table') {
+        if (s.type != 'time' && s.type != 'table' && s.type != 'number') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
         if (s.table != 'logs' && s.table != null) {
@@ -1727,7 +1727,7 @@ export const getMultiSeriesChart = async ({
           endTime,
           field: s.field,
           granularity,
-          groupBy: s.groupBy,
+          groupBy: s.type === 'number' ? [] : s.groupBy,
           propertyTypeMappingsModel,
           q: s.where,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
@@ -1746,7 +1746,7 @@ export const getMultiSeriesChart = async ({
 
     queries = await Promise.all(
       series.map(s => {
-        if (s.type != 'time' && s.type != 'table') {
+        if (s.type != 'time' && s.type != 'table' && s.type != 'number') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
         if (s.table != 'metrics') {
@@ -1764,13 +1764,13 @@ export const getMultiSeriesChart = async ({
           endTime,
           name: s.field,
           granularity,
-          groupBy: s.groupBy,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           q: s.where,
           startTime,
           teamId,
           dataType: s.metricDataType,
           propertyTypeMappingsModel,
+          groupBy: s.type === 'number' ? [] : s.groupBy,
         });
       }),
     );

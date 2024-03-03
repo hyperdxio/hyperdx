@@ -77,6 +77,23 @@ export enum Granularity {
   ThirtyDay = '30 day',
 }
 
+export const GRANULARITY_SECONDS_MAP: Record<Granularity, number> = {
+  [Granularity.ThirtySecond]: 30,
+  [Granularity.OneMinute]: 60,
+  [Granularity.FiveMinute]: 5 * 60,
+  [Granularity.TenMinute]: 10 * 60,
+  [Granularity.FifteenMinute]: 15 * 60,
+  [Granularity.ThirtyMinute]: 30 * 60,
+  [Granularity.OneHour]: 60 * 60,
+  [Granularity.TwoHour]: 2 * 60 * 60,
+  [Granularity.SixHour]: 6 * 60 * 60,
+  [Granularity.TwelveHour]: 12 * 60 * 60,
+  [Granularity.OneDay]: 24 * 60 * 60,
+  [Granularity.TwoDay]: 2 * 24 * 60 * 60,
+  [Granularity.SevenDay]: 7 * 24 * 60 * 60,
+  [Granularity.ThirtyDay]: 30 * 24 * 60 * 60,
+};
+
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };

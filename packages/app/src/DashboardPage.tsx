@@ -189,12 +189,18 @@ const Tile = forwardRef(
         : type === 'number'
         ? {
             type,
-            table: chart.series[0].table ?? 'logs',
-            aggFn: chart.series[0].aggFn,
             field: chart.series[0].field ?? '', // TODO: Fix in definition
-            where: buildAndWhereClause(query, chart.series[0].where),
-            dateRange,
             numberFormat: chart.series[0].numberFormat,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'number' ? s.where : '',
+              ),
+            })),
+            dateRange,
+            granularity:
+              granularity ?? convertDateRangeToGranularityString(dateRange, 60),
           }
         : {
             type,
