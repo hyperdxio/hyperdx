@@ -31,6 +31,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
+import { useClickOutside } from '@mantine/hooks';
 
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { KubeTimeline } from './components/KubeComponents';
@@ -40,7 +41,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
-  K8S_NETWORK_NUMBER_FORMAT,
 } from './ChartUtils';
 import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
@@ -2667,10 +2667,14 @@ export default function LogSidePanel({
     );
   }, [logData]);
 
+  const drawerRef = useClickOutside(() => {
+    if (!subDrawerOpen) {
+      _onClose();
+    }
+  }, ['mouseup', 'touchend']);
+
   return (
     <Drawer
-      enableOverlay
-      overlayOpacity={0.1}
       customIdSuffix={`log-side-panel-${logId}`}
       duration={0}
       open={logId != null}
@@ -2682,10 +2686,10 @@ export default function LogSidePanel({
       direction="right"
       size={displayedTab === 'replay' || isSmallScreen ? '80vw' : '60vw'}
       zIndex={drawerZIndex}
-      // enableOverlay={subDrawerOpen}
+      enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} ref={drawerRef}>
           {isLoading && <div className={styles.loadingState}>Loading...</div>}
           {logData != null && !isLoading ? (
             <>

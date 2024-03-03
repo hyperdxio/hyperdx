@@ -318,13 +318,13 @@ const LogViewerContainer = memo(function LogViewerContainer({
 
   const setOpenedLog = useCallback(
     (log: { id: string; sortKey: string } | undefined) => {
-      if (log == null) {
+      if (log == null || openedLog?.id === log.id) {
         setOpenedLogQuery({ lid: undefined, sk: undefined });
       } else {
         setOpenedLogQuery({ lid: log.id, sk: log.sortKey });
       }
     },
-    [setOpenedLogQuery],
+    [openedLog, setOpenedLogQuery],
   );
 
   const { displayedColumns, setDisplayedColumns, toggleColumn } =
