@@ -18,6 +18,7 @@ import type { Alert, Chart, Dashboard } from './types';
 
 const EditTileForm = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   dateRange,
@@ -36,6 +37,7 @@ const EditTileForm = ({
   dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts?: Alert[];
   dateRange: [Date, Date];
@@ -160,6 +162,7 @@ const EditTileForm = ({
       {displayedTab === 'time' && chart != null && (
         <EditLineChartForm
           isLocalDashboard={isLocalDashboard}
+          isAddingAlert={isAddingAlert}
           chart={produce(chart, draft => {
             for (const series of draft.series) {
               series.type = 'time';
