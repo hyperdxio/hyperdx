@@ -1272,6 +1272,7 @@ export const EditMultiSeriesChartForm = ({
 
 export const EditLineChartForm = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   onClose,
@@ -1287,6 +1288,7 @@ export const EditLineChartForm = ({
   dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts?: Alert[];
   dateRange: [Date, Date];
@@ -1307,7 +1309,9 @@ export const EditLineChartForm = ({
     chart,
   );
   const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
-  const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
+  const [alertEnabled, setAlertEnabled] = useState(
+    editedAlert != null || !!isAddingAlert,
+  );
 
   const [_editedChart, _setEditedChart] =
     editedChart != null && setEditedChart != null
@@ -1390,7 +1394,14 @@ export const EditLineChartForm = ({
       />
 
       {isChartAlertsFeatureEnabled && (
-        <Paper bg="dark.7" p="md" py="xs" mt="md" withBorder>
+        <Paper
+          bg="dark.7"
+          p="md"
+          py="xs"
+          mt="md"
+          withBorder
+          style={isAddingAlert ? { borderWidth: 3 } : undefined}
+        >
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
               Alerts are not available in unsaved dashboards.
