@@ -16,7 +16,7 @@ function PatternTableWithSidePanel({
   };
   isUTC: boolean;
 
-  onShowEventsClick: () => void;
+  onShowEventsClick?: () => void;
 }) {
   const [openedPattern, setOpenedPattern] = useState<Pattern | undefined>();
 
