@@ -34,6 +34,7 @@ type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
+const IS_MATCH_FN_NAME = 'is_match';
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
   const logView = await LogView.findById(logViewId).populate<{
@@ -113,6 +114,7 @@ export const doesExceedThreshold = (
 type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
   alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
+  attributes: Record<string, string>;
   dashboard: ReturnType<
     typeof translateDashboardDocumentToExternalDashboard
   > | null;
@@ -314,8 +316,14 @@ export const renderAlertTemplate = async ({
 
   const _hb = Handlebars.create();
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
   const hb = PromisedHandlebars(Handlebars);
   const registerHelpers = (rawTemplateBody: string) => {
+    hb.registerHelper(IS_MATCH_FN_NAME, (variable: string, value: string) => {
+      console.log('variable', variable);
+      console.log('value', value);
+    });
+
     hb.registerHelper(
       NOTIFY_FN_NAME,
       async (options: { hash: Record<string, string> }) => {
@@ -420,6 +428,7 @@ ${targetTemplate}`;
 
 const fireChannelEvent = async ({
   alert,
+  attributes,
   dashboard,
   endTime,
   group,
@@ -429,10 +438,11 @@ const fireChannelEvent = async ({
   windowSizeInMins,
 }: {
   alert: AlertDocument;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
+  attributes: Record<string, string>; // TODO: support other types than string
   dashboard: EnhancedDashboard | null;
   endTime: Date;
   group?: string;
+  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
@@ -446,6 +456,7 @@ const fireChannelEvent = async ({
       ...translateAlertDocumentToExternalAlert(alert),
       groupBy: alert.groupBy,
     },
+    attributes,
     dashboard: dashboard
       ? translateDashboardDocumentToExternalDashboard({
           _id: dashboard._id,
@@ -670,6 +681,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           try {
             await fireChannelEvent({
               alert,
+              attributes: checkData._string_attributes ?? {},
               dashboard: targetDashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: Array.isArray(checkData.group)

@@ -1823,6 +1823,7 @@ export const getMultiSeriesChartLegacyFormat = async ({
           ts_bucket: row.ts_bucket,
           group: row.group,
           data: row[`series_${i}.data`],
+          _string_attributes: null, // TODO: pull this from the query
         };
       });
     }
@@ -1833,6 +1834,7 @@ export const getMultiSeriesChartLegacyFormat = async ({
         ts_bucket: row.ts_bucket,
         group: row.group,
         data: row['series_0.data'],
+        _string_attributes: null, // TODO: pull this from the query
       },
     ];
   });
@@ -2551,6 +2553,7 @@ export const checkAlert = async ({
       SELECT 
         ?
         count(*) as data,
+        any(_string_attributes) AS _string_attributes,
         toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
       FROM ??
       WHERE ? AND (?)
@@ -2596,7 +2599,12 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
+    ResponseJSON<{
+      data: string;
+      group?: string;
+      ts_bucket: number;
+      _string_attributes: Record<string, string>;
+    }>
   >();
   logger.info({
     message: 'checkAlert',
