@@ -3,7 +3,7 @@
 // --------------------------------------------------------
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import Handlebars from 'handlebars';
+import Handlebars, { HelperOptions } from 'handlebars';
 import { escapeRegExp, isString } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -296,6 +296,7 @@ export const renderAlertTemplate = async ({
 }) => {
   const {
     alert,
+    attributes,
     dashboard,
     endTime,
     group,
@@ -319,10 +320,18 @@ export const renderAlertTemplate = async ({
   _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
   const hb = PromisedHandlebars(Handlebars);
   const registerHelpers = (rawTemplateBody: string) => {
-    hb.registerHelper(IS_MATCH_FN_NAME, (variable: string, value: string) => {
-      console.log('variable', variable);
-      console.log('value', value);
-    });
+    hb.registerHelper(
+      IS_MATCH_FN_NAME,
+      function (
+        targetAttribute: string,
+        targetValue: string,
+        options: HelperOptions,
+      ) {
+        if (attributes[targetAttribute] === targetValue) {
+          options.fn(this);
+        }
+      },
+    );
 
     hb.registerHelper(
       NOTIFY_FN_NAME,
