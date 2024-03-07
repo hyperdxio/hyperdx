@@ -1,9 +1,5 @@
-import { json } from '@codemirror/lang-json';
-import { tags as lt } from '@lezer/highlight';
-import { createTheme } from '@uiw/codemirror-themes';
-import CodeMirror, { placeholder } from '@uiw/react-codemirror';
-import Head from 'next/head';
 import { useCallback, useState } from 'react';
+import Head from 'next/head';
 import {
   Badge,
   Button,
@@ -17,6 +13,10 @@ import {
 } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
+import { json } from '@codemirror/lang-json';
+import { tags as lt } from '@lezer/highlight';
+import { createTheme } from '@uiw/codemirror-themes';
+import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import api from './api';
 import { withAppNav } from './layout';
@@ -51,13 +51,6 @@ export default function TeamPage() {
   const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val);
 
   //   Generic Webhook Form State
-  const [queryParams, setQueryParams] = useState<string>();
-  const onQueryParamsChange = useCallback(
-    (queryParams: string) => {
-      setQueryParams(queryParams);
-    },
-    [setQueryParams],
-  );
   const [headers, setHeaders] = useState<string>();
   const onHeadersChange = useCallback(
     (headers: string) => {
@@ -160,11 +153,6 @@ export default function TeamPage() {
       return;
     }
 
-    if (queryParams && !isValidJson(queryParams)) {
-      toast.error('Please enter valid JSON for query parameters');
-      return;
-    }
-
     if (headers && !isValidJson(headers)) {
       toast.error('Please enter valid JSON for headers');
       return;
@@ -181,9 +169,6 @@ export default function TeamPage() {
         service: service,
         url,
         description,
-        queryParams: queryParams
-          ? JSON.stringify(JSON.parse(queryParams))
-          : undefined,
         headers: headers ? JSON.stringify(JSON.parse(headers)) : undefined,
         body: body ? JSON.stringify(JSON.parse(body)) : undefined,
       },
@@ -253,6 +238,12 @@ export default function TeamPage() {
         },
       },
     );
+  };
+
+  const openAddGenericWebhookModal = () => {
+    setHeaders(undefined);
+    setBody(undefined);
+    setAddGenericWebhookModalShow(true);
   };
 
   const hdxJSONTheme = createTheme({
@@ -519,10 +510,7 @@ export default function TeamPage() {
               className="mt-2 mb-2"
               size="sm"
               variant="light"
-              onClick={() => {
-                setQueryParams('');
-                setAddGenericWebhookModalShow(true);
-              }}
+              onClick={openAddGenericWebhookModal}
             >
               <span
                 style={{
@@ -581,21 +569,6 @@ export default function TeamPage() {
                     placeholder="A description of this webhook"
                     className="border-0 mb-4 px-3"
                   />
-                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
-                    Custom Query Parameters (optional)
-                  </Form.Label>
-                  <div className="mb-4">
-                    <CodeMirror
-                      value={queryParams}
-                      height="150px"
-                      extensions={[
-                        json(),
-                        placeholder('{\n\t"chat_id": "XXXXXX",\n}'),
-                      ]}
-                      theme={hdxJSONTheme}
-                      onChange={onQueryParamsChange}
-                    />
-                  </div>
                   <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                     Custom Headers (optional)
                   </Form.Label>
