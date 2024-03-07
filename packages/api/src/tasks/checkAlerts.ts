@@ -20,7 +20,8 @@ import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
-import Webhook from '@/models/webhook';
+import Webhook, { IWebhook } from '@/models/webhook';
+import webhook from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
@@ -161,82 +162,9 @@ export const notifyChannel = async ({
       });
 
       if (webhook?.service === 'slack') {
-        await slack.postMessageToWebhook(webhook.url, {
-          text: message.title,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
-              },
-            },
-          ],
-        });
+        await handleSendSlackWebhook(webhook, message);
       } else if (webhook?.service === 'generic') {
-        // QUERY PARAMS
-        let url: string;
-        if (webhook.queryParams) {
-          const queryParams = JSON.parse(webhook.queryParams);
-          const queryParamsString = new URLSearchParams(queryParams).toString();
-
-          // user may have included params in both the url and the query params
-          // so they should be merged
-          const tmpURL = new URL(webhook.url);
-          if (queryParamsString) {
-            tmpURL.search = tmpURL.search
-              ? `${tmpURL.search}&${queryParamsString}`
-              : queryParamsString;
-          }
-          url = tmpURL.toString();
-        } else {
-          // if there are no query params given, just use the url
-          url = webhook.url;
-        }
-
-        const parsedHeaders = webhook.headers
-          ? JSON.parse(webhook.headers)
-          : {};
-
-        // HEADERS
-        //   TODO: X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC
-        const headers = {
-          'Content-Type': 'application/json', // default, will be overwritten if user has set it
-          ...parsedHeaders,
-        };
-
-        // BODY
-        let parsedBody: Record<string, any> = {};
-        if (webhook.body) {
-          const injectedBody = injectIntoPlaceholders(webhook.body, {
-            $HDX_ALERT_URL: message.hdxLink,
-            $HDX_ALERT_TITLE: message.title,
-            $HDX_ALERT_BODY: message.body,
-          });
-          parsedBody = JSON.parse(injectedBody);
-        }
-
-        // TODO NEED TO BUILD THIS FROM USER INPUTTED BODY NOT HARDCODED HERE
-        // this is just for testing telegram and discord
-        // parsedBody.text = `*<${message.hdxLink} | ${message.title}>*\n${message.body}`;
-        // parsedBody.content = `*<${message.hdxLink} | ${message.title}>*\n${message.body}`;
-
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(parsedBody),
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to send generic webhook message');
-          }
-        } catch (e) {
-          logger.error({
-            message: 'Failed to send generic webhook message',
-            error: serializeError(e),
-          });
-        }
+        await handleSendGenericWebhook(webhook, message);
       }
       break;
     }
@@ -245,24 +173,114 @@ export const notifyChannel = async ({
   }
 };
 
-type HDXGenericWebhookTemplate = {
-  $HDX_ALERT_URL: string;
-  $HDX_ALERT_TITLE: string;
-  $HDX_ALERT_BODY: string;
+const handleSendSlackWebhook = async (
+  webhook: IWebhook,
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  },
+) => {
+  await slack.postMessageToWebhook(webhook.url, {
+    text: message.title,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+        },
+      },
+    ],
+  });
 };
 
-function injectIntoPlaceholders(
+const handleSendGenericWebhook = async (
+  webhook: IWebhook,
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  },
+) => {
+  // QUERY PARAMS
+  let url: string;
+  // user input of queryParams is disabled on the frontend for now
+  if (webhook.queryParams) {
+    const queryParams = JSON.parse(webhook.queryParams);
+    const queryParamsString = new URLSearchParams(queryParams).toString();
+
+    // user may have included params in both the url and the query params
+    // so they should be merged
+    const tmpURL = new URL(webhook.url);
+    if (queryParamsString) {
+      tmpURL.search = tmpURL.search
+        ? `${tmpURL.search}&${queryParamsString}`
+        : queryParamsString;
+    }
+    url = tmpURL.toString();
+  } else {
+    // if there are no query params given, just use the url
+    url = webhook.url;
+  }
+
+  const parsedHeaders = webhook.headers ? JSON.parse(webhook.headers) : {};
+
+  // HEADERS
+  // TODO: handle real webhook security and signage after v0
+  // X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC, time based nonces, caching functionality etc
+  const headers = {
+    'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
+    ...parsedHeaders,
+  };
+
+  // BODY
+  let parsedBody: Record<string, string | number | symbol> = {};
+  if (webhook.body) {
+    const injectedBody = injectIntoPlaceholders(webhook.body, {
+      $HDX_ALERT_URL: message.hdxLink,
+      $HDX_ALERT_TITLE: message.title,
+      $HDX_ALERT_BODY: message.body,
+    });
+    parsedBody = JSON.parse(injectedBody);
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(parsedBody),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to send generic webhook message');
+    }
+  } catch (e) {
+    logger.error({
+      message: 'Failed to send generic webhook message',
+      error: serializeError(e),
+    });
+  }
+};
+
+type HDXGenericWebhookTemplateValues = {
+  $HDX_ALERT_URL?: string;
+  $HDX_ALERT_TITLE?: string;
+  $HDX_ALERT_BODY?: string;
+};
+
+export function injectIntoPlaceholders(
   placeholderString: string,
-  valuesToInject: HDXGenericWebhookTemplate,
+  valuesToInject: HDXGenericWebhookTemplateValues,
 ) {
   return placeholderString.replace(/(\$\w+)/g, function (match) {
     const replacement =
-      valuesToInject[match as keyof HDXGenericWebhookTemplate] || match;
+      valuesToInject[match as keyof HDXGenericWebhookTemplateValues] || match;
     return escapeJsonValues(replacement);
   });
 }
 
-function escapeJsonValues(value: string): string {
+export function escapeJsonValues(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
