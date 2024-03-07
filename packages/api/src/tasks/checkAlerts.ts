@@ -195,7 +195,7 @@ const handleSendSlackWebhook = async (
   });
 };
 
-const handleSendGenericWebhook = async (
+export const handleSendGenericWebhook = async (
   webhook: IWebhook,
   message: {
     hdxLink: string;

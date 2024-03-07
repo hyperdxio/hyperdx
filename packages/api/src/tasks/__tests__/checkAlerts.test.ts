@@ -17,12 +17,15 @@ import Dashboard from '../../models/dashboard';
 import LogView from '../../models/logView';
 import Webhook from '../../models/webhook';
 import * as slack from '../../utils/slack';
+import * as checkAlert from '../checkAlerts';
 import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   buildLogSearchLink,
   doesExceedThreshold,
+  escapeJsonValues,
   getDefaultExternalAction,
+  injectIntoPlaceholders,
   processAlert,
   renderAlertTemplate,
   roundDownToXMinutes,
@@ -55,6 +58,61 @@ describe('checkAlerts', () => {
     expect(
       roundDownTo5Minutes(new Date('2023-03-17T22:59:59.103Z')).toISOString(),
     ).toBe('2023-03-17T22:55:00.000Z');
+  });
+
+  describe('injectIntoPlaceholders', () => {
+    const message = {
+      hdxLink: 'https://www.example.com/random-testing-url1234',
+      title: 'Alert for "All Events" - 776 lines found',
+      body: '145 lines found, expected less than 1 lines',
+    };
+
+    const valuesToInject = {
+      $HDX_ALERT_URL: message.hdxLink,
+      $HDX_ALERT_TITLE: message.title,
+      $HDX_ALERT_BODY: message.body,
+    };
+
+    it('should correctly inject message values into placeholders', () => {
+      const placeholderString =
+        '{"text":"$HDX_ALERT_URL | $HDX_ALERT_TITLE | $HDX_ALERT_BODY"}';
+      const result = injectIntoPlaceholders(placeholderString, valuesToInject);
+      const expectedObj = {
+        text: `${message.hdxLink} | ${message.title} | ${message.body}`,
+      };
+      const expected = JSON.stringify(expectedObj);
+      expect(result).toEqual(expected);
+    });
+
+    it('should retain invalid placeholders if no matching valid key', () => {
+      const placeholderString =
+        '{"text":"$HDX_ALERT_LINK | $HDX_ALERT_TITLE | $HDX_ALERT_BODY"}';
+      const result = injectIntoPlaceholders(placeholderString, valuesToInject);
+      const expectedObj = {
+        text: `$HDX_ALERT_LINK | ${message.title} | ${message.body}`,
+      };
+      const expected = JSON.stringify(expectedObj);
+      expect(result).toEqual(expected);
+    });
+
+    it('should escape JSON values correctly', () => {
+      const placeholderString = 'escapetest: $HDX_ALERT_BODY';
+      const valuesToInject = {
+        $HDX_ALERT_BODY: '{"key":"value\nnew line"}',
+      };
+      const expected = 'escapetest: {\\"key\\":\\"value\\nnew line\\"}';
+      const result = injectIntoPlaceholders(placeholderString, valuesToInject);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  describe('escapeJsonValues', () => {
+    it('should escape special JSON characters', () => {
+      const input = '"Simple\nEscapeJson"\tTest\\';
+      const expected = '\\"Simple\\nEscapeJson\\"\\tTest\\\\';
+      const result = escapeJsonValues(input);
+      expect(result).toEqual(expected);
+    });
   });
 
   it('buildLogSearchLink', () => {
@@ -316,7 +374,7 @@ describe('checkAlerts', () => {
       await server.stop();
     });
 
-    it('LOG alert', async () => {
+    it('LOG alert - slack webhook', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -441,6 +499,127 @@ describe('checkAlerts', () => {
             },
           ],
         },
+      );
+    });
+
+    it('LOG alert - generic webhook', async () => {
+      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+      jest
+        .spyOn(clickhouse, 'checkAlert')
+        .mockResolvedValueOnce({
+          rows: 1,
+          data: [
+            {
+              data: '11',
+              group: 'HyperDX',
+              ts_bucket: 1700172600,
+            },
+          ],
+        } as any)
+        // no logs found in the next window
+        .mockResolvedValueOnce({
+          rows: 0,
+          data: [],
+        } as any);
+      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
+        rows: 1,
+        data: [
+          {
+            timestamp: '2023-11-16T22:10:00.000Z',
+            severity_text: 'error',
+            body: 'Oh no! Something went wrong!',
+          },
+        ],
+      } as any);
+
+      const fetchMock = jest.fn().mockResolvedValue({});
+      global.fetch = fetchMock;
+
+      const team = await createTeam({ name: 'My Team' });
+      const logView = await new LogView({
+        name: 'My Log View',
+        query: `level:error`,
+        team: team._id,
+      }).save();
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'generic',
+        url: 'https://webhook.site/123',
+        name: 'Generic Webhook',
+        description: 'generic webhook description',
+        body: '{"text":"$HDX_ALERT_URL | $HDX_ALERT_TITLE"}',
+        headers: '{"Content-Type":"application/json"}',
+      }).save();
+      const alert = await createAlert(team._id, {
+        source: 'LOG',
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        type: 'presence',
+        threshold: 10,
+        groupBy: 'span_name',
+        logViewId: logView._id.toString(),
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+
+      // shoud fetch 5m of logs
+      await processAlert(now, alert);
+      expect(alert.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlert(later, alert);
+      // alert should still be in alert state
+      expect(alert.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlert(nextWindow, alert);
+      // alert should be in ok state
+      expect(alert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(alertHistories[1].state).toBe('OK');
+      expect(alertHistories[1].counts).toBe(0);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+
+      // check if checkAlert query + webhook were triggered
+      expect(clickhouse.checkAlert).toHaveBeenNthCalledWith(1, {
+        endTime: new Date('2023-11-16T22:10:00.000Z'),
+        groupBy: alert.groupBy,
+        q: logView.query,
+        startTime: new Date('2023-11-16T22:05:00.000Z'),
+        tableVersion: team.logStreamTableVersion,
+        teamId: logView.team._id.toString(),
+        windowSizeInMins: 5,
+      });
+      // check if generic webhook was triggered, injected, and parsed, and sent correctly
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://webhook.site/123',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            text: `<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found`,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }),
       );
     });
 
