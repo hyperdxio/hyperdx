@@ -176,11 +176,11 @@ describe('checkAlerts', () => {
       expect(
         getDefaultExternalAction({
           channel: {
-            type: 'slack_webhook',
+            type: 'webhook',
             webhookId: '123',
           },
         } as any),
-      ).toBe('@slack_webhook-123');
+      ).toBe('@webhook-123');
       expect(
         getDefaultExternalAction({
           channel: {
@@ -193,9 +193,9 @@ describe('checkAlerts', () => {
     it('translateExternalActionsToInternal', () => {
       // normal
       expect(
-        translateExternalActionsToInternal('@slack_webhook-123'),
+        translateExternalActionsToInternal('@webhook-123'),
       ).toMatchInlineSnapshot(
-        `"{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}"`,
+        `"{{__hdx_notify_channel__ channel=\\"webhook\\" id=\\"123\\"}}"`,
       );
 
       // with body string
@@ -255,7 +255,7 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
-        template: 'Custom body @slack_webhook-My_Web', // partial name should work
+        template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {

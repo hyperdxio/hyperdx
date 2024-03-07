@@ -93,7 +93,7 @@ describe('/api/v1/alerts', () => {
 Array [
   Object {
     "channel": Object {
-      "type": "slack_webhook",
+      "type": "webhook",
       "webhookId": "65ad876b6b08426ab4ba7830",
     },
     "chartId": "aaaaaaa",
@@ -106,7 +106,7 @@ Array [
   },
   Object {
     "channel": Object {
-      "type": "slack_webhook",
+      "type": "webhook",
       "webhookId": "65ad876b6b08426ab4ba7830",
     },
     "chartId": "bbbbbbb",
@@ -119,7 +119,7 @@ Array [
   },
   Object {
     "channel": Object {
-      "type": "slack_webhook",
+      "type": "webhook",
       "webhookId": "65ad876b6b08426ab4ba7830",
     },
     "chartId": "ccccccc",
@@ -132,7 +132,7 @@ Array [
   },
   Object {
     "channel": Object {
-      "type": "slack_webhook",
+      "type": "webhook",
       "webhookId": "65ad876b6b08426ab4ba7830",
     },
     "chartId": "ddddddd",
@@ -145,7 +145,7 @@ Array [
   },
   Object {
     "channel": Object {
-      "type": "slack_webhook",
+      "type": "webhook",
       "webhookId": "65ad876b6b08426ab4ba7830",
     },
     "chartId": "eeeeeee",
@@ -191,7 +191,7 @@ Array [
       .toMatchInlineSnapshot(`
 Object {
   "channel": Object {
-    "type": "slack_webhook",
+    "type": "webhook",
     "webhookId": "65ad876b6b08426ab4ba7830",
   },
   "interval": "1h",
@@ -214,7 +214,7 @@ Object {
       .toMatchInlineSnapshot(`
 Object {
   "channel": Object {
-    "type": "slack_webhook",
+    "type": "webhook",
     "webhookId": "65ad876b6b08426ab4ba7830",
   },
   "interval": "1h",
