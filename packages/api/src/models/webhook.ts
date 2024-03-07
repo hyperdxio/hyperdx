@@ -3,6 +3,7 @@ import mongoose, { Schema } from 'mongoose';
 
 export enum WebhookService {
   Slack = 'slack',
+  Generic = 'generic',
 }
 
 export interface IWebhook {
@@ -13,6 +14,10 @@ export interface IWebhook {
   team: ObjectId;
   updatedAt: Date;
   url: string;
+  description: string;
+  queryParams: string;
+  headers: string;
+  body: string;
 }
 
 const WebhookSchema = new Schema<IWebhook>(
@@ -28,6 +33,22 @@ const WebhookSchema = new Schema<IWebhook>(
       required: true,
     },
     url: {
+      type: String,
+      required: false, // TODO: should this not be required?
+    },
+    description: {
+      type: String,
+      required: false,
+    },
+    queryParams: {
+      type: String,
+      required: false,
+    },
+    headers: {
+      type: String,
+      required: false,
+    },
+    body: {
       type: String,
       required: false,
     },
