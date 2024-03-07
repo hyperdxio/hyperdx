@@ -1,4 +1,3 @@
-import * as React from 'react';
 import produce from 'immer';
 import { omit } from 'lodash';
 import { Form } from 'react-bootstrap';
@@ -7,7 +6,7 @@ import { Tooltip } from '@mantine/core';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
-  SlackChannelForm,
+  WebhookChannelForm,
 } from './Alert';
 import type { Alert } from './types';
 import { NumberFormat } from './types';
@@ -142,7 +141,7 @@ export default function EditChartFormAlerts({
       </div>
       <div className="mt-3">
         {alert?.channel?.type === 'webhook' && (
-          <SlackChannelForm
+          <WebhookChannelForm
             webhookSelectProps={{
               value: alert?.channel?.webhookId || '',
               onChange: e => {
