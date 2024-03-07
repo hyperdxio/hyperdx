@@ -148,7 +148,7 @@ export const notifyChannel = async ({
   teamId: string;
 }) => {
   switch (channel) {
-    case 'slack_webhook': {
+    case 'webhook': {
       const webhook = await Webhook.findOne({
         team: teamId,
         ...(mongoose.isValidObjectId(id)
@@ -160,7 +160,6 @@ export const notifyChannel = async ({
             }),
       });
 
-      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
         await slack.postMessageToWebhook(webhook.url, {
           text: message.title,
@@ -174,6 +173,70 @@ export const notifyChannel = async ({
             },
           ],
         });
+      } else if (webhook?.service === 'generic') {
+        // QUERY PARAMS
+        let url: string;
+        if (webhook.queryParams) {
+          const queryParams = JSON.parse(webhook.queryParams);
+          const queryParamsString = new URLSearchParams(queryParams).toString();
+
+          // user may have included params in both the url and the query params
+          // so they should be merged
+          const tmpURL = new URL(webhook.url);
+          if (queryParamsString) {
+            tmpURL.search = tmpURL.search
+              ? `${tmpURL.search}&${queryParamsString}`
+              : queryParamsString;
+          }
+          url = tmpURL.toString();
+        } else {
+          // if there are no query params given, just use the url
+          url = webhook.url;
+        }
+
+        const parsedHeaders = webhook.headers
+          ? JSON.parse(webhook.headers)
+          : {};
+
+        // HEADERS
+        //   TODO: X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC
+        const headers = {
+          'Content-Type': 'application/json', // default, will be overwritten if user has set it
+          ...parsedHeaders,
+        };
+
+        // BODY
+        let parsedBody: Record<string, any> = {};
+        if (webhook.body) {
+          const injectedBody = injectIntoPlaceholders(webhook.body, {
+            $HDX_ALERT_URL: message.hdxLink,
+            $HDX_ALERT_TITLE: message.title,
+            $HDX_ALERT_BODY: message.body,
+          });
+          parsedBody = JSON.parse(injectedBody);
+        }
+
+        // TODO NEED TO BUILD THIS FROM USER INPUTTED BODY NOT HARDCODED HERE
+        // this is just for testing telegram and discord
+        // parsedBody.text = `*<${message.hdxLink} | ${message.title}>*\n${message.body}`;
+        // parsedBody.content = `*<${message.hdxLink} | ${message.title}>*\n${message.body}`;
+
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(parsedBody),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to send generic webhook message');
+          }
+        } catch (e) {
+          logger.error({
+            message: 'Failed to send generic webhook message',
+            error: serializeError(e),
+          });
+        }
       }
       break;
     }
@@ -181,6 +244,33 @@ export const notifyChannel = async ({
       throw new Error(`Unsupported channel type: ${channel}`);
   }
 };
+
+type HDXGenericWebhookTemplate = {
+  $HDX_ALERT_URL: string;
+  $HDX_ALERT_TITLE: string;
+  $HDX_ALERT_BODY: string;
+};
+
+function injectIntoPlaceholders(
+  placeholderString: string,
+  valuesToInject: HDXGenericWebhookTemplate,
+) {
+  return placeholderString.replace(/(\$\w+)/g, function (match) {
+    const replacement =
+      valuesToInject[match as keyof HDXGenericWebhookTemplate] || match;
+    return escapeJsonValues(replacement);
+  });
+}
+
+function escapeJsonValues(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 export const buildAlertMessageTemplateHdxLink = ({
   alert,
   dashboard,
@@ -262,17 +352,14 @@ export const buildAlertMessageTemplateTitle = ({
 export const getDefaultExternalAction = (
   alert: AlertMessageTemplateDefaultView['alert'],
 ) => {
-  if (
-    alert.channel.type === 'slack_webhook' &&
-    alert.channel.webhookId != null
-  ) {
+  if (alert.channel.type === 'webhook' && alert.channel.webhookId != null) {
     return `@${alert.channel.type}-${alert.channel.webhookId}`;
   }
   return null;
 };
 
 export const translateExternalActionsToInternal = (template: string) => {
-  // ex: @slack_webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="slack_webhook" id="1234_5678}}"
+  // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
   return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
@@ -321,7 +408,7 @@ export const renderAlertTemplate = async ({
       async (options: { hash: Record<string, string> }) => {
         const { channel, id } = options.hash;
         // const [channel, id] = input.split('-');
-        if (channel !== 'slack_webhook') {
+        if (channel !== 'webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
         // rendered body template

@@ -223,8 +223,8 @@ export const alertSchema = z
 // External API Alerts
 // ==============================
 
-export const externalSlackWebhookAlertChannel = z.object({
-  type: z.literal('slack_webhook'),
+export const externalWebhookAlertChannel = z.object({
+  type: z.literal('webhook'),
   webhookId: objectIdSchema,
 });
 
@@ -242,7 +242,7 @@ export const externalChartAlertSchema = z.object({
 
 export const externalAlertSchema = z
   .object({
-    channel: externalSlackWebhookAlertChannel,
+    channel: externalWebhookAlertChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
     threshold: z.number().min(0),
     threshold_type: z.enum(['above', 'below']),
@@ -295,7 +295,7 @@ export const translateAlertDocumentToExternalAlert = (
     threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
     channel: {
       ...alertDoc.channel,
-      type: 'slack_webhook',
+      type: 'webhook',
     },
     name: alertDoc.name,
     message: alertDoc.message,

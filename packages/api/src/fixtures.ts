@@ -413,7 +413,7 @@ export const makeExternalAlert = ({
   message?: string;
 }): z.infer<typeof externalAlertSchema> => ({
   channel: {
-    type: 'slack_webhook',
+    type: 'webhook',
     webhookId: '65ad876b6b08426ab4ba7830',
   },
   interval,
