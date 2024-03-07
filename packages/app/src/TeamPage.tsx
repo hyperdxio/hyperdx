@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { json } from '@codemirror/lang-json';
+import { tags as lt } from '@lezer/highlight';
+import { createTheme } from '@uiw/codemirror-themes';
+import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 import Head from 'next/head';
-import Link from 'next/link';
+import { useCallback, useState } from 'react';
 import {
   Badge,
   Button,
@@ -17,9 +20,10 @@ import { toast } from 'react-toastify';
 
 import api from './api';
 import { withAppNav } from './layout';
-import useUserPreferences from './useUserPreferences';
-import { TimeFormat } from './useUserPreferences';
-import { isValidUrl } from './utils';
+import { WebhookFlatIcon } from './SVGIcons';
+import { WebhookService } from './types';
+import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { isValidJson, isValidUrl } from './utils';
 
 export default function TeamPage() {
   const [
@@ -30,10 +34,14 @@ export default function TeamPage() {
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
   const [addSlackWebhookModalShow, setAddSlackWebhookModalShow] =
     useState(false);
+  const [addGenericWebhookModalShow, setAddGenericWebhookModalShow] =
+    useState(false);
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
   const { data: slackWebhooks, refetch: refetchSlackWebhooks } =
-    api.useWebhooks('slack');
+    api.useWebhooks(['slack']);
+  const { data: genericWebhooks, refetch: refetchGenericWebhooks } =
+    api.useWebhooks(['generic']);
   const sendTeamInvite = api.useSendTeamInvite();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
@@ -41,6 +49,29 @@ export default function TeamPage() {
   const setTimeFormat = useUserPreferences().setTimeFormat;
   const timeFormat = useUserPreferences().timeFormat;
   const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val);
+
+  //   Generic Webhook Form State
+  const [queryParams, setQueryParams] = useState<string>();
+  const onQueryParamsChange = useCallback(
+    (queryParams: string) => {
+      setQueryParams(queryParams);
+    },
+    [setQueryParams],
+  );
+  const [headers, setHeaders] = useState<string>();
+  const onHeadersChange = useCallback(
+    (headers: string) => {
+      setHeaders(headers);
+    },
+    [setHeaders],
+  );
+  const [body, setBody] = useState<string>();
+  const onBodyChange = useCallback(
+    (body: string) => {
+      setBody(body);
+    },
+    [setBody],
+  );
 
   const hasAllowedAuthMethods =
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
@@ -113,24 +144,55 @@ export default function TeamPage() {
     setTeamInviteModalShow(false);
   };
 
-  const onSubmitAddSlackWebhookForm = (e: any) => {
+  const onSubmitAddWebhookForm = (e: any, service: WebhookService) => {
     e.preventDefault();
-    const name = e.target[0].value;
-    const url = e.target[1].value;
+    const name = e.target.name.value;
+    const description = e.target.description.value;
+    const url = e.target.url.value;
+
     if (!name) {
-      toast.error('Please enter a name for the Slack webhook');
+      toast.error('Please enter a name for the Generic webhook');
       return;
     }
+
     if (!url || !isValidUrl(url)) {
-      toast.error('Please enter a valid Slack webhook URL');
+      toast.error('Please enter a valid Generic webhook URL');
       return;
     }
+
+    if (queryParams && !isValidJson(queryParams)) {
+      toast.error('Please enter valid JSON for query parameters');
+      return;
+    }
+
+    if (headers && !isValidJson(headers)) {
+      toast.error('Please enter valid JSON for headers');
+      return;
+    }
+
+    if (body && !isValidJson(body)) {
+      toast.error('Please enter valid JSON for body');
+      return;
+    }
+
     saveWebhook.mutate(
-      { name, service: 'slack', url },
+      {
+        name,
+        service: service,
+        url,
+        description,
+        queryParams: queryParams
+          ? JSON.stringify(JSON.parse(queryParams))
+          : undefined,
+        headers: headers ? JSON.stringify(JSON.parse(headers)) : undefined,
+        body: body ? JSON.stringify(JSON.parse(body)) : undefined,
+      },
       {
         onSuccess: () => {
-          toast.success('Saved Slack webhook');
-          refetchSlackWebhooks();
+          toast.success(`Saved ${service} webhook`);
+          service === WebhookService.Slack
+            ? refetchSlackWebhooks()
+            : refetchGenericWebhooks();
         },
         onError: e => {
           e.response
@@ -151,18 +213,26 @@ export default function TeamPage() {
         },
       },
     );
-    setAddSlackWebhookModalShow(false);
+    service === WebhookService.Slack
+      ? setAddSlackWebhookModalShow(false)
+      : setAddGenericWebhookModalShow(false);
   };
 
-  const onConfirmDeleteSlackWebhook = (webhookId: string) => {
+  const onConfirmDeleteWebhook = (
+    webhookId: string,
+    service: WebhookService,
+  ) => {
+    // TODO: DELETES SHOULD REALLY WATERFALL DELETE FROM ALERTS THAT CONSUME THEM
     deleteWebhook.mutate(
       {
         id: webhookId,
       },
       {
         onSuccess: () => {
-          toast.success('Deleted Slack webhook');
-          refetchSlackWebhooks();
+          toast.success(`Deleted ${service} webhook`);
+          service === WebhookService.Slack
+            ? refetchSlackWebhooks()
+            : refetchGenericWebhooks();
         },
         onError: e => {
           e.response
@@ -184,6 +254,26 @@ export default function TeamPage() {
       },
     );
   };
+
+  const hdxJSONTheme = createTheme({
+    theme: 'dark',
+    settings: {
+      background: '#1f2429',
+      foreground: '#f8f8f2',
+      caret: '#5d00ff',
+      selection: '#4a4eb5',
+      selectionMatch: '#9357ff',
+      lineHighlight: '#8a91991a',
+      gutterBackground: '#1a1d23',
+      gutterForeground: '#8a919966',
+    },
+    styles: [
+      { tag: [lt.propertyName], color: '#bb9af7' },
+      { tag: [lt.string], color: '#4bb74a' },
+      { tag: [lt.number], color: '#ff5d5b' },
+      { tag: [lt.bool], color: '#3788f6' },
+    ],
+  });
 
   return (
     <Container>
@@ -289,18 +379,33 @@ export default function TeamPage() {
               slackWebhooks.data.length > 0 &&
               slackWebhooks.data.map((webhook: any) => (
                 <div key={webhook._id} className="my-3 text-muted">
-                  <div className="d-flex mt-3 align-items-center">
-                    <div className="fw-bold text-white">{webhook.name}</div>
-                    <div className="ms-2 me-2">|</div>
-                    <div className="fw-bold text-white">{webhook.url}</div>
-                    <Button
-                      variant="outline-danger"
-                      className="ms-2"
-                      size="sm"
-                      onClick={() => onConfirmDeleteSlackWebhook(webhook._id)}
-                    >
-                      Delete
-                    </Button>
+                  <div className="d-flex flex-column mt-3 w-100">
+                    <div className="d-flex align-items-center justify-content-between w-100">
+                      <div className="d-flex align-items-center">
+                        <div className="fw-bold text-white">{webhook.name}</div>
+                        <div className="ms-2 me-2">|</div>
+                        {/* TODO: truncate long urls responsive width */}
+                        <div className="fw-bold text-white">{webhook.url}</div>
+                      </div>
+                      <Button
+                        variant="outline-danger"
+                        className="ms-2 align-self-end"
+                        size="sm"
+                        onClick={() =>
+                          onConfirmDeleteWebhook(
+                            webhook._id,
+                            WebhookService.Slack,
+                          )
+                        }
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                    {webhook.description && (
+                      <div className="fw-regular text-muted">
+                        {webhook.description}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -324,7 +429,11 @@ export default function TeamPage() {
             >
               <Modal.Body className="bg-grey rounded">
                 <h5 className="text-muted">Add Slack Incoming Webhook</h5>
-                <Form onSubmit={onSubmitAddSlackWebhookForm}>
+                <Form
+                  onSubmit={e =>
+                    onSubmitAddWebhookForm(e, WebhookService.Slack)
+                  }
+                >
                   <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                     Webhook Name
                   </Form.Label>
@@ -347,6 +456,182 @@ export default function TeamPage() {
                     className="border-0 mb-4 px-3"
                     required
                   />
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Webhook Description (optional)
+                  </Form.Label>
+                  <Form.Control
+                    size="sm"
+                    id="description"
+                    name="description"
+                    placeholder="A description of this webhook"
+                    className="border-0 mb-4 px-3"
+                  />
+                  <Button
+                    variant="brand-primary"
+                    className="mt-2 px-4 float-end"
+                    type="submit"
+                    size="sm"
+                  >
+                    Add
+                  </Button>
+                </Form>
+              </Modal.Body>
+            </Modal>
+          </div>
+
+          <div className="my-5">
+            <h2>Generic Webhooks</h2>
+            {Array.isArray(genericWebhooks?.data) &&
+              genericWebhooks.data.length > 0 &&
+              genericWebhooks.data.map((webhook: any) => (
+                <div key={webhook._id} className="my-3 text-muted">
+                  <div className="d-flex flex-column mt-3 w-100">
+                    <div className="d-flex align-items-center justify-content-between w-100">
+                      <div className="d-flex align-items-center">
+                        <div className="fw-bold text-white">{webhook.name}</div>
+                        <div className="ms-2 me-2">|</div>
+                        {/* TODO: truncate long urls responsive width */}
+                        <div className="fw-bold text-white">{webhook.url}</div>
+                      </div>
+                      <Button
+                        variant="outline-danger"
+                        className="ms-2"
+                        size="sm"
+                        onClick={() =>
+                          onConfirmDeleteWebhook(
+                            webhook._id,
+                            WebhookService.Generic,
+                          )
+                        }
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                    {webhook.description && (
+                      <div className="fw-regular text-muted">
+                        {webhook.description}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            <Button
+              className="mt-2 mb-2"
+              size="sm"
+              variant="light"
+              onClick={() => {
+                setQueryParams('');
+                setAddGenericWebhookModalShow(true);
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  gap: '3px',
+                }}
+              >
+                <WebhookFlatIcon width={16} />
+                Add Generic Incoming Webhook
+              </span>
+            </Button>
+
+            <Modal
+              aria-labelledby="contained-modal-title-vcenter"
+              centered
+              onHide={() => setAddGenericWebhookModalShow(false)}
+              show={addGenericWebhookModalShow}
+              size="lg"
+            >
+              <Modal.Body className="bg-grey rounded">
+                <h5 className="text-muted">Add Generic Incoming Webhook</h5>
+                <Form
+                  onSubmit={e =>
+                    onSubmitAddWebhookForm(e, WebhookService.Generic)
+                  }
+                >
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Webhook Name
+                  </Form.Label>
+                  <Form.Control
+                    size="sm"
+                    id="name"
+                    name="name"
+                    placeholder="My Webhook"
+                    className="border-0 mb-4 px-3"
+                    required
+                  />
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Webhook URL
+                  </Form.Label>
+                  <Form.Control
+                    size="sm"
+                    id="url"
+                    name="url"
+                    placeholder="https://webhook.site/6fd51408-4277-455b-aaf2-a50be9b4866b"
+                    className="border-0 mb-4 px-3"
+                    required
+                  />
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Webhook Description (optional)
+                  </Form.Label>
+                  <Form.Control
+                    size="sm"
+                    id="description"
+                    name="description"
+                    placeholder="A description of this webhook"
+                    className="border-0 mb-4 px-3"
+                  />
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Custom Query Parameters (optional)
+                  </Form.Label>
+                  <div className="mb-4">
+                    <CodeMirror
+                      value={queryParams}
+                      height="150px"
+                      extensions={[
+                        json(),
+                        placeholder('{\n\t"chat_id": "XXXXXX",\n}'),
+                      ]}
+                      theme={hdxJSONTheme}
+                      onChange={onQueryParamsChange}
+                    />
+                  </div>
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Custom Headers (optional)
+                  </Form.Label>
+                  <div className="mb-4">
+                    <CodeMirror
+                      value={headers}
+                      height="150px"
+                      extensions={[
+                        json(),
+                        placeholder(
+                          '{\n\t"Content-Type": "application/json",\n}',
+                        ),
+                      ]}
+                      theme={hdxJSONTheme}
+                      onChange={onHeadersChange}
+                    />
+                  </div>
+                  <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                    Custom Body (optional)
+                  </Form.Label>
+                  {/* TODO: FIGURE OUT HOW TO TEMPLATE MESSAGES HERE
+                  currently have access to hdxLink, title, body  */}
+                  <div className="mb-4">
+                    <CodeMirror
+                      value={body}
+                      height="150px"
+                      extensions={[
+                        json(),
+                        placeholder(
+                          '{\n\t"title": "$HDX_ALERT_TITLE",\n\t"text": "$HDX_ALERT_BODY",\n\t"url": "$HDX_ALERT_URL",\n\t...,\n}',
+                        ),
+                      ]}
+                      theme={hdxJSONTheme}
+                      onChange={onBodyChange}
+                    />
+                  </div>
                   <Button
                     variant="brand-primary"
                     className="mt-2 px-4 float-end"

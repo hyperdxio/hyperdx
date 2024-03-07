@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { useRouter } from 'next/router';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
@@ -79,6 +79,15 @@ export const isValidUrl = (input: string) => {
     new URL(input);
     return true;
   } catch (err) {
+    return false;
+  }
+};
+
+export const isValidJson = (input: string) => {
+  try {
+    JSON.parse(input);
+    return true;
+  } catch {
     return false;
   }
 };
