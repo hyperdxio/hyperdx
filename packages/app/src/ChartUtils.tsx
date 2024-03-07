@@ -503,6 +503,7 @@ export function MetricNameSelect({
       comboboxProps={{
         position: 'bottom-start',
         width: 'auto',
+        zIndex: 1111,
       }}
       value={value ?? undefined}
       searchable
