@@ -15,6 +15,7 @@ import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { json } from '@codemirror/lang-json';
 import { tags as lt } from '@lezer/highlight';
+import { Alert } from '@mantine/core';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
@@ -207,7 +208,7 @@ export default function TeamPage() {
     webhookId: string,
     service: WebhookService,
   ) => {
-    // TODO: DELETES SHOULD REALLY WATERFALL DELETE FROM ALERTS THAT CONSUME THEM
+    // TODO: DELETES SHOULD POTENTIALLY WATERFALL DELETE TO ALERTS THAT CONSUME THEM
     deleteWebhook.mutate(
       {
         id: webhookId,
@@ -249,9 +250,9 @@ export default function TeamPage() {
   const hdxJSONTheme = createTheme({
     theme: 'dark',
     settings: {
-      background: '#1f2429',
+      background: '#FFFFFF1A',
       foreground: '#f8f8f2',
-      caret: '#5d00ff',
+      caret: '#50fa7b',
       selection: '#4a4eb5',
       selectionMatch: '#9357ff',
       lineHighlight: '#8a91991a',
@@ -575,7 +576,7 @@ export default function TeamPage() {
                   <div className="mb-4">
                     <CodeMirror
                       value={headers}
-                      height="150px"
+                      height="100px"
                       extensions={[
                         json(),
                         placeholder(
@@ -589,22 +590,39 @@ export default function TeamPage() {
                   <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                     Custom Body (optional)
                   </Form.Label>
-                  {/* TODO: FIGURE OUT HOW TO TEMPLATE MESSAGES HERE
-                  currently have access to hdxLink, title, body  */}
-                  <div className="mb-4">
+
+                  <div className="mb-2">
                     <CodeMirror
                       value={body}
-                      height="150px"
+                      height="100px"
                       extensions={[
                         json(),
                         placeholder(
-                          '{\n\t"title": "$HDX_ALERT_TITLE",\n\t"text": "$HDX_ALERT_BODY",\n\t"url": "$HDX_ALERT_URL",\n\t...,\n}',
+                          '{\n\t"text": "$HDX_ALERT_URL | $HDX_ALERT_TITLE | $HDX_ALERT_BODY",\n}',
                         ),
                       ]}
                       theme={hdxJSONTheme}
                       onChange={onBodyChange}
                     />
                   </div>
+
+                  <Alert
+                    icon={
+                      <i className="bi bi-info-circle-fill text-slate-400" />
+                    }
+                    className="mb-4"
+                    color="gray"
+                  >
+                    <span>
+                      Currently the body supports the following message template
+                      variables:
+                    </span>
+                    <br />
+                    <span>
+                      <code>$HDX_ALERT_URL</code>, <code>$HDX_ALERT_TITLE</code>
+                      , <code>$HDX_ALERT_BODY</code>
+                    </span>
+                  </Alert>
                   <Button
                     variant="brand-primary"
                     className="mt-2 px-4 float-end"
