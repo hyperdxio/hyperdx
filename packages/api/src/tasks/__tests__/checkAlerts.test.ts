@@ -348,7 +348,7 @@ describe('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
       });
 
-      // should not be called
+      // @slack_webhook should not be called
       await renderAlertTemplate({
         template:
           '{{#is_match "host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
