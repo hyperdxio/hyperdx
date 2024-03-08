@@ -250,11 +250,21 @@ const Tile = forwardRef(
                       zIndex={1}
                       size={alert?.state === 'OK' ? 6 : 8}
                       processing={alert?.state === 'ALERT'}
-                      color={alert?.state === 'OK' ? 'green' : 'red'}
+                      color={
+                        alert?.state === 'OK'
+                          ? 'green'
+                          : alert.silenced?.at
+                          ? 'yellow'
+                          : 'red'
+                      }
                     >
                       <i
                         className="bi bi-bell"
-                        title={`Has alert and is in ${alert.state} state`}
+                        title={`Has alert and is in ${alert.state} state${
+                          alert.silenced?.by
+                            ? `. Ack'd by ${alert.silenced.by}`
+                            : ''
+                        }`}
                       />
                     </Indicator>
                   </div>

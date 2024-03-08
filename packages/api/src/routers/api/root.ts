@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
+import {
+  generateAlertSilenceToken,
+  silenceAlertByToken,
+} from '@/controllers/alerts';
 import { createTeam, isTeamExisting } from '@/controllers/team';
 import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
@@ -165,6 +169,40 @@ router.post('/team/setup/:token', async (req, res, next) => {
   } catch (e) {
     next(e);
   }
+});
+
+router.get('/ext/silence-alert/:token', async (req, res) => {
+  let isError = false;
+
+  try {
+    const token = req.params.token;
+    await silenceAlertByToken(token);
+  } catch (e) {
+    isError = true;
+    logger.error(e);
+  }
+
+  // TODO: Create a template for utility pages
+  return res.send(`
+  <html>
+    <head>
+      <title>HyperDX</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" />
+    </head>
+    <body>
+      <header>
+        <img src="https://www.hyperdx.io/Icon32.png" />
+      </header>
+      <main>
+        ${
+          isError
+            ? '<p><strong>Link is invalid or expired.</strong> Please try again.</p>'
+            : '<p><strong>Alert silenced.</strong> You can close this window now.</p>'
+        }
+        <a href="${config.FRONTEND_URL}">Back to HyperDX</a>
+      </main>
+    </body>
+  </html>`);
 });
 
 export default router;

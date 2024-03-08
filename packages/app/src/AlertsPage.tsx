@@ -2,7 +2,10 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
-import { formatRelative } from 'date-fns';
+import { add, Duration, formatRelative } from 'date-fns';
+import { ErrorBoundary } from 'react-error-boundary';
+import { useQueryClient } from 'react-query';
+import { toast } from 'react-toastify';
 import { ArrayParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Alert as MAlert,
@@ -10,6 +13,7 @@ import {
   Button,
   Container,
   Group,
+  Menu,
   Stack,
   Tooltip,
 } from '@mantine/core';
@@ -19,6 +23,7 @@ import { withAppNav } from './layout';
 import { Tags } from './Tags';
 import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
+import { formatHumanReadableDate } from './utils';
 
 import styles from '../styles/AlertsPage.module.scss';
 
@@ -81,7 +86,7 @@ function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
           <div className={styles.historyCard} />
         </Tooltip>
       ))}
-      {items.reverse().map((history, index) => (
+      {[...items].reverse().map((history, index) => (
         <AlertHistoryCard key={index} history={history} />
       ))}
     </div>
@@ -93,6 +98,163 @@ function disableAlert(alertId?: string) {
     return; // no ID yet to disable?
   }
   // TODO do some lovely disabling of the alert here
+}
+
+function AckAlert({ alert }: { alert: Alert }) {
+  const queryClient = useQueryClient();
+  const silenceAlert = api.useSilenceAlert();
+  const unsilenceAlert = api.useUnsilenceAlert();
+
+  const mutateOptions = React.useMemo(
+    () => ({
+      onSuccess: () => {
+        queryClient.invalidateQueries('alerts');
+      },
+      onError: () => {
+        toast.error('Failed to silence alert, please try again later.');
+      },
+    }),
+    [queryClient],
+  );
+
+  const handleUnsilenceAlert = React.useCallback(() => {
+    unsilenceAlert.mutate(alert._id || '', mutateOptions); // TODO: update types
+  }, [alert._id, mutateOptions, unsilenceAlert]);
+
+  const isNoLongerMuted = React.useMemo(() => {
+    return alert.silenced ? new Date() > new Date(alert.silenced.until) : false;
+  }, [alert.silenced]);
+
+  const handleSilenceAlert = React.useCallback(
+    (duration: Duration) => {
+      const mutedUntil = add(new Date(), duration);
+      silenceAlert.mutate(
+        {
+          alertId: alert._id || '', // TODO: update types
+          mutedUntil,
+        },
+        mutateOptions,
+      );
+    },
+    [alert._id, mutateOptions, silenceAlert],
+  );
+
+  if (alert.silenced?.at) {
+    return (
+      <ErrorBoundary fallback={<>Something went wrong</>}>
+        <Menu>
+          <Menu.Target>
+            <Button
+              size="compact-sm"
+              variant="light"
+              color={isNoLongerMuted ? 'orange' : 'green'}
+              leftSection={<i className="bi bi-bell-slash fs-8" />}
+            >
+              Ack&apos;d
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label py={6}>
+              Acknowledged{' '}
+              {alert.silenced?.by ? (
+                <>
+                  by <strong>{alert.silenced?.by}</strong>
+                </>
+              ) : null}{' '}
+              on <br />
+              {formatHumanReadableDate(new Date(alert.silenced?.at))}
+              .<br />
+            </Menu.Label>
+
+            <Menu.Label py={6}>
+              {isNoLongerMuted ? (
+                'Alert resumed.'
+              ) : (
+                <>
+                  Resumes{' '}
+                  {formatHumanReadableDate(new Date(alert.silenced.until))}
+                </>
+              )}
+            </Menu.Label>
+            <Menu.Item
+              lh="1"
+              py={8}
+              color="orange"
+              onClick={handleUnsilenceAlert}
+              disabled={unsilenceAlert.isLoading}
+            >
+              {isNoLongerMuted ? 'Unacknowledge' : 'Resume alert'}
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </ErrorBoundary>
+    );
+  }
+
+  if (alert.state === 'ALERT') {
+    return (
+      <ErrorBoundary fallback={<>Something went wrong</>}>
+        <Menu disabled={silenceAlert.isLoading}>
+          <Menu.Target>
+            <Button size="compact-sm" variant="default">
+              Ack
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label lh="1" py={6}>
+              Acknowledge and silence for
+            </Menu.Label>
+            <Menu.Item
+              lh="1"
+              py={8}
+              onClick={() =>
+                handleSilenceAlert({
+                  minutes: 30,
+                })
+              }
+            >
+              30 minutes
+            </Menu.Item>
+            <Menu.Item
+              lh="1"
+              py={8}
+              onClick={() =>
+                handleSilenceAlert({
+                  hours: 1,
+                })
+              }
+            >
+              1 hour
+            </Menu.Item>
+            <Menu.Item
+              lh="1"
+              py={8}
+              onClick={() =>
+                handleSilenceAlert({
+                  hours: 6,
+                })
+              }
+            >
+              6 hours
+            </Menu.Item>
+            <Menu.Item
+              lh="1"
+              py={8}
+              onClick={() =>
+                handleSilenceAlert({
+                  hours: 24,
+                })
+              }
+            >
+              24 hours
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </ErrorBoundary>
+    );
+  }
+
+  return null;
 }
 
 function AlertDetails({ alert }: { alert: AlertData }) {
@@ -133,17 +295,13 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     <div className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red" size="sm">
+          <Badge variant="light" color="red">
             Alert
           </Badge>
         )}
-        {alert.state === AlertState.OK && (
-          <Badge variant="light" size="sm">
-            Ok
-          </Badge>
-        )}
+        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
         {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray" size="sm">
+          <Badge variant="light" color="gray">
             Disabled
           </Badge>
         )}
@@ -180,6 +338,7 @@ function AlertDetails({ alert }: { alert: AlertData }) {
       </Group>
 
       <Group>
+        <AckAlert alert={alert} />
         <AlertHistoryCardList history={alert.history} />
         {/* can we disable an alert that is alarming? hmmmmm */}
         {/* also, will make the alert jump from under the cursor to the disabled area */}

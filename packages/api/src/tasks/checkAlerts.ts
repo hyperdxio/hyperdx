@@ -604,6 +604,15 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
+  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+    logger.info({
+      message: 'Skipped firing alert due to silence',
+      alert,
+      silenced: alert.silenced,
+    });
+    return;
+  }
+
   const attributesNested = expandToNestedObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
