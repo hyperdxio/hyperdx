@@ -227,7 +227,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('renderAlertTemplate', async () => {
+    it('renderAlertTemplate - custom body with single action', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -285,6 +285,105 @@ describe('checkAlerts', () => {
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Custom body ',
+                  '```',
+                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
+                  'Nov 16 22:15:00Z [info] All good!',
+                  '```',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+    });
+
+    it('renderAlertTemplate - #is_match with single action', async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
+        data: [
+          {
+            timestamp: '2023-11-16T22:10:00.000Z',
+            severity_text: 'error',
+            body: 'Oh no! Something went wrong!',
+          },
+          {
+            timestamp: '2023-11-16T22:15:00.000Z',
+            severity_text: 'info',
+            body: 'All good!',
+          },
+        ],
+      } as any);
+
+      const team = await createTeam({ name: 'My Team' });
+      await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My_Webhook',
+      }).save();
+
+      await renderAlertTemplate({
+        template:
+          '{{#is_match "host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
+        view: {
+          ...defaultSearchView,
+          alert: {
+            ...defaultSearchView.alert,
+            channel: {
+              type: null, // using template instead
+            },
+          },
+          team: {
+            id: team._id.toString(),
+            logStreamTableVersion: team.logStreamTableVersion,
+          },
+          attributes: {
+            host: 'web',
+          },
+        },
+        title: 'Alert for "My Search" - 10 lines found',
+      });
+
+      // should not be called
+      await renderAlertTemplate({
+        template:
+          '{{#is_match "host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
+        view: {
+          ...defaultSearchView,
+          alert: {
+            ...defaultSearchView.alert,
+            channel: {
+              type: null, // using template instead
+            },
+          },
+          team: {
+            id: team._id.toString(),
+            logStreamTableVersion: team.logStreamTableVersion,
+          },
+          attributes: {
+            host: 'web2',
+          },
+        },
+        title: 'Alert for "My Search" - 10 lines found',
+      });
+
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: 'Alert for "My Search" - 10 lines found',
+          blocks: [
+            {
+              text: {
+                text: [
+                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  'Group: "http"',
+                  '10 lines found, expected less than 1 lines',
+                  '',
                   '```',
                   'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
                   'Nov 16 22:15:00Z [info] All good!',
