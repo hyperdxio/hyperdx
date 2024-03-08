@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 1.7.0
+
+### Patch Changes
+
+- 095ec0e: fix: histogram AggFn values to be only valid ones (UI)
+- 41d80de: feat: parse legacy k8s v1 cluster events
+- 7021924: Support '-', ';', '=', and '+' in password
+- b87c4d7: fix: dense rank should be computed base on rank value and group
+  (multi-series chart)
+- a49726e: fix: cache the result conditionally (SimpleCache)
+- b83e51f: refactor + perf: decouple and performance opt metrics tags endpoints
+
 ## 1.6.0
 
 ### Patch Changes
