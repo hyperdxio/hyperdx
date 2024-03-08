@@ -704,9 +704,9 @@ const api = {
         url: string;
         name: string;
         description?: string;
-        queryParams?: string;
-        headers?: Record<string, string>;
-        body?: string;
+        queryParams?: Map<string, string>;
+        headers?: Map<string, string>;
+        body?: Map<string, string>;
       }
     >(async ({ service, url, name, description, queryParams, headers, body }) =>
       server(`webhooks`, {

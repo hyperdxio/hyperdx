@@ -21,7 +21,6 @@ import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
-import webhook from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
@@ -149,7 +148,7 @@ export const notifyChannel = async ({
   teamId: string;
 }) => {
   switch (channel) {
-    case 'webhook': {
+    case 'slack_webhook': {
       const webhook = await Webhook.findOne({
         team: teamId,
         ...(mongoose.isValidObjectId(id)
@@ -240,7 +239,7 @@ export const handleSendGenericWebhook = async (
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toJSON() || {}),
+    ...(webhook.headers?.toObject() || {}),
   };
 
   // BODY
@@ -255,6 +254,7 @@ export const handleSendGenericWebhook = async (
   }
 
   try {
+    // TODO: retries/backoff etc -> switch to request-error-tolerant api client
     const response = await fetch(url, {
       method: 'POST',
       headers: headers,
@@ -379,7 +379,10 @@ export const buildAlertMessageTemplateTitle = ({
 export const getDefaultExternalAction = (
   alert: AlertMessageTemplateDefaultView['alert'],
 ) => {
-  if (alert.channel.type === 'webhook' && alert.channel.webhookId != null) {
+  if (
+    alert.channel.type === 'slack_webhook' &&
+    alert.channel.webhookId != null
+  ) {
     return `@${alert.channel.type}-${alert.channel.webhookId}`;
   }
   return null;
@@ -435,7 +438,7 @@ export const renderAlertTemplate = async ({
       async (options: { hash: Record<string, string> }) => {
         const { channel, id } = options.hash;
         // const [channel, id] = input.split('-');
-        if (channel !== 'webhook') {
+        if (channel !== 'slack_webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
         // rendered body template

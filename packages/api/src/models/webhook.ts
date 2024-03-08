@@ -7,7 +7,7 @@ export enum WebhookService {
 }
 
 interface MongooseMap extends Map<string, string> {
-  toJSON: () => { [key: string]: any };
+  toObject: () => { [key: string]: any };
 }
 
 export interface IWebhook {
@@ -19,9 +19,9 @@ export interface IWebhook {
   updatedAt: Date;
   url?: string;
   description?: string;
-  // reminder to serialize/convert the Mongoose model instance to a plain object or JSON when using
+  // reminder to serialize/convert the Mongoose model instance to a plain javascript object when using
   // to strip the additional properties that are related to the Mongoose internal representation
-  // IE webhook.headers.toJSON()
+  // IE webhook.headers.toObject()
   queryParams?: MongooseMap;
   headers?: MongooseMap;
   body?: MongooseMap;

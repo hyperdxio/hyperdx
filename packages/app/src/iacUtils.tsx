@@ -181,7 +181,11 @@ ${
           threshold: alert.threshold,
           threshold_type: alert.type === 'presence' ? 'above' : 'below',
           channel: {
-            type: alert.channel.type === 'webhook' ? 'webhook' : '',
+            type:
+              alert.channel.type === 'webhook' ||
+              alert.channel.type === 'slack_webhook'
+                ? 'webhook'
+                : '',
             ...('webhookId' in alert.channel
               ? { webhookId: alert.channel.webhookId }
               : {}),
