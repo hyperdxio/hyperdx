@@ -614,7 +614,7 @@ describe('checkAlerts', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            text: `<http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found`,
+            text: `http://localhost:9090/search/${logView._id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found`,
           }),
           headers: {
             'Content-Type': 'application/json',
