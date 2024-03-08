@@ -320,14 +320,16 @@ export const renderAlertTemplate = async ({
   _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
   const hb = PromisedHandlebars(Handlebars);
   const registerHelpers = (rawTemplateBody: string) => {
+    const attributesMap = new Map(Object.entries(attributes ?? {}));
+
     hb.registerHelper(
       IS_MATCH_FN_NAME,
       function (
-        targetAttribute: string,
+        targetKey: string,
         targetValue: string,
         options: HelperOptions,
       ) {
-        if (attributes[targetAttribute] === targetValue) {
+        if (attributesMap.get(targetKey) === targetValue) {
           options.fn(this);
         }
       },

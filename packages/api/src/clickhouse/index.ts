@@ -1821,8 +1821,8 @@ export const getMultiSeriesChartLegacyFormat = async ({
       return series.map((s, i) => {
         const groupBy =
           s.type === 'number' ? [] : 'groupBy' in s ? s.groupBy : [];
-        const attributes = groupBy.reduce((acc, g) => {
-          acc[g] = row.group[groupBy.indexOf(g)];
+        const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+          acc[curVal] = row.group[curIndex];
           return acc;
         }, {} as Record<string, string>);
         return {
@@ -1841,8 +1841,8 @@ export const getMultiSeriesChartLegacyFormat = async ({
         : 'groupBy' in series[0]
         ? series[0].groupBy
         : [];
-    const attributes = groupBy.reduce((acc, g) => {
-      acc[g] = row.group[groupBy.indexOf(g)];
+    const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+      acc[curVal] = row.group[curIndex];
       return acc;
     }, {} as Record<string, string>);
     return [
