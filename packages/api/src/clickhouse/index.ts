@@ -1818,23 +1818,39 @@ export const getMultiSeriesChartLegacyFormat = async ({
 
   const flatData = result.data.flatMap(row => {
     if (seriesReturnType === 'column') {
-      return series.map((_, i) => {
+      return series.map((s, i) => {
+        const groupBy =
+          s.type === 'number' ? [] : 'groupBy' in s ? s.groupBy : [];
+        const attributes = groupBy.reduce((acc, g) => {
+          acc[g] = row.group[groupBy.indexOf(g)];
+          return acc;
+        }, {} as Record<string, string>);
         return {
-          ts_bucket: row.ts_bucket,
-          group: row.group,
+          attributes,
           data: row[`series_${i}.data`],
-          _string_attributes: null, // TODO: pull this from the query
+          group: row.group,
+          ts_bucket: row.ts_bucket,
         };
       });
     }
 
     // Ratio only has 1 series
+    const groupBy =
+      series[0].type === 'number'
+        ? []
+        : 'groupBy' in series[0]
+        ? series[0].groupBy
+        : [];
+    const attributes = groupBy.reduce((acc, g) => {
+      acc[g] = row.group[groupBy.indexOf(g)];
+      return acc;
+    }, {} as Record<string, string>);
     return [
       {
-        ts_bucket: row.ts_bucket,
-        group: row.group,
+        attributes,
         data: row['series_0.data'],
-        _string_attributes: null, // TODO: pull this from the query
+        group: row.group,
+        ts_bucket: row.ts_bucket,
       },
     ];
   });
@@ -2552,9 +2568,9 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as data,
-        any(_string_attributes) AS _string_attributes,
-        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
+        count(*) AS data,
+        any(_string_attributes) AS attributes,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -2603,7 +2619,7 @@ export const checkAlert = async ({
       data: string;
       group?: string;
       ts_bucket: number;
-      _string_attributes: Record<string, string>;
+      attributes: Record<string, string>;
     }>
   >();
   logger.info({

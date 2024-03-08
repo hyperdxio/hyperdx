@@ -690,7 +690,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           try {
             await fireChannelEvent({
               alert,
-              attributes: checkData._string_attributes ?? {},
+              attributes: checkData.attributes,
               dashboard: targetDashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: Array.isArray(checkData.group)
