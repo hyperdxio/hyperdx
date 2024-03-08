@@ -1,8 +1,8 @@
-import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
-import { useEffect, useRef, useState } from 'react';
 
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
