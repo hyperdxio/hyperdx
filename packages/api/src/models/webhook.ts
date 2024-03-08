@@ -6,6 +6,10 @@ export enum WebhookService {
   Generic = 'generic',
 }
 
+interface MongooseMap extends Map<string, string> {
+  toJSON: () => { [key: string]: any };
+}
+
 export interface IWebhook {
   _id: ObjectId;
   createdAt: Date;
@@ -13,11 +17,14 @@ export interface IWebhook {
   service: WebhookService;
   team: ObjectId;
   updatedAt: Date;
-  url: string;
-  description: string;
-  queryParams: string;
-  headers: string;
-  body: string;
+  url?: string;
+  description?: string;
+  // reminder to serialize/convert the Mongoose model instance to a plain object or JSON when using
+  // to strip the additional properties that are related to the Mongoose internal representation
+  // IE webhook.headers.toJSON()
+  queryParams?: MongooseMap;
+  headers?: MongooseMap;
+  body?: MongooseMap;
 }
 
 const WebhookSchema = new Schema<IWebhook>(
@@ -34,22 +41,25 @@ const WebhookSchema = new Schema<IWebhook>(
     },
     url: {
       type: String,
-      required: false, // TODO: should this not be required?
+      required: false,
     },
     description: {
       type: String,
       required: false,
     },
     queryParams: {
-      type: String,
+      type: Map,
+      of: String,
       required: false,
     },
     headers: {
-      type: String,
+      type: Map,
+      of: String,
       required: false,
     },
     body: {
-      type: String,
+      type: Map,
+      of: String,
       required: false,
     },
   },

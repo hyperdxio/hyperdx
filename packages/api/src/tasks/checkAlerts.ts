@@ -181,6 +181,10 @@ const handleSendSlackWebhook = async (
     body: string;
   },
 ) => {
+  if (!webhook.url) {
+    throw new Error('Webhook URL is not set');
+  }
+
   await slack.postMessageToWebhook(webhook.url, {
     text: message.title,
     blocks: [
@@ -204,11 +208,17 @@ export const handleSendGenericWebhook = async (
   },
 ) => {
   // QUERY PARAMS
+
+  if (!webhook.url) {
+    throw new Error('Webhook URL is not set');
+  }
+
   let url: string;
   // user input of queryParams is disabled on the frontend for now
   if (webhook.queryParams) {
-    const queryParams = JSON.parse(webhook.queryParams);
-    const queryParamsString = new URLSearchParams(queryParams).toString();
+    const queryParamsString = new URLSearchParams(
+      webhook.queryParams,
+    ).toString();
 
     // user may have included params in both the url and the query params
     // so they should be merged
@@ -224,20 +234,19 @@ export const handleSendGenericWebhook = async (
     url = webhook.url;
   }
 
-  const parsedHeaders = webhook.headers ? JSON.parse(webhook.headers) : {};
-
   // HEADERS
   // TODO: handle real webhook security and signage after v0
   // X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC, time based nonces, caching functionality etc
+
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...parsedHeaders,
+    ...(webhook.headers?.toJSON() || {}),
   };
 
   // BODY
   let parsedBody: Record<string, string | number | symbol> = {};
   if (webhook.body) {
-    const injectedBody = injectIntoPlaceholders(webhook.body, {
+    const injectedBody = injectIntoPlaceholders(JSON.stringify(webhook.body), {
       $HDX_ALERT_URL: message.hdxLink,
       $HDX_ALERT_TITLE: message.title,
       $HDX_ALERT_BODY: message.body,

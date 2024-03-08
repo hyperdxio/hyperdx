@@ -547,8 +547,8 @@ describe('checkAlerts', () => {
         url: 'https://webhook.site/123',
         name: 'Generic Webhook',
         description: 'generic webhook description',
-        body: '{"text":"$HDX_ALERT_URL | $HDX_ALERT_TITLE"}',
-        headers: '{"Content-Type":"application/json"}',
+        body: { text: '$HDX_ALERT_URL | $HDX_ALERT_TITLE' },
+        headers: { 'Content-Type': 'application/json' },
       }).save();
       const alert = await createAlert(team._id, {
         source: 'LOG',

@@ -705,7 +705,7 @@ const api = {
         name: string;
         description?: string;
         queryParams?: string;
-        headers?: string;
+        headers?: Record<string, string>;
         body?: string;
       }
     >(async ({ service, url, name, description, queryParams, headers, body }) =>

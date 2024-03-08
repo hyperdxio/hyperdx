@@ -170,8 +170,8 @@ export default function TeamPage() {
         service: service,
         url,
         description,
-        headers: headers ? JSON.stringify(JSON.parse(headers)) : undefined,
-        body: body ? JSON.stringify(JSON.parse(body)) : undefined,
+        headers: headers ? JSON.parse(headers) : undefined,
+        body: body ? JSON.parse(body) : undefined,
       },
       {
         onSuccess: () => {
