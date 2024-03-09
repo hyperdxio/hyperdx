@@ -215,18 +215,13 @@ export const handleSendGenericWebhook = async (
   let url: string;
   // user input of queryParams is disabled on the frontend for now
   if (webhook.queryParams) {
-    const queryParamsString = new URLSearchParams(
-      webhook.queryParams,
-    ).toString();
-
     // user may have included params in both the url and the query params
     // so they should be merged
     const tmpURL = new URL(webhook.url);
-    if (queryParamsString) {
-      tmpURL.search = tmpURL.search
-        ? `${tmpURL.search}&${queryParamsString}`
-        : queryParamsString;
+    for (const [key, value] of Object.entries(webhook.queryParams.toObject())) {
+      tmpURL.searchParams.append(key, value);
     }
+
     url = tmpURL.toString();
   } else {
     // if there are no query params given, just use the url
@@ -239,10 +234,9 @@ export const handleSendGenericWebhook = async (
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toObject() || {}),
+    ...(webhook.headers?.toObject() ?? {}),
   };
 
-  // BODY
   let parsedBody: Record<string, string | number | symbol> = {};
   if (webhook.body) {
     const injectedBody = injectIntoPlaceholders(JSON.stringify(webhook.body), {
