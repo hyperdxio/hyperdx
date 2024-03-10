@@ -948,7 +948,10 @@ describe('checkAlerts', () => {
         name: 'Generic Webhook',
         description: 'generic webhook description',
         body: { text: '$HDX_ALERT_URL | $HDX_ALERT_TITLE' },
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-HyperDX-Signature': 'XXXXX-XXXXX',
+        },
       }).save();
       const alert = await createAlert(team._id, {
         source: 'LOG',
@@ -1018,6 +1021,7 @@ describe('checkAlerts', () => {
           }),
           headers: {
             'Content-Type': 'application/json',
+            'X-HyperDX-Signature': 'XXXXX-XXXXX',
           },
         }),
       );

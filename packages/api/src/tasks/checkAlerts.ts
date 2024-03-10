@@ -218,7 +218,9 @@ export const handleSendGenericWebhook = async (
     // user may have included params in both the url and the query params
     // so they should be merged
     const tmpURL = new URL(webhook.url);
-    for (const [key, value] of Object.entries(webhook.queryParams.toObject())) {
+    for (const [key, value] of Object.entries(
+      webhook.queryParams.toJSON({ flattenMaps: true }),
+    )) {
       tmpURL.searchParams.append(key, value);
     }
 
@@ -234,7 +236,7 @@ export const handleSendGenericWebhook = async (
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toObject() ?? {}),
+    ...(webhook.headers?.toJSON() ?? {}),
   };
 
   let parsedBody: Record<string, string | number | symbol> = {};
@@ -251,7 +253,7 @@ export const handleSendGenericWebhook = async (
     // TODO: retries/backoff etc -> switch to request-error-tolerant api client
     const response = await fetch(url, {
       method: 'POST',
-      headers: headers,
+      headers: headers as Record<string, string>,
       body: JSON.stringify(parsedBody),
     });
 

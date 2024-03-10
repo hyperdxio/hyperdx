@@ -7,7 +7,13 @@ export enum WebhookService {
 }
 
 interface MongooseMap extends Map<string, string> {
-  toObject: () => { [key: string]: any };
+  // https://mongoosejs.com/docs/api/map.html#MongooseMap.prototype.toJSON()
+  // Converts this map to a native JavaScript Map for JSON.stringify(). Set the flattenMaps option to convert this map to a POJO instead.
+  // doc.myMap.toJSON() instanceof Map; // true
+  // doc.myMap.toJSON({ flattenMaps: true }) instanceof Map; // false
+  toJSON: (options?: {
+    flattenMaps?: boolean;
+  }) => { [key: string]: any } | Map<string, any>;
 }
 
 export interface IWebhook {
@@ -20,8 +26,7 @@ export interface IWebhook {
   url?: string;
   description?: string;
   // reminder to serialize/convert the Mongoose model instance to a plain javascript object when using
-  // to strip the additional properties that are related to the Mongoose internal representation
-  // IE webhook.headers.toObject()
+  // to strip the additional properties that are related to the Mongoose internal representation -> webhook.headers.toJSON()
   queryParams?: MongooseMap;
   headers?: MongooseMap;
   body?: MongooseMap;
