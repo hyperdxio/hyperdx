@@ -218,9 +218,7 @@ export const handleSendGenericWebhook = async (
     // user may have included params in both the url and the query params
     // so they should be merged
     const tmpURL = new URL(webhook.url);
-    for (const [key, value] of Object.entries(
-      webhook.queryParams.toJSON({ flattenMaps: true }),
-    )) {
+    for (const [key, value] of Object.entries(webhook.queryParams.toJSON())) {
       tmpURL.searchParams.append(key, value);
     }
 
@@ -236,7 +234,7 @@ export const handleSendGenericWebhook = async (
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toJSON({ flattenMaps: true }) ?? {}),
+    ...(webhook.headers?.toJSON() ?? {}),
   };
 
   // BODY
