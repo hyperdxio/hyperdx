@@ -236,8 +236,10 @@ export const handleSendGenericWebhook = async (
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toJSON() ?? {}),
+    ...(webhook.headers?.toJSON({ flattenMaps: true }) ?? {}),
   };
+
+  // BODY
 
   let parsedBody: Record<string, string | number | symbol> = {};
   if (webhook.body) {
