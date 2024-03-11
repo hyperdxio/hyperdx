@@ -388,7 +388,8 @@ export const getDefaultExternalAction = (
 
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
-  return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
+  // ex: @webhook-{{attributes.webhookId}} -> "{{NOTIFY_FN_NAME channel="webhook" id="{{attributes.webhookId}}"}}"
+  return template.replace(/(?: |^)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
     const id = ids.join('-');
@@ -452,20 +453,21 @@ export const renderAlertTemplate = async ({
       NOTIFY_FN_NAME,
       async (options: { hash: Record<string, string> }) => {
         const { channel, id } = options.hash;
-        // const [channel, id] = input.split('-');
         if (channel !== 'slack_webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
-        // rendered body template
-        const compiledTemplateBody = _hb.compile(rawTemplateBody);
+        // render id template
+        const renderedId = _hb.compile(id)(view);
+        // render body template
+        const renderedBody = _hb.compile(rawTemplateBody)(view);
 
         await notifyChannel({
           channel,
-          id,
+          id: renderedId,
           message: {
             hdxLink: buildAlertMessageTemplateHdxLink(view),
             title,
-            body: compiledTemplateBody(view),
+            body: renderedBody,
           },
           teamId: team.id,
         });
