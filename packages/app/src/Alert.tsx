@@ -42,23 +42,22 @@ export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
 };
 
 export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
-  webhook: 'Slack Webhook',
+  webhook: 'Webhook',
 };
 
-export const SlackChannelForm = ({
+export const WebhookChannelForm = ({
   webhookSelectProps,
 }: {
   webhookSelectProps: FormSelectProps;
 }) => {
-  const { data: slackWebhooks } = api.useWebhooks('slack');
+  const { data: webhooks } = api.useWebhooks(['slack', 'generic']);
 
-  const hasSlackWebhooks =
-    Array.isArray(slackWebhooks?.data) && slackWebhooks.data.length > 0;
+  const hasWebhooks = Array.isArray(webhooks?.data) && webhooks.data.length > 0;
 
   return (
     <>
       <div className="mt-3">
-        <Form.Label className="text-muted">Slack Webhook</Form.Label>
+        <Form.Label className="text-muted">Webhook</Form.Label>
         <Form.Select
           className="bg-black border-0 mb-1 px-3"
           required
@@ -68,11 +67,9 @@ export const SlackChannelForm = ({
         >
           {/* Ensure user selects a slack webhook before submitting form */}
           <option value="" disabled selected>
-            {hasSlackWebhooks
-              ? 'Select a Slack Webhook'
-              : 'No Slack Webhooks available'}
+            {hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'}
           </option>
-          {slackWebhooks?.data.map((sw: any) => (
+          {webhooks?.data.map((sw: any) => (
             <option key={sw._id} value={sw._id}>
               {sw.name}
             </option>
@@ -87,7 +84,7 @@ export const SlackChannelForm = ({
           className="text-muted-hover d-flex align-items-center gap-1 fs-8"
         >
           <i className="bi bi-plus fs-5" />
-          Add New Slack Incoming Webhook
+          Add New Incoming Webhook
         </a>
       </div>
     </>

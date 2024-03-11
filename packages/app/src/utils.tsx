@@ -83,6 +83,15 @@ export const isValidUrl = (input: string) => {
   }
 };
 
+export const isValidJson = (input: string) => {
+  try {
+    JSON.parse(input);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const capitalizeFirstLetter = (input: string) => {
   return input.charAt(0).toUpperCase() + input.slice(1);
 };

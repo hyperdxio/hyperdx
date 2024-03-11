@@ -9,7 +9,6 @@ import {
   Badge,
   Button,
   Container,
-  Divider,
   Group,
   Stack,
   Tooltip,
@@ -174,7 +173,7 @@ function AlertDetails({ alert }: { alert: AlertData }) {
             <span className="fw-bold">{alert.threshold}</span>
             <span className="text-slate-400">&middot;</span>
             {alert.channel.type === 'webhook' && (
-              <span>Notify via Slack Webhook</span>
+              <span>Notify via Webhook</span>
             )}
           </div>
         </Stack>

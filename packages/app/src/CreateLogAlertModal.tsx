@@ -8,7 +8,7 @@ import {
   ALERT_INTERVAL_OPTIONS,
   intervalToDateRange,
   intervalToGranularity,
-  SlackChannelForm,
+  WebhookChannelForm,
 } from './Alert';
 import api from './api';
 import { FieldSelect } from './ChartUtils';
@@ -164,7 +164,7 @@ function AlertForm({
       <div className="d-flex align-items-center mb-2"></div>
 
       {channel === 'webhook' && (
-        <SlackChannelForm webhookSelectProps={register('webhookId')} />
+        <WebhookChannelForm webhookSelectProps={register('webhookId')} />
       )}
 
       <div className="d-flex justify-content-between mt-4">

@@ -275,3 +275,8 @@ export enum KubePhase {
   Failed = 4,
   Unknown = 5,
 }
+
+export enum WebhookService {
+  Slack = 'slack',
+  Generic = 'generic',
+}

@@ -29,7 +29,8 @@ router.post('/', async (req, res, next) => {
     if (teamId == null) {
       return res.sendStatus(403);
     }
-    const { name, service, url } = req.body;
+    const { name, service, url, description, queryParams, headers, body } =
+      req.body;
     if (!service || !url || !name) return res.sendStatus(400);
     const totalWebhooks = await Webhook.countDocuments({
       team: teamId,
@@ -45,7 +46,16 @@ router.post('/', async (req, res, next) => {
         message: 'Webhook already exists',
       });
     }
-    const webhook = new Webhook({ team: teamId, service, url, name });
+    const webhook = new Webhook({
+      team: teamId,
+      service,
+      url,
+      name,
+      description,
+      queryParams,
+      headers,
+      body,
+    });
     await webhook.save();
     res.json({
       data: webhook,
