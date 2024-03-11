@@ -20,7 +20,7 @@ import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
-import Webhook from '@/models/webhook';
+import Webhook, { IWebhook } from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
@@ -162,20 +162,10 @@ export const notifyChannel = async ({
             }),
       });
 
-      // ONLY SUPPORTS SLACK WEBHOOKS FOR NOW
       if (webhook?.service === 'slack') {
-        await slack.postMessageToWebhook(webhook.url, {
-          text: message.title,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
-              },
-            },
-          ],
-        });
+        await handleSendSlackWebhook(webhook, message);
+      } else if (webhook?.service === 'generic') {
+        await handleSendGenericWebhook(webhook, message);
       }
       break;
     }
@@ -183,6 +173,129 @@ export const notifyChannel = async ({
       throw new Error(`Unsupported channel type: ${channel}`);
   }
 };
+
+const handleSendSlackWebhook = async (
+  webhook: IWebhook,
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  },
+) => {
+  if (!webhook.url) {
+    throw new Error('Webhook URL is not set');
+  }
+
+  await slack.postMessageToWebhook(webhook.url, {
+    text: message.title,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+        },
+      },
+    ],
+  });
+};
+
+export const handleSendGenericWebhook = async (
+  webhook: IWebhook,
+  message: {
+    hdxLink: string;
+    title: string;
+    body: string;
+  },
+) => {
+  // QUERY PARAMS
+
+  if (!webhook.url) {
+    throw new Error('Webhook URL is not set');
+  }
+
+  let url: string;
+  // user input of queryParams is disabled on the frontend for now
+  if (webhook.queryParams) {
+    // user may have included params in both the url and the query params
+    // so they should be merged
+    const tmpURL = new URL(webhook.url);
+    for (const [key, value] of Object.entries(webhook.queryParams.toJSON())) {
+      tmpURL.searchParams.append(key, value);
+    }
+
+    url = tmpURL.toString();
+  } else {
+    // if there are no query params given, just use the url
+    url = webhook.url;
+  }
+
+  // HEADERS
+  // TODO: handle real webhook security and signage after v0
+  // X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC, time based nonces, caching functionality etc
+
+  const headers = {
+    'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
+    ...(webhook.headers?.toJSON() ?? {}),
+  };
+
+  // BODY
+
+  let parsedBody: Record<string, string | number | symbol> = {};
+  if (webhook.body) {
+    const injectedBody = injectIntoPlaceholders(JSON.stringify(webhook.body), {
+      $HDX_ALERT_URL: message.hdxLink,
+      $HDX_ALERT_TITLE: message.title,
+      $HDX_ALERT_BODY: message.body,
+    });
+    parsedBody = JSON.parse(injectedBody);
+  }
+
+  try {
+    // TODO: retries/backoff etc -> switch to request-error-tolerant api client
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers as Record<string, string>,
+      body: JSON.stringify(parsedBody),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to send generic webhook message');
+    }
+  } catch (e) {
+    logger.error({
+      message: 'Failed to send generic webhook message',
+      error: serializeError(e),
+    });
+  }
+};
+
+type HDXGenericWebhookTemplateValues = {
+  $HDX_ALERT_URL?: string;
+  $HDX_ALERT_TITLE?: string;
+  $HDX_ALERT_BODY?: string;
+};
+
+export function injectIntoPlaceholders(
+  placeholderString: string,
+  valuesToInject: HDXGenericWebhookTemplateValues,
+) {
+  return placeholderString.replace(/(\$\w+)/g, function (match) {
+    const replacement =
+      valuesToInject[match as keyof HDXGenericWebhookTemplateValues] || match;
+    return escapeJsonValues(replacement);
+  });
+}
+
+export function escapeJsonValues(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 export const buildAlertMessageTemplateHdxLink = ({
   alert,
   dashboard,
@@ -274,7 +387,7 @@ export const getDefaultExternalAction = (
 };
 
 export const translateExternalActionsToInternal = (template: string) => {
-  // ex: @slack_webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="slack_webhook" id="1234_5678}}"
+  // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
   return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
