@@ -3,7 +3,7 @@
 // --------------------------------------------------------
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
-import Handlebars from 'handlebars';
+import Handlebars, { HelperOptions } from 'handlebars';
 import { escapeRegExp, isString } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -34,6 +34,7 @@ type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
+const IS_MATCH_FN_NAME = 'is_match';
 
 const getLogViewEnhanced = async (logViewId: ObjectId) => {
   const logView = await LogView.findById(logViewId).populate<{
@@ -113,6 +114,7 @@ export const doesExceedThreshold = (
 type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
   alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
+  attributes: Record<string, string>;
   dashboard: ReturnType<
     typeof translateDashboardDocumentToExternalDashboard
   > | null;
@@ -386,7 +388,8 @@ export const getDefaultExternalAction = (
 
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
-  return template.replace(/(?: |^)@([a-zA-Z0-9.@_-]+)/g, (match, input) => {
+  // ex: @webhook-{{attributes.webhookId}} -> "{{NOTIFY_FN_NAME channel="webhook" id="{{attributes.webhookId}}"}}"
+  return template.replace(/(?: |^)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
     const id = ids.join('-');
@@ -407,6 +410,7 @@ export const renderAlertTemplate = async ({
 }) => {
   const {
     alert,
+    attributes,
     dashboard,
     endTime,
     group,
@@ -427,26 +431,43 @@ export const renderAlertTemplate = async ({
 
   const _hb = Handlebars.create();
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
   const hb = PromisedHandlebars(Handlebars);
   const registerHelpers = (rawTemplateBody: string) => {
+    const attributesMap = new Map(Object.entries(attributes ?? {}));
+
+    hb.registerHelper(
+      IS_MATCH_FN_NAME,
+      function (
+        targetKey: string,
+        targetValue: string,
+        options: HelperOptions,
+      ) {
+        if (attributesMap.get(targetKey) === targetValue) {
+          options.fn(this);
+        }
+      },
+    );
+
     hb.registerHelper(
       NOTIFY_FN_NAME,
       async (options: { hash: Record<string, string> }) => {
         const { channel, id } = options.hash;
-        // const [channel, id] = input.split('-');
         if (channel !== 'slack_webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
-        // rendered body template
-        const compiledTemplateBody = _hb.compile(rawTemplateBody);
+        // render id template
+        const renderedId = _hb.compile(id)(view);
+        // render body template
+        const renderedBody = _hb.compile(rawTemplateBody)(view);
 
         await notifyChannel({
           channel,
-          id,
+          id: renderedId,
           message: {
             hdxLink: buildAlertMessageTemplateHdxLink(view),
             title,
-            body: compiledTemplateBody(view),
+            body: renderedBody,
           },
           teamId: team.id,
         });
@@ -533,6 +554,7 @@ ${targetTemplate}`;
 
 const fireChannelEvent = async ({
   alert,
+  attributes,
   dashboard,
   endTime,
   group,
@@ -542,10 +564,11 @@ const fireChannelEvent = async ({
   windowSizeInMins,
 }: {
   alert: AlertDocument;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
+  attributes: Record<string, string>; // TODO: support other types than string
   dashboard: EnhancedDashboard | null;
   endTime: Date;
   group?: string;
+  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
@@ -559,6 +582,7 @@ const fireChannelEvent = async ({
       ...translateAlertDocumentToExternalAlert(alert),
       groupBy: alert.groupBy,
     },
+    attributes,
     dashboard: dashboard
       ? translateDashboardDocumentToExternalDashboard({
           _id: dashboard._id,
@@ -783,6 +807,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
           try {
             await fireChannelEvent({
               alert,
+              attributes: checkData.attributes,
               dashboard: targetDashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: Array.isArray(checkData.group)

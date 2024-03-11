@@ -1818,21 +1818,39 @@ export const getMultiSeriesChartLegacyFormat = async ({
 
   const flatData = result.data.flatMap(row => {
     if (seriesReturnType === 'column') {
-      return series.map((_, i) => {
+      return series.map((s, i) => {
+        const groupBy =
+          s.type === 'number' ? [] : 'groupBy' in s ? s.groupBy : [];
+        const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+          acc[curVal] = row.group[curIndex];
+          return acc;
+        }, {} as Record<string, string>);
         return {
-          ts_bucket: row.ts_bucket,
-          group: row.group,
+          attributes,
           data: row[`series_${i}.data`],
+          group: row.group,
+          ts_bucket: row.ts_bucket,
         };
       });
     }
 
     // Ratio only has 1 series
+    const groupBy =
+      series[0].type === 'number'
+        ? []
+        : 'groupBy' in series[0]
+        ? series[0].groupBy
+        : [];
+    const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+      acc[curVal] = row.group[curIndex];
+      return acc;
+    }, {} as Record<string, string>);
     return [
       {
-        ts_bucket: row.ts_bucket,
-        group: row.group,
+        attributes,
         data: row['series_0.data'],
+        group: row.group,
+        ts_bucket: row.ts_bucket,
       },
     ];
   });
@@ -2550,8 +2568,9 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as data,
-        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
+        count(*) AS data,
+        any(_string_attributes) AS attributes,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -2596,7 +2615,12 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
+    ResponseJSON<{
+      data: string;
+      group?: string;
+      ts_bucket: number;
+      attributes: Record<string, string>;
+    }>
   >();
   logger.info({
     message: 'checkAlert',

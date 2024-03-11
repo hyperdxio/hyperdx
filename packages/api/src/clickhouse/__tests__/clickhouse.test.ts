@@ -1271,6 +1271,9 @@ Array [
     expect(data).toMatchInlineSnapshot(`
 Array [
   Object {
+    "attributes": Object {
+      "testGroup": "group2",
+    },
     "data": 777,
     "group": Array [
       "group2",
@@ -1278,6 +1281,9 @@ Array [
     "ts_bucket": 1641340800,
   },
   Object {
+    "attributes": Object {
+      "testGroup": "group1",
+    },
     "data": 77,
     "group": Array [
       "group1",
@@ -1285,6 +1291,9 @@ Array [
     "ts_bucket": 1641340800,
   },
   Object {
+    "attributes": Object {
+      "testGroup": "group1",
+    },
     "data": 7,
     "group": Array [
       "group1",
