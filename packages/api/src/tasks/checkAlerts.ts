@@ -128,17 +128,13 @@ type AlertMessageTemplateDefaultView = {
     query: string;
   } | null;
   startTime: Date;
-  team: {
-    id: string;
-    logStreamTableVersion?: number;
-  };
   value: number;
 };
 export const notifyChannel = async ({
   channel,
   id,
   message,
-  teamId,
+  team,
 }: {
   channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
   id: string;
@@ -147,12 +143,14 @@ export const notifyChannel = async ({
     title: string;
     body: string;
   };
-  teamId: string;
+  team: {
+    id: string;
+  };
 }) => {
   switch (channel) {
     case 'slack_webhook': {
       const webhook = await Webhook.findOne({
-        team: teamId,
+        team: team.id,
         ...(mongoose.isValidObjectId(id)
           ? { _id: id }
           : {
@@ -403,10 +401,15 @@ export const renderAlertTemplate = async ({
   template,
   title,
   view,
+  team,
 }: {
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
+  team: {
+    id: string;
+    logStreamTableVersion?: ITeam['logStreamTableVersion'];
+  };
 }) => {
   const {
     alert,
@@ -416,7 +419,6 @@ export const renderAlertTemplate = async ({
     group,
     savedSearch,
     startTime,
-    team,
     value,
   } = view;
 
@@ -469,7 +471,7 @@ export const renderAlertTemplate = async ({
             title,
             body: renderedBody,
           },
-          teamId: team.id,
+          team,
         });
       },
     );
@@ -603,10 +605,6 @@ const fireChannelEvent = async ({
           query: logView.query,
         }
       : null,
-    team: {
-      id: team._id.toString(),
-      logStreamTableVersion: team.logStreamTableVersion,
-    },
     startTime,
     value: totalCount,
   };
@@ -618,6 +616,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    team: {
+      id: team._id.toString(),
+      logStreamTableVersion: team.logStreamTableVersion,
+    },
   });
 };
 
