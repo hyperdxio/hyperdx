@@ -329,12 +329,12 @@ describe('checkAlerts', () => {
               type: null, // using template instead
             },
           },
-          team: {
-            id: team._id.toString(),
-            logStreamTableVersion: team.logStreamTableVersion,
-          },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        team: {
+          id: team._id.toString(),
+          logStreamTableVersion: team.logStreamTableVersion,
+        },
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
@@ -404,12 +404,12 @@ describe('checkAlerts', () => {
           attributes: {
             webhookName: 'My_Webhook',
           },
-          team: {
-            id: team._id.toString(),
-            logStreamTableVersion: team.logStreamTableVersion,
-          },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        team: {
+          id: team._id.toString(),
+          logStreamTableVersion: team.logStreamTableVersion,
+        },
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
@@ -477,15 +477,15 @@ describe('checkAlerts', () => {
               type: null, // using template instead
             },
           },
-          team: {
-            id: team._id.toString(),
-            logStreamTableVersion: team.logStreamTableVersion,
-          },
           attributes: {
             host: 'web',
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        team: {
+          id: team._id.toString(),
+          logStreamTableVersion: team.logStreamTableVersion,
+        },
       });
 
       // @slack_webhook should not be called
@@ -500,15 +500,15 @@ describe('checkAlerts', () => {
               type: null, // using template instead
             },
           },
-          team: {
-            id: team._id.toString(),
-            logStreamTableVersion: team.logStreamTableVersion,
-          },
           attributes: {
             host: 'web2',
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        team: {
+          id: team._id.toString(),
+          logStreamTableVersion: team.logStreamTableVersion,
+        },
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
