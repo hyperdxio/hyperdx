@@ -425,10 +425,9 @@ export const renderAlertTemplate = async ({
   const defaultExternalAction = getDefaultExternalAction(alert);
   const targetTemplate =
     defaultExternalAction !== null
-      ? // if the default external action is used, actions in the template won't be used
-        `${template ?? ''} ${translateExternalActionsToInternal(
-          defaultExternalAction,
-        )}`.trim()
+      ? `${translateExternalActionsToInternal(
+          template ?? '',
+        )} ${translateExternalActionsToInternal(defaultExternalAction)}`.trim()
       : translateExternalActionsToInternal(template ?? '');
 
   const _hb = Handlebars.create();
