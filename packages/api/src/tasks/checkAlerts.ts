@@ -128,17 +128,13 @@ type AlertMessageTemplateDefaultView = {
     query: string;
   } | null;
   startTime: Date;
-  team: {
-    id: string;
-    logStreamTableVersion?: number;
-  };
   value: number;
 };
 export const notifyChannel = async ({
   channel,
   id,
   message,
-  teamId,
+  team,
 }: {
   channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
   id: string;
@@ -147,12 +143,14 @@ export const notifyChannel = async ({
     title: string;
     body: string;
   };
-  teamId: string;
+  team: {
+    id: string;
+  };
 }) => {
   switch (channel) {
     case 'slack_webhook': {
       const webhook = await Webhook.findOne({
-        team: teamId,
+        team: team.id,
         ...(mongoose.isValidObjectId(id)
           ? { _id: id }
           : {
@@ -389,7 +387,7 @@ export const getDefaultExternalAction = (
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
   // ex: @webhook-{{attributes.webhookId}} -> "{{NOTIFY_FN_NAME channel="webhook" id="{{attributes.webhookId}}"}}"
-  return template.replace(/(?: |^)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
+  return template.replace(/(?:^|\s)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
     const id = ids.join('-');
@@ -403,10 +401,15 @@ export const renderAlertTemplate = async ({
   template,
   title,
   view,
+  team,
 }: {
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
+  team: {
+    id: string;
+    logStreamTableVersion?: ITeam['logStreamTableVersion'];
+  };
 }) => {
   const {
     alert,
@@ -416,38 +419,39 @@ export const renderAlertTemplate = async ({
     group,
     savedSearch,
     startTime,
-    team,
     value,
   } = view;
 
   const defaultExternalAction = getDefaultExternalAction(alert);
   const targetTemplate =
     defaultExternalAction !== null
-      ? // if the default external action is used, actions in the template won't be used
-        `${template ?? ''} ${translateExternalActionsToInternal(
-          defaultExternalAction,
-        )}`.trim()
+      ? translateExternalActionsToInternal(
+          `${template ?? ''} ${defaultExternalAction}`,
+        ).trim()
       : translateExternalActionsToInternal(template ?? '');
 
-  const _hb = Handlebars.create();
-  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
-  _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
-  const hb = PromisedHandlebars(Handlebars);
-  const registerHelpers = (rawTemplateBody: string) => {
-    const attributesMap = new Map(Object.entries(attributes ?? {}));
-
-    hb.registerHelper(
-      IS_MATCH_FN_NAME,
-      function (
-        targetKey: string,
-        targetValue: string,
-        options: HelperOptions,
-      ) {
-        if (attributesMap.get(targetKey) === targetValue) {
+  const attributesMap = new Map(Object.entries(attributes ?? {}));
+  const isMatchFn = function (shouldRender: boolean) {
+    return function (
+      targetKey: string,
+      targetValue: string,
+      options: HelperOptions,
+    ) {
+      if (attributesMap.get(targetKey) === targetValue) {
+        if (shouldRender) {
+          return options.fn(this);
+        } else {
           options.fn(this);
         }
-      },
-    );
+      }
+    };
+  };
+  const _hb = Handlebars.create();
+  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
+  const hb = PromisedHandlebars(Handlebars);
+  const registerHelpers = (rawTemplateBody: string) => {
+    hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
     hb.registerHelper(
       NOTIFY_FN_NAME,
@@ -469,7 +473,7 @@ export const renderAlertTemplate = async ({
             title,
             body: renderedBody,
           },
-          teamId: team.id,
+          team,
         });
       },
     );
@@ -603,10 +607,6 @@ const fireChannelEvent = async ({
           query: logView.query,
         }
       : null,
-    team: {
-      id: team._id.toString(),
-      logStreamTableVersion: team.logStreamTableVersion,
-    },
     startTime,
     value: totalCount,
   };
@@ -618,6 +618,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    team: {
+      id: team._id.toString(),
+      logStreamTableVersion: team.logStreamTableVersion,
+    },
   });
 };
 
