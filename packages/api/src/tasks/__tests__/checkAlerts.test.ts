@@ -440,9 +440,7 @@ describe('checkAlerts', () => {
     });
 
     it('renderAlertTemplate - #is_match with single action', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
       jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
         data: [
           {
@@ -465,10 +463,23 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My_Webhook',
       }).save();
+      await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/456',
+        name: 'Another_Webhook',
+      }).save();
 
       await renderAlertTemplate({
-        template:
-          '{{#is_match "host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
+        template: `
+{{#is_match "k8s.pod.name" "otel-collector-123"}}
+  Runbook URL: {{attributes.runbookUrl}}
+  hi i matched
+  @slack_webhook-My_Web
+{{/is_match}}
+
+@slack_webhook-Another_Webhook
+`, // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
@@ -478,7 +489,8 @@ describe('checkAlerts', () => {
             },
           },
           attributes: {
-            host: 'web',
+            runbookUrl: 'https://example.com',
+            'k8s.pod.name': 'otel-collector-123',
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
@@ -511,6 +523,7 @@ describe('checkAlerts', () => {
         },
       });
 
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
@@ -523,6 +536,41 @@ describe('checkAlerts', () => {
                   '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  '',
+                  '  Runbook URL: https://example.com',
+                  '  hi i matched',
+                  '  ',
+                  '',
+                  '',
+                  '```',
+                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
+                  'Nov 16 22:15:00Z [info] All good!',
+                  '```',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        2,
+        'https://hooks.slack.com/services/456',
+        {
+          text: 'Alert for "My Search" - 10 lines found',
+          blocks: [
+            {
+              text: {
+                text: [
+                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  'Group: "http"',
+                  '10 lines found, expected less than 1 lines',
+                  '',
+                  '  Runbook URL: https://example.com',
+                  '  hi i matched',
+                  '  ',
+                  '',
                   '',
                   '```',
                   'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',

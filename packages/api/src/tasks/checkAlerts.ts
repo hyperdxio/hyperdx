@@ -387,7 +387,7 @@ export const getDefaultExternalAction = (
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
   // ex: @webhook-{{attributes.webhookId}} -> "{{NOTIFY_FN_NAME channel="webhook" id="{{attributes.webhookId}}"}}"
-  return template.replace(/(?: |^)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
+  return template.replace(/(?:^|\s)@([a-zA-Z0-9.{}@_-]+)/g, (match, input) => {
     const prefix = match.startsWith(' ') ? ' ' : '';
     const [channel, ...ids] = input.split('-');
     const id = ids.join('-');
@@ -430,25 +430,28 @@ export const renderAlertTemplate = async ({
         )} ${translateExternalActionsToInternal(defaultExternalAction)}`.trim()
       : translateExternalActionsToInternal(template ?? '');
 
-  const _hb = Handlebars.create();
-  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
-  _hb.registerHelper(IS_MATCH_FN_NAME, () => null);
-  const hb = PromisedHandlebars(Handlebars);
-  const registerHelpers = (rawTemplateBody: string) => {
-    const attributesMap = new Map(Object.entries(attributes ?? {}));
-
-    hb.registerHelper(
-      IS_MATCH_FN_NAME,
-      function (
-        targetKey: string,
-        targetValue: string,
-        options: HelperOptions,
-      ) {
-        if (attributesMap.get(targetKey) === targetValue) {
+  const attributesMap = new Map(Object.entries(attributes ?? {}));
+  const isMatchFn = function (shouldRender: boolean) {
+    return function (
+      targetKey: string,
+      targetValue: string,
+      options: HelperOptions,
+    ) {
+      if (attributesMap.get(targetKey) === targetValue) {
+        if (shouldRender) {
+          return options.fn(this);
+        } else {
           options.fn(this);
         }
-      },
-    );
+      }
+    };
+  };
+  const _hb = Handlebars.create();
+  _hb.registerHelper(NOTIFY_FN_NAME, () => null);
+  _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
+  const hb = PromisedHandlebars(Handlebars);
+  const registerHelpers = (rawTemplateBody: string) => {
+    hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
     hb.registerHelper(
       NOTIFY_FN_NAME,
