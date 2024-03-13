@@ -425,9 +425,9 @@ export const renderAlertTemplate = async ({
   const defaultExternalAction = getDefaultExternalAction(alert);
   const targetTemplate =
     defaultExternalAction !== null
-      ? `${translateExternalActionsToInternal(
-          template ?? '',
-        )} ${translateExternalActionsToInternal(defaultExternalAction)}`.trim()
+      ? translateExternalActionsToInternal(
+          `${template ?? ''} ${defaultExternalAction}`,
+        ).trim()
       : translateExternalActionsToInternal(template ?? '');
 
   const attributesMap = new Map(Object.entries(attributes ?? {}));

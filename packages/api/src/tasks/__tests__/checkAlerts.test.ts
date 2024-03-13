@@ -304,6 +304,54 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('renderAlertTemplate - with existing channel', async () => {
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
+        data: [
+          {
+            timestamp: '2023-11-16T22:10:00.000Z',
+            severity_text: 'error',
+            body: 'Oh no! Something went wrong!',
+          },
+          {
+            timestamp: '2023-11-16T22:15:00.000Z',
+            severity_text: 'info',
+            body: 'All good!',
+          },
+        ],
+      } as any);
+
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My_Webhook',
+      }).save();
+
+      await renderAlertTemplate({
+        template: 'Custom body @slack_webhook-My_Web', // partial name should work
+        view: {
+          ...defaultSearchView,
+          alert: {
+            ...defaultSearchView.alert,
+            channel: {
+              type: 'slack_webhook',
+              webhookId: webhook._id.toString(),
+            },
+          },
+        },
+        title: 'Alert for "My Search" - 10 lines found',
+        team: {
+          id: team._id.toString(),
+          logStreamTableVersion: team.logStreamTableVersion,
+        },
+      });
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      // TODO: test call arguments
+    });
+
     it('renderAlertTemplate - custom body with single action', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
