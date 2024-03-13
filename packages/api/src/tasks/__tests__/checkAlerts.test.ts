@@ -256,6 +256,18 @@ describe('checkAlerts', () => {
         `"{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}"`,
       );
 
+      // with multiple breaks
+      expect(
+        translateExternalActionsToInternal(`
+
+@slack_webhook-123
+`),
+      ).toMatchInlineSnapshot(`
+"
+{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}
+"
+`);
+
       // with body string
       expect(
         translateExternalActionsToInternal('blabla @action-id'),
