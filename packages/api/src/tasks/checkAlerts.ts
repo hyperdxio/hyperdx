@@ -115,7 +115,7 @@ export const expandToNestedObject = (
   separator = '.',
   maxDepth = 10,
 ) => {
-  const result = {};
+  const result: Record<string, any> = {};
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const keys = key.split(separator);
@@ -145,7 +145,7 @@ export const expandToNestedObject = (
 type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
   alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
-  attributes: Record<string, string>;
+  attributes: ReturnType<typeof expandToNestedObject>;
   dashboard: ReturnType<
     typeof translateDashboardDocumentToExternalDashboard
   > | null;
