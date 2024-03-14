@@ -109,10 +109,13 @@ router.post(
   },
 );
 
-router.get('/logout', (req, res) => {
-  // @ts-ignore
-  req.logout();
-  res.redirect(`${config.FRONTEND_URL}/login`);
+router.get('/logout', (req, res, next) => {
+  req.logout(function (err) {
+    if (err) {
+      return next(err);
+    }
+    res.redirect(`${config.FRONTEND_URL}/login`);
+  });
 });
 
 // TODO: rename this ?

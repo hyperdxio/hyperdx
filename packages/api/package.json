@@ -36,7 +36,7 @@
     "node-schedule": "^2.1.1",
     "object-hash": "^3.0.0",
     "on-headers": "^1.0.2",
-    "passport": "^0.5.3",
+    "passport": "^0.6.0",
     "passport-local": "^1.0.0",
     "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
