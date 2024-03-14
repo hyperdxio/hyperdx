@@ -115,7 +115,7 @@ export const expandToNestedObject = (
   separator = '.',
   maxDepth = 10,
 ) => {
-  const result: Record<string, any> = Object.create(null); // An object NOT inheriting from `Object.prototype
+  const result: Record<string, any> = Object.create(null); // An object NOT inheriting from `Object.prototype`
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const keys = key.split(separator);
@@ -459,7 +459,7 @@ export const renderAlertTemplate = async ({
       targetValue: string,
       options: HelperOptions,
     ) {
-      if (_.get(view, targetKey) === targetValue) {
+      if (_.has(view, targetKey) && _.get(view, targetKey) === targetValue) {
         if (shouldRender) {
           return options.fn(this);
         } else {
