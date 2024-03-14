@@ -62,7 +62,9 @@ const buildAndWhereClause = (query1 = '', query2 = '') => {
   }
 };
 
-const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
+const withDashboardFilter = <
+  T extends { where?: string; series?: ChartSeries[] },
+>(
   chartConfig: T | null,
   dashboardQuery?: string,
 ) => {
