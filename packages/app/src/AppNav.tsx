@@ -19,6 +19,7 @@ import {
   Collapse,
   Input,
   Loader,
+  ScrollArea,
 } from '@mantine/core';
 
 import { version } from '../package.json';
@@ -37,6 +38,9 @@ import type { Dashboard, LogView } from './types';
 import { useLocalStorage, useWindowSize } from './utils';
 
 import styles from '../styles/AppNav.module.scss';
+
+const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
+const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',
@@ -476,7 +480,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      icon={<i className="bi bi-search fs-8 ps-1" />}
+      leftSection={<i className="bi bi-search fs-8 ps-1" text-slate-400 />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -495,13 +499,7 @@ function SearchInput({
       size="xs"
       variant="filled"
       radius="xl"
-      sx={{
-        input: {
-          minHeight: 28,
-          height: 28,
-          lineHeight: 28,
-        },
-      }}
+      className={styles.searchInput}
     />
   );
 }
@@ -538,11 +536,13 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
   name,
   groups,
   renderLink,
+  onDragEnd,
   forceExpandGroups = false,
 }: {
   name: string;
   groups: AppNavLinkGroup<T>[];
   renderLink: (item: T) => React.ReactNode;
+  onDragEnd?: (target: HTMLElement | null, newGroup: string | null) => void;
   forceExpandGroups?: boolean;
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useLocalStorage<
@@ -559,10 +559,27 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
     [collapsedGroups, setCollapsedGroups],
   );
 
+  const [draggingOver, setDraggingOver] = useState<string | null>(null);
+
   return (
     <>
       {groups.map(group => (
-        <div key={group.name}>
+        <div
+          key={group.name}
+          className={cx(
+            draggingOver === group.name && styles.listGroupDragEnter,
+          )}
+          onDragOver={e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDraggingOver(group.name);
+          }}
+          onDragEnd={e => {
+            e.preventDefault();
+            onDragEnd?.(e.target as HTMLElement, draggingOver);
+            setDraggingOver(null);
+          }}
+        >
           <AppNavGroupLabel
             onClick={() => handleToggleGroup(group.name)}
             name={group.name}
@@ -620,10 +637,20 @@ function useSearchableList<T extends AppNavLinkItem>({
     if (untaggedItems.length) {
       groupedItems[untaggedGroupName] = untaggedItems;
     }
-    return Object.entries(groupedItems).map(([name, items]) => ({
-      name,
-      items,
-    }));
+    return Object.entries(groupedItems)
+      .map(([name, items]) => ({
+        name,
+        items,
+      }))
+      .sort((a, b) => {
+        if (a.name === untaggedGroupName) {
+          return 1;
+        }
+        if (b.name === untaggedGroupName) {
+          return -1;
+        }
+        return a.name.localeCompare(b.name);
+      });
   }, [filteredList, untaggedGroupName]);
 
   return {
@@ -659,8 +686,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   } = api.useLogViews();
   const logViews = logViewsData?.data ?? [];
 
-  const { data: dashboardsData, isLoading: isDashboardsLoading } =
-    api.useDashboards();
+  const updateDashboard = api.useUpdateDashboard();
+  const updateLogView = api.useUpdateLogView();
+
+  const {
+    data: dashboardsData,
+    isLoading: isDashboardsLoading,
+    refetch: refetchDashboards,
+  } = api.useDashboards();
   const dashboards = dashboardsData?.data ?? [];
 
   const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
@@ -733,7 +766,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredSearchesList,
   } = useSearchableList({
     items: logViews,
-    untaggedGroupName: 'Saved Searches',
+    untaggedGroupName: UNTAGGED_SEARCHES_GROUP_NAME,
   });
 
   const [isSearchPresetsCollapsed, setSearchPresetsCollapsed] = useLocalStorage(
@@ -748,7 +781,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     groupedFilteredList: groupedFilteredDashboardsList,
   } = useSearchableList({
     items: dashboards,
-    untaggedGroupName: 'Saved Dashboards',
+    untaggedGroupName: UNTAGGED_DASHBOARDS_GROUP_NAME,
   });
 
   const [isDashboardsPresetsCollapsed, setDashboardsPresetsCollapsed] =
@@ -776,6 +809,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           lv._id === query.savedSearchId && styles.listLinkActive,
         )}
         title={lv.name}
+        draggable
+        data-savedsearchid={lv._id}
       >
         <div className="d-inline-block text-truncate">{lv.name}</div>
         {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
@@ -801,6 +836,32 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     ],
   );
 
+  const handleLogViewDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.savedsearchid || name == null) {
+        return;
+      }
+      const logView = logViews.find(
+        lv => lv._id === target.dataset.savedsearchid,
+      );
+      if (logView?.tags?.includes(name)) {
+        return;
+      }
+      updateLogView.mutate(
+        {
+          id: target.dataset.savedsearchid,
+          tags: name === UNTAGGED_SEARCHES_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchLogViews();
+          },
+        },
+      );
+    },
+    [logViews, refetchLogViews, updateLogView],
+  );
+
   const renderDashboardLink = useCallback(
     (dashboard: Dashboard) => (
       <Link
@@ -810,6 +871,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         className={cx(styles.listLink, {
           [styles.listLinkActive]: dashboard._id === query.dashboardId,
         })}
+        draggable
+        data-dashboardid={dashboard._id}
       >
         {dashboard.name}
       </Link>
@@ -817,16 +880,41 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     [query.dashboardId],
   );
 
+  const handleDashboardDragEnd = useCallback(
+    (target: HTMLElement | null, name: string | null) => {
+      if (!target?.dataset.dashboardid || name == null) {
+        return;
+      }
+      const dashboard = dashboards.find(
+        d => d._id === target.dataset.dashboardid,
+      );
+      if (dashboard?.tags?.includes(name)) {
+        return;
+      }
+      updateDashboard.mutate(
+        {
+          id: target.dataset.dashboardid,
+          tags: name === UNTAGGED_DASHBOARDS_GROUP_NAME ? [] : [name],
+        },
+        {
+          onSuccess: () => {
+            refetchDashboards();
+          },
+        },
+      );
+    },
+    [dashboards, refetchDashboards, updateDashboard],
+  );
+
   return (
     <>
       <AuthLoadingBlocker />
       {fixed && <div style={{ width: navWidth, minWidth: navWidth }}></div>}
-      <div
+      <ScrollArea
+        type="hover"
+        scrollbarSize={8}
         style={{
-          minWidth: navWidth,
-          width: navWidth,
           maxHeight: '100vh',
-          overflowY: 'auto',
           height: '100%',
           ...(fixed
             ? {
@@ -837,7 +925,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         }}
         className="border-end border-dark d-flex flex-column justify-content-between"
       >
-        <div>
+        <div style={{ width: navWidth }}>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
             <Link href="/search" className="text-decoration-none">
               {isCollapsed ? (
@@ -876,7 +964,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-layout-text-sidebar-reverse pe-1" />{' '}
+                  <i className="bi bi-layout-text-sidebar-reverse pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Search</span>}
                 </span>
               </Link>
@@ -909,19 +997,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {logViews.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Searches"
-                          value={searchesListQ}
-                          onChange={setSearchesListQ}
-                          onEnterDown={() => {
-                            (
-                              savedSearchesResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                        onEnterDown={() => {
+                          (
+                            savedSearchesResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       {logViews.length === 0 && (
                         <div className={styles.listEmptyMsg}>
@@ -934,6 +1020,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                           groups={groupedFilteredSearchesList}
                           renderLink={renderLogViewLink}
                           forceExpandGroups={!!searchesListQ}
+                          onDragEnd={handleLogViewDragEnd}
                         />
                       </div>
 
@@ -975,7 +1062,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-graph-up pe-1" />{' '}
+                  <i className="bi bi-graph-up pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Chart Explorer</span>}
                 </span>
               </Link>
@@ -991,7 +1078,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <span>
-                  <i className="bi bi-laptop pe-1" />{' '}
+                  <i className="bi bi-laptop pe-1 text-slate-300" />{' '}
                   {!isCollapsed && <span>Client Sessions</span>}
                 </span>
               </Link>
@@ -1007,7 +1094,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 )}
               >
                 <div>
-                  <i className="bi bi-bell pe-1" />{' '}
+                  <i className="bi bi-bell pe-1 text-slate-300" />{' '}
                   {!isCollapsed && (
                     <div className="d-inline-flex align-items-center">
                       <span>Alerts</span>
@@ -1050,7 +1137,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-heart-pulse pe-1" />{' '}
+                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
                     {!isCollapsed && <span>Service Health</span>}
                   </span>
                 </Link>
@@ -1070,7 +1157,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 >
                   <span>
                     <span
-                      className="pe-1"
+                      className="pe-1 text-slate-300"
                       style={{ top: -2, position: 'relative' }}
                     >
                       <KubernetesFlatIcon width={16} />
@@ -1095,7 +1182,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
                 >
                   <span>
-                    <i className="bi bi-grid-1x2 pe-1" />{' '}
+                    <i className="bi bi-grid-1x2 pe-1 text-slate-300" />{' '}
                     {!isCollapsed && <span>Dashboards</span>}
                   </span>
                 </Link>
@@ -1153,25 +1240,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                   ) : (
                     <>
-                      {dashboards.length > 1 && (
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-                      )}
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
+                        onEnterDown={() => {
+                          (
+                            dashboardsResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
                       <AppNavLinkGroups
                         name="dashboards"
                         groups={groupedFilteredDashboardsList}
                         renderLink={renderDashboardLink}
                         forceExpandGroups={!!dashboardsListQ}
+                        onDragEnd={handleDashboardDragEnd}
                       />
 
                       {dashboards.length === 0 && (
@@ -1232,7 +1318,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </div>
         {!isCollapsed && (
           <>
-            <div className="px-3 mb-2 mt-4">
+            <div style={{ width: navWidth }} className="px-3 mb-2 mt-4">
               <div className="my-3 bg-hdx-dark rounded p-2 text-center">
                 <span className="text-slate-300 fs-8">
                   Ready to use HyperDX Cloud?
@@ -1247,11 +1333,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       variant="light"
                       size="xs"
                       component="a"
-                      sx={{
-                        ':hover': {
-                          color: 'white',
-                        },
-                      }}
+                      className="hover-color-white"
                     >
                       Get Started for Free
                     </MButton>
@@ -1269,7 +1351,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-gear" />{' '}
+                    <i className="bi bi-gear text-slate-300" />{' '}
                     {!isCollapsed && <span>Team Settings</span>}
                   </span>
                 </Link>
@@ -1283,7 +1365,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   target="_blank"
                 >
                   <span>
-                    <i className="bi bi-book" />{' '}
+                    <i className="bi bi-book text-slate-300" />{' '}
                     {!isCollapsed && <span>Documentation</span>}
                   </span>
                 </Link>
@@ -1291,7 +1373,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <div className="my-4">
                 <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
                   <span role="button" className="text-muted-hover">
-                    <i className="bi bi-box-arrow-left" />{' '}
+                    <i className="bi bi-box-arrow-left text-slate-300" />{' '}
                     {!isCollapsed && <span>Logout</span>}
                   </span>
                 </Link>
@@ -1302,7 +1384,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </div>
           </>
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 }

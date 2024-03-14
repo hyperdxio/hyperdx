@@ -36,6 +36,7 @@ import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { InfraPodsStatusTable } from './KubernetesDashboardPage';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
+import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
@@ -175,7 +176,7 @@ export default function ServiceDashboardPage() {
           px="md"
           py="xs"
           className="border-bottom border-dark"
-          spacing="xs"
+          gap="xs"
           align="center"
         >
           {/* Use Autocomplete instead? */}
@@ -220,17 +221,18 @@ export default function ServiceDashboardPage() {
       <Tabs
         color="gray"
         variant="pills"
-        defaultValue="infrastructure"
+        defaultValue="http"
         radius="md"
         keepMounted={false}
         value={activeTab}
-        onTabChange={setActiveTab}
+        onChange={setActiveTab}
       >
         <div className="px-3 py-2 border-bottom border-dark">
           <Tabs.List>
             <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
             <Tabs.Tab value="database">Database</Tabs.Tab>
             <Tabs.Tab value="infrastructure">Infrastructure</Tabs.Tab>
+            <Tabs.Tab value="errors">Errors</Tabs.Tab>
           </Tabs.List>
         </div>
 
@@ -596,6 +598,55 @@ export default function ServiceDashboardPage() {
                   dateRange={dateRange}
                   scopeWhereQuery={scopeWhereQuery}
                 />
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="errors">
+            <Grid>
+              <Grid.Col span={12}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Error Events per Service
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    <HDXMultiSeriesTimeChart
+                      defaultDisplayType="stacked_bar"
+                      config={{
+                        dateRange,
+                        granularity: convertDateRangeToGranularityString(
+                          dateRange,
+                          60,
+                        ),
+                        seriesReturnType: 'column',
+                        series: [
+                          {
+                            type: 'time',
+                            groupBy: ['service'],
+                            where: scopeWhereQuery('level:"error"'),
+                            table: 'logs',
+                            aggFn: 'count',
+                          },
+                        ],
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <Card p="md">
+                  <Card.Section p="md" py="xs" withBorder>
+                    Error Patterns
+                  </Card.Section>
+                  <Card.Section p="md" py="sm">
+                    <MemoPatternTableWithSidePanel
+                      isUTC={false}
+                      config={{
+                        where: scopeWhereQuery('level:"error"'),
+                        dateRange,
+                      }}
+                    />
+                  </Card.Section>
+                </Card>
               </Grid.Col>
             </Grid>
           </Tabs.Panel>

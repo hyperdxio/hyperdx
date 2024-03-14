@@ -98,11 +98,23 @@ const NodeDetails = ({
             label="Status"
             value={
               properties.ready === 1 ? (
-                <Badge color="green" fw="normal" tt="none" size="md">
+                <Badge
+                  variant="light"
+                  color="green"
+                  fw="normal"
+                  tt="none"
+                  size="md"
+                >
                   Ready
                 </Badge>
               ) : (
-                <Badge color="red" fw="normal" tt="none" size="md">
+                <Badge
+                  variant="light"
+                  color="red"
+                  fw="normal"
+                  tt="none"
+                  size="md"
+                >
                   Not Ready
                 </Badge>
               )

@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -10,7 +10,7 @@
     "@clickhouse/client": "^0.2.7",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-logger": "^0.2.8",
-    "@hyperdx/node-opentelemetry": "^0.3.0",
+    "@hyperdx/node-opentelemetry": "^0.6.0",
     "@opentelemetry/api": "^1.7.0",
     "@sentry/node": "^7.85.0",
     "@slack/webhook": "^6.1.0",
@@ -25,6 +25,7 @@
     "express-session": "^1.17.3",
     "express-winston": "^4.2.0",
     "extract-domain": "^2.4.1",
+    "handlebars": "^4.7.8",
     "http-graceful-shutdown": "^3.1.13",
     "isemail": "^3.2.0",
     "jsonwebtoken": "^9.0.0",
@@ -39,6 +40,7 @@
     "passport-local": "^1.0.0",
     "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
+    "promised-handlebars": "^2.0.1",
     "rate-limit-redis": "^3.0.2",
     "redis": "^4.6.8",
     "semver": "^7.5.2",
@@ -93,7 +95,7 @@
   "scripts": {
     "start": "node ./build/index.js",
     "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
-    "dev:task": "ts-node -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
+    "dev:task": "ts-node -r tsconfig-paths/register ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Box, Flex, HoverCard, Text } from '@mantine/core';
-import { FloatingPosition } from '@mantine/core/lib/Floating';
+import { FloatingPosition } from '@mantine/core/lib/components/Floating';
 
 import api from './api';
 import { Granularity, MS_NUMBER_FORMAT, seriesColumns } from './ChartUtils';
@@ -114,7 +114,7 @@ function ListBar({
                   const value = row[column.dataKey];
                   return (
                     <Box key={column.displayName}>
-                      <Text size="xs" weight={500} span>
+                      <Text size="xs" fw={500} span>
                         {column.displayName}:{' '}
                       </Text>
                       <Text size="xs" span>
@@ -256,16 +256,16 @@ export const HDXSpanPerformanceBarChart = memo(
     };
 
     return isLoading ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-slate-400">
         Loading Chart Data...
       </div>
     ) : isError ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-slate-400">
         Error loading chart, please try again or contact support.
       </div>
-    ) : data?.data?.length === 0 ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        No data found within time range.
+    ) : rows?.length === 0 ? (
+      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-slate-400">
+        No children spans recorded for this route
       </div>
     ) : (
       <Box className="overflow-auto" h="100%">

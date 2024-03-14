@@ -10,6 +10,7 @@ import {
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import cx from 'classnames';
 import produce from 'immer';
 import { Button, Form, Modal } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -30,6 +31,7 @@ import {
   CopyButton,
   Flex,
   Group,
+  Indicator,
   Paper,
   Popover,
   ScrollArea,
@@ -87,6 +89,7 @@ const Tile = forwardRef(
       dateRange,
       onDuplicateClick,
       onEditClick,
+      onAddAlertClick,
       onDeleteClick,
       query,
       queued,
@@ -107,6 +110,7 @@ const Tile = forwardRef(
       dateRange: [Date, Date];
       onDuplicateClick: () => void;
       onEditClick: () => void;
+      onAddAlertClick?: () => void;
       onDeleteClick: () => void;
       query: string;
       onSettled?: () => void;
@@ -185,12 +189,18 @@ const Tile = forwardRef(
         : type === 'number'
         ? {
             type,
-            table: chart.series[0].table ?? 'logs',
-            aggFn: chart.series[0].aggFn,
             field: chart.series[0].field ?? '', // TODO: Fix in definition
-            where: buildAndWhereClause(query, chart.series[0].where),
-            dateRange,
             numberFormat: chart.series[0].numberFormat,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'number' ? s.where : '',
+              ),
+            })),
+            dateRange,
+            granularity:
+              granularity ?? convertDateRangeToGranularityString(dateRange, 60),
           }
         : {
             type,
@@ -232,22 +242,38 @@ const Tile = forwardRef(
           <div className="fs-7 text-muted">{chart.name}</div>
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
-            {alert && (
-              <Link href="/alerts" legacyBehavior>
+            {config.type === 'time' &&
+              (alert ? (
+                <Link href="/alerts" legacyBehavior>
+                  <div className="rounded px-1 text-muted-hover cursor-pointer">
+                    <Indicator
+                      zIndex={1}
+                      size={alert?.state === 'OK' ? 6 : 8}
+                      processing={alert?.state === 'ALERT'}
+                      color={alert?.state === 'OK' ? 'green' : 'red'}
+                    >
+                      <i
+                        className="bi bi-bell"
+                        title={`Has alert and is in ${alert.state} state`}
+                      />
+                    </Indicator>
+                  </div>
+                </Link>
+              ) : (
                 <div
-                  className={`rounded px-1 text-muted cursor-pointer ${
-                    alert.state === 'ALERT'
-                      ? 'bg-danger effect-pulse'
-                      : 'bg-grey opacity-90'
-                  }`}
+                  role="button"
+                  className="rounded px-1 cursor-pointer text-muted-hover"
+                  onClick={onAddAlertClick}
                 >
-                  <i
-                    className="bi bi-bell text-white"
-                    title={`Has alert and is in ${alert.state} state`}
-                  />
+                  <Indicator
+                    zIndex={1}
+                    label={<span className="text-slate-400 fs-7">+</span>}
+                    color="transparent"
+                  >
+                    <i className="bi bi-bell" title="Add alert" />
+                  </Indicator>
                 </div>
-              </Link>
-            )}
+              ))}
 
             <Button
               variant="link"
@@ -333,20 +359,24 @@ const Tile = forwardRef(
 
 const EditTileModal = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   dateRange,
   onSave,
   show,
   onClose,
+  dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts: Alert[];
   dateRange: [Date, Date];
   onSave: (chart: Chart, alerts?: Alert[]) => void;
   onClose: () => void;
   show: boolean;
+  dashboardQuery?: string;
 }) => {
   return (
     <ZIndexContext.Provider value={1055}>
@@ -364,11 +394,13 @@ const EditTileModal = ({
         >
           <EditTileForm
             isLocalDashboard={isLocalDashboard}
+            isAddingAlert={isAddingAlert}
             chart={chart}
             alerts={alerts}
             onSave={onSave}
             onClose={onClose}
             dateRange={dateRange}
+            dashboardQuery={dashboardQuery}
           />
         </Modal.Body>
       </Modal>
@@ -450,13 +482,17 @@ function DashboardFilter({
   onSave,
   onSubmit,
   dashboardQuery,
+  searchedQuery,
 }: {
   onSubmit: (query: string) => void;
   onSave: (query: string) => void;
-  dashboardQuery: string;
+  dashboardQuery?: string;
+  searchedQuery?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [inputQuery, setInputQuery] = useState<string>(dashboardQuery);
+  const [inputQuery, setInputQuery] = useState<string>(
+    searchedQuery ?? dashboardQuery ?? '',
+  );
 
   useHotkeys(
     '/',
@@ -467,14 +503,28 @@ function DashboardFilter({
     [inputRef],
   );
 
+  const isFilterApplied =
+    searchedQuery == null ? !!dashboardQuery : searchedQuery != '';
+
+  const isCurrentFilterDifferentFromSaved =
+    searchedQuery != null && searchedQuery !== dashboardQuery;
+
   return (
     <form
-      className="d-flex w-100"
+      className="d-flex w-100 gap-2 align-items-center"
       onSubmit={e => {
         e.preventDefault();
         onSubmit(inputQuery);
       }}
     >
+      {isFilterApplied ? (
+        <Tooltip label="Filter is applied to charts" color="gray">
+          <i className="bi bi-funnel-fill text-success fs-6 me-1 ms-1" />
+        </Tooltip>
+      ) : (
+        <i className="bi bi-funnel-fill text-slate-500 fs-6 me-1 ms-1" />
+      )}
+
       <SearchInput
         inputRef={inputRef}
         value={inputQuery}
@@ -482,26 +532,28 @@ function DashboardFilter({
         onSearch={() => {}}
         placeholder="Filter charts by service, property, etc."
       />
-      <Button
-        variant="dark"
-        type="submit"
-        className="text-nowrap fs-8 ms-2 text-muted-hover d-flex align-items-center"
-      >
-        <div className="me-2 d-flex align-items-center">
-          <i className="bi bi-funnel"></i>
-        </div>
-        Filter
-      </Button>
-      <Button
-        variant="dark"
-        onClick={() => onSave(inputQuery)}
-        className="text-nowrap fs-8 ms-2 text-muted-hover d-flex align-items-center"
-      >
-        <div className="me-2 d-flex align-items-center">
-          <FloppyIcon width={14} />
-        </div>
-        Save
-      </Button>
+      <MButton.Group>
+        <MButton
+          variant="default"
+          type="submit"
+          leftSection={<i className="bi bi-funnel-fill text-slate-300"></i>}
+        >
+          Filter
+        </MButton>
+        {isCurrentFilterDifferentFromSaved && (
+          <Tooltip label="Save this filter query" color="gray">
+            <MButton
+              variant="default"
+              onClick={() => onSave(inputQuery)}
+              px="xs"
+            >
+              <span className="text-slate-300">
+                <FloppyIcon width={14} />
+              </span>
+            </MButton>
+          </Tooltip>
+        )}
+      </MButton.Group>
     </form>
   );
 }
@@ -565,7 +617,7 @@ export default function DashboardPage() {
   }, []);
 
   const setDashboard = useCallback(
-    (newDashboard: Dashboard) => {
+    (newDashboard: Dashboard, onSuccess?: VoidFunction) => {
       if (isLocalDashboard) {
         setLocalDashboard(newDashboard);
       } else {
@@ -578,9 +630,10 @@ export default function DashboardPage() {
             tags: newDashboard.tags,
           },
           {
-            onSuccess: () => {
-              queryClient.invalidateQueries(['dashboards']);
+            onSuccess: async () => {
+              await queryClient.invalidateQueries(['dashboards']);
               setSavedNow();
+              onSuccess?.();
             },
           },
         );
@@ -619,6 +672,13 @@ export default function DashboardPage() {
     () => dashboard?.alerts?.filter(a => a.chartId === editedChart?.id) || [],
     [dashboard?.alerts, editedChart?.id],
   );
+
+  const [isAddingAlert, setIsAddingAlert] = useState(false);
+  useEffect(() => {
+    if (editedChart == null) {
+      setIsAddingAlert(false);
+    }
+  }, [editedChart]);
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
@@ -673,6 +733,10 @@ export default function DashboardPage() {
             chart={chart}
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedChart(chart)}
+            onAddAlertClick={() => {
+              setIsAddingAlert(true);
+              setEditedChart(chart);
+            }}
             granularity={granularityQuery}
             alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
             isHighlighed={highlightedChartId === chart.id}
@@ -821,6 +885,7 @@ export default function DashboardPage() {
       {dashboard != null ? (
         <EditTileModal
           isLocalDashboard={isLocalDashboard}
+          isAddingAlert={isAddingAlert}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}
@@ -828,6 +893,7 @@ export default function DashboardPage() {
           show={!!editedChart}
           onClose={() => setEditedChart(undefined)}
           onSave={handleSaveChart}
+          dashboardQuery={dashboardQuery}
         />
       ) : null}
       <div className="flex-grow-1">
@@ -858,26 +924,25 @@ export default function DashboardPage() {
                     });
                   }}
                 >
-                  <Badge
-                    color={tagsCount ? 'blue' : 'gray'}
-                    variant={tagsCount ? 'light' : 'filled'}
+                  <MButton
+                    color="blue"
+                    radius="xl"
+                    variant={tagsCount > 0 ? 'light' : 'default'}
+                    size="compact-xs"
                     mx="sm"
-                    fw="normal"
-                    tt="none"
-                    className="cursor-pointer"
+                    leftSection={<i className="bi bi-tags-fill" />}
                   >
-                    <i className="bi bi-tags-fill me-1"></i>
                     {!tagsCount
                       ? 'Add Tag'
                       : tagsCount === 1
                       ? dashboard.tags[0]
                       : `${tagsCount} Tags`}
-                  </Badge>
+                  </MButton>
                 </Tags>
               )}
               <Transition mounted={isSavedNow} transition="skew-down">
                 {style => (
-                  <Badge fw="normal" tt="none" ml="xs" style={style}>
+                  <Badge variant="light" fw="normal" tt="none" style={style}>
                     Saved now
                   </Badge>
                 )}
@@ -938,7 +1003,7 @@ export default function DashboardPage() {
                 </Tooltip>
               </Popover.Target>
               <Popover.Dropdown>
-                <Badge size="xs" mb="sm">
+                <Badge variant="light" size="xs" mb="sm">
                   Beta
                 </Badge>
                 {dashboard?._id != null && (
@@ -1080,14 +1145,19 @@ export default function DashboardPage() {
           <div className="px-3 my-2" key={`${dashboardHash}`}>
             <DashboardFilter
               key={dashboardQuery}
-              dashboardQuery={dashboardQuery}
+              dashboardQuery={dashboard?.query}
+              searchedQuery={searchedQuery}
               onSave={query => {
-                setDashboard({
-                  ...dashboard,
-                  query,
-                });
-                setSearchedQuery(undefined);
-                toast.success('Dashboard filter saved and applied.');
+                setDashboard(
+                  {
+                    ...dashboard,
+                    query,
+                  },
+                  () => {
+                    setSearchedQuery(undefined);
+                    toast.success('Dashboard filter saved and applied.');
+                  },
+                );
               }}
               onSubmit={query => {
                 setSearchedQuery(query);

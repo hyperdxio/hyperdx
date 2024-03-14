@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import { AggFn, MetricsDataType } from '@/clickhouse';
+import { AlertDocument } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
@@ -198,7 +199,6 @@ export const zLogAlert = z.object({
   source: z.literal('LOG'),
   groupBy: z.string().optional(),
   logViewId: z.string().min(1),
-  message: z.string().optional(),
 });
 
 export const zChartAlert = z.object({
@@ -214,6 +214,8 @@ export const alertSchema = z
     threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
     source: z.enum(['LOG', 'CHART']).default('LOG'),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
   })
   .and(zLogAlert.or(zChartAlert));
 
@@ -230,7 +232,6 @@ export const externalSearchAlertSchema = z.object({
   source: z.literal('search'),
   groupBy: z.string().optional(),
   savedSearchId: objectIdSchema,
-  message: z.string().optional(),
 });
 
 export const externalChartAlertSchema = z.object({
@@ -246,6 +247,8 @@ export const externalAlertSchema = z
     threshold: z.number().min(0),
     threshold_type: z.enum(['above', 'below']),
     source: z.enum(['search', 'chart']).default('search'),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
   })
   .and(externalSearchAlertSchema.or(externalChartAlertSchema));
 
@@ -254,3 +257,56 @@ export const externalAlertSchemaWithId = externalAlertSchema.and(
     id: objectIdSchema,
   }),
 );
+
+// TODO: move this to utils file since its not zod instance
+export const translateExternalAlertToInternalAlert = (
+  alertInput: z.infer<typeof externalAlertSchema>,
+): z.infer<typeof alertSchema> => {
+  return {
+    interval: alertInput.interval,
+    threshold: alertInput.threshold,
+    type: alertInput.threshold_type === 'above' ? 'presence' : 'absence',
+    channel: {
+      ...alertInput.channel,
+      type: 'webhook',
+    },
+    name: alertInput.name,
+    message: alertInput.message,
+    ...(alertInput.source === 'search' && alertInput.savedSearchId
+      ? { source: 'LOG', logViewId: alertInput.savedSearchId }
+      : alertInput.source === 'chart' && alertInput.dashboardId
+      ? {
+          source: 'CHART',
+          dashboardId: alertInput.dashboardId,
+          chartId: alertInput.chartId,
+        }
+      : ({} as never)),
+  };
+};
+
+// TODO: move this to utils file since its not zod instance
+export const translateAlertDocumentToExternalAlert = (
+  alertDoc: AlertDocument,
+): z.infer<typeof externalAlertSchemaWithId> => {
+  return {
+    id: alertDoc._id.toString(),
+    interval: alertDoc.interval,
+    threshold: alertDoc.threshold,
+    threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
+    channel: {
+      ...alertDoc.channel,
+      type: 'slack_webhook',
+    },
+    name: alertDoc.name,
+    message: alertDoc.message,
+    ...(alertDoc.source === 'LOG' && alertDoc.logView
+      ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
+      : alertDoc.source === 'CHART' && alertDoc.dashboardId
+      ? {
+          source: 'chart',
+          dashboardId: alertDoc.dashboardId.toString(),
+          chartId: alertDoc.chartId as string,
+        }
+      : ({} as never)),
+  };
+};

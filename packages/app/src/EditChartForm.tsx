@@ -3,7 +3,15 @@ import type { Draft } from 'immer';
 import produce from 'immer';
 import { Button as BSButton, Form, InputGroup } from 'react-bootstrap';
 import Select from 'react-select';
-import { Button, Divider, Flex, Group, Paper, Switch } from '@mantine/core';
+import {
+  Button,
+  Divider,
+  Flex,
+  Group,
+  Paper,
+  Switch,
+  Tooltip,
+} from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
@@ -41,6 +49,57 @@ const DEFAULT_ALERT: Alert = {
   type: 'presence',
   source: 'CHART',
 };
+
+const buildAndWhereClause = (query1 = '', query2 = '') => {
+  if (!query1 && !query2) {
+    return '';
+  } else if (!query1) {
+    return query2;
+  } else if (!query2) {
+    return query1;
+  } else {
+    return `${query1} (${query2})`;
+  }
+};
+
+const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
+  chartConfig: T | null,
+  dashboardQuery?: string,
+) => {
+  return chartConfig
+    ? {
+        ...chartConfig,
+        where: buildAndWhereClause(dashboardQuery, chartConfig?.where),
+        series: chartConfig?.series
+          ? chartConfig.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                dashboardQuery,
+                s.type === 'time' || s.type === 'table' ? s.where : '',
+              ),
+            }))
+          : undefined,
+      }
+    : null;
+};
+
+const DashboardFilterApplied = ({
+  dashboardQuery,
+}: {
+  dashboardQuery: string;
+}) => (
+  <Tooltip label="Dashboard filter is applied" color="gray">
+    <span className="d-inline-block">
+      <i className="bi bi-funnel-fill ms-2 me-1 text-success fs-8.5" />
+      <span
+        className="d-inline-block lh-1 text-slate-400 fs-8.5 me-2 text-truncate"
+        style={{ maxWidth: 340 }}
+      >
+        {dashboardQuery}
+      </span>
+    </span>
+  </Tooltip>
+);
 
 export const EditMarkdownChartForm = ({
   chart,
@@ -154,11 +213,13 @@ export const EditSearchChartForm = ({
   onClose,
   onSave,
   dateRange,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
   onSave?: (chart: Chart) => void;
   onClose?: () => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChart, setEditedChart] = useState<Chart | undefined>(chart);
 
@@ -170,7 +231,10 @@ export const EditSearchChartForm = ({
         }
       : null;
   }, [editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -249,7 +313,12 @@ export const EditSearchChartForm = ({
         </div>
       )}
       <div className="mt-4">
-        <div className="mb-3 text-muted ps-2 fs-7">Search Preview</div>
+        <div className="mb-3 text-muted ps-2 fs-7">
+          Search Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
+        </div>
         <div style={{ height: 400 }} className="bg-hdx-dark">
           <LogTableWithSidePanel
             config={{
@@ -277,6 +346,7 @@ export const EditNumberChartForm = ({
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -287,6 +357,7 @@ export const EditNumberChartForm = ({
   onTimeRangeSearch?: (value: string) => void;
   editedChart?: Chart;
   setEditedChart?: (chart: Chart) => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
     chart,
@@ -299,16 +370,18 @@ export const EditNumberChartForm = ({
   const chartConfig = useMemo(() => {
     return _editedChart != null && _editedChart.series[0].type === 'number'
       ? {
-          aggFn: _editedChart.series[0].aggFn ?? 'count',
-          table: _editedChart.series[0].table ?? 'logs',
           field: _editedChart.series[0].field ?? '', // TODO: Fix in definition
-          where: _editedChart.series[0].where,
           dateRange,
           numberFormat: _editedChart.series[0].numberFormat,
+          series: _editedChart.series,
+          granularity: convertDateRangeToGranularityString(dateRange, 60),
         }
       : null;
   }, [_editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -318,9 +391,6 @@ export const EditNumberChartForm = ({
   ) {
     return null;
   }
-
-  const labelWidth = 320;
-  const aggFn = _editedChart.series[0].aggFn ?? 'count';
 
   return (
     <form
@@ -345,105 +415,14 @@ export const EditNumberChartForm = ({
           placeholder="Chart Name"
         />
       </div>
-      <div className="d-flex mt-3 align-items-center">
-        <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-          Aggregation Function
-        </div>
-        <div className="ms-3 flex-grow-1">
-          <Select
-            options={AGG_FNS}
-            className="ds-select"
-            value={AGG_FNS.find(v => v.value === aggFn)}
-            onChange={opt => {
-              _setEditedChart(
-                produce(_editedChart, draft => {
-                  if (draft.series[0].type === 'number') {
-                    draft.series[0].aggFn = opt?.value ?? 'count';
-                  }
-                }),
-              );
-            }}
-            classNamePrefix="ds-react-select"
-          />
-        </div>
-      </div>
-      {aggFn !== 'count' && (
-        <div className="d-flex mt-3 align-items-center">
-          <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-            Field
-          </div>
-          <div className="ms-3 flex-grow-1">
-            <FieldSelect
-              value={_editedChart.series[0].field ?? ''}
-              setValue={field =>
-                _setEditedChart(
-                  produce(_editedChart, draft => {
-                    if (draft.series[0].type === 'number') {
-                      draft.series[0].field = field;
-                    }
-                  }),
-                )
-              }
-              types={
-                aggFn === 'count_distinct'
-                  ? ['number', 'string', 'bool']
-                  : ['number']
-              }
-            />
-          </div>
-        </div>
-      )}
-      <div className="d-flex mt-3 align-items-center">
-        <div style={{ width: labelWidth }} className="text-muted fw-500 ps-2">
-          Where
-        </div>
-        <div className="ms-3 flex-grow-1">
-          <InputGroup>
-            <Form.Control
-              type="text"
-              placeholder={'Filter results by a search query'}
-              className="border-0 fs-7"
-              value={_editedChart.series[0].where}
-              onChange={event =>
-                _setEditedChart(
-                  produce(_editedChart, draft => {
-                    if (draft.series[0].type === 'number') {
-                      draft.series[0].where = event.target.value;
-                    }
-                  }),
-                )
-              }
-            />
-          </InputGroup>
-        </div>
-      </div>
-      <div className="ms-2 mt-2 mb-3">
-        <Divider
-          label={
-            <>
-              <i className="bi bi-gear me-1" />
-              Chart Settings
-            </>
-          }
-          c="dark.2"
-          mb={8}
-        />
-        <Group>
-          <div className="fs-8 text-slate-300">Number Format</div>
-          <NumberFormatInput
-            value={_editedChart.series[0].numberFormat}
-            onChange={numberFormat =>
-              _setEditedChart(
-                produce(_editedChart, draft => {
-                  if (draft.series[0].type === 'number') {
-                    draft.series[0].numberFormat = numberFormat;
-                  }
-                }),
-              )
-            }
-          />
-        </Group>
-      </div>
+      <EditMultiSeriesChartForm
+        {...{
+          editedChart: _editedChart,
+          setEditedChart: _setEditedChart,
+          chartType: 'number',
+        }}
+      />
+
       {(onSave != null || onClose != null) && (
         <div className="d-flex justify-content-between my-3 ps-2">
           {onSave != null && (
@@ -466,6 +445,9 @@ export const EditNumberChartForm = ({
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
             Chart Preview
+            {!!dashboardQuery && (
+              <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+            )}
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -475,6 +457,9 @@ export const EditNumberChartForm = ({
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
                     onTimeRangeSearch(range);
                   }}
                 />
@@ -520,6 +505,7 @@ export const EditTableChartForm = ({
   onTimeRangeSearch,
   editedChart,
   setEditedChart,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -530,6 +516,7 @@ export const EditTableChartForm = ({
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  dashboardQuery?: string;
 }) => {
   const CHART_TYPE = 'table';
 
@@ -560,7 +547,10 @@ export const EditTableChartForm = ({
         : null,
     [_editedChart, dateRange],
   );
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -599,7 +589,7 @@ export const EditTableChartForm = ({
         {...{
           editedChart: _editedChart,
           setEditedChart: _setEditedChart,
-          CHART_TYPE,
+          chartType: CHART_TYPE,
         }}
       />
       {(onSave != null || onClose != null) && (
@@ -623,6 +613,9 @@ export const EditTableChartForm = ({
       <Flex justify="space-between" align="center" mb="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
           Chart Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
         </div>
         {setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&
@@ -632,6 +625,9 @@ export const EditTableChartForm = ({
                 inputValue={displayedTimeInputValue}
                 setInputValue={setDisplayedTimeInputValue}
                 onSearch={range => {
+                  onTimeRangeSearch(range);
+                }}
+                onSubmit={range => {
                   onTimeRangeSearch(range);
                 }}
               />
@@ -714,6 +710,7 @@ export const EditHistogramChartForm = ({
   onTimeRangeSearch,
   editedChart,
   setEditedChart,
+  dashboardQuery,
 }: {
   chart: Chart | undefined;
   dateRange: [Date, Date];
@@ -724,6 +721,7 @@ export const EditHistogramChartForm = ({
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  dashboardQuery?: string;
 }) => {
   const [editedChartState, setEditedChartState] = useState<Chart | undefined>(
     chart,
@@ -743,7 +741,10 @@ export const EditHistogramChartForm = ({
         }
       : null;
   }, [_editedChart, dateRange]);
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -845,6 +846,9 @@ export const EditHistogramChartForm = ({
         <Flex justify="space-between" align="center" mb="sm">
           <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
             Chart Preview
+            {!!dashboardQuery && (
+              <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+            )}
           </div>
           {setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -854,6 +858,9 @@ export const EditHistogramChartForm = ({
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
                     onTimeRangeSearch(range);
                   }}
                 />
@@ -906,13 +913,13 @@ function pushNewSeries(draft: Draft<Chart>) {
 export const EditMultiSeriesChartForm = ({
   editedChart,
   setEditedChart,
-  CHART_TYPE,
+  chartType,
 }: {
   editedChart: Chart;
   setEditedChart: (chart: Chart) => void;
-  CHART_TYPE: 'time' | 'table';
+  chartType: 'time' | 'table' | 'number';
 }) => {
-  if (editedChart.series[0].type !== CHART_TYPE) {
+  if (editedChart.series[0].type !== chartType) {
     return null;
   }
 
@@ -931,7 +938,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     draft.series.forEach((series, i) => {
-                      if (series.type === CHART_TYPE) {
+                      if (series.type === chartType) {
                         series.table = table;
                         series.aggFn = aggFn;
                       }
@@ -944,7 +951,7 @@ export const EditMultiSeriesChartForm = ({
         </Flex>
       )}
       {editedChart.series.map((series, i) => {
-        if (series.type !== CHART_TYPE) {
+        if (series.type !== chartType) {
           return null;
         }
 
@@ -970,7 +977,7 @@ export const EditMultiSeriesChartForm = ({
                       }}
                     >
                       <i className="bi bi-trash me-2" />
-                      Remove Series
+                      Remove {series.type === 'number' ? 'Ratio' : 'Series'}
                     </Button>
                   )}
                 </>
@@ -983,14 +990,14 @@ export const EditMultiSeriesChartForm = ({
               table={series.table ?? 'logs'}
               aggFn={series.aggFn}
               where={series.where}
-              groupBy={series.groupBy[0]}
+              groupBy={series.type !== 'number' ? series.groupBy[0] : undefined}
               field={series.field ?? ''}
               numberFormat={series.numberFormat}
               setAggFn={aggFn =>
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.aggFn = aggFn;
                     }
                   }),
@@ -1000,19 +1007,22 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.where = where;
                     }
                   }),
                 )
               }
               setGroupBy={
-                editedChart.series.length === 1
+                editedChart.series.length === 1 && series.type !== 'number'
                   ? groupBy =>
                       setEditedChart(
                         produce(editedChart, draft => {
                           const draftSeries = draft.series[i];
-                          if (draftSeries.type === CHART_TYPE) {
+                          if (
+                            draftSeries.type === chartType &&
+                            draftSeries.type !== 'number'
+                          ) {
                             if (groupBy != undefined) {
                               draftSeries.groupBy[0] = groupBy;
                             } else {
@@ -1027,7 +1037,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.field = field;
                     }
                   }),
@@ -1039,7 +1049,7 @@ export const EditMultiSeriesChartForm = ({
                       setEditedChart(
                         produce(editedChart, draft => {
                           const draftSeries = draft.series[i];
-                          if (draftSeries.type === CHART_TYPE) {
+                          if (draftSeries.type === chartType) {
                             draftSeries.table = table;
                             draftSeries.aggFn = aggFn;
                           }
@@ -1052,7 +1062,7 @@ export const EditMultiSeriesChartForm = ({
                 setEditedChart(
                   produce(editedChart, draft => {
                     const draftSeries = draft.series[i];
-                    if (draftSeries.type === CHART_TYPE) {
+                    if (draftSeries.type === chartType) {
                       draftSeries.field = field;
                       draftSeries.aggFn = aggFn;
                     }
@@ -1064,37 +1074,41 @@ export const EditMultiSeriesChartForm = ({
         );
       })}
       <Divider my="md" />
-      {editedChart.series.length > 1 && (
-        <Flex align="center" gap="md" mb="sm">
-          <div className="text-muted">Group By</div>
-          <div className="flex-grow-1">
-            <GroupBySelect
-              table={editedChart.series[0].table ?? 'logs'}
-              groupBy={editedChart.series[0].groupBy[0]}
-              fields={
-                editedChart.series
-                  .map(s => (s as TimeChartSeries).field)
-                  .filter(f => f != null) as string[]
-              }
-              setGroupBy={groupBy => {
-                setEditedChart(
-                  produce(editedChart, draft => {
-                    draft.series.forEach((series, i) => {
-                      if (series.type === CHART_TYPE) {
-                        if (groupBy != undefined) {
-                          series.groupBy[0] = groupBy;
-                        } else {
-                          series.groupBy = [];
+      {editedChart.series.length > 1 &&
+        editedChart.series[0].type !== 'number' && (
+          <Flex align="center" gap="md" mb="sm">
+            <div className="text-muted">Group By</div>
+            <div className="flex-grow-1">
+              <GroupBySelect
+                table={editedChart.series[0].table ?? 'logs'}
+                groupBy={editedChart.series[0].groupBy[0]}
+                fields={
+                  editedChart.series
+                    .map(s => (s as TimeChartSeries).field)
+                    .filter(f => f != null) as string[]
+                }
+                setGroupBy={groupBy => {
+                  setEditedChart(
+                    produce(editedChart, draft => {
+                      draft.series.forEach((series, i) => {
+                        if (
+                          series.type === chartType &&
+                          series.type !== 'number'
+                        ) {
+                          if (groupBy != undefined) {
+                            series.groupBy[0] = groupBy;
+                          } else {
+                            series.groupBy = [];
+                          }
                         }
-                      }
-                    });
-                  }),
-                );
-              }}
-            />
-          </div>
-        </Flex>
-      )}
+                      });
+                    }),
+                  );
+                }}
+              />
+            </div>
+          </Flex>
+        )}
       <Flex justify="space-between">
         <Flex gap="md" align="center">
           {editedChart.series.length === 1 && (
@@ -1116,24 +1130,26 @@ export const EditMultiSeriesChartForm = ({
               Add Ratio
             </Button>
           )}
-          <Button
-            mt={4}
-            variant="subtle"
-            size="sm"
-            color="gray"
-            onClick={() => {
-              setEditedChart(
-                produce(editedChart, draft => {
-                  pushNewSeries(draft);
-                  draft.seriesReturnType = 'column';
-                }),
-              );
-            }}
-          >
-            <i className="bi bi-plus-circle me-2" />
-            Add Series
-          </Button>
-          {editedChart.series.length == 2 && (
+          {chartType !== 'number' && (
+            <Button
+              mt={4}
+              variant="subtle"
+              size="sm"
+              color="gray"
+              onClick={() => {
+                setEditedChart(
+                  produce(editedChart, draft => {
+                    pushNewSeries(draft);
+                    draft.seriesReturnType = 'column';
+                  }),
+                );
+              }}
+            >
+              <i className="bi bi-plus-circle me-2" />
+              Add Series
+            </Button>
+          )}
+          {editedChart.series.length == 2 && chartType !== 'number' && (
             <Switch
               label="As Ratio"
               checked={editedChart.seriesReturnType === 'ratio'}
@@ -1155,7 +1171,7 @@ export const EditMultiSeriesChartForm = ({
             setEditedChart(
               produce(editedChart, draft => {
                 draft.series.forEach((series, i) => {
-                  if (series.type === CHART_TYPE) {
+                  if (series.type === chartType) {
                     series.numberFormat = numberFormat;
                   }
                 });
@@ -1170,6 +1186,7 @@ export const EditMultiSeriesChartForm = ({
 
 export const EditLineChartForm = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   onClose,
@@ -1182,8 +1199,10 @@ export const EditLineChartForm = ({
   setDisplayedTimeInputValue,
   displayedTimeInputValue,
   onTimeRangeSearch,
+  dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts?: Alert[];
   dateRange: [Date, Date];
@@ -1196,6 +1215,7 @@ export const EditLineChartForm = ({
   onTimeRangeSearch?: (value: string) => void;
   granularity?: Granularity | undefined;
   setGranularity?: (granularity: Granularity | undefined) => void;
+  dashboardQuery?: string;
 }) => {
   const CHART_TYPE = 'time';
   const [alert] = alerts ?? []; // TODO: Support multiple alerts eventually
@@ -1203,7 +1223,9 @@ export const EditLineChartForm = ({
     chart,
   );
   const [editedAlert, setEditedAlert] = useState<Alert | undefined>(alert);
-  const [alertEnabled, setAlertEnabled] = useState(editedAlert != null);
+  const [alertEnabled, setAlertEnabled] = useState(
+    editedAlert != null || !!isAddingAlert,
+  );
 
   const [_editedChart, _setEditedChart] =
     editedChart != null && setEditedChart != null
@@ -1232,7 +1254,10 @@ export const EditLineChartForm = ({
         : null,
     [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
   );
-  const previewConfig = useDebounce(chartConfig, 500);
+  const previewConfig = useDebounce(
+    withDashboardFilter(chartConfig, dashboardQuery),
+    500,
+  );
 
   if (
     chartConfig == null ||
@@ -1278,12 +1303,19 @@ export const EditLineChartForm = ({
         {...{
           editedChart: _editedChart,
           setEditedChart: _setEditedChart,
-          CHART_TYPE,
+          chartType: CHART_TYPE,
         }}
       />
 
       {isChartAlertsFeatureEnabled && (
-        <Paper bg="dark.7" p="md" py="xs" mt="md" withBorder>
+        <Paper
+          bg="dark.7"
+          p="md"
+          py="xs"
+          mt="md"
+          withBorder
+          style={isAddingAlert ? { borderWidth: 3 } : undefined}
+        >
           {isLocalDashboard ? (
             <span className="text-gray-600 fs-8">
               Alerts are not available in unsaved dashboards.
@@ -1332,6 +1364,9 @@ export const EditLineChartForm = ({
       <Flex justify="space-between" align="center" my="sm">
         <div className="text-muted ps-2 fs-7" style={{ flexGrow: 1 }}>
           Chart Preview
+          {!!dashboardQuery && (
+            <DashboardFilterApplied dashboardQuery={dashboardQuery} />
+          )}
         </div>
         <Flex align="center" style={{ marginLeft: 'auto', width: 600 }}>
           {setDisplayedTimeInputValue != null &&
@@ -1342,6 +1377,9 @@ export const EditLineChartForm = ({
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
                     onTimeRangeSearch(range);
                   }}
                 />

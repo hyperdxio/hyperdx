@@ -31,6 +31,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
+import { useClickOutside } from '@mantine/hooks';
 
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { KubeTimeline } from './components/KubeComponents';
@@ -40,7 +41,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
-  K8S_NETWORK_NUMBER_FORMAT,
 } from './ChartUtils';
 import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
@@ -1584,7 +1584,7 @@ function PropertySubpanel({
               borderBottom: '1px solid #21262C',
             }}
           >
-            <Group align="center" position="apart">
+            <Group align="center" justify="space-between">
               <SegmentedControl
                 size="sm"
                 data={[
@@ -1603,7 +1603,7 @@ function PropertySubpanel({
                 }}
               />
 
-              <Group position="right" spacing="xs" style={{ flex: 1 }}>
+              <Group justify="flex-end" gap="xs" style={{ flex: 1 }}>
                 {isNestedView === false && (
                   <TextInput
                     style={{ flex: 1 }}
@@ -1625,7 +1625,7 @@ function PropertySubpanel({
                 )}
                 <Menu width={240}>
                   <Menu.Target>
-                    <ActionIcon size="md" variant="filled">
+                    <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
                     </ActionIcon>
                   </Menu.Target>
@@ -2349,7 +2349,7 @@ const InfraSubpanelGroup = ({
 
   return (
     <div>
-      <Group position="apart" align="center">
+      <Group justify="space-between" align="center">
         <Group align="center">
           <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
           <SegmentedControl
@@ -2490,7 +2490,7 @@ const InfraSubpanel = ({ logData }: { logData?: any }) => {
   const timestamp = new Date(logData?.timestamp).getTime();
 
   return (
-    <Stack my="md" spacing={40}>
+    <Stack my="md" gap={40}>
       {podUid && (
         <div>
           <InfraSubpanelGroup
@@ -2667,10 +2667,14 @@ export default function LogSidePanel({
     );
   }, [logData]);
 
+  const drawerRef = useClickOutside(() => {
+    if (!subDrawerOpen) {
+      _onClose();
+    }
+  }, ['mouseup', 'touchend']);
+
   return (
     <Drawer
-      enableOverlay
-      overlayOpacity={0.1}
       customIdSuffix={`log-side-panel-${logId}`}
       duration={0}
       open={logId != null}
@@ -2682,10 +2686,10 @@ export default function LogSidePanel({
       direction="right"
       size={displayedTab === 'replay' || isSmallScreen ? '80vw' : '60vw'}
       zIndex={drawerZIndex}
-      // enableOverlay={subDrawerOpen}
+      enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} ref={drawerRef}>
           {isLoading && <div className={styles.loadingState}>Loading...</div>}
           {logData != null && !isLoading ? (
             <>

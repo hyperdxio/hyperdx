@@ -2,12 +2,7 @@ import Router from 'next/router';
 import type { HTTPError } from 'ky';
 import ky from 'ky-universal';
 import type { UseQueryOptions } from 'react-query';
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from 'react-query';
+import { useInfiniteQuery, useMutation, useQuery } from 'react-query';
 
 import { API_SERVER_URL } from './config';
 import type {
@@ -536,7 +531,7 @@ const api = {
       Error,
       {
         id: string;
-        query: string;
+        query?: string;
         tags?: string[];
       }
     >(`log-views`, async ({ id, query, tags }) =>
@@ -624,9 +619,9 @@ const api = {
       HTTPError,
       {
         id: string;
-        name: string;
-        query: string;
-        charts: any[];
+        name?: string;
+        query?: string;
+        charts?: any[];
         tags?: string[];
       }
     >(async ({ id, name, charts, query, tags }) =>
@@ -704,25 +699,37 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { service: string; url: string; name: string }
-    >(async ({ service, url, name }) =>
+      {
+        service: string;
+        url: string;
+        name: string;
+        description?: string;
+        queryParams?: Map<string, string>;
+        headers?: Map<string, string>;
+        body?: Map<string, string>;
+      }
+    >(async ({ service, url, name, description, queryParams, headers, body }) =>
       server(`webhooks`, {
         method: 'POST',
         json: {
           name,
           service,
           url,
+          description,
+          queryParams,
+          headers,
+          body,
         },
       }).json(),
     );
   },
-  useWebhooks(service: string) {
+  useWebhooks(services: string[]) {
     return useQuery<any, Error>({
-      queryKey: [service],
+      queryKey: [...services],
       queryFn: () =>
         server('webhooks', {
           method: 'GET',
-          searchParams: [['service', service]],
+          searchParams: [...services.map(service => ['service', service])],
         }).json(),
     });
   },

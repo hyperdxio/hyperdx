@@ -2,7 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
-import { Divider, Group, Paper, SegmentedControl } from '@mantine/core';
+import {
+  Divider,
+  Group,
+  Paper,
+  SegmentedControl,
+  Select as MSelect,
+} from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
@@ -77,12 +83,29 @@ export enum Granularity {
   ThirtyDay = '30 day',
 }
 
+export const GRANULARITY_SECONDS_MAP: Record<Granularity, number> = {
+  [Granularity.ThirtySecond]: 30,
+  [Granularity.OneMinute]: 60,
+  [Granularity.FiveMinute]: 5 * 60,
+  [Granularity.TenMinute]: 10 * 60,
+  [Granularity.FifteenMinute]: 15 * 60,
+  [Granularity.ThirtyMinute]: 30 * 60,
+  [Granularity.OneHour]: 60 * 60,
+  [Granularity.TwoHour]: 2 * 60 * 60,
+  [Granularity.SixHour]: 6 * 60 * 60,
+  [Granularity.TwelveHour]: 12 * 60 * 60,
+  [Granularity.OneDay]: 24 * 60 * 60,
+  [Granularity.TwoDay]: 2 * 24 * 60 * 60,
+  [Granularity.SevenDay]: 7 * 24 * 60 * 60,
+  [Granularity.ThirtyDay]: 30 * 24 * 60 * 60,
+};
+
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
 
 const seriesDisplayName = (
-  s: ChartSeries,
+  s: ChartSeries | undefined,
   {
     showAggFn,
     showField,
@@ -93,6 +116,9 @@ const seriesDisplayName = (
     showWhere?: boolean;
   } = {},
 ) => {
+  if (!s) {
+    return '';
+  }
   if (s.type === 'time' || s.type === 'table') {
     if (s.displayName != null) {
       return s.displayName;
@@ -462,9 +488,9 @@ export function MetricNameSelect({
   }, [metricNamesData]);
 
   return (
-    <AsyncSelect
-      isLoading={isLoading}
-      isDisabled={isError}
+    <MSelect
+      disabled={isLoading || isError}
+      variant="filled"
       placeholder={
         isLoading
           ? 'Loading...'
@@ -472,24 +498,17 @@ export function MetricNameSelect({
           ? 'Unable to load metrics'
           : 'Select a metric...'
       }
-      loadOptions={input => {
-        return Promise.resolve(
-          options.filter(v =>
-            input.length > 0
-              ? v.value.toLowerCase().includes(input.toLowerCase())
-              : true,
-          ),
-        );
+      data={options}
+      limit={100}
+      comboboxProps={{
+        position: 'bottom-start',
+        width: 'auto',
+        zIndex: 1111,
       }}
-      defaultOptions={options}
-      value={
-        value != null
-          ? options.find(v => v.value === value)
-          : { value: undefined, label: 'None' }
-      }
-      onChange={opt => setValue(opt?.value)}
-      className="ds-select"
-      classNamePrefix="ds-react-select"
+      value={value ?? undefined}
+      searchable
+      clearable
+      onChange={value => setValue(value ?? undefined)}
     />
   );
 }
@@ -693,7 +712,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <FieldSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -732,7 +751,7 @@ export function ChartSeriesForm({
             >
               Group By
             </div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <MetricTagSelect
                 value={groupBy}
                 setValue={setGroupBy}
@@ -1015,7 +1034,7 @@ export function ChartSeriesFormCompact({
         {table === 'logs' && setGroupBy != null && (
           <div className="d-flex align-items-center">
             <div className="text-muted">Group By</div>
-            <div className="ms-3 flex-grow-1">
+            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
               <GroupBySelect
                 groupBy={groupBy}
                 table={table}
@@ -1058,7 +1077,7 @@ export function ChartSeriesFormCompact({
             {setGroupBy != null && (
               <div className="d-flex align-items-center">
                 <div className="text-muted fw-500">Group By</div>
-                <div className="ms-3 flex-grow-1">
+                <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
                   <GroupBySelect
                     groupBy={groupBy}
                     fields={field != null ? [field] : []}

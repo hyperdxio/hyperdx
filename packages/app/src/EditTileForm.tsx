@@ -18,6 +18,7 @@ import type { Alert, Chart, Dashboard } from './types';
 
 const EditTileForm = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   dateRange,
@@ -33,8 +34,10 @@ const EditTileForm = ({
   hideMarkdown,
   hideSearch,
   createDashboardHref,
+  dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts?: Alert[];
   dateRange: [Date, Date];
@@ -50,6 +53,7 @@ const EditTileForm = ({
   hideMarkdown?: boolean;
   hideSearch?: boolean;
   createDashboardHref?: string;
+  dashboardQuery?: string;
 }) => {
   type Tab =
     | 'time'
@@ -158,6 +162,7 @@ const EditTileForm = ({
       {displayedTab === 'time' && chart != null && (
         <EditLineChartForm
           isLocalDashboard={isLocalDashboard}
+          isAddingAlert={isAddingAlert}
           chart={produce(chart, draft => {
             for (const series of draft.series) {
               series.type = 'time';
@@ -174,6 +179,7 @@ const EditTileForm = ({
           onTimeRangeSearch={onTimeRangeSearch}
           granularity={granularity}
           setGranularity={setGranularity}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'table' && chart != null && (
@@ -191,6 +197,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'histogram' && chart != null && (
@@ -206,6 +213,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'search' && chart != null && (
@@ -216,6 +224,7 @@ const EditTileForm = ({
           onSave={onSave}
           onClose={onClose}
           dateRange={dateRange}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'number' && chart != null && (
@@ -231,6 +240,7 @@ const EditTileForm = ({
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           displayedTimeInputValue={displayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          dashboardQuery={dashboardQuery}
         />
       )}
       {displayedTab === 'markdown' && chart != null && (
