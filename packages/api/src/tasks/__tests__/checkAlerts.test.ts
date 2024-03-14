@@ -24,6 +24,7 @@ import {
   buildLogSearchLink,
   doesExceedThreshold,
   escapeJsonValues,
+  expandToNestedObject,
   getDefaultExternalAction,
   injectIntoPlaceholders,
   processAlert,
@@ -142,6 +143,47 @@ describe('checkAlerts', () => {
     expect(doesExceedThreshold(true, 10, 10)).toBe(true);
     expect(doesExceedThreshold(false, 10, 9)).toBe(true);
     expect(doesExceedThreshold(false, 10, 10)).toBe(false);
+  });
+
+  it('expandToNestedObject', () => {
+    expect(expandToNestedObject({}).__proto__).toBeUndefined();
+    expect(expandToNestedObject({})).toEqual({});
+    expect(expandToNestedObject({ foo: 'bar' })).toEqual({ foo: 'bar' });
+    expect(expandToNestedObject({ 'foo.bar': 'baz' })).toEqual({
+      foo: { bar: 'baz' },
+    });
+    expect(expandToNestedObject({ 'foo.bar.baz': 'qux' })).toEqual({
+      foo: { bar: { baz: 'qux' } },
+    });
+    // mix
+    expect(
+      expandToNestedObject({
+        'foo.bar.baz': 'qux',
+        'foo.bar.quux': 'quuz',
+        'foo1.bar1.baz1': 'qux1',
+      }),
+    ).toEqual({
+      foo: { bar: { baz: 'qux', quux: 'quuz' } },
+      foo1: { bar1: { baz1: 'qux1' } },
+    });
+    // overwriting
+    expect(
+      expandToNestedObject({ 'foo.bar.baz': 'qux', 'foo.bar': 'quuz' }),
+    ).toEqual({
+      foo: { bar: 'quuz' },
+    });
+    // max depth
+    expect(
+      expandToNestedObject(
+        {
+          'foo.bar.baz.qux.quuz.quux': 'qux',
+        },
+        '.',
+        3,
+      ),
+    ).toEqual({
+      foo: { bar: { baz: {} } },
+    });
   });
 
   describe('Alert Templates', () => {
@@ -532,8 +574,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         template: `
-{{#is_match "k8s.pod.name" "otel-collector-123"}}
-  Runbook URL: {{attributes.runbookUrl}}
+{{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
+  Runbook URL: {{attributes.runbook.url}}
   hi i matched
   @slack_webhook-My_Web
 {{/is_match}}
@@ -549,8 +591,14 @@ describe('checkAlerts', () => {
             },
           },
           attributes: {
-            runbookUrl: 'https://example.com',
-            'k8s.pod.name': 'otel-collector-123',
+            runbook: {
+              url: 'https://example.com',
+            },
+            k8s: {
+              pod: {
+                name: 'otel-collector-123',
+              },
+            },
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
@@ -563,7 +611,7 @@ describe('checkAlerts', () => {
       // @slack_webhook should not be called
       await renderAlertTemplate({
         template:
-          '{{#is_match "host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
+          '{{#is_match "attributes.host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
