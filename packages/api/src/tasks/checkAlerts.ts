@@ -4,6 +4,7 @@
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
+import _ from 'lodash';
 import { escapeRegExp, isString } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -107,6 +108,36 @@ export const doesExceedThreshold = (
   return false;
 };
 
+// transfer keys of attributes with dot into nested object
+// ex: { 'a.b': 'c', 'd.e.f': 'g' } -> { a: { b: 'c' }, d: { e: { f: 'g' } } }
+export const expandToNestedObject = (
+  obj: Record<string, string>,
+  separator = '.',
+  maxDepth = 10,
+) => {
+  const result: Record<string, any> = Object.create(null); // An object NOT inheriting from `Object.prototype`
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const keys = key.split(separator);
+      let nestedObj = result;
+
+      for (let i = 0; i < keys.length; i++) {
+        if (i >= maxDepth) {
+          break;
+        }
+        const nestedKey = keys[i];
+        if (i === keys.length - 1) {
+          nestedObj[nestedKey] = obj[key];
+        } else {
+          nestedObj[nestedKey] = nestedObj[nestedKey] || {};
+          nestedObj = nestedObj[nestedKey];
+        }
+      }
+    }
+  }
+  return result;
+};
+
 // ------------------------------------------------------------
 // ----------------- Alert Message Template -------------------
 // ------------------------------------------------------------
@@ -114,7 +145,7 @@ export const doesExceedThreshold = (
 type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
   alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
-  attributes: Record<string, string>;
+  attributes: ReturnType<typeof expandToNestedObject>;
   dashboard: ReturnType<
     typeof translateDashboardDocumentToExternalDashboard
   > | null;
@@ -411,16 +442,8 @@ export const renderAlertTemplate = async ({
     logStreamTableVersion?: ITeam['logStreamTableVersion'];
   };
 }) => {
-  const {
-    alert,
-    attributes,
-    dashboard,
-    endTime,
-    group,
-    savedSearch,
-    startTime,
-    value,
-  } = view;
+  const { alert, dashboard, endTime, group, savedSearch, startTime, value } =
+    view;
 
   const defaultExternalAction = getDefaultExternalAction(alert);
   const targetTemplate =
@@ -430,14 +453,13 @@ export const renderAlertTemplate = async ({
         ).trim()
       : translateExternalActionsToInternal(template ?? '');
 
-  const attributesMap = new Map(Object.entries(attributes ?? {}));
   const isMatchFn = function (shouldRender: boolean) {
     return function (
       targetKey: string,
       targetValue: string,
       options: HelperOptions,
     ) {
-      if (attributesMap.get(targetKey) === targetValue) {
+      if (_.has(view, targetKey) && _.get(view, targetKey) === targetValue) {
         if (shouldRender) {
           return options.fn(this);
         } else {
@@ -581,12 +603,14 @@ const fireChannelEvent = async ({
   if (team == null) {
     throw new Error('Team not found');
   }
+
+  const attributesNested = expandToNestedObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       ...translateAlertDocumentToExternalAlert(alert),
       groupBy: alert.groupBy,
     },
-    attributes,
+    attributes: attributesNested,
     dashboard: dashboard
       ? translateDashboardDocumentToExternalDashboard({
           _id: dashboard._id,
