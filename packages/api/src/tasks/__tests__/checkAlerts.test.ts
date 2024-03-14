@@ -146,6 +146,7 @@ describe('checkAlerts', () => {
   });
 
   it('expandToNestedObject', () => {
+    expect(expandToNestedObject({}).__proto__).toBeUndefined();
     expect(expandToNestedObject({})).toEqual({});
     expect(expandToNestedObject({ foo: 'bar' })).toEqual({ foo: 'bar' });
     expect(expandToNestedObject({ 'foo.bar': 'baz' })).toEqual({

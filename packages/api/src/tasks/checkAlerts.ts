@@ -115,7 +115,7 @@ export const expandToNestedObject = (
   separator = '.',
   maxDepth = 10,
 ) => {
-  const result: Record<string, any> = {};
+  const result: Record<string, any> = Object.create(null); // An object NOT inheriting from `Object.prototype
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const keys = key.split(separator);
