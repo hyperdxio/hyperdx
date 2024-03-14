@@ -62,7 +62,9 @@ const buildAndWhereClause = (query1 = '', query2 = '') => {
   }
 };
 
-const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
+const withDashboardFilter = <
+  T extends { where?: string; series?: ChartSeries[] },
+>(
   chartConfig: T | null,
   dashboardQuery?: string,
 ) => {
@@ -75,7 +77,9 @@ const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
               ...s,
               where: buildAndWhereClause(
                 dashboardQuery,
-                s.type === 'time' || s.type === 'table' ? s.where : '',
+                s.type === 'number' || s.type === 'time' || s.type === 'table'
+                  ? s.where
+                  : '',
               ),
             }))
           : undefined,
