@@ -75,7 +75,9 @@ const withDashboardFilter = <T extends { where?: string; series?: any[] }>(
               ...s,
               where: buildAndWhereClause(
                 dashboardQuery,
-                s.type === 'time' || s.type === 'table' ? s.where : '',
+                s.type === 'number' || s.type === 'time' || s.type === 'table'
+                  ? s.where
+                  : '',
               ),
             }))
           : undefined,
