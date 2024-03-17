@@ -168,6 +168,7 @@ services:
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: worker
       CLICKHOUSE_USER: worker
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 0
