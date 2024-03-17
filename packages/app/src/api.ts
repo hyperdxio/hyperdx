@@ -29,6 +29,11 @@ type ApiAlertInput = {
   chartId?: string;
 };
 
+type ApiAlertAckInput = {
+  alertId: string;
+  mutedUntil: Date;
+};
+
 type ServicesResponse = {
   data: Record<
     string,
@@ -568,6 +573,21 @@ const api = {
   useDeleteAlert() {
     return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
       server(`alerts/${alertId}`, {
+        method: 'DELETE',
+      }),
+    );
+  },
+  useSilenceAlert() {
+    return useMutation<any, Error, ApiAlertAckInput>('alerts', async alertAck =>
+      server(`alerts/${alertAck.alertId}/silenced`, {
+        method: 'POST',
+        json: alertAck,
+      }),
+    );
+  },
+  useUnsilenceAlert() {
+    return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
+      server(`alerts/${alertId}/silenced`, {
         method: 'DELETE',
       }),
     );

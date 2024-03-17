@@ -6,6 +6,7 @@ import { validateRequest } from 'zod-express-middleware';
 import {
   createAlert,
   deleteAlert,
+  getAlertById,
   getAlertsWithLogViewAndDashboard,
   updateAlert,
   validateGroupByProperty,
@@ -73,6 +74,13 @@ router.get('/', async (req, res, next) => {
 
         return {
           history,
+          silenced: alert.silenced
+            ? {
+                by: alert.silenced.by?.email,
+                at: alert.silenced.at,
+                until: alert.silenced.until,
+              }
+            : undefined,
           channel: _.pick(alert.channel, ['type']),
           ...(alert.dashboardId && {
             dashboard: {
@@ -158,6 +166,69 @@ router.put(
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  '/:id/silenced',
+  validateRequest({
+    body: z.object({
+      mutedUntil: z.string().datetime(),
+    }),
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null || req.user == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        throw new Error('Alert not found');
+      }
+      alert.silenced = {
+        by: req.user._id,
+        at: new Date(),
+        until: new Date(req.body.mutedUntil),
+      };
+      await alert.save();
+
+      res.sendStatus(200);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.delete(
+  '/:id/silenced',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const alert = await getAlertById(req.params.id, teamId);
+      if (!alert) {
+        throw new Error('Alert not found');
+      }
+      alert.silenced = undefined;
+      await alert.save();
+
+      res.sendStatus(200);
     } catch (e) {
       next(e);
     }

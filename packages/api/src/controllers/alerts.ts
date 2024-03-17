@@ -1,4 +1,5 @@
 import { getHours, getMinutes } from 'date-fns';
+import { sign, verify } from 'jsonwebtoken';
 import ms from 'ms';
 import { z } from 'zod';
 
@@ -14,6 +15,8 @@ import Alert, {
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import LogView, { ILogView } from '@/models/logView';
+import { IUser } from '@/models/user';
+import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
@@ -34,6 +37,13 @@ export type AlertInput = {
   // Chart alerts
   dashboardId?: string;
   chartId?: string;
+
+  // Silenced
+  silenced?: {
+    by?: ObjectId;
+    at: Date;
+    until: Date;
+  };
 };
 
 const getCron = (interval: AlertInterval) => {
@@ -131,7 +141,7 @@ export const createAlert = async (
   }).save();
 };
 
-const dashboardLogViewIds = async (teamId: ObjectId) => {
+const dashboardLogViewIds = async (teamId: ObjectId | string) => {
   const [dashboards, logViews] = await Promise.all([
     Dashboard.find({ team: teamId }, { _id: 1 }),
     LogView.find({ team: teamId }, { _id: 1 }),
@@ -194,7 +204,10 @@ export const getAlerts = async (teamId: ObjectId) => {
   });
 };
 
-export const getAlertById = async (alertId: string, teamId: ObjectId) => {
+export const getAlertById = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+) => {
   const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
 
   return Alert.findOne({
@@ -233,7 +246,10 @@ export const getAlertsWithLogViewAndDashboard = async (teamId: ObjectId) => {
   }).populate<{
     logView: ILogView;
     dashboardId: IDashboard;
-  }>(['logView', 'dashboardId']);
+    silenced?: IAlert['silenced'] & {
+      by: IUser;
+    };
+  }>(['logView', 'dashboardId', 'silenced.by']);
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {
@@ -254,4 +270,66 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
       },
     ],
   });
+};
+
+export const generateAlertSilenceToken = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+) => {
+  const secret = process.env.EXPRESS_SESSION_SECRET;
+
+  if (!secret) {
+    logger.error(
+      'EXPRESS_SESSION_SECRET is not set for signing token, skipping alert silence JWT generation',
+    );
+    return '';
+  }
+
+  const alert = await getAlertById(alertId, teamId);
+  if (alert == null) {
+    throw new Error('Alert not found');
+  }
+
+  const token = sign(
+    { alertId: alert._id.toString(), teamId: teamId.toString() },
+    secret,
+    { expiresIn: '1h' },
+  );
+
+  // Slack does not accept ids longer than 255 characters
+  if (token.length > 255) {
+    logger.error(
+      'Alert silence JWT length is greater than 255 characters, this may cause issues with some clients.',
+    );
+  }
+
+  return token;
+};
+
+export const silenceAlertByToken = async (token: string) => {
+  const secret = process.env.EXPRESS_SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error('EXPRESS_SESSION_SECRET is not set for verifying token');
+  }
+
+  const decoded = verify(token, secret, {
+    algorithms: ['HS256'],
+  }) as { alertId: string; teamId: string };
+
+  if (!decoded?.alertId || !decoded?.teamId) {
+    throw new Error('Invalid token');
+  }
+
+  const alert = await getAlertById(decoded.alertId, decoded.teamId);
+  if (alert == null) {
+    throw new Error('Alert not found');
+  }
+
+  alert.silenced = {
+    at: new Date(),
+    until: new Date(Date.now() + ms('30m')),
+  };
+
+  return alert.save();
 };
