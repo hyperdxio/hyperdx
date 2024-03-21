@@ -4,6 +4,7 @@ import throttle from 'lodash/throttle';
 import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
 import ReactSlider from 'react-slider';
+import { Group } from '@mantine/core';
 
 import Checkbox from './Checkbox';
 import { useSessionEvents } from './sessionUtils';
@@ -219,25 +220,57 @@ export default function Playbar({
     false,
   );
 
+  const skipBackward = () => {
+    setFocus({
+      ts: Math.max((focus?.ts ?? minTs) - 15000, minTs),
+      setBy: 'skip-backward',
+    });
+  };
+
+  const skipForward = () => {
+    setFocus({
+      ts: Math.min((focus?.ts ?? minTs) + 15000, maxTs),
+      setBy: 'skip-forward',
+    });
+  };
+
   return (
     <div className="d-flex align-items-center">
-      {playerState === 'playing' ? (
+      <Group gap="xs" wrap="nowrap">
+        {playerState === 'playing' ? (
+          <div
+            className=""
+            role="button"
+            onClick={() => setPlayerState('paused')}
+          >
+            <i className="mt-3 fs-6 bi bi-pause-fill" />
+          </div>
+        ) : (
+          <div
+            className=""
+            role="button"
+            onClick={() => setPlayerState('playing')}
+          >
+            <i className="fs-6 bi bi-play-fill" />
+          </div>
+        )}
         <div
           className=""
           role="button"
-          onClick={() => setPlayerState('paused')}
+          title="Skip Backward 15s"
+          onClick={skipBackward}
         >
-          <i className="mt-3 fs-6 bi bi-pause-fill" />
+          <i className="mt-3 fs-7 bi bi-skip-backward-fill" />
         </div>
-      ) : (
         <div
           className=""
           role="button"
-          onClick={() => setPlayerState('playing')}
+          title="Skip Forward 15s"
+          onClick={skipForward}
         >
-          <i className="fs-6 bi bi-play-fill" />
+          <i className="mt-3 fs-7 bi bi-skip-forward-fill" />
         </div>
-      )}
+      </Group>
       <div
         className="mx-2 fs-8 text-muted-hover cursor-pointer text-nowrap"
         title="Click to toggle between relative time and clock"
