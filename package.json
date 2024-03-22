@@ -20,7 +20,7 @@
   "lint-staged": {
     "**/*.{js,jsx,ts,tsx}": [
       "prettier --write --ignore-unknown",
-      "eslint"
+      "eslint --fix"
     ],
     "**/*.{mdx,json,yml}": [
       "prettier --write --ignore-unknown"
