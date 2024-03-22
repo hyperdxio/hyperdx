@@ -18,6 +18,12 @@
     "prepare": "husky install"
   },
   "lint-staged": {
-    "**/*": "prettier --write --ignore-unknown"
+    "**/*.{js,jsx,ts,tsx}": [
+      "prettier --write --ignore-unknown",
+      "eslint"
+    ],
+    "**/*.{mdx,json,yml}": [
+      "prettier --write --ignore-unknown"
+    ]
   }
 }

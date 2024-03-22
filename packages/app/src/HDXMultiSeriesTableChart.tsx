@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { CSVLink } from 'react-csv';
 import { Flex, Text } from '@mantine/core';
 import {
   flexRender,
@@ -21,7 +22,6 @@ import {
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { ChartSeries, NumberFormat } from './types';
 import { formatNumber } from './utils';
-import { CSVLink } from 'react-csv';
 
 const Table = ({
   data,
