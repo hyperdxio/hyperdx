@@ -2306,6 +2306,7 @@ export const getSessions = async ({
       count() AS sessionCount,
       countIf(?='user-interaction') AS interactionCount,
       countIf(severity_text = 'error') AS errorCount,
+      countIf(span_name = 'record init') AS recordingCount,
       ? AS sessionId,
       ?
     FROM ??
@@ -2314,7 +2315,7 @@ export const getSessions = async ({
     ${
       // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
       // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-      q.length === 0 ? 'HAVING interactionCount > 0' : ''
+      q.length === 0 ? 'HAVING interactionCount > 0 OR recordingCount > 0' : ''
     }
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
