@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import { CSVLink } from 'react-csv';
 import { Flex, Text } from '@mantine/core';
 import {
   flexRender,
@@ -155,6 +156,18 @@ const Table = ({
     [items, rowVirtualizer.options.scrollMargin, totalSize],
   );
 
+  const csvData = useMemo(() => {
+    return data.map(row => {
+      const csvRow: { [key: string]: string } = {
+        [groupColumnName]: row.group,
+      };
+      columns.forEach(({ displayName, dataKey }) => {
+        csvRow[displayName] = row[dataKey];
+      });
+      return csvRow;
+    });
+  }, [data, columns, groupColumnName]);
+
   return (
     <div
       className="overflow-auto h-100 fs-8 bg-inherit"
@@ -227,6 +240,22 @@ const Table = ({
                               }`}
                             >
                               <i className="bi bi-three-dots-vertical" />
+                            </div>
+                          )}
+                          {headerIndex === headerGroup.headers.length - 1 && (
+                            <div className="d-flex align-items-center">
+                              <CSVLink
+                                data={csvData}
+                                filename={`HyperDX_table_results`}
+                              >
+                                <div
+                                  className="fs-8 text-muted-hover ms-2"
+                                  role="button"
+                                  title="Download table as CSV"
+                                >
+                                  <i className="bi bi-download" />
+                                </div>
+                              </CSVLink>
                             </div>
                           )}
                         </Flex>
