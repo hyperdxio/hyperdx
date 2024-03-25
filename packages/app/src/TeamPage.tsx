@@ -159,11 +159,6 @@ export default function TeamPage() {
       return;
     }
 
-    if (body && !isValidJson(body)) {
-      toast.error('Please enter valid JSON for body');
-      return;
-    }
-
     saveWebhook.mutate(
       {
         name,
@@ -171,7 +166,7 @@ export default function TeamPage() {
         url,
         description,
         headers: headers ? JSON.parse(headers) : undefined,
-        body: body ? JSON.parse(body) : undefined,
+        body,
       },
       {
         onSuccess: () => {
@@ -597,9 +592,7 @@ export default function TeamPage() {
                       height="100px"
                       extensions={[
                         json(),
-                        placeholder(
-                          '{\n\t"text": "$HDX_ALERT_URL | $HDX_ALERT_TITLE | $HDX_ALERT_BODY",\n}',
-                        ),
+                        placeholder('{\n\t"text": "{{HDX_ALERT_BODY}}"\n}'),
                       ]}
                       theme={hdxJSONTheme}
                       onChange={onBodyChange}
@@ -619,8 +612,17 @@ export default function TeamPage() {
                     </span>
                     <br />
                     <span>
-                      <code>$HDX_ALERT_URL</code>, <code>$HDX_ALERT_TITLE</code>
-                      , <code>$HDX_ALERT_BODY</code>
+                      <code>
+                        {'{{'}HDX_ALERT_URL{'}}'}
+                      </code>
+                      ,{' '}
+                      <code>
+                        {'{{'}HDX_ALERT_TITLE{'}}'}
+                      </code>
+                      ,{' '}
+                      <code>
+                        {'{{'}HDX_ALERT_BODY{'}}'}
+                      </code>
                     </span>
                   </Alert>
                   <Button
