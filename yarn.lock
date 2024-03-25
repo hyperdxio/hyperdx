@@ -1351,17 +1351,17 @@
     human-id "^1.0.2"
     prettier "^2.7.1"
 
-"@clickhouse/client-common@0.2.7":
-  version "0.2.7"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-0.2.7.tgz#c238ef9f5386f7d7a18e09931bb765a4ad4d7ebb"
-  integrity sha512-vgZm+8c5Cu1toIx1/xplF5dEHlCPw+7pJDOOEtLv2CIUVZ0Bl6nGVZ43EWxRdHeah9ivTfoRWhN1zI1PxjH0xQ==
+"@clickhouse/client-common@0.2.10":
+  version "0.2.10"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-0.2.10.tgz#62f454d2cc2ee27a325034a2cca47c6f5c90d22e"
+  integrity sha512-BvTY0IXS96y9RUeNCpKL4HUzHmY80L0lDcGN0lmUD6zjOqYMn78+xyHYJ/AIAX7JQsc+/KwFt2soZutQTKxoGQ==
 
-"@clickhouse/client@^0.2.7":
-  version "0.2.7"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.2.7.tgz#f13103d7a4ab39d86307e6211504f46b8c71faae"
-  integrity sha512-ZiyarrGngHc+f5AjZSA7mkQfvnE/71jgXk304B0ps8V+aBpE2CsFB6AQmE/Mk2YkP5j+8r/JfG+m0AZWmE27ig==
+"@clickhouse/client@^0.2.10":
+  version "0.2.10"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.2.10.tgz#519561f3a4fff837bb606c52abfe74e5e7e9abb3"
+  integrity sha512-ZwBgzjEAFN/ogS0ym5KHVbR7Hx/oYCX01qGp2baEyfN2HM73kf/7Vp3GvMHWRy+zUXISONEtFv7UTViOXnmFrg==
   dependencies:
-    "@clickhouse/client-common" "0.2.7"
+    "@clickhouse/client-common" "0.2.10"
 
 "@codemirror/autocomplete@^6.0.0":
   version "6.13.0"
