@@ -592,7 +592,7 @@ export default function TeamPage() {
                       height="100px"
                       extensions={[
                         json(),
-                        placeholder('{\n\t"text": "{{HDX_ALERT_BODY}}"\n}'),
+                        placeholder('{\n\t"text": "{{body}}"\n}'),
                       ]}
                       theme={hdxJSONTheme}
                       onChange={onBodyChange}
@@ -613,15 +613,15 @@ export default function TeamPage() {
                     <br />
                     <span>
                       <code>
-                        {'{{'}HDX_ALERT_URL{'}}'}
+                        {'{{'}link{'}}'}
                       </code>
                       ,{' '}
                       <code>
-                        {'{{'}HDX_ALERT_TITLE{'}}'}
+                        {'{{'}title{'}}'}
                       </code>
                       ,{' '}
                       <code>
-                        {'{{'}HDX_ALERT_BODY{'}}'}
+                        {'{{'}body{'}}'}
                       </code>
                     </span>
                   </Alert>

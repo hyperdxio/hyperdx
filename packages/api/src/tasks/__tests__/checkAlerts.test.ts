@@ -1226,7 +1226,7 @@ describe('checkAlerts', () => {
         name: 'Generic Webhook',
         description: 'generic webhook description',
         body: JSON.stringify({
-          text: '{{HDX_ALERT_URL}} | {{HDX_ALERT_TITLE}}',
+          text: '{{link}} | {{title}}',
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -1344,7 +1344,7 @@ describe('checkAlerts', () => {
         name: 'Generic Webhook',
         description: 'generic webhook description',
         body: JSON.stringify({
-          text: '{{HDX_ALERT_URL}} | {{HDX_ALERT_TITLE}}',
+          text: '{{link}} | {{title}}',
         }),
         headers: { 'Content-Type': 'application/json' },
       }).save();
@@ -1573,7 +1573,7 @@ describe('checkAlerts', () => {
         name: 'Generic Webhook',
         description: 'generic webhook description',
         body: JSON.stringify({
-          text: '{{HDX_ALERT_URL}} | {{HDX_ALERT_TITLE}}',
+          text: '{{link}} | {{title}}',
         }),
         headers: { 'Content-Type': 'application/json' },
       }).save();
