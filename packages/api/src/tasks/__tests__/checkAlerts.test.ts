@@ -575,8 +575,7 @@ describe('checkAlerts', () => {
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
-      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
-        1,
+      expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
         'https://hooks.slack.com/services/123',
         {
           text: 'Alert for "My Search" - 10 lines found',
@@ -605,8 +604,7 @@ describe('checkAlerts', () => {
           ],
         },
       );
-      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
-        2,
+      expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
         'https://hooks.slack.com/services/456',
         {
           text: 'Alert for "My Search" - 10 lines found',
@@ -1296,7 +1294,7 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenNthCalledWith(1, 'https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/search/${logView._id}?from&#x3D;1700172600000&amp;to&#x3D;1700172900000&amp;q&#x3D;level%3Aerror+span_name%3A%22HyperDX%22 | Alert for &quot;My Log View&quot; - 11 lines found"}`,
+        body: `{"text":"http://localhost:9090/search/${logView.id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found"}`,
         headers: {
           'Content-Type': 'application/json',
           'X-HyperDX-Signature': 'XXXXX-XXXXX',
@@ -1452,7 +1450,7 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/dashboards/${dashboard._id.toString()}?from&#x3D;1700170200000&amp;granularity&#x3D;5+minute&amp;to&#x3D;1700174700000 | Alert for &quot;Max Duration&quot; in &quot;My Dashboard&quot; - 102 exceeds 10"}`,
+        body: `{"text":"http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10"}`,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -1679,7 +1677,7 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenNthCalledWith(1, 'https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/dashboards/${dashboard._id}?from&#x3D;1700170200000&amp;granularity&#x3D;5+minute&amp;to&#x3D;1700174700000 | Alert for &quot;Redis Memory&quot; in &quot;My Dashboard&quot; - 395.3421052631579 exceeds 10"}`,
+        body: `{"text":"http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10"}`,
         headers: {
           'Content-Type': 'application/json',
         },

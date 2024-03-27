@@ -273,7 +273,9 @@ export const handleSendGenericWebhook = async (
   let body = '';
   if (webhook.body) {
     const handlebars = Handlebars.create();
-    body = handlebars.compile(webhook.body)({
+    body = handlebars.compile(webhook.body, {
+      noEscape: true,
+    })({
       HDX_ALERT_URL: message.hdxLink,
       HDX_ALERT_TITLE: message.title,
       HDX_ALERT_BODY: message.body,
