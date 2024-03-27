@@ -726,7 +726,7 @@ const api = {
         description?: string;
         queryParams?: Map<string, string>;
         headers?: Map<string, string>;
-        body?: Map<string, string>;
+        body?: string;
       }
     >(async ({ service, url, name, description, queryParams, headers, body }) =>
       server(`webhooks`, {

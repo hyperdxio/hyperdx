@@ -270,14 +270,16 @@ export const handleSendGenericWebhook = async (
 
   // BODY
 
-  let parsedBody: Record<string, string | number | symbol> = {};
+  let body = '';
   if (webhook.body) {
-    const injectedBody = injectIntoPlaceholders(JSON.stringify(webhook.body), {
-      $HDX_ALERT_URL: message.hdxLink,
-      $HDX_ALERT_TITLE: message.title,
-      $HDX_ALERT_BODY: message.body,
+    const handlebars = Handlebars.create();
+    body = handlebars.compile(webhook.body, {
+      noEscape: true,
+    })({
+      body: message.body,
+      link: message.hdxLink,
+      title: message.title,
     });
-    parsedBody = JSON.parse(injectedBody);
   }
 
   try {
@@ -285,7 +287,7 @@ export const handleSendGenericWebhook = async (
     const response = await fetch(url, {
       method: 'POST',
       headers: headers as Record<string, string>,
-      body: JSON.stringify(parsedBody),
+      body,
     });
 
     if (!response.ok) {
@@ -298,32 +300,6 @@ export const handleSendGenericWebhook = async (
     });
   }
 };
-
-type HDXGenericWebhookTemplateValues = {
-  $HDX_ALERT_URL?: string;
-  $HDX_ALERT_TITLE?: string;
-  $HDX_ALERT_BODY?: string;
-};
-
-export function injectIntoPlaceholders(
-  placeholderString: string,
-  valuesToInject: HDXGenericWebhookTemplateValues,
-) {
-  return placeholderString.replace(/(\$\w+)/g, function (match) {
-    const replacement =
-      valuesToInject[match as keyof HDXGenericWebhookTemplateValues] || match;
-    return escapeJsonValues(replacement);
-  });
-}
-
-export function escapeJsonValues(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
-}
 
 export const buildAlertMessageTemplateHdxLink = ({
   alert,

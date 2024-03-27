@@ -115,7 +115,7 @@
     "@types/react-virtualized-auto-sizer": "^1.0.1",
     "@typescript-eslint/eslint-plugin": "^5.52.0",
     "@typescript-eslint/parser": "^5.52.0",
-    "eslint": "^8.34.0",
+    "eslint": "^8.57.0",
     "eslint-config-next": "13",
     "eslint-config-prettier": "^8.6.0",
     "eslint-plugin-prettier": "^4.2.1",

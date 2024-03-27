@@ -29,7 +29,7 @@ export interface IWebhook {
   // to strip the additional properties that are related to the Mongoose internal representation -> webhook.headers.toJSON()
   queryParams?: MongooseMap;
   headers?: MongooseMap;
-  body?: MongooseMap;
+  body?: string;
 }
 
 const WebhookSchema = new Schema<IWebhook>(
@@ -63,8 +63,7 @@ const WebhookSchema = new Schema<IWebhook>(
       required: false,
     },
     body: {
-      type: Map,
-      of: String,
+      type: String,
       required: false,
     },
   },
