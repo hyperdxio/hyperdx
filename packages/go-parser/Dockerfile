@@ -13,7 +13,7 @@ COPY ./packages/go-parser/go.mod ./packages/go-parser/go.sum ./
 RUN go mod download
 
 # copy directory files i.e all files ending with .go
-COPY ./packages/go-parser/*.go ./
+COPY ./packages/go-parser ./
 
 # compile application
 RUN go build -o /go-parser
