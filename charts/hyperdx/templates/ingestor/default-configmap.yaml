@@ -1,0 +1,14 @@
+{{- if and .Values.ingestor.enabled (not .Values.ingestor.existingConfigmap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-default" (include "hyperdx.ingestor.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: ingestor
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data: {{- include "common.tplvalues.render" (dict "value" .Values.ingestor.defaultConfig "context" $) | nindent 2 }}
+{{- end }}
