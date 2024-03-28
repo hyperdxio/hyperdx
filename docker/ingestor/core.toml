@@ -614,7 +614,7 @@ if exists(.ts) {
 }
 
 # infer log level for raw logs
-if is_nullish(.st) {
+if is_nullish(.st) || !is_string(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
     header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""
