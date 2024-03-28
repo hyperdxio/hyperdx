@@ -35,6 +35,7 @@ mongod --quiet --dbpath /data/db &
 # Start Vector Ingestor
 ENABLE_GO_PARSER="false" \
 GO_PARSER_API_URL="http://go-parser:7777" \
+ENABLE_TOKEN_MATCHING_CHECK="false" \
 vector \
   -c /etc/vector/sources.toml \
   -c /etc/vector/core.toml \
