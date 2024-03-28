@@ -6,8 +6,10 @@ import Dashboard from '@/models/dashboard';
 import LogView from '@/models/logView';
 import Team from '@/models/team';
 
+const LOCAL_APP_TEAM_ID = '_local_team_';
 const LOCAL_APP_TEAM = {
-  _id: '_local_team_',
+  _id: LOCAL_APP_TEAM_ID,
+  id: LOCAL_APP_TEAM_ID,
   name: 'Local App Team',
   // Placeholder keys
   hookId: uuidv4(),

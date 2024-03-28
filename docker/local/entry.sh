@@ -33,6 +33,8 @@ redis-server &
 mongod --quiet --dbpath /data/db &
 
 # Start Vector Ingestor
+ENABLE_GO_PARSER="false" \
+GO_PARSER_API_URL="http://go-parser:7777" \
 vector \
   -c /etc/vector/sources.toml \
   -c /etc/vector/core.toml \
