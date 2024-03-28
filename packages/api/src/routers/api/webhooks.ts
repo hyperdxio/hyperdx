@@ -47,7 +47,7 @@ router.post(
       name: z.string(),
       queryParams: z.record(z.string()).optional(),
       service: z.nativeEnum(WebhookService),
-      url: z.string().url().optional(),
+      url: z.string().url(),
     }),
   }),
   async (req, res, next) => {
