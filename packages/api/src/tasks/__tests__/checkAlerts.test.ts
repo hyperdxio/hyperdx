@@ -23,6 +23,7 @@ import {
   buildAlertMessageTemplateTitle,
   buildLogSearchLink,
   doesExceedThreshold,
+  escapeJsonString,
   expandToNestedObject,
   getDefaultExternalAction,
   processAlert,
@@ -127,6 +128,18 @@ describe('checkAlerts', () => {
     ).toEqual({
       foo: { bar: { baz: {} } },
     });
+  });
+
+  it('escapeJsonString', () => {
+    expect(escapeJsonString('foo')).toBe('foo');
+    expect(escapeJsonString("foo'")).toBe("foo'");
+    expect(escapeJsonString('foo"')).toBe('foo\\"');
+    expect(escapeJsonString('foo\\')).toBe('foo\\\\');
+    expect(escapeJsonString('foo\n')).toBe('foo\\n');
+    expect(escapeJsonString('foo\r')).toBe('foo\\r');
+    expect(escapeJsonString('foo\t')).toBe('foo\\t');
+    expect(escapeJsonString('foo\b')).toBe('foo\\b');
+    expect(escapeJsonString('foo\f')).toBe('foo\\f');
   });
 
   describe('Alert Templates', () => {
