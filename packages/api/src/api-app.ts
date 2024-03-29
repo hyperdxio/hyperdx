@@ -59,8 +59,10 @@ app.use(express.text({ limit: '32mb' }));
 app.use(express.urlencoded({ extended: false, limit: '32mb' }));
 app.use(session(sess));
 
-app.use(passport.initialize());
-app.use(passport.session());
+if (!config.IS_LOCAL_APP_MODE) {
+  app.use(passport.initialize());
+  app.use(passport.session());
+}
 
 app.use(expressLogger);
 // Allows timing data from frontend package

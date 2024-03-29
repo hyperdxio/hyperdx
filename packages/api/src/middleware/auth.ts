@@ -86,6 +86,19 @@ export function isUserAuthenticated(
   res: Response,
   next: NextFunction,
 ) {
+  if (config.IS_LOCAL_APP_MODE) {
+    // If local app mode is enabled, skip authentication
+    logger.warn('Skipping authentication in local app mode');
+    req.user = {
+      // @ts-ignore
+      _id: '_local_user_',
+      email: 'local-user@hyperdx.io',
+      // @ts-ignore
+      team: '_local_team_',
+    };
+    return next();
+  }
+
   if (req.isAuthenticated()) {
     // set user id as trace attribute
     setTraceAttributes({
