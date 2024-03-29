@@ -73,7 +73,7 @@ source = '''
   }
 
   # check if token is in uuid format
-  if !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+  if "${ENABLE_TOKEN_MATCHING_CHECK:-true}" == "true" && !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
     log("Invalid token: " + (to_string(.hdx_token) ?? ""), level: "warn")
     .hdx_token = null
   }
@@ -614,7 +614,7 @@ if exists(.ts) {
 }
 
 # infer log level for raw logs
-if is_nullish(.st) {
+if is_nullish(.st) || !is_string(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
     header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""
