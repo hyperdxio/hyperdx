@@ -1294,7 +1294,9 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenNthCalledWith(1, 'https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/search/${logView.id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found"}`,
+        body: JSON.stringify({
+          text: `http://localhost:9090/search/${logView.id}?from=1700172600000&to=1700172900000&q=level%3Aerror+span_name%3A%22HyperDX%22 | Alert for "My Log View" - 11 lines found`,
+        }),
         headers: {
           'Content-Type': 'application/json',
           'X-HyperDX-Signature': 'XXXXX-XXXXX',
@@ -1450,7 +1452,9 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10"}`,
+        body: JSON.stringify({
+          text: `http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10`,
+        }),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -1677,7 +1681,9 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenNthCalledWith(1, 'https://webhook.site/123', {
         method: 'POST',
-        body: `{"text":"http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10"}`,
+        body: JSON.stringify({
+          text: `http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Redis Memory" in "My Dashboard" - 395.3421052631579 exceeds 10`,
+        }),
         headers: {
           'Content-Type': 'application/json',
         },
