@@ -7,7 +7,7 @@ inputs = ["vector_logs"]
 source = '''
   . = merge(.,
     {
-      "hdx_token": "${HYPERDX_API_KEY}",
+      "hdx_token": "${HYPERDX_API_KEY-tacocat}",
       "hdx_platform": "vector-internal"
     }
   )
