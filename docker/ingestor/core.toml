@@ -22,6 +22,17 @@ acknowledgements.enabled = true
 # --------------------------------------------------------------------------------
 # ------------------------------ Middleware --------------------------------------
 # --------------------------------------------------------------------------------
+[transforms.internal_logs]
+type = "remap"
+inputs = ["vector_logs"]
+source = '''
+  . = merge(.,
+    {
+      "hdx_token": "${HYPERDX_API_KEY-tacocat}",
+      "hdx_platform": "vector-internal"
+    }
+  )
+'''
 # WARNING: used for logs and spans only
 [transforms.process_headers_n_params]
 type = "remap"

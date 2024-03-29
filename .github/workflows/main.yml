@@ -25,7 +25,7 @@ jobs:
       - name: Install vector
         run: |
           mkdir -p vector
-          curl -sSfL --proto '=https' --tlsv1.2 https://packages.timber.io/vector/0.34.0/vector-0.34.0-x86_64-unknown-linux-musl.tar.gz | tar xzf - -C vector --strip-components=2
+          curl -sSfL --proto '=https' --tlsv1.2 https://packages.timber.io/vector/0.37.0/vector-0.37.0-x86_64-unknown-linux-musl.tar.gz | tar xzf - -C vector --strip-components=2
           cp ./vector/bin/vector /usr/local/bin/vector
           vector --version
       - name: Run lint + type check
