@@ -705,6 +705,14 @@ const api = {
       }).json(),
     );
   },
+  useDeleteTeamMember() {
+    return useMutation<any, HTTPError, { userEmail: string }>(
+      async ({ userEmail }) =>
+        server(`team/users/${userEmail}`, {
+          method: 'DELETE',
+        }).json(),
+    );
+  },
   useSaveTeamInvitation() {
     return useMutation<any, HTTPError, { name?: string; email: string }>(
       async ({ name, email }) =>

@@ -31,6 +31,13 @@ export default function TeamPage() {
     rotateApiKeyConfirmationModalShow,
     setRotateApiKeyConfirmationModalShow,
   ] = useState(false);
+  const [
+    deleteTeamMemberConfirmationModalData,
+    setDeleteTeamMemberConfirmationModalData,
+  ] = useState({
+    show: false,
+    email: '',
+  });
   const [teamInviteModalShow, setTeamInviteModalShow] = useState(false);
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
   const [addSlackWebhookModalShow, setAddSlackWebhookModalShow] =
@@ -55,6 +62,7 @@ export default function TeamPage() {
     api.useWebhooks(['generic']);
   const saveTeamInvitation = api.useSaveTeamInvitation();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
+  const deleteTeamMember = api.useDeleteTeamMember();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat;
@@ -103,9 +111,48 @@ export default function TeamPage() {
     });
   };
 
+  const deleteTeamMemberAction = (userEmail: string) => {
+    if (userEmail) {
+      deleteTeamMember.mutate(
+        { userEmail: encodeURIComponent(userEmail) },
+        {
+          onSuccess: resp => {
+            toast.success('Deleted team member');
+            refetchTeam();
+          },
+          onError: e => {
+            e.response
+              .json()
+              .then(res => {
+                toast.error(res.message, {
+                  autoClose: 5000,
+                });
+              })
+              .catch(() => {
+                toast.error(
+                  'Something went wrong. Please contact HyperDX team.',
+                  {
+                    autoClose: 5000,
+                  },
+                );
+              });
+          },
+        },
+      );
+    }
+  };
+
   const onConfirmUpdateTeamApiKey = () => {
     rotateTeamApiKeyAction();
     setRotateApiKeyConfirmationModalShow(false);
+  };
+
+  const onConfirmDeleteTeamMember = (email: string) => {
+    deleteTeamMemberAction(email);
+    setDeleteTeamMemberConfirmationModalData({
+      show: false,
+      email: '',
+    });
   };
 
   const sendTeamInviteAction = (email: string) => {
@@ -682,6 +729,53 @@ export default function TeamPage() {
                 )}
             </>
           )}
+          <Modal
+            aria-labelledby="contained-modal-title-vcenter"
+            centered
+            onHide={() =>
+              setDeleteTeamMemberConfirmationModalData({
+                show: false,
+                email: '',
+              })
+            }
+            show={deleteTeamMemberConfirmationModalData.show}
+            size="lg"
+          >
+            <Modal.Body className="bg-grey rounded">
+              <h3 className="text-muted">Delete Team Member</h3>
+              <h5 className="text-muted">
+                Deleting this team member (
+                {deleteTeamMemberConfirmationModalData.email}) will revoke their
+                access to the team&apos;s resources and services. This action is
+                not reversible.
+              </h5>
+              <Button
+                variant="outline-secondary"
+                className="mt-2 px-4 ms-2 float-end"
+                size="sm"
+                onClick={() =>
+                  setDeleteTeamMemberConfirmationModalData({
+                    show: false,
+                    email: '',
+                  })
+                }
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline-danger"
+                className="mt-2 px-4 float-end"
+                size="sm"
+                onClick={() =>
+                  onConfirmDeleteTeamMember(
+                    deleteTeamMemberConfirmationModalData.email,
+                  )
+                }
+              >
+                Confirm
+              </Button>
+            </Modal.Body>
+          </Modal>
           <h2 className="mt-5">Team Members</h2>
           {!isLoadingMembers &&
             Array.isArray(members.data) &&
@@ -692,6 +786,20 @@ export default function TeamPage() {
                 )}
                 {member.name} - {member.email} -
                 {member.hasPasswordAuth && ' Password Auth'}
+                {!member.isCurrentUser && (
+                  <Button
+                    variant="link"
+                    className="px-0 fs-7 ms-3"
+                    onClick={() =>
+                      setDeleteTeamMemberConfirmationModalData({
+                        show: true,
+                        email: member.email,
+                      })
+                    }
+                  >
+                    <i className="bi bi-x-square text-danger" />
+                  </Button>
+                )}
               </div>
             ))}
           {!isLoadingInvitations &&
@@ -707,6 +815,18 @@ export default function TeamPage() {
                     📋 Copy URL
                   </Button>
                 </CopyToClipboard>
+                <Button
+                  variant="link"
+                  className="px-0 fs-7 ms-3"
+                  onClick={() => {
+                    setDeleteTeamMemberConfirmationModalData({
+                      show: true,
+                      email: invitation.email,
+                    });
+                  }}
+                >
+                  <i className="bi bi-x-square text-danger" />
+                </Button>
               </div>
             ))}
           <div className="mt-3 mb-5">
