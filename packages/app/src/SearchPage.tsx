@@ -40,6 +40,7 @@ import { withAppNav } from './layout';
 import LogSidePanel from './LogSidePanel';
 import LogTable from './LogTable';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
+import RenameSearchModal from './RenameSearchModal';
 import SaveSearchModal from './SaveSearchModal';
 import SearchInput from './SearchInput';
 import SearchPageActionBar from './SearchPageActionBar';
@@ -461,6 +462,13 @@ function SearchPage() {
   );
 
   const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+  const [renameSearchModalData, setRenameSearchModalData] = useState<{
+    show: boolean;
+    searchID: string | null;
+  }>({
+    show: false,
+    searchID: null,
+  });
   const [configAlertModalShow, setConfigAlertModalShow] = useState(false);
   const deleteLogView = api.useDeleteLogView();
   const updateLogView = api.useUpdateLogView();
@@ -704,6 +712,37 @@ function SearchPage() {
           setShowSaveSearchModal(false);
         }}
       />
+      <RenameSearchModal
+        show={renameSearchModalData.show}
+        searchName={selectedSavedSearch?.name ?? ''}
+        onHide={() =>
+          setRenameSearchModalData({
+            show: false,
+            searchID: null,
+          })
+        }
+        searchID={renameSearchModalData.searchID || ''}
+        searchQuery={displayedSearchQuery}
+        onRenameSuccess={responseData => {
+          toast.success('Saved search renamed');
+          router.push(
+            `/search/${responseData._id}?${new URLSearchParams({
+              q: searchedQuery,
+              ...(isLive
+                ? {}
+                : {
+                    from: searchedTimeRange[0].getTime().toString(),
+                    to: searchedTimeRange[1].getTime().toString(),
+                  }),
+            }).toString()}`,
+          );
+          refetchLogViews();
+          setRenameSearchModalData({
+            show: false,
+            searchID: null,
+          });
+        }}
+      />
       <CreateLogAlertModal
         show={configAlertModalShow}
         onHide={() => setConfigAlertModalShow(false)}
@@ -776,6 +815,12 @@ function SearchPage() {
             onClickDeleteLogView={onClickDeleteLogView}
             onClickUpdateLogView={onClickUpdateLogView}
             selectedLogView={selectedSavedSearch}
+            onClickRenameSearch={() => {
+              setRenameSearchModalData({
+                show: true,
+                searchID: selectedSavedSearch?._id ?? null,
+              });
+            }}
             onClickSaveSearch={() => {
               setShowSaveSearchModal(true);
             }}
