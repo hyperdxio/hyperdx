@@ -7,7 +7,11 @@ import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
 import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
-import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
+import {
+  findUserByEmail,
+  findUserById,
+  findUsersByTeam,
+} from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
 
@@ -188,48 +192,38 @@ router.get('/tags', async (req, res, next) => {
   }
 });
 
-router.delete('/users/:userEmail', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const userEmail = req.params.userEmail;
-    if (teamId == null) {
-      throw new Error(`User ${req.user?._id} not associated with a team`);
-    }
-    if (userEmail == null) {
-      throw new Error(`User email not provided`);
-    }
+router.delete(
+  '/users/:id',
+  validateRequest({
+    params: z.object({
+      id: z.string(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const user = await findUserById(id);
+      const teamInvite = await TeamInvite.findOne({
+        _id: id,
+      });
 
-    const team = await getTeam(teamId);
-    if (team == null) {
-      throw new Error(`Team ${teamId} not found`);
-    }
-
-    const user = await findUserByEmail(userEmail);
-    const teamInvite = await TeamInvite.findOne({
-      teamId: team._id,
-      email: userEmail,
-    });
-
-    if (user == null && teamInvite == null) {
-      throw new Error(`User ${userEmail} not found`);
-    }
-
-    if (user) {
-      if (user.team.equals(req.user?.team || '') === false) {
-        throw new Error(`User ${userEmail} not associated with team ${teamId}`);
+      if (user == null && teamInvite == null) {
+        throw new Error(`User ${id} not found`);
       }
 
-      await user.deleteOne();
-    }
+      if (user) {
+        await user.deleteOne();
+      }
 
-    if (teamInvite) {
-      await teamInvite.deleteOne();
-    }
+      if (teamInvite) {
+        await teamInvite.deleteOne();
+      }
 
-    res.json({ message: 'User deleted' });
-  } catch (e) {
-    next(e);
-  }
-});
+      res.json({ message: 'User deleted' });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 export default router;

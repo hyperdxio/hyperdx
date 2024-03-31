@@ -35,8 +35,8 @@ export default function TeamPage() {
     deleteTeamMemberConfirmationModalData,
     setDeleteTeamMemberConfirmationModalData,
   ] = useState({
-    show: false,
-    email: '',
+    id: null,
+    email: null,
   });
   const [teamInviteModalShow, setTeamInviteModalShow] = useState(false);
   const [teamInviteUrl, setTeamInviteUrl] = useState('');
@@ -111,10 +111,10 @@ export default function TeamPage() {
     });
   };
 
-  const deleteTeamMemberAction = (userEmail: string) => {
-    if (userEmail) {
+  const deleteTeamMemberAction = (id: string) => {
+    if (id) {
       deleteTeamMember.mutate(
-        { userEmail: encodeURIComponent(userEmail) },
+        { userEmail: encodeURIComponent(id) },
         {
           onSuccess: resp => {
             toast.success('Deleted team member');
@@ -147,11 +147,11 @@ export default function TeamPage() {
     setRotateApiKeyConfirmationModalShow(false);
   };
 
-  const onConfirmDeleteTeamMember = (email: string) => {
-    deleteTeamMemberAction(email);
+  const onConfirmDeleteTeamMember = (id: string) => {
+    deleteTeamMemberAction(id);
     setDeleteTeamMemberConfirmationModalData({
-      show: false,
-      email: '',
+      id: null,
+      email: null,
     });
   };
 
@@ -734,11 +734,11 @@ export default function TeamPage() {
             centered
             onHide={() =>
               setDeleteTeamMemberConfirmationModalData({
-                show: false,
-                email: '',
+                id: null,
+                email: null,
               })
             }
-            show={deleteTeamMemberConfirmationModalData.show}
+            show={deleteTeamMemberConfirmationModalData.id != null}
             size="lg"
           >
             <Modal.Body className="bg-grey rounded">
@@ -755,8 +755,8 @@ export default function TeamPage() {
                 size="sm"
                 onClick={() =>
                   setDeleteTeamMemberConfirmationModalData({
-                    show: false,
-                    email: '',
+                    id: null,
+                    email: null,
                   })
                 }
               >
@@ -767,8 +767,9 @@ export default function TeamPage() {
                 className="mt-2 px-4 float-end"
                 size="sm"
                 onClick={() =>
+                  deleteTeamMemberConfirmationModalData.id &&
                   onConfirmDeleteTeamMember(
-                    deleteTeamMemberConfirmationModalData.email,
+                    deleteTeamMemberConfirmationModalData.id,
                   )
                 }
               >
@@ -792,7 +793,7 @@ export default function TeamPage() {
                     className="px-0 fs-7 ms-3"
                     onClick={() =>
                       setDeleteTeamMemberConfirmationModalData({
-                        show: true,
+                        id: member._id,
                         email: member.email,
                       })
                     }
@@ -820,7 +821,7 @@ export default function TeamPage() {
                   className="px-0 fs-7 ms-3"
                   onClick={() => {
                     setDeleteTeamMemberConfirmationModalData({
-                      show: true,
+                      id: invitation._id,
                       email: invitation.email,
                     });
                   }}
