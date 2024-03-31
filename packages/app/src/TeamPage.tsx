@@ -15,7 +15,7 @@ import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { json } from '@codemirror/lang-json';
 import { tags as lt } from '@lezer/highlight';
-import { Alert } from '@mantine/core';
+import { Alert, Button as MButton } from '@mantine/core';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
@@ -788,9 +788,10 @@ export default function TeamPage() {
                 {member.name} - {member.email} -
                 {member.hasPasswordAuth && ' Password Auth'}
                 {!member.isCurrentUser && (
-                  <Button
-                    variant="link"
-                    className="px-0 fs-7 ms-3"
+                  <MButton
+                    size="xs"
+                    variant="transparent"
+                    type="button"
                     onClick={() =>
                       setDeleteTeamMemberConfirmationModalData({
                         id: member._id,
@@ -799,7 +800,7 @@ export default function TeamPage() {
                     }
                   >
                     <i className="bi bi-x-square text-danger" />
-                  </Button>
+                  </MButton>
                 )}
               </div>
             ))}
@@ -816,18 +817,19 @@ export default function TeamPage() {
                     📋 Copy URL
                   </Button>
                 </CopyToClipboard>
-                <Button
-                  variant="link"
-                  className="px-0 fs-7 ms-3"
-                  onClick={() => {
+                <MButton
+                  size="xs"
+                  variant="transparent"
+                  type="button"
+                  onClick={() =>
                     setDeleteTeamMemberConfirmationModalData({
                       id: invitation._id,
                       email: invitation.email,
-                    });
-                  }}
+                    })
+                  }
                 >
                   <i className="bi bi-x-square text-danger" />
-                </Button>
+                </MButton>
               </div>
             ))}
           <div className="mt-3 mb-5">
