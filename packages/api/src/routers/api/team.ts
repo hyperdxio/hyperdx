@@ -203,11 +203,8 @@ router.delete(
     try {
       const id = req.params.id;
       const user = await findUserById(id);
-      const teamInvite = await TeamInvite.findOne({
-        _id: id,
-      });
 
-      if (user == null && teamInvite == null) {
+      if (user == null) {
         throw new Error(`User ${id} not found`);
       }
 
@@ -215,14 +212,37 @@ router.delete(
         await user.deleteOne();
       }
 
-      if (teamInvite) {
-        await teamInvite.deleteOne();
-      }
-
       res.json({ message: 'User deleted' });
     } catch (e) {
       next(e);
     }
+  },
+);
+
+router.delete(
+  '/teamInvites/:id',
+  validateRequest({
+    params: z.object({
+      id: z.string(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const teamInvite = await TeamInvite.findOne({
+        _id: id,
+      });
+
+      if (teamInvite == null) {
+        throw new Error(`TeamInvite ${id} not found`);
+      }
+
+      await teamInvite.deleteOne();
+    } catch (e) {
+      next(e);
+    }
+
+    return res.json({ message: 'TeamInvite deleted' });
   },
 );
 

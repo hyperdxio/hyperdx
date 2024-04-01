@@ -34,7 +34,12 @@ export default function TeamPage() {
   const [
     deleteTeamMemberConfirmationModalData,
     setDeleteTeamMemberConfirmationModalData,
-  ] = useState({
+  ] = useState<{
+    mode: 'team' | 'teamInvite' | null;
+    id: string | null;
+    email: string | null;
+  }>({
+    mode: null,
     id: null,
     email: null,
   });
@@ -63,6 +68,7 @@ export default function TeamPage() {
   const saveTeamInvitation = api.useSaveTeamInvitation();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const deleteTeamMember = api.useDeleteTeamMember();
+  const deleteTeamInvite = api.useDeleteTeamInvite();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat;
@@ -114,10 +120,41 @@ export default function TeamPage() {
   const deleteTeamMemberAction = (id: string) => {
     if (id) {
       deleteTeamMember.mutate(
-        { userEmail: encodeURIComponent(id) },
+        { userId: encodeURIComponent(id) },
         {
           onSuccess: resp => {
             toast.success('Deleted team member');
+            refetchTeam();
+          },
+          onError: e => {
+            e.response
+              .json()
+              .then(res => {
+                toast.error(res.message, {
+                  autoClose: 5000,
+                });
+              })
+              .catch(() => {
+                toast.error(
+                  'Something went wrong. Please contact HyperDX team.',
+                  {
+                    autoClose: 5000,
+                  },
+                );
+              });
+          },
+        },
+      );
+    }
+  };
+
+  const deleteTeamInviteAction = (id: string) => {
+    if (id) {
+      deleteTeamInvite.mutate(
+        { id: encodeURIComponent(id) },
+        {
+          onSuccess: resp => {
+            toast.success('Deleted team invite');
             refetchTeam();
           },
           onError: e => {
@@ -148,8 +185,13 @@ export default function TeamPage() {
   };
 
   const onConfirmDeleteTeamMember = (id: string) => {
-    deleteTeamMemberAction(id);
+    if (deleteTeamMemberConfirmationModalData.mode === 'team') {
+      deleteTeamMemberAction(id);
+    } else if (deleteTeamMemberConfirmationModalData.mode === 'teamInvite') {
+      deleteTeamInviteAction(id);
+    }
     setDeleteTeamMemberConfirmationModalData({
+      mode: null,
       id: null,
       email: null,
     });
@@ -734,6 +776,7 @@ export default function TeamPage() {
             centered
             onHide={() =>
               setDeleteTeamMemberConfirmationModalData({
+                mode: null,
                 id: null,
                 email: null,
               })
@@ -755,6 +798,7 @@ export default function TeamPage() {
                 size="sm"
                 onClick={() =>
                   setDeleteTeamMemberConfirmationModalData({
+                    mode: null,
                     id: null,
                     email: null,
                   })
@@ -794,6 +838,7 @@ export default function TeamPage() {
                     type="button"
                     onClick={() =>
                       setDeleteTeamMemberConfirmationModalData({
+                        mode: 'team',
                         id: member._id,
                         email: member.email,
                       })
@@ -823,6 +868,7 @@ export default function TeamPage() {
                   type="button"
                   onClick={() =>
                     setDeleteTeamMemberConfirmationModalData({
+                      mode: 'teamInvite',
                       id: invitation._id,
                       email: invitation.email,
                     })

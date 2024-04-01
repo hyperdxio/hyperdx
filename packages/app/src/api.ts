@@ -706,11 +706,17 @@ const api = {
     );
   },
   useDeleteTeamMember() {
-    return useMutation<any, HTTPError, { userEmail: string }>(
-      async ({ userEmail }) =>
-        server(`team/users/${userEmail}`, {
-          method: 'DELETE',
-        }).json(),
+    return useMutation<any, HTTPError, { userId: string }>(async ({ userId }) =>
+      server(`team/users/${userId}`, {
+        method: 'DELETE',
+      }).json(),
+    );
+  },
+  useDeleteTeamInvite() {
+    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
+      server(`team/teamInvites/${id}`, {
+        method: 'DELETE',
+      }).json(),
     );
   },
   useSaveTeamInvitation() {
