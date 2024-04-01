@@ -45,7 +45,7 @@ export default function JoinTeam() {
                   >
                     {err === 'invalid'
                       ? 'Password is invalid'
-                      : 'Unkown error occured, please try again later.'}
+                      : 'Unknown error occurred, please try again later.'}
                   </div>
                 )}
                 <div className="text-center mt-4">

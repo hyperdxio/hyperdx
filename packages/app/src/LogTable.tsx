@@ -129,7 +129,7 @@ function DownloadCSVButton({
           </Button>
         </CSVLink>
       ) : (
-        <span>An error occured.</span>
+        <span>An error occurred.</span>
       )}
     </>
   );

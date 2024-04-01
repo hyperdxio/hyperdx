@@ -502,7 +502,7 @@ function SearchPage() {
         },
         onError: () => {
           toast.error(
-            'An error occured. Please contact support for more details.',
+            'An error occurred. Please contact support for more details.',
           );
         },
       });
@@ -520,7 +520,7 @@ function SearchPage() {
           },
           onError: () => {
             toast.error(
-              'An error occured. Please contact support for more details.',
+              'An error occurred. Please contact support for more details.',
             );
           },
         },
@@ -662,7 +662,7 @@ function SearchPage() {
             },
             onError: () => {
               toast.error(
-                'An error occured. Please contact support for more details.',
+                'An error occurred. Please contact support for more details.',
               );
             },
           },

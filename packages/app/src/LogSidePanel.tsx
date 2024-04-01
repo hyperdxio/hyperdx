@@ -440,7 +440,7 @@ function TraceChart({
       {isSearchResultsFetching ? (
         <div className="my-3">Loading Traces...</div>
       ) : results == null ? (
-        <div>An unknown error occured, please contact support.</div>
+        <div>An unknown error occurred, please contact support.</div>
       ) : (
         <TimelineChart
           style={{
