@@ -460,14 +460,9 @@ function SearchPage() {
     [searchInput],
   );
 
-  const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
-  const [saveSearchModalData, setSaveSearchModalData] = useState<{
-    searchID: string | null;
-    mode: 'update' | 'save';
-  }>({
-    searchID: null,
-    mode: 'save',
-  });
+  const [saveSearchModalMode, setSaveSearchModalMode] = useState<
+    'update' | 'save' | 'hidden'
+  >('save');
   const [configAlertModalShow, setConfigAlertModalShow] = useState(false);
   const deleteLogView = api.useDeleteLogView();
   const updateLogView = api.useUpdateLogView();
@@ -490,13 +485,13 @@ function SearchPage() {
   useHotkeys(
     ['ctrl+s', 'meta+s'],
     () => {
-      setShowSaveSearchModal(true);
+      setSaveSearchModalMode('save');
     },
     {
       preventDefault: true,
       enableOnFormTags: true,
     },
-    [setShowSaveSearchModal],
+    [setSaveSearchModalMode],
   );
 
   const onClickDeleteLogView = () => {
@@ -691,12 +686,11 @@ function SearchPage() {
         <title>Search - HyperDX</title>
       </Head>
       <SaveSearchModal
-        show={showSaveSearchModal}
-        mode={saveSearchModalData.mode}
-        onHide={() => setShowSaveSearchModal(false)}
+        mode={saveSearchModalMode}
+        onHide={() => setSaveSearchModalMode('hidden')}
         searchQuery={displayedSearchQuery}
         searchName={selectedSavedSearch?.name ?? ''}
-        searchID={saveSearchModalData.searchID ?? ''}
+        searchID={selectedSavedSearch?._id ?? ''}
         onSaveSuccess={responseData => {
           toast.success('Saved search created');
           router.push(
@@ -711,16 +705,12 @@ function SearchPage() {
             }).toString()}`,
           );
           refetchLogViews();
-          setShowSaveSearchModal(false);
+          setSaveSearchModalMode('hidden');
         }}
         onUpdateSuccess={responseData => {
           toast.success('Saved search renamed');
           refetchLogViews();
-          setShowSaveSearchModal(false);
-          setSaveSearchModalData({
-            mode: 'save',
-            searchID: null,
-          });
+          setSaveSearchModalMode('hidden');
         }}
       />
       <CreateLogAlertModal
@@ -796,14 +786,10 @@ function SearchPage() {
             onClickUpdateLogView={onClickUpdateLogView}
             selectedLogView={selectedSavedSearch}
             onClickRenameSearch={() => {
-              setShowSaveSearchModal(true);
-              setSaveSearchModalData({
-                mode: 'update',
-                searchID: selectedSavedSearch?._id ?? null,
-              });
+              setSaveSearchModalMode('update');
             }}
             onClickSaveSearch={() => {
-              setShowSaveSearchModal(true);
+              setSaveSearchModalMode('save');
             }}
           />
           {!!selectedSavedSearch && (

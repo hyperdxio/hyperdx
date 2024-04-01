@@ -8,7 +8,6 @@ import { genEnglishExplanation } from './queryv2';
 
 export default function SaveSearchModal({
   onHide,
-  show,
   searchQuery,
   mode,
   searchName,
@@ -17,9 +16,8 @@ export default function SaveSearchModal({
   onUpdateSuccess,
 }: {
   onHide: () => void;
-  show: boolean;
   searchQuery: string;
-  mode: 'save' | 'update';
+  mode: 'save' | 'update' | 'hidden';
   searchName: string;
   searchID: string;
   onSaveSuccess: (responseData: { _id: string }) => void;
@@ -88,7 +86,7 @@ export default function SaveSearchModal({
       aria-labelledby="contained-modal-title-vcenter"
       centered
       onHide={onHide}
-      show={show}
+      show={mode !== 'hidden'}
       size="lg"
     >
       <Modal.Body className="bg-grey rounded">
