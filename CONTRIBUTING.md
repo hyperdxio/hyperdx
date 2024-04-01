@@ -7,7 +7,7 @@
 Service Descriptions:
 
 - otel: OpenTelemetry Collector, allows us to receive OpenTelemetry data from
-  instrumented applications and forward it to the ingestor for futher
+  instrumented applications and forward it to the ingestor for further
   processing.
 - ingestor: Vector-based event pipeline that receives Otel and non-Otel events
   and parses/normalizes/forwards it to the aggregator.
