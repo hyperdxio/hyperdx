@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
+import mongoose from 'mongoose';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -196,7 +197,9 @@ router.delete(
   '/users/:id',
   validateRequest({
     params: z.object({
-      id: z.string(),
+      id: z.string().refine(val => {
+        return mongoose.Types.ObjectId.isValid(val);
+      }),
     }),
   }),
   async (req, res, next) => {
@@ -224,7 +227,9 @@ router.delete(
   '/teamInvites/:id',
   validateRequest({
     params: z.object({
-      id: z.string(),
+      id: z.string().refine(val => {
+        return mongoose.Types.ObjectId.isValid(val);
+      }),
     }),
   }),
   async (req, res, next) => {
