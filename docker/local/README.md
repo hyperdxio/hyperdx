@@ -19,7 +19,7 @@ And it has all the features you would expect from HyperDX:
 To get started, simply run the Docker container with the appropriate ports forwarded:
 
 ```
-docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 TODO: REPLACE IMAGE NAME
+docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 ghcr.io/hyperdxio/hyperdx-local:1.7.0
 ```
 
 Afterwards, you can visit `http://localhost:8080` and immediately jump into the HyperDX UI.
