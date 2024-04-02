@@ -153,6 +153,18 @@ include:
 Once HyperDX is running, you can point your OpenTelemetry SDK to the
 OpenTelemetry collector spun up at `http://localhost:4318`.
 
+## Local Mode
+
+Interested in using HyperDX for local development and debugging? Check out HyperDX Local, a single container local-optimized version of HyperDX that allows you to pipe OpenTelemetry telemetry (logs, metrics, traces) to a local instance of HyperDX running on your own machine.
+
+Get started with HyperDX Local by running the following Docker command:
+
+```bash
+docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 hyperdx/hyperdx-local
+```
+
+[Read more about HyperDX Local](./LOCAL.md)
+
 ## Contributing
 
 We welcome all contributions! There's many ways to contribute to the project,
