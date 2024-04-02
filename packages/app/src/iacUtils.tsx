@@ -1,4 +1,4 @@
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 import { Chart, Dashboard } from './types';
 
 function getResourceName(name: string) {
@@ -79,7 +79,7 @@ export function dashboardToTerraform(
 }
 
 provider "restapi" {
-  uri                  = "${API_SERVER_URL}"
+  uri                  = "${SERVER_URL}"
   write_returns_object = true
   debug                = true
   id_attribute         = "data/id"

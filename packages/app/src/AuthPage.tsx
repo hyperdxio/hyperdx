@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 
 import api from './api';
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 import * as config from './config';
 import LandingHeader from './LandingHeader';
 import { CheckOrX, PasswordCheck } from './PasswordCheck';
@@ -26,6 +26,17 @@ type FormData = {
 };
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
+  const { data: team, isLoading: teamIsLoading } = api.useTeam();
+  const router = useRouter();
+
+  const isLoggedIn = Boolean(!teamIsLoading && team && !team.isDemo);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      router.push('/search');
+    }
+  }, [isLoggedIn, router]);
+
   const isRegister = action === 'register';
   const {
     register,
@@ -37,7 +48,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     reValidateMode: 'onSubmit',
   });
 
-  const router = useRouter();
   const { err, msg } = router.query;
 
   const { data: installation } = api.useInstallation();
@@ -100,7 +110,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       }
     : {
         controller: {
-          action: `${API_SERVER_URL}/login/password`,
+          action: `${SERVER_URL}/login/password`,
           method: 'POST',
         },
         email: { name: 'email' },
