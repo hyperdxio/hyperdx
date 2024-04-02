@@ -26,16 +26,22 @@ export NEXT_TELEMETRY_DISABLED="1"
 echo "127.0.0.1      ingestor" >> /etc/hosts
 echo "127.0.0.1      aggregator" >> /etc/hosts
 
-echo "Visit the UI at $FRONTEND_URL"
+echo "Visit the HyperDX UI at $FRONTEND_URL/search"
+echo ""
+echo "Send OpenTelemetry data via"
+echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
+echo "gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
+echo ""
+echo ""
 
 # Start Clickhouse Server
 /entrypoint.sh &
 
 # Start Redis Server
-redis-server &
+redis-server > /var/log/redis.log 2>&1 &
 
 # Start Mongo Server
-mongod --quiet --dbpath /data/db &
+mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
 
 # Start Vector Ingestor
 ENABLE_GO_PARSER="false" \
@@ -46,7 +52,7 @@ vector \
   -c /etc/vector/sources.toml \
   -c /etc/vector/core.toml \
   -c /etc/vector/http-sinks.toml \
-  --require-healthy true &
+  --require-healthy true > /var/log/vector.log 2>&1 &
 
 # Start Otel Collector
 otelcol-contrib --config /etc/otelcol-contrib/config.yaml &
@@ -56,20 +62,20 @@ APP_TYPE=aggregator \
 CLICKHOUSE_USER=aggregator \
 CLICKHOUSE_PASSWORD=aggregator \
 PORT=8001 \
-node /app/api/build/index.js &
+node /app/api/build/index.js > /var/log/aggregator.log 2>&1 &
 
 # Api
 APP_TYPE=api \
 CLICKHOUSE_USER=api \
 CLICKHOUSE_PASSWORD=api \
 PORT=8000 \
-node /app/api/build/index.js &
+node /app/api/build/index.js > /var/log/api.log 2>&1 &
 
 # App
 NODE_ENV=production \
 PORT=8080 \
 NEXT_PUBLIC_SERVER_URL="${SERVER_URL}" \
-node /app/app/server.js &
+node /app/app/server.js > /var/log/app.log 2>&1 &
 
 # Wait for any process to exit
 wait -n

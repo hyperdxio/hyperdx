@@ -26,6 +26,17 @@ type FormData = {
 };
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
+  const { data: team, isLoading: teamIsLoading } = api.useTeam();
+  const router = useRouter();
+
+  const isLoggedIn = Boolean(!teamIsLoading && team && !team.isDemo);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      router.push('/search');
+    }
+  }, [isLoggedIn, router]);
+
   const isRegister = action === 'register';
   const {
     register,
@@ -37,7 +48,6 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     reValidateMode: 'onSubmit',
   });
 
-  const router = useRouter();
   const { err, msg } = router.query;
 
   const { data: installation } = api.useInstallation();
