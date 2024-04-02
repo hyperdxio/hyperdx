@@ -1,8 +1,8 @@
 # HyperDX Local
 
-HyperDX Local is a single container local-optimized version of HyperDX that allows you to pipe OpenTelemetry telemetry (logs, metrics, traces) to a local instance of HyperDX running on your own machine. This makes it easily to debug complex applications locally using the same telemetry you have in prod or to test your instrumentation before pushing it into production.
+HyperDX Local is a single container local-optimized version of [HyperDX](https://www.hyperdx.io/) that allows you to pipe OpenTelemetry telemetry (logs, metrics, traces) to a local instance of HyperDX running on your own machine. This makes it easily to debug complex applications locally using the same telemetry you have in prod or to test your instrumentation before pushing it into production.
 
-HyperDX Local has a few additional benefits over the regular open source version:
+HyperDX Local has a few additional benefits tuned to local development over the regular version:
 - 📦 Packaged in a single container, to slot alongside your existing dev environment (ex. Docker Compose stack)
 - 🔑 No need to auth to send and view telemetry
 - 🐏 Optimized for lower memory footprint
@@ -13,6 +13,9 @@ And it has all the features you would expect from HyperDX:
 - `{` Automatic JSON structured log parsing
 - ⏱️ Application performance monitoring
 - 📈 Charting logs, metrics and traces in a single UI
+
+<br/>
+<img alt="Demo of using HyperDX Local for debugging a local app" src="./.github/images/demo_local_animated.gif" title="Demo of using HyperDX Local for debugging a local app">
 
 ## Getting Started
 
@@ -35,7 +38,7 @@ Configuring instrumentation for HyperDX local is similar to configuring it for t
 
 Most instrumentations can be configured using the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Ex: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
 
-If you're using a HyperDX provided SDK, you may need to give a non-empty `HYPERDX_API_KEY` as well, API keys are not validated in HyperDX Local and therefore can be any non-empty value.
+If you're using a HyperDX maintained SDK, you may need to give a non-empty `HYPERDX_API_KEY` as well, API keys are not validated in HyperDX Local and therefore can be any non-empty value.
 
 ## Customizing Ports
 
@@ -56,16 +59,21 @@ docker run \
 hyperdx/hyperdx-local
 ```
 
-## Notes
+## Open Source & Cloud Versions (Beyond Local)
 
-### Limitations vs Regular Open Source Version
+If you're looking to deploy HyperDX to monitor a production environment (or anything outside your local environment), you can check out the [regular open source version](https://github.com/hyperdxio/hyperdx) or the [cloud hosted version](https://hyperdx.io/).
 
-There are a few minor limitations compared to the regular open source version:
-- Single user mode only (due to lack of auth requirement)
-- No support for management APIs
+### Local vs Non-Local Versions
+
+There are a few missing features in HyperDX Local compared to the other versions of HyperDX:
+
+- HyperDX Local is single-user only (due to skipping auth)
+- Has no support for [management APIs](https://www.hyperdx.io/docs/api/alerts)
 - No alerting support (alerts will not fire)
-- Log and DB query patterns will not be calculated
-- No persistence of data if the container is torn down 
+- DB queries will not be reduced into query patterns
+- No persistence of data (telemetry and settings) if the container is torn down 
+
+## Notes
 
 ### Ports
 
