@@ -7,6 +7,7 @@ import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import stripAnsi from 'strip-ansi';
+import { Text } from '@mantine/core';
 import {
   CellContext,
   ColumnDef,
@@ -21,6 +22,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
 import Checkbox from './Checkbox';
+import { IS_LOCAL_MODE } from './config';
 import FieldMultiSelect from './FieldMultiSelect';
 import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
@@ -412,16 +414,18 @@ export const RawLogTable = memo(
           header: () => (
             <span>
               Message{' '}
-              {onShowPatternsClick != null && (
+              {onShowPatternsClick != null && !IS_LOCAL_MODE && (
                 <span>
                   •{' '}
-                  <span
-                    role="button"
-                    className="text-muted-hover fw-normal text-decoration-underline"
+                  <Text
+                    span
+                    size="xs"
+                    c="green"
                     onClick={onShowPatternsClick}
+                    role="button"
                   >
-                    Show Log Patterns
-                  </span>
+                    <i className="bi bi-collection"></i> Group Similar Events
+                  </Text>
                 </span>
               )}
             </span>

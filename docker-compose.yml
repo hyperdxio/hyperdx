@@ -189,6 +189,7 @@ services:
     ports:
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
+      NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NODE_ENV: development
       PORT: ${HYPERDX_APP_PORT}

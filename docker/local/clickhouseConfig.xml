@@ -2,9 +2,9 @@
 <clickhouse>
     <logger>
         <level from_env="CLICKHOUSE_LOG_LEVEL" />
-        <console>true</console>
-        <log remove="remove" />
-        <errorlog remove="remove" />
+        <console>false</console>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
     </logger>
 
     <query_log>

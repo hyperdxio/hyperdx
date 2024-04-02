@@ -27,8 +27,9 @@ import { version } from '../package.json';
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
 import {
-  API_SERVER_URL,
+  IS_LOCAL_MODE,
   K8S_DASHBOARD_ENABLED,
+  SERVER_URL,
   SERVICE_DASHBOARD_ENABLED,
 } from './config';
 import Icon from './Icon';
@@ -1370,14 +1371,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </span>
                 </Link>
               </div>
-              <div className="my-4">
-                <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
-                  <span role="button" className="text-muted-hover">
-                    <i className="bi bi-box-arrow-left text-slate-300" />{' '}
-                    {!isCollapsed && <span>Logout</span>}
-                  </span>
-                </Link>
-              </div>
+              {!IS_LOCAL_MODE && (
+                <div className="my-4">
+                  <Link href={`${SERVER_URL}/logout`} legacyBehavior>
+                    <span role="button" className="text-muted-hover">
+                      <i className="bi bi-box-arrow-left text-slate-300" />{' '}
+                      {!isCollapsed && <span>Logout</span>}
+                    </span>
+                  </Link>
+                </div>
+              )}
               <div className="d-flex justify-content-end align-items-end">
                 <span className="text-muted-hover fs-8.5">v{version}</span>
               </div>

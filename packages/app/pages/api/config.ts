@@ -1,10 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import {
-  API_SERVER_URL,
   HDX_API_KEY,
   HDX_COLLECTOR_URL,
   HDX_SERVICE_NAME,
+  SERVER_URL,
 } from '../../src/config';
 
 type ResponseData = {
@@ -20,7 +20,7 @@ export default function handler(
 ) {
   res.status(200).json({
     apiKey: HDX_API_KEY,
-    apiServerUrl: API_SERVER_URL,
+    apiServerUrl: SERVER_URL,
     collectorUrl: HDX_COLLECTOR_URL,
     serviceName: HDX_SERVICE_NAME,
   });

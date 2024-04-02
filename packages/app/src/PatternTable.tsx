@@ -242,7 +242,7 @@ const MemoPatternTable = memo(
                     className="text-muted-hover fw-normal text-decoration-underline"
                     onClick={onShowEventsClick}
                   >
-                    Show Events
+                    Show Events List
                   </span>
                 </span>
               )}
