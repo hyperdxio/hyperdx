@@ -107,6 +107,17 @@ release:
 		--build-arg PORT=${HYPERDX_APP_PORT} \
 		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
 		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push
+	docker buildx build \
+		--squash . -f ./docker/local/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context ingestor=./docker/ingestor \
+		--build-context local=./docker/local \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:latest -t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${LATEST_VERSION} \
+		-t ${LOCAL_IMAGE_NAME}:latest -t ${LOCAL_IMAGE_NAME}:${LATEST_VERSION} --push
 
 .PHONY: push-gh
 push-gh:
