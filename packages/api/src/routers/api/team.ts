@@ -9,7 +9,7 @@ import * as config from '@/config';
 import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
 import {
   findUserByEmail,
-  findUserById,
+  findUserByEmailInTeam,
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
@@ -201,8 +201,9 @@ router.delete(
   }),
   async (req, res, next) => {
     try {
+      const teamId = req.user?.team || '';
       const id = req.params.id;
-      const user = await findUserById(id);
+      const user = await findUserByEmailInTeam(id, teamId);
 
       if (user == null) {
         throw new Error(`User ${id} not found`);
