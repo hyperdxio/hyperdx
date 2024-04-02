@@ -116,7 +116,7 @@ release:
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME}:${LATEST_VERSION} --push
+		-t ${LOCAL_IMAGE_NAME}:latest -t ${LOCAL_IMAGE_NAME}:${LATEST_VERSION} --push
 
 .PHONY: push-gh
 push-gh:
