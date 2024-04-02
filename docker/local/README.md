@@ -53,7 +53,7 @@ docker run \
 -p 4318:4318 -p 4317:4317 \
 -p $HYPERDX_APP_PORT:8080 \
 -p 8002:8002 \
-sha256:a2954c091a3cf7e7de0263e6548bec075deb3259d305f5f2e09a7113a78c8e38
+ghcr.io/hyperdxio/hyperdx-local:1.7.0
 ```
 
 ## Notes
