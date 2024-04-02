@@ -229,6 +229,10 @@ const handleSendSlackWebhook = async (
   });
 };
 
+export const escapeJsonString = (str: string) => {
+  return JSON.stringify(str).slice(1, -1);
+};
+
 export const handleSendGenericWebhook = async (
   webhook: IWebhook,
   message: {
@@ -273,36 +277,13 @@ export const handleSendGenericWebhook = async (
   let body = '';
   if (webhook.body) {
     const handlebars = Handlebars.create();
-    let isJsonBody = false;
-    try {
-      const jsonBody = JSON.parse(webhook.body);
-      isJsonBody = true;
-      for (const [_key, _val] of Object.entries(jsonBody)) {
-        jsonBody[_key] = handlebars.compile(_val, {
-          noEscape: true,
-        })({
-          body: message.body,
-          link: message.hdxLink,
-          title: message.title,
-        });
-      }
-      body = JSON.stringify(jsonBody);
-    } catch (e) {
-      logger.error({
-        message: 'Webhook body is not a valid JSON',
-        error: serializeError(e),
-      });
-    }
-
-    if (!isJsonBody) {
-      body = handlebars.compile(webhook.body, {
-        noEscape: true,
-      })({
-        body: message.body,
-        link: message.hdxLink,
-        title: message.title,
-      });
-    }
+    body = handlebars.compile(webhook.body, {
+      noEscape: true,
+    })({
+      body: escapeJsonString(message.body),
+      link: escapeJsonString(message.hdxLink),
+      title: escapeJsonString(message.title),
+    });
   }
 
   try {
