@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
-import mongoose from 'mongoose';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -15,6 +14,7 @@ import {
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
+import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -197,9 +197,7 @@ router.delete(
   '/users/:id',
   validateRequest({
     params: z.object({
-      id: z.string().refine(val => {
-        return mongoose.Types.ObjectId.isValid(val);
-      }),
+      id: objectIdSchema,
     }),
   }),
   async (req, res, next) => {
@@ -227,9 +225,7 @@ router.delete(
   '/teamInvites/:id',
   validateRequest({
     params: z.object({
-      id: z.string().refine(val => {
-        return mongoose.Types.ObjectId.isValid(val);
-      }),
+      id: objectIdSchema,
     }),
   }),
   async (req, res, next) => {
