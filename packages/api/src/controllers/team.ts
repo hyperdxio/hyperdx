@@ -41,12 +41,12 @@ export async function createTeam({ name }: { name: string }) {
   return team;
 }
 
-export function getTeam(id: string | ObjectId) {
+export function getTeam(id: string | ObjectId, fields?: string[]) {
   if (config.IS_LOCAL_APP_MODE) {
     return LOCAL_APP_TEAM;
   }
 
-  return Team.findById(id);
+  return Team.findById(id, fields);
 }
 
 export function getTeamByApiKey(apiKey: string) {

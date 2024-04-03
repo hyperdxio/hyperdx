@@ -1,6 +1,8 @@
 import _ from 'lodash';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import TeamInvite from '@/models/teamInvite';
+import User from '@/models/user';
 
 describe('team router', () => {
   const server = getServer();
@@ -27,15 +29,6 @@ Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",
   "sentryDSN": "",
-  "teamInvites": Array [],
-  "users": Array [
-    Object {
-      "email": "fake@deploysentinel.com",
-      "hasPasswordAuth": true,
-      "isCurrentUser": true,
-      "name": "fake@deploysentinel.com",
-    },
-  ],
 }
 `);
   });
@@ -69,5 +62,95 @@ Object {
       .expect(200);
     const resp = await agent.get('/team/tags').expect(200);
     expect(resp.body.data).toStrictEqual(['test', 'test2']);
+  });
+
+  it('GET /team/members', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team._id,
+    });
+    const user2 = await User.create({
+      email: 'user2@example.com',
+      team: team._id,
+    });
+    const resp = await agent.get('/team/members').expect(200);
+
+    expect(resp.body.data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "email": "fake@deploysentinel.com",
+    "hasPasswordAuth": true,
+    "name": "fake@deploysentinel.com",
+  },
+  Object {
+    "email": "user1@example.com",
+    "hasPasswordAuth": true,
+  },
+  Object {
+    "email": "user2@example.com",
+    "hasPasswordAuth": true,
+  },
+]
+`);
+  });
+
+  it('POST /team/invitation', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const resp = await agent
+      .post('/team/invitation')
+      .send({
+        email: 'user3@example.com',
+        name: 'User 3',
+      })
+      .expect(200);
+    const teamInvite = await TeamInvite.findOne({
+      email: 'user3@example.com',
+    });
+    if (teamInvite == null) {
+      throw new Error('TeamInvite not found');
+    }
+    expect(resp.body.url).toBe(
+      `http://localhost:9090/join-team?token=${teamInvite.token}`,
+    );
+  });
+
+  it('GET /team/invitations', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await Promise.all([
+      agent
+        .post('/team/invitation')
+        .send({
+          email: 'user1@example.com',
+          name: 'User 1',
+        })
+        .expect(200),
+      agent
+        .post('/team/invitation')
+        .send({
+          email: 'user2@example.com',
+          name: 'User 2',
+        })
+        .expect(200),
+    ]);
+
+    const resp = await agent.get('/team/invitations').expect(200);
+    expect(
+      resp.body.data.map(i => ({
+        email: i.email,
+        name: i.name,
+      })),
+    ).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "email": "user1@example.com",
+    "name": "User 1",
+  },
+  Object {
+    "email": "user2@example.com",
+    "name": "User 2",
+  },
+]
+`);
   });
 });
