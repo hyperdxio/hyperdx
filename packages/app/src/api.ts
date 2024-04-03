@@ -730,6 +730,16 @@ const api = {
       retry: 1,
     });
   },
+  useTeamInvitations() {
+    return useQuery<any, HTTPError>(`team/invitations`, () =>
+      hdxServer(`team/invitations`).json(),
+    );
+  },
+  useTeamMembers() {
+    return useQuery<any, HTTPError>(`team/members`, () =>
+      hdxServer(`team/members`).json(),
+    );
+  },
   useTags() {
     return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
       hdxServer(`team/tags`).json<{ data: string[] }>(),

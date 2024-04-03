@@ -12,6 +12,20 @@ import logger from '@/utils/logger';
 
 const router = express.Router();
 
+const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
+  try {
+    const url = new URL(ingestorApiUrl);
+    url.username = apiKey.replaceAll('-', '');
+    url.pathname = '0';
+    // TODO: Set up hostname from env variable
+    url.hostname = 'localhost';
+    return url.toString();
+  } catch (e) {
+    logger.error(serializeError(e));
+    return '';
+  }
+};
+
 router.post('/', async (req, res, next) => {
   try {
     const { email: toEmail, name } = req.body;
@@ -67,20 +81,6 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
-  try {
-    const url = new URL(ingestorApiUrl);
-    url.username = apiKey.replaceAll('-', '');
-    url.pathname = '0';
-    // TODO: Set up hostname from env variable
-    url.hostname = 'localhost';
-    return url.toString();
-  } catch (e) {
-    logger.error(serializeError(e));
-    return '';
-  }
-};
-
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -98,9 +98,6 @@ router.get('/', async (req, res, next) => {
       throw new Error(`Team ${teamId} not found for user ${userId}`);
     }
 
-    const teamUsers = await findUsersByTeam(teamId);
-    const teamInvites = await TeamInvite.find({});
-
     res.json({
       ...pick(team.toJSON(), [
         '_id',
@@ -110,20 +107,6 @@ router.get('/', async (req, res, next) => {
         'name',
         'slackAlert',
       ]),
-      users: teamUsers.map(user => ({
-        ...pick(user.toJSON({ virtuals: true }), [
-          'email',
-          'name',
-          'hasPasswordAuth',
-        ]),
-        isCurrentUser: user._id.equals(userId),
-      })),
-      teamInvites: teamInvites.map(ti => ({
-        createdAt: ti.createdAt,
-        email: ti.email,
-        name: ti.name,
-        url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
-      })),
       sentryDSN: getSentryDSN(team.apiKey, config.INGESTOR_API_URL),
     });
   } catch (e) {
@@ -139,6 +122,51 @@ router.patch('/apiKey', async (req, res, next) => {
     }
     const team = await rotateTeamApiKey(teamId);
     res.json({ newApiKey: team?.apiKey });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/invitations', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      throw new Error(`User ${req.user?._id} not associated with a team`);
+    }
+
+    const teamInvites = await TeamInvite.find({ teamId });
+
+    res.json({
+      data: teamInvites.map(ti => ({
+        createdAt: ti.createdAt,
+        email: ti.email,
+        name: ti.name,
+        url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/members', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      throw new Error(`User ${req.user?._id} not associated with a team`);
+    }
+
+    const teamUsers = await findUsersByTeam(teamId);
+
+    res.json({
+      data: teamUsers.map(user => ({
+        ...pick(user.toJSON({ virtuals: true }), [
+          'email',
+          'name',
+          'hasPasswordAuth',
+        ]),
+      })),
+    });
   } catch (e) {
     next(e);
   }
