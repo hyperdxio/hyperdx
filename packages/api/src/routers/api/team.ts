@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import express from 'express';
-import isemail from 'isemail';
 import pick from 'lodash/pick';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
