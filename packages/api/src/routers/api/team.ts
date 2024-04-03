@@ -227,15 +227,11 @@ router.delete(
   async (req, res, next) => {
     try {
       const id = req.params.id;
-      const teamInvite = await TeamInvite.findOne({
-        _id: id,
-      });
+      const deletedTeamInvite = await TeamInvite.findByIdAndDelete(id);
 
-      if (teamInvite == null) {
+      if (deletedTeamInvite == null) {
         throw new Error(`TeamInvite ${id} not found`);
       }
-
-      await teamInvite.deleteOne();
     } catch (e) {
       next(e);
     }
