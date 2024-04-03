@@ -20,6 +20,15 @@ export async function findUserByEmailInTeam(
   return User.findOne({ email, team });
 }
 
+export const deleteUserByIdAndTeam = async (
+  id: string,
+  team: string | ObjectId,
+) => {
+  const user = await User.findOneAndDelete({ _id: id, team }).lean();
+
+  return user;
+};
+
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }

@@ -8,8 +8,8 @@ import { validateRequest } from 'zod-express-middleware';
 import * as config from '@/config';
 import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
 import {
+  deleteUserByIdAndTeam,
   findUserByEmail,
-  findUserByEmailInTeam,
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
@@ -204,14 +204,10 @@ router.delete(
     try {
       const teamId = req.user?.team || '';
       const id = req.params.id;
-      const user = await findUserByEmailInTeam(id, teamId);
+      const user = await deleteUserByIdAndTeam(id, teamId);
 
       if (user == null) {
         throw new Error(`User ${id} not found`);
-      }
-
-      if (user) {
-        await user.deleteOne();
       }
 
       res.json({ message: 'User deleted' });
