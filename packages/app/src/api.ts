@@ -707,7 +707,7 @@ const api = {
   },
   useDeleteTeamMember() {
     return useMutation<any, HTTPError, { userId: string }>(async ({ userId }) =>
-      server(`team/users/${userId}`, {
+      server(`team/member/${userId}`, {
         method: 'DELETE',
       }).json(),
     );

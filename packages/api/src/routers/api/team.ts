@@ -198,7 +198,7 @@ router.get('/tags', async (req, res, next) => {
 });
 
 router.delete(
-  '/users/:id',
+  '/member/:id',
   validateRequest({
     params: z.object({
       id: objectIdSchema,
@@ -222,7 +222,7 @@ router.delete(
 );
 
 router.delete(
-  '/invitations/:id',
+  '/invitation/:id',
   validateRequest({
     params: z.object({
       id: objectIdSchema,

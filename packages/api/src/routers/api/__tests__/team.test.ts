@@ -32,7 +32,6 @@ Object {
   "teamInvites": Array [],
   "users": Array [
     Object {
-      "_id": "${resp.body.users[0]._id}",
       "email": "fake@deploysentinel.com",
       "hasPasswordAuth": true,
       "isCurrentUser": true,
@@ -164,7 +163,7 @@ Array [
 `);
   });
 
-  it('DELETE /team/user/:userId', async () => {
+  it('DELETE /team/member/:userId', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     const user1 = await User.create({
@@ -172,14 +171,14 @@ Array [
       team: team._id,
     });
 
-    await agent.delete(`/team/user/${user1._id}`).expect(200);
+    await agent.delete(`/team/member/${user1._id}`).expect(200);
 
-    const resp2 = await agent.get('/team').expect(200);
+    const resp2 = await agent.get('/members').expect(200);
 
-    expect(resp2.body.users).toHaveLength(0);
+    expect(resp2.body.data).toHaveLength(1);
   });
 
-  it('DELETE /invitations/:teamInviteId', async () => {
+  it('DELETE /team/invitation/:teamInviteId', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     const invite = await TeamInvite.create({
@@ -189,7 +188,7 @@ Array [
       token: 'fake_token',
     });
 
-    await agent.delete(`/team/invitations/${invite._id}`).expect(200);
+    await agent.delete(`/team/invitation/${invite._id}`).expect(200);
 
     const resp2 = await agent.get('/team/invitations').expect(200);
 
