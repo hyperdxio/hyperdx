@@ -1,8 +1,12 @@
 import _ from 'lodash';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
+import {
+  getLoggedInAgent,
+  getLoggedInAgentWithInvite,
+  getServer,
+} from '@/fixtures';
 
 describe('team router', () => {
   const server = getServer();
@@ -162,5 +166,36 @@ Array [
   },
 ]
 `);
+  });
+
+  it('DELETE /team/user/:userId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team._id,
+    });
+
+    await agent.delete(`/team/user/${user1.id}`).expect(200);
+
+    const resp2 = await agent.get('/team').expect(200);
+
+    expect(resp2.body.users).toHaveLength(0);
+  });
+
+  it('DELETE /teamInvites/:teamInviteId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const invite = await TeamInvite.create({
+      email: 'fake_invite@example.com',
+      name: 'Fake Invite',
+      teamId: team._id,
+    });
+
+    await agent.delete(`/team/teamInvites/${invite.id}`).expect(200);
+
+    const resp2 = await agent.get('/team/invitations').expect(200);
+
+    expect(resp2.body.data).toHaveLength(0);
   });
 });
