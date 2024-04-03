@@ -148,6 +148,7 @@ router.get('/invitations', async (req, res, next) => {
     );
     res.json({
       data: teamInvites.map(ti => ({
+        _id: ti._id,
         createdAt: ti.createdAt,
         email: ti.email,
         name: ti.name,
@@ -162,6 +163,7 @@ router.get('/invitations', async (req, res, next) => {
 router.get('/members', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
+    const userId = req.user?._id;
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
@@ -169,10 +171,12 @@ router.get('/members', async (req, res, next) => {
     res.json({
       data: teamUsers.map(user => ({
         ...pick(user.toJSON({ virtuals: true }), [
+          '_id',
           'email',
           'name',
           'hasPasswordAuth',
         ]),
+        isCurrentUser: userId ? user._id.equals(userId) : false,
       })),
     });
   } catch (e) {
@@ -218,7 +222,7 @@ router.delete(
 );
 
 router.delete(
-  '/teamInvites/:id',
+  '/invitations/:id',
   validateRequest({
     params: z.object({
       id: objectIdSchema,

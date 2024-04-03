@@ -714,7 +714,7 @@ const api = {
   },
   useDeleteTeamInvite() {
     return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      server(`team/teamInvites/${id}`, {
+      server(`team/invitations/${id}`, {
         method: 'DELETE',
       }).json(),
     );

@@ -124,7 +124,7 @@ export default function TeamPage() {
         {
           onSuccess: resp => {
             toast.success('Deleted team member');
-            refetchTeam();
+            refetchMembers();
           },
           onError: e => {
             e.response
@@ -155,7 +155,7 @@ export default function TeamPage() {
         {
           onSuccess: resp => {
             toast.success('Deleted team invite');
-            refetchTeam();
+            refetchInvitations();
           },
           onError: e => {
             e.response
