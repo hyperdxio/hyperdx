@@ -93,20 +93,20 @@ router.get('/', async (req, res, next) => {
       throw new Error(`User has no id`);
     }
 
-    const team = await getTeam(teamId);
+    const team = await getTeam(teamId, [
+      '_id',
+      'allowedAuthMethods',
+      'apiKey',
+      'archive',
+      'name',
+      'slackAlert',
+    ]);
     if (team == null) {
       throw new Error(`Team ${teamId} not found for user ${userId}`);
     }
 
     res.json({
-      ...pick(team.toJSON(), [
-        '_id',
-        'allowedAuthMethods',
-        'apiKey',
-        'archive',
-        'name',
-        'slackAlert',
-      ]),
+      ...team.toJSON(),
       sentryDSN: getSentryDSN(team.apiKey, config.INGESTOR_API_URL),
     });
   } catch (e) {
@@ -133,9 +133,15 @@ router.get('/invitations', async (req, res, next) => {
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
-
-    const teamInvites = await TeamInvite.find({ teamId });
-
+    const teamInvites = await TeamInvite.find(
+      { teamId },
+      {
+        createdAt: 1,
+        email: 1,
+        name: 1,
+        token: 1,
+      },
+    );
     res.json({
       data: teamInvites.map(ti => ({
         createdAt: ti.createdAt,
@@ -155,9 +161,7 @@ router.get('/members', async (req, res, next) => {
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
-
     const teamUsers = await findUsersByTeam(teamId);
-
     res.json({
       data: teamUsers.map(user => ({
         ...pick(user.toJSON({ virtuals: true }), [
@@ -178,7 +182,6 @@ router.get('/tags', async (req, res, next) => {
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
-
     const tags = await getTags(teamId);
     return res.json({ data: tags });
   } catch (e) {
