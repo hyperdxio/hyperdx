@@ -3,6 +3,8 @@ import express from 'express';
 import isemail from 'isemail';
 import pick from 'lodash/pick';
 import { serializeError } from 'serialize-error';
+import { z } from 'zod';
+import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
 import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
@@ -25,61 +27,6 @@ const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
     return '';
   }
 };
-
-router.post('/', async (req, res, next) => {
-  try {
-    const { email: toEmail, name } = req.body;
-
-    if (!toEmail || !isemail.validate(toEmail)) {
-      return res.status(400).json({
-        message: 'Invalid email',
-      });
-    }
-
-    const teamId = req.user?.team;
-    const fromEmail = req.user?.email;
-
-    if (teamId == null) {
-      throw new Error(`User ${req.user?._id} not associated with a team`);
-    }
-
-    if (fromEmail == null) {
-      throw new Error(`User ${req.user?._id} doesnt have email`);
-    }
-
-    const team = await getTeam(teamId);
-    if (team == null) {
-      throw new Error(`Team ${teamId} not found`);
-    }
-
-    const toUser = await findUserByEmail(toEmail);
-    if (toUser) {
-      return res.status(400).json({
-        message: 'User already exists. Please contact HyperDX team for support',
-      });
-    }
-
-    let teamInvite = await TeamInvite.findOne({
-      teamId: team._id,
-      email: toEmail, // TODO: case insensitive ?
-    });
-
-    if (!teamInvite) {
-      teamInvite = await new TeamInvite({
-        teamId: team._id,
-        name,
-        email: toEmail, // TODO: case insensitive ?
-        token: crypto.randomBytes(32).toString('hex'),
-      }).save();
-    }
-
-    res.json({
-      url: `${config.FRONTEND_URL}/join-team?token=${teamInvite.token}`,
-    });
-  } catch (e) {
-    next(e);
-  }
-});
 
 router.get('/', async (req, res, next) => {
   try {
@@ -126,6 +73,59 @@ router.patch('/apiKey', async (req, res, next) => {
     next(e);
   }
 });
+
+router.post(
+  '/invitation',
+  validateRequest({
+    body: z.object({
+      email: z.string().email(),
+      name: z.string().optional(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { email: toEmail, name } = req.body;
+      const teamId = req.user?.team;
+      const fromEmail = req.user?.email;
+
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+
+      if (fromEmail == null) {
+        throw new Error(`User ${req.user?._id} doesnt have email`);
+      }
+
+      const toUser = await findUserByEmail(toEmail);
+      if (toUser) {
+        return res.status(400).json({
+          message:
+            'User already exists. Please contact HyperDX team for support',
+        });
+      }
+
+      let teamInvite = await TeamInvite.findOne({
+        teamId,
+        email: toEmail, // TODO: case insensitive ?
+      });
+
+      if (!teamInvite) {
+        teamInvite = await new TeamInvite({
+          teamId,
+          name,
+          email: toEmail, // TODO: case insensitive ?
+          token: crypto.randomBytes(32).toString('hex'),
+        }).save();
+      }
+
+      res.json({
+        url: `${config.FRONTEND_URL}/join-team?token=${teamInvite.token}`,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.get('/invitations', async (req, res, next) => {
   try {

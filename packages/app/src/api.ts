@@ -705,10 +705,10 @@ const api = {
       }).json(),
     );
   },
-  useSendTeamInvite() {
+  useSaveTeamInvitation() {
     return useMutation<any, HTTPError, { name?: string; email: string }>(
       async ({ name, email }) =>
-        hdxServer(`team`, {
+        hdxServer(`team/invitation`, {
           method: 'POST',
           json: {
             name,

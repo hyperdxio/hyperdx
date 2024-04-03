@@ -53,7 +53,7 @@ export default function TeamPage() {
     api.useWebhooks(['slack']);
   const { data: genericWebhooks, refetch: refetchGenericWebhooks } =
     api.useWebhooks(['generic']);
-  const sendTeamInvite = api.useSendTeamInvite();
+  const saveTeamInvitation = api.useSaveTeamInvitation();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
@@ -110,7 +110,7 @@ export default function TeamPage() {
 
   const sendTeamInviteAction = (email: string) => {
     if (email) {
-      sendTeamInvite.mutate(
+      saveTeamInvitation.mutate(
         { email },
         {
           onSuccess: resp => {
