@@ -29,15 +29,6 @@ Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",
   "sentryDSN": "",
-  "teamInvites": Array [],
-  "users": Array [
-    Object {
-      "email": "fake@deploysentinel.com",
-      "hasPasswordAuth": true,
-      "isCurrentUser": true,
-      "name": "fake@deploysentinel.com",
-    },
-  ],
 }
 `);
   });
@@ -88,17 +79,23 @@ Object {
     expect(resp.body.data).toMatchInlineSnapshot(`
 Array [
   Object {
+    "_id": "${resp.body.data[0]._id}",
     "email": "fake@deploysentinel.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": true,
     "name": "fake@deploysentinel.com",
   },
   Object {
+    "_id": "${user1._id}",
     "email": "user1@example.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": false,
   },
   Object {
+    "_id": "${user2._id}",
     "email": "user2@example.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": false,
   },
 ]
 `);
@@ -173,7 +170,7 @@ Array [
 
     await agent.delete(`/team/member/${user1._id}`).expect(200);
 
-    const resp2 = await agent.get('/members').expect(200);
+    const resp2 = await agent.get('/team/members').expect(200);
 
     expect(resp2.body.data).toHaveLength(1);
   });
