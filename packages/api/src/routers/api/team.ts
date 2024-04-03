@@ -167,6 +167,9 @@ router.get('/members', async (req, res, next) => {
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
+    if (userId == null) {
+      throw new Error(`User has no id`);
+    }
     const teamUsers = await findUsersByTeam(teamId);
     res.json({
       data: teamUsers.map(user => ({
@@ -176,7 +179,7 @@ router.get('/members', async (req, res, next) => {
           'name',
           'hasPasswordAuth',
         ]),
-        isCurrentUser: userId ? user._id.equals(userId) : false,
+        isCurrentUser: user._id.equals(userId),
       })),
     });
   } catch (e) {
