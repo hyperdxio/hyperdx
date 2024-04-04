@@ -15,6 +15,7 @@ import {
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
+import { Api404Error } from '@/utils/errors';
 
 const router = express.Router();
 
@@ -168,7 +169,7 @@ router.get('/members', async (req, res, next) => {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
     if (userId == null) {
-      throw new Error(`User has no id`);
+      throw new Api404Error('Request without user found');
     }
     const teamUsers = await findUsersByTeam(teamId);
     res.json({
@@ -237,7 +238,7 @@ router.delete(
       const deletedTeamInvite = await TeamInvite.findByIdAndDelete(id);
 
       if (deletedTeamInvite == null) {
-        throw new Error(`TeamInvite ${id} not found`);
+        throw new Api404Error('Team invite with the specified ID does not exist.');
       }
     } catch (e) {
       next(e);
