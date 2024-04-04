@@ -738,8 +738,11 @@ export default function TeamPage() {
                     name="email"
                     type="email"
                     placeholder="you@company.com"
-                    className="border-0 mb-4 px-3"
+                    className="border-0 mb-2 px-3"
                   />
+                  <p className="mb-4 fs-8 text-muted">
+                    The invite link will automatically expire after 30 days.
+                  </p>
                   <Button
                     variant="brand-primary"
                     className="mt-2 px-4 float-end"

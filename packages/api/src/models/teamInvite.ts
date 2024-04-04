@@ -34,7 +34,7 @@ const TeamInviteSchema = new Schema(
 
 TeamInviteSchema.index(
   { createdAt: 1 },
-  { expireAfterSeconds: ms('7d') / 1000 },
+  { expireAfterSeconds: ms('30d') / 1000 },
 );
 
 TeamInviteSchema.index({ teamId: 1, email: 1 }, { unique: true });
