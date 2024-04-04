@@ -462,7 +462,7 @@ function SearchPage() {
 
   const [saveSearchModalMode, setSaveSearchModalMode] = useState<
     'update' | 'save' | 'hidden'
-  >('save');
+  >('hidden');
   const [configAlertModalShow, setConfigAlertModalShow] = useState(false);
   const deleteLogView = api.useDeleteLogView();
   const updateLogView = api.useUpdateLogView();
