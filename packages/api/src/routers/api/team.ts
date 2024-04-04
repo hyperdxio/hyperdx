@@ -13,9 +13,9 @@ import {
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
+import { Api404Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
-import { Api404Error } from '@/utils/errors';
 
 const router = express.Router();
 
@@ -238,7 +238,9 @@ router.delete(
       const deletedTeamInvite = await TeamInvite.findByIdAndDelete(id);
 
       if (deletedTeamInvite == null) {
-        throw new Api404Error('Team invite with the specified ID does not exist.');
+        throw new Api404Error(
+          'Team invite with the specified ID ' + 'does not exist.',
+        );
       }
     } catch (e) {
       next(e);
