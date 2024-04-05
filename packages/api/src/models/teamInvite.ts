@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import ms from 'ms';
 
 export interface ITeamInvite {
   createdAt: Date;
@@ -29,6 +30,11 @@ const TeamInviteSchema = new Schema(
   {
     timestamps: true,
   },
+);
+
+TeamInviteSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: ms('30d') / 1000 },
 );
 
 TeamInviteSchema.index({ teamId: 1, email: 1 }, { unique: true });

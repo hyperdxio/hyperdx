@@ -707,10 +707,10 @@ const api = {
       }).json(),
     );
   },
-  useSendTeamInvite() {
+  useSaveTeamInvitation() {
     return useMutation<any, HTTPError, { name?: string; email: string }>(
       async ({ name, email }) =>
-        hdxServer(`team`, {
+        hdxServer(`team/invitation`, {
           method: 'POST',
           json: {
             name,
@@ -731,6 +731,16 @@ const api = {
     return useQuery<any, HTTPError>(`team`, () => hdxServer(`team`).json(), {
       retry: 1,
     });
+  },
+  useTeamInvitations() {
+    return useQuery<any, HTTPError>(`team/invitations`, () =>
+      hdxServer(`team/invitations`).json(),
+    );
+  },
+  useTeamMembers() {
+    return useQuery<any, HTTPError>(`team/members`, () =>
+      hdxServer(`team/members`).json(),
+    );
   },
   useTags() {
     return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>

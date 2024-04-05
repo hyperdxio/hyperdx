@@ -52,8 +52,6 @@ function AlertForm({
   onDeleteClick: () => void;
   query: string;
 }) {
-  const { data: team } = api.useTeam();
-
   const {
     register,
     handleSubmit,

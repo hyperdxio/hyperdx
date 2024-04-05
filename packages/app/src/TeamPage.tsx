@@ -39,11 +39,21 @@ export default function TeamPage() {
     useState(false);
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const {
+    data: members,
+    isLoading: isLoadingMembers,
+    refetch: refetchMembers,
+  } = api.useTeamMembers();
+  const {
+    data: invitations,
+    isLoading: isLoadingInvitations,
+    refetch: refetchInvitations,
+  } = api.useTeamInvitations();
   const { data: slackWebhooks, refetch: refetchSlackWebhooks } =
     api.useWebhooks(['slack']);
   const { data: genericWebhooks, refetch: refetchGenericWebhooks } =
     api.useWebhooks(['generic']);
-  const sendTeamInvite = api.useSendTeamInvite();
+  const saveTeamInvitation = api.useSaveTeamInvitation();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
@@ -100,14 +110,14 @@ export default function TeamPage() {
 
   const sendTeamInviteAction = (email: string) => {
     if (email) {
-      sendTeamInvite.mutate(
+      saveTeamInvitation.mutate(
         { email },
         {
           onSuccess: resp => {
             toast.success(
               'Click "Copy URL" and share the URL with your team member',
             );
-            refetchTeam();
+            refetchInvitations();
           },
           onError: e => {
             e.response
@@ -673,28 +683,32 @@ export default function TeamPage() {
             </>
           )}
           <h2 className="mt-5">Team Members</h2>
-          {team.users.map((user: any) => (
-            <div key={user.email} className="mt-2">
-              {user.isCurrentUser && (
-                <span className="fw-bold text-primary">(You) </span>
-              )}
-              {user.name} - {user.email} -
-              {user.hasPasswordAuth && ' Password Auth'}
-            </div>
-          ))}
-          {team.teamInvites.map((teamInvite: any) => (
-            <div key={teamInvite.email} className="mt-2">
-              {teamInvite.email} - Pending Invite -
-              <CopyToClipboard text={teamInvite.url}>
-                <Button
-                  variant="link"
-                  className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
-                >
-                  📋 Copy URL
-                </Button>
-              </CopyToClipboard>
-            </div>
-          ))}
+          {!isLoadingMembers &&
+            Array.isArray(members.data) &&
+            members.data.map((member: any) => (
+              <div key={member.email} className="mt-2">
+                {member.isCurrentUser && (
+                  <span className="fw-bold text-primary">(You) </span>
+                )}
+                {member.name} - {member.email} -
+                {member.hasPasswordAuth && ' Password Auth'}
+              </div>
+            ))}
+          {!isLoadingInvitations &&
+            Array.isArray(invitations.data) &&
+            invitations.data.map((invitation: any) => (
+              <div key={invitation.email} className="mt-2">
+                {invitation.email} - Pending Invite -
+                <CopyToClipboard text={invitation.url}>
+                  <Button
+                    variant="link"
+                    className="px-0 text-muted-hover text-decoration-none fs-7 ms-3"
+                  >
+                    📋 Copy URL
+                  </Button>
+                </CopyToClipboard>
+              </div>
+            ))}
           <div className="mt-3 mb-5">
             <Button
               variant="secondary text-white"
@@ -724,8 +738,11 @@ export default function TeamPage() {
                     name="email"
                     type="email"
                     placeholder="you@company.com"
-                    className="border-0 mb-4 px-3"
+                    className="border-0 mb-2 px-3"
                   />
+                  <p className="mb-4 fs-8 text-muted">
+                    The invite link will automatically expire after 30 days.
+                  </p>
                   <Button
                     variant="brand-primary"
                     className="mt-2 px-4 float-end"
