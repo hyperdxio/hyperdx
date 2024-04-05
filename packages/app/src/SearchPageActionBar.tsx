@@ -9,12 +9,14 @@ export default function SearchPageActionBar({
   onClickConfigAlert,
   onClickDeleteLogView,
   onClickSaveSearch,
+  onClickRenameSearch,
   onClickUpdateLogView,
   selectedLogView,
 }: {
   onClickConfigAlert: () => void;
   onClickDeleteLogView: () => void;
   onClickSaveSearch: () => void;
+  onClickRenameSearch: () => void;
   onClickUpdateLogView: () => void;
   selectedLogView: any;
 }) {
@@ -126,6 +128,17 @@ export default function SearchPageActionBar({
               )}
               {selectedLogView && (
                 <>
+                  <div className="d-flex bg-body border rounded mt-2">
+                    <Button
+                      variant="dark"
+                      className="text-muted-hover d-flex align-items-center fs-7 w-100"
+                      style={{ height: 36 }}
+                      onClick={onClickRenameSearch}
+                    >
+                      <i className="me-2 fs-7.5 bi bi-input-cursor-text" />
+                      Rename Saved Search
+                    </Button>
+                  </div>
                   <div className="d-flex bg-body border rounded mt-2">
                     <Button
                       variant="dark"

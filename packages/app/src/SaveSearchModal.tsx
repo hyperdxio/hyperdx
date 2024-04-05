@@ -8,16 +8,23 @@ import { genEnglishExplanation } from './queryv2';
 
 export default function SaveSearchModal({
   onHide,
-  show,
   searchQuery,
+  mode,
+  searchName,
+  searchID,
   onSaveSuccess,
+  onUpdateSuccess,
 }: {
   onHide: () => void;
-  show: boolean;
   searchQuery: string;
+  mode: 'save' | 'update' | 'hidden';
+  searchName: string;
+  searchID: string;
   onSaveSuccess: (responseData: { _id: string }) => void;
+  onUpdateSuccess: (responseData: { _id: string }) => void;
 }) {
   const saveLogView = api.useSaveLogView();
+  const updateLogView = api.useUpdateLogView();
 
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
@@ -36,22 +43,42 @@ export default function SaveSearchModal({
     // TODO: fallback to parsedEnglishQuery for better UX ??
     const name = target.name.value || parsedEnglishQuery;
 
-    saveLogView.mutate(
-      {
-        name,
-        query: searchQuery,
-      },
-      {
-        onSuccess: response => {
-          onSaveSuccess(response.data);
+    if (mode === 'update') {
+      updateLogView.mutate(
+        {
+          id: searchID,
+          name,
+          query: searchQuery,
         },
-        onError: () => {
-          toast.error(
-            'An error occurred. Please contact support for more details.',
-          );
+        {
+          onSuccess: response => {
+            onUpdateSuccess(response.data);
+          },
+          onError: () => {
+            toast.error(
+              'An error occured. Please contact support for more details.',
+            );
+          },
         },
-      },
-    );
+      );
+    } else {
+      saveLogView.mutate(
+        {
+          name,
+          query: searchQuery,
+        },
+        {
+          onSuccess: response => {
+            onSaveSuccess(response.data);
+          },
+          onError: () => {
+            toast.error(
+              'An error occured. Please contact support for more details.',
+            );
+          },
+        },
+      );
+    }
   };
 
   return (
@@ -59,7 +86,7 @@ export default function SaveSearchModal({
       aria-labelledby="contained-modal-title-vcenter"
       centered
       onHide={onHide}
-      show={show}
+      show={mode !== 'hidden'}
       size="lg"
     >
       <Modal.Body className="bg-grey rounded">
@@ -81,10 +108,11 @@ export default function SaveSearchModal({
               size="sm"
               type="text"
               autoFocus
+              defaultValue={searchName}
             />
           </Form.Group>
           <MButton size="sm" variant="light" type="submit">
-            Save
+            {mode === 'update' ? 'Update' : 'Save'}
           </MButton>
         </Form>
       </Modal.Body>
