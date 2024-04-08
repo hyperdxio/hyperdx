@@ -68,7 +68,7 @@ export default function TeamPage() {
   const saveTeamInvitation = api.useSaveTeamInvitation();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
   const deleteTeamMember = api.useDeleteTeamMember();
-  const deleteTeamInvite = api.useDeleteTeamInvite();
+  const deleteTeamInvitation = api.useDeleteTeamInvitation();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
   const setTimeFormat = useUserPreferences().setTimeFormat;
@@ -150,7 +150,7 @@ export default function TeamPage() {
 
   const deleteTeamInviteAction = (id: string) => {
     if (id) {
-      deleteTeamInvite.mutate(
+      deleteTeamInvitation.mutate(
         { id: encodeURIComponent(id) },
         {
           onSuccess: resp => {
