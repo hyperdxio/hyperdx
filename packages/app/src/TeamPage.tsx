@@ -786,12 +786,12 @@ export default function TeamPage() {
           >
             <Modal.Body className="bg-grey rounded">
               <h3 className="text-muted">Delete Team Member</h3>
-              <h5 className="text-muted">
+              <p className="text-muted">
                 Deleting this team member (
                 {deleteTeamMemberConfirmationModalData.email}) will revoke their
                 access to the team&apos;s resources and services. This action is
                 not reversible.
-              </h5>
+              </p>
               <Button
                 variant="outline-secondary"
                 className="mt-2 px-4 ms-2 float-end"
