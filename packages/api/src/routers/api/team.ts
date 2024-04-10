@@ -7,9 +7,14 @@ import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
 import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
-import { findUserByEmail, findUsersByTeam } from '@/controllers/user';
+import {
+  deleteTeamMember,
+  findUserByEmail,
+  findUsersByTeam,
+} from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
 import logger from '@/utils/logger';
+import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -143,6 +148,7 @@ router.get('/invitations', async (req, res, next) => {
     );
     res.json({
       data: teamInvites.map(ti => ({
+        _id: ti._id,
         createdAt: ti.createdAt,
         email: ti.email,
         name: ti.name,
@@ -154,26 +160,76 @@ router.get('/invitations', async (req, res, next) => {
   }
 });
 
+router.delete(
+  '/invitation/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+
+      await TeamInvite.findByIdAndDelete(id);
+
+      return res.json({ message: 'TeamInvite deleted' });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 router.get('/members', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
+    const userId = req.user?._id;
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
+    }
+    if (userId == null) {
+      throw new Error(`User has no id`);
     }
     const teamUsers = await findUsersByTeam(teamId);
     res.json({
       data: teamUsers.map(user => ({
         ...pick(user.toJSON({ virtuals: true }), [
+          '_id',
           'email',
           'name',
           'hasPasswordAuth',
         ]),
+        isCurrentUser: user._id.equals(userId),
       })),
     });
   } catch (e) {
     next(e);
   }
 });
+
+router.delete(
+  '/member/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+
+      await deleteTeamMember(teamId, id);
+
+      res.json({ message: 'User deleted' });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.get('/tags', async (req, res, next) => {
   try {
