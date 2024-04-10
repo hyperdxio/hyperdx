@@ -23,3 +23,10 @@ export async function findUserByEmailInTeam(
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }
+
+export function deleteTeamMember(teamId: string | ObjectId, userId: string) {
+  return User.findOneAndDelete({
+    team: teamId,
+    _id: userId,
+  });
+}

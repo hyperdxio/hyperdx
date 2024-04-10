@@ -79,17 +79,23 @@ Object {
     expect(resp.body.data).toMatchInlineSnapshot(`
 Array [
   Object {
+    "_id": "${resp.body.data[0]._id}",
     "email": "fake@deploysentinel.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": true,
     "name": "fake@deploysentinel.com",
   },
   Object {
+    "_id": "${user1._id}",
     "email": "user1@example.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": false,
   },
   Object {
+    "_id": "${user2._id}",
     "email": "user2@example.com",
     "hasPasswordAuth": true,
+    "isCurrentUser": false,
   },
 ]
 `);
@@ -152,5 +158,37 @@ Array [
   },
 ]
 `);
+  });
+
+  it('DELETE /team/member/:userId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team._id,
+    });
+
+    await agent.delete(`/team/member/${user1._id}`).expect(200);
+
+    const resp2 = await agent.get('/team/members').expect(200);
+
+    expect(resp2.body.data).toHaveLength(1);
+  });
+
+  it('DELETE /team/invitation/:teamInviteId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const invite = await TeamInvite.create({
+      email: 'fake_invite@example.com',
+      name: 'Fake Invite',
+      teamId: team._id,
+      token: 'fake_token',
+    });
+
+    await agent.delete(`/team/invitation/${invite._id}`).expect(200);
+
+    const resp2 = await agent.get('/team/invitations').expect(200);
+
+    expect(resp2.body.data).toHaveLength(0);
   });
 });

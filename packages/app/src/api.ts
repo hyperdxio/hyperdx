@@ -707,6 +707,18 @@ const api = {
       }).json(),
     );
   },
+  useDeleteTeamMember() {
+    return useMutation<any, HTTPError, { userId: string }>(async ({ userId }) =>
+      hdxServer(`team/member/${userId}`, {
+        method: 'DELETE',
+      }).json(),
+    );
+  },
+  useTeamInvitations() {
+    return useQuery<any, HTTPError>(`team/invitations`, () =>
+      hdxServer(`team/invitations`).json(),
+    );
+  },
   useSaveTeamInvitation() {
     return useMutation<any, HTTPError, { name?: string; email: string }>(
       async ({ name, email }) =>
@@ -717,6 +729,13 @@ const api = {
             email,
           },
         }).json(),
+    );
+  },
+  useDeleteTeamInvitation() {
+    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
+      hdxServer(`team/invitation/${id}`, {
+        method: 'DELETE',
+      }).json(),
     );
   },
   useInstallation() {
@@ -731,11 +750,6 @@ const api = {
     return useQuery<any, HTTPError>(`team`, () => hdxServer(`team`).json(), {
       retry: 1,
     });
-  },
-  useTeamInvitations() {
-    return useQuery<any, HTTPError>(`team/invitations`, () =>
-      hdxServer(`team/invitations`).json(),
-    );
   },
   useTeamMembers() {
     return useQuery<any, HTTPError>(`team/members`, () =>
