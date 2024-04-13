@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { clamp, format, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+import { debounce } from 'lodash';
 import { Button } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -442,10 +443,19 @@ function SearchPage() {
     [setSearchedQuery, onSearch],
   );
 
-  const onSearchSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    doSearch(displayedSearchQuery, displayedTimeInputValue);
-  };
+  const onSearchSubmit = useCallback(
+    debounce(
+      () => {
+        doSearch(displayedSearchQuery, displayedTimeInputValue);
+      },
+      300,
+      {
+        leading: true,
+        trailing: false,
+      },
+    ),
+    [doSearch, displayedSearchQuery, displayedTimeInputValue],
+  );
 
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -743,7 +753,13 @@ function SearchPage() {
       />
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
-          <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              onSearchSubmit();
+            }}
+            className="d-flex flex-grow-1"
+          >
             <SearchInput
               inputRef={searchInput}
               value={displayedSearchQuery}
