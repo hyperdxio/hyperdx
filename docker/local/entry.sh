@@ -13,18 +13,21 @@ export SERVER_URL="${SERVER_URL:-${HYPERDX_API_URL:-http://localhost}:${HYPERDX_
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Internal Services
-export AGGREGATOR_API_URL="http://localhost:8001"
-export CLICKHOUSE_HOST="http://localhost:8123"
-export MONGO_URI="mongodb://localhost:27017/hyperdx"
-export REDIS_URI="redis://localhost:6379"
+export AGGREGATOR_API_URL="http://aggregator:8001"
+export CLICKHOUSE_HOST="http://ch-server:8123"
+export MONGO_URI="mongodb://db:27017/hyperdx"
+export REDIS_URI="redis://redis:6379"
 
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 export IS_LOCAL_APP_MODE="DANGEROUSLY_is_local_app_mode💀"
 export NEXT_TELEMETRY_DISABLED="1"
 
 # Simulate Docker Service DNS
-echo "127.0.0.1      ingestor" >> /etc/hosts
 echo "127.0.0.1      aggregator" >> /etc/hosts
+echo "127.0.0.1      ch-server" >> /etc/hosts
+echo "127.0.0.1      db" >> /etc/hosts
+echo "127.0.0.1      ingestor" >> /etc/hosts
+echo "127.0.0.1      redis" >> /etc/hosts
 
 echo "Visit the HyperDX UI at $FRONTEND_URL/search"
 echo ""
