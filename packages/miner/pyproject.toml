@@ -9,7 +9,7 @@ readme = "README.md"
 python = "^3.11"
 drain3 = "^0.9.11"
 fastapi = "^0.109.1"
-gunicorn = "^20.1.0"
+gunicorn = "^21.2.0"
 uvicorn = "^0.22.0"
 hyperdx-opentelemetry = "0.1.0"
 
