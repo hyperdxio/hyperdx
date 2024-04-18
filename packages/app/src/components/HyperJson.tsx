@@ -211,7 +211,7 @@ const Line = React.memo(
               ) : (
                 <>
                   <ValueRenderer value={value} />
-                  <div className={styles.jsonBtn}>JSON</div>
+                  <div className={styles.jsonBtn}>Expand JSON</div>
                 </>
               )
             ) : (
