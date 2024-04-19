@@ -778,16 +778,6 @@ div.react-datepicker {
   border: 1px solid rgba(255, 166, 0, 0.5);
 }
 
-.dashboard-chart:hover {
-  z-index: 1054;
-}
-
-.recharts-tooltip-wrapper {
-  &:focus-visible {
-    outline: none;
-  }
-}
-
 @keyframes highlightedChart {
   0% {
     background-color: rgba(255, 166, 0, 0.5);
@@ -807,3 +797,7 @@ div.react-datepicker {
     color: white;
   }
 }
+
+// html {
+//   filter: invert(1) hue-rotate(180deg);
+// }
