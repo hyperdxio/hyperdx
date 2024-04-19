@@ -52,7 +52,7 @@ const HDXLineChartTooltip = withErrorBoundary(
               .sort((a: any, b: any) => b.value - a.value)
               .map((p: any) => (
                 <div key={p.dataKey} style={{ color: p.color }}>
-                  {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
+                  {truncateMiddle(p.name ?? p.dataKey, 70)}:&nbsp;
                   {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
                 </div>
               ))}
