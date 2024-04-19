@@ -27,7 +27,6 @@ import {
 } from './ChartUtils';
 import Checkbox from './Checkbox';
 import * as config from './config';
-import { METRIC_ALERTS_ENABLED } from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
 import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
@@ -1274,7 +1273,8 @@ export const EditLineChartForm = ({
 
   const isChartAlertsFeatureEnabled =
     alerts != null &&
-    (_editedChart.series[0].table === 'logs' || METRIC_ALERTS_ENABLED);
+    ((_editedChart.series[0].table ?? 'logs') === 'logs' ||
+      _editedChart.series[0].table === 'metrics');
 
   return (
     <form
