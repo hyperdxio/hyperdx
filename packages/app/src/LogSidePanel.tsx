@@ -1375,7 +1375,7 @@ function PropertySubpanel({
     {
       normallyExpanded: true,
       tabulate: true,
-      lineWrap: true,
+      lineWrap: false,
       useLegacyViewer: false,
     },
   );
@@ -1623,7 +1623,7 @@ function PropertySubpanel({
                     }}
                   />
                 )}
-                <Menu width={240}>
+                <Menu width={240} withinPortal={false}>
                   <Menu.Target>
                     <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />

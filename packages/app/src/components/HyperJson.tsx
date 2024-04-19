@@ -124,28 +124,35 @@ const Line = React.memo(
     // mounting it for potentially hundreds of lines
     const { ref, hovered } = useHover<HTMLDivElement>();
 
-    const isStringValueJsonLike = React.useMemo(() => {
+    const isStringValueValidJson = React.useMemo(() => {
       if (!isString(value)) return false;
-      return (
-        (value.startsWith('{') && value.endsWith('}')) ||
-        (value.startsWith('[') && value.endsWith(']'))
-      );
+      try {
+        if (
+          (value.startsWith('{') && value.endsWith('}')) ||
+          (value.startsWith('[') && value.endsWith(']'))
+        ) {
+          const parsed = JSON.parse(value);
+          return !!parsed;
+        }
+      } catch (e) {
+        return false;
+      }
     }, [value]);
 
     const [isExpanded, setIsExpanded] = React.useState(
-      normallyExpanded && !isStringValueJsonLike,
+      normallyExpanded && !isStringValueValidJson,
     );
 
     React.useEffect(() => {
-      setIsExpanded(normallyExpanded && !isStringValueJsonLike);
-    }, [isStringValueJsonLike, normallyExpanded]);
+      setIsExpanded(normallyExpanded && !isStringValueValidJson);
+    }, [isStringValueValidJson, normallyExpanded]);
 
     const isExpandable = React.useMemo(
       () =>
         (isPlainObject(value) && Object.keys(value).length > 0) ||
         (isArray(value) && value.length > 0) ||
-        isStringValueJsonLike,
-      [isStringValueJsonLike, value],
+        isStringValueValidJson,
+      [isStringValueValidJson, value],
     );
 
     const handleToggle = React.useCallback(() => {
@@ -154,7 +161,7 @@ const Line = React.memo(
     }, [isExpandable]);
 
     const expandedData = React.useMemo(() => {
-      if (isStringValueJsonLike) {
+      if (isStringValueValidJson) {
         try {
           return JSON.parse(value);
         } catch (e) {
@@ -162,7 +169,7 @@ const Line = React.memo(
         }
       }
       return value;
-    }, [isStringValueJsonLike, value]);
+    }, [isStringValueValidJson, value]);
 
     const nestedLevel = parentKeyPath.length;
     const keyPath = React.useMemo(
@@ -198,13 +205,13 @@ const Line = React.memo(
             </div>
           </div>
           <div className={styles.valueContainer}>
-            {isStringValueJsonLike ? (
+            {isStringValueValidJson ? (
               isExpanded ? (
                 <div className={styles.object}>{'{}'} Parsed JSON</div>
               ) : (
                 <>
                   <ValueRenderer value={value} />
-                  <div className={styles.jsonBtn}>Looks like JSON. Parse?</div>
+                  <div className={styles.jsonBtn}>Expand JSON</div>
                 </>
               )
             ) : (
@@ -219,7 +226,7 @@ const Line = React.memo(
           <TreeNode
             data={expandedData}
             keyPath={keyPath}
-            disableMenu={isStringValueJsonLike}
+            disableMenu={isStringValueValidJson}
           />
         )}
       </>
