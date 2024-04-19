@@ -106,7 +106,7 @@ release:
 		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
 		--build-arg PORT=${HYPERDX_APP_PORT} \
 		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
-		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push
+		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push &
 	docker buildx build \
 		--squash . -f ./docker/local/Dockerfile \
 		--build-context clickhouse=./docker/clickhouse \
@@ -118,10 +118,3 @@ release:
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:latest -t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${LATEST_VERSION} \
 		-t ${LOCAL_IMAGE_NAME}:latest -t ${LOCAL_IMAGE_NAME}:${LATEST_VERSION} --push
-
-.PHONY: push-gh
-push-gh:
-	@echo "Creating git tag...\n"
-	yarn changeset tag
-	@echo "Pushing to the commit github...\n"
-	git push --follow-tags

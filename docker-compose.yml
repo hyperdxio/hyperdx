@@ -49,7 +49,7 @@ services:
       - 8686:8686 # healthcheck
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
-      ENABLE_GO_PARSER: 'false'
+      ENABLE_GO_PARSER: 'true'
       GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}

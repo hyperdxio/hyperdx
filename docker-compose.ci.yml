@@ -12,7 +12,7 @@ services:
       # - 8002:8002 # http-generic
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
-      ENABLE_GO_PARSER: 'false'
+      ENABLE_GO_PARSER: 'true'
       GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
@@ -102,7 +102,6 @@ services:
       - ingestor
       - otel-collector
       - redis
-
 networks:
   internal:
     name: 'hyperdx-ci-internal-network'

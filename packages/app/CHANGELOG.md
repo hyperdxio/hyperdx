@@ -1,5 +1,26 @@
 # @hyperdx/app
 
+## 1.8.0
+
+### Minor Changes
+
+- 4d6fb8f: feat: GA service health dashboard + metrics alert
+- 0e365bf: this change enables generic webhooks. no existing webhook behavior
+  will be impacted by this change.
+- 4d6fb8f: feat: GA k8s dashboard / metrics side panel
+
+### Patch Changes
+
+- eefe597: Show client sessions with no user interactions but has recording by
+  default
+- b454003: feat: introduce conditional alert routing helper #is_match
+- 05517dc: LogViewer: better JSON parsing and other tweaks
+- d3e270a: chore: bump vector to v0.37.0
+- ec95ef0: Add skip forward/back 15s buttons on session replay
+- 2c61276: Allow exporting table chart results as CSV
+- bc1e84b: Allow to interact with page while log side panel is open
+- ab96e7c: Update Team Page layout and styling
+
 ## 1.7.0
 
 ### Minor Changes
