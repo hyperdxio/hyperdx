@@ -26,12 +26,7 @@ import { version } from '../package.json';
 
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import {
-  IS_LOCAL_MODE,
-  K8S_DASHBOARD_ENABLED,
-  SERVER_URL,
-  SERVICE_DASHBOARD_ENABLED,
-} from './config';
+import { IS_LOCAL_MODE, SERVER_URL } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { KubernetesFlatIcon } from './SVGIcons';
@@ -1126,48 +1121,44 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Link>
             </div>
 
-            {SERVICE_DASHBOARD_ENABLED ? (
-              <div className="px-3 my-3">
-                <Link
-                  href="/services"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/services'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
-                    {!isCollapsed && <span>Service Health</span>}
-                  </span>
-                </Link>
-              </div>
-            ) : null}
+            <div className="px-3 my-3">
+              <Link
+                href="/services"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/services'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && <span>Service Health</span>}
+                </span>
+              </Link>
+            </div>
 
-            {K8S_DASHBOARD_ENABLED ? (
-              <div className="px-3 my-3">
-                <Link
-                  href="/kubernetes"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/kubernetes'),
-                    },
-                  )}
-                >
-                  <span>
-                    <span
-                      className="pe-1 text-slate-300"
-                      style={{ top: -2, position: 'relative' }}
-                    >
-                      <KubernetesFlatIcon width={16} />
-                    </span>{' '}
-                    {!isCollapsed && <span>Kubernetes</span>}
-                  </span>
-                </Link>
-              </div>
-            ) : null}
+            <div className="px-3 my-3">
+              <Link
+                href="/kubernetes"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/kubernetes'),
+                  },
+                )}
+              >
+                <span>
+                  <span
+                    className="pe-1 text-slate-300"
+                    style={{ top: -2, position: 'relative' }}
+                  >
+                    <KubernetesFlatIcon width={16} />
+                  </span>{' '}
+                  {!isCollapsed && <span>Kubernetes</span>}
+                </span>
+              </Link>
+            </div>
 
             <div>
               <div

@@ -227,7 +227,7 @@ const Tile = forwardRef(
 
     return (
       <div
-        className={`bg-hdx-dark p-3 ${className} d-flex flex-column ${
+        className={`bg-hdx-dark p-3 ${className} d-flex flex-column dashboard-chart ${
           isHighlighed && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
@@ -320,7 +320,7 @@ const Tile = forwardRef(
           </div>
         ) : (
           <div
-            className="fs-7 text-muted flex-grow-1 overflow-hidden"
+            className="fs-7 text-muted flex-grow-1"
             onMouseDown={e => e.stopPropagation()}
           >
             <ErrorBoundary

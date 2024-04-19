@@ -42,7 +42,6 @@ import {
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
 import LogLevel from './LogLevel';
 import {
@@ -1375,7 +1374,7 @@ function PropertySubpanel({
     {
       normallyExpanded: true,
       tabulate: true,
-      lineWrap: true,
+      lineWrap: false,
       useLegacyViewer: false,
     },
   );
@@ -1623,7 +1622,7 @@ function PropertySubpanel({
                     }}
                   />
                 )}
-                <Menu width={240}>
+                <Menu width={240} withinPortal={false}>
                   <Menu.Target>
                     <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
@@ -2734,7 +2733,7 @@ export default function LogSidePanel({
                         },
                       ] as const)
                     : []),
-                  ...(K8S_METRICS_ENABLED && hasK8sContext
+                  ...(hasK8sContext
                     ? ([
                         {
                           text: 'Infrastructure',
