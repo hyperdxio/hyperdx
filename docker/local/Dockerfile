@@ -56,6 +56,9 @@ RUN yarn build
 
 FROM clickhouse/clickhouse-server:23.11.1-alpine AS clickhouse_base 
 
+# Pull in the target platform
+ARG TARGETPLATFORM
+
 # Clean up 390MB of unused CH binaries
 RUN rm -rf /usr/bin/clickhouse-odbc-bridge /usr/bin/clickhouse-library-bridge  /usr/bin/clickhouse-diagnostics
 FROM scratch as base
@@ -70,9 +73,14 @@ EXPOSE 1888 4317 4318 55679 13133
 
 RUN apk update
 RUN apk add wget shadow
-RUN wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_arm64.apk && \
-  apk add --allow-untrusted otelcol-contrib_0.90.1_linux_arm64.apk && \
-  rm -rf otelcol-contrib_0.90.1_linux_arm64.apk
+# Check the target platform and choose the appropriate package
+RUN if [ "${TARGETPLATFORM}" = "linux/arm64" ]; then \
+        wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_arm64.apk; \
+    else \
+        wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_amd64.apk; \
+    fi && \
+    apk add --allow-untrusted otelcol-contrib_0.90.1_linux_*.apk && \
+    rm -rf otelcol-contrib_0.90.1_linux_*.apk
 
 # == Install Node Deps ==
 
