@@ -81,9 +81,6 @@ RUN if [ "${TARGETPLATFORM}" = "linux/arm64" ]; then \
     fi && \
     apk add --allow-untrusted otelcol-contrib_0.90.1_linux_*.apk && \
     rm -rf otelcol-contrib_0.90.1_linux_*.apk
-# RUN wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_arm64.apk && \
-#   apk add --allow-untrusted otelcol-contrib_0.90.1_linux_arm64.apk && \
-#   rm -rf otelcol-contrib_0.90.1_linux_arm64.apk
 
 # == Install Node Deps ==
 
