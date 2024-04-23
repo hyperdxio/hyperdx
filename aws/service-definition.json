@@ -1,0 +1,23 @@
+{
+  "cluster": "hyperdx",
+  "serviceName": "hyperdx",
+  "taskDefinition": "hyperdx:1",
+  "loadBalancers": [],
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "networkConfiguration": {
+      "awsvpcConfiguration": {
+          "subnets": [
+              "subnet-00000000000000000"
+          ],
+          "securityGroups": [
+              "sg-00000000000000000"
+          ],
+          "assignPublicIp": "ENABLED"
+      }
+  },
+  "healthCheckGracePeriodSeconds": 60,
+  "schedulingStrategy": "REPLICA",
+  "enableECSManagedTags": true,
+  "propagateTags": "SERVICE"
+}
