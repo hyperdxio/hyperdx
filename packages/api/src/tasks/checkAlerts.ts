@@ -801,8 +801,15 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       createdAt: nowInMinsRoundDown,
       state: alertState,
     }).save();
+
     if (checksData?.rows && checksData?.rows > 0) {
       for (const checkData of checksData.data) {
+        // TODO: we might want to fix the null value from the upstream
+        // this happens when the ratio is 0/0
+        if (checkData.data == null) {
+          continue;
+        }
+
         const totalCount = isString(checkData.data)
           ? parseInt(checkData.data)
           : checkData.data;
