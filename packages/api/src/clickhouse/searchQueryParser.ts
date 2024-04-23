@@ -216,6 +216,7 @@ export class SQLSerializer implements Serializer {
     }
   }
 
+  // Only for exact string matches
   async eq(field: string, term: string, isNegatedField: boolean) {
     const { column, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
@@ -223,8 +224,9 @@ export class SQLSerializer implements Serializer {
     }
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
+      const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
-        parseInt(term),
+        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
       return SqlString.format(
@@ -332,8 +334,9 @@ export class SQLSerializer implements Serializer {
 
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
+      const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
-        parseInt(term),
+        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
       return SqlString.format(
