@@ -1148,7 +1148,7 @@ export const buildMetricSeriesQuery = async ({
 
   const rateMetricSource = SqlString.format(
     `
-    SELECT rate, timestamp, _string_attributes, name FROM (
+    SELECT sum(rate) as rate, ?, _string_attributes, name FROM (
       SELECT
         any(value) OVER (
             rows between 1 preceding
@@ -1178,10 +1178,23 @@ export const buildMetricSeriesQuery = async ({
         AND (?)
         ORDER BY _string_attributes, timestamp ASC
         )
-    ) WHERE
+    ) 
+    WHERE
       ${shouldModifyStartTime ? 'timestamp >= fromUnixTimestamp(?)' : '1=1'}
+    GROUP BY timestamp, name, _string_attributes
     `.trim(),
     [
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
+      ),
       tableName,
       name,
       dataType,
@@ -1208,7 +1221,7 @@ export const buildMetricSeriesQuery = async ({
       WITH source AS (
         SELECT
           ?,
-          ?,
+          timestamp,
           name,
           toFloat64(sumIf(rate, rate > 0)) AS value,
           toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
@@ -1287,17 +1300,6 @@ export const buildMetricSeriesQuery = async ({
         hasGroupBy
           ? `[${groupByColumnNames.join(',')}] as group`
           : `[] as group`,
-      ),
-      SqlString.raw(
-        granularity != null
-          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
-              granularity,
-            )}) as timestamp`
-          : modifiedStartTime
-          ? // Manually create the time buckets if we're including the prev time range
-            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
-          : // Otherwise lump everything into one bucket
-            '0 as timestamp',
       ),
       SqlString.raw(rateMetricSource),
       quantile,
@@ -1665,6 +1667,11 @@ export const queryMultiSeriesChart = async ({
       ),
     ],
   );
+
+  logger.info({
+    message: 'queryMultiSeriesChart',
+    query,
+  });
 
   const rows = await client.query({
     query,
