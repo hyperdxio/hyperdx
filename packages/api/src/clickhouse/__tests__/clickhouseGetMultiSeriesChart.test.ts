@@ -430,6 +430,73 @@ describe('clickhouse - getMultiSeriesChart', () => {
     ]);
   });
 
+  it('handles counter resets correctly for sum metrics', async () => {
+    await clickhouse.bulkInsertTeamMetricStream(
+      buildMetricSeries({
+        name: 'counter.reset',
+        tags: { host: 'test1', runId, ip: '127.0.0.1' },
+        data_type: clickhouse.MetricsDataType.Sum,
+        is_monotonic: true,
+        is_delta: false,
+        unit: 'Users',
+        points: [
+          { value: 0, timestamp: now - ms('1m') }, // 0
+          { value: 1, timestamp: now },
+          { value: 8, timestamp: now + ms('1m') }, // 8
+          { value: 0, timestamp: now + ms('2m') },
+          { value: 7, timestamp: now + ms('2m') },
+          { value: 7, timestamp: now + ms('10m') }, // 9
+          { value: 15, timestamp: now + ms('12m') },
+          { value: 17, timestamp: now + ms('14m') }, // 17
+          { value: 0, timestamp: now + ms('16m') },
+          { value: 42, timestamp: now + ms('19m') }, // 42
+        ],
+        team_id: teamId,
+      }),
+    );
+
+    const data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.SumRate,
+            field: 'counter.reset',
+            where: `runId:${runId}`,
+            groupBy: [],
+            metricDataType: clickhouse.MetricsDataType.Sum,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('20m'),
+        granularity: '10 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+    });
+
+    console.log({ data });
+    expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 15,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 52,
+    "ts_bucket": 1641341400,
+  },
+]
+`);
+  });
+
   it('returns multiple group by labels correctly', async () => {
     const data = (
       await clickhouse.getMultiSeriesChart({
@@ -1071,7 +1138,7 @@ Array [
   },
   Object {
     "group": Array [],
-    "series_0.data": 0,
+    "series_0.data": 5,
     "ts_bucket": 1641340920,
   },
   Object {
@@ -1132,7 +1199,7 @@ Array [
     "group": Array [
       "region-a",
     ],
-    "series_0.data": 40,
+    "series_0.data": 39,
     "ts_bucket": 1641340920,
   },
   Object {

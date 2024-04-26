@@ -1148,22 +1148,44 @@ export const buildMetricSeriesQuery = async ({
 
   const rateMetricSource = SqlString.format(
     `
+    SELECT rate, timestamp, _string_attributes, name FROM (
       SELECT
-        if(
-          runningDifference(value) < 0
-          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
-          nan,
-          runningDifference(value)
-        ) AS rate,
+        any(value) OVER (
+            rows between 1 preceding
+            and 1 preceding
+        ) as prev_data,
+        any(_string_attributes) OVER (
+            rows between 1 preceding
+            and 1 preceding
+        ) as prev_string_attributes,
+        if (
+            value - prev_data < 0 AND _string_attributes = prev_string_attributes,
+            value,
+            if (
+              _string_attributes != prev_string_attributes, 
+              0, 
+              value - prev_data
+            )
+        ) as rate,
+        name,
         timestamp,
-        _string_attributes,
-        name
-      FROM (?)
-      WHERE isNaN(rate) = 0
-      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
+        _string_attributes
+      FROM (
+        SELECT _string_attributes, value, name, timestamp
+        FROM ??
+        WHERE name = ?
+        AND data_type = ?
+        AND (?)
+        ORDER BY _string_attributes, timestamp ASC
+        )
+    ) WHERE
+      ${shouldModifyStartTime ? 'timestamp >= fromUnixTimestamp(?)' : '1=1'}
     `.trim(),
     [
-      SqlString.raw(gaugeMetricSource),
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
       ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
     ],
   );
@@ -1186,7 +1208,7 @@ export const buildMetricSeriesQuery = async ({
       WITH source AS (
         SELECT
           ?,
-          timestamp,
+          ?,
           name,
           toFloat64(sumIf(rate, rate > 0)) AS value,
           toFloat64OrDefault(_string_attributes['le'], inf) AS bucket
@@ -1265,6 +1287,17 @@ export const buildMetricSeriesQuery = async ({
         hasGroupBy
           ? `[${groupByColumnNames.join(',')}] as group`
           : `[] as group`,
+      ),
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
       ),
       SqlString.raw(rateMetricSource),
       quantile,
