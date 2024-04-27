@@ -83,6 +83,10 @@ source = '''
     # TODO: support metrics
   }
 
+  if is_nullish(.hdx_token) && "${ENABLE_TOKEN_MATCHING_CHECK:-true}" == "false" {
+    .hdx_token = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  }
+
   # check if token is in uuid format
   if "${ENABLE_TOKEN_MATCHING_CHECK:-true}" == "true" && !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
     log("Invalid token: " + (to_string(.hdx_token) ?? ""), level: "warn")
