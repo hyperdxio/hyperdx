@@ -791,7 +791,11 @@ export const RawLogTable = memo(
 );
 
 export default function LogTable({
-  config: { where: searchedQuery, dateRange: searchedTimeRange },
+  config: {
+    where: searchedQuery,
+    dateRange: searchedTimeRange,
+    type: searchedType,
+  },
   highlightedLineId,
   onPropertySearchClick,
   onRowExpandClick,
@@ -810,6 +814,7 @@ export default function LogTable({
   config: {
     where: string;
     dateRange: [Date, Date];
+    type?: 'log' | 'span';
   };
   highlightedLineId: undefined | string;
   onPropertySearchClick: (
@@ -833,9 +838,14 @@ export default function LogTable({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wrapLines, setWrapLines] = useState(false);
 
-  const prevQueryConfig = usePrevious({ searchedQuery, isLive });
+  const prevQueryConfig = usePrevious({ searchedQuery, searchedType, isLive });
 
-  const resultsKey = [searchedQuery, displayedColumns, isLive].join(':');
+  const resultsKey = [
+    searchedQuery,
+    displayedColumns,
+    isLive,
+    searchedType,
+  ].join(':');
 
   const {
     results: searchResults,
@@ -853,11 +863,14 @@ export default function LogTable({
       order: 'desc',
       onEnd,
       resultsKey,
+      type: searchedType,
     },
     {
       enabled: searchedTimeRange != null,
       keepPreviousData:
-        isLive && prevQueryConfig?.searchedQuery === searchedQuery,
+        isLive &&
+        prevQueryConfig?.searchedQuery === searchedQuery &&
+        prevQueryConfig?.searchedType === searchedType,
       // If we're in live mode, we shouldn't abort the previous request
       // as a slow live search will always result in an aborted request
       // unless the user has changed their query (without leaving live mode)
@@ -865,7 +878,8 @@ export default function LogTable({
       // We need to look at prev state to make sure we abort if transitioning from live to not live
       shouldAbortPendingRequest:
         !(isLive && prevQueryConfig?.isLive) ||
-        prevQueryConfig?.searchedQuery !== searchedQuery,
+        prevQueryConfig?.searchedQuery !== searchedQuery ||
+        prevQueryConfig?.searchedType !== searchedType,
     },
   );
 
@@ -907,6 +921,7 @@ export default function LogTable({
             config={{
               where: searchedQuery,
               dateRange: searchedTimeRange,
+              // TODO: Add searchedType
             }}
             extraFields={displayedColumns}
           />

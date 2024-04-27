@@ -2425,6 +2425,7 @@ export const getHistogram = async (
   q: string,
   startTime: number, // unix in ms
   endTime: number, // unix in ms,
+  type?: 'log' | 'span',
 ) => {
   const msRange = endTime - startTime;
   const tableName = getLogStreamTableName(tableVersion, teamId);
@@ -2439,6 +2440,7 @@ export const getHistogram = async (
     propertyTypeMappingsModel,
     query: q,
     startTime,
+    type,
   });
   const interval = msRangeToHistogramInterval(msRange, 120);
   const query = SqlString.format(
@@ -2702,6 +2704,7 @@ const buildLogQuery = async ({
   startTime,
   tableVersion,
   teamId,
+  type,
 }: {
   defaultFields?: string[];
   endTime: number; // unix in ms
@@ -2713,6 +2716,7 @@ const buildLogQuery = async ({
   startTime: number; // unix in ms
   tableVersion: number | undefined;
   teamId: string;
+  type?: 'log' | 'span';
 }) => {
   // Validate order
   if (!['asc', 'desc', null].includes(order)) {
@@ -2733,6 +2737,7 @@ const buildLogQuery = async ({
     query: q,
     startTime,
     teamId,
+    type,
   });
 
   const extraColumns = extraFields
@@ -3014,6 +3019,7 @@ export const getLogStream = async ({
   startTime,
   tableVersion,
   teamId,
+  type,
 }: {
   endTime: number; // unix in ms
   extraFields?: string[];
@@ -3024,6 +3030,7 @@ export const getLogStream = async ({
   startTime: number; // unix in ms
   tableVersion: number | undefined;
   teamId: string;
+  type?: 'log' | 'span';
 }) => {
   const query = await buildLogQuery({
     endTime,
@@ -3035,6 +3042,7 @@ export const getLogStream = async ({
     startTime,
     tableVersion,
     teamId,
+    type,
   });
 
   logger.info({

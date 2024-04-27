@@ -633,6 +633,16 @@ export class SearchQueryBuilder {
     return this;
   }
 
+  filterLogs() {
+    this.and(SqlString.format('type = ?', [LogType.Log]));
+    return this;
+  }
+
+  filterSpans() {
+    this.and(SqlString.format('type = ?', [LogType.Span]));
+    return this;
+  }
+
   async build() {
     const searchQuery = await this.genSearchQuery();
     if (this.searchQ) {
@@ -649,15 +659,24 @@ export const buildSearchQueryWhereCondition = async ({
   query,
   propertyTypeMappingsModel,
   teamId,
+  type,
 }: {
   startTime: number; // unix in ms
   endTime: number; // unix in ms,
   query: string;
   propertyTypeMappingsModel: PropertyTypeMappingsModel;
   teamId?: string;
+  type?: 'log' | 'span';
 }) => {
   const builder = new SearchQueryBuilder(query, propertyTypeMappingsModel);
   builder.teamId = teamId;
+  if (type) {
+    if (type === 'log') {
+      builder.filterLogs();
+    } else if (type === 'span') {
+      builder.filterSpans();
+    }
+  }
   return await builder.timestampInBetween(startTime, endTime).build();
 };
 
