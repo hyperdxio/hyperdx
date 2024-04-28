@@ -89,7 +89,7 @@ source = '''
   }
 
   # check if token is in uuid format
-  if !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+  if "${IS_LOCAL_APP_MODE:-false}" == "false" && !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
     log("Invalid token: " + (to_string(.hdx_token) ?? ""), level: "warn")
     .hdx_token = null
   }
