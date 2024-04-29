@@ -49,7 +49,7 @@ mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
 # Start Vector Ingestor
 ENABLE_GO_PARSER="false" \
 GO_PARSER_API_URL="http://go-parser:7777" \
-ENABLE_TOKEN_MATCHING_CHECK="false" \
+IS_LOCAL_APP_MODE="true" \
 vector \
   -qq \
   -c /etc/vector/sources.toml \
