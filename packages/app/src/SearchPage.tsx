@@ -482,8 +482,15 @@ function SearchPage() {
     }
   }, [selectedSavedSearch, setSearchedQuery, _searchedQuery]);
 
+  const isArcBrowser =
+    typeof window !== 'undefined' &&
+    window
+      .getComputedStyle?.(document.documentElement)
+      .getPropertyValue('--arc-palette-title');
+
   useHotkeys(
-    ['ctrl+s', 'meta+s'],
+    // Arc Browser uses CMD+S for toggling sidebar which conflicts with save search
+    isArcBrowser ? ['ctrl+shift+s', 'meta+shift+s'] : ['ctrl+s', 'meta+s'],
     () => {
       setSaveSearchModalMode('save');
     },
