@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import cx from 'classnames';
 import { clamp, format, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { Button } from 'react-bootstrap';
@@ -49,6 +50,7 @@ import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 import 'react-modern-drawer/dist/index.css';
+import styles from '../styles/SearchPage.module.scss';
 
 const formatDate = (
   date: Date,
@@ -597,6 +599,42 @@ function SearchPage() {
     [setDisplayedSearchQuery],
   );
 
+  const searchedTypes = useMemo(() => {
+    if (searchedQuery.includes('hyperdx_event_type:"span"')) {
+      return ['span'];
+    } else if (searchedQuery.includes('hyperdx_event_type:"log"')) {
+      return ['log'];
+    }
+    return ['log', 'span'];
+  }, [searchedQuery]);
+
+  const handleToggleType = useCallback(
+    (type: 'log' | 'span') => {
+      let newQuery = displayedSearchQuery;
+
+      if (displayedSearchQuery.includes(`hyperdx_event_type:"${type}"`)) {
+        return; // Do nothing if the query already contains the type
+      }
+
+      newQuery = newQuery
+        .replaceAll('hyperdx_event_type:"log"', '')
+        .replaceAll('hyperdx_event_type:"span"', '')
+        .trim();
+
+      if (!displayedSearchQuery.includes('hyperdx_event_type:')) {
+        newQuery =
+          newQuery +
+          (newQuery.length ? ' ' : '') +
+          `hyperdx_event_type:"${type === 'log' ? 'span' : 'log'}"`;
+      }
+
+      if (newQuery !== displayedSearchQuery) {
+        doSearch(newQuery, displayedTimeInputValue);
+      }
+    },
+    [displayedSearchQuery, displayedTimeInputValue, doSearch],
+  );
+
   const chartsConfig = useMemo(() => {
     return {
       where: searchedQuery,
@@ -750,6 +788,36 @@ function SearchPage() {
       />
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
+          <div className={styles.eventTypeSwitch}>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('log'),
+              })}
+              onClick={() => handleToggleType('log')}
+            >
+              {searchedTypes.includes('log') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Logs
+            </div>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('span'),
+              })}
+              onClick={() => handleToggleType('span')}
+            >
+              {searchedTypes.includes('span') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Spans
+            </div>
+          </div>
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
             <SearchInput
               inputRef={searchInput}
@@ -786,6 +854,7 @@ function SearchPage() {
               }}
             />
           </form>
+
           <SearchPageActionBar
             key={`${savedSearchId}`}
             onClickConfigAlert={onClickConfigAlert}

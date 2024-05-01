@@ -1,0 +1,41 @@
+@import './variables';
+
+.eventTypeSwitch {
+  border-radius: 4px;
+  border: 1px solid $slate-900;
+  height: 36px;
+  margin-right: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.eventTypeSwitchItem {
+  border-bottom: 1px solid $slate-900;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  flex: 1;
+  border-bottom: 1px solid $slate-700;
+  display: flex;
+  padding: 0 6px 0 4px;
+  align-items: center;
+  cursor: pointer;
+  color: $slate-300;
+  i {
+    width: 14px;
+  }
+  &:last-child {
+    border-bottom: none;
+  }
+  &:hover {
+    background-color: $slate-800;
+  }
+  &:active {
+    background-color: #000;
+  }
+}
+
+.eventTypeSwitchItemActive {
+  color: #fff;
+  background-color: $slate-950;
+}
