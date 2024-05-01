@@ -87,7 +87,7 @@ const HistogramBarChartTooltip = (props: any) => {
 
 const HDXHistogram = memo(
   ({
-    config: { dateRange, where, type },
+    config: { dateRange, where },
     onTimeRangeSelect,
     isLive,
     isUTC,
@@ -95,7 +95,6 @@ const HDXHistogram = memo(
     config: {
       dateRange: [Date, Date];
       where: string;
-      type?: 'log' | 'span';
     };
     onTimeRangeSelect: (start: Date, end: Date) => void;
     isLive: boolean;
@@ -104,7 +103,6 @@ const HDXHistogram = memo(
     const { data: histogramResults, isLoading: isHistogramResultsLoading } =
       api.useLogHistogram(
         where,
-
         dateRange?.[0] ?? new Date(),
         dateRange?.[1] ?? new Date(),
         {
@@ -112,7 +110,6 @@ const HDXHistogram = memo(
           staleTime: 1000 * 60 * 5,
           refetchOnWindowFocus: false,
         },
-        type,
       );
 
     const data = useMemo(() => {
@@ -237,9 +234,9 @@ const HDXHistogram = memo(
 );
 
 const HistogramResultCounter = ({
-  config: { dateRange, where, type },
+  config: { dateRange, where },
 }: {
-  config: { dateRange: [Date, Date]; type?: 'log' | 'span'; where: string };
+  config: { dateRange: [Date, Date]; where: string };
 }) => {
   const { data: histogramResults, isLoading: isHistogramResultsLoading } =
     api.useLogHistogram(
@@ -250,7 +247,6 @@ const HistogramResultCounter = ({
         staleTime: 1000 * 60 * 5,
         refetchOnWindowFocus: false,
       },
-      type,
     );
 
   return (
@@ -283,7 +279,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
   config: {
     where: string;
     dateRange: [Date, Date];
-    type?: 'log' | 'span';
   };
   onPropertySearchClick: (
     name: string,
@@ -433,32 +428,6 @@ function SearchPage() {
   // Allows us to determine if the user has changed the search query
   const searchedQuery = _searchedQuery ?? '';
 
-  const [searchedType, setSearchedType] = useQueryParam(
-    'type',
-    withDefault(StringParam, undefined),
-    {
-      enableBatching: true,
-    },
-  );
-
-  const searchedTypes = useMemo(() => {
-    return searchedType != null ? [searchedType] : ['log', 'span'];
-  }, [searchedType]);
-
-  const handleSetType = useCallback(
-    (type: 'log' | 'span') => {
-      setSearchedType(prev => {
-        if (prev === type) {
-          return type;
-        }
-        if (prev == null) {
-          return type === 'log' ? 'span' : 'log';
-        }
-      });
-    },
-    [setSearchedType],
-  );
-
   // TODO: Set displayed query to qparam... in a less bad way?
   useEffect(() => {
     setDisplayedSearchQuery(searchedQuery);
@@ -595,20 +564,13 @@ function SearchPage() {
         from: fromDate.getTime().toString(),
         to: toDate.getTime().toString(),
         tq: dateRangeToString([fromDate, toDate], isUTC),
-        ...(searchedType ? { type: searchedType } : {}),
         ...(lid ? { lid } : {}),
       });
       return `/search${
         selectedSavedSearch != null ? `/${selectedSavedSearch._id}` : ''
       }?${qparams.toString()}`;
     },
-    [
-      searchedTimeRange,
-      searchedQuery,
-      isUTC,
-      searchedType,
-      selectedSavedSearch,
-    ],
+    [searchedQuery, searchedTimeRange, selectedSavedSearch, isUTC],
   );
 
   const generateChartUrl = useCallback(
@@ -637,16 +599,51 @@ function SearchPage() {
     [setDisplayedSearchQuery],
   );
 
+  const searchedTypes = useMemo(() => {
+    if (searchedQuery.includes('hyperdx_event_type:"span"')) {
+      return ['span'];
+    } else if (searchedQuery.includes('hyperdx_event_type:"log"')) {
+      return ['log'];
+    }
+    return ['log', 'span'];
+  }, [searchedQuery]);
+
+  const handleToggleType = useCallback(
+    (type: 'log' | 'span') => {
+      let newQuery = displayedSearchQuery;
+
+      if (displayedSearchQuery.includes(`hyperdx_event_type:"${type}"`)) {
+        return; // Do nothing if the query already contains the type
+      }
+
+      newQuery = newQuery
+        .replaceAll('hyperdx_event_type:"log"', '')
+        .replaceAll('hyperdx_event_type:"span"', '')
+        .trim();
+
+      if (!displayedSearchQuery.includes('hyperdx_event_type:')) {
+        newQuery =
+          newQuery +
+          (newQuery.length ? ' ' : '') +
+          `hyperdx_event_type:"${type === 'log' ? 'span' : 'log'}"`;
+      }
+
+      if (newQuery !== displayedSearchQuery) {
+        doSearch(newQuery, displayedTimeInputValue);
+      }
+    },
+    [displayedSearchQuery, displayedTimeInputValue, doSearch],
+  );
+
   const chartsConfig = useMemo(() => {
     return {
       where: searchedQuery,
-      type: searchedType as 'log' | 'span' | undefined,
       dateRange: [
         searchedTimeRange[0] ?? new Date(),
         searchedTimeRange[1] ?? new Date(),
       ] as [Date, Date],
     };
-  }, [searchedQuery, searchedTimeRange, searchedType]);
+  }, [searchedQuery, searchedTimeRange]);
 
   const [zoomOutFrom, zoomOutTo, zoomInFrom, zoomInTo] = useMemo(() => {
     if (searchedTimeRange[0] == null || searchedTimeRange[1] == null) {
@@ -797,7 +794,7 @@ function SearchPage() {
                 [styles.eventTypeSwitchItemActive]:
                   searchedTypes.includes('log'),
               })}
-              onClick={() => handleSetType('log')}
+              onClick={() => handleToggleType('log')}
             >
               {searchedTypes.includes('log') ? (
                 <i className="bi bi-check" />
@@ -811,7 +808,7 @@ function SearchPage() {
                 [styles.eventTypeSwitchItemActive]:
                   searchedTypes.includes('span'),
               })}
-              onClick={() => handleSetType('span')}
+              onClick={() => handleToggleType('span')}
             >
               {searchedTypes.includes('span') ? (
                 <i className="bi bi-check" />
@@ -897,7 +894,6 @@ function SearchPage() {
               <HistogramResultCounter
                 config={{
                   where: searchedQuery,
-                  type: searchedType as 'log' | 'span' | undefined,
                   dateRange: [
                     searchedTimeRange[0] ?? new Date(),
                     searchedTimeRange[1] ?? new Date(),

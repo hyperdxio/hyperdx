@@ -28,7 +28,6 @@ function useSearchEventStream(
     onEvent,
     onEnd,
     resultsKey,
-    type,
   }: {
     apiUrlPath: string;
     q: string;
@@ -40,7 +39,6 @@ function useSearchEventStream(
     onEvent?: (event: any) => void;
     onEnd?: (error?: any) => void;
     resultsKey?: string;
-    type?: 'log' | 'span';
   },
   options?: UseQueryOptions<any, Error> & {
     shouldAbortPendingRequest?: boolean;
@@ -84,7 +82,6 @@ function useSearchEventStream(
         ['order', order],
         ['offset', pageParam.toString()],
         ['limit', (limitOverride ?? limit).toString()],
-        ...(type != null ? [['type', type]] : []),
         ...(team != null ? [['team', team]] : []),
         ...extraFields.map(field => ['extraFields[]', field]),
       ]);
@@ -230,7 +227,6 @@ function useSearchEventStream(
       onEvent,
       onEnd,
       resultsKey,
-      type,
     ],
   );
 
@@ -242,7 +238,6 @@ function useSearchEventStream(
     extraFields,
     order,
     limit,
-    type,
   ].join('||');
   const prevQueryKey = usePrevious(queryKey);
 

@@ -615,12 +615,11 @@ const api = {
     startDate: Date,
     endDate: Date,
     options?: UseQueryOptions<any, Error>,
-    type?: 'log' | 'span',
   ) {
     const st = startDate.getTime();
     const et = endDate.getTime();
     return useQuery<any, Error>({
-      queryKey: ['logs/histogram', q, st, et, type],
+      queryKey: ['logs/histogram', q, st, et],
       queryFn: () =>
         hdxServer('logs/histogram', {
           method: 'GET',
@@ -628,7 +627,6 @@ const api = {
             ['q', q],
             ['startTime', st],
             ['endTime', et],
-            ...(type != null ? [['type', type]] : []),
           ],
         }).json(),
       ...options,

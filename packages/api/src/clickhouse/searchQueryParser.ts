@@ -42,6 +42,7 @@ const customColumnMap: { [level: string]: string } = {
   end_timestamp: 'end_timestamp',
   host: '_host',
   hyperdx_event_size: '_hyperdx_event_size',
+  hyperdx_event_type: 'type',
   hyperdx_platform: '_platform',
   level: 'severity_text',
   parent_span_id: 'parent_span_id',
@@ -69,6 +70,7 @@ export const customColumnMapType: {
   host: 'string',
   hyperdx_event_size: 'number',
   hyperdx_platform: 'string',
+  hyperdx_event_type: 'string',
   level: 'string',
   parent_span_id: 'string',
   rum_session_id: 'string',
@@ -633,16 +635,6 @@ export class SearchQueryBuilder {
     return this;
   }
 
-  filterLogs() {
-    this.and(SqlString.format('type = ?', [LogType.Log]));
-    return this;
-  }
-
-  filterSpans() {
-    this.and(SqlString.format('type = ?', [LogType.Span]));
-    return this;
-  }
-
   async build() {
     const searchQuery = await this.genSearchQuery();
     if (this.searchQ) {
@@ -659,24 +651,15 @@ export const buildSearchQueryWhereCondition = async ({
   query,
   propertyTypeMappingsModel,
   teamId,
-  type,
 }: {
   startTime: number; // unix in ms
   endTime: number; // unix in ms,
   query: string;
   propertyTypeMappingsModel: PropertyTypeMappingsModel;
   teamId?: string;
-  type?: 'log' | 'span';
 }) => {
   const builder = new SearchQueryBuilder(query, propertyTypeMappingsModel);
   builder.teamId = teamId;
-  if (type) {
-    if (type === 'log') {
-      builder.filterLogs();
-    } else if (type === 'span') {
-      builder.filterSpans();
-    }
-  }
   return await builder.timestampInBetween(startTime, endTime).build();
 };
 
