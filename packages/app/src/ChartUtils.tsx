@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 import {
   Divider,
   Group,
-  Paper,
   SegmentedControl,
   Select as MSelect,
 } from '@mantine/core';
@@ -452,13 +451,13 @@ export function MetricRateSelect({
     <>
       {metricType === 'Sum' ? (
         <Checkbox
-          title="Convert the sum metric into change over time (rate)"
+          title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
           id="metric-use-rate"
           className="text-nowrap"
           labelClassName="fs-7"
           checked={isRate}
           onChange={() => setIsRate(!isRate)}
-          label="Use Rate"
+          label="Use Increase"
         />
       ) : null}
     </>
