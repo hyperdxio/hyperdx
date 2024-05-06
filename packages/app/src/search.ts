@@ -292,12 +292,17 @@ function useSearchEventStream(
     [fetchResults, results.data.length, hasNextPage],
   );
 
+  const abort = useCallback(() => {
+    lastAbortController.current?.abort();
+  }, []);
+
   return {
     hasNextPage,
     isFetching,
     results: results.data,
     resultsKey: results.key,
     fetchNextPage,
+    abort,
   };
 }
 

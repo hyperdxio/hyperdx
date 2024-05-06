@@ -18,15 +18,19 @@ type PlaybarSliderProps = {
   min: number;
   max: number;
   markers?: PlaybarMarker[];
+  playerState: 'playing' | 'paused';
   onChange: (value: number) => void;
+  setPlayerState: (playerState: 'playing' | 'paused') => void;
 };
 
 export const PlaybarSlider = ({
   min,
   max,
   value,
-  onChange,
   markers,
+  playerState,
+  onChange,
+  setPlayerState,
 }: PlaybarSliderProps) => {
   const valueLabelFormat = React.useCallback(
     (ts: number) => {
@@ -44,6 +48,7 @@ export const PlaybarSlider = ({
     () =>
       markers?.map(mark => (
         <Tooltip
+          color={mark.isError ? 'red' : 'gray'}
           key={mark.id}
           label={truncateText(mark?.description ?? '', 240, '...', /\n/)}
           position="top"
@@ -64,6 +69,15 @@ export const PlaybarSlider = ({
     [markers, max, min, onChange],
   );
 
+  const [prevPlayerState, setPrevPlayerState] = React.useState(playerState);
+  const handleMouseDown = React.useCallback(() => {
+    setPrevPlayerState(playerState);
+    setPlayerState('paused');
+  }, [playerState, setPlayerState]);
+  const handleMouseUp = React.useCallback(() => {
+    setPlayerState(prevPlayerState);
+  }, [prevPlayerState, setPlayerState]);
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.markers}>{markersContent}</div>
@@ -76,6 +90,8 @@ export const PlaybarSlider = ({
         step={1000}
         label={valueLabelFormat}
         onChange={onChange}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
       />
     </div>
   );

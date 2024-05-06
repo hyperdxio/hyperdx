@@ -196,6 +196,8 @@ export default function Playbar({
           onChange={ts => {
             setFocus({ ts, setBy: 'slider' });
           }}
+          setPlayerState={setPlayerState}
+          playerState={playerState}
         />
       </div>
       <Checkbox
