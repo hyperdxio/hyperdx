@@ -14,3 +14,4 @@ export const IS_LOCAL_MODE =
   process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false' === 'true';
 
 // Features in development
+export const IS_EXCEPTIONS_ENABLED = process.env.NODE_ENV === 'development';

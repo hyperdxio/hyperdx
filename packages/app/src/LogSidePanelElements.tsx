@@ -79,7 +79,7 @@ const StacktraceRowExpandButton = ({
 }) => {
   return (
     <TableCellButton
-      label={isOpen ? 'Hide context' : 'Show context'}
+      label=""
       biIcon={isOpen ? 'chevron-up' : 'chevron-down'}
       onClick={onClick}
     />
@@ -87,7 +87,7 @@ const StacktraceRowExpandButton = ({
 };
 
 export const StacktraceRow = ({ row }: { row: Row<StacktraceFrame> }) => {
-  const [lineContextOpen, setLineContextOpen] = React.useState(true);
+  const [lineContextOpen, setLineContextOpen] = React.useState(false);
 
   const frame = row.original;
   const hasContext = !!frame.context_line;

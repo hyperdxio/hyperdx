@@ -43,13 +43,15 @@ import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { ChartSeries } from './types';
 
-const SearchInput = React.memo(
+export const SearchInput = React.memo(
   ({
     searchQuery,
     setSearchQuery,
+    placeholder = 'Scope dashboard to...',
   }: {
     searchQuery: string;
     setSearchQuery: (q: string | null) => void;
+    placeholder?: string;
   }) => {
     const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
     const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -66,7 +68,7 @@ const SearchInput = React.memo(
       <form onSubmit={onSearchSubmit}>
         <HdxSearchInput
           inputRef={searchInputRef}
-          placeholder="Scope dashboard to..."
+          placeholder={placeholder}
           value={_searchQuery ?? searchQuery}
           onChange={v => _setSearchQuery(v)}
           onSearch={() => {}}
@@ -363,8 +365,7 @@ export default function ServiceDashboardPage() {
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
-                      onPropertySearchClick={() => {}}
-                      showServiceColumn={false}
+                      hiddenColumns={['service']}
                     />
                   </Card.Section>
                 </Card>

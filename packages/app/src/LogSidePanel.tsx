@@ -495,7 +495,7 @@ function isExceptionSpan({ logData }: { logData: any }) {
   );
 }
 
-function TraceSubpanel({
+export function TraceSubpanel({
   logData,
   onClose,
   onPropertyAddClick,
@@ -832,7 +832,7 @@ function EventTag({
   );
 }
 
-function EventTagSubpanel({
+export function EventTagSubpanel({
   generateSearchUrl,
   logData,
   onPropertyAddClick,
@@ -2125,7 +2125,7 @@ function SidePanelHeader({
   );
 }
 
-const ExceptionSubpanel = ({
+export const ExceptionSubpanel = ({
   logData,
   breadcrumbs,
   exceptionValues,
@@ -2153,25 +2153,24 @@ const ExceptionSubpanel = ({
   const firstException = exceptionValues[0];
 
   const stacktraceFrames = useMemo(
-    () => firstException.stacktrace?.frames.reverse() ?? [],
-    [firstException.stacktrace?.frames],
+    () => firstException?.stacktrace?.frames.reverse() ?? [],
+    [firstException?.stacktrace?.frames],
   );
 
   const chronologicalBreadcrumbs = useMemo<StacktraceBreadcrumb[]>(() => {
     return [
-      {
-        category: 'exception',
-        timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
-        message: `${firstException.type}: ${firstException.value} `,
-      },
+      ...(firstException
+        ? [
+            {
+              category: 'exception',
+              timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
+              message: `${firstException.type}: ${firstException.value} `,
+            },
+          ]
+        : []),
       ...(breadcrumbs?.slice().reverse() ?? []),
     ];
-  }, [
-    breadcrumbs,
-    firstException.type,
-    firstException.value,
-    logData?.timestamp,
-  ]);
+  }, [breadcrumbs, firstException, logData?.timestamp]);
 
   const {
     handleToggleMoreRows: handleStacktraceToggleMoreRows,
@@ -2197,46 +2196,48 @@ const ExceptionSubpanel = ({
       <CollapsibleSection title="Stack Trace">
         <SectionWrapper
           title={
-            <>
-              <div className="pb-3">
-                <div className="fw-bold fs-8">{firstException.type}</div>
-                <div className="text-muted">{firstException.value}</div>
-              </div>
-              <div className="d-flex gap-2 flex-wrap">
-                <StacktraceValue
-                  label="mechanism"
-                  value={firstException.mechanism?.type}
-                />
-                <StacktraceValue
-                  label="handled"
-                  value={
-                    firstException.mechanism?.handled ? (
-                      <span className="text-success">true</span>
-                    ) : (
-                      <span className="text-danger">false</span>
-                    )
-                  }
-                />
-                {firstException.mechanism?.data?.function ? (
+            firstException && (
+              <>
+                <div className="pb-3">
+                  <div className="fw-bold fs-8">{firstException.type}</div>
+                  <div className="text-muted">{firstException.value}</div>
+                </div>
+                <div className="d-flex gap-2 flex-wrap">
                   <StacktraceValue
-                    label="function"
-                    value={firstException.mechanism.data.function}
+                    label="mechanism"
+                    value={firstException.mechanism?.type}
                   />
-                ) : null}
-                {firstException.mechanism?.data?.handler ? (
                   <StacktraceValue
-                    label="handler"
-                    value={firstException.mechanism.data.handler}
+                    label="handled"
+                    value={
+                      firstException.mechanism?.handled ? (
+                        <span className="text-success">true</span>
+                      ) : (
+                        <span className="text-danger">false</span>
+                      )
+                    }
                   />
-                ) : null}
-                {firstException.mechanism?.data?.target ? (
-                  <StacktraceValue
-                    label="target"
-                    value={firstException.mechanism.data.target}
-                  />
-                ) : null}
-              </div>
-            </>
+                  {firstException.mechanism?.data?.function ? (
+                    <StacktraceValue
+                      label="function"
+                      value={firstException.mechanism.data.function}
+                    />
+                  ) : null}
+                  {firstException.mechanism?.data?.handler ? (
+                    <StacktraceValue
+                      label="handler"
+                      value={firstException.mechanism.data.handler}
+                    />
+                  ) : null}
+                  {firstException.mechanism?.data?.target ? (
+                    <StacktraceValue
+                      label="target"
+                      value={firstException.mechanism.data.target}
+                    />
+                  ) : null}
+                </div>
+              </>
+            )
           }
         >
           <Table
@@ -2269,35 +2270,37 @@ const ExceptionSubpanel = ({
         </SectionWrapper>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Breadcrumbs">
-        <SectionWrapper>
-          <Table
-            columns={breadcrumbColumns}
-            data={breadcrumbVisibleRows}
-            emptyMessage="No breadcrumbs found"
-          />
-          {breadcrumbHiddenRowsCount ? (
-            <Button
-              variant="dark"
-              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
-              size="sm"
-              as="a"
-              onClick={handleBreadcrumbToggleMoreRows}
-            >
-              {breadcrumbExpanded ? (
-                <>
-                  <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-chevron-down me-2" />
-                  Show {breadcrumbHiddenRowsCount} more breadcrumbs
-                </>
-              )}
-            </Button>
-          ) : null}
-        </SectionWrapper>
-      </CollapsibleSection>
+      {breadcrumbVisibleRows.length > 0 && (
+        <CollapsibleSection title="Breadcrumbs">
+          <SectionWrapper>
+            <Table
+              columns={breadcrumbColumns}
+              data={breadcrumbVisibleRows}
+              emptyMessage="No breadcrumbs found"
+            />
+            {breadcrumbHiddenRowsCount ? (
+              <Button
+                variant="dark"
+                className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+                size="sm"
+                as="a"
+                onClick={handleBreadcrumbToggleMoreRows}
+              >
+                {breadcrumbExpanded ? (
+                  <>
+                    <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-chevron-down me-2" />
+                    Show {breadcrumbHiddenRowsCount} more breadcrumbs
+                  </>
+                )}
+              </Button>
+            ) : null}
+          </SectionWrapper>
+        </CollapsibleSection>
+      )}
     </div>
   );
 };

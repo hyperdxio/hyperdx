@@ -85,7 +85,7 @@ const HistogramBarChartTooltip = (props: any) => {
   return null;
 };
 
-const HDXHistogram = memo(
+export const HDXHistogram = memo(
   ({
     config: { dateRange, where },
     onTimeRangeSelect,
@@ -233,7 +233,7 @@ const HDXHistogram = memo(
   },
 );
 
-const HistogramResultCounter = ({
+export const HistogramResultCounter = ({
   config: { dateRange, where },
 }: {
   config: { dateRange: [Date, Date]; where: string };
@@ -265,7 +265,6 @@ const HistogramResultCounter = ({
 };
 
 const LogViewerContainer = memo(function LogViewerContainer({
-  onPropertySearchClick,
   onPropertyAddClick,
   config,
   generateSearchUrl,
@@ -280,10 +279,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
     where: string;
     dateRange: [Date, Date];
   };
-  onPropertySearchClick: (
-    name: string,
-    value: string | boolean | number,
-  ) => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
     aggFn: string;
@@ -374,7 +369,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
         )}
         highlightedLineId={openedLog?.id}
         config={config}
-        onPropertySearchClick={onPropertySearchClick}
         formatUTC={isUTC}
         onRowExpandClick={useCallback(
           (id: string, sortKey: string) => {
@@ -543,17 +537,6 @@ function SearchPage() {
     setConfigAlertModalShow(true);
   };
   // ***********************************************************************
-
-  const onPropertySearchClick = useCallback(
-    (name: string, value: string | number | boolean) => {
-      const searchQuery = `${name}:${
-        typeof value === 'string' ? `"${value}"` : value
-      }`;
-      doSearch(searchQuery, displayedTimeInputValue);
-      setDisplayedSearchQuery(searchQuery);
-    },
-    [setDisplayedSearchQuery, doSearch, displayedTimeInputValue],
-  );
 
   const generateSearchUrl = useCallback(
     (newQuery?: string, newTimeRange?: [Date, Date], lid?: string) => {
@@ -981,7 +964,6 @@ function SearchPage() {
                 onPropertyAddClick={onPropertyAddClick}
                 generateSearchUrl={generateSearchUrl}
                 generateChartUrl={generateChartUrl}
-                onPropertySearchClick={onPropertySearchClick}
                 isLive={isLive}
                 setIsLive={setIsLive}
                 isUTC={isUTC}

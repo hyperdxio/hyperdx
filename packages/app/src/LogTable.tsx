@@ -38,6 +38,8 @@ import styles from '../styles/LogTable.module.scss';
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
 
+export type DefaultColumn = 'timestamp' | 'level' | 'service' | 'message';
+
 const SPECIAL_VALUES = {
   not_available: 'NULL',
 };
@@ -232,14 +234,14 @@ export const RawLogTable = memo(
     isLoading,
     logs,
     onInstructionsClick,
-    // onPropertySearchClick,
     onRowExpandClick,
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
     wrapLines,
     columnNameMap,
-    showServiceColumn = true,
+    hiddenColumns = [],
+    hideHeader,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -256,10 +258,6 @@ export const RawLogTable = memo(
     isLoading: boolean;
     fetchNextPage: () => any;
     onRowExpandClick: (id: string, sortKey: string) => void;
-    // onPropertySearchClick: (
-    //   name: string,
-    //   value: string | number | boolean,
-    // ) => void;
     hasNextPage: boolean;
     formatUTC: boolean;
     highlightedLineId: string | undefined;
@@ -268,7 +266,8 @@ export const RawLogTable = memo(
     onShowPatternsClick?: () => void;
     tableId?: string;
     columnNameMap?: Record<string, string>;
-    showServiceColumn?: boolean;
+    hiddenColumns?: DefaultColumn[];
+    hideHeader?: boolean;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -335,58 +334,58 @@ export const RawLogTable = memo(
           size: 8,
           enableResizing: false,
         },
-        {
-          accessorKey: 'timestamp',
-          header: () =>
-            isSmallScreen
-              ? 'Time'
-              : `Timestamp${formatUTC ? ' (UTC)' : ' (Local)'}`,
-          cell: info => {
-            // FIXME: since original timestamp doesn't come with timezone info
-            const date = new Date(info.getValue<string>());
-            return (
-              <span className="text-muted">
-                {formatUTC
-                  ? formatInTimeZone(
-                      date,
-                      'Etc/UTC',
-                      isSmallScreen ? tsShortFormat : tsFormat,
-                    )
-                  : format(date, isSmallScreen ? tsShortFormat : tsFormat)}
-              </span>
-            );
-          },
-          size: columnSizeStorage.timestamp ?? (isSmallScreen ? 75 : 180),
-        },
-        {
-          accessorKey: 'severity_text',
-          header: 'Level',
-          cell: info => (
-            <span
-            // role="button"
-            // onClick={() =>
-            //   onPropertySearchClick('level', info.getValue<string>())
-            // }
-            >
-              <LogLevel level={info.getValue<string>()} />
-            </span>
-          ),
-          size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
-        },
-        ...(showServiceColumn
+        ...(!hiddenColumns.includes('timestamp')
+          ? [
+              {
+                accessorKey: 'timestamp',
+                header: () =>
+                  isSmallScreen
+                    ? 'Time'
+                    : `Timestamp${formatUTC ? ' (UTC)' : ' (Local)'}`,
+                cell: (info: CellContext<any, unknown>) => {
+                  // FIXME: since original timestamp doesn't come with timezone info
+                  const date = new Date(info.getValue<string>());
+                  return (
+                    <span className="text-muted">
+                      {formatUTC
+                        ? formatInTimeZone(
+                            date,
+                            'Etc/UTC',
+                            isSmallScreen ? tsShortFormat : tsFormat,
+                          )
+                        : format(
+                            date,
+                            isSmallScreen ? tsShortFormat : tsFormat,
+                          )}
+                    </span>
+                  );
+                },
+                size: columnSizeStorage.timestamp ?? (isSmallScreen ? 75 : 180),
+              },
+            ]
+          : []),
+        ...(!hiddenColumns.includes('level')
+          ? [
+              {
+                accessorKey: 'severity_text',
+                header: 'Level',
+                cell: (info: CellContext<any, unknown>) => (
+                  <span>
+                    <LogLevel level={info.getValue<string>()} />
+                  </span>
+                ),
+                size:
+                  columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
+              },
+            ]
+          : []),
+        ...(!hiddenColumns.includes('service')
           ? [
               {
                 accessorKey: '_service',
                 header: 'Service',
                 cell: (info: CellContext<any, unknown>) => (
-                  <span
-                  // role="button"
-                  // onClick={() =>
-                  //   onPropertySearchClick('service', info.getValue<string>())
-                  // }
-                  >
-                    {info.getValue<string>()}
-                  </span>
+                  <span>{info.getValue<string>()}</span>
                 ),
                 size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
               },
@@ -409,31 +408,38 @@ export const RawLogTable = memo(
           },
           size: columnSizeStorage[column] ?? 150,
         })) as ColumnDef<any>[]),
-        {
-          accessorKey: 'body',
-          header: () => (
-            <span>
-              Message{' '}
-              {onShowPatternsClick != null && !IS_LOCAL_MODE && (
-                <span>
-                  •{' '}
-                  <Text
-                    span
-                    size="xs"
-                    c="green"
-                    onClick={onShowPatternsClick}
-                    role="button"
-                  >
-                    <i className="bi bi-collection"></i> Group Similar Events
-                  </Text>
-                </span>
-              )}
-            </span>
-          ),
-          cell: info => <div>{stripAnsi(info.getValue<string>())}</div>,
-          size: UNDEFINED_WIDTH,
-          enableResizing: false,
-        },
+        ...(!hiddenColumns.includes('message')
+          ? [
+              {
+                accessorKey: 'body',
+                header: () => (
+                  <span>
+                    Message{' '}
+                    {onShowPatternsClick != null && !IS_LOCAL_MODE && (
+                      <span>
+                        •{' '}
+                        <Text
+                          span
+                          size="xs"
+                          c="green"
+                          onClick={onShowPatternsClick}
+                          role="button"
+                        >
+                          <i className="bi bi-collection"></i> Group Similar
+                          Events
+                        </Text>
+                      </span>
+                    )}
+                  </span>
+                ),
+                cell: (info: CellContext<any, unknown>) => (
+                  <div>{stripAnsi(info.getValue<string>())}</div>
+                ),
+                size: UNDEFINED_WIDTH,
+                enableResizing: false,
+              },
+            ]
+          : []),
       ],
       [
         formatUTC,
@@ -443,7 +449,7 @@ export const RawLogTable = memo(
         onShowPatternsClick,
         isSmallScreen,
         columnSizeStorage,
-        showServiceColumn,
+        hiddenColumns,
         columnNameMap,
         tsFormat,
       ],
@@ -591,7 +597,6 @@ export const RawLogTable = memo(
         className="overflow-auto h-100 fs-8 bg-inherit"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
-
           if (e.target != null) {
             const { scrollTop } = e.target as HTMLDivElement;
             onScroll(scrollTop);
@@ -793,7 +798,6 @@ export const RawLogTable = memo(
 export default function LogTable({
   config: { where: searchedQuery, dateRange: searchedTimeRange },
   highlightedLineId,
-  onPropertySearchClick,
   onRowExpandClick,
   formatUTC,
   isLive,
@@ -805,17 +809,15 @@ export default function LogTable({
   displayedColumns,
   setDisplayedColumns,
   columnNameMap,
-  showServiceColumn,
+  hiddenColumns,
+  hideHeader,
+  onFirstResultReceived,
 }: {
   config: {
     where: string;
     dateRange: [Date, Date];
   };
   highlightedLineId: undefined | string;
-  onPropertySearchClick: (
-    property: string,
-    value: string | number | boolean,
-  ) => void;
   onRowExpandClick: (logId: string, sortKey: string) => void;
   formatUTC: boolean;
   onScroll: (scrollTop: number) => void;
@@ -827,7 +829,9 @@ export default function LogTable({
   displayedColumns: string[];
   setDisplayedColumns: (columns: string[]) => void;
   columnNameMap?: Record<string, string>;
-  showServiceColumn?: boolean;
+  hiddenColumns?: DefaultColumn[];
+  hideHeader?: boolean;
+  onFirstResultReceived?: (log: any) => void;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -868,6 +872,15 @@ export default function LogTable({
         prevQueryConfig?.searchedQuery !== searchedQuery,
     },
   );
+
+  // hacky way to send the first result back to parent component
+  const [isFirstResultCbRun, setIsFirstResultCbRun] = useState(false);
+  useEffect(() => {
+    if (!isFirstResultCbRun && searchResults?.length) {
+      setIsFirstResultCbRun(true);
+      onFirstResultReceived?.(searchResults[0]);
+    }
+  }, [isFirstResultCbRun, onFirstResultReceived, searchResults]);
 
   // Check if live tail is enabled, if so, we need to compare the search results
   // key to see if the data we're showing is stale relative to the query we're trying to show.
@@ -932,14 +945,14 @@ export default function LogTable({
           () => fetchNextPage({ limit: 200 }),
           [fetchNextPage],
         )}
-        // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPageWhenNotLive}
         formatUTC={formatUTC}
         onRowExpandClick={onRowExpandClick}
         onScroll={onScroll}
         onShowPatternsClick={onShowPatternsClick}
         columnNameMap={columnNameMap}
-        showServiceColumn={showServiceColumn}
+        hiddenColumns={hiddenColumns}
+        hideHeader={hideHeader}
       />
     </>
   );

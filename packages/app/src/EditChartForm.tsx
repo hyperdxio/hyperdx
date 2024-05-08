@@ -331,7 +331,6 @@ export const EditSearchChartForm = ({
             isLive={false}
             isUTC={false}
             setIsUTC={() => {}}
-            onPropertySearchClick={() => {}}
           />
         </div>
       </div>
@@ -488,7 +487,6 @@ export const EditNumberChartForm = ({
                 isLive={false}
                 isUTC={false}
                 setIsUTC={() => {}}
-                onPropertySearchClick={() => {}}
               />
             </div>
           </div>
@@ -693,7 +691,6 @@ export const EditTableChartForm = ({
                 isLive={false}
                 isUTC={false}
                 setIsUTC={() => {}}
-                onPropertySearchClick={() => {}}
               />
             </div>
           </div>
@@ -889,7 +886,6 @@ export const EditHistogramChartForm = ({
                 isLive={false}
                 isUTC={false}
                 setIsUTC={() => {}}
-                onPropertySearchClick={() => {}}
               />
             </div>
           </div>
@@ -1428,7 +1424,6 @@ export const EditLineChartForm = ({
                 isLive={false}
                 isUTC={false}
                 setIsUTC={() => {}}
-                onPropertySearchClick={() => {}}
               />
             </div>
           </div>

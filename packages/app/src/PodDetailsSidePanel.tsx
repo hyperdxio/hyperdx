@@ -147,7 +147,6 @@ function PodLogs({
           isLive={false}
           isUTC={false}
           setIsUTC={() => {}}
-          onPropertySearchClick={() => {}}
           columnNameMap={{
             'k8s.container.name': 'Container',
           }}

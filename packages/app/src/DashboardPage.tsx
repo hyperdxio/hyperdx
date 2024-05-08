@@ -353,7 +353,6 @@ const Tile = forwardRef(
                     isLive={false}
                     isUTC={false}
                     setIsUTC={() => {}}
-                    onPropertySearchClick={() => {}}
                     onSettled={onSettled}
                   />
                 </div>

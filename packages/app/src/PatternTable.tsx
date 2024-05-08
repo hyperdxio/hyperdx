@@ -31,7 +31,7 @@ const PatternTrendChartTooltip = (props: any) => {
   return null;
 };
 
-const PatternTrendChart = ({
+export const PatternTrendChart = ({
   data,
   dateRange,
   granularity,

@@ -168,7 +168,6 @@ function NamespaceLogs({
           isLive={false}
           isUTC={false}
           setIsUTC={() => {}}
-          onPropertySearchClick={() => {}}
         />
       </Card.Section>
     </Card>

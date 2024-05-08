@@ -26,7 +26,7 @@ import { version } from '../package.json';
 
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import { IS_LOCAL_MODE, SERVER_URL } from './config';
+import { IS_EXCEPTIONS_ENABLED, IS_LOCAL_MODE, SERVER_URL } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { KubernetesFlatIcon } from './SVGIcons';
@@ -1159,6 +1159,25 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </span>
               </Link>
             </div>
+
+            {IS_EXCEPTIONS_ENABLED ? (
+              <div className="px-3 my-3">
+                <Link
+                  href="/exceptions"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/exceptions'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-bug pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Exceptions</span>}
+                  </span>
+                </Link>
+              </div>
+            ) : null}
 
             <div>
               <div

@@ -1,0 +1,106 @@
+@import './variables.scss';
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  height: 100%;
+  background-color: $body-bg;
+  box-shadow: 0 0 100px 40px rgba(0, 0, 0, 0.7);
+  border-left: 1px solid $slate-900;
+}
+
+.exceptionRowCard {
+  border: 1px solid transparent;
+  &:hover {
+    cursor: pointer;
+    border-color: #3b3b3b;
+  }
+}
+
+.exceptionRowLevel {
+  align-self: stretch;
+  width: 6px;
+  background: #c62828; // todo: use color from theme
+  border-radius: 3px;
+  margin: -4px;
+}
+
+.exceptionFunction {
+  background: $slate-900;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.panelBody {
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.panelExceptionsList {
+  width: 23%;
+  height: 100%;
+  max-width: 250px;
+  max-height: 100%;
+  border-right: 1px solid $slate-950;
+}
+
+.panelExceptionsListHeader {
+  padding: 6px 16px;
+  border-bottom: 1px solid $slate-950;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: $slate-400;
+}
+
+.panelExceptionsListItem {
+  padding: 2px 16px;
+  color: $slate-300;
+  cursor: pointer;
+  font-size: 11px;
+  &:hover {
+    background-color: $slate-900;
+  }
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panelExceptionsListItemSelected {
+  background-color: $slate-900;
+  color: $slate-100;
+  font-weight: bold;
+}
+
+.panelExceptionDetails {
+  flex: 1;
+  width: 100%;
+  max-width: 100%;
+  flex-grow: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.panelExceptionDetailsHeader {
+  padding: 8px 16px;
+  border-bottom: 1px solid $slate-950;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panelExceptionDetailsBody {
+  height: 100%;
+  width: 100%;
+  padding: 8px 16px;
+}

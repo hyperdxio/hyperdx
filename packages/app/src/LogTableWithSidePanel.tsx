@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import usePortal from 'react-useportal';
 
 import LogSidePanel from './LogSidePanel';
+import type { DefaultColumn } from './LogTable';
 import LogTable from './LogTable';
 import type { LogView } from './types';
 import { useDisplayedColumns } from './useDisplayedColumns';
@@ -12,13 +13,12 @@ export function LogTableWithSidePanel({
   isLive,
   onScroll,
   selectedSavedSearch,
-  onPropertySearchClick,
   onRowExpandClick,
   onPropertyAddClick,
   setIsUTC,
   onSettled,
   columnNameMap,
-  showServiceColumn,
+  hiddenColumns,
 }: {
   config: {
     where: string;
@@ -28,19 +28,12 @@ export function LogTableWithSidePanel({
   isUTC: boolean;
   isLive: boolean;
   columnNameMap?: Record<string, string>;
-  showServiceColumn?: boolean;
-
-  onPropertySearchClick: (
-    property: string,
-    value: string | number | boolean,
-  ) => void;
+  hiddenColumns?: DefaultColumn[];
   setIsUTC: (isUTC: boolean) => void;
-
   onPropertyAddClick?: (name: string, value: string | boolean | number) => void;
   onRowExpandClick?: (logId: string, sortKey: string) => void;
   onScroll?: (scrollTop: number) => void | undefined;
   selectedSavedSearch?: LogView | undefined;
-
   onSettled?: () => void;
 }) {
   const { where: searchedQuery, dateRange: searchedTimeRange } = config;
@@ -115,7 +108,6 @@ export function LogTableWithSidePanel({
         onScroll={onScroll ?? voidFn}
         highlightedLineId={openedLog?.id}
         config={config}
-        onPropertySearchClick={onPropertySearchClick}
         formatUTC={isUTC}
         onRowExpandClick={useCallback(
           (id: string, sortKey: string) => {
@@ -128,7 +120,7 @@ export function LogTableWithSidePanel({
         displayedColumns={displayedColumns}
         setDisplayedColumns={setDisplayedColumns}
         columnNameMap={columnNameMap}
-        showServiceColumn={showServiceColumn}
+        hiddenColumns={hiddenColumns}
       />
     </>
   );

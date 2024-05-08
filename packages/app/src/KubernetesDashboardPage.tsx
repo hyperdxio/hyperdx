@@ -993,8 +993,7 @@ export default function KubernetesDashboardPage() {
                       isLive={false}
                       isUTC={false}
                       setIsUTC={() => {}}
-                      onPropertySearchClick={() => {}}
-                      showServiceColumn={false}
+                      hiddenColumns={['service']}
                     />
                   </Card.Section>
                 </Card>

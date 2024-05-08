@@ -63,7 +63,6 @@ export default function SlowestEventsTile({
             isLive={false}
             isUTC={false}
             setIsUTC={() => {}}
-            onPropertySearchClick={() => {}}
           />
         )}
       </Card.Section>
