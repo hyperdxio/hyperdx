@@ -6,11 +6,11 @@ acknowledgements.enabled = true
 # ------------------------------ Sources -----------------------------------------
 # --------------------------------------------------------------------------------
 [api]
-  enabled = true
-  address = "0.0.0.0:8686"
+enabled = true
+address = "0.0.0.0:8686"
 
 [sources.vector_logs]
-  type = "internal_logs"
+type = "internal_logs"
 
 # [sinks.console]
 #   type = "console"
@@ -763,6 +763,25 @@ if is_object(.r) {
     for_each(array(.b.__events) ?? []) -> |_index, value| {
       if is_object(value) {
         if (value.fields[0].key == "event" && value.fields[0].value == "exception") {
+          if (index == 0) {
+            .message = ""
+            .stacktrace = ""
+            .type = ""
+            for_each(array(value.fields) ?? []) -> |_index, field| {
+                if (field.key == "exception.message") {
+                    .message = field.value
+                } 
+                if (field.key == "exception.stacktrace") {
+                    .stacktrace = field.value
+                }
+                if (field.key == "exception.type") {
+                    .type = field.value
+                }
+            }
+            if exists(.type) && exists(.message) && exists(.stacktrace) {
+              .b.group_id = seahash(to_string(.type) + "|" + to_string(.message) + "|" + to_string(.stacktrace))
+            }
+          } 
           .st = "error"
         }
       }
@@ -950,7 +969,7 @@ inputs = [
   "spans.dropped",
   "metrics.dropped",
   "post_metrics_unnest.dropped",
-  "post_metrics.dropped"
+  "post_metrics.dropped",
 ]
 source = '''
   log(., level: "error")
