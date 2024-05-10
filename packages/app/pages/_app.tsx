@@ -187,6 +187,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           content="width=device-width, initial-scale=0.75"
         />
         <meta name="theme-color" content="#25292e"></meta>
+        <meta name="google" content="notranslate" />
         <ColorSchemeScript forceColorScheme="dark" />
       </Head>
 
