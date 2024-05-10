@@ -160,7 +160,7 @@ export const HDXSpotlightProvider = ({
   const { actions } = useSpotlightActions();
 
   return (
-    <>
+    <div className="notranslate" translate="no">
       {children}
       <Spotlight
         shortcut="mod + K"
@@ -176,6 +176,6 @@ export const HDXSpotlightProvider = ({
         limit={7}
         scrollable
       />
-    </>
+    </div>
   );
 };
