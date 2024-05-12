@@ -53,7 +53,7 @@ export default function DOMPlayer({
 
   let currentRrwebEvent = '';
 
-  const { isFetching: isSearchResultsFetching } = useSearchEventStream(
+  const { isFetching: isSearchResultsFetching, abort } = useSearchEventStream(
     {
       apiUrlPath: `/sessions/${sessionId}/rrweb`,
       q: '',
@@ -219,21 +219,7 @@ export default function DOMPlayer({
         replayer.current?.setConfig({ speed: playerSpeed, skipInactive });
       }
     }
-  }, [playerState, playerSpeed, skipInactive]);
-
-  // Set player to the correct time based on focus
-  useEffect(() => {
-    if (focus?.setBy !== 'player' && replayer.current != null) {
-      pause(
-        focus?.ts == null
-          ? 0
-          : focus?.ts - replayer.current.getMetaData().startTime,
-      );
-      if (playerState === 'playing') {
-        play();
-      }
-    }
-  }, [focus, pause, setPlayerState, playerState, play]);
+  }, [playerState, playerSpeed, skipInactive, pause, play]);
 
   const handleResize = useCallback(() => {
     if (wrapper.current == null || playerContainer.current == null) {
@@ -262,6 +248,7 @@ export default function DOMPlayer({
     handleResize();
   }, [resizeKey, handleResize]);
 
+  const [isReplayerInitialized, setIsReplayerInitialized] = useState(false);
   // Set up player
   useEffect(() => {
     if (
@@ -281,6 +268,7 @@ export default function DOMPlayer({
       showWarning: debug,
       skipInactive: true,
     });
+    setIsReplayerInitialized(true);
 
     if (debug) {
       // @ts-ignore
@@ -334,19 +322,51 @@ export default function DOMPlayer({
     debug,
   ]);
 
+  // Set player to the correct time based on focus
+  useEffect(() => {
+    if (
+      !isInitialEventsLoaded ||
+      !isReplayerInitialized ||
+      lastEventTsLoaded < (focus?.ts ? focus.ts + 1000 : Infinity)
+    ) {
+      return;
+    }
+    if (focus?.setBy !== 'player' && replayer.current != null) {
+      pause(
+        focus?.ts == null
+          ? 0
+          : focus?.ts - replayer.current.getMetaData().startTime,
+      );
+      handleResize();
+      if (playerState === 'playing') {
+        play();
+      }
+    }
+  }, [
+    focus,
+    pause,
+    setPlayerState,
+    playerState,
+    play,
+    isInitialEventsLoaded,
+    isReplayerInitialized,
+    handleResize,
+    lastEventTsLoaded,
+  ]);
+
   useEffect(() => {
     return () => {
       if (replayer.current != null) {
         replayer.current?.destroy();
         replayer.current = null;
       }
+      abort();
     };
   }, []);
 
   const isLoading = isInitialEventsLoaded === false && isSearchResultsFetching;
   // TODO: Handle when ts is set to a value that's outside of this session
   const isBuffering =
-    playerState === 'playing' &&
     isReplayFullyLoaded === false &&
     (replayer.current?.getMetaData()?.endTime ?? 0) < (focus?.ts ?? 0);
 

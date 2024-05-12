@@ -371,6 +371,19 @@ body {
 
 /* Custom Components */
 
+.player-skipping-overlay {
+  position: absolute;
+  z-index: 10;
+  background: rgba(50, 50, 50, 0.4);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 .player-wrapper {
   position: relative;
 
@@ -424,49 +437,6 @@ body {
   }
   100% {
     transform: scale(1) rotate(360deg);
-  }
-}
-
-.PlaybarSliderParent {
-  &:hover {
-    .PlaybarSlider {
-      height: 12px;
-
-      .thumb {
-        margin-top: -3px;
-        height: 18px;
-        width: 18px;
-      }
-
-      .mark {
-        margin-top: 0px;
-        width: 12px;
-        height: 12px;
-        margin-left: 6px;
-      }
-    }
-  }
-
-  .PlaybarSlider {
-    transition: height 0.2s ease-in-out;
-    height: 6px;
-
-    .thumb {
-      transition: all 0.2s ease-in-out;
-
-      margin-top: -5px;
-      height: 16px;
-      width: 16px;
-    }
-
-    .mark {
-      transition: all 0.2s ease-in-out;
-
-      width: 8px;
-      height: 8px;
-      margin-top: -1px;
-      margin-left: -4px;
-    }
   }
 }
 
