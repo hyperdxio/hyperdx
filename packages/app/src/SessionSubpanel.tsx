@@ -326,11 +326,13 @@ export default function SessionSubpanel({
     },
   );
   const prevTsQuery = usePrevious(tsQuery);
+
   useEffect(() => {
     if (prevTsQuery == null && tsQuery != null) {
       _setFocus({ ts: tsQuery, setBy: 'url' });
     }
   }, [prevTsQuery, tsQuery]);
+
   const debouncedSetTsQuery = useRef(
     throttle(async (ts: number) => {
       setTsQuery(ts, 'replaceIn');

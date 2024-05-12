@@ -1,0 +1,36 @@
+.wrapper {
+  width: 100%;
+
+  > div {
+    width: 100%;
+  }
+}
+
+.markers {
+  width: auto !important;
+  position: relative;
+  margin-bottom: 10px;
+  margin-left: 6px;
+  margin-right: 6px;
+
+  &:hover {
+    .markerDot {
+      opacity: 0.2;
+    }
+  }
+}
+
+.markerDot {
+  cursor: pointer;
+  position: absolute;
+  top: 0;
+  margin-left: -1px;
+  width: 3px;
+  height: 8px;
+  background-color: #333;
+  border-radius: 1px;
+  &:hover {
+    opacity: 1 !important;
+    z-index: 20;
+  }
+}
