@@ -33,6 +33,7 @@ import {
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
@@ -42,6 +43,7 @@ import { withAppNav } from './layout';
 import { WebhookFlatIcon } from './SVGIcons';
 import { WebhookService } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { truncateMiddle } from './utils';
 import { isValidJson, isValidUrl } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
@@ -660,50 +662,58 @@ export default function TeamPage() {
               </Card>
 
               <Card>
+                <Card.Section p="md" withBorder>
+                  <div className="text-slate-300 fs-7">Generic Webhooks</div>
+                </Card.Section>
+                {Array.isArray(genericWebhooks?.data) &&
+                  genericWebhooks.data.length > 0 && (
+                    <Card.Section withBorder>
+                      <Table horizontalSpacing="lg" verticalSpacing="xs">
+                        <Table.Tbody>
+                          {genericWebhooks.data.map((webhook: any) => (
+                            <Table.Tr key={webhook._id}>
+                              <Table.Td>
+                                <div className="fw-bold">{webhook.name}</div>
+                                {webhook.description && (
+                                  <div className="fw-regular text-muted">
+                                    {webhook.description}
+                                  </div>
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                <Tooltip
+                                  label={webhook.url}
+                                  color="dark"
+                                  className="fs-8.5"
+                                >
+                                  <span className="fs-8">
+                                    {truncateMiddle(webhook.url, 70)}
+                                  </span>
+                                </Tooltip>
+                              </Table.Td>
+                              <Table.Td align="right">
+                                <MButton
+                                  ml="xs"
+                                  variant="light"
+                                  color="red"
+                                  size="compact-sm"
+                                  onClick={() =>
+                                    onConfirmDeleteWebhook(
+                                      webhook._id,
+                                      WebhookService.Generic,
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </MButton>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Card.Section>
+                  )}
                 <Card.Section p="md">
-                  <div className="mb-3 text-slate-300 fs-7">
-                    Generic Webhooks
-                  </div>
-                  {Array.isArray(genericWebhooks?.data) &&
-                    genericWebhooks.data.length > 0 &&
-                    genericWebhooks.data.map((webhook: any) => (
-                      <div key={webhook._id} className="my-3 text-muted">
-                        <div className="d-flex flex-column mt-3 w-100">
-                          <div className="d-flex align-items-center justify-content-between w-100">
-                            <div className="d-flex align-items-center">
-                              <div className="fw-bold text-white">
-                                {webhook.name}
-                              </div>
-                              <div className="ms-2 me-2">|</div>
-                              {/* TODO: truncate long urls responsive width */}
-                              <div className="fw-bold text-white">
-                                {webhook.url}
-                              </div>
-                            </div>
-                            <MButton
-                              ml="xs"
-                              variant="light"
-                              color="red"
-                              size="compact-sm"
-                              onClick={() =>
-                                onConfirmDeleteWebhook(
-                                  webhook._id,
-                                  WebhookService.Generic,
-                                )
-                              }
-                            >
-                              Delete
-                            </MButton>
-                          </div>
-                          {webhook.description && (
-                            <div className="fw-regular text-muted">
-                              {webhook.description}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
                   <MButton
                     variant="default"
                     onClick={() => openAddGenericWebhookModal()}
