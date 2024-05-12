@@ -37,35 +37,53 @@ const hyperJsonAtom = atom<HyperJsonAtom>({
   normallyExpanded: false,
 });
 
-const ValueRenderer = React.memo(({ value }: { value: any }) => {
-  if (isNull(value)) {
-    return <span className={styles.null}>null</span>;
-  }
-  if (isString(value)) {
-    return <span className={styles.string}>{value}</span>;
-  }
-  if (isNumber(value)) {
-    return <span className={styles.number}>{value}</span>;
-  }
-  if (isBoolean(value)) {
-    return <span className={styles.boolean}>{value ? 'true' : 'false'}</span>;
-  }
-  if (isPlainObject(value)) {
-    return (
-      <span className={styles.object}>
-        {'{}'} {Object.keys(value).length} keys
-      </span>
-    );
-  }
-  if (isArray(value)) {
-    return (
-      <span className={styles.array}>
-        {'[]'} {value.length} items
-      </span>
-    );
-  }
-  return null;
-});
+const ValueRenderer = React.memo(
+  React.forwardRef<HTMLSpanElement, { value: any }>(({ value }, ref) => {
+    if (isNull(value)) {
+      return (
+        <span ref={ref} className={styles.null}>
+          null
+        </span>
+      );
+    }
+    if (isString(value)) {
+      return (
+        <span ref={ref} className={styles.string}>
+          {value}
+        </span>
+      );
+    }
+    if (isNumber(value)) {
+      return (
+        <span ref={ref} className={styles.number}>
+          {value}
+        </span>
+      );
+    }
+    if (isBoolean(value)) {
+      return (
+        <span ref={ref} className={styles.boolean}>
+          {value ? 'true' : 'false'}
+        </span>
+      );
+    }
+    if (isPlainObject(value)) {
+      return (
+        <span ref={ref} className={styles.object}>
+          {'{}'} {Object.keys(value).length} keys
+        </span>
+      );
+    }
+    if (isArray(value)) {
+      return (
+        <span ref={ref} className={styles.array}>
+          {'[]'} {value.length} items
+        </span>
+      );
+    }
+    return null;
+  }),
+);
 
 const LineMenu = React.memo(
   ({
@@ -177,6 +195,25 @@ const Line = React.memo(
       [keyName, parentKeyPath],
     );
 
+    // Hide LineMenu when selecting text in the value
+    const valueRef = React.useRef<HTMLSpanElement>(null);
+    const [isSelectingValue, setIsSelectingValue] = React.useState(false);
+    const handleValueSelectStart = React.useCallback(() => {
+      setIsSelectingValue(true);
+    }, []);
+    const handleValueMouseUp = React.useCallback(() => {
+      setIsSelectingValue(false);
+    }, []);
+    React.useEffect(() => {
+      const _valueRef = valueRef.current;
+      _valueRef?.addEventListener('selectstart', handleValueSelectStart);
+      _valueRef?.addEventListener('mouseup', handleValueMouseUp);
+      return () => {
+        _valueRef?.removeEventListener('selectstart', handleValueSelectStart);
+        _valueRef?.removeEventListener('mouseup', handleValueMouseUp);
+      };
+    }, [handleValueMouseUp, handleValueSelectStart]);
+
     return (
       <>
         <div
@@ -210,15 +247,15 @@ const Line = React.memo(
                 <div className={styles.object}>{'{}'} Parsed JSON</div>
               ) : (
                 <>
-                  <ValueRenderer value={value} />
+                  <ValueRenderer value={value} ref={valueRef} />
                   <div className={styles.jsonBtn}>Expand JSON</div>
                 </>
               )
             ) : (
-              <ValueRenderer value={value} />
+              <ValueRenderer value={value} ref={valueRef} />
             )}
           </div>
-          {hovered && !disableMenu && (
+          {hovered && !disableMenu && !isSelectingValue && (
             <LineMenu keyName={keyName} keyPath={keyPath} value={value} />
           )}
         </div>
