@@ -4406,13 +4406,6 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react-slider@^1.3.1":
-  version "1.3.1"
-  resolved "https://registry.yarnpkg.com/@types/react-slider/-/react-slider-1.3.1.tgz#a3816989eb4fc172e7df316930f242fec90690fc"
-  integrity sha512-4X2yK7RyCIy643YCFL+bc6XNmcnBtt8n88uuyihvcn5G7Lut23eNQU3q3KmwF7MWIfKfsW5NxCjw0SeDZRtgaA==
-  dependencies:
-    "@types/react" "*"
-
 "@types/react-syntax-highlighter@^13.5.2":
   version "13.5.2"
   resolved "https://registry.yarnpkg.com/@types/react-syntax-highlighter/-/react-syntax-highlighter-13.5.2.tgz#357cc03581dc434c57c3b31f70e0eecdbf7b3ab0"
@@ -12187,13 +12180,6 @@ react-select@^5.7.0:
     prop-types "^15.6.0"
     react-transition-group "^4.3.0"
     use-isomorphic-layout-effect "^1.1.2"
-
-react-slider@^2.0.1:
-  version "2.0.4"
-  resolved "https://registry.yarnpkg.com/react-slider/-/react-slider-2.0.4.tgz#21c656ffabc3bb4481cf6b49e6d647baeda83572"
-  integrity sha512-sWwQD01n6v+MbeLCYthJGZPc0kzOyhQHyd0bSo0edg+IAxTVQmj3Oy4SBK65eX6gNwS9meUn6Z5sIBUVmwAd9g==
-  dependencies:
-    prop-types "^15.8.1"
 
 react-sliding-pane@^7.3.0:
   version "7.3.0"
