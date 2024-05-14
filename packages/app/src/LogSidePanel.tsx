@@ -847,6 +847,8 @@ function EventTagSubpanel({
       return (
         key.startsWith('process.tag.') ||
         key.startsWith('otel.library.') ||
+        key.startsWith('hyperdx.') ||
+        key.startsWith('telemetry.') ||
         // exception
         key.startsWith('contexts.os.') ||
         key.startsWith('contexts.runtime.') ||
@@ -1295,6 +1297,8 @@ function PropertySubpanel({
     return (
       !key.startsWith('process.tag.') &&
       !key.startsWith('otel.library.') &&
+      !key.startsWith('telemetry.') &&
+      !key.startsWith('hyperdx.') &&
       !(key.startsWith('http.request.header.') && isNetworkReq) &&
       !(key.startsWith('http.response.header.') && isNetworkReq) &&
       key != '__events' &&
