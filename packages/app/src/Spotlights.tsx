@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
 
 import api from './api';
-import { SERVICE_DASHBOARD_ENABLED } from './config';
 import Logo from './Icon';
 
 import '@mantine/spotlight/styles.css';
@@ -104,20 +103,16 @@ const useSpotlightActions = () => {
           router.push('/alerts');
         },
       },
-      ...(SERVICE_DASHBOARD_ENABLED
-        ? [
-            {
-              id: 'service-health',
-              group: 'Menu',
-              label: 'Service Health',
-              leftSection: <i className="bi bi-heart-pulse" />,
-              description: 'HTTP, Database and Infrastructure metrics',
-              onClick: () => {
-                router.push('/services');
-              },
-            },
-          ]
-        : []),
+      {
+        id: 'service-health',
+        group: 'Menu',
+        label: 'Service Health',
+        leftSection: <i className="bi bi-heart-pulse" />,
+        description: 'HTTP, Database and Infrastructure metrics',
+        onClick: () => {
+          router.push('/services');
+        },
+      },
       {
         id: 'team-settings',
         group: 'Menu',
@@ -165,7 +160,7 @@ export const HDXSpotlightProvider = ({
   const { actions } = useSpotlightActions();
 
   return (
-    <>
+    <div className="notranslate" translate="no">
       {children}
       <Spotlight
         shortcut="mod + K"
@@ -181,6 +176,6 @@ export const HDXSpotlightProvider = ({
         limit={7}
         scrollable
       />
-    </>
+    </div>
   );
 };

@@ -67,7 +67,7 @@ export default function SessionSidePanel({
     <Drawer
       customIdSuffix={`session-side-panel-${sessionId}`}
       duration={0}
-      overlayOpacity={0.2}
+      overlayOpacity={0.5}
       open={sessionId != null}
       onClose={() => {
         if (!subDrawerOpen) {
@@ -75,7 +75,7 @@ export default function SessionSidePanel({
         }
       }}
       direction="right"
-      size={'85vw'}
+      size={'82vw'}
       style={{ background: '#0F1216' }}
       className="border-start border-dark"
       zIndex={zIndex}
@@ -99,7 +99,7 @@ export default function SessionSidePanel({
                 <span>{session?.sessionCount} Events</span>
               </div>
             </div>
-            <div>
+            <div className="d-flex">
               <CopyToClipboard
                 text={window.location.href}
                 onCopy={() => {
@@ -115,6 +115,14 @@ export default function SessionSidePanel({
                   Share Session
                 </Button>
               </CopyToClipboard>
+              <Button
+                variant="dark"
+                className="text-muted-hover d-flex align-items-center"
+                size="sm"
+                onClick={onClose}
+              >
+                <i className="bi bi-x-lg" />
+              </Button>
             </div>
           </div>
         </div>

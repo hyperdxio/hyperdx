@@ -10,6 +10,7 @@ import {
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import cx from 'classnames';
 import produce from 'immer';
 import { Button, Form, Modal } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -30,6 +31,7 @@ import {
   CopyButton,
   Flex,
   Group,
+  Indicator,
   Paper,
   Popover,
   ScrollArea,
@@ -87,6 +89,7 @@ const Tile = forwardRef(
       dateRange,
       onDuplicateClick,
       onEditClick,
+      onAddAlertClick,
       onDeleteClick,
       query,
       queued,
@@ -107,6 +110,7 @@ const Tile = forwardRef(
       dateRange: [Date, Date];
       onDuplicateClick: () => void;
       onEditClick: () => void;
+      onAddAlertClick?: () => void;
       onDeleteClick: () => void;
       query: string;
       onSettled?: () => void;
@@ -185,12 +189,18 @@ const Tile = forwardRef(
         : type === 'number'
         ? {
             type,
-            table: chart.series[0].table ?? 'logs',
-            aggFn: chart.series[0].aggFn,
             field: chart.series[0].field ?? '', // TODO: Fix in definition
-            where: buildAndWhereClause(query, chart.series[0].where),
-            dateRange,
             numberFormat: chart.series[0].numberFormat,
+            series: chart.series.map(s => ({
+              ...s,
+              where: buildAndWhereClause(
+                query,
+                s.type === 'number' ? s.where : '',
+              ),
+            })),
+            dateRange,
+            granularity:
+              granularity ?? convertDateRangeToGranularityString(dateRange, 60),
           }
         : {
             type,
@@ -232,22 +242,48 @@ const Tile = forwardRef(
           <div className="fs-7 text-muted">{chart.name}</div>
           <i className="bi bi-grip-horizontal text-muted" />
           <div className="fs-7 text-muted d-flex gap-2 align-items-center">
-            {alert && (
-              <Link href="/alerts" legacyBehavior>
+            {config.type === 'time' &&
+              (alert ? (
+                <Link href="/alerts" legacyBehavior>
+                  <div className="rounded px-1 text-muted-hover cursor-pointer">
+                    <Indicator
+                      zIndex={1}
+                      size={alert?.state === 'OK' ? 6 : 8}
+                      processing={alert?.state === 'ALERT'}
+                      color={
+                        alert?.state === 'OK'
+                          ? 'green'
+                          : alert.silenced?.at
+                          ? 'yellow'
+                          : 'red'
+                      }
+                    >
+                      <i
+                        className="bi bi-bell"
+                        title={`Has alert and is in ${alert.state} state${
+                          alert.silenced?.by
+                            ? `. Ack'd by ${alert.silenced.by}`
+                            : ''
+                        }`}
+                      />
+                    </Indicator>
+                  </div>
+                </Link>
+              ) : (
                 <div
-                  className={`rounded px-1 text-muted cursor-pointer ${
-                    alert.state === 'ALERT'
-                      ? 'bg-danger effect-pulse'
-                      : 'bg-grey opacity-90'
-                  }`}
+                  role="button"
+                  className="rounded px-1 cursor-pointer text-muted-hover"
+                  onClick={onAddAlertClick}
                 >
-                  <i
-                    className="bi bi-bell text-white"
-                    title={`Has alert and is in ${alert.state} state`}
-                  />
+                  <Indicator
+                    zIndex={1}
+                    label={<span className="text-slate-400 fs-7">+</span>}
+                    color="transparent"
+                  >
+                    <i className="bi bi-bell" title="Add alert" />
+                  </Indicator>
                 </div>
-              </Link>
-            )}
+              ))}
 
             <Button
               variant="link"
@@ -333,6 +369,7 @@ const Tile = forwardRef(
 
 const EditTileModal = ({
   isLocalDashboard,
+  isAddingAlert,
   chart,
   alerts,
   dateRange,
@@ -342,6 +379,7 @@ const EditTileModal = ({
   dashboardQuery,
 }: {
   isLocalDashboard: boolean;
+  isAddingAlert?: boolean;
   chart: Chart | undefined;
   alerts: Alert[];
   dateRange: [Date, Date];
@@ -366,6 +404,7 @@ const EditTileModal = ({
         >
           <EditTileForm
             isLocalDashboard={isLocalDashboard}
+            isAddingAlert={isAddingAlert}
             chart={chart}
             alerts={alerts}
             onSave={onSave}
@@ -644,6 +683,13 @@ export default function DashboardPage() {
     [dashboard?.alerts, editedChart?.id],
   );
 
+  const [isAddingAlert, setIsAddingAlert] = useState(false);
+  useEffect(() => {
+    if (editedChart == null) {
+      setIsAddingAlert(false);
+    }
+  }, [editedChart]);
+
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
       isUTC: false,
@@ -697,6 +743,10 @@ export default function DashboardPage() {
             chart={chart}
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedChart(chart)}
+            onAddAlertClick={() => {
+              setIsAddingAlert(true);
+              setEditedChart(chart);
+            }}
             granularity={granularityQuery}
             alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
             isHighlighed={highlightedChartId === chart.id}
@@ -845,6 +895,7 @@ export default function DashboardPage() {
       {dashboard != null ? (
         <EditTileModal
           isLocalDashboard={isLocalDashboard}
+          isAddingAlert={isAddingAlert}
           dateRange={searchedTimeRange}
           key={editedChart?.id}
           chart={editedChart}

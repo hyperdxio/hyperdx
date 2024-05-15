@@ -11,22 +11,23 @@
 
 # HyperDX
 
-[HyperDX](https://hyperdx.io) helps engineers figure out why production is
-broken faster by centralizing and correlating logs, metrics, traces, exceptions
+[HyperDX](https://hyperdx.io) helps engineers quickly figure out why production is
+broken by centralizing and correlating logs, metrics, traces, exceptions
 and session replays in one place. An open source and developer-friendly
 alternative to Datadog and New Relic.
 
 <p align="center">
-  <a href="https://www.hyperdx.io/docs">Documentation</a> • <a href="https://discord.gg/FErRRKU78j">Chat on Discord</a>  • <a href="https://api.hyperdx.io/login/demo">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a>
+  <a href="https://www.hyperdx.io/docs">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://api.hyperdx.io/login/demo">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a>
 </p>
 
 - 🕵️ Correlate end to end, go from browser session replay to logs and traces in
   just a few clicks
 - 🔥 Blazing fast performance powered by Clickhouse
 - 🔍 Intuitive full-text search and property search syntax (ex. `level:err`)
+- ⏱️ Monitor health and performance from HTTP requests to DB queries (APM)
 - 🤖 Automatically cluster event patterns from billions of events
 - 📈 Dashboard high cardinality events without a complex query language
-- 🔔 Set up alerts in just a few clicks
+- 🔔 Set up alerts on logs, metrics, or traces in just a few clicks
 - `{` Automatic JSON/structured log parsing
 - 🔭 OpenTelemetry native
 
@@ -151,6 +152,18 @@ include:
 
 Once HyperDX is running, you can point your OpenTelemetry SDK to the
 OpenTelemetry collector spun up at `http://localhost:4318`.
+
+## Local Mode
+
+Interested in using HyperDX for local development and debugging? Check out HyperDX Local, a single container local-optimized version of HyperDX that allows you to pipe OpenTelemetry telemetry (logs, metrics, traces) to a local instance of HyperDX running on your own machine.
+
+Get started with HyperDX Local by running the following Docker command:
+
+```bash
+docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 hyperdx/hyperdx-local
+```
+
+[Read more about HyperDX Local](./LOCAL.md)
 
 ## Contributing
 

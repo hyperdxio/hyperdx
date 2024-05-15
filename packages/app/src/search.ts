@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { UseQueryOptions } from 'react-query';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 
-import { API_SERVER_URL } from './config';
+import { apiConfigs } from './api';
 import { usePrevious } from './utils';
 
 let team: string | null = null;
@@ -94,7 +94,7 @@ function useSearchEventStream(
       lastFetchStatusRef.current = 'fetching';
 
       const fetchPromise = fetchEventSource(
-        `${API_SERVER_URL}${apiUrlPath}?${searchParams.toString()}`,
+        `${apiUrlPath}?${searchParams.toString()}`,
         {
           method: 'GET',
           signal: ctrl.signal,
@@ -165,6 +165,21 @@ function useSearchEventStream(
             lastFetchStatusRef.current = 'idle';
             // if the server closes the connection unexpectedly, retry:
             // throw new RetriableError();
+          },
+          fetch: (
+            input: RequestInfo | URL,
+            init?: RequestInit | undefined,
+          ): Promise<Response> => {
+            if (typeof input === 'string') {
+              // Hack to dynamically resolve prefixUrl on every request
+              return fetch(`${apiConfigs.prefixUrl}${input}`, init);
+            } else {
+              // We should never hit this
+              console.error(
+                'useSearchEventStream: Non-string fetch input is not supported',
+              );
+              return fetch(input, init);
+            }
           },
           // onerror(err) {
           //   if (err instanceof FatalError) {
@@ -277,12 +292,17 @@ function useSearchEventStream(
     [fetchResults, results.data.length, hasNextPage],
   );
 
+  const abort = useCallback(() => {
+    lastAbortController.current?.abort();
+  }, []);
+
   return {
     hasNextPage,
     isFetching,
     results: results.data,
     resultsKey: results.key,
     fetchNextPage,
+    abort,
   };
 }
 

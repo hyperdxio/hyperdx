@@ -1,5 +1,46 @@
 # @hyperdx/app
 
+## 1.8.0
+
+### Minor Changes
+
+- 4d6fb8f: feat: GA service health dashboard + metrics alert
+- 0e365bf: this change enables generic webhooks. no existing webhook behavior
+  will be impacted by this change.
+- 4d6fb8f: feat: GA k8s dashboard / metrics side panel
+
+### Patch Changes
+
+- eefe597: Show client sessions with no user interactions but has recording by
+  default
+- b454003: feat: introduce conditional alert routing helper #is_match
+- 05517dc: LogViewer: better JSON parsing and other tweaks
+- d3e270a: chore: bump vector to v0.37.0
+- ec95ef0: Add skip forward/back 15s buttons on session replay
+- 2c61276: Allow exporting table chart results as CSV
+- bc1e84b: Allow to interact with page while log side panel is open
+- ab96e7c: Update Team Page layout and styling
+
+## 1.7.0
+
+### Minor Changes
+
+- 396468c: fix: Use nuqs for ChartPage url query params
+
+### Patch Changes
+
+- dba8a43: Allow to drag and drop saved searches and dashhoards between groups
+- 95ccfa1: Add multi-series line/table charts as well as histogram/number charts
+  to the chart explorer.
+- 095ec0e: fix: histogram AggFn values to be only valid ones (UI)
+- 41d80de: feat: parse legacy k8s v1 cluster events
+- f9521a5: Upgrade to React 18 and Next 13
+- b87c4d7: fix: dense rank should be computed base on rank value and group
+  (multi-series chart)
+- 95f5041: Minor UI fixes
+- a49726e: fix: cache the result conditionally (SimpleCache)
+- b83e51f: refactor + perf: decouple and performance opt metrics tags endpoints
+
 ## 1.6.0
 
 ### Minor Changes

@@ -49,7 +49,7 @@ services:
       - 8686:8686 # healthcheck
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
-      ENABLE_GO_PARSER: 'false'
+      ENABLE_GO_PARSER: 'true'
       GO_PARSER_API_URL: 'http://go-parser:7777'
       RUST_BACKTRACE: full
       VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
@@ -127,6 +127,7 @@ services:
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: worker
       CLICKHOUSE_USER: worker
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 0
@@ -188,6 +189,7 @@ services:
     ports:
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
+      NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NODE_ENV: development
       PORT: ${HYPERDX_APP_PORT}

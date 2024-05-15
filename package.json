@@ -1,7 +1,7 @@
 {
   "name": "hyperdx",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.8.0",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -18,6 +18,12 @@
     "prepare": "husky install"
   },
   "lint-staged": {
-    "**/*": "prettier --write --ignore-unknown"
+    "**/*.{ts,tsx}": [
+      "prettier --write --ignore-unknown",
+      "eslint --fix"
+    ],
+    "**/*.{mdx,json,yml}": [
+      "prettier --write --ignore-unknown"
+    ]
   }
 }

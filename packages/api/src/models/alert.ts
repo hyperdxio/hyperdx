@@ -52,6 +52,13 @@ export interface IAlert {
   // Chart alerts
   dashboardId?: ObjectId;
   chartId?: string;
+
+  // Silenced
+  silenced?: {
+    by?: ObjectId;
+    at: Date;
+    until: Date;
+  };
 }
 
 export type AlertDocument = mongoose.HydratedDocument<IAlert>;
@@ -124,6 +131,25 @@ const AlertSchema = new Schema<IAlert>(
     chartId: {
       type: String,
       required: false,
+    },
+    silenced: {
+      required: false,
+      type: {
+        by: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: false,
+        },
+        at: {
+          type: Date,
+          required: true,
+        },
+        until: {
+          type: Date,
+          required: true,
+        },
+        required: false,
+      },
     },
   },
   {

@@ -1,6 +1,8 @@
 import _ from 'lodash';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import TeamInvite from '@/models/teamInvite';
+import User from '@/models/user';
 
 describe('team router', () => {
   const server = getServer();
@@ -27,15 +29,6 @@ Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",
   "sentryDSN": "",
-  "teamInvites": Array [],
-  "users": Array [
-    Object {
-      "email": "fake@deploysentinel.com",
-      "hasPasswordAuth": true,
-      "isCurrentUser": true,
-      "name": "fake@deploysentinel.com",
-    },
-  ],
 }
 `);
   });
@@ -69,5 +62,133 @@ Object {
       .expect(200);
     const resp = await agent.get('/team/tags').expect(200);
     expect(resp.body.data).toStrictEqual(['test', 'test2']);
+  });
+
+  it('GET /team/members', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team._id,
+    });
+    const user2 = await User.create({
+      email: 'user2@example.com',
+      team: team._id,
+    });
+    const resp = await agent.get('/team/members').expect(200);
+
+    expect(resp.body.data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "_id": "${resp.body.data[0]._id}",
+    "email": "fake@deploysentinel.com",
+    "hasPasswordAuth": true,
+    "isCurrentUser": true,
+    "name": "fake@deploysentinel.com",
+  },
+  Object {
+    "_id": "${user1._id}",
+    "email": "user1@example.com",
+    "hasPasswordAuth": true,
+    "isCurrentUser": false,
+  },
+  Object {
+    "_id": "${user2._id}",
+    "email": "user2@example.com",
+    "hasPasswordAuth": true,
+    "isCurrentUser": false,
+  },
+]
+`);
+  });
+
+  it('POST /team/invitation', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const resp = await agent
+      .post('/team/invitation')
+      .send({
+        email: 'user3@example.com',
+        name: 'User 3',
+      })
+      .expect(200);
+    const teamInvite = await TeamInvite.findOne({
+      email: 'user3@example.com',
+    });
+    if (teamInvite == null) {
+      throw new Error('TeamInvite not found');
+    }
+    expect(resp.body.url).toBe(
+      `http://localhost:9090/join-team?token=${teamInvite.token}`,
+    );
+  });
+
+  it('GET /team/invitations', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await Promise.all([
+      agent
+        .post('/team/invitation')
+        .send({
+          email: 'user1@example.com',
+          name: 'User 1',
+        })
+        .expect(200),
+      agent
+        .post('/team/invitation')
+        .send({
+          email: 'user2@example.com',
+          name: 'User 2',
+        })
+        .expect(200),
+    ]);
+
+    const resp = await agent.get('/team/invitations').expect(200);
+    expect(
+      resp.body.data.map(i => ({
+        email: i.email,
+        name: i.name,
+      })),
+    ).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "email": "user1@example.com",
+    "name": "User 1",
+  },
+  Object {
+    "email": "user2@example.com",
+    "name": "User 2",
+  },
+]
+`);
+  });
+
+  it('DELETE /team/member/:userId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team._id,
+    });
+
+    await agent.delete(`/team/member/${user1._id}`).expect(200);
+
+    const resp2 = await agent.get('/team/members').expect(200);
+
+    expect(resp2.body.data).toHaveLength(1);
+  });
+
+  it('DELETE /team/invitation/:teamInviteId', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const invite = await TeamInvite.create({
+      email: 'fake_invite@example.com',
+      name: 'Fake Invite',
+      teamId: team._id,
+      token: 'fake_token',
+    });
+
+    await agent.delete(`/team/invitation/${invite._id}`).expect(200);
+
+    const resp2 = await agent.get('/team/invitations').expect(200);
+
+    expect(resp2.body.data).toHaveLength(0);
   });
 });

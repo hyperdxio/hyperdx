@@ -168,6 +168,7 @@ services:
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       CLICKHOUSE_PASSWORD: worker
       CLICKHOUSE_USER: worker
+      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
       FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 0
@@ -240,7 +241,7 @@ services:
     ports:
       - 8080:8080
     environment:
-      NEXT_PUBLIC_API_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
+      NEXT_PUBLIC_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'

@@ -1,15 +1,10 @@
 import Router from 'next/router';
-import type { HTTPError } from 'ky';
+import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
 import type { UseQueryOptions } from 'react-query';
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from 'react-query';
+import { useInfiniteQuery, useMutation, useQuery } from 'react-query';
 
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 import type {
   AlertChannel,
   AlertInterval,
@@ -32,6 +27,11 @@ type ApiAlertInput = {
   logViewId?: string;
   dashboardId?: string;
   chartId?: string;
+};
+
+type ApiAlertAckInput = {
+  alertId: string;
+  mutedUntil: Date;
 };
 
 type ServicesResponse = {
@@ -65,8 +65,12 @@ function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
+export const apiConfigs = {
+  prefixUrl: SERVER_URL,
+};
+
 export const server = ky.create({
-  prefixUrl: API_SERVER_URL,
+  prefixUrl: SERVER_URL,
   credentials: 'include',
   hooks: {
     afterResponse: [loginHook],
@@ -74,12 +78,22 @@ export const server = ky.create({
   timeout: false,
 });
 
+const hdxServer = (
+  url: string,
+  options?: Options | undefined,
+): ResponsePromise => {
+  return server(url, {
+    ...apiConfigs,
+    ...options,
+  });
+};
+
 const api = {
   usePropertyTypeMappings(options?: UseQueryOptions<any, Error>) {
     return useQuery<Map<string, 'string' | 'number' | 'bool'>, Error>(
       `logs/propertyTypeMappings`,
       () =>
-        server(`logs/propertyTypeMappings`, {
+        hdxServer(`logs/propertyTypeMappings`, {
           method: 'GET',
         })
           .json<{ data: any[] }>()
@@ -106,7 +120,7 @@ const api = {
       refetchOnWindowFocus: false,
       queryKey: ['metrics/names'],
       queryFn: () =>
-        server('metrics/names', {
+        hdxServer('metrics/names', {
           method: 'GET',
         }).json(),
     });
@@ -130,7 +144,7 @@ const api = {
       refetchOnWindowFocus: false,
       queryKey: ['metrics/tags', metrics],
       queryFn: () =>
-        server('metrics/tags', {
+        hdxServer('metrics/tags', {
           method: 'POST',
           json: {
             metrics,
@@ -177,7 +191,7 @@ const api = {
         groupBy,
       ],
       queryFn: () =>
-        server('metrics/chart', {
+        hdxServer('metrics/chart', {
           method: 'POST',
           json: {
             aggFn,
@@ -249,7 +263,7 @@ const api = {
         postGroupWhere,
       ],
       queryFn: () =>
-        server('chart/series', {
+        hdxServer('chart/series', {
           method: 'POST',
           json: {
             series: enrichedSeries,
@@ -300,7 +314,7 @@ const api = {
         childrenSpanWhere,
       ],
       queryFn: () =>
-        server('logs/chart/spanPerformance', {
+        hdxServer('logs/chart/spanPerformance', {
           method: 'POST',
           json: {
             startTime,
@@ -351,7 +365,7 @@ const api = {
         sortOrder,
       ],
       queryFn: () =>
-        server('logs/chart', {
+        hdxServer('logs/chart', {
           method: 'GET',
           searchParams: [
             ['aggFn', aggFn],
@@ -388,7 +402,7 @@ const api = {
       refetchOnWindowFocus: false,
       queryKey: ['logs/chart/histogram', endTime, field, q, startTime],
       queryFn: () =>
-        server('logs/chart/histogram', {
+        hdxServer('logs/chart/histogram', {
           method: 'GET',
           searchParams: [
             ['endTime', endTime],
@@ -424,7 +438,7 @@ const api = {
     return useInfiniteQuery<{ data: any[] }, Error>({
       queryKey: ['logs', q, startTime, endTime, extraFields, order, limit],
       queryFn: async ({ pageParam = 0 }) =>
-        server('logs', {
+        hdxServer('logs', {
           method: 'GET',
           searchParams: [
             ['endTime', endTime],
@@ -458,7 +472,7 @@ const api = {
     return useQuery<{ data: any[] }, Error>({
       queryKey: ['logs', 'patterns', q, startTime, endTime],
       queryFn: async () =>
-        server('logs/patterns', {
+        hdxServer('logs/patterns', {
           method: 'GET',
           searchParams: [
             ['endTime', endTime],
@@ -485,7 +499,7 @@ const api = {
       refetchOnWindowFocus: false,
       queryKey: [startTime, endTime, q],
       queryFn: () =>
-        server('sessions', {
+        hdxServer('sessions', {
           method: 'GET',
           searchParams: [
             ['endTime', endTime],
@@ -498,14 +512,14 @@ const api = {
   useLogViews() {
     return useQuery<{ data: LogView[] }, Error>({
       queryKey: ['log-views'],
-      queryFn: () => server.get('log-views').json(),
+      queryFn: () => hdxServer('log-views', { method: 'GET' }).json(),
     });
   },
   useDeleteLogView() {
     return useMutation<any, Error, string>(
       `log-views`,
       async (logViewId: string) =>
-        server(`log-views/${logViewId}`, {
+        hdxServer(`log-views/${logViewId}`, {
           method: 'DELETE',
         }),
     );
@@ -520,7 +534,7 @@ const api = {
         tags?: string;
       }
     >(`log-views`, async ({ name, query, tags }) =>
-      server('log-views', {
+      hdxServer('log-views', {
         method: 'POST',
         json: {
           query,
@@ -536,13 +550,15 @@ const api = {
       Error,
       {
         id: string;
+        name?: string;
         query?: string;
         tags?: string[];
       }
-    >(`log-views`, async ({ id, query, tags }) =>
-      server(`log-views/${id}`, {
+    >(`log-views`, async ({ id, name, query, tags }) =>
+      hdxServer(`log-views/${id}`, {
         method: 'PATCH',
         json: {
+          name,
           query,
           tags,
         },
@@ -550,11 +566,13 @@ const api = {
     );
   },
   useAlerts() {
-    return useQuery<any, Error>(`alerts`, () => server.get(`alerts`).json());
+    return useQuery<any, Error>(`alerts`, () =>
+      hdxServer(`alerts`, { method: 'GET' }).json(),
+    );
   },
   useSaveAlert() {
     return useMutation<any, Error, ApiAlertInput>(`alerts`, async alert =>
-      server('alerts', {
+      hdxServer('alerts', {
         method: 'POST',
         json: alert,
       }).json(),
@@ -564,7 +582,7 @@ const api = {
     return useMutation<any, Error, { id: string } & ApiAlertInput>(
       `alerts`,
       async alert =>
-        server(`alerts/${alert.id}`, {
+        hdxServer(`alerts/${alert.id}`, {
           method: 'PUT',
           json: alert,
         }).json(),
@@ -572,7 +590,22 @@ const api = {
   },
   useDeleteAlert() {
     return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
-      server(`alerts/${alertId}`, {
+      hdxServer(`alerts/${alertId}`, {
+        method: 'DELETE',
+      }),
+    );
+  },
+  useSilenceAlert() {
+    return useMutation<any, Error, ApiAlertAckInput>('alerts', async alertAck =>
+      hdxServer(`alerts/${alertAck.alertId}/silenced`, {
+        method: 'POST',
+        json: alertAck,
+      }),
+    );
+  },
+  useUnsilenceAlert() {
+    return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
+      hdxServer(`alerts/${alertId}/silenced`, {
         method: 'DELETE',
       }),
     );
@@ -588,7 +621,7 @@ const api = {
     return useQuery<any, Error>({
       queryKey: ['logs/histogram', q, st, et],
       queryFn: () =>
-        server('logs/histogram', {
+        hdxServer('logs/histogram', {
           method: 'GET',
           searchParams: [
             ['q', q],
@@ -602,7 +635,7 @@ const api = {
   useDashboards(options?: UseQueryOptions<any, Error>) {
     return useQuery<{ data: Dashboard[] }, Error>(
       `dashboards`,
-      () => server.get(`dashboards`).json(),
+      () => hdxServer(`dashboards`, { method: 'GET' }).json(),
       options,
     );
   },
@@ -612,7 +645,7 @@ const api = {
       HTTPError,
       { name: string; query: string; charts: any[]; tags?: string[] }
     >(async ({ name, charts, query, tags }) =>
-      server(`dashboards`, {
+      hdxServer(`dashboards`, {
         method: 'POST',
         json: { name, charts, query, tags },
       }).json(),
@@ -630,7 +663,7 @@ const api = {
         tags?: string[];
       }
     >(async ({ id, name, charts, query, tags }) =>
-      server(`dashboards/${id}`, {
+      hdxServer(`dashboards/${id}`, {
         method: 'PUT',
         json: { name, charts, query, tags },
       }).json(),
@@ -638,7 +671,7 @@ const api = {
   },
   useDeleteDashboard() {
     return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      server(`dashboards/${id}`, {
+      hdxServer(`dashboards/${id}`, {
         method: 'DELETE',
       }).json(),
     );
@@ -646,7 +679,10 @@ const api = {
   useServices() {
     return useQuery<ServicesResponse, Error>(
       `services`,
-      () => server.get(`chart/services`).json() as Promise<ServicesResponse>,
+      () =>
+        hdxServer(`chart/services`, {
+          method: 'GET',
+        }).json() as Promise<ServicesResponse>,
     );
   },
   useLogDetails(
@@ -656,7 +692,8 @@ const api = {
   ) {
     return useQuery<any, Error>(
       `logs/${logId}`,
-      () => server.get(`logs/${logId}?sortKey=${sortKey}`).json(),
+      () =>
+        hdxServer(`logs/${logId}?sortKey=${sortKey}`, { method: 'GET' }).json(),
       {
         staleTime: 1000 * 60 * 5, // 5 min
         ...options,
@@ -665,15 +702,27 @@ const api = {
   },
   useRotateTeamApiKey() {
     return useMutation<any, HTTPError>(async () =>
-      server(`team/apiKey`, {
+      hdxServer(`team/apiKey`, {
         method: 'PATCH',
       }).json(),
     );
   },
-  useSendTeamInvite() {
+  useDeleteTeamMember() {
+    return useMutation<any, HTTPError, { userId: string }>(async ({ userId }) =>
+      hdxServer(`team/member/${userId}`, {
+        method: 'DELETE',
+      }).json(),
+    );
+  },
+  useTeamInvitations() {
+    return useQuery<any, HTTPError>(`team/invitations`, () =>
+      hdxServer(`team/invitations`).json(),
+    );
+  },
+  useSaveTeamInvitation() {
     return useMutation<any, HTTPError, { name?: string; email: string }>(
       async ({ name, email }) =>
-        server(`team`, {
+        hdxServer(`team/invitation`, {
           method: 'POST',
           json: {
             name,
@@ -682,53 +731,77 @@ const api = {
         }).json(),
     );
   },
+  useDeleteTeamInvitation() {
+    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
+      hdxServer(`team/invitation/${id}`, {
+        method: 'DELETE',
+      }).json(),
+    );
+  },
   useInstallation() {
     return useQuery<any, HTTPError>(`installation`, () =>
-      server(`installation`).json(),
+      hdxServer(`installation`).json(),
     );
   },
   useMe() {
-    return useQuery<any, HTTPError>(`me`, () => server(`me`).json());
+    return useQuery<any, HTTPError>(`me`, () => hdxServer(`me`).json());
   },
   useTeam() {
-    return useQuery<any, HTTPError>(`team`, () => server(`team`).json(), {
+    return useQuery<any, HTTPError>(`team`, () => hdxServer(`team`).json(), {
       retry: 1,
     });
   },
+  useTeamMembers() {
+    return useQuery<any, HTTPError>(`team/members`, () =>
+      hdxServer(`team/members`).json(),
+    );
+  },
   useTags() {
     return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
-      server(`team/tags`).json<{ data: string[] }>(),
+      hdxServer(`team/tags`).json<{ data: string[] }>(),
     );
   },
   useSaveWebhook() {
     return useMutation<
       any,
       HTTPError,
-      { service: string; url: string; name: string }
-    >(async ({ service, url, name }) =>
-      server(`webhooks`, {
+      {
+        service: string;
+        url: string;
+        name: string;
+        description?: string;
+        queryParams?: Map<string, string>;
+        headers?: Map<string, string>;
+        body?: string;
+      }
+    >(async ({ service, url, name, description, queryParams, headers, body }) =>
+      hdxServer(`webhooks`, {
         method: 'POST',
         json: {
           name,
           service,
           url,
+          description,
+          queryParams,
+          headers,
+          body,
         },
       }).json(),
     );
   },
-  useWebhooks(service: string) {
+  useWebhooks(services: string[]) {
     return useQuery<any, Error>({
-      queryKey: [service],
+      queryKey: [...services],
       queryFn: () =>
-        server('webhooks', {
+        hdxServer('webhooks', {
           method: 'GET',
-          searchParams: [['service', service]],
+          searchParams: [...services.map(service => ['service', service])],
         }).json(),
     });
   },
   useDeleteWebhook() {
     return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      server(`webhooks/${id}`, {
+      hdxServer(`webhooks/${id}`, {
         method: 'DELETE',
       }).json(),
     );
@@ -739,7 +812,7 @@ const api = {
       HTTPError,
       { email: string; password: string; confirmPassword: string }
     >(async ({ email, password, confirmPassword }) =>
-      server(`register/password`, {
+      hdxServer(`register/password`, {
         method: 'POST',
         json: {
           email,

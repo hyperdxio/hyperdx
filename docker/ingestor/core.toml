@@ -22,6 +22,17 @@ acknowledgements.enabled = true
 # --------------------------------------------------------------------------------
 # ------------------------------ Middleware --------------------------------------
 # --------------------------------------------------------------------------------
+[transforms.internal_logs]
+type = "remap"
+inputs = ["vector_logs"]
+source = '''
+  . = merge(.,
+    {
+      "hdx_token": "${HYPERDX_API_KEY-tacocat}",
+      "hdx_platform": "vector-internal"
+    }
+  )
+'''
 # WARNING: used for logs and spans only
 [transforms.process_headers_n_params]
 type = "remap"
@@ -72,8 +83,13 @@ source = '''
     # TODO: support metrics
   }
 
+  # attach a fake token for local mode
+  if is_nullish(.hdx_token) && "${IS_LOCAL_APP_MODE:-false}" == "true" {
+    .hdx_token = "00000000-0000-4000-a000-000000000000"
+  }
+
   # check if token is in uuid format
-  if !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
+  if "${IS_LOCAL_APP_MODE:-false}" == "false" && !match(to_string(.hdx_token) ?? "", r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') {
     log("Invalid token: " + (to_string(.hdx_token) ?? ""), level: "warn")
     .hdx_token = null
   }
@@ -451,12 +467,9 @@ if .hdx_platform == "vector-internal" {
         }
       } 
 
-      .r.timestamp = tmp_timestamp
-      .b.timestamp = tmp_timestamp
-
       .h = .b.host
       .sv = .b."service.name"
-      .ts = to_unix_timestamp(from_unix_timestamp(.b.timestamp, unit: "milliseconds") ?? now(), unit: "nanoseconds")
+      .ts = to_unix_timestamp(from_unix_timestamp(tmp_timestamp, unit: "milliseconds") ?? now(), unit: "nanoseconds")
       .b._hdx_body = .b.message
       structured = parse_json(.b.message) ?? null
       if is_object(structured) {
@@ -563,8 +576,14 @@ reroute_dropped = true
 source = '''
 # extract shared fields
 if is_object(.b) {
-  .s_id = string(del(.b.span_id)) ?? string(del(.b.spanID)) ?? null
-  .t_id = string(del(.b.trace_id)) ?? string(del(.b.traceID)) ?? null
+  # extract span/trace id
+  .s_id = string(.b.span_id) ?? string(.b.spanID) ?? null
+  .t_id = string(.b.trace_id) ?? string(.b.traceID) ?? null
+  del(.b.spanID)
+  del(.b.span_id)
+  del(.b.traceID)
+  del(.b.trace_id)
+
   .tso = to_unix_timestamp(now(), unit: "nanoseconds")
 
   if is_nullish(.st) {
@@ -614,7 +633,7 @@ if exists(.ts) {
 }
 
 # infer log level for raw logs
-if is_nullish(.st) {
+if is_nullish(.st) || !is_string(.st) {
   header = ""
   if is_object(.r) && !is_nullish(.b._hdx_body) {
     header = slice(to_string(.b._hdx_body) ?? "", start: 0, end: 256) ?? ""

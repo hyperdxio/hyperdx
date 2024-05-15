@@ -14,6 +14,7 @@ import {
   MantineThemeOverride,
 } from '@mantine/core';
 
+import { apiConfigs } from '../src/api';
 import * as config from '../src/config';
 import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
@@ -125,13 +126,23 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     fetch('/api/config')
       .then(res => res.json())
       .then(_jsonData => {
+        // Set API url dynamically for users who aren't rebuilding
+        try {
+          const url = new URL(_jsonData.apiServerUrl);
+          if (url != null) {
+            apiConfigs.prefixUrl = url.toString().replace(/\/$/, '');
+          }
+        } catch (err) {
+          // ignore
+        }
+
         if (_jsonData?.apiKey) {
           let hostname;
           try {
             const url = new URL(_jsonData.apiServerUrl);
             hostname = url.hostname;
           } catch (err) {
-            // console.log(err);
+            // ignore
           }
           HyperDX.init({
             apiKey: _jsonData.apiKey,
@@ -149,7 +160,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       .catch(err => {
         // ignore
       });
-  });
+  }, []);
 
   const getLayout = Component.getLayout ?? (page => page);
 
@@ -176,6 +187,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           content="width=device-width, initial-scale=0.75"
         />
         <meta name="theme-color" content="#25292e"></meta>
+        <meta name="google" content="notranslate" />
         <ColorSchemeScript forceColorScheme="dark" />
       </Head>
 

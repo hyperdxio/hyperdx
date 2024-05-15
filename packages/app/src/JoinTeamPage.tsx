@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import { Button, Form } from 'react-bootstrap';
 
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 
 export default function JoinTeam() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function JoinTeam() {
             <div className="text-center">
               <Form
                 className="text-start"
-                action={`${API_SERVER_URL}/team/setup/${token}`}
+                action={`${SERVER_URL}/team/setup/${token}`}
                 method="POST"
               >
                 <Form.Label
@@ -45,7 +45,7 @@ export default function JoinTeam() {
                   >
                     {err === 'invalid'
                       ? 'Password is invalid'
-                      : 'Unkown error occured, please try again later.'}
+                      : 'Unknown error occurred, please try again later.'}
                   </div>
                 )}
                 <div className="text-center mt-4">

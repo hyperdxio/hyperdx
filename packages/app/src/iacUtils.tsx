@@ -1,4 +1,4 @@
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 import { Chart, Dashboard } from './types';
 
 function getResourceName(name: string) {
@@ -79,7 +79,7 @@ export function dashboardToTerraform(
 }
 
 provider "restapi" {
-  uri                  = "${API_SERVER_URL}"
+  uri                  = "${SERVER_URL}"
   write_returns_object = true
   debug                = true
   id_attribute         = "data/id"
@@ -181,7 +181,11 @@ ${
           threshold: alert.threshold,
           threshold_type: alert.type === 'presence' ? 'above' : 'below',
           channel: {
-            type: alert.channel.type === 'webhook' ? 'slack_webhook' : '',
+            type:
+              alert.channel.type === 'webhook' ||
+              alert.channel.type === 'slack_webhook'
+                ? 'webhook'
+                : '',
             ...('webhookId' in alert.channel
               ? { webhookId: alert.channel.webhookId }
               : {}),

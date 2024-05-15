@@ -372,18 +372,64 @@ describe('searchQueryParser', () => {
     });
 
     it('parses bool property values', async () => {
-      const ast = parse('foo:1');
       jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('bool');
+      const ast = parse('bool_foo:1');
       expect(
         await genWhereSQL(
           ast,
           propertyTypesMappingsModel,
           'TEAM_ID_UNIT_TESTS',
         ),
-      ).toEqual(
-        // "(_bool_attributes['foo'] = 1)",
-        `${eq(buildSearchColumnName('bool', 'foo'), '1', true)}`,
-      );
+      ).toEqual(`${eq(buildSearchColumnName('bool', 'bool_foo'), '1', true)}`);
+    });
+
+    it('parses text-based false bool property values', async () => {
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('bool');
+      console.log('types??', propertyTypesMappingsModel.get('blah'));
+      const ast = parse('bool_foo:false');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(`${eq(buildSearchColumnName('bool', 'bool_foo'), '0', true)}`);
+    });
+
+    it('parses text-based true bool property values', async () => {
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('bool');
+      const ast = parse('bool_foo:true');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(`${eq(buildSearchColumnName('bool', 'bool_foo'), '1', true)}`);
+    });
+
+    it('parses text-based non-normalized true bool property values', async () => {
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('bool');
+      const ast = parse('bool_foo:TrUe');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(`${eq(buildSearchColumnName('bool', 'bool_foo'), '1', true)}`);
+    });
+
+    it('parses text-based exact true bool property values', async () => {
+      jest.spyOn(propertyTypesMappingsModel, 'get').mockReturnValue('bool');
+      const ast = parse('bool_foo:"TrUe"');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(`${eq(buildSearchColumnName('bool', 'bool_foo'), '1', true)}`);
     });
 
     it('parses numeric property values', async () => {

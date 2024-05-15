@@ -31,6 +31,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
+import { useClickOutside } from '@mantine/hooks';
 
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { KubeTimeline } from './components/KubeComponents';
@@ -40,9 +41,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
-  K8S_NETWORK_NUMBER_FORMAT,
 } from './ChartUtils';
-import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
 import LogLevel from './LogLevel';
 import {
@@ -440,7 +439,7 @@ function TraceChart({
       {isSearchResultsFetching ? (
         <div className="my-3">Loading Traces...</div>
       ) : results == null ? (
-        <div>An unknown error occured, please contact support.</div>
+        <div>An unknown error occurred, please contact support.</div>
       ) : (
         <TimelineChart
           style={{
@@ -848,6 +847,8 @@ function EventTagSubpanel({
       return (
         key.startsWith('process.tag.') ||
         key.startsWith('otel.library.') ||
+        key.startsWith('hyperdx.') ||
+        key.startsWith('telemetry.') ||
         // exception
         key.startsWith('contexts.os.') ||
         key.startsWith('contexts.runtime.') ||
@@ -1296,6 +1297,8 @@ function PropertySubpanel({
     return (
       !key.startsWith('process.tag.') &&
       !key.startsWith('otel.library.') &&
+      !key.startsWith('telemetry.') &&
+      !key.startsWith('hyperdx.') &&
       !(key.startsWith('http.request.header.') && isNetworkReq) &&
       !(key.startsWith('http.response.header.') && isNetworkReq) &&
       key != '__events' &&
@@ -1375,7 +1378,7 @@ function PropertySubpanel({
     {
       normallyExpanded: true,
       tabulate: true,
-      lineWrap: true,
+      lineWrap: false,
       useLegacyViewer: false,
     },
   );
@@ -1623,7 +1626,7 @@ function PropertySubpanel({
                     }}
                   />
                 )}
-                <Menu width={240}>
+                <Menu width={240} withinPortal={false}>
                   <Menu.Target>
                     <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
@@ -2667,10 +2670,14 @@ export default function LogSidePanel({
     );
   }, [logData]);
 
+  const drawerRef = useClickOutside(() => {
+    if (!subDrawerOpen) {
+      _onClose();
+    }
+  }, ['mouseup', 'touchend']);
+
   return (
     <Drawer
-      enableOverlay
-      overlayOpacity={0.1}
       customIdSuffix={`log-side-panel-${logId}`}
       duration={0}
       open={logId != null}
@@ -2682,10 +2689,10 @@ export default function LogSidePanel({
       direction="right"
       size={displayedTab === 'replay' || isSmallScreen ? '80vw' : '60vw'}
       zIndex={drawerZIndex}
-      // enableOverlay={subDrawerOpen}
+      enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} ref={drawerRef}>
           {isLoading && <div className={styles.loadingState}>Loading...</div>}
           {logData != null && !isLoading ? (
             <>
@@ -2730,7 +2737,7 @@ export default function LogSidePanel({
                         },
                       ] as const)
                     : []),
-                  ...(K8S_METRICS_ENABLED && hasK8sContext
+                  ...(hasK8sContext
                     ? ([
                         {
                           text: 'Infrastructure',

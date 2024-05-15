@@ -1,8 +1,13 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
-import { Divider, Group, Paper, SegmentedControl } from '@mantine/core';
+import {
+  Divider,
+  Group,
+  SegmentedControl,
+  Select as MSelect,
+} from '@mantine/core';
 
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
@@ -76,6 +81,23 @@ export enum Granularity {
   SevenDay = '7 day',
   ThirtyDay = '30 day',
 }
+
+export const GRANULARITY_SECONDS_MAP: Record<Granularity, number> = {
+  [Granularity.ThirtySecond]: 30,
+  [Granularity.OneMinute]: 60,
+  [Granularity.FiveMinute]: 5 * 60,
+  [Granularity.TenMinute]: 10 * 60,
+  [Granularity.FifteenMinute]: 15 * 60,
+  [Granularity.ThirtyMinute]: 30 * 60,
+  [Granularity.OneHour]: 60 * 60,
+  [Granularity.TwoHour]: 2 * 60 * 60,
+  [Granularity.SixHour]: 6 * 60 * 60,
+  [Granularity.TwelveHour]: 12 * 60 * 60,
+  [Granularity.OneDay]: 24 * 60 * 60,
+  [Granularity.TwoDay]: 2 * 24 * 60 * 60,
+  [Granularity.SevenDay]: 7 * 24 * 60 * 60,
+  [Granularity.ThirtyDay]: 30 * 24 * 60 * 60,
+};
 
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
@@ -429,13 +451,13 @@ export function MetricRateSelect({
     <>
       {metricType === 'Sum' ? (
         <Checkbox
-          title="Convert the sum metric into change over time (rate)"
+          title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
           id="metric-use-rate"
           className="text-nowrap"
           labelClassName="fs-7"
           checked={isRate}
           onChange={() => setIsRate(!isRate)}
-          label="Use Rate"
+          label="Use Increase"
         />
       ) : null}
     </>
@@ -465,9 +487,9 @@ export function MetricNameSelect({
   }, [metricNamesData]);
 
   return (
-    <AsyncSelect
-      isLoading={isLoading}
-      isDisabled={isError}
+    <MSelect
+      disabled={isLoading || isError}
+      variant="filled"
       placeholder={
         isLoading
           ? 'Loading...'
@@ -475,24 +497,17 @@ export function MetricNameSelect({
           ? 'Unable to load metrics'
           : 'Select a metric...'
       }
-      loadOptions={input => {
-        return Promise.resolve(
-          options.filter(v =>
-            input.length > 0
-              ? v.value.toLowerCase().includes(input.toLowerCase())
-              : true,
-          ),
-        );
+      data={options}
+      limit={100}
+      comboboxProps={{
+        position: 'bottom-start',
+        width: 'auto',
+        zIndex: 1111,
       }}
-      defaultOptions={options}
-      value={
-        value != null
-          ? options.find(v => v.value === value)
-          : { value: undefined, label: 'None' }
-      }
-      onChange={opt => setValue(opt?.value)}
-      className="ds-select"
-      classNamePrefix="ds-react-select"
+      value={value ?? undefined}
+      searchable
+      clearable
+      onChange={value => setValue(value ?? undefined)}
     />
   );
 }

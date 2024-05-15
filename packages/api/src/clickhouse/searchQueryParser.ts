@@ -42,6 +42,7 @@ const customColumnMap: { [level: string]: string } = {
   end_timestamp: 'end_timestamp',
   host: '_host',
   hyperdx_event_size: '_hyperdx_event_size',
+  hyperdx_event_type: 'type',
   hyperdx_platform: '_platform',
   level: 'severity_text',
   parent_span_id: 'parent_span_id',
@@ -69,6 +70,7 @@ export const customColumnMapType: {
   host: 'string',
   hyperdx_event_size: 'number',
   hyperdx_platform: 'string',
+  hyperdx_event_type: 'string',
   level: 'string',
   parent_span_id: 'string',
   rum_session_id: 'string',
@@ -216,6 +218,7 @@ export class SQLSerializer implements Serializer {
     }
   }
 
+  // Only for exact string matches
   async eq(field: string, term: string, isNegatedField: boolean) {
     const { column, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
@@ -223,8 +226,9 @@ export class SQLSerializer implements Serializer {
     }
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
+      const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
-        parseInt(term),
+        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
       return SqlString.format(
@@ -332,8 +336,9 @@ export class SQLSerializer implements Serializer {
 
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
+      const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
-        parseInt(term),
+        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
       return SqlString.format(

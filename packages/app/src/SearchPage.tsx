@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import cx from 'classnames';
 import { clamp, format, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { Button } from 'react-bootstrap';
@@ -49,6 +50,7 @@ import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 import 'react-modern-drawer/dist/index.css';
+import styles from '../styles/SearchPage.module.scss';
 
 const formatDate = (
   date: Date,
@@ -318,13 +320,13 @@ const LogViewerContainer = memo(function LogViewerContainer({
 
   const setOpenedLog = useCallback(
     (log: { id: string; sortKey: string } | undefined) => {
-      if (log == null) {
+      if (log == null || openedLog?.id === log.id) {
         setOpenedLogQuery({ lid: undefined, sk: undefined });
       } else {
         setOpenedLogQuery({ lid: log.id, sk: log.sortKey });
       }
     },
-    [setOpenedLogQuery],
+    [openedLog, setOpenedLogQuery],
   );
 
   const { displayedColumns, setDisplayedColumns, toggleColumn } =
@@ -460,7 +462,9 @@ function SearchPage() {
     [searchInput],
   );
 
-  const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+  const [saveSearchModalMode, setSaveSearchModalMode] = useState<
+    'update' | 'save' | 'hidden'
+  >('hidden');
   const [configAlertModalShow, setConfigAlertModalShow] = useState(false);
   const deleteLogView = api.useDeleteLogView();
   const updateLogView = api.useUpdateLogView();
@@ -480,16 +484,23 @@ function SearchPage() {
     }
   }, [selectedSavedSearch, setSearchedQuery, _searchedQuery]);
 
+  const isArcBrowser =
+    typeof window !== 'undefined' &&
+    window
+      .getComputedStyle?.(document.documentElement)
+      .getPropertyValue('--arc-palette-title');
+
   useHotkeys(
-    ['ctrl+s', 'meta+s'],
+    // Arc Browser uses CMD+S for toggling sidebar which conflicts with save search
+    isArcBrowser ? ['ctrl+shift+s', 'meta+shift+s'] : ['ctrl+s', 'meta+s'],
     () => {
-      setShowSaveSearchModal(true);
+      setSaveSearchModalMode('save');
     },
     {
       preventDefault: true,
       enableOnFormTags: true,
     },
-    [setShowSaveSearchModal],
+    [setSaveSearchModalMode],
   );
 
   const onClickDeleteLogView = () => {
@@ -502,7 +513,7 @@ function SearchPage() {
         },
         onError: () => {
           toast.error(
-            'An error occured. Please contact support for more details.',
+            'An error occurred. Please contact support for more details.',
           );
         },
       });
@@ -520,7 +531,7 @@ function SearchPage() {
           },
           onError: () => {
             toast.error(
-              'An error occured. Please contact support for more details.',
+              'An error occurred. Please contact support for more details.',
             );
           },
         },
@@ -586,6 +597,42 @@ function SearchPage() {
       setDisplayedSearchQuery(v => v + (v.length > 0 ? ' ' : '') + searchQuery);
     },
     [setDisplayedSearchQuery],
+  );
+
+  const searchedTypes = useMemo(() => {
+    if (searchedQuery.includes('hyperdx_event_type:"span"')) {
+      return ['span'];
+    } else if (searchedQuery.includes('hyperdx_event_type:"log"')) {
+      return ['log'];
+    }
+    return ['log', 'span'];
+  }, [searchedQuery]);
+
+  const handleToggleType = useCallback(
+    (type: 'log' | 'span') => {
+      let newQuery = displayedSearchQuery;
+
+      if (displayedSearchQuery.includes(`hyperdx_event_type:"${type}"`)) {
+        return; // Do nothing if the query already contains the type
+      }
+
+      newQuery = newQuery
+        .replaceAll('hyperdx_event_type:"log"', '')
+        .replaceAll('hyperdx_event_type:"span"', '')
+        .trim();
+
+      if (!displayedSearchQuery.includes('hyperdx_event_type:')) {
+        newQuery =
+          newQuery +
+          (newQuery.length ? ' ' : '') +
+          `hyperdx_event_type:"${type === 'log' ? 'span' : 'log'}"`;
+      }
+
+      if (newQuery !== displayedSearchQuery) {
+        doSearch(newQuery, displayedTimeInputValue);
+      }
+    },
+    [displayedSearchQuery, displayedTimeInputValue, doSearch],
   );
 
   const chartsConfig = useMemo(() => {
@@ -662,7 +709,7 @@ function SearchPage() {
             },
             onError: () => {
               toast.error(
-                'An error occured. Please contact support for more details.',
+                'An error occurred. Please contact support for more details.',
               );
             },
           },
@@ -684,9 +731,11 @@ function SearchPage() {
         <title>Search - HyperDX</title>
       </Head>
       <SaveSearchModal
-        show={showSaveSearchModal}
-        onHide={() => setShowSaveSearchModal(false)}
+        mode={saveSearchModalMode}
+        onHide={() => setSaveSearchModalMode('hidden')}
         searchQuery={displayedSearchQuery}
+        searchName={selectedSavedSearch?.name ?? ''}
+        searchID={selectedSavedSearch?._id ?? ''}
         onSaveSuccess={responseData => {
           toast.success('Saved search created');
           router.push(
@@ -701,7 +750,12 @@ function SearchPage() {
             }).toString()}`,
           );
           refetchLogViews();
-          setShowSaveSearchModal(false);
+          setSaveSearchModalMode('hidden');
+        }}
+        onUpdateSuccess={responseData => {
+          toast.success('Saved search renamed');
+          refetchLogViews();
+          setSaveSearchModalMode('hidden');
         }}
       />
       <CreateLogAlertModal
@@ -734,6 +788,36 @@ function SearchPage() {
       />
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
+          <div className={styles.eventTypeSwitch}>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('log'),
+              })}
+              onClick={() => handleToggleType('log')}
+            >
+              {searchedTypes.includes('log') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Logs
+            </div>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('span'),
+              })}
+              onClick={() => handleToggleType('span')}
+            >
+              {searchedTypes.includes('span') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Spans
+            </div>
+          </div>
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
             <SearchInput
               inputRef={searchInput}
@@ -770,14 +854,18 @@ function SearchPage() {
               }}
             />
           </form>
+
           <SearchPageActionBar
             key={`${savedSearchId}`}
             onClickConfigAlert={onClickConfigAlert}
             onClickDeleteLogView={onClickDeleteLogView}
             onClickUpdateLogView={onClickUpdateLogView}
             selectedLogView={selectedSavedSearch}
+            onClickRenameSearch={() => {
+              setSaveSearchModalMode('update');
+            }}
             onClickSaveSearch={() => {
-              setShowSaveSearchModal(true);
+              setSaveSearchModalMode('save');
             }}
           />
           {!!selectedSavedSearch && (

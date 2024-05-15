@@ -26,11 +26,7 @@ import { version } from '../package.json';
 
 import api from './api';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import {
-  API_SERVER_URL,
-  K8S_DASHBOARD_ENABLED,
-  SERVICE_DASHBOARD_ENABLED,
-} from './config';
+import { IS_LOCAL_MODE, SERVER_URL } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { KubernetesFlatIcon } from './SVGIcons';
@@ -480,7 +476,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      leftSection={<i className="bi bi-search fs-8 ps-1" text-slate-400 />}
+      leftSection={<i className="bi bi-search fs-8 ps-1 text-slate-400" />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -1125,48 +1121,44 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Link>
             </div>
 
-            {SERVICE_DASHBOARD_ENABLED ? (
-              <div className="px-3 my-3">
-                <Link
-                  href="/services"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/services'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
-                    {!isCollapsed && <span>Service Health</span>}
-                  </span>
-                </Link>
-              </div>
-            ) : null}
+            <div className="px-3 my-3">
+              <Link
+                href="/services"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/services'),
+                  },
+                )}
+              >
+                <span>
+                  <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
+                  {!isCollapsed && <span>Service Health</span>}
+                </span>
+              </Link>
+            </div>
 
-            {K8S_DASHBOARD_ENABLED ? (
-              <div className="px-3 my-3">
-                <Link
-                  href="/kubernetes"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/kubernetes'),
-                    },
-                  )}
-                >
-                  <span>
-                    <span
-                      className="pe-1 text-slate-300"
-                      style={{ top: -2, position: 'relative' }}
-                    >
-                      <KubernetesFlatIcon width={16} />
-                    </span>{' '}
-                    {!isCollapsed && <span>Kubernetes</span>}
-                  </span>
-                </Link>
-              </div>
-            ) : null}
+            <div className="px-3 my-3">
+              <Link
+                href="/kubernetes"
+                className={cx(
+                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                  {
+                    'fw-bold text-success': pathname.includes('/kubernetes'),
+                  },
+                )}
+              >
+                <span>
+                  <span
+                    className="pe-1 text-slate-300"
+                    style={{ top: -2, position: 'relative' }}
+                  >
+                    <KubernetesFlatIcon width={16} />
+                  </span>{' '}
+                  {!isCollapsed && <span>Kubernetes</span>}
+                </span>
+              </Link>
+            </div>
 
             <div>
               <div
@@ -1370,14 +1362,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </span>
                 </Link>
               </div>
-              <div className="my-4">
-                <Link href={`${API_SERVER_URL}/logout`} legacyBehavior>
-                  <span role="button" className="text-muted-hover">
-                    <i className="bi bi-box-arrow-left text-slate-300" />{' '}
-                    {!isCollapsed && <span>Logout</span>}
-                  </span>
-                </Link>
-              </div>
+              {!IS_LOCAL_MODE && (
+                <div className="my-4">
+                  <Link href={`${SERVER_URL}/logout`} legacyBehavior>
+                    <span role="button" className="text-muted-hover">
+                      <i className="bi bi-box-arrow-left text-slate-300" />{' '}
+                      {!isCollapsed && <span>Logout</span>}
+                    </span>
+                  </Link>
+                </div>
+              )}
               <div className="d-flex justify-content-end align-items-end">
                 <span className="text-muted-hover fs-8.5">v{version}</span>
               </div>

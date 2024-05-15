@@ -96,7 +96,11 @@ export type Alert = {
   timezone?: string;
   type: AlertType;
   source: AlertSource;
-
+  silenced?: {
+    by?: string;
+    at: string;
+    until: string;
+  };
   // Log alerts
   logView?: string;
   message?: string;
@@ -274,4 +278,9 @@ export enum KubePhase {
   Succeeded = 3,
   Failed = 4,
   Unknown = 5,
+}
+
+export enum WebhookService {
+  Slack = 'slack',
+  Generic = 'generic',
 }

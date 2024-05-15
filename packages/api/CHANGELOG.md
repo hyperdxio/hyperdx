@@ -1,5 +1,37 @@
 # @hyperdx/api
 
+## 1.8.0
+
+### Minor Changes
+
+- 4d6fb8f: feat: GA service health dashboard + metrics alert
+- 0e365bf: this change enables generic webhooks. no existing webhook behavior
+  will be impacted by this change.
+- 4d6fb8f: feat: GA k8s dashboard / metrics side panel
+
+### Patch Changes
+
+- eefe597: Show client sessions with no user interactions but has recording by
+  default
+- b454003: feat: introduce conditional alert routing helper #is_match
+- d3e270a: chore: bump vector to v0.37.0
+- 3b1fe08: feat + fix: add webhook endpoints validators + parse webhook JSON
+  body
+- 5fc7c21: feat: use handlebar to build up webhook body
+- 4a85e22: chore: bump @clickhouse/client to v0.2.10
+
+## 1.7.0
+
+### Patch Changes
+
+- 095ec0e: fix: histogram AggFn values to be only valid ones (UI)
+- 41d80de: feat: parse legacy k8s v1 cluster events
+- 7021924: Support '-', ';', '=', and '+' in password
+- b87c4d7: fix: dense rank should be computed base on rank value and group
+  (multi-series chart)
+- a49726e: fix: cache the result conditionally (SimpleCache)
+- b83e51f: refactor + perf: decouple and performance opt metrics tags endpoints
+
 ## 1.6.0
 
 ### Patch Changes

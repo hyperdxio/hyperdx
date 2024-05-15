@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import { Button, Form } from 'react-bootstrap';
 
-import { API_SERVER_URL } from './config';
+import { SERVER_URL } from './config';
 import LandingHeader from './LandingHeader';
 
 export default function PasswordResetPage({
@@ -20,7 +20,7 @@ export default function PasswordResetPage({
     <div>
       <Form
         className="text-start"
-        action={`${API_SERVER_URL}/password-reset`}
+        action={`${SERVER_URL}/password-reset`}
         method="POST"
       >
         <Form.Label htmlFor="email" className="text-start text-muted fs-7 mb-1">
@@ -65,7 +65,7 @@ export default function PasswordResetPage({
     <div>
       <Form
         className="text-start"
-        action={`${API_SERVER_URL}/password-reset/${token}`}
+        action={`${SERVER_URL}/password-reset/${token}`}
         method="POST"
       >
         <Form.Label

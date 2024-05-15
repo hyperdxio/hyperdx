@@ -1148,22 +1148,57 @@ export const buildMetricSeriesQuery = async ({
 
   const rateMetricSource = SqlString.format(
     `
+    SELECT sum(rate) as rate, ?, _string_attributes, name FROM (
       SELECT
-        if(
-          runningDifference(value) < 0
-          OR neighbor(_string_attributes, -1, _string_attributes) != _string_attributes,
-          nan,
-          runningDifference(value)
-        ) AS rate,
+        any(value) OVER (
+            rows between 1 preceding
+            and 1 preceding
+        ) as prev_data,
+        any(_string_attributes) OVER (
+            rows between 1 preceding
+            and 1 preceding
+        ) as prev_string_attributes,
+        if (
+            value - prev_data < 0 AND _string_attributes = prev_string_attributes,
+            value,
+            if (
+              _string_attributes != prev_string_attributes, 
+              0, 
+              value - prev_data
+            )
+        ) as rate,
+        name,
         timestamp,
-        _string_attributes,
-        name
-      FROM (?)
-      WHERE isNaN(rate) = 0
-      ${shouldModifyStartTime ? 'AND timestamp >= fromUnixTimestamp(?)' : ''}
+        _string_attributes
+      FROM (
+        SELECT _string_attributes, value, name, timestamp
+        FROM ??
+        WHERE name = ?
+        AND data_type = ?
+        AND (?)
+        ORDER BY _string_attributes, timestamp ASC
+        )
+    ) 
+    WHERE
+      ${shouldModifyStartTime ? 'timestamp >= fromUnixTimestamp(?)' : '1=1'}
+    GROUP BY timestamp, name, _string_attributes
     `.trim(),
     [
-      SqlString.raw(gaugeMetricSource),
+      SqlString.raw(
+        granularity != null
+          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+              granularity,
+            )}) as timestamp`
+          : modifiedStartTime
+          ? // Manually create the time buckets if we're including the prev time range
+            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+          : // Otherwise lump everything into one bucket
+            '0 as timestamp',
+      ),
+      tableName,
+      name,
+      dataType,
+      SqlString.raw(whereClause),
       ...(shouldModifyStartTime ? [Math.floor(startTime / 1000)] : []),
     ],
   );
@@ -1633,6 +1668,11 @@ export const queryMultiSeriesChart = async ({
     ],
   );
 
+  logger.info({
+    message: 'queryMultiSeriesChart',
+    query,
+  });
+
   const rows = await client.query({
     query,
     format: 'JSON',
@@ -1715,7 +1755,7 @@ export const getMultiSeriesChart = async ({
 
     queries = await Promise.all(
       series.map(s => {
-        if (s.type != 'time' && s.type != 'table') {
+        if (s.type != 'time' && s.type != 'table' && s.type != 'number') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
         if (s.table != 'logs' && s.table != null) {
@@ -1727,7 +1767,7 @@ export const getMultiSeriesChart = async ({
           endTime,
           field: s.field,
           granularity,
-          groupBy: s.groupBy,
+          groupBy: s.type === 'number' ? [] : s.groupBy,
           propertyTypeMappingsModel,
           q: s.where,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
@@ -1746,7 +1786,7 @@ export const getMultiSeriesChart = async ({
 
     queries = await Promise.all(
       series.map(s => {
-        if (s.type != 'time' && s.type != 'table') {
+        if (s.type != 'time' && s.type != 'table' && s.type != 'number') {
           throw new Error(`Unsupported series type: ${s.type}`);
         }
         if (s.table != 'metrics') {
@@ -1764,13 +1804,13 @@ export const getMultiSeriesChart = async ({
           endTime,
           name: s.field,
           granularity,
-          groupBy: s.groupBy,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           q: s.where,
           startTime,
           teamId,
           dataType: s.metricDataType,
           propertyTypeMappingsModel,
+          groupBy: s.type === 'number' ? [] : s.groupBy,
         });
       }),
     );
@@ -1818,21 +1858,39 @@ export const getMultiSeriesChartLegacyFormat = async ({
 
   const flatData = result.data.flatMap(row => {
     if (seriesReturnType === 'column') {
-      return series.map((_, i) => {
+      return series.map((s, i) => {
+        const groupBy =
+          s.type === 'number' ? [] : 'groupBy' in s ? s.groupBy : [];
+        const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+          acc[curVal] = row.group[curIndex];
+          return acc;
+        }, {} as Record<string, string>);
         return {
-          ts_bucket: row.ts_bucket,
-          group: row.group,
+          attributes,
           data: row[`series_${i}.data`],
+          group: row.group,
+          ts_bucket: row.ts_bucket,
         };
       });
     }
 
     // Ratio only has 1 series
+    const groupBy =
+      series[0].type === 'number'
+        ? []
+        : 'groupBy' in series[0]
+        ? series[0].groupBy
+        : [];
+    const attributes = groupBy.reduce((acc, curVal, curIndex) => {
+      acc[curVal] = row.group[curIndex];
+      return acc;
+    }, {} as Record<string, string>);
     return [
       {
-        ts_bucket: row.ts_bucket,
-        group: row.group,
+        attributes,
         data: row['series_0.data'],
+        group: row.group,
+        ts_bucket: row.ts_bucket,
       },
     ];
   });
@@ -2288,6 +2346,7 @@ export const getSessions = async ({
       count() AS sessionCount,
       countIf(?='user-interaction') AS interactionCount,
       countIf(severity_text = 'error') AS errorCount,
+      countIf(span_name = 'record init') AS recordingCount,
       ? AS sessionId,
       ?
     FROM ??
@@ -2296,7 +2355,7 @@ export const getSessions = async ({
     ${
       // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
       // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-      q.length === 0 ? 'HAVING interactionCount > 0' : ''
+      q.length === 0 ? 'HAVING interactionCount > 0 OR recordingCount > 0' : ''
     }
     ORDER BY maxTimestamp DESC
     LIMIT ?, ?`,
@@ -2550,8 +2609,9 @@ export const checkAlert = async ({
     `
       SELECT 
         ?
-        count(*) as data,
-        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) as ts_bucket
+        count(*) AS data,
+        any(_string_attributes) AS attributes,
+        toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ?)) AS ts_bucket
       FROM ??
       WHERE ? AND (?)
       GROUP BY ?
@@ -2596,7 +2656,12 @@ export const checkAlert = async ({
     },
   });
   const result = await rows.json<
-    ResponseJSON<{ data: string; group?: string; ts_bucket: number }>
+    ResponseJSON<{
+      data: string;
+      group?: string;
+      ts_bucket: number;
+      attributes: Record<string, string>;
+    }>
   >();
   logger.info({
     message: 'checkAlert',
