@@ -17,7 +17,6 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
 import {
   JsonParam,
   StringParam,
@@ -39,6 +38,7 @@ import {
   Tooltip,
   Transition,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
@@ -830,7 +830,10 @@ export default function DashboardPage() {
             {
               onError: err => {
                 console.error(err);
-                toast.error('Failed to update alert.');
+                notifications.show({
+                  color: 'red',
+                  message: 'Failed to update alert.',
+                });
               },
             },
           );
@@ -838,7 +841,10 @@ export default function DashboardPage() {
           deleteAlert.mutate(editedChartAlert._id, {
             onError: err => {
               console.error(err);
-              toast.error('Failed to delete alert.');
+              notifications.show({
+                color: 'red',
+                message: 'Failed to delete alert.',
+              });
             },
           });
         }
@@ -853,7 +859,10 @@ export default function DashboardPage() {
           {
             onError: err => {
               console.error(err);
-              toast.error('Failed to save alert.');
+              notifications.show({
+                color: 'red',
+                message: 'Failed to save alert.',
+              });
             },
           },
         );
@@ -1165,7 +1174,10 @@ export default function DashboardPage() {
                   },
                   () => {
                     setSearchedQuery(undefined);
-                    toast.success('Dashboard filter saved and applied.');
+                    notifications.show({
+                      color: 'green',
+                      message: 'Dashboard filter saved and applied.',
+                    });
                   },
                 );
               }}

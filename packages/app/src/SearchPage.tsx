@@ -17,7 +17,6 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { Button } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { toast } from 'react-toastify';
 import {
   Bar,
   BarChart,
@@ -34,6 +33,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import { ActionIcon, Indicator } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import CreateLogAlertModal from './CreateLogAlertModal';
@@ -507,14 +507,19 @@ function SearchPage() {
     if (selectedSavedSearch?._id) {
       deleteLogView.mutate(selectedSavedSearch._id, {
         onSuccess: () => {
-          toast.success('Saved search deleted.');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search deleted.',
+          });
           router.push(`/search`);
           refetchLogViews();
         },
         onError: () => {
-          toast.error(
-            'An error occurred. Please contact support for more details.',
-          );
+          notifications.show({
+            color: 'red',
+            message:
+              'An error occurred. Please contact support for more details.',
+          });
         },
       });
     }
@@ -526,13 +531,18 @@ function SearchPage() {
         { id: selectedSavedSearch._id, query: displayedSearchQuery },
         {
           onSuccess: () => {
-            toast.success('Saved search updated.');
+            notifications.show({
+              color: 'green',
+              message: 'Saved search updated.',
+            });
             refetchLogViews();
           },
           onError: () => {
-            toast.error(
-              'An error occurred. Please contact support for more details.',
-            );
+            notifications.show({
+              color: 'red',
+              message:
+                'An error occurred. Please contact support for more details.',
+            });
           },
         },
       );
@@ -708,9 +718,11 @@ function SearchPage() {
               refetchLogViews();
             },
             onError: () => {
-              toast.error(
-                'An error occurred. Please contact support for more details.',
-              );
+              notifications.show({
+                color: 'red',
+                message:
+                  'An error occurred. Please contact support for more details.',
+              });
             },
           },
         );
@@ -737,7 +749,10 @@ function SearchPage() {
         searchName={selectedSavedSearch?.name ?? ''}
         searchID={selectedSavedSearch?._id ?? ''}
         onSaveSuccess={responseData => {
-          toast.success('Saved search created');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search created',
+          });
           router.push(
             `/search/${responseData._id}?${new URLSearchParams({
               q: searchedQuery,
@@ -753,7 +768,10 @@ function SearchPage() {
           setSaveSearchModalMode('hidden');
         }}
         onUpdateSuccess={responseData => {
-          toast.success('Saved search renamed');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search renamed',
+          });
           refetchLogViews();
           setSaveSearchModalMode('hidden');
         }}
@@ -764,11 +782,17 @@ function SearchPage() {
         savedSearch={selectedSavedSearch}
         query={selectedSavedSearch?.query ?? displayedSearchQuery}
         onSaveSuccess={() => {
-          toast.success('Alerts updated successfully.');
+          notifications.show({
+            color: 'green',
+            message: 'Alerts updated successfully.',
+          });
           refetchLogViews();
         }}
         onDeleteSuccess={() => {
-          toast.success('Alert deleted successfully.');
+          notifications.show({
+            color: 'green',
+            message: 'Alert deleted successfully.',
+          });
           refetchLogViews();
         }}
         onSavedSearchCreateSuccess={responseData => {

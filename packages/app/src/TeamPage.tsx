@@ -10,7 +10,6 @@ import {
   ToggleButtonGroup,
 } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { toast } from 'react-toastify';
 import { json } from '@codemirror/lang-json';
 import { tags as lt } from '@lezer/highlight';
 import {
@@ -35,6 +34,7 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
@@ -195,19 +195,26 @@ export default function TeamPage() {
   const rotateTeamApiKeyAction = () => {
     rotateTeamApiKey.mutate(undefined, {
       onSuccess: resp => {
-        toast.success('Revoked old API key and generated new key.');
+        notifications.show({
+          color: 'green',
+          message: 'Revoked old API key and generated new key.',
+        });
         refetchTeam();
       },
       onError: e => {
         e.response
           .json()
           .then(res => {
-            toast.error(res.message, {
+            notifications.show({
+              color: 'red',
+              message: res.message,
               autoClose: 5000,
             });
           })
           .catch(() => {
-            toast.error('Something went wrong. Please contact HyperDX team.', {
+            notifications.show({
+              color: 'red',
+              message: 'Something went wrong. Please contact HyperDX team.',
               autoClose: 5000,
             });
           });
@@ -221,24 +228,28 @@ export default function TeamPage() {
         { userId: encodeURIComponent(id) },
         {
           onSuccess: resp => {
-            toast.success('Deleted team member');
+            notifications.show({
+              color: 'green',
+              message: 'Deleted team member',
+            });
             refetchMembers();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -252,24 +263,29 @@ export default function TeamPage() {
         { id: encodeURIComponent(id) },
         {
           onSuccess: resp => {
-            toast.success('Deleted team invite');
+            notifications.show({
+              color: 'green',
+              message: 'Deleted team invite',
+            });
             refetchInvitations();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -301,26 +317,30 @@ export default function TeamPage() {
         { email },
         {
           onSuccess: resp => {
-            toast.success(
-              'Click "Copy URL" and share the URL with your team member',
-            );
+            notifications.show({
+              color: 'green',
+              message:
+                'Click "Copy URL" and share the URL with your team member',
+            });
             refetchInvitations();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -340,17 +360,26 @@ export default function TeamPage() {
     const url = e.target.url.value;
 
     if (!name) {
-      toast.error('Please enter a name for the Generic webhook');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter a name for the Generic webhook',
+      });
       return;
     }
 
     if (!url || !isValidUrl(url)) {
-      toast.error('Please enter a valid Generic webhook URL');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter a valid Generic webhook URL',
+      });
       return;
     }
 
     if (headers && !isValidJson(headers)) {
-      toast.error('Please enter valid JSON for headers');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter valid JSON for headers',
+      });
       return;
     }
 
@@ -365,7 +394,10 @@ export default function TeamPage() {
       },
       {
         onSuccess: () => {
-          toast.success(`Saved ${service} webhook`);
+          notifications.show({
+            color: 'green',
+            message: `Saved ${service} webhook`,
+          });
           service === WebhookService.Slack
             ? refetchSlackWebhooks()
             : refetchGenericWebhooks();
@@ -374,17 +406,19 @@ export default function TeamPage() {
           e.response
             .json()
             .then(res => {
-              toast.error(res.message, {
+              notifications.show({
+                color: 'red',
+                message: res.message,
                 autoClose: 5000,
               });
             })
             .catch(() => {
-              toast.error(
-                'Something went wrong. Please contact HyperDX team.',
-                {
-                  autoClose: 5000,
-                },
-              );
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+
+                autoClose: 5000,
+              });
             });
         },
       },
@@ -405,7 +439,10 @@ export default function TeamPage() {
       },
       {
         onSuccess: () => {
-          toast.success(`Deleted ${service} webhook`);
+          notifications.show({
+            color: 'green',
+            message: `Deleted ${service} webhook`,
+          });
           service === WebhookService.Slack
             ? refetchSlackWebhooks()
             : refetchGenericWebhooks();
@@ -414,17 +451,19 @@ export default function TeamPage() {
           e.response
             .json()
             .then(res => {
-              toast.error(res.message, {
+              notifications.show({
+                color: 'red',
+                message: res.message,
                 autoClose: 5000,
               });
             })
             .catch(() => {
-              toast.error(
-                'Something went wrong. Please contact HyperDX team.',
-                {
-                  autoClose: 5000,
-                },
-              );
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+
+                autoClose: 5000,
+              });
             });
         },
       },

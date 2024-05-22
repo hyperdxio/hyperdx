@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { sub } from 'date-fns';
 import { Button, Form } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { NumberParam } from 'serialize-query-params';
 import {
   StringParam,
@@ -10,6 +9,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { notifications } from '@mantine/notifications';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from './api';
@@ -442,7 +442,10 @@ export default function SessionsPage() {
                       ).trim(),
                     );
 
-                    toast.success('Added filter to search query');
+                    notifications.show({
+                      color: 'green',
+                      message: 'Added filter to search query',
+                    });
                     inputRef.current?.focus();
 
                     // @ts-ignore
