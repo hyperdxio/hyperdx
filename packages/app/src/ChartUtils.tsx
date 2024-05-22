@@ -489,6 +489,7 @@ export function MetricNameSelect({
   return (
     <MSelect
       disabled={isLoading || isError}
+      autoFocus={!value}
       variant="filled"
       placeholder={
         isLoading
@@ -517,16 +518,20 @@ export function FieldSelect({
   setValue,
   types,
   className,
+  autoFocus,
 }: {
   value: string | undefined | null;
   setValue: (value: string | undefined) => void;
   types: ('number' | 'string' | 'bool')[];
   className?: string;
+  autoFocus?: boolean;
 }) {
   const propertyOptions = usePropertyOptions(types);
 
   return (
     <AsyncSelect
+      autoFocus={autoFocus}
+      placeholder="Select a field..."
       loadOptions={input => {
         return Promise.resolve([
           { value: undefined, label: 'None' },
@@ -660,7 +665,12 @@ export function ChartSeriesForm({
         </div>
         {table === 'logs' && aggFn != 'count' && aggFn != 'count_distinct' ? (
           <div className="ms-3 flex-grow-1">
-            <FieldSelect value={field} setValue={setField} types={['number']} />
+            <FieldSelect
+              value={field}
+              setValue={setField}
+              types={['number']}
+              autoFocus={!field}
+            />
           </div>
         ) : null}
         {table === 'logs' && aggFn != 'count' && aggFn == 'count_distinct' ? (
@@ -669,6 +679,7 @@ export function ChartSeriesForm({
               value={field}
               setValue={setField}
               types={['string', 'number', 'bool']}
+              autoFocus={!field}
             />
           </div>
         ) : null}
@@ -996,6 +1007,7 @@ export function ChartSeriesFormCompact({
               value={field}
               setValue={setField}
               types={['number']}
+              autoFocus={!field}
             />
           </div>
         ) : null}
@@ -1006,6 +1018,7 @@ export function ChartSeriesFormCompact({
               value={field}
               setValue={setField}
               types={['string', 'number', 'bool']}
+              autoFocus={!field}
             />
           </div>
         ) : null}

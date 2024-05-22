@@ -227,18 +227,35 @@ const api = {
     },
     options?: UseQueryOptions<any, Error>,
   ) {
-    const enrichedSeries = series.map(s => {
-      if (s.type != 'search' && s.type != 'markdown' && s.table === 'metrics') {
-        const [metricName, metricDataType] = (s.field ?? '').split(' - ');
-        return {
-          ...s,
-          field: metricName,
-          metricDataType,
-        };
-      }
+    const enrichedSeries = series
+      .filter(s => {
+        // Skip time series without field
+        if (s.type === 'time') {
+          if (s.table === 'metrics' && !s.field) {
+            return false;
+          }
+          if (s.table === 'logs' && !s.field && s.aggFn !== 'count') {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map(s => {
+        if (
+          s.type != 'search' &&
+          s.type != 'markdown' &&
+          s.table === 'metrics'
+        ) {
+          const [metricName, metricDataType] = (s.field ?? '').split(' - ');
+          return {
+            ...s,
+            field: metricName,
+            metricDataType,
+          };
+        }
+        return s;
+      });
 
-      return s;
-    });
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
     return useQuery<
@@ -276,6 +293,7 @@ const api = {
           },
         }).json(),
       retry: 1,
+      enabled: enrichedSeries.length > 0,
       ...options,
     });
   },
