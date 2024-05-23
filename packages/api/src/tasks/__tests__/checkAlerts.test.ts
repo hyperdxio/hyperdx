@@ -84,9 +84,11 @@ describe('checkAlerts', () => {
 
   it('doesExceedThreshold', () => {
     expect(doesExceedThreshold(true, 10, 11)).toBe(true);
-    expect(doesExceedThreshold(true, 10, 10)).toBe(true);
-    expect(doesExceedThreshold(false, 10, 9)).toBe(true);
+    expect(doesExceedThreshold(true, 10, 10)).toBe(false);
+    expect(doesExceedThreshold(true, 10, 9)).toBe(false);
+    expect(doesExceedThreshold(false, 10, 11)).toBe(false);
     expect(doesExceedThreshold(false, 10, 10)).toBe(false);
+    expect(doesExceedThreshold(false, 10, 9)).toBe(true);
   });
 
   it('expandToNestedObject', () => {
