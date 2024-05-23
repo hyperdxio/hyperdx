@@ -476,7 +476,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      leftSection={<i className="bi bi-search fs-8 ps-1" text-slate-400 />}
+      leftSection={<i className="bi bi-search fs-8 ps-1 text-slate-400" />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (

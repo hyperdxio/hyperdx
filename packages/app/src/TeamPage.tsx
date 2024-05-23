@@ -10,7 +10,6 @@ import {
   ToggleButtonGroup,
 } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { toast } from 'react-toastify';
 import { json } from '@codemirror/lang-json';
 import { tags as lt } from '@lezer/highlight';
 import {
@@ -33,7 +32,9 @@ import {
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
@@ -42,6 +43,7 @@ import { withAppNav } from './layout';
 import { WebhookFlatIcon } from './SVGIcons';
 import { WebhookService } from './types';
 import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { truncateMiddle } from './utils';
 import { isValidJson, isValidUrl } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
@@ -193,19 +195,26 @@ export default function TeamPage() {
   const rotateTeamApiKeyAction = () => {
     rotateTeamApiKey.mutate(undefined, {
       onSuccess: resp => {
-        toast.success('Revoked old API key and generated new key.');
+        notifications.show({
+          color: 'green',
+          message: 'Revoked old API key and generated new key.',
+        });
         refetchTeam();
       },
       onError: e => {
         e.response
           .json()
           .then(res => {
-            toast.error(res.message, {
+            notifications.show({
+              color: 'red',
+              message: res.message,
               autoClose: 5000,
             });
           })
           .catch(() => {
-            toast.error('Something went wrong. Please contact HyperDX team.', {
+            notifications.show({
+              color: 'red',
+              message: 'Something went wrong. Please contact HyperDX team.',
               autoClose: 5000,
             });
           });
@@ -219,24 +228,28 @@ export default function TeamPage() {
         { userId: encodeURIComponent(id) },
         {
           onSuccess: resp => {
-            toast.success('Deleted team member');
+            notifications.show({
+              color: 'green',
+              message: 'Deleted team member',
+            });
             refetchMembers();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -250,24 +263,29 @@ export default function TeamPage() {
         { id: encodeURIComponent(id) },
         {
           onSuccess: resp => {
-            toast.success('Deleted team invite');
+            notifications.show({
+              color: 'green',
+              message: 'Deleted team invite',
+            });
             refetchInvitations();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -299,26 +317,30 @@ export default function TeamPage() {
         { email },
         {
           onSuccess: resp => {
-            toast.success(
-              'Click "Copy URL" and share the URL with your team member',
-            );
+            notifications.show({
+              color: 'green',
+              message:
+                'Click "Copy URL" and share the URL with your team member',
+            });
             refetchInvitations();
           },
           onError: e => {
             e.response
               .json()
               .then(res => {
-                toast.error(res.message, {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
                   autoClose: 5000,
                 });
               })
               .catch(() => {
-                toast.error(
-                  'Something went wrong. Please contact HyperDX team.',
-                  {
-                    autoClose: 5000,
-                  },
-                );
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
+
+                  autoClose: 5000,
+                });
               });
           },
         },
@@ -338,17 +360,26 @@ export default function TeamPage() {
     const url = e.target.url.value;
 
     if (!name) {
-      toast.error('Please enter a name for the Generic webhook');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter a name for the Generic webhook',
+      });
       return;
     }
 
     if (!url || !isValidUrl(url)) {
-      toast.error('Please enter a valid Generic webhook URL');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter a valid Generic webhook URL',
+      });
       return;
     }
 
     if (headers && !isValidJson(headers)) {
-      toast.error('Please enter valid JSON for headers');
+      notifications.show({
+        color: 'red',
+        message: 'Please enter valid JSON for headers',
+      });
       return;
     }
 
@@ -363,7 +394,10 @@ export default function TeamPage() {
       },
       {
         onSuccess: () => {
-          toast.success(`Saved ${service} webhook`);
+          notifications.show({
+            color: 'green',
+            message: `Saved ${service} webhook`,
+          });
           service === WebhookService.Slack
             ? refetchSlackWebhooks()
             : refetchGenericWebhooks();
@@ -372,17 +406,19 @@ export default function TeamPage() {
           e.response
             .json()
             .then(res => {
-              toast.error(res.message, {
+              notifications.show({
+                color: 'red',
+                message: res.message,
                 autoClose: 5000,
               });
             })
             .catch(() => {
-              toast.error(
-                'Something went wrong. Please contact HyperDX team.',
-                {
-                  autoClose: 5000,
-                },
-              );
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+
+                autoClose: 5000,
+              });
             });
         },
       },
@@ -403,7 +439,10 @@ export default function TeamPage() {
       },
       {
         onSuccess: () => {
-          toast.success(`Deleted ${service} webhook`);
+          notifications.show({
+            color: 'green',
+            message: `Deleted ${service} webhook`,
+          });
           service === WebhookService.Slack
             ? refetchSlackWebhooks()
             : refetchGenericWebhooks();
@@ -412,17 +451,19 @@ export default function TeamPage() {
           e.response
             .json()
             .then(res => {
-              toast.error(res.message, {
+              notifications.show({
+                color: 'red',
+                message: res.message,
                 autoClose: 5000,
               });
             })
             .catch(() => {
-              toast.error(
-                'Something went wrong. Please contact HyperDX team.',
-                {
-                  autoClose: 5000,
-                },
-              );
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+
+                autoClose: 5000,
+              });
             });
         },
       },
@@ -660,50 +701,58 @@ export default function TeamPage() {
               </Card>
 
               <Card>
+                <Card.Section p="md" withBorder>
+                  <div className="text-slate-300 fs-7">Generic Webhooks</div>
+                </Card.Section>
+                {Array.isArray(genericWebhooks?.data) &&
+                  genericWebhooks.data.length > 0 && (
+                    <Card.Section withBorder>
+                      <Table horizontalSpacing="lg" verticalSpacing="xs">
+                        <Table.Tbody>
+                          {genericWebhooks.data.map((webhook: any) => (
+                            <Table.Tr key={webhook._id}>
+                              <Table.Td>
+                                <div className="fw-bold">{webhook.name}</div>
+                                {webhook.description && (
+                                  <div className="fw-regular text-muted">
+                                    {webhook.description}
+                                  </div>
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                <Tooltip
+                                  label={webhook.url}
+                                  color="dark"
+                                  className="fs-8.5"
+                                >
+                                  <span className="fs-8">
+                                    {truncateMiddle(webhook.url, 70)}
+                                  </span>
+                                </Tooltip>
+                              </Table.Td>
+                              <Table.Td align="right">
+                                <MButton
+                                  ml="xs"
+                                  variant="light"
+                                  color="red"
+                                  size="compact-sm"
+                                  onClick={() =>
+                                    onConfirmDeleteWebhook(
+                                      webhook._id,
+                                      WebhookService.Generic,
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </MButton>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Card.Section>
+                  )}
                 <Card.Section p="md">
-                  <div className="mb-3 text-slate-300 fs-7">
-                    Generic Webhooks
-                  </div>
-                  {Array.isArray(genericWebhooks?.data) &&
-                    genericWebhooks.data.length > 0 &&
-                    genericWebhooks.data.map((webhook: any) => (
-                      <div key={webhook._id} className="my-3 text-muted">
-                        <div className="d-flex flex-column mt-3 w-100">
-                          <div className="d-flex align-items-center justify-content-between w-100">
-                            <div className="d-flex align-items-center">
-                              <div className="fw-bold text-white">
-                                {webhook.name}
-                              </div>
-                              <div className="ms-2 me-2">|</div>
-                              {/* TODO: truncate long urls responsive width */}
-                              <div className="fw-bold text-white">
-                                {webhook.url}
-                              </div>
-                            </div>
-                            <MButton
-                              ml="xs"
-                              variant="light"
-                              color="red"
-                              size="compact-sm"
-                              onClick={() =>
-                                onConfirmDeleteWebhook(
-                                  webhook._id,
-                                  WebhookService.Generic,
-                                )
-                              }
-                            >
-                              Delete
-                            </MButton>
-                          </div>
-                          {webhook.description && (
-                            <div className="fw-regular text-muted">
-                              {webhook.description}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
                   <MButton
                     variant="default"
                     onClick={() => openAddGenericWebhookModal()}
