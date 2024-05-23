@@ -300,7 +300,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
   setIsUTC: (isUTC: boolean) => void;
   onShowPatternsClick: () => void;
   displayedColumns: string[];
-  setDisplayedColumns: () => void;
+  setDisplayedColumns: (columns: string[]) => void;
   toggleColumn: (column: string) => void;
 }) {
   const [openedLogQuery, setOpenedLogQuery] = useQueryParams(
@@ -388,7 +388,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
         )}
         onShowPatternsClick={onShowPatternsClick}
         displayedColumns={displayedColumns}
-        setDisplayedColumns={setDisplayedColumns}
+        setDisplayedColumns={columns => setDisplayedColumns(columns)}
       />
     </>
   );
