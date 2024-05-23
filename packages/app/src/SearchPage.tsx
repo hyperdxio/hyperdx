@@ -333,10 +333,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
     [openedLog, setOpenedLogQuery],
   );
 
-  useEffect(() => {
-    console.log('displayed columns changed, new val: ', displayedColumns);
-  }, [displayedColumns]);
-
   return (
     <>
       <ErrorBoundary
@@ -489,7 +485,6 @@ function SearchPage() {
   // Populate searched query with saved query if searched query is unset (initial load)
   useEffect(() => {
     if (selectedSavedSearch != null && _searchedQuery == null) {
-      console.log('use effect hook:', selectedSavedSearch);
       setSearchedQuery(selectedSavedSearch?.query);
     }
   }, [selectedSavedSearch, setSearchedQuery, _searchedQuery]);
