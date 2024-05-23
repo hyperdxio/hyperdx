@@ -59,6 +59,7 @@ router.get('/', async (req, res, next) => {
         tags: 1,
         createdAt: 1,
         updatedAt: 1,
+        columns: 1,
       },
     ).sort({ createdAt: -1 });
     const allAlerts = await Promise.all(
@@ -85,6 +86,7 @@ router.patch(
       name: z.string().max(1024).min(1).optional(),
       query: z.string().max(2048).optional(),
       tags: tagsSchema,
+      columns: z.array(z.string()),
     }),
   }),
   async (req, res, next) => {
@@ -95,7 +97,7 @@ router.patch(
         return res.sendStatus(403);
       }
 
-      const { query, tags, name } = req.body;
+      const { query, tags, name, columns } = req.body;
       const logView = await LogView.findOneAndUpdate(
         {
           _id: logViewId,
@@ -105,6 +107,7 @@ router.patch(
           ...(name && { name }),
           ...(query && { query }),
           tags: tags && uniq(tags),
+          columns: columns,
         },
         { new: true },
       );

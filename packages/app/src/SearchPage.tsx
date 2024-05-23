@@ -273,6 +273,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
   isUTC,
   setIsUTC,
   onShowPatternsClick,
+  displayedColumns,
+  setDisplayedColumns,
+  toggleColumn,
 }: {
   config: {
     where: string;
@@ -294,6 +297,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
   isUTC: boolean;
   setIsUTC: (isUTC: boolean) => void;
   onShowPatternsClick: () => void;
+  displayedColumns: string[];
+  setDisplayedColumns: () => void;
+  toggleColumn: (column: string) => void;
 }) {
   const [openedLogQuery, setOpenedLogQuery] = useQueryParams(
     {
@@ -327,8 +333,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
     [openedLog, setOpenedLogQuery],
   );
 
-  const { displayedColumns, setDisplayedColumns, toggleColumn } =
-    useDisplayedColumns();
+  useEffect(() => {
+    console.log('displayed columns changed, new val: ', displayedColumns);
+  }, [displayedColumns]);
 
   return (
     <>
@@ -433,6 +440,9 @@ function SearchPage() {
 
   const [displayedSearchQuery, setDisplayedSearchQuery] = useState('');
 
+  const { displayedColumns, setDisplayedColumns, toggleColumn } =
+    useDisplayedColumns();
+
   const doSearch = useCallback(
     (query: string, timeQuery: string) => {
       onSearch(timeQuery);
@@ -474,13 +484,19 @@ function SearchPage() {
   const logViews = useMemo(() => logViewsData?.data ?? [], [logViewsData]);
 
   const selectedSavedSearch = logViews.find(v => v._id === savedSearchId);
+  console.log(selectedSavedSearch);
 
   // Populate searched query with saved query if searched query is unset (initial load)
   useEffect(() => {
     if (selectedSavedSearch != null && _searchedQuery == null) {
+      console.log('use effect hook:', selectedSavedSearch);
       setSearchedQuery(selectedSavedSearch?.query);
     }
   }, [selectedSavedSearch, setSearchedQuery, _searchedQuery]);
+
+  useEffect(() => {
+    setDisplayedColumns(selectedSavedSearch?.columns ?? []);
+  }, [selectedSavedSearch?.columns]);
 
   useHotkeys(
     ['ctrl+s', 'meta+s'],
@@ -514,7 +530,11 @@ function SearchPage() {
   const onClickUpdateLogView = () => {
     if (selectedSavedSearch?._id && displayedSearchQuery) {
       updateLogView.mutate(
-        { id: selectedSavedSearch._id, query: displayedSearchQuery },
+        {
+          id: selectedSavedSearch._id,
+          query: displayedSearchQuery,
+          columns: displayedColumns,
+        },
         {
           onSuccess: () => {
             toast.success('Saved search updated.');
@@ -910,6 +930,9 @@ function SearchPage() {
                 setIsLive={setIsLive}
                 isUTC={isUTC}
                 setIsUTC={setIsUTC}
+                displayedColumns={displayedColumns}
+                setDisplayedColumns={setDisplayedColumns}
+                toggleColumns={toggleColumn}
                 onShowPatternsClick={() => {
                   setIsLive(false);
                   setResultsMode('patterns');
