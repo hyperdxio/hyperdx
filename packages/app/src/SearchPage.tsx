@@ -1026,7 +1026,7 @@ function SearchPage() {
                 setIsUTC={setIsUTC}
                 displayedColumns={displayedColumns}
                 setDisplayedColumns={setDisplayedColumns}
-                toggleColumns={toggleColumn}
+                toggleColumn={toggleColumn}
                 onShowPatternsClick={() => {
                   setIsLive(false);
                   setResultsMode('patterns');
