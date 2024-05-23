@@ -15,7 +15,7 @@
 # - Limiting persisted data with some auto rotation
 
 # Get Node base image to copy over Node binaries
-ARG NODE_VERSION=18.15.0
+ARG NODE_VERSION=18.20.3
 FROM node:${NODE_VERSION}-alpine AS node
 
 # == API Builder Image ==
@@ -75,12 +75,12 @@ RUN apk update
 RUN apk add wget shadow
 # Check the target platform and choose the appropriate package
 RUN if [ "${TARGETPLATFORM}" = "linux/arm64" ]; then \
-        wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_arm64.apk; \
-    else \
-        wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_amd64.apk; \
-    fi && \
-    apk add --allow-untrusted otelcol-contrib_0.90.1_linux_*.apk && \
-    rm -rf otelcol-contrib_0.90.1_linux_*.apk
+  wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_arm64.apk; \
+  else \
+  wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.1/otelcol-contrib_0.90.1_linux_amd64.apk; \
+  fi && \
+  apk add --allow-untrusted otelcol-contrib_0.90.1_linux_*.apk && \
+  rm -rf otelcol-contrib_0.90.1_linux_*.apk
 
 # == Install Node Deps ==
 
