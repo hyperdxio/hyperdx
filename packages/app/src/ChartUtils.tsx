@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 import {
   Divider,
   Group,
-  Paper,
   SegmentedControl,
   Select as MSelect,
 } from '@mantine/core';
@@ -452,13 +451,13 @@ export function MetricRateSelect({
     <>
       {metricType === 'Sum' ? (
         <Checkbox
-          title="Convert the sum metric into change over time (rate)"
+          title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
           id="metric-use-rate"
           className="text-nowrap"
           labelClassName="fs-7"
           checked={isRate}
           onChange={() => setIsRate(!isRate)}
-          label="Use Rate"
+          label="Use Increase"
         />
       ) : null}
     </>
@@ -490,6 +489,7 @@ export function MetricNameSelect({
   return (
     <MSelect
       disabled={isLoading || isError}
+      autoFocus={!value}
       variant="filled"
       placeholder={
         isLoading
@@ -518,16 +518,20 @@ export function FieldSelect({
   setValue,
   types,
   className,
+  autoFocus,
 }: {
   value: string | undefined | null;
   setValue: (value: string | undefined) => void;
   types: ('number' | 'string' | 'bool')[];
   className?: string;
+  autoFocus?: boolean;
 }) {
   const propertyOptions = usePropertyOptions(types);
 
   return (
     <AsyncSelect
+      autoFocus={autoFocus}
+      placeholder="Select a field..."
       loadOptions={input => {
         return Promise.resolve([
           { value: undefined, label: 'None' },
@@ -661,7 +665,12 @@ export function ChartSeriesForm({
         </div>
         {table === 'logs' && aggFn != 'count' && aggFn != 'count_distinct' ? (
           <div className="ms-3 flex-grow-1">
-            <FieldSelect value={field} setValue={setField} types={['number']} />
+            <FieldSelect
+              value={field}
+              setValue={setField}
+              types={['number']}
+              autoFocus={!field}
+            />
           </div>
         ) : null}
         {table === 'logs' && aggFn != 'count' && aggFn == 'count_distinct' ? (
@@ -670,6 +679,7 @@ export function ChartSeriesForm({
               value={field}
               setValue={setField}
               types={['string', 'number', 'bool']}
+              autoFocus={!field}
             />
           </div>
         ) : null}
@@ -997,6 +1007,7 @@ export function ChartSeriesFormCompact({
               value={field}
               setValue={setField}
               types={['number']}
+              autoFocus={!field}
             />
           </div>
         ) : null}
@@ -1007,6 +1018,7 @@ export function ChartSeriesFormCompact({
               value={field}
               setValue={setField}
               types={['string', 'number', 'bool']}
+              autoFocus={!field}
             />
           </div>
         ) : null}

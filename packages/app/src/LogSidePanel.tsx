@@ -14,7 +14,6 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { JSONTree } from 'react-json-tree';
 import Drawer from 'react-modern-drawer';
-import { toast } from 'react-toastify';
 import { StringParam, withDefault } from 'serialize-query-params';
 import stripAnsi from 'strip-ansi';
 import Timestamp from 'timestamp-nano';
@@ -32,6 +31,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 
 import HyperJson, { GetLineActions, LineAction } from './components/HyperJson';
 import { KubeTimeline } from './components/KubeComponents';
@@ -42,7 +42,6 @@ import {
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { K8S_METRICS_ENABLED } from './config';
 import { CurlGenerator } from './curlGenerator';
 import LogLevel from './LogLevel';
 import {
@@ -848,6 +847,8 @@ function EventTagSubpanel({
       return (
         key.startsWith('process.tag.') ||
         key.startsWith('otel.library.') ||
+        key.startsWith('hyperdx.') ||
+        key.startsWith('telemetry.') ||
         // exception
         key.startsWith('contexts.os.') ||
         key.startsWith('contexts.runtime.') ||
@@ -1120,7 +1121,10 @@ function NetworkPropertySubpanel({
         <CopyToClipboard
           text={curl}
           onCopy={() => {
-            toast.success('Curl command copied to clipboard');
+            notifications.show({
+              color: 'green',
+              message: 'Curl command copied to clipboard',
+            });
           }}
         >
           <Button
@@ -1296,6 +1300,8 @@ function PropertySubpanel({
     return (
       !key.startsWith('process.tag.') &&
       !key.startsWith('otel.library.') &&
+      !key.startsWith('telemetry.') &&
+      !key.startsWith('hyperdx.') &&
       !(key.startsWith('http.request.header.') && isNetworkReq) &&
       !(key.startsWith('http.response.header.') && isNetworkReq) &&
       key != '__events' &&
@@ -1375,7 +1381,7 @@ function PropertySubpanel({
     {
       normallyExpanded: true,
       tabulate: true,
-      lineWrap: true,
+      lineWrap: false,
       useLegacyViewer: false,
     },
   );
@@ -1456,9 +1462,12 @@ function PropertySubpanel({
         window.navigator.clipboard.writeText(
           JSON.stringify(copiedObj, null, 2),
         );
-        toast.success(
-          `Copied ${shouldCopyParent ? 'parent' : 'object'} to clipboard`,
-        );
+        notifications.show({
+          color: 'green',
+          message: `Copied ${
+            shouldCopyParent ? 'parent' : 'object'
+          } to clipboard`,
+        });
       };
 
       if (typeof value === 'object') {
@@ -1490,7 +1499,10 @@ function PropertySubpanel({
             window.navigator.clipboard.writeText(
               JSON.stringify(value, null, 2),
             );
-            toast.success(`Value copied to clipboard`);
+            notifications.show({
+              color: 'green',
+              message: `Value copied to clipboard`,
+            });
           },
         });
       }
@@ -1623,7 +1635,7 @@ function PropertySubpanel({
                     }}
                   />
                 )}
-                <Menu width={240}>
+                <Menu width={240} withinPortal={false}>
                   <Menu.Target>
                     <ActionIcon size="md" variant="filled" color="gray">
                       <i className="bi bi-gear" />
@@ -1750,11 +1762,12 @@ function PropertySubpanel({
                           <CopyToClipboard
                             text={JSON.stringify(copiedObj, null, 2)}
                             onCopy={() => {
-                              toast.success(
-                                `${
+                              notifications.show({
+                                color: 'green',
+                                message: `${
                                   shouldCopyParent ? 'Parent object' : 'Object'
                                 } copied to clipboard`,
-                              );
+                              });
                             }}
                           >
                             <Button
@@ -1873,7 +1886,10 @@ function PropertySubpanel({
                       <CopyToClipboard
                         text={value}
                         onCopy={() => {
-                          toast.success(`Value copied to clipboard`);
+                          notifications.show({
+                            color: 'green',
+                            message: `Value copied to clipboard`,
+                          });
                         }}
                       >
                         <Button
@@ -2079,7 +2095,10 @@ function SidePanelHeader({
           <CopyToClipboard
             text={window.location.href}
             onCopy={() => {
-              toast.success('Copied link to clipboard');
+              notifications.show({
+                color: 'green',
+                message: 'Copied link to clipboard',
+              });
             }}
           >
             <Button
@@ -2734,7 +2753,7 @@ export default function LogSidePanel({
                         },
                       ] as const)
                     : []),
-                  ...(K8S_METRICS_ENABLED && hasK8sContext
+                  ...(hasK8sContext
                     ? ([
                         {
                           text: 'Infrastructure',

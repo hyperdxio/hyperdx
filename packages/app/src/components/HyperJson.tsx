@@ -37,35 +37,53 @@ const hyperJsonAtom = atom<HyperJsonAtom>({
   normallyExpanded: false,
 });
 
-const ValueRenderer = React.memo(({ value }: { value: any }) => {
-  if (isNull(value)) {
-    return <span className={styles.null}>null</span>;
-  }
-  if (isString(value)) {
-    return <span className={styles.string}>{value}</span>;
-  }
-  if (isNumber(value)) {
-    return <span className={styles.number}>{value}</span>;
-  }
-  if (isBoolean(value)) {
-    return <span className={styles.boolean}>{value ? 'true' : 'false'}</span>;
-  }
-  if (isPlainObject(value)) {
-    return (
-      <span className={styles.object}>
-        {'{}'} {Object.keys(value).length} keys
-      </span>
-    );
-  }
-  if (isArray(value)) {
-    return (
-      <span className={styles.array}>
-        {'[]'} {value.length} items
-      </span>
-    );
-  }
-  return null;
-});
+const ValueRenderer = React.memo(
+  React.forwardRef<HTMLSpanElement, { value: any }>(({ value }, ref) => {
+    if (isNull(value)) {
+      return (
+        <span ref={ref} className={styles.null}>
+          null
+        </span>
+      );
+    }
+    if (isString(value)) {
+      return (
+        <span ref={ref} className={styles.string}>
+          {value}
+        </span>
+      );
+    }
+    if (isNumber(value)) {
+      return (
+        <span ref={ref} className={styles.number}>
+          {value}
+        </span>
+      );
+    }
+    if (isBoolean(value)) {
+      return (
+        <span ref={ref} className={styles.boolean}>
+          {value ? 'true' : 'false'}
+        </span>
+      );
+    }
+    if (isPlainObject(value)) {
+      return (
+        <span ref={ref} className={styles.object}>
+          {'{}'} {Object.keys(value).length} keys
+        </span>
+      );
+    }
+    if (isArray(value)) {
+      return (
+        <span ref={ref} className={styles.array}>
+          {'[]'} {value.length} items
+        </span>
+      );
+    }
+    return null;
+  }),
+);
 
 const LineMenu = React.memo(
   ({
@@ -124,28 +142,35 @@ const Line = React.memo(
     // mounting it for potentially hundreds of lines
     const { ref, hovered } = useHover<HTMLDivElement>();
 
-    const isStringValueJsonLike = React.useMemo(() => {
+    const isStringValueValidJson = React.useMemo(() => {
       if (!isString(value)) return false;
-      return (
-        (value.startsWith('{') && value.endsWith('}')) ||
-        (value.startsWith('[') && value.endsWith(']'))
-      );
+      try {
+        if (
+          (value.startsWith('{') && value.endsWith('}')) ||
+          (value.startsWith('[') && value.endsWith(']'))
+        ) {
+          const parsed = JSON.parse(value);
+          return !!parsed;
+        }
+      } catch (e) {
+        return false;
+      }
     }, [value]);
 
     const [isExpanded, setIsExpanded] = React.useState(
-      normallyExpanded && !isStringValueJsonLike,
+      normallyExpanded && !isStringValueValidJson,
     );
 
     React.useEffect(() => {
-      setIsExpanded(normallyExpanded && !isStringValueJsonLike);
-    }, [isStringValueJsonLike, normallyExpanded]);
+      setIsExpanded(normallyExpanded && !isStringValueValidJson);
+    }, [isStringValueValidJson, normallyExpanded]);
 
     const isExpandable = React.useMemo(
       () =>
         (isPlainObject(value) && Object.keys(value).length > 0) ||
         (isArray(value) && value.length > 0) ||
-        isStringValueJsonLike,
-      [isStringValueJsonLike, value],
+        isStringValueValidJson,
+      [isStringValueValidJson, value],
     );
 
     const handleToggle = React.useCallback(() => {
@@ -154,7 +179,7 @@ const Line = React.memo(
     }, [isExpandable]);
 
     const expandedData = React.useMemo(() => {
-      if (isStringValueJsonLike) {
+      if (isStringValueValidJson) {
         try {
           return JSON.parse(value);
         } catch (e) {
@@ -162,13 +187,32 @@ const Line = React.memo(
         }
       }
       return value;
-    }, [isStringValueJsonLike, value]);
+    }, [isStringValueValidJson, value]);
 
     const nestedLevel = parentKeyPath.length;
     const keyPath = React.useMemo(
       () => [...parentKeyPath, keyName],
       [keyName, parentKeyPath],
     );
+
+    // Hide LineMenu when selecting text in the value
+    const valueRef = React.useRef<HTMLSpanElement>(null);
+    const [isSelectingValue, setIsSelectingValue] = React.useState(false);
+    const handleValueSelectStart = React.useCallback(() => {
+      setIsSelectingValue(true);
+    }, []);
+    const handleValueMouseUp = React.useCallback(() => {
+      setIsSelectingValue(false);
+    }, []);
+    React.useEffect(() => {
+      const _valueRef = valueRef.current;
+      _valueRef?.addEventListener('selectstart', handleValueSelectStart);
+      _valueRef?.addEventListener('mouseup', handleValueMouseUp);
+      return () => {
+        _valueRef?.removeEventListener('selectstart', handleValueSelectStart);
+        _valueRef?.removeEventListener('mouseup', handleValueMouseUp);
+      };
+    }, [handleValueMouseUp, handleValueSelectStart]);
 
     return (
       <>
@@ -198,20 +242,20 @@ const Line = React.memo(
             </div>
           </div>
           <div className={styles.valueContainer}>
-            {isStringValueJsonLike ? (
+            {isStringValueValidJson ? (
               isExpanded ? (
                 <div className={styles.object}>{'{}'} Parsed JSON</div>
               ) : (
                 <>
-                  <ValueRenderer value={value} />
-                  <div className={styles.jsonBtn}>Looks like JSON. Parse?</div>
+                  <ValueRenderer value={value} ref={valueRef} />
+                  <div className={styles.jsonBtn}>Expand JSON</div>
                 </>
               )
             ) : (
-              <ValueRenderer value={value} />
+              <ValueRenderer value={value} ref={valueRef} />
             )}
           </div>
-          {hovered && !disableMenu && (
+          {hovered && !disableMenu && !isSelectingValue && (
             <LineMenu keyName={keyName} keyPath={keyPath} value={value} />
           )}
         </div>
@@ -219,7 +263,7 @@ const Line = React.memo(
           <TreeNode
             data={expandedData}
             keyPath={keyPath}
-            disableMenu={isStringValueJsonLike}
+            disableMenu={isStringValueValidJson}
           />
         )}
       </>

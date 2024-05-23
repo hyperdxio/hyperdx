@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Button, Form, Modal } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { Button as MButton, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import { genEnglishExplanation } from './queryv2';
@@ -55,9 +55,11 @@ export default function SaveSearchModal({
             onUpdateSuccess(response.data);
           },
           onError: () => {
-            toast.error(
-              'An error occured. Please contact support for more details.',
-            );
+            notifications.show({
+              color: 'red',
+              message:
+                'An error occured. Please contact support for more details.',
+            });
           },
         },
       );
@@ -72,9 +74,11 @@ export default function SaveSearchModal({
             onSaveSuccess(response.data);
           },
           onError: () => {
-            toast.error(
-              'An error occured. Please contact support for more details.',
-            );
+            notifications.show({
+              color: 'red',
+              message:
+                'An error occured. Please contact support for more details.',
+            });
           },
         },
       );

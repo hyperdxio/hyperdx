@@ -11,12 +11,12 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import cx from 'classnames';
 import { clamp, format, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { Button } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { toast } from 'react-toastify';
 import {
   Bar,
   BarChart,
@@ -33,6 +33,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import { ActionIcon, Indicator } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import CreateLogAlertModal from './CreateLogAlertModal';
@@ -49,6 +50,7 @@ import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
 
 import 'react-modern-drawer/dist/index.css';
+import styles from '../styles/SearchPage.module.scss';
 
 const formatDate = (
   date: Date,
@@ -492,8 +494,15 @@ function SearchPage() {
     setDisplayedColumns(selectedSavedSearch?.columns ?? []);
   }, [selectedSavedSearch?.columns]);
 
+  const isArcBrowser =
+    typeof window !== 'undefined' &&
+    window
+      .getComputedStyle?.(document.documentElement)
+      .getPropertyValue('--arc-palette-title');
+
   useHotkeys(
-    ['ctrl+s', 'meta+s'],
+    // Arc Browser uses CMD+S for toggling sidebar which conflicts with save search
+    isArcBrowser ? ['ctrl+shift+s', 'meta+shift+s'] : ['ctrl+s', 'meta+s'],
     () => {
       setSaveSearchModalMode('save');
     },
@@ -508,14 +517,19 @@ function SearchPage() {
     if (selectedSavedSearch?._id) {
       deleteLogView.mutate(selectedSavedSearch._id, {
         onSuccess: () => {
-          toast.success('Saved search deleted.');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search deleted.',
+          });
           router.push(`/search`);
           refetchLogViews();
         },
         onError: () => {
-          toast.error(
-            'An error occurred. Please contact support for more details.',
-          );
+          notifications.show({
+            color: 'red',
+            message:
+              'An error occurred. Please contact support for more details.',
+          });
         },
       });
     }
@@ -531,13 +545,18 @@ function SearchPage() {
         },
         {
           onSuccess: () => {
-            toast.success('Saved search updated.');
+            notifications.show({
+              color: 'green',
+              message: 'Saved search updated.',
+            });
             refetchLogViews();
           },
           onError: () => {
-            toast.error(
-              'An error occurred. Please contact support for more details.',
-            );
+            notifications.show({
+              color: 'red',
+              message:
+                'An error occurred. Please contact support for more details.',
+            });
           },
         },
       );
@@ -602,6 +621,42 @@ function SearchPage() {
       setDisplayedSearchQuery(v => v + (v.length > 0 ? ' ' : '') + searchQuery);
     },
     [setDisplayedSearchQuery],
+  );
+
+  const searchedTypes = useMemo(() => {
+    if (searchedQuery.includes('hyperdx_event_type:"span"')) {
+      return ['span'];
+    } else if (searchedQuery.includes('hyperdx_event_type:"log"')) {
+      return ['log'];
+    }
+    return ['log', 'span'];
+  }, [searchedQuery]);
+
+  const handleToggleType = useCallback(
+    (type: 'log' | 'span') => {
+      let newQuery = displayedSearchQuery;
+
+      if (displayedSearchQuery.includes(`hyperdx_event_type:"${type}"`)) {
+        return; // Do nothing if the query already contains the type
+      }
+
+      newQuery = newQuery
+        .replaceAll('hyperdx_event_type:"log"', '')
+        .replaceAll('hyperdx_event_type:"span"', '')
+        .trim();
+
+      if (!displayedSearchQuery.includes('hyperdx_event_type:')) {
+        newQuery =
+          newQuery +
+          (newQuery.length ? ' ' : '') +
+          `hyperdx_event_type:"${type === 'log' ? 'span' : 'log'}"`;
+      }
+
+      if (newQuery !== displayedSearchQuery) {
+        doSearch(newQuery, displayedTimeInputValue);
+      }
+    },
+    [displayedSearchQuery, displayedTimeInputValue, doSearch],
   );
 
   const chartsConfig = useMemo(() => {
@@ -677,9 +732,11 @@ function SearchPage() {
               refetchLogViews();
             },
             onError: () => {
-              toast.error(
-                'An error occurred. Please contact support for more details.',
-              );
+              notifications.show({
+                color: 'red',
+                message:
+                  'An error occurred. Please contact support for more details.',
+              });
             },
           },
         );
@@ -706,7 +763,10 @@ function SearchPage() {
         searchName={selectedSavedSearch?.name ?? ''}
         searchID={selectedSavedSearch?._id ?? ''}
         onSaveSuccess={responseData => {
-          toast.success('Saved search created');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search created',
+          });
           router.push(
             `/search/${responseData._id}?${new URLSearchParams({
               q: searchedQuery,
@@ -722,7 +782,10 @@ function SearchPage() {
           setSaveSearchModalMode('hidden');
         }}
         onUpdateSuccess={responseData => {
-          toast.success('Saved search renamed');
+          notifications.show({
+            color: 'green',
+            message: 'Saved search renamed',
+          });
           refetchLogViews();
           setSaveSearchModalMode('hidden');
         }}
@@ -733,11 +796,17 @@ function SearchPage() {
         savedSearch={selectedSavedSearch}
         query={selectedSavedSearch?.query ?? displayedSearchQuery}
         onSaveSuccess={() => {
-          toast.success('Alerts updated successfully.');
+          notifications.show({
+            color: 'green',
+            message: 'Alerts updated successfully.',
+          });
           refetchLogViews();
         }}
         onDeleteSuccess={() => {
-          toast.success('Alert deleted successfully.');
+          notifications.show({
+            color: 'green',
+            message: 'Alert deleted successfully.',
+          });
           refetchLogViews();
         }}
         onSavedSearchCreateSuccess={responseData => {
@@ -757,6 +826,36 @@ function SearchPage() {
       />
       <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
         <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
+          <div className={styles.eventTypeSwitch}>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('log'),
+              })}
+              onClick={() => handleToggleType('log')}
+            >
+              {searchedTypes.includes('log') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Logs
+            </div>
+            <div
+              className={cx(styles.eventTypeSwitchItem, {
+                [styles.eventTypeSwitchItemActive]:
+                  searchedTypes.includes('span'),
+              })}
+              onClick={() => handleToggleType('span')}
+            >
+              {searchedTypes.includes('span') ? (
+                <i className="bi bi-check" />
+              ) : (
+                <i />
+              )}
+              Spans
+            </div>
+          </div>
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
             <SearchInput
               inputRef={searchInput}
@@ -793,6 +892,7 @@ function SearchPage() {
               }}
             />
           </form>
+
           <SearchPageActionBar
             key={`${savedSearchId}`}
             onClickConfigAlert={onClickConfigAlert}

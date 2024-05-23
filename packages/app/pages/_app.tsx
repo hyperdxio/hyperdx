@@ -6,13 +6,13 @@ import { NextAdapter } from 'next-query-params';
 import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ReactQueryDevtools } from 'react-query/devtools';
-import { ToastContainer } from 'react-toastify';
 import { QueryParamProvider } from 'use-query-params';
 import {
   ColorSchemeScript,
   MantineProvider,
   MantineThemeOverride,
 } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 
 import { apiConfigs } from '../src/api';
 import * as config from '../src/config';
@@ -21,7 +21,7 @@ import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryPara
 import { UserPreferencesProvider } from '../src/useUserPreferences';
 
 import '@mantine/core/styles.css';
-import 'react-toastify/dist/ReactToastify.css';
+import '@mantine/notifications/styles.css';
 import '../styles/globals.css';
 import '../styles/app.scss';
 import '../src/LandingPage.scss';
@@ -187,6 +187,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           content="width=device-width, initial-scale=0.75"
         />
         <meta name="theme-color" content="#25292e"></meta>
+        <meta name="google" content="notranslate" />
         <ColorSchemeScript forceColorScheme="dark" />
       </Head>
 
@@ -195,8 +196,8 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
               <UserPreferencesProvider>
-                <ToastContainer position="bottom-right" theme="dark" />
                 <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
+                  <Notifications />
                   {getLayout(<Component {...pageProps} />)}
                 </MantineProvider>
                 <ReactQueryDevtools initialIsOpen={false} />

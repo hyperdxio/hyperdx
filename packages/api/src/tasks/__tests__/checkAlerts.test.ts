@@ -197,7 +197,7 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    afterEach(async () => {
+    beforeEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
     });
@@ -656,7 +656,7 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    afterEach(async () => {
+    beforeEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
     });
@@ -996,12 +996,12 @@ describe('checkAlerts', () => {
             { value: 8, timestamp: metricNowTs + ms('1m') },
             { value: 8, timestamp: metricNowTs + ms('2m') },
             { value: 9, timestamp: metricNowTs + ms('3m') },
-            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15
+            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15 (14 rate)
             { value: 30, timestamp: metricNowTs + ms('5m') },
             { value: 31, timestamp: metricNowTs + ms('6m') },
             { value: 32, timestamp: metricNowTs + ms('7m') },
             { value: 33, timestamp: metricNowTs + ms('8m') },
-            { value: 34, timestamp: metricNowTs + ms('9m') }, // 34
+            { value: 34, timestamp: metricNowTs + ms('9m') }, // 34 (19 rate)
             { value: 35, timestamp: metricNowTs + ms('10m') },
             { value: 36, timestamp: metricNowTs + ms('11m') },
           ],
@@ -1027,12 +1027,12 @@ describe('checkAlerts', () => {
             { value: 8000, timestamp: metricNowTs + ms('1m') },
             { value: 8000, timestamp: metricNowTs + ms('2m') },
             { value: 9000, timestamp: metricNowTs + ms('3m') },
-            { value: 15000, timestamp: metricNowTs + ms('4m') }, // 15000
+            { value: 15000, timestamp: metricNowTs + ms('4m') }, // 15000 (14000 rate)
             { value: 30000, timestamp: metricNowTs + ms('5m') },
             { value: 30001, timestamp: metricNowTs + ms('6m') },
             { value: 30002, timestamp: metricNowTs + ms('7m') },
             { value: 30003, timestamp: metricNowTs + ms('8m') },
-            { value: 30004, timestamp: metricNowTs + ms('9m') }, // 30004
+            { value: 30004, timestamp: metricNowTs + ms('9m') }, // 30004 (15004 rate)
             { value: 30005, timestamp: metricNowTs + ms('10m') },
             { value: 30006, timestamp: metricNowTs + ms('11m') },
           ],
@@ -1053,12 +1053,12 @@ describe('checkAlerts', () => {
             { value: 8, timestamp: metricNowTs + ms('1m') },
             { value: 8, timestamp: metricNowTs + ms('2m') },
             { value: 9, timestamp: metricNowTs + ms('3m') },
-            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15
+            { value: 15, timestamp: metricNowTs + ms('4m') }, // 15 (14 rate)
             { value: 17, timestamp: metricNowTs + ms('5m') },
             { value: 18, timestamp: metricNowTs + ms('6m') },
             { value: 19, timestamp: metricNowTs + ms('7m') },
             { value: 20, timestamp: metricNowTs + ms('8m') },
-            { value: 21, timestamp: metricNowTs + ms('9m') }, // 21
+            { value: 21, timestamp: metricNowTs + ms('9m') }, // 21 (6 rate)
             { value: 22, timestamp: metricNowTs + ms('10m') },
             { value: 23, timestamp: metricNowTs + ms('11m') },
           ],
