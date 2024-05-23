@@ -480,7 +480,6 @@ function SearchPage() {
   const logViews = useMemo(() => logViewsData?.data ?? [], [logViewsData]);
 
   const selectedSavedSearch = logViews.find(v => v._id === savedSearchId);
-  console.log(selectedSavedSearch);
 
   // Populate searched query with saved query if searched query is unset (initial load)
   useEffect(() => {
