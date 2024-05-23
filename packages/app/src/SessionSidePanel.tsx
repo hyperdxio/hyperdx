@@ -3,7 +3,7 @@ import { Button } from 'react-bootstrap';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
-import { toast } from 'react-toastify';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import SessionSubpanel from './SessionSubpanel';
@@ -103,7 +103,10 @@ export default function SessionSidePanel({
               <CopyToClipboard
                 text={window.location.href}
                 onCopy={() => {
-                  toast.success('Copied link to clipboard');
+                  notifications.show({
+                    color: 'green',
+                    message: 'Copied link to clipboard',
+                  });
                 }}
               >
                 <Button

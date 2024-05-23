@@ -3,7 +3,6 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add, format } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
-import { toast } from 'react-toastify';
 import {
   Bar,
   BarChart,
@@ -19,6 +18,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Popover } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import {
@@ -80,7 +80,7 @@ function CopyableLegendItem({ entry }: any) {
       role="button"
       onClick={() => {
         window.navigator.clipboard.writeText(entry.value);
-        toast.success(`Copied to clipboard`);
+        notifications.show({ color: 'green', message: `Copied to clipboard` });
       }}
       title="Click to expand"
     >

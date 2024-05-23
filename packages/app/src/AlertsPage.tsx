@@ -5,7 +5,6 @@ import cx from 'classnames';
 import { add, Duration, formatRelative } from 'date-fns';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
 import { ArrayParam, useQueryParam, withDefault } from 'use-query-params';
 import {
   Alert as MAlert,
@@ -17,6 +16,7 @@ import {
   Stack,
   Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from './api';
 import { withAppNav } from './layout';
@@ -111,7 +111,10 @@ function AckAlert({ alert }: { alert: Alert }) {
         queryClient.invalidateQueries('alerts');
       },
       onError: () => {
-        toast.error('Failed to silence alert, please try again later.');
+        notifications.show({
+          color: 'red',
+          message: 'Failed to silence alert, please try again later.',
+        });
       },
     }),
     [queryClient],
