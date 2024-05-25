@@ -21,6 +21,7 @@ import {
   Loader,
   ScrollArea,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import { version } from '../package.json';
 
@@ -31,6 +32,7 @@ import Icon from './Icon';
 import Logo from './Logo';
 import { KubernetesFlatIcon } from './SVGIcons';
 import type { Dashboard, LogView } from './types';
+import { UserPreferencesModal } from './UserPreferencesModal';
 import { useLocalStorage, useWindowSize } from './utils';
 
 import styles from '../styles/AppNav.module.scss';
@@ -902,6 +904,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     [dashboards, refetchDashboards, updateDashboard],
   );
 
+  const [
+    UserPreferencesOpen,
+    { close: closeUserPreferences, open: openUserPreferences },
+  ] = useDisclosure(false);
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -1349,6 +1356,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </Link>
               </div>
               <div className="my-3">
+                <span
+                  onClick={openUserPreferences}
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover cursor-pointer',
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-gear text-slate-300" />{' '}
+                    {!isCollapsed && <span>User Preferences</span>}
+                  </span>
+                </span>
+              </div>
+              <div className="my-3">
                 <Link
                   href="https://hyperdx.io/docs"
                   className={cx(
@@ -1379,6 +1399,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           </>
         )}
       </ScrollArea>
+      <UserPreferencesModal
+        opened={UserPreferencesOpen}
+        onClose={closeUserPreferences}
+      />
     </>
   );
 }
