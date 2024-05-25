@@ -206,7 +206,7 @@ export function VercelIcon({ style, width }: IconProps) {
       viewBox="0 0 512 512"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path fill-rule="evenodd" d="M256,48,496,464H16Z" />
+      <path fillRule="evenodd" d="M256,48,496,464H16Z" />
     </svg>
   );
 }
@@ -294,7 +294,7 @@ export function TerraformFlatIcon({ width }: IconProps) {
       viewBox="0 0 44 44"
       width={width}
     >
-      <g clip-rule="evenodd" fill-rule="evenodd">
+      <g clipRule="evenodd" fillRule="evenodd">
         <path
           d="m16.664 7.384 10.468 6.042v12.085l-10.468-6.041z"
           fill="currentColor"
