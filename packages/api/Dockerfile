@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM node:18.15.0-alpine AS base
+FROM node:18.20.3-alpine AS base
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN yarn run build
 
 ## prod ############################################################################################
 
-FROM node:18.15.0-alpine AS prod
+FROM node:18.20.3-alpine AS prod
 
 ARG CODE_VERSION
 
