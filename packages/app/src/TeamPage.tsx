@@ -42,7 +42,6 @@ import api from './api';
 import { withAppNav } from './layout';
 import { WebhookFlatIcon } from './SVGIcons';
 import { WebhookService } from './types';
-import useUserPreferences, { TimeFormat } from './useUserPreferences';
 import { truncateMiddle } from './utils';
 import { isValidJson, isValidUrl } from './utils';
 
@@ -167,9 +166,6 @@ export default function TeamPage() {
   const deleteTeamInvitation = api.useDeleteTeamInvitation();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
-  const setTimeFormat = useUserPreferences().setTimeFormat;
-  const timeFormat = useUserPreferences().timeFormat;
-  const handleTimeButtonClick = (val: TimeFormat) => setTimeFormat(val);
 
   const hasAdminAccess = true;
 
@@ -1112,43 +1108,6 @@ export default function TeamPage() {
                   isSubmitting={saveTeamInvitation.isLoading}
                 />
               </MModal>
-
-              <div className={styles.sectionHeader}>Time Format</div>
-              <div className="mb-4">
-                <div className="text-slate-400 fs-8 mb-4">
-                  Note: Only affects your own view and does not propagate to
-                  other team members.
-                </div>
-                <ToggleButtonGroup
-                  type="radio"
-                  value={timeFormat}
-                  onChange={handleTimeButtonClick}
-                  name="buttons"
-                >
-                  <ToggleButton
-                    id="tbg-btn-1"
-                    value="24h"
-                    variant={
-                      timeFormat === '24h'
-                        ? 'outline-success'
-                        : 'outline-secondary'
-                    }
-                  >
-                    24h
-                  </ToggleButton>
-                  <ToggleButton
-                    id="tbg-btn-2"
-                    value="12h"
-                    variant={
-                      timeFormat === '12h'
-                        ? 'outline-success'
-                        : 'outline-secondary'
-                    }
-                  >
-                    12h
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </div>
             </Stack>
           )}
         </Container>

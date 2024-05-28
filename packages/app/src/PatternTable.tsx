@@ -132,7 +132,6 @@ const MemoPatternTable = memo(
   ({
     dateRange,
     patterns,
-    formatUTC,
     highlightedPatternId,
     isLoading,
     onRowExpandClick,
@@ -144,7 +143,6 @@ const MemoPatternTable = memo(
     wrapLines: boolean;
     isLoading: boolean;
     onRowExpandClick: (pattern: Pattern) => void;
-    formatUTC: boolean;
     highlightedPatternId: string | undefined;
     onShowEventsClick?: () => void;
   }) => {
@@ -254,7 +252,6 @@ const MemoPatternTable = memo(
         },
       ],
       [
-        // formatUTC,
         highlightedPatternId,
         onRowExpandClick,
         isSmallScreen,
@@ -437,7 +434,6 @@ const MemoPatternTable = memo(
 export default function PatternTable({
   config: { where, dateRange },
   onRowExpandClick,
-  isUTC,
   onShowEventsClick,
   highlightedPatternId,
 }: {
@@ -447,7 +443,6 @@ export default function PatternTable({
   };
   highlightedPatternId: undefined | string;
   onRowExpandClick: (pattern: Pattern) => void;
-  isUTC: boolean;
   onShowEventsClick?: () => void;
 }) {
   const { data: histogramResults, isLoading: isHistogramResultsLoading } =
@@ -495,7 +490,6 @@ export default function PatternTable({
         highlightedPatternId={highlightedPatternId}
         patterns={patterns?.data ?? []}
         isLoading={isLoading}
-        formatUTC={isUTC}
         onRowExpandClick={onRowExpandClick}
         onShowEventsClick={onShowEventsClick}
       />

@@ -107,7 +107,6 @@ export default function ServiceDashboardPage() {
     setDisplayedTimeInputValue,
     onSearch,
   } = useTimeQuery({
-    isUTC: false,
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
@@ -361,8 +360,6 @@ export default function ServiceDashboardPage() {
                         'object.regarding.name': 'Name',
                       }}
                       isLive={false}
-                      isUTC={false}
-                      setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
                       showServiceColumn={false}
                     />
@@ -639,7 +636,6 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm">
                     <MemoPatternTableWithSidePanel
-                      isUTC={false}
                       config={{
                         where: scopeWhereQuery('level:"error"'),
                         dateRange,

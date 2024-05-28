@@ -7,7 +7,7 @@ import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
 import DatePicker from 'react-datepicker';
 import { useHotkeys } from 'react-hotkeys-hook';
 
-import { TimeFormat } from './useUserPreferences';
+import { useUserPreferences } from './useUserPreferences';
 
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -39,14 +39,12 @@ export default function SearchTimeRangePicker({
   onSearch,
   onSubmit,
   showLive = false,
-  timeFormat = '12h',
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
   onSearch: (rangeStr: string) => void;
   onSubmit?: (rangeStr: string) => void;
   showLive?: boolean;
-  timeFormat?: TimeFormat;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -70,6 +68,10 @@ export default function SearchTimeRangePicker({
       inputRef.current?.focus();
     }
   }, [isDatePickerOpen]);
+
+  const {
+    userPreferences: { timeFormat },
+  } = useUserPreferences();
 
   return (
     <>

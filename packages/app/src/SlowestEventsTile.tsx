@@ -61,8 +61,6 @@ export default function SlowestEventsTile({
               columns: ['duration'],
             }}
             isLive={false}
-            isUTC={false}
-            setIsUTC={() => {}}
             onPropertySearchClick={() => {}}
           />
         )}

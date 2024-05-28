@@ -28,7 +28,7 @@ import {
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
 import type { ChartSeries, NumberFormat } from './types';
-import useUserPreferences, { TimeFormat } from './useUserPreferences';
+import { useUserPreferences } from './useUserPreferences';
 import { formatNumber } from './utils';
 import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
 
@@ -38,7 +38,9 @@ const MAX_LEGEND_ITEMS = 4;
 
 const HDXLineChartTooltip = withErrorBoundary(
   memo((props: any) => {
-    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const {
+      userPreferences: { timeFormat },
+    } = useUserPreferences();
     const tsFormat = TIME_TOKENS[timeFormat];
     const { active, payload, label, numberFormat } = props;
     if (active && payload && payload.length) {
@@ -217,7 +219,9 @@ const MemoChart = memo(function MemoChart({
   }, [groupKeys, displayType, lineNames, graphResults]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
-  const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+  const {
+    userPreferences: { timeFormat },
+  } = useUserPreferences();
   const tsFormat = TIME_TOKENS[timeFormat];
   // Gets the preffered time format from User Preferences, then converts it to a formattable token
 

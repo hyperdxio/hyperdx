@@ -160,7 +160,6 @@ export default function PatternSidePanel({
             isLoading={false}
             hasNextPage={false}
             wrapLines={false}
-            formatUTC={false}
             fetchNextPage={useCallback(() => {}, [])}
             onScroll={useCallback(() => {}, [])}
           />

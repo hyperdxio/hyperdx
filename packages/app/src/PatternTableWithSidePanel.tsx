@@ -7,15 +7,12 @@ import PatternTable from './PatternTable';
 
 function PatternTableWithSidePanel({
   config,
-  isUTC,
   onShowEventsClick,
 }: {
   config: {
     where: string;
     dateRange: [Date, Date];
   };
-  isUTC: boolean;
-
   onShowEventsClick?: () => void;
 }) {
   const [openedPattern, setOpenedPattern] = useState<Pattern | undefined>();
@@ -38,7 +35,6 @@ function PatternTableWithSidePanel({
         </Portal>
       ) : null}
       <PatternTable
-        isUTC={isUTC}
         config={config}
         highlightedPatternId={openedPattern?.id}
         onShowEventsClick={onShowEventsClick}
