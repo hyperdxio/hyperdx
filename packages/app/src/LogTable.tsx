@@ -520,8 +520,15 @@ export const RawLogTable = memo(
     );
 
     // Scroll to log id if it's not in window yet
+    const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
+      useState(false);
+
     useEffect(() => {
-      if (highlightedLineId == null || rowVirtualizer == null) {
+      if (
+        scrolledToHighlightedLine ||
+        highlightedLineId == null ||
+        rowVirtualizer == null
+      ) {
         return;
       }
 
@@ -529,6 +536,7 @@ export const RawLogTable = memo(
       if (rowIdx == -1) {
         fetchNextPage();
       } else {
+        setScrolledToHighlightedLine(true);
         if (
           rowVirtualizer.getVirtualItems().find(l => l.index === rowIdx) == null
         ) {
@@ -542,6 +550,7 @@ export const RawLogTable = memo(
       highlightedLineId,
       fetchNextPage,
       rowVirtualizer,
+      scrolledToHighlightedLine,
       // Needed to make sure we call this again when the log search loading
       // state is done to fetch next page
       isLoading,
