@@ -549,7 +549,8 @@ const api = {
       {
         name: string;
         query: string;
-        tags?: string;
+        tags?: string[];
+        columns?: string[];
       }
     >(`log-views`, async ({ name, query, tags }) =>
       hdxServer('log-views', {
@@ -571,14 +572,16 @@ const api = {
         name?: string;
         query?: string;
         tags?: string[];
+        columns?: string[];
       }
-    >(`log-views`, async ({ id, name, query, tags }) =>
+    >(`log-views`, async ({ id, name, query, tags, columns }) =>
       hdxServer(`log-views/${id}`, {
         method: 'PATCH',
         json: {
           name,
           query,
           tags,
+          columns,
         },
       }).json(),
     );

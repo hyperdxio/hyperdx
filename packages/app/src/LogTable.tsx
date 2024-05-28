@@ -410,7 +410,7 @@ export const RawLogTable = memo(
           size: columnSizeStorage[column] ?? 150,
         })) as ColumnDef<any>[]),
         {
-          accessorKey: 'body',
+          accessorKey: 'show-pattern',
           header: () => (
             <span>
               Message{' '}

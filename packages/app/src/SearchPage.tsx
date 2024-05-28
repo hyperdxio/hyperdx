@@ -275,6 +275,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
   isUTC,
   setIsUTC,
   onShowPatternsClick,
+  displayedColumns,
+  setDisplayedColumns,
+  toggleColumn,
 }: {
   config: {
     where: string;
@@ -296,6 +299,9 @@ const LogViewerContainer = memo(function LogViewerContainer({
   isUTC: boolean;
   setIsUTC: (isUTC: boolean) => void;
   onShowPatternsClick: () => void;
+  displayedColumns: string[];
+  setDisplayedColumns: (columns: string[]) => void;
+  toggleColumn: (column: string) => void;
 }) {
   const [openedLogQuery, setOpenedLogQuery] = useQueryParams(
     {
@@ -328,9 +334,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
     },
     [openedLog, setOpenedLogQuery],
   );
-
-  const { displayedColumns, setDisplayedColumns, toggleColumn } =
-    useDisplayedColumns();
 
   return (
     <>
@@ -385,7 +388,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
         )}
         onShowPatternsClick={onShowPatternsClick}
         displayedColumns={displayedColumns}
-        setDisplayedColumns={setDisplayedColumns}
+        setDisplayedColumns={columns => setDisplayedColumns(columns)}
       />
     </>
   );
@@ -434,6 +437,9 @@ function SearchPage() {
   }, [searchedQuery]);
 
   const [displayedSearchQuery, setDisplayedSearchQuery] = useState('');
+
+  const { displayedColumns, setDisplayedColumns, toggleColumn } =
+    useDisplayedColumns();
 
   const doSearch = useCallback(
     (query: string, timeQuery: string) => {
@@ -484,6 +490,10 @@ function SearchPage() {
     }
   }, [selectedSavedSearch, setSearchedQuery, _searchedQuery]);
 
+  useEffect(() => {
+    setDisplayedColumns(selectedSavedSearch?.columns ?? []);
+  }, [selectedSavedSearch?.columns]);
+
   const isArcBrowser =
     typeof window !== 'undefined' &&
     window
@@ -528,7 +538,11 @@ function SearchPage() {
   const onClickUpdateLogView = () => {
     if (selectedSavedSearch?._id && displayedSearchQuery) {
       updateLogView.mutate(
-        { id: selectedSavedSearch._id, query: displayedSearchQuery },
+        {
+          id: selectedSavedSearch._id,
+          query: displayedSearchQuery,
+          columns: displayedColumns,
+        },
         {
           onSuccess: () => {
             notifications.show({
@@ -1010,6 +1024,9 @@ function SearchPage() {
                 setIsLive={setIsLive}
                 isUTC={isUTC}
                 setIsUTC={setIsUTC}
+                displayedColumns={displayedColumns}
+                setDisplayedColumns={setDisplayedColumns}
+                toggleColumn={toggleColumn}
                 onShowPatternsClick={() => {
                   setIsLive(false);
                   setResultsMode('patterns');
