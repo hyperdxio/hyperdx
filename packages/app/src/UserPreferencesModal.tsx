@@ -113,7 +113,10 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer label="Use UTC time">
+        <SettingContainer
+          label="Use UTC time in log tables"
+          description="Currently only applied to log table timestamps. Charts and other areas will be updated soon"
+        >
           <Switch
             size="md"
             onLabel="UTC"
@@ -215,18 +218,6 @@ export const UserPreferencesModal = ({
                   >
                     or this
                   </Button>
-                  <Button
-                    variant="light"
-                    color="gray"
-                    size="compact-xs"
-                    onClick={() =>
-                      setUserPreference({
-                        backgroundUrl: `https://source.unsplash.com/random?random=${Math.random()}`,
-                      })
-                    }
-                  >
-                    or random
-                  </Button>
                 </Group>
               }
             >
@@ -272,7 +263,7 @@ export const UserPreferencesModal = ({
             <SettingContainer label="Blend mode">
               <Select
                 value={userPreferences.backgroundBlendMode}
-                defaultValue="screen"
+                defaultValue="plus-lighter"
                 onChange={value =>
                   value &&
                   setUserPreference({
