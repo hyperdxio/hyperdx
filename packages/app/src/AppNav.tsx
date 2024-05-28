@@ -1363,7 +1363,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 >
                   <span>
-                    <i className="bi bi-gear text-slate-300" />{' '}
+                    <i className="bi bi-person-gear text-slate-300" />{' '}
                     {!isCollapsed && <span>User Preferences</span>}
                   </span>
                 </span>

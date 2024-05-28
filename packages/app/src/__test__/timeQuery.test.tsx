@@ -12,6 +12,7 @@ import {
   type UseTimeQueryInputType,
   type UseTimeQueryReturnType,
 } from '../timeQuery';
+import { useUserPreferences } from '../useUserPreferences';
 
 import { TestRouter } from './fixtures';
 
@@ -23,7 +24,18 @@ jest.mock('next/router', () => ({
   useRouter: jest.fn(),
 }));
 
-function TestWrapper({ children }: { children: React.ReactNode }) {
+function TestWrapper({
+  children,
+  isUTC,
+}: {
+  children: React.ReactNode;
+  isUTC?: boolean;
+}) {
+  const { setUserPreference } = useUserPreferences();
+
+  React.useEffect(() => {
+    setUserPreference({ isUTC });
+  }, [setUserPreference, isUTC]);
   return (
     <QueryParamProvider adapter={NextAdapter}>{children}</QueryParamProvider>
   );
@@ -72,7 +84,6 @@ describe('useTimeQuery tests', () => {
     render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -89,9 +100,8 @@ describe('useTimeQuery tests', () => {
     const timeQueryRef = React.createRef<UseTimeQueryReturnType>();
 
     render(
-      <TestWrapper>
+      <TestWrapper isUTC={true}>
         <TestComponent
-          isUTC={true}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -111,7 +121,6 @@ describe('useTimeQuery tests', () => {
     const { rerender } = render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -122,7 +131,6 @@ describe('useTimeQuery tests', () => {
     rerender(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -151,7 +159,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -165,7 +172,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -189,7 +195,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -200,7 +205,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -228,7 +232,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -243,7 +246,6 @@ describe('useTimeQuery tests', () => {
       <TestWrapper>
         <TestComponent
           initialDisplayValue="Past 1h"
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -269,7 +271,6 @@ describe('useTimeQuery tests', () => {
     render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -289,7 +290,6 @@ describe('useTimeQuery tests', () => {
     render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -313,7 +313,6 @@ describe('useTimeQuery tests', () => {
     const result = render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -324,7 +323,6 @@ describe('useTimeQuery tests', () => {
     result.rerender(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}
         />
@@ -347,7 +345,6 @@ describe('useTimeQuery tests', () => {
     render(
       <TestWrapper>
         <TestComponent
-          isUTC={false}
           initialDisplayValue={initialDisplayValue}
           initialTimeRange={getLiveTailTimeRange()}
           ref={timeQueryRef}

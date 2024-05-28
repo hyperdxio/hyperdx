@@ -3,7 +3,6 @@ import {
   Autocomplete,
   Badge,
   Button,
-  Card,
   Divider,
   Group,
   Input,
@@ -26,7 +25,7 @@ const OPTIONS_FONTS = [
 
 const OPTIONS_THEMES = [
   { label: 'Dark', value: 'dark' },
-  { label: 'Fake Light', value: 'light' },
+  { label: 'Light', value: 'light' },
 ];
 
 const OPTIONS_MIX_BLEND_MODE = [
@@ -93,7 +92,6 @@ export const UserPreferencesModal = ({
           </Text>
         </>
       }
-      centered
       size="lg"
       padding="lg"
       keepMounted={false}
@@ -173,105 +171,121 @@ export const UserPreferencesModal = ({
           />
         </SettingContainer>
 
-        <Divider label="Background" labelPosition="left" />
+        <SettingContainer label="Background overlay">
+          <Switch
+            size="md"
+            variant="default"
+            onClick={() =>
+              setUserPreference({
+                backgroundEnabled: !userPreferences.backgroundEnabled,
+              })
+            }
+            checked={userPreferences.backgroundEnabled}
+          />
+        </SettingContainer>
 
-        <SettingContainer
-          label="Background URL"
-          description={
-            <Group gap={4}>
-              <Button
-                variant="light"
-                color="gray"
-                size="compact-xs"
-                onClick={() =>
+        {userPreferences.backgroundEnabled && (
+          <>
+            <Divider label={<>Background</>} labelPosition="left" />
+            <SettingContainer
+              label="Background URL"
+              description={
+                <Group gap={4}>
+                  <Button
+                    variant="light"
+                    color="gray"
+                    size="compact-xs"
+                    onClick={() =>
+                      setUserPreference({
+                        backgroundUrl: 'https://i.imgur.com/CrHYfTG.jpeg',
+                      })
+                    }
+                  >
+                    Try this
+                  </Button>
+                  <Button
+                    variant="light"
+                    color="gray"
+                    size="compact-xs"
+                    onClick={() =>
+                      setUserPreference({
+                        backgroundUrl: 'https://i.imgur.com/hnkdzAX.jpeg',
+                      })
+                    }
+                  >
+                    or this
+                  </Button>
+                  <Button
+                    variant="light"
+                    color="gray"
+                    size="compact-xs"
+                    onClick={() =>
+                      setUserPreference({
+                        backgroundUrl: `https://source.unsplash.com/random?random=${Math.random()}`,
+                      })
+                    }
+                  >
+                    or random
+                  </Button>
+                </Group>
+              }
+            >
+              <Input
+                placeholder="https:// or data:"
+                value={userPreferences.backgroundUrl}
+                leftSection={<i className="bi bi-globe" />}
+                onChange={e =>
                   setUserPreference({
-                    backgroundUrl: 'https://i.imgur.com/CrHYfTG.jpeg',
+                    backgroundUrl: e.currentTarget.value,
                   })
                 }
-              >
-                Try this
-              </Button>
-              <Button
-                variant="light"
-                color="gray"
-                size="compact-xs"
-                onClick={() =>
+              />
+            </SettingContainer>
+            <SettingContainer label="Opacity">
+              <Slider
+                defaultValue={0.1}
+                step={0.01}
+                max={1}
+                min={0}
+                value={userPreferences.backgroundOpacity}
+                onChange={value =>
                   setUserPreference({
-                    backgroundUrl: 'https://i.imgur.com/hnkdzAX.jpeg',
+                    backgroundOpacity: value,
                   })
                 }
-              >
-                or this
-              </Button>
-              <Button
-                variant="light"
-                color="gray"
-                size="compact-xs"
-                onClick={() =>
+              />
+            </SettingContainer>
+            <SettingContainer label="Blur">
+              <Slider
+                defaultValue={0}
+                step={0.01}
+                max={90}
+                min={0}
+                value={userPreferences.backgroundBlur}
+                onChange={value =>
                   setUserPreference({
-                    backgroundUrl: `https://source.unsplash.com/random?random=${Math.random()}`,
+                    backgroundBlur: value,
                   })
                 }
-              >
-                or random
-              </Button>
-            </Group>
-          }
-        >
-          <Input
-            placeholder="https:// or data:"
-            value={userPreferences.backgroundUrl}
-            leftSection={<i className="bi bi-globe" />}
-            onChange={e =>
-              setUserPreference({
-                backgroundUrl: e.currentTarget.value,
-              })
-            }
-          />
-        </SettingContainer>
-        <SettingContainer label="Opacity">
-          <Slider
-            defaultValue={0.1}
-            step={0.01}
-            max={1}
-            min={0}
-            value={userPreferences.backgroundOpacity}
-            onChange={value =>
-              setUserPreference({
-                backgroundOpacity: value,
-              })
-            }
-          />
-        </SettingContainer>
-        <SettingContainer label="Blur">
-          <Slider
-            defaultValue={0}
-            step={0.01}
-            max={90}
-            min={0}
-            value={userPreferences.backgroundBlur}
-            onChange={value =>
-              setUserPreference({
-                backgroundBlur: value,
-              })
-            }
-          />
-        </SettingContainer>
-        <SettingContainer label="Blend mode">
-          <Select
-            value={userPreferences.backgroundBlendMode}
-            defaultValue="screen"
-            onChange={value =>
-              value &&
-              setUserPreference({
-                backgroundBlendMode:
-                  value as UserPreferences['backgroundBlendMode'],
-              })
-            }
-            data={OPTIONS_MIX_BLEND_MODE}
-            allowDeselect={false}
-          />
-        </SettingContainer>
+              />
+            </SettingContainer>
+            <SettingContainer label="Blend mode">
+              <Select
+                value={userPreferences.backgroundBlendMode}
+                defaultValue="screen"
+                onChange={value =>
+                  value &&
+                  setUserPreference({
+                    backgroundBlendMode:
+                      value as UserPreferences['backgroundBlendMode'],
+                  })
+                }
+                data={OPTIONS_MIX_BLEND_MODE}
+                allowDeselect={false}
+              />
+            </SettingContainer>
+          </>
+        )}
       </Stack>
     </Modal>
   );

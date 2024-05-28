@@ -48,6 +48,7 @@ import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { Tags } from './Tags';
 import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
+import { useUserPreferences } from './useUserPreferences';
 
 import 'react-modern-drawer/dist/index.css';
 import styles from '../styles/SearchPage.module.scss';
@@ -90,7 +91,6 @@ const HDXHistogram = memo(
     config: { dateRange, where },
     onTimeRangeSelect,
     isLive,
-    isUTC,
   }: {
     config: {
       dateRange: [Date, Date];
@@ -98,8 +98,11 @@ const HDXHistogram = memo(
     };
     onTimeRangeSelect: (start: Date, end: Date) => void;
     isLive: boolean;
-    isUTC: boolean;
   }) => {
+    const {
+      userPreferences: { isUTC },
+    } = useUserPreferences();
+
     const { data: histogramResults, isLoading: isHistogramResultsLoading } =
       api.useLogHistogram(
         where,
@@ -216,7 +219,7 @@ const HDXHistogram = memo(
             }
             tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
           />
-          <Tooltip content={<HistogramBarChartTooltip isUTC={isUTC} />} />
+          <Tooltip content={<HistogramBarChartTooltip />} />
           <Bar dataKey="info" stackId="a" fill="#50FA7B" maxBarSize={24} />
           <Bar dataKey="error" stackId="a" fill="#FF5D5B" maxBarSize={24} />
           {highlightStart && highlightEnd ? (
@@ -272,8 +275,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
   generateChartUrl,
   isLive,
   setIsLive,
-  isUTC,
-  setIsUTC,
   onShowPatternsClick,
 }: {
   config: {
@@ -293,8 +294,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
   onPropertyAddClick: (name: string, value: string | boolean | number) => void;
   isLive: boolean;
   setIsLive: (isLive: boolean) => void;
-  isUTC: boolean;
-  setIsUTC: (isUTC: boolean) => void;
   onShowPatternsClick: () => void;
 }) {
   const [openedLogQuery, setOpenedLogQuery] = useQueryParams(
@@ -362,7 +361,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
       <LogTable
         tableId="search-table"
         isLive={isLive}
-        setIsUTC={setIsUTC}
         onScroll={useCallback(
           (scrollTop: number) => {
             // If the user scrolls a bit down, kick out of live mode
@@ -375,7 +373,6 @@ const LogViewerContainer = memo(function LogViewerContainer({
         highlightedLineId={openedLog?.id}
         config={config}
         onPropertySearchClick={onPropertySearchClick}
-        formatUTC={isUTC}
         onRowExpandClick={useCallback(
           (id: string, sortKey: string) => {
             setOpenedLog({ id, sortKey });
@@ -399,7 +396,6 @@ function SearchPage() {
     'search',
   );
 
-  const [isUTC, setIsUTC] = useState(false);
   const {
     isReady,
     isLive,
@@ -409,7 +405,7 @@ function SearchPage() {
     onSearch,
     setIsLive,
     onTimeRangeSelect,
-  } = useTimeQuery({ isUTC });
+  } = useTimeQuery({});
 
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   useEffect(() => {
@@ -461,6 +457,10 @@ function SearchPage() {
     { preventDefault: true },
     [searchInput],
   );
+
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
 
   const [saveSearchModalMode, setSaveSearchModalMode] = useState<
     'update' | 'save' | 'hidden'
@@ -975,7 +975,6 @@ function SearchPage() {
                   config={chartsConfig}
                   onTimeRangeSelect={onTimeRangeSelect}
                   isLive={isLive}
-                  isUTC={isUTC}
                 />
               ) : null}
             </div>
@@ -1008,8 +1007,6 @@ function SearchPage() {
                 onPropertySearchClick={onPropertySearchClick}
                 isLive={isLive}
                 setIsLive={setIsLive}
-                isUTC={isUTC}
-                setIsUTC={setIsUTC}
                 onShowPatternsClick={() => {
                   setIsLive(false);
                   setResultsMode('patterns');
@@ -1017,7 +1014,6 @@ function SearchPage() {
               />
             ) : (
               <MemoPatternTableWithSidePanel
-                isUTC={isUTC}
                 config={chartsConfig}
                 onShowEventsClick={onShowEventsClick}
               />

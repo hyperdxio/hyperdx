@@ -753,7 +753,6 @@ export default function KubernetesDashboardPage() {
     setDisplayedTimeInputValue,
     onSearch,
   } = useTimeQuery({
-    isUTC: false,
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
@@ -991,8 +990,6 @@ export default function KubernetesDashboardPage() {
                         'object.regarding.name': 'Name',
                       }}
                       isLive={false}
-                      isUTC={false}
-                      setIsUTC={() => {}}
                       onPropertySearchClick={() => {}}
                       showServiceColumn={false}
                     />

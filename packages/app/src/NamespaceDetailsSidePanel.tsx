@@ -166,8 +166,6 @@ function NamespaceLogs({
             where: _where,
           }}
           isLive={false}
-          isUTC={false}
-          setIsUTC={() => {}}
           onPropertySearchClick={() => {}}
         />
       </Card.Section>
@@ -192,7 +190,6 @@ export default function NamespaceDetailsSidePanel() {
   }, [namespaceName]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
-    isUTC: false,
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,

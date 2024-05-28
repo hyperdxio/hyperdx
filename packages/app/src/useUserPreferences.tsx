@@ -8,6 +8,7 @@ export type UserPreferences = {
   timeFormat: '12h' | '24h';
   theme: 'light' | 'dark';
   font: 'IBM Plex Mono' | 'Inter';
+  backgroundEnabled?: boolean;
   backgroundUrl?: string;
   backgroundBlur?: number;
   backgroundOpacity?: number;
@@ -18,7 +19,7 @@ export const userPreferencesAtom = atomWithStorage<UserPreferences>(
   'hdx-user-preferences',
   {
     isUTC: false,
-    timeFormat: '24h',
+    timeFormat: '12h',
     theme: 'dark',
     font: 'IBM Plex Mono',
   },
@@ -42,7 +43,7 @@ export const useUserPreferences = () => {
 };
 
 export const useBackground = (prefs: UserPreferences) => {
-  if (!prefs.backgroundUrl) {
+  if (!prefs.backgroundEnabled || !prefs.backgroundUrl) {
     return null;
   }
 

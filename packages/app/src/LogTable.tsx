@@ -141,19 +141,16 @@ function LogTableSettingsModal({
   onHide,
   onDone,
   initialAdditionalColumns,
-  initialIsUTC,
   initialWrapLines,
   downloadCSVButton,
 }: {
   initialAdditionalColumns: string[];
-  initialIsUTC: boolean;
   initialWrapLines: boolean;
   show: boolean;
   onHide: () => void;
   onDone: (settings: {
     additionalColumns: string[];
     wrapLines: boolean;
-    isUTC: boolean;
   }) => void;
   downloadCSVButton: JSX.Element;
 }) {
@@ -161,7 +158,6 @@ function LogTableSettingsModal({
     initialAdditionalColumns,
   );
   const [wrapLines, setWrapLines] = useState(initialWrapLines);
-  const [isUTC, setIsUTC] = useState(initialIsUTC);
 
   return (
     <Modal
@@ -187,14 +183,9 @@ function LogTableSettingsModal({
           onChange={() => setWrapLines(!wrapLines)}
           label="Wrap Lines"
         />
-        <Checkbox
-          id="utc"
-          className="mt-4"
-          labelClassName="fs-7"
-          checked={isUTC}
-          onChange={() => setIsUTC(!isUTC)}
-          label="Use UTC time instead of local time"
-        />
+        <div className="mt-4 text-muted fs-8">
+          UTC setting moved to User Preferences
+        </div>
         <div className="mt-4">
           <div className="mb-2">Download Search Results</div>
           {downloadCSVButton}
@@ -204,7 +195,7 @@ function LogTableSettingsModal({
             variant="outline-success"
             className="fs-7 text-muted-hover"
             onClick={() => {
-              onDone({ additionalColumns, wrapLines, isUTC });
+              onDone({ additionalColumns, wrapLines });
               onHide();
             }}
           >
@@ -224,7 +215,6 @@ export const RawLogTable = memo(
     tableId,
     displayedColumns,
     fetchNextPage,
-    formatUTC,
     hasNextPage,
     highlightedLineId,
     isLive,
@@ -260,7 +250,6 @@ export const RawLogTable = memo(
     //   value: string | number | boolean,
     // ) => void;
     hasNextPage: boolean;
-    formatUTC: boolean;
     highlightedLineId: string | undefined;
     onScroll: (scrollTop: number) => void;
     isLive: boolean;
@@ -283,7 +272,7 @@ export const RawLogTable = memo(
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
     const {
-      userPreferences: { timeFormat },
+      userPreferences: { timeFormat, isUTC },
     } = useUserPreferences();
     const tsFormat = TIME_TOKENS[timeFormat];
 
@@ -341,13 +330,13 @@ export const RawLogTable = memo(
           header: () =>
             isSmallScreen
               ? 'Time'
-              : `Timestamp${formatUTC ? ' (UTC)' : ' (Local)'}`,
+              : `Timestamp${isUTC ? ' (UTC)' : ' (Local)'}`,
           cell: info => {
             // FIXME: since original timestamp doesn't come with timezone info
             const date = new Date(info.getValue<string>());
             return (
               <span className="text-muted">
-                {formatUTC
+                {isUTC
                   ? formatInTimeZone(
                       date,
                       'Etc/UTC',
@@ -437,7 +426,7 @@ export const RawLogTable = memo(
         },
       ],
       [
-        formatUTC,
+        isUTC,
         highlightedLineId,
         onRowExpandClick,
         displayedColumns,
@@ -796,10 +785,8 @@ export default function LogTable({
   highlightedLineId,
   onPropertySearchClick,
   onRowExpandClick,
-  formatUTC,
   isLive,
   onScroll,
-  setIsUTC,
   onEnd,
   onShowPatternsClick,
   tableId,
@@ -818,10 +805,8 @@ export default function LogTable({
     value: string | number | boolean,
   ) => void;
   onRowExpandClick: (logId: string, sortKey: string) => void;
-  formatUTC: boolean;
   onScroll: (scrollTop: number) => void;
   isLive: boolean;
-  setIsUTC: (isUTC: boolean) => void;
   onEnd?: () => void;
   onShowPatternsClick?: () => void;
   tableId?: string;
@@ -837,6 +822,10 @@ export default function LogTable({
   const prevQueryConfig = usePrevious({ searchedQuery, isLive });
 
   const resultsKey = [searchedQuery, displayedColumns, isLive].join(':');
+
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
 
   const {
     results: searchResults,
@@ -892,16 +881,14 @@ export default function LogTable({
         onHide={() => setInstructionsOpen(false)}
       />
       <LogTableSettingsModal
-        key={`${formatUTC} ${displayedColumns} ${wrapLines}`}
+        key={`${isUTC} ${displayedColumns} ${wrapLines}`}
         show={settingsOpen}
-        initialIsUTC={formatUTC}
         initialAdditionalColumns={displayedColumns}
         initialWrapLines={wrapLines}
         onHide={() => setSettingsOpen(false)}
-        onDone={({ additionalColumns, wrapLines, isUTC }) => {
+        onDone={({ additionalColumns, wrapLines }) => {
           setDisplayedColumns(additionalColumns);
           setWrapLines(wrapLines);
-          setIsUTC(isUTC);
         }}
         downloadCSVButton={
           <DownloadCSVButton
@@ -935,7 +922,6 @@ export default function LogTable({
         )}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPageWhenNotLive}
-        formatUTC={formatUTC}
         onRowExpandClick={onRowExpandClick}
         onScroll={onScroll}
         onShowPatternsClick={onShowPatternsClick}

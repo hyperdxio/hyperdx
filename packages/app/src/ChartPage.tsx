@@ -137,7 +137,6 @@ function GraphPage() {
 
   const { isReady, searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
-      isUTC: false,
       initialDisplayValue: 'Past 1h',
       initialTimeRange: defaultTimeRange,
     });

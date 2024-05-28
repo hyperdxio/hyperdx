@@ -8,14 +8,12 @@ import { useDisplayedColumns } from './useDisplayedColumns';
 
 export function LogTableWithSidePanel({
   config,
-  isUTC,
   isLive,
   onScroll,
   selectedSavedSearch,
   onPropertySearchClick,
   onRowExpandClick,
   onPropertyAddClick,
-  setIsUTC,
   onSettled,
   columnNameMap,
   showServiceColumn,
@@ -25,7 +23,6 @@ export function LogTableWithSidePanel({
     dateRange: [Date, Date];
     columns?: string[];
   };
-  isUTC: boolean;
   isLive: boolean;
   columnNameMap?: Record<string, string>;
   showServiceColumn?: boolean;
@@ -34,7 +31,6 @@ export function LogTableWithSidePanel({
     property: string,
     value: string | number | boolean,
   ) => void;
-  setIsUTC: (isUTC: boolean) => void;
 
   onPropertyAddClick?: (name: string, value: string | boolean | number) => void;
   onRowExpandClick?: (logId: string, sortKey: string) => void;
@@ -111,12 +107,10 @@ export function LogTableWithSidePanel({
       ) : null}
       <LogTable
         isLive={isLive}
-        setIsUTC={setIsUTC}
         onScroll={onScroll ?? voidFn}
         highlightedLineId={openedLog?.id}
         config={config}
         onPropertySearchClick={onPropertySearchClick}
-        formatUTC={isUTC}
         onRowExpandClick={useCallback(
           (id: string, sortKey: string) => {
             setOpenedLog({ id, sortKey });
