@@ -15,16 +15,16 @@ import {
   Text,
 } from '@mantine/core';
 
-import { UserPreferences, useUserPreferencesV2 } from './useUserPreferences';
+import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
-const OPTION_FONTS = [
+const OPTIONS_FONTS = [
   'IBM Plex Mono',
   'Roboto Mono',
   'Inter',
   { value: 'or use your own font', disabled: true },
 ];
 
-const OPTION_THEMES = [
+const OPTIONS_THEMES = [
   { label: 'Dark', value: 'dark' },
   { label: 'Fake Light', value: 'light' },
 ];
@@ -81,7 +81,7 @@ export const UserPreferencesModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
-  const { userPreferences, setUserPreference } = useUserPreferencesV2();
+  const { userPreferences, setUserPreference } = useUserPreferences();
 
   return (
     <Modal
@@ -152,7 +152,7 @@ export const UserPreferencesModal = ({
                 theme: value as UserPreferences['theme'],
               })
             }
-            data={OPTION_THEMES}
+            data={OPTIONS_THEMES}
             allowDeselect={false}
           />
         </SettingContainer>
@@ -169,7 +169,7 @@ export const UserPreferencesModal = ({
                 font: value as UserPreferences['font'],
               })
             }
-            data={OPTION_FONTS}
+            data={OPTIONS_FONTS}
           />
         </SettingContainer>
 

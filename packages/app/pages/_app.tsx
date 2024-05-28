@@ -18,8 +18,7 @@ import { apiConfigs } from '../src/api';
 import * as config from '../src/config';
 import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
-import { useBackground, useUserPreferencesV2 } from '../src/useUserPreferences';
-import { UserPreferencesProvider } from '../src/useUserPreferences';
+import { useBackground, useUserPreferences } from '../src/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -125,7 +124,7 @@ type AppPropsWithLayout = AppProps & {
 };
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
-  const { userPreferences } = useUserPreferencesV2();
+  const { userPreferences } = useUserPreferences();
   const confirmModal = useConfirmModal();
   const background = useBackground(userPreferences);
 
@@ -217,15 +216,13 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <UserPreferencesProvider>
-                <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
-                  <Notifications />
-                  {getLayout(<Component {...pageProps} />)}
-                </MantineProvider>
-                <ReactQueryDevtools initialIsOpen={false} />
-                {confirmModal}
-                {background}
-              </UserPreferencesProvider>
+              <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
+                <Notifications />
+                {getLayout(<Component {...pageProps} />)}
+              </MantineProvider>
+              <ReactQueryDevtools initialIsOpen={false} />
+              {confirmModal}
+              {background}
             </QueryClientProvider>
           </QueryParamProvider>
         </HDXQueryParamProvider>

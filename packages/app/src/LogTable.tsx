@@ -28,8 +28,7 @@ import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
 import { useSearchEventStream } from './search';
 import { UNDEFINED_WIDTH } from './tableUtils';
-import type { TimeFormat } from './useUserPreferences';
-import useUserPreferences from './useUserPreferences';
+import { useUserPreferences } from './useUserPreferences';
 import { useLocalStorage, usePrevious, useWindowSize } from './utils';
 import { TIME_TOKENS } from './utils';
 
@@ -283,7 +282,9 @@ export const RawLogTable = memo(
 
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
-    const timeFormat: TimeFormat = useUserPreferences().timeFormat;
+    const {
+      userPreferences: { timeFormat },
+    } = useUserPreferences();
     const tsFormat = TIME_TOKENS[timeFormat];
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
