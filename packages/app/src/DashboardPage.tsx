@@ -351,8 +351,6 @@ const Tile = forwardRef(
                   <LogTableWithSidePanel
                     config={config}
                     isLive={false}
-                    isUTC={false}
-                    setIsUTC={() => {}}
                     onPropertySearchClick={() => {}}
                     onSettled={onSettled}
                   />
@@ -692,7 +690,6 @@ export default function DashboardPage() {
 
   const { searchedTimeRange, displayedTimeInputValue, onSearch } =
     useNewTimeQuery({
-      isUTC: false,
       initialDisplayValue: 'Past 1h',
       initialTimeRange: defaultTimeRange,
     });

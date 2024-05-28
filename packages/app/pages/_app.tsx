@@ -18,7 +18,7 @@ import { apiConfigs } from '../src/api';
 import * as config from '../src/config';
 import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
-import { UserPreferencesProvider } from '../src/useUserPreferences';
+import { useBackground, useUserPreferences } from '../src/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -29,12 +29,17 @@ import '../src/LandingPage.scss';
 const queryClient = new QueryClient();
 import HyperDX from '@hyperdx/browser';
 
-const mantineTheme: MantineThemeOverride = {
-  fontFamily: 'IBM Plex Mono, sans-serif',
+const makeTheme = ({
+  fontFamily,
+}: {
+  fontFamily: string;
+}): MantineThemeOverride => ({
+  fontFamily,
   primaryColor: 'green',
   primaryShade: 8,
   white: '#fff',
   fontSizes: {
+    xxs: '11px',
     xs: '12px',
     sm: '13px',
     md: '15px',
@@ -68,13 +73,13 @@ const mantineTheme: MantineThemeOverride = {
     ],
   },
   headings: {
-    fontFamily: 'IBM Plex Mono, sans-serif',
+    fontFamily,
   },
   components: {
     Modal: {
       styles: {
         header: {
-          fontFamily: 'IBM Plex Mono, sans-serif',
+          fontFamily,
           fontWeight: 'bold',
         },
       },
@@ -108,7 +113,7 @@ const mantineTheme: MantineThemeOverride = {
       },
     },
   },
-};
+});
 
 export type NextPageWithLayout<P = {}, IP = P> = NextPage<P, IP> & {
   getLayout?: (page: React.ReactElement) => React.ReactNode;
@@ -119,7 +124,9 @@ type AppPropsWithLayout = AppProps & {
 };
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+  const { userPreferences } = useUserPreferences();
   const confirmModal = useConfirmModal();
+  const background = useBackground(userPreferences);
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -162,6 +169,20 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       });
   }, []);
 
+  useEffect(() => {
+    document.documentElement.className =
+      userPreferences.theme === 'dark' ? 'hdx-theme-dark' : 'hdx-theme-light';
+    // TODO: Remove after migration to Mantine
+    document.body.style.fontFamily = userPreferences.font
+      ? `"${userPreferences.font}", sans-serif`
+      : '"IBM Plex Mono"';
+  }, [userPreferences.theme, userPreferences.font]);
+
+  const mantineTheme = React.useMemo(
+    () => makeTheme({ fontFamily: userPreferences.font }),
+    [userPreferences.font],
+  );
+
   const getLayout = Component.getLayout ?? (page => page);
 
   return (
@@ -195,14 +216,13 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <UserPreferencesProvider>
-                <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
-                  <Notifications />
-                  {getLayout(<Component {...pageProps} />)}
-                </MantineProvider>
-                <ReactQueryDevtools initialIsOpen={false} />
-                {confirmModal}
-              </UserPreferencesProvider>
+              <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
+                <Notifications />
+                {getLayout(<Component {...pageProps} />)}
+              </MantineProvider>
+              <ReactQueryDevtools initialIsOpen={false} />
+              {confirmModal}
+              {background}
             </QueryClientProvider>
           </QueryParamProvider>
         </HDXQueryParamProvider>
