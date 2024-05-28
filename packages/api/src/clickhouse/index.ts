@@ -2371,12 +2371,20 @@ export const getSessions = async ({
     ],
   );
 
+  // Filter by either a record init span, or a visibility span
+  // 1. Record init is emitted on SDK initialization and should only happen
+  // if there is an actual recording being done for the session (ex. no background sessions)
+  // 2. Visibility is needed as sessions are rolled over every 4 hours, and therefore
+  // there isn't always a record init event in every session if the user has been
+  // on a page for longer than 4 hours. We're using the visibility event
+  // as a proxy for a user interacting with the page and likely will have some
+  // recording for the session
   const sessionsWithRecordingsQuery = SqlString.format(
     `WITH sessions AS (${sessionsWithSearchQuery}),
 sessionIdsWithRecordings AS (
   SELECT DISTINCT _rum_session_id as sessionId
   FROM ??
-  WHERE span_name='record init' 
+  WHERE (span_name='record init' OR span_name='visibility')
     AND (_rum_session_id IN (SELECT sessions.sessionId FROM sessions))
     AND (?)
 )
