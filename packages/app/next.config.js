@@ -1,4 +1,7 @@
+const { configureRuntimeEnv } = require('next-runtime-env/build/configure');
 const { version } = require('./package.json');
+
+configureRuntimeEnv();
 
 const withNextra = require('nextra')({
   theme: 'nextra-theme-docs',

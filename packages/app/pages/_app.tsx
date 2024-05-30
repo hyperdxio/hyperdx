@@ -14,8 +14,6 @@ import {
 } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
-import { apiConfigs } from '../src/api';
-import * as config from '../src/config';
 import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
 import { useBackground, useUserPreferences } from '../src/useUserPreferences';
@@ -133,16 +131,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     fetch('/api/config')
       .then(res => res.json())
       .then(_jsonData => {
-        // Set API url dynamically for users who aren't rebuilding
-        try {
-          const url = new URL(_jsonData.apiServerUrl);
-          if (url != null) {
-            apiConfigs.prefixUrl = url.toString().replace(/\/$/, '');
-          }
-        } catch (err) {
-          // ignore
-        }
-
         if (_jsonData?.apiKey) {
           let hostname;
           try {

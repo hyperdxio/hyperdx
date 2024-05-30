@@ -10336,6 +10336,13 @@ next-query-params@^4.1.0:
   dependencies:
     tslib "^2.0.3"
 
+next-runtime-env@^1:
+  version "1.7.4"
+  resolved "https://registry.yarnpkg.com/next-runtime-env/-/next-runtime-env-1.7.4.tgz#83b1e93b2fa626e00a952de0ad390085cf132880"
+  integrity sha512-fUmvNxscQt5B1yrHoAtmQC/VFqbHATbsHgwpz9KJO0sBgjfEzITqkOK5b+YDhekiGdQoaznTGyQsp4ty5VabUA==
+  dependencies:
+    chalk "^4.1.2"
+
 next-seo@^4.28.1:
   version "4.29.0"
   resolved "https://registry.yarnpkg.com/next-seo/-/next-seo-4.29.0.tgz#d281e95ba47914117cc99e9e468599f0547d9b9b"

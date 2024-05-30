@@ -44,7 +44,10 @@ RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
 FROM node:18.20.3-alpine AS prod
 WORKDIR /app
 
+ARG SERVER_URL
+
 ENV NODE_ENV production
+ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
 
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001

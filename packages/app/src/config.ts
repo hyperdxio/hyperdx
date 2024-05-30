@@ -1,5 +1,7 @@
+import { env } from 'next-runtime-env';
+
 export const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:8000'; // NEXT_PUBLIC_SERVER_URL can be empty string
+  env('NEXT_PUBLIC_SERVER_URL') || 'http://localhost:8000'; // NEXT_PUBLIC_SERVER_URL can be empty string
 
 export const HDX_API_KEY = process.env.HYPERDX_API_KEY as string; // for nextjs server
 export const HDX_SERVICE_NAME =
