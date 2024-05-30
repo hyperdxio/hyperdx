@@ -347,6 +347,12 @@ export class SQLSerializer implements Serializer {
       );
     }
 
+    // // If the query is empty, or is a empty quoted string ex: ""
+    // // we should match all
+    if (term.length === 0) {
+      return '(1=1)';
+    }
+
     if (isImplicitField && this.options?.useTokenization) {
       // For the _source column, we'll try to do whole word searches by default
       // to utilize the token bloom filter unless a prefix/sufix wildcard is specified
