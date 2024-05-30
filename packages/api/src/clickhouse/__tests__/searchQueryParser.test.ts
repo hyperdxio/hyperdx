@@ -158,6 +158,22 @@ describe('searchQueryParser', () => {
       );
     });
 
+    it('parses empty quoted terms', async () => {
+      const ast = parse('"foo" bar ""');
+      expect(
+        await genWhereSQL(
+          ast,
+          propertyTypesMappingsModel,
+          'TEAM_ID_UNIT_TESTS',
+        ),
+      ).toEqual(
+        `${hasToken(SOURCE_COL, 'foo')} AND ${hasToken(
+          SOURCE_COL,
+          'bar',
+        )} AND (1=1)`,
+      );
+    });
+
     it('parses bare terms with symbols', async () => {
       const ast = parse('scott!');
       expect(
