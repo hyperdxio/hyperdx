@@ -7,15 +7,11 @@ import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ReactQueryDevtools } from 'react-query/devtools';
 import { QueryParamProvider } from 'use-query-params';
-import {
-  ColorSchemeScript,
-  MantineProvider,
-  MantineThemeOverride,
-} from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
+import HyperDX from '@hyperdx/browser';
+import { ColorSchemeScript } from '@mantine/core';
 
 import { apiConfigs } from '../src/api';
-import * as config from '../src/config';
+import { ThemeWrapper } from '../src/ThemeWrapper';
 import { useConfirmModal } from '../src/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
 import { useBackground, useUserPreferences } from '../src/useUserPreferences';
@@ -27,93 +23,6 @@ import '../styles/app.scss';
 import '../src/LandingPage.scss';
 
 const queryClient = new QueryClient();
-import HyperDX from '@hyperdx/browser';
-
-const makeTheme = ({
-  fontFamily,
-}: {
-  fontFamily: string;
-}): MantineThemeOverride => ({
-  fontFamily,
-  primaryColor: 'green',
-  primaryShade: 8,
-  white: '#fff',
-  fontSizes: {
-    xxs: '11px',
-    xs: '12px',
-    sm: '13px',
-    md: '15px',
-    lg: '16px',
-    xl: '18px',
-  },
-  colors: {
-    green: [
-      '#e2ffeb',
-      '#cdffd9',
-      '#9bfdb5',
-      '#67fb8d',
-      '#3bf96b',
-      '#1ef956',
-      '#03f84a',
-      '#00dd3a',
-      '#00c531',
-      '#00aa23',
-    ],
-    dark: [
-      '#C1C2C5',
-      '#A6A7AB',
-      '#909296',
-      '#5C5F66',
-      '#373A40',
-      '#2C2E33',
-      '#25262B',
-      '#1A1B1E',
-      '#141517',
-      '#101113',
-    ],
-  },
-  headings: {
-    fontFamily,
-  },
-  components: {
-    Modal: {
-      styles: {
-        header: {
-          fontFamily,
-          fontWeight: 'bold',
-        },
-      },
-    },
-    InputWrapper: {
-      styles: {
-        label: {
-          marginBottom: 4,
-        },
-        description: {
-          marginBottom: 8,
-          lineHeight: 1.3,
-        },
-      },
-    },
-    Card: {
-      styles: {
-        root: {
-          backgroundColor: '#191B1F',
-        },
-      },
-    },
-    Checkbox: {
-      styles: {
-        input: {
-          cursor: 'pointer',
-        },
-        label: {
-          cursor: 'pointer',
-        },
-      },
-    },
-  },
-});
 
 export type NextPageWithLayout<P = {}, IP = P> = NextPage<P, IP> & {
   getLayout?: (page: React.ReactElement) => React.ReactNode;
@@ -178,11 +87,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       : '"IBM Plex Mono"';
   }, [userPreferences.theme, userPreferences.font]);
 
-  const mantineTheme = React.useMemo(
-    () => makeTheme({ fontFamily: userPreferences.font }),
-    [userPreferences.font],
-  );
-
   const getLayout = Component.getLayout ?? (page => page);
 
   return (
@@ -216,10 +120,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <MantineProvider forceColorScheme="dark" theme={mantineTheme}>
-                <Notifications />
+              <ThemeWrapper fontFamily={userPreferences.font}>
                 {getLayout(<Component {...pageProps} />)}
-              </MantineProvider>
+              </ThemeWrapper>
               <ReactQueryDevtools initialIsOpen={false} />
               {confirmModal}
               {background}
