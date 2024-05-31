@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Preview } from '@storybook/react';
+import { QueryClient, QueryClientProvider } from 'react-query';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -9,12 +10,16 @@ import '../src/LandingPage.scss';
 
 import { ThemeWrapper } from '../src/ThemeWrapper';
 
+const queryClient = new QueryClient();
+
 const preview: Preview = {
   decorators: [
     Story => (
-      <ThemeWrapper>
-        <Story />
-      </ThemeWrapper>
+      <QueryClientProvider client={queryClient}>
+        <ThemeWrapper>
+          <Story />
+        </ThemeWrapper>
+      </QueryClientProvider>
     ),
   ],
 };

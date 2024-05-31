@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { Button, Modal } from 'react-bootstrap';
+import { Button, Modal } from '@mantine/core';
 
 import api from './api';
 import Clipboard from './Clipboard';
@@ -56,156 +56,153 @@ export default function InstallInstructionModal({
 
   return (
     <Modal
-      aria-labelledby="contained-modal-title-vcenter"
       centered
-      onHide={onHide}
-      show={show}
+      onClose={onHide}
+      opened={show}
       size="lg"
+      title="Install HyperDX"
     >
-      <Modal.Body className="bg-hdx-dark rounded">
-        <div className="fs-4 mb-4">Install HyperDX</div>
-        {team != null && (
-          <div className="mb-4">
-            <CopyableValue
-              label={<span className="text-muted me-2">Your API Key: </span>}
-              value={team.apiKey}
-            />
-          </div>
-        )}
-        <div className="fs-7 mb-4">
-          Click on a link below to view installation instructions for your
-          application.
+      {team != null && (
+        <div className="mb-4">
+          <CopyableValue
+            label={<span className="text-muted me-2">Your API Key: </span>}
+            value={team.apiKey}
+          />
         </div>
-        <div className="fs-5 mb-2">Backend</div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/javascript"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Node.js
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/golang"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Go
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/python"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Python
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/java"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Java
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/elixir"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Elixir
-          </a>
-          <span className="ms-2 text-muted">(Logs)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/ruby"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Ruby on Rails
-          </a>
-          <span className="ms-2 text-muted">(Traces)</span>
-        </div>
-        <div className="fs-5 mb-2 mt-4">Platform</div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/fly"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fly.io
-          </a>
-          <span className="ms-2 text-muted">(Logs)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/cloudflare"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Cloudflare Workers
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/kubernetes"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Kubernetes
-          </a>
-          <span className="ms-2 text-muted">(Logs + Metrics)</span>
-        </div>
-        <div className="fs-5 mb-2 mt-4">Browser</div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/browser"
-            target="_blank"
-            rel="noreferrer"
-          >
-            JavaScript/TypeScript
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-5 mb-2 mt-4">Data Collector</div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/opentelemetry"
-            target="_blank"
-            rel="noreferrer"
-          >
-            OpenTelemetry
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/fluentd"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fluentd
-          </a>
-          <span className="ms-2 text-muted">(Logs)</span>
-        </div>
-        <div className="mt-4">
-          <Button variant="dark" onClick={() => onHide()}>
-            Cancel
-          </Button>
-        </div>
-      </Modal.Body>
+      )}
+      <div className="fs-7 mb-4">
+        Click on a link below to view installation instructions for your
+        application.
+      </div>
+      <div className="fs-5 mb-2">Backend</div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/javascript"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Node.js
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/golang"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Go
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/python"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Python
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/java"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Java
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/elixir"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Elixir
+        </a>
+        <span className="ms-2 text-muted">(Logs)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/ruby"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Ruby on Rails
+        </a>
+        <span className="ms-2 text-muted">(Traces)</span>
+      </div>
+      <div className="fs-5 mb-2 mt-4">Platform</div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/fly"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Fly.io
+        </a>
+        <span className="ms-2 text-muted">(Logs)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/cloudflare"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Cloudflare Workers
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/kubernetes"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Kubernetes
+        </a>
+        <span className="ms-2 text-muted">(Logs + Metrics)</span>
+      </div>
+      <div className="fs-5 mb-2 mt-4">Browser</div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/browser"
+          target="_blank"
+          rel="noreferrer"
+        >
+          JavaScript/TypeScript
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-5 mb-2 mt-4">Data Collector</div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/opentelemetry"
+          target="_blank"
+          rel="noreferrer"
+        >
+          OpenTelemetry
+        </a>
+        <span className="ms-2 text-muted">(Logs + Traces)</span>
+      </div>
+      <div className="fs-6 mb-2">
+        <a
+          href="https://hyperdx.io/docs/install/fluentd"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Fluentd
+        </a>
+        <span className="ms-2 text-muted">(Logs)</span>
+      </div>
+      <div className="mt-4">
+        <Button variant="default" onClick={() => onHide()}>
+          Cancel
+        </Button>
+      </div>
     </Modal>
   );
 }

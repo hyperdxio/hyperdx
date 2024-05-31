@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Button, Form, Modal } from 'react-bootstrap';
-import { Button as MButton, Text } from '@mantine/core';
+import { Form, Modal } from 'react-bootstrap';
+import { Button as Button, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from './api';
@@ -115,9 +115,9 @@ export default function SaveSearchModal({
               defaultValue={searchName}
             />
           </Form.Group>
-          <MButton size="sm" variant="light" type="submit">
+          <Button size="sm" variant="light" type="submit">
             {mode === 'update' ? 'Update' : 'Save'}
-          </MButton>
+          </Button>
         </Form>
       </Modal.Body>
     </Modal>
