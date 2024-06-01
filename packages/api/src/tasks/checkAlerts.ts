@@ -100,7 +100,7 @@ export const doesExceedThreshold = (
   threshold: number,
   value: number,
 ) => {
-  if (isThresholdTypeAbove && value > threshold) {
+  if (isThresholdTypeAbove && value >= threshold) {
     return true;
   } else if (!isThresholdTypeAbove && value < threshold) {
     return true;
