@@ -103,7 +103,7 @@ function AlertForm({
         <div className="me-2 mb-2">
           <Form.Select id="type" size="sm" {...register('type')}>
             <option key="presence" value="presence">
-              more than
+              more than or equal to
             </option>
             <option key="absence" value="absence">
               less than
