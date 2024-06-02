@@ -3,7 +3,6 @@ import { Button, Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
 
 import api from './api';
 import Logo from './Logo';
-import NavHoverDropdown from './NavHoverDropdown';
 
 export default function LandingHeader({
   activeKey,

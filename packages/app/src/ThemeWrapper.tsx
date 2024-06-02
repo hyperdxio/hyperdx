@@ -3,7 +3,7 @@ import { MantineProvider, MantineThemeOverride } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
 const makeTheme = ({
-  fontFamily = 'IBM Plex Sans, sans-serif',
+  fontFamily = '"IBM Plex Sans", monospace',
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({

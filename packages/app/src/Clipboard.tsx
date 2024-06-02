@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import cx from 'classnames';
-import { Button } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import { UnstyledButton } from '@mantine/core';
 
 export default function Clipboard({
   text,
@@ -22,12 +22,9 @@ export default function Clipboard({
         setTimeout(() => setIsCopied(false), 2000);
       }}
     >
-      <Button
-        variant="link"
-        className={cx('px-0 text-decoration-none fs-7', className)}
-      >
+      <UnstyledButton variant="transparent" className={cx('fs-7', className)}>
         {children({ isCopied })}
-      </Button>
+      </UnstyledButton>
     </CopyToClipboard>
   );
 }

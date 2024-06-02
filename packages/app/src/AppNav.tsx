@@ -3,7 +3,6 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
-import { Button } from 'react-bootstrap';
 import {
   NumberParam,
   StringParam,
@@ -14,7 +13,7 @@ import {
 import HyperDX from '@hyperdx/browser';
 import {
   ActionIcon,
-  Button as MButton,
+  Button,
   CloseButton,
   Collapse,
   Input,
@@ -939,16 +938,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <Logo />
               )}
             </Link>
-            <Button
-              variant="dark"
-              size="sm"
-              className={isCollapsed ? 'mt-4' : ''}
-              style={isCollapsed ? { marginLeft: '-0.5rem' } : {}}
+            <ActionIcon
+              variant="default"
+              size="md"
               title="Collapse/Expand Navigation"
+              style={isCollapsed ? { marginLeft: -8, marginTop: 16 } : {}}
               onClick={() => setIsPreferCollapsed(v => !v)}
             >
               <i className="bi bi-arrows-angle-expand"></i>
-            </Button>
+            </ActionIcon>
           </div>
           <div className="mt-4">
             <div className="px-3 d-flex align-items-center justify-content-between mb-2">
@@ -1328,14 +1326,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     passHref
                     legacyBehavior
                   >
-                    <MButton
+                    <Button
                       variant="light"
                       size="xs"
                       component="a"
                       className="hover-color-white"
                     >
                       Get Started for Free
-                    </MButton>
+                    </Button>
                   </Link>
                 </div>
               </div>

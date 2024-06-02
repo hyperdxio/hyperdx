@@ -23,6 +23,7 @@
     "@hyperdx/lucene": "^3.1.1",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
+    "@mantine/form": "^7.10.1",
     "@mantine/hooks": "7.9.2",
     "@mantine/notifications": "^7.9.2",
     "@mantine/spotlight": "7.9.2",

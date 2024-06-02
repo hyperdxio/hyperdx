@@ -14,7 +14,6 @@ import { useRouter } from 'next/router';
 import cx from 'classnames';
 import { clamp, format, sub } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-import { Button } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -32,7 +31,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
-import { ActionIcon, Indicator } from '@mantine/core';
+import { ActionIcon, Button, Indicator } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from './api';
@@ -984,13 +983,15 @@ function SearchPage() {
           <div className="d-flex justify-content-center" style={{ height: 0 }}>
             <div style={{ position: 'relative', top: -22, zIndex: 2 }}>
               <Button
-                variant="outline-success"
-                className="fs-8 bg-hdx-dark py-1"
+                variant="outline"
+                size="compact-sm"
                 onClick={() => {
                   setIsLive(true);
                 }}
+                leftSection={
+                  <i className="bi text-success bi-lightning-charge-fill" />
+                }
               >
-                <i className="bi text-success bi-lightning-charge-fill me-2" />
                 Resume Live Tail
               </Button>
             </div>

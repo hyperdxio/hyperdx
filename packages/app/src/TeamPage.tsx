@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import Head from 'next/head';
 import {
-  Button,
   Form,
   Modal,
   Row,
@@ -41,6 +40,11 @@ import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 import api from './api';
 import { withAppNav } from './layout';
 import { WebhookFlatIcon } from './SVGIcons';
+import {
+  AddSlackWebhookModal,
+  ConfirmDeleteTeamMember,
+  ConfirmRotateAPIKeyModal,
+} from './TeamPageComponents';
 import { WebhookService } from './types';
 import { truncateMiddle } from './utils';
 import { isValidJson, isValidUrl } from './utils';
@@ -349,12 +353,18 @@ export default function TeamPage() {
     setTeamInviteModalShow(false);
   };
 
-  const onSubmitAddWebhookForm = (e: any, service: WebhookService) => {
-    e.preventDefault();
-    const name = e.target.name.value;
-    const description = e.target.description.value;
-    const url = e.target.url.value;
-
+  const onSubmitAddWebhookForm = (
+    {
+      name,
+      description,
+      url,
+    }: {
+      name: string;
+      description?: string;
+      url: string;
+    },
+    service: WebhookService,
+  ) => {
     if (!name) {
       notifications.show({
         color: 'red',
@@ -526,42 +536,11 @@ export default function TeamPage() {
                     </MButton>
                   )}
                 </Group>
-                <div className="">
-                  <Modal
-                    aria-labelledby="contained-modal-title-vcenter"
-                    centered
-                    onHide={() => setRotateApiKeyConfirmationModalShow(false)}
-                    show={rotateApiKeyConfirmationModalShow}
-                    size="lg"
-                  >
-                    <Modal.Body className="bg-grey rounded">
-                      <h3 className="text-muted">Rotate API Key</h3>
-                      <h5 className="text-muted">
-                        Rotating the API key will invalidate your existing API
-                        key and generate a new one for you. This action is not
-                        reversible.
-                      </h5>
-                      <Button
-                        variant="outline-secondary"
-                        className="mt-2 px-4 ms-2 float-end"
-                        size="sm"
-                        onClick={() =>
-                          setRotateApiKeyConfirmationModalShow(false)
-                        }
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="outline-danger"
-                        className="mt-2 px-4 float-end"
-                        size="sm"
-                        onClick={onConfirmUpdateTeamApiKey}
-                      >
-                        Confirm
-                      </Button>
-                    </Modal.Body>
-                  </Modal>
-                </div>
+                <ConfirmRotateAPIKeyModal
+                  opened={rotateApiKeyConfirmationModalShow}
+                  onClose={() => setRotateApiKeyConfirmationModalShow(false)}
+                  onConfirm={onConfirmUpdateTeamApiKey}
+                />
               </Card>
               {!isLoadingMe && me != null && (
                 <Card>
@@ -636,63 +615,13 @@ export default function TeamPage() {
                     Add Slack Incoming Webhook
                   </MButton>
 
-                  <Modal
-                    aria-labelledby="contained-modal-title-vcenter"
-                    centered
-                    onHide={() => setAddSlackWebhookModalShow(false)}
-                    show={addSlackWebhookModalShow}
-                    size="lg"
-                  >
-                    <Modal.Body className="bg-grey rounded">
-                      <h5 className="text-muted">Add Slack Incoming Webhook</h5>
-                      <Form
-                        onSubmit={e =>
-                          onSubmitAddWebhookForm(e, WebhookService.Slack)
-                        }
-                      >
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
-                          Webhook Name
-                        </Form.Label>
-                        <Form.Control
-                          size="sm"
-                          id="name"
-                          name="name"
-                          placeholder="My Slack Webhook"
-                          className="border-0 mb-4 px-3"
-                          required
-                        />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
-                          Webhook URL
-                        </Form.Label>
-                        <Form.Control
-                          size="sm"
-                          id="url"
-                          name="url"
-                          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-                          className="border-0 mb-4 px-3"
-                          required
-                        />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
-                          Webhook Description (optional)
-                        </Form.Label>
-                        <Form.Control
-                          size="sm"
-                          id="description"
-                          name="description"
-                          placeholder="A description of this webhook"
-                          className="border-0 mb-4 px-3"
-                        />
-                        <Button
-                          variant="success"
-                          className="mt-2 px-4 float-end"
-                          type="submit"
-                          size="sm"
-                        >
-                          Add
-                        </Button>
-                      </Form>
-                    </Modal.Body>
-                  </Modal>
+                  <AddSlackWebhookModal
+                    opened={addSlackWebhookModalShow}
+                    onClose={() => setAddSlackWebhookModalShow(false)}
+                    onSubmit={webhook =>
+                      onSubmitAddWebhookForm(webhook, WebhookService.Slack)
+                    }
+                  />
                 </Card.Section>
               </Card>
 
@@ -768,9 +697,17 @@ export default function TeamPage() {
                         Add Generic Incoming Webhook
                       </h5>
                       <Form
-                        onSubmit={e =>
-                          onSubmitAddWebhookForm(e, WebhookService.Generic)
-                        }
+                        onSubmit={(e: any) => {
+                          e.preventDefault();
+                          onSubmitAddWebhookForm(
+                            {
+                              name: e.target.name.value,
+                              url: e.target.url.value,
+                              description: e.target.description.value,
+                            },
+                            WebhookService.Generic,
+                          );
+                        }}
                       >
                         <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook Name
@@ -904,56 +841,23 @@ export default function TeamPage() {
                     )}
                 </>
               )}
-              <Modal
-                aria-labelledby="contained-modal-title-vcenter"
-                centered
-                onHide={() =>
+              <ConfirmDeleteTeamMember
+                opened={deleteTeamMemberConfirmationModalData.id != null}
+                onClose={() =>
                   setDeleteTeamMemberConfirmationModalData({
                     mode: null,
                     id: null,
                     email: null,
                   })
                 }
-                show={deleteTeamMemberConfirmationModalData.id != null}
-                size="lg"
-              >
-                <Modal.Body className="bg-grey rounded">
-                  <h3 className="text-muted">Delete Team Member</h3>
-                  <p className="text-muted">
-                    Deleting this team member (
-                    {deleteTeamMemberConfirmationModalData.email}) will revoke
-                    their access to the team&apos;s resources and services. This
-                    action is not reversible.
-                  </p>
-                  <Button
-                    variant="outline-secondary"
-                    className="mt-2 px-4 ms-2 float-end"
-                    size="sm"
-                    onClick={() =>
-                      setDeleteTeamMemberConfirmationModalData({
-                        mode: null,
-                        id: null,
-                        email: null,
-                      })
-                    }
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="outline-danger"
-                    className="mt-2 px-4 float-end"
-                    size="sm"
-                    onClick={() =>
-                      deleteTeamMemberConfirmationModalData.id &&
-                      onConfirmDeleteTeamMember(
-                        deleteTeamMemberConfirmationModalData.id,
-                      )
-                    }
-                  >
-                    Confirm
-                  </Button>
-                </Modal.Body>
-              </Modal>
+                onConfirm={() => {
+                  deleteTeamMemberConfirmationModalData.id &&
+                    onConfirmDeleteTeamMember(
+                      deleteTeamMemberConfirmationModalData.id,
+                    );
+                }}
+                email={deleteTeamMemberConfirmationModalData.email}
+              />
 
               <div className={styles.sectionHeader}>Team</div>
 
