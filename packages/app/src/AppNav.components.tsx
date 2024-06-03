@@ -12,6 +12,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 
 import { Icon } from './components/Icon';
+import api from './api';
 import InstallInstructionModal from './InstallInstructionsModal';
 
 import styles from '../styles/AppNav.module.scss';
@@ -133,6 +134,29 @@ export const AppNavUserMenu = ({
   );
 };
 
+const useIsTeamHasNoData = () => {
+  const now = React.useMemo(() => new Date(), []);
+  const ago14d = React.useMemo(
+    () => new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
+    [],
+  );
+
+  const { data: team } = api.useTeam();
+  const { data: logs } = api.useLogBatch(
+    {
+      q: '',
+      limit: 1,
+      order: 'desc',
+      endDate: now,
+      startDate: ago14d,
+      extraFields: [],
+    },
+    { refetchOnWindowFocus: false },
+  );
+
+  return logs?.pages?.[0]?.data.length === 0;
+};
+
 export const AppNavHelpMenu = ({
   isCollapsed,
   version,
@@ -145,6 +169,7 @@ export const AppNavHelpMenu = ({
     { close: closeInstallModal, open: openInstallModal },
   ] = useDisclosure(false);
 
+  const isTeamHasNoData = useIsTeamHasNoData();
   const size = 28;
 
   return (
@@ -152,6 +177,7 @@ export const AppNavHelpMenu = ({
       <Paper
         mb={8}
         ml="sm"
+        withBorder
         w={size}
         h={size}
         radius="xl"
@@ -160,14 +186,19 @@ export const AppNavHelpMenu = ({
         })}
         className={styles.appNavMenu}
       >
-        <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>
+        <Menu
+          withArrow
+          position="top-start"
+          transitionProps={{ transition: 'fade-up' }}
+          defaultOpened={isTeamHasNoData}
+        >
           <Menu.Target>
             <UnstyledButton w="100%">
               <Group
                 align="center"
                 justify="center"
                 h={size}
-                className="text-slate-200 fs-6"
+                className="text-slate-200 "
               >
                 <Icon name="question-lg" />
               </Group>
