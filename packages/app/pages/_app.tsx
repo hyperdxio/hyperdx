@@ -123,7 +123,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
               <ThemeWrapper fontFamily={userPreferences.font}>
                 {getLayout(<Component {...pageProps} />)}
               </ThemeWrapper>
-              <ReactQueryDevtools initialIsOpen={false} />
+              <ReactQueryDevtools
+                initialIsOpen={false}
+                position="bottom-right"
+              />
               {confirmModal}
               {background}
             </QueryClientProvider>

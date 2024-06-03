@@ -1,5 +1,15 @@
 @import './variables';
 
+.wrapper {
+  height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  border-right: 1px solid $slate-950;
+}
+
 .list {
   // background-color: #00000030;
   // border-bottom: 1px solid $slate-950;
@@ -7,7 +17,13 @@
   overflow-x: hidden;
   max-width: 100%;
   padding: 4px 16px;
-  padding-bottom: 10px;
+  padding-bottom: 0;
+}
+
+.scrollbar {
+  .thumb {
+    background-color: var(--mantine-color-gray-9);
+  }
 }
 
 .listGroupDragEnter {
@@ -94,5 +110,19 @@
     min-height: 28px;
     height: 28px;
     line-height: 28px;
+  }
+}
+
+.appNavMenu {
+  pointer-events: all;
+  cursor: pointer;
+  box-shadow: 0 5px 10px 10px #0f1215e0;
+  background: var(--mantine-color-gray-9);
+  &:hover {
+    background: var(--mantine-color-gray-8);
+  }
+  &:active {
+    // background: var(--mantine-color-gray-9);
+    transform: translate(0, 1px);
   }
 }

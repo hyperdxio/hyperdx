@@ -14,7 +14,6 @@ import {
 import HyperDX from '@hyperdx/browser';
 import {
   ActionIcon,
-  Button as MButton,
   CloseButton,
   Collapse,
   Input,
@@ -26,6 +25,11 @@ import { useDisclosure } from '@mantine/hooks';
 import { version } from '../package.json';
 
 import api from './api';
+import {
+  AppNavCloudBanner,
+  AppNavHelpMenu,
+  AppNavUserMenu,
+} from './AppNav.components';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
 import { IS_LOCAL_MODE, SERVER_URL } from './config';
 import Icon from './Icon';
@@ -730,8 +734,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const navWidth = isCollapsed ? 50 : 230;
 
-  const { data: team, isLoading: teamIsLoading } = api.useTeam();
-
   useEffect(() => {
     HyperDX.addAction('user navigated', {
       route: pathname,
@@ -912,21 +914,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   return (
     <>
       <AuthLoadingBlocker />
-      {fixed && <div style={{ width: navWidth, minWidth: navWidth }}></div>}
-      <ScrollArea
-        type="hover"
-        scrollbarSize={8}
+      {fixed && (
+        <div style={{ width: navWidth + 1, minWidth: navWidth + 1 }}></div>
+      )}
+      <div
+        className={styles.wrapper}
         style={{
-          maxHeight: '100vh',
-          height: '100%',
-          ...(fixed
-            ? {
-                height: '100vh',
-                position: 'fixed',
-              }
-            : {}),
+          position: fixed ? 'fixed' : 'initial',
         }}
-        className="border-end border-dark d-flex flex-column justify-content-between"
       >
         <div style={{ width: navWidth }}>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
@@ -950,239 +945,38 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <i className="bi bi-arrows-angle-expand"></i>
             </Button>
           </div>
-          <div className="mt-4">
-            <div className="px-3 d-flex align-items-center justify-content-between mb-2">
-              <Link
-                href="/search"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'text-success fw-bold':
-                      pathname.includes('/search') &&
-                      query.savedSearchId == null,
-                    'fw-bold':
-                      pathname.includes('/search') &&
-                      query.savedSearchId != null,
-                  },
-                )}
-              >
-                <span>
-                  <i className="bi bi-layout-text-sidebar-reverse pe-1 text-slate-300" />{' '}
-                  {!isCollapsed && <span>Search</span>}
-                </span>
-              </Link>
-              {!isCollapsed && (
-                <ActionIcon
-                  variant="default"
-                  size="sm"
-                  onClick={() => {
-                    setIsSearchExpanded(!isSearchExpanded);
-                  }}
-                >
-                  <i
-                    className={`fs-8 bi bi-chevron-${
-                      isSearchExpanded ? 'up' : 'down'
-                    } text-muted-hover`}
-                  />
-                </ActionIcon>
-              )}
-            </div>
-            {!isCollapsed && (
-              <Collapse in={isSearchExpanded}>
-                <div className={styles.list}>
-                  {isLogViewsLoading ? (
-                    <Loader
-                      color="gray.7"
-                      variant="dots"
-                      mx="md"
-                      my="xs"
-                      size="sm"
-                    />
-                  ) : (
-                    <>
-                      <SearchInput
-                        placeholder="Saved Searches"
-                        value={searchesListQ}
-                        onChange={setSearchesListQ}
-                        onEnterDown={() => {
-                          (
-                            savedSearchesResultsRef?.current
-                              ?.firstChild as HTMLAnchorElement
-                          )?.focus?.();
-                        }}
-                      />
-
-                      {logViews.length === 0 && (
-                        <div className={styles.listEmptyMsg}>
-                          No saved searches
-                        </div>
-                      )}
-                      <div ref={savedSearchesResultsRef}>
-                        <AppNavLinkGroups
-                          name="saved-searches"
-                          groups={groupedFilteredSearchesList}
-                          renderLink={renderLogViewLink}
-                          forceExpandGroups={!!searchesListQ}
-                          onDragEnd={handleLogViewDragEnd}
-                        />
-                      </div>
-
-                      {searchesListQ && filteredSearchesList.length === 0 ? (
-                        <div className={styles.listEmptyMsg}>
-                          No results matching <i>{searchesListQ}</i>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                  <AppNavGroupLabel
-                    name="Presets"
-                    collapsed={isSearchPresetsCollapsed}
-                    onClick={() =>
-                      setSearchPresetsCollapsed(!isSearchPresetsCollapsed)
-                    }
-                  />
-                  <Collapse in={!isSearchPresetsCollapsed}>
-                    <PresetSearchLink
-                      query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
-                      name="All Error Events"
-                    />
-                    <PresetSearchLink
-                      query="http.status_code:>=400"
-                      name="HTTP Status >= 400"
-                    />
-                  </Collapse>
-                </div>
-              </Collapse>
-            )}
-            <div className="px-3 my-3">
-              <Link
-                href="/chart"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/chart'),
-                  },
-                )}
-              >
-                <span>
-                  <i className="bi bi-graph-up pe-1 text-slate-300" />{' '}
-                  {!isCollapsed && <span>Chart Explorer</span>}
-                </span>
-              </Link>
-            </div>
-            <div className="px-3 my-3">
-              <Link
-                href="/sessions"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/sessions'),
-                  },
-                )}
-              >
-                <span>
-                  <i className="bi bi-laptop pe-1 text-slate-300" />{' '}
-                  {!isCollapsed && <span>Client Sessions</span>}
-                </span>
-              </Link>
-            </div>
-            <div className="px-3 my-3">
-              <Link
-                href="/alerts"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/alerts'),
-                  },
-                )}
-              >
-                <div>
-                  <i className="bi bi-bell pe-1 text-slate-300" />{' '}
-                  {!isCollapsed && (
-                    <div className="d-inline-flex align-items-center">
-                      <span>Alerts</span>
-                      <div
-                        className="ms-3"
-                        style={{
-                          borderRadius: 8,
-                          background:
-                            alertState == 'alarming'
-                              ? '#e74c3c'
-                              : alertState === 'ok'
-                              ? '#00d474'
-                              : 'gray',
-                          height: 8,
-                          width: 8,
-                        }}
-                        title={
-                          alertState === 'alarming'
-                            ? 'Some alerts are firing'
-                            : alertState === 'ok'
-                            ? 'All alerts are ok'
-                            : 'No alerts are set up'
-                        }
-                      ></div>
-                    </div>
-                  )}
-                </div>
-              </Link>
-            </div>
-
-            <div className="px-3 my-3">
-              <Link
-                href="/services"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/services'),
-                  },
-                )}
-              >
-                <span>
-                  <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
-                  {!isCollapsed && <span>Service Health</span>}
-                </span>
-              </Link>
-            </div>
-
-            <div className="px-3 my-3">
-              <Link
-                href="/kubernetes"
-                className={cx(
-                  'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                  {
-                    'fw-bold text-success': pathname.includes('/kubernetes'),
-                  },
-                )}
-              >
-                <span>
-                  <span
-                    className="pe-1 text-slate-300"
-                    style={{ top: -2, position: 'relative' }}
-                  >
-                    <KubernetesFlatIcon width={16} />
-                  </span>{' '}
-                  {!isCollapsed && <span>Kubernetes</span>}
-                </span>
-              </Link>
-            </div>
-
-            <div>
-              <div
-                className={cx(
-                  'px-3 text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted mb-2',
-                  {
-                    'fw-bold': pathname.includes('/dashboard'),
-                  },
-                )}
-              >
+        </div>
+        <ScrollArea
+          type="scroll"
+          scrollbarSize={6}
+          scrollHideDelay={100}
+          style={{
+            maxHeight: '100%',
+            height: '100%',
+          }}
+          classNames={styles}
+          className="d-flex flex-column justify-content-between"
+        >
+          <div style={{ width: navWidth }}>
+            <div className="mt-2">
+              <div className="px-3 d-flex align-items-center justify-content-between mb-2">
                 <Link
-                  href="/dashboards"
-                  className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
+                  href="/search"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'text-success fw-bold':
+                        pathname.includes('/search') &&
+                        query.savedSearchId == null,
+                      'fw-bold':
+                        pathname.includes('/search') &&
+                        query.savedSearchId != null,
+                    },
+                  )}
                 >
                   <span>
-                    <i className="bi bi-grid-1x2 pe-1 text-slate-300" />{' '}
-                    {!isCollapsed && <span>Dashboards</span>}
+                    <i className="bi bi-layout-text-sidebar-reverse pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Search</span>}
                   </span>
                 </Link>
                 {!isCollapsed && (
@@ -1190,215 +984,392 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     variant="default"
                     size="sm"
                     onClick={() => {
-                      setIsDashboardExpanded(!isDashboardsExpanded);
+                      setIsSearchExpanded(!isSearchExpanded);
                     }}
                   >
                     <i
                       className={`fs-8 bi bi-chevron-${
-                        isDashboardsExpanded ? 'up' : 'down'
+                        isSearchExpanded ? 'up' : 'down'
                       } text-muted-hover`}
                     />
                   </ActionIcon>
                 )}
               </div>
-            </div>
+              {!isCollapsed && (
+                <Collapse in={isSearchExpanded}>
+                  <div className={styles.list}>
+                    {isLogViewsLoading ? (
+                      <Loader
+                        color="gray.7"
+                        variant="dots"
+                        mx="md"
+                        my="xs"
+                        size="sm"
+                      />
+                    ) : (
+                      <>
+                        <SearchInput
+                          placeholder="Saved Searches"
+                          value={searchesListQ}
+                          onChange={setSearchesListQ}
+                          onEnterDown={() => {
+                            (
+                              savedSearchesResultsRef?.current
+                                ?.firstChild as HTMLAnchorElement
+                            )?.focus?.();
+                          }}
+                        />
 
-            {!isCollapsed && (
-              <Collapse in={isDashboardsExpanded}>
-                <div className={styles.list}>
+                        {logViews.length === 0 && (
+                          <div className={styles.listEmptyMsg}>
+                            No saved searches
+                          </div>
+                        )}
+                        <div ref={savedSearchesResultsRef}>
+                          <AppNavLinkGroups
+                            name="saved-searches"
+                            groups={groupedFilteredSearchesList}
+                            renderLink={renderLogViewLink}
+                            forceExpandGroups={!!searchesListQ}
+                            onDragEnd={handleLogViewDragEnd}
+                          />
+                        </div>
+
+                        {searchesListQ && filteredSearchesList.length === 0 ? (
+                          <div className={styles.listEmptyMsg}>
+                            No results matching <i>{searchesListQ}</i>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                    <AppNavGroupLabel
+                      name="Presets"
+                      collapsed={isSearchPresetsCollapsed}
+                      onClick={() =>
+                        setSearchPresetsCollapsed(!isSearchPresetsCollapsed)
+                      }
+                    />
+                    <Collapse in={!isSearchPresetsCollapsed}>
+                      <PresetSearchLink
+                        query="level:err OR level:crit OR level:fatal OR level:emerg OR level:alert"
+                        name="All Error Events"
+                      />
+                      <PresetSearchLink
+                        query="http.status_code:>=400"
+                        name="HTTP Status >= 400"
+                      />
+                    </Collapse>
+                  </div>
+                </Collapse>
+              )}
+              <div className="px-3 my-3">
+                <Link
+                  href="/chart"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/chart'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-graph-up pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Chart Explorer</span>}
+                  </span>
+                </Link>
+              </div>
+              <div className="px-3 my-3">
+                <Link
+                  href="/sessions"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/sessions'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-laptop pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Client Sessions</span>}
+                  </span>
+                </Link>
+              </div>
+              <div className="px-3 my-3">
+                <Link
+                  href="/alerts"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/alerts'),
+                    },
+                  )}
+                >
+                  <div>
+                    <i className="bi bi-bell pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && (
+                      <div className="d-inline-flex align-items-center">
+                        <span>Alerts</span>
+                        <div
+                          className="ms-3"
+                          style={{
+                            borderRadius: 8,
+                            background:
+                              alertState == 'alarming'
+                                ? '#e74c3c'
+                                : alertState === 'ok'
+                                ? '#00d474'
+                                : 'gray',
+                            height: 8,
+                            width: 8,
+                          }}
+                          title={
+                            alertState === 'alarming'
+                              ? 'Some alerts are firing'
+                              : alertState === 'ok'
+                              ? 'All alerts are ok'
+                              : 'No alerts are set up'
+                          }
+                        ></div>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              </div>
+
+              <div className="px-3 my-3">
+                <Link
+                  href="/services"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/services'),
+                    },
+                  )}
+                >
+                  <span>
+                    <i className="bi bi-heart-pulse pe-1 text-slate-300" />{' '}
+                    {!isCollapsed && <span>Service Health</span>}
+                  </span>
+                </Link>
+              </div>
+
+              <div className="px-3 my-3">
+                <Link
+                  href="/kubernetes"
+                  className={cx(
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                    {
+                      'fw-bold text-success': pathname.includes('/kubernetes'),
+                    },
+                  )}
+                >
+                  <span>
+                    <span
+                      className="pe-1 text-slate-300"
+                      style={{ top: -2, position: 'relative' }}
+                    >
+                      <KubernetesFlatIcon width={16} />
+                    </span>{' '}
+                    {!isCollapsed && <span>Kubernetes</span>}
+                  </span>
+                </Link>
+              </div>
+
+              <div>
+                <div
+                  className={cx(
+                    'px-3 text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted mb-2',
+                    {
+                      'fw-bold': pathname.includes('/dashboard'),
+                    },
+                  )}
+                >
                   <Link
                     href="/dashboards"
-                    className={cx(
-                      styles.listLink,
-                      pathname.includes('/dashboard') &&
-                        query.dashboardId == null &&
-                        query.config !=
-                          JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
-                        query.config !=
-                          JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
-                        query.config !=
-                          JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
-                        query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
-                        ? [styles.listLinkActive]
-                        : null,
-                    )}
+                    className="text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover"
                   >
-                    <div className="mt-1 lh-1 py-1">
-                      <i className="bi bi-plus-lg me-2" />
-                      New Dashboard
-                    </div>
+                    <span>
+                      <i className="bi bi-grid-1x2 pe-1 text-slate-300" />{' '}
+                      {!isCollapsed && <span>Dashboards</span>}
+                    </span>
                   </Link>
-
-                  {isDashboardsLoading ? (
-                    <Loader
-                      color="gray.7"
-                      variant="dots"
-                      mx="md"
-                      my="xs"
+                  {!isCollapsed && (
+                    <ActionIcon
+                      variant="default"
                       size="sm"
-                    />
-                  ) : (
-                    <>
-                      <SearchInput
-                        placeholder="Saved Dashboards"
-                        value={dashboardsListQ}
-                        onChange={setDashboardsListQ}
-                        onEnterDown={() => {
-                          (
-                            dashboardsResultsRef?.current
-                              ?.firstChild as HTMLAnchorElement
-                          )?.focus?.();
-                        }}
-                      />
-
-                      <AppNavLinkGroups
-                        name="dashboards"
-                        groups={groupedFilteredDashboardsList}
-                        renderLink={renderDashboardLink}
-                        forceExpandGroups={!!dashboardsListQ}
-                        onDragEnd={handleDashboardDragEnd}
-                      />
-
-                      {dashboards.length === 0 && (
-                        <div className={styles.listEmptyMsg}>
-                          No saved dashboards
-                        </div>
-                      )}
-
-                      {dashboardsListQ &&
-                      filteredDashboardsList.length === 0 ? (
-                        <div className={styles.listEmptyMsg}>
-                          No results matching <i>{dashboardsListQ}</i>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-
-                  <AppNavGroupLabel
-                    name="Presets"
-                    collapsed={isDashboardsPresetsCollapsed}
-                    onClick={() =>
-                      setDashboardsPresetsCollapsed(
-                        !isDashboardsPresetsCollapsed,
-                      )
-                    }
-                  />
-                  <Collapse in={!isDashboardsPresetsCollapsed}>
-                    <PresetDashboardLink
-                      query={query}
-                      config={HYPERDX_USAGE_DASHBOARD_CONFIG}
-                      name="HyperDX Usage"
-                    />
-                    <PresetDashboardLink
-                      query={query}
-                      config={APP_PERFORMANCE_DASHBOARD_CONFIG}
-                      name="App Performance"
-                    />
-                    <PresetDashboardLink
-                      query={query}
-                      config={HTTP_SERVER_DASHBOARD_CONFIG}
-                      name="HTTP Server"
-                    />
-                    <PresetDashboardLink
-                      query={query}
-                      config={REDIS_DASHBOARD_CONFIG}
-                      name="Redis"
-                    />
-                    <PresetDashboardLink
-                      query={query}
-                      config={MONGO_DASHBOARD_CONFIG}
-                      name="Mongo"
-                    />
-                  </Collapse>
-                </div>
-              </Collapse>
-            )}
-          </div>
-        </div>
-        {!isCollapsed && (
-          <>
-            <div style={{ width: navWidth }} className="px-3 mb-2 mt-4">
-              <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-                <span className="text-slate-300 fs-8">
-                  Ready to use HyperDX Cloud?
-                </span>
-                <div className="mt-2 mb-2">
-                  <Link
-                    href="https://www.hyperdx.io/register"
-                    passHref
-                    legacyBehavior
-                  >
-                    <MButton
-                      variant="light"
-                      size="xs"
-                      component="a"
-                      className="hover-color-white"
+                      onClick={() => {
+                        setIsDashboardExpanded(!isDashboardsExpanded);
+                      }}
                     >
-                      Get Started for Free
-                    </MButton>
-                  </Link>
+                      <i
+                        className={`fs-8 bi bi-chevron-${
+                          isDashboardsExpanded ? 'up' : 'down'
+                        } text-muted-hover`}
+                      />
+                    </ActionIcon>
+                  )}
                 </div>
               </div>
-              <div className="my-3">
+
+              {!isCollapsed && (
+                <Collapse in={isDashboardsExpanded}>
+                  <div className={styles.list}>
+                    <Link
+                      href="/dashboards"
+                      className={cx(
+                        styles.listLink,
+                        pathname.includes('/dashboard') &&
+                          query.dashboardId == null &&
+                          query.config !=
+                            JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
+                          query.config !=
+                            JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
+                          query.config !=
+                            JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
+                          query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
+                          ? [styles.listLinkActive]
+                          : null,
+                      )}
+                    >
+                      <div className="mt-1 lh-1 py-1">
+                        <i className="bi bi-plus-lg me-2" />
+                        New Dashboard
+                      </div>
+                    </Link>
+
+                    {isDashboardsLoading ? (
+                      <Loader
+                        color="gray.7"
+                        variant="dots"
+                        mx="md"
+                        my="xs"
+                        size="sm"
+                      />
+                    ) : (
+                      <>
+                        <SearchInput
+                          placeholder="Saved Dashboards"
+                          value={dashboardsListQ}
+                          onChange={setDashboardsListQ}
+                          onEnterDown={() => {
+                            (
+                              dashboardsResultsRef?.current
+                                ?.firstChild as HTMLAnchorElement
+                            )?.focus?.();
+                          }}
+                        />
+
+                        <AppNavLinkGroups
+                          name="dashboards"
+                          groups={groupedFilteredDashboardsList}
+                          renderLink={renderDashboardLink}
+                          forceExpandGroups={!!dashboardsListQ}
+                          onDragEnd={handleDashboardDragEnd}
+                        />
+
+                        {dashboards.length === 0 && (
+                          <div className={styles.listEmptyMsg}>
+                            No saved dashboards
+                          </div>
+                        )}
+
+                        {dashboardsListQ &&
+                        filteredDashboardsList.length === 0 ? (
+                          <div className={styles.listEmptyMsg}>
+                            No results matching <i>{dashboardsListQ}</i>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+
+                    <AppNavGroupLabel
+                      name="Presets"
+                      collapsed={isDashboardsPresetsCollapsed}
+                      onClick={() =>
+                        setDashboardsPresetsCollapsed(
+                          !isDashboardsPresetsCollapsed,
+                        )
+                      }
+                    />
+                    <Collapse in={!isDashboardsPresetsCollapsed}>
+                      <PresetDashboardLink
+                        query={query}
+                        config={HYPERDX_USAGE_DASHBOARD_CONFIG}
+                        name="HyperDX Usage"
+                      />
+                      <PresetDashboardLink
+                        query={query}
+                        config={APP_PERFORMANCE_DASHBOARD_CONFIG}
+                        name="App Performance"
+                      />
+                      <PresetDashboardLink
+                        query={query}
+                        config={HTTP_SERVER_DASHBOARD_CONFIG}
+                        name="HTTP Server"
+                      />
+                      <PresetDashboardLink
+                        query={query}
+                        config={REDIS_DASHBOARD_CONFIG}
+                        name="Redis"
+                      />
+                      <PresetDashboardLink
+                        query={query}
+                        config={MONGO_DASHBOARD_CONFIG}
+                        name="Mongo"
+                      />
+                    </Collapse>
+                  </div>
+                </Collapse>
+              )}
+
+              <div className="px-3 my-3">
                 <Link
                   href="/team"
                   className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
+                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
                     {
                       'fw-bold text-success': pathname.includes('/team'),
                     },
                   )}
                 >
                   <span>
-                    <i className="bi bi-gear text-slate-300" />{' '}
+                    <i className="bi bi-gear pe-1 text-slate-300" />{' '}
                     {!isCollapsed && <span>Team Settings</span>}
                   </span>
                 </Link>
               </div>
-              <div className="my-3">
-                <span
-                  onClick={openUserPreferences}
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover cursor-pointer',
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-person-gear text-slate-300" />{' '}
-                    {!isCollapsed && <span>User Preferences</span>}
-                  </span>
-                </span>
-              </div>
-              <div className="my-3">
-                <Link
-                  href="https://hyperdx.io/docs"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center text-muted-hover',
-                  )}
-                  target="_blank"
-                >
-                  <span>
-                    <i className="bi bi-book text-slate-300" />{' '}
-                    {!isCollapsed && <span>Documentation</span>}
-                  </span>
-                </Link>
-              </div>
-              {!IS_LOCAL_MODE && (
-                <div className="my-4">
-                  <Link href={`${SERVER_URL}/logout`} legacyBehavior>
-                    <span role="button" className="text-muted-hover">
-                      <i className="bi bi-box-arrow-left text-slate-300" />{' '}
-                      {!isCollapsed && <span>Logout</span>}
-                    </span>
-                  </Link>
-                </div>
-              )}
-              <div className="d-flex justify-content-end align-items-end">
-                <span className="text-muted-hover fs-8.5">v{version}</span>
-              </div>
             </div>
-          </>
-        )}
-      </ScrollArea>
+          </div>
+          {!isCollapsed && (
+            <>
+              <div
+                style={{ width: navWidth, paddingBottom: 80 }}
+                className="px-3 mb-2 mt-4"
+              >
+                <AppNavCloudBanner />
+              </div>
+            </>
+          )}
+        </ScrollArea>
+
+        <div
+          style={{
+            width: navWidth,
+            position: 'absolute',
+            bottom: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <AppNavHelpMenu isCollapsed={isCollapsed} version={version} />
+          <AppNavUserMenu
+            userName={meData?.name}
+            teamName={meData?.team?.name}
+            isCollapsed={isCollapsed}
+            onClickUserPreferences={openUserPreferences}
+            logoutUrl={IS_LOCAL_MODE ? null : `${SERVER_URL}/logout`}
+          />
+        </div>
+      </div>
       <UserPreferencesModal
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
