@@ -39,7 +39,7 @@ export default function EditChartFormAlerts({
           id="type"
           size="sm"
           style={{
-            width: 140,
+            width: 170,
           }}
           value={alert?.type}
           onChange={e => {
@@ -51,10 +51,10 @@ export default function EditChartFormAlerts({
           }}
         >
           <option key="presence" value="presence">
-            exceeds
+            is at least (≥)
           </option>
           <option key="absence" value="absence">
-            falls below
+            falls below ({'<'})
           </option>
         </Form.Select>
         <div style={{ marginBottom: -20 }}>

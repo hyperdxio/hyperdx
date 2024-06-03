@@ -330,7 +330,7 @@ function AlertDetails({ alert }: { alert: AlertData }) {
           </div>
           <div className="text-slate-400 fs-8 d-flex gap-2">
             If {alert.source === 'LOG' ? 'count' : 'value'} is{' '}
-            {alert.type === 'presence' ? 'over' : 'under'}{' '}
+            {alert.type === 'presence' ? 'at least' : 'under'}{' '}
             <span className="fw-bold">{alert.threshold}</span>
             <span className="text-slate-400">&middot;</span>
             {alert.channel.type === 'webhook' && (
