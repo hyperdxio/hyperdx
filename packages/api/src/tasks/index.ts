@@ -47,7 +47,7 @@ const main = async () => {
       `);
       break;
     default:
-      throw new Error(`Unkown task name ${taskName}`);
+      throw new Error(`Unknown task name ${taskName}`);
   }
   logger.info(
     `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
