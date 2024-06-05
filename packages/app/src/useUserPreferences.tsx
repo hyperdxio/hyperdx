@@ -7,7 +7,7 @@ export type UserPreferences = {
   isUTC: boolean;
   timeFormat: '12h' | '24h';
   theme: 'light' | 'dark';
-  font: 'IBM Plex Mono' | 'Inter';
+  font: 'IBM Plex Mono' | 'IBM Plex Sans' | 'Roboto Mono' | 'Inter' | string;
   backgroundEnabled?: boolean;
   backgroundUrl?: string;
   backgroundBlur?: number;
@@ -21,7 +21,7 @@ export const userPreferencesAtom = atomWithStorage<UserPreferences>(
     isUTC: false,
     timeFormat: '12h',
     theme: 'dark',
-    font: 'IBM Plex Mono',
+    font: 'IBM Plex Sans',
   },
 );
 

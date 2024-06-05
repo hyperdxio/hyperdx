@@ -2124,7 +2124,7 @@ function SidePanelHeader({
         <div>
           <div
             className="bg-hdx-dark p-3 overflow-auto"
-            style={{ maxHeight: 300 }}
+            style={{ maxHeight: 300, fontFamily: 'var(--font-family-mono)' }}
           >
             {stripAnsi(logData.body)}
           </div>

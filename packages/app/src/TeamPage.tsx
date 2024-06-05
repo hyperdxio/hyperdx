@@ -71,7 +71,7 @@ const APIKeyCopyButton = ({
           </div>
         }
       >
-        <div data-test-id={dataTestId} className="text-wrap text-break">
+        <div data-test-id={dataTestId} className="text-wrap text-break mono">
           {value}
         </div>
       </MButton>

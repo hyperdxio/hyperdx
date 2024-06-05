@@ -587,7 +587,7 @@ export const RawLogTable = memo(
 
     return (
       <div
-        className="overflow-auto h-100 fs-8 bg-inherit"
+        className="overflow-auto h-100 fs-8 bg-inherit mono"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 

@@ -64,7 +64,7 @@ export const AppNavUserMenu = ({
           m="sm"
           mt={8}
           px={8}
-          py={4}
+          py={6}
           radius="md"
           {...(isCollapsed && {
             p: 2,
@@ -85,6 +85,7 @@ export const AppNavUserMenu = ({
                   <Text
                     size="xs"
                     c="dimmed"
+                    lh={1.1}
                     style={{
                       fontSize: 11,
                       maxWidth: '100%',
