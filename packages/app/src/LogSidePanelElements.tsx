@@ -4,6 +4,7 @@ import { CloseButton } from 'react-bootstrap';
 import { JSONTree } from 'react-json-tree';
 import { ColumnDef, Row } from '@tanstack/react-table';
 
+import HyperJson from './components/HyperJson';
 import { TableCellButton } from './components/Table';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
@@ -388,6 +389,21 @@ export const NetworkBody = ({
     );
   }, []);
 
+  const parsedBody = React.useMemo(() => {
+    if (typeof body !== 'string') return null;
+    try {
+      if (
+        (body.startsWith('{') && body.endsWith('}')) ||
+        (body.startsWith('[') && body.endsWith(']'))
+      ) {
+        const parsed = JSON.parse(body);
+        return parsed;
+      }
+    } catch (e) {
+      return null;
+    }
+  }, [body]);
+
   return (
     <>
       {body != null && body != '' ? (
@@ -399,7 +415,9 @@ export const NetworkBody = ({
             whiteSpace: 'pre-wrap',
           }}
         >
-          {typeof body === 'string' ? (
+          {parsedBody ? (
+            <HyperJson data={parsedBody} normallyExpanded />
+          ) : typeof body === 'string' ? (
             body
           ) : (
             <JSONTree
