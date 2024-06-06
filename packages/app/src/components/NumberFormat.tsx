@@ -94,7 +94,7 @@ export const NumberFormatForm: React.VFC<{
               { value: 'currency', label: 'Currency' },
               { value: 'byte', label: 'Bytes' },
               { value: 'percent', label: 'Percentage' },
-              { value: 'time', label: 'Time (seconds)' },
+              { value: 'time', label: 'Time' },
             ]}
             {...register('output')}
           />
@@ -157,7 +157,17 @@ export const NumberFormatForm: React.VFC<{
               description="Use 1KB = 1000 bytes"
               {...register('decimalBytes')}
             />
-          ) : values.output === 'time' ? null : (
+          ) : values.output === 'time' ? (
+            <NativeSelect
+              size="sm"
+              label="Input unit"
+              {...register('factor')}
+              data={[
+                { value: '1', label: 'Seconds' },
+                { value: '0.001', label: 'Milliseconds' },
+              ]}
+            />
+          ) : (
             <>
               <MCheckbox
                 size="xs"
