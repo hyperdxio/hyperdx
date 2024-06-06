@@ -229,6 +229,7 @@ export const RawLogTable = memo(
     wrapLines,
     columnNameMap,
     showServiceColumn = true,
+    searchedQuery,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -257,6 +258,7 @@ export const RawLogTable = memo(
     tableId?: string;
     columnNameMap?: Record<string, string>;
     showServiceColumn?: boolean;
+    searchedQuery?: string;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -534,7 +536,9 @@ export const RawLogTable = memo(
 
       const rowIdx = dedupLogs.findIndex(l => l.id === highlightedLineId);
       if (rowIdx == -1) {
-        fetchNextPage();
+        if (searchedQuery?.length) {
+          fetchNextPage();
+        }
       } else {
         setScrolledToHighlightedLine(true);
         if (
@@ -554,6 +558,7 @@ export const RawLogTable = memo(
       // Needed to make sure we call this again when the log search loading
       // state is done to fetch next page
       isLoading,
+      searchedQuery,
     ]);
 
     const shiftHighlightedLineId = useCallback(
@@ -936,6 +941,7 @@ export default function LogTable({
         onShowPatternsClick={onShowPatternsClick}
         columnNameMap={columnNameMap}
         showServiceColumn={showServiceColumn}
+        searchedQuery={searchedQuery}
       />
     </>
   );

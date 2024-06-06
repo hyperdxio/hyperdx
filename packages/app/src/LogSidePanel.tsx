@@ -2566,6 +2566,7 @@ const checkKeyExistsInLogData = (key: string, logData: any) => {
 
 export default function LogSidePanel({
   logId,
+  q,
   onClose,
   onPropertyAddClick,
   generateSearchUrl,
@@ -2576,6 +2577,7 @@ export default function LogSidePanel({
   toggleColumn,
   shareUrl: shareUrlProp,
 }: {
+  q?: string;
   logId: string | undefined;
   onClose: () => void;
   onPropertyAddClick?: (name: string, value: string) => void;
@@ -2709,8 +2711,9 @@ export default function LogSidePanel({
       from: start.getTime().toString(),
       to: end.getTime().toString(),
       ts: date.getTime().toString(),
+      q: q ?? '',
     }).toString()}`;
-  }, [shareUrlProp, logData, start, end, date]);
+  }, [shareUrlProp, logData, start, end, date, q]);
 
   return (
     <Drawer
