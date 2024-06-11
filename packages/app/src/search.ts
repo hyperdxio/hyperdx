@@ -275,7 +275,7 @@ function useSearchEventStream(
   ]);
 
   const fetchNextPage = useCallback(
-    (params?: { limit?: number }) => {
+    (params?: { limit?: number; cb?: VoidFunction }) => {
       // Make sure we don't try to fetch again when we're already fetching
       // Make sure lastFetchStatusRef is not null, as that means we haven't done an initial fetch yet
       if (
@@ -286,6 +286,8 @@ function useSearchEventStream(
         fetchResults({
           pageParam: results.data.length,
           limit: params?.limit,
+        }).then(() => {
+          params?.cb?.();
         });
       }
     },

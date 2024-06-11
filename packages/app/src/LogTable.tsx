@@ -244,7 +244,7 @@ export const RawLogTable = memo(
       timestamp: string;
     }[];
     isLoading: boolean;
-    fetchNextPage: () => any;
+    fetchNextPage: (arg0?: { cb?: VoidFunction }) => any;
     onRowExpandClick: (id: string, sortKey: string) => void;
     // onPropertySearchClick: (
     //   name: string,
@@ -540,8 +540,11 @@ export const RawLogTable = memo(
         if (
           scrolledToHighlightedLineCount < MAX_SCROLL_FETCH_NEW_PAGE_ATTEMPTS
         ) {
-          fetchNextPage();
-          setScrolledToHighlightedLineCount(prev => prev + 1);
+          fetchNextPage({
+            cb: () => {
+              setScrolledToHighlightedLineCount(prev => prev + 1);
+            },
+          });
         }
       } else {
         setScrolledToHighlightedLine(true);
