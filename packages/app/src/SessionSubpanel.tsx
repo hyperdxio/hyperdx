@@ -1,9 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import throttle from 'lodash/throttle';
+import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
-import { NumberParam, StringParam, withDefault } from 'serialize-query-params';
-import { useQueryParam } from 'use-query-params';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import DOMPlayer from './DOMPlayer';
@@ -13,7 +12,6 @@ import SearchInput from './SearchInput';
 import { useSessionEvents } from './sessionUtils';
 import TabBar from './TabBar';
 import { getShortUrl, usePrevious } from './utils';
-
 function SessionEventList({
   config: { where, dateRange },
   onClick,
@@ -316,14 +314,9 @@ export default function SessionSubpanel({
         )
       : null;
 
-  const [tsQuery, setTsQuery] = useQueryParam(
+  const [tsQuery, setTsQuery] = useQueryState(
     'ts',
-    withDefault(NumberParam, undefined),
-    {
-      updateType: 'pushIn',
-      // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
-      enableBatching: true,
-    },
+    parseAsInteger.withOptions({ history: 'replace' }),
   );
   const prevTsQuery = usePrevious(tsQuery);
 
@@ -335,12 +328,12 @@ export default function SessionSubpanel({
 
   const debouncedSetTsQuery = useRef(
     throttle(async (ts: number) => {
-      setTsQuery(ts, 'replaceIn');
+      setTsQuery(ts);
     }, 1000),
   ).current;
   useEffect(() => {
     return () => {
-      setTsQuery(undefined, 'replaceIn');
+      setTsQuery(null);
     };
   }, [setTsQuery]);
 
@@ -359,7 +352,7 @@ export default function SessionSubpanel({
       if (focus.setBy === 'player') {
         debouncedSetTsQuery(focus.ts);
       } else {
-        setTsQuery(focus.ts, 'pushIn');
+        setTsQuery(focus.ts);
       }
       _setFocus(focus);
     },
@@ -373,15 +366,10 @@ export default function SessionSubpanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const [_inputQuery, setInputQuery] = useState<string | undefined>(undefined);
   const inputQuery = _inputQuery ?? '';
-  const [_searchedQuery, setSearchedQuery] = useQueryParam(
-    'session_q',
-    withDefault(StringParam, undefined),
-    {
-      updateType: 'pushIn',
-      // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
-      enableBatching: true,
-    },
-  );
+  const [_searchedQuery, setSearchedQuery] = useQueryState('session_q', {
+    history: 'push',
+  });
+
   // Hacky way to set the input query when we search
   useEffect(() => {
     if (_searchedQuery != null && _inputQuery == null) {
@@ -393,7 +381,7 @@ export default function SessionSubpanel({
   // Clear search query when we close the panel
   useEffect(() => {
     return () => {
-      setSearchedQuery(undefined, 'replaceIn');
+      setSearchedQuery(null, { history: 'replace' });
     };
   }, [setSearchedQuery]);
 
