@@ -936,7 +936,7 @@ export default function LogTable({
         logs={searchResults ?? []}
         isLoading={isLoading}
         fetchNextPage={useCallback(
-          () => fetchNextPage({ limit: 200 }),
+          (args: any) => fetchNextPage({ limit: 200, ...args }),
           [fetchNextPage],
         )}
         // onPropertySearchClick={onPropertySearchClick}
