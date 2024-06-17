@@ -102,6 +102,7 @@ export function LogTableWithSidePanel({
             generateChartUrl={generateChartUrl}
             displayedColumns={displayedColumns}
             toggleColumn={toggleColumn}
+            q={searchedQuery}
           />
         </Portal>
       ) : null}

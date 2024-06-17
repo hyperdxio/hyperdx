@@ -356,6 +356,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
           generateChartUrl={generateChartUrl}
           displayedColumns={displayedColumns}
           toggleColumn={toggleColumn}
+          shareUrl={window.location.href}
         />
       </ErrorBoundary>
       <LogTable

@@ -1982,11 +1982,13 @@ function useTraceProperties({
 
 function SidePanelHeader({
   logData,
+  shareUrl,
   onPropertyAddClick,
   generateSearchUrl,
   onClose,
 }: {
   logData: any;
+  shareUrl: string;
   onClose: VoidFunction;
   onPropertyAddClick?: (name: string, value: string) => void;
   generateSearchUrl: (
@@ -1997,7 +1999,7 @@ function SidePanelHeader({
 }) {
   const parsedProperties = useParsedLogProperties(logData);
 
-  const date = new Date(logData.timestamp);
+  const date = useMemo(() => new Date(logData.timestamp), [logData.timestamp]);
   const start = add(date, { minutes: -240 });
   const end = add(date, { minutes: 240 });
 
@@ -2093,7 +2095,7 @@ function SidePanelHeader({
             </div>
           )}
           <CopyToClipboard
-            text={window.location.href}
+            text={shareUrl}
             onCopy={() => {
               notifications.show({
                 color: 'green',
@@ -2564,6 +2566,7 @@ const checkKeyExistsInLogData = (key: string, logData: any) => {
 
 export default function LogSidePanel({
   logId,
+  q,
   onClose,
   onPropertyAddClick,
   generateSearchUrl,
@@ -2572,7 +2575,9 @@ export default function LogSidePanel({
   isNestedPanel = false,
   displayedColumns,
   toggleColumn,
+  shareUrl: shareUrlProp,
 }: {
+  q?: string;
   logId: string | undefined;
   onClose: () => void;
   onPropertyAddClick?: (name: string, value: string) => void;
@@ -2590,6 +2595,7 @@ export default function LogSidePanel({
   isNestedPanel?: boolean;
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
+  shareUrl?: string;
 }) {
   const contextZIndex = useZIndex();
 
@@ -2692,6 +2698,23 @@ export default function LogSidePanel({
     }
   }, ['mouseup', 'touchend']);
 
+  const shareUrl = useMemo(() => {
+    if (shareUrlProp) {
+      return shareUrlProp;
+    }
+    if (logData == null) {
+      return window.location.href;
+    }
+    return `${window.location.origin}/search?${new URLSearchParams({
+      lid: logData.id,
+      sk: logData.sort_key,
+      from: start.getTime().toString(),
+      to: end.getTime().toString(),
+      ts: date.getTime().toString(),
+      q: q ?? '',
+    }).toString()}`;
+  }, [shareUrlProp, logData, start, end, date, q]);
+
   return (
     <Drawer
       customIdSuffix={`log-side-panel-${logId}`}
@@ -2714,6 +2737,7 @@ export default function LogSidePanel({
             <>
               <SidePanelHeader
                 logData={logData}
+                shareUrl={shareUrl}
                 onPropertyAddClick={onPropertyAddClick}
                 generateSearchUrl={generateSearchUrl}
                 onClose={_onClose}
