@@ -34,6 +34,7 @@ const formatDate = (
     ? formatInTimeZone(date, 'Etc/UTC', strFormat)
     : format(date, strFormat);
 };
+
 export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], isUTC)} - ${formatDate(range[1], isUTC)}`;
 };

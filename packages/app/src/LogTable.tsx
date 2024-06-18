@@ -1,7 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
-import { format } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
 import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
@@ -28,9 +26,9 @@ import InstallInstructionsModal from './InstallInstructionsModal';
 import LogLevel from './LogLevel';
 import { useSearchEventStream } from './search';
 import { UNDEFINED_WIDTH } from './tableUtils';
+import { FormatTime } from './useFormatTime';
 import { useUserPreferences } from './useUserPreferences';
 import { useLocalStorage, usePrevious, useWindowSize } from './utils';
-import { TIME_TOKENS } from './utils';
 
 import styles from '../styles/LogTable.module.scss';
 type Row = Record<string, any> & { duration: number };
@@ -273,15 +271,13 @@ export const RawLogTable = memo(
     const { width } = useWindowSize();
     const isSmallScreen = (width ?? 1000) < 900;
     const {
-      userPreferences: { timeFormat, isUTC },
+      userPreferences: { isUTC },
     } = useUserPreferences();
-    const tsFormat = TIME_TOKENS[timeFormat];
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
     >(`${tableId}-column-sizes`, {});
 
-    const tsShortFormat = 'HH:mm:ss';
     //once the user has scrolled within 500px of the bottom of the table, fetch more data if there is any
     const FETCH_NEXT_PAGE_PX = 500;
 
@@ -337,13 +333,10 @@ export const RawLogTable = memo(
             const date = new Date(info.getValue<string>());
             return (
               <span className="text-muted">
-                {isUTC
-                  ? formatInTimeZone(
-                      date,
-                      'Etc/UTC',
-                      isSmallScreen ? tsShortFormat : tsFormat,
-                    )
-                  : format(date, isSmallScreen ? tsShortFormat : tsFormat)}
+                <FormatTime
+                  value={date}
+                  format={isSmallScreen ? 'short' : 'withMs'}
+                />
               </span>
             );
           },
@@ -436,7 +429,6 @@ export const RawLogTable = memo(
         columnSizeStorage,
         showServiceColumn,
         columnNameMap,
-        tsFormat,
       ],
     );
 
