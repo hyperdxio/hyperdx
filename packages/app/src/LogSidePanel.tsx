@@ -1982,13 +1982,13 @@ function useTraceProperties({
 
 function SidePanelHeader({
   logData,
-  shareUrl,
+  generateShareUrl,
   onPropertyAddClick,
   generateSearchUrl,
   onClose,
 }: {
   logData: any;
-  shareUrl: string;
+  generateShareUrl: () => string;
   onClose: VoidFunction;
   onPropertyAddClick?: (name: string, value: string) => void;
   generateSearchUrl: (
@@ -2095,7 +2095,7 @@ function SidePanelHeader({
             </div>
           )}
           <CopyToClipboard
-            text={shareUrl}
+            text={generateShareUrl()}
             onCopy={() => {
               notifications.show({
                 color: 'green',
@@ -2698,13 +2698,19 @@ export default function LogSidePanel({
     }
   }, ['mouseup', 'touchend']);
 
-  const shareUrl = useMemo(() => {
+  const generateShareUrl = useCallback(() => {
     if (shareUrlProp) {
       return shareUrlProp;
     }
     if (logData == null) {
       return window.location.href;
     }
+
+    // Grab ts from session replay qparam if it exists
+    const sessionReplayTs = new URLSearchParams(window.location.search).get(
+      'ts',
+    );
+
     return `${window.location.origin}/search?${new URLSearchParams({
       lid: logData.id,
       sk: logData.sort_key,
@@ -2712,8 +2718,10 @@ export default function LogSidePanel({
       to: end.getTime().toString(),
       ts: date.getTime().toString(),
       q: q ?? '',
+      ...(queryTab != null ? { tb: queryTab } : {}),
+      ...(sessionReplayTs != null ? { ts: sessionReplayTs } : {}),
     }).toString()}`;
-  }, [shareUrlProp, logData, start, end, date, q]);
+  }, [shareUrlProp, logData, start, end, date, q, queryTab]);
 
   return (
     <Drawer
@@ -2737,7 +2745,7 @@ export default function LogSidePanel({
             <>
               <SidePanelHeader
                 logData={logData}
-                shareUrl={shareUrl}
+                generateShareUrl={generateShareUrl}
                 onPropertyAddClick={onPropertyAddClick}
                 generateSearchUrl={generateSearchUrl}
                 onClose={_onClose}
