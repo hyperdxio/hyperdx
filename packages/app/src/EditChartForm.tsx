@@ -956,19 +956,21 @@ export const EditMultiSeriesChartForm = ({
             <Divider
               label={
                 <Group gap="xs">
-                  <ColorSwatchInput
-                    value={series.color}
-                    onChange={(color?: string) => {
-                      setEditedChart(
-                        produce(editedChart, draft => {
-                          const draftSeries = draft.series[i];
-                          if (draftSeries.type === chartType) {
-                            draftSeries.color = color;
-                          }
-                        }),
-                      );
-                    }}
-                  />
+                  {editedChart.seriesReturnType === 'column' && (
+                    <ColorSwatchInput
+                      value={series.color}
+                      onChange={(color?: string) => {
+                        setEditedChart(
+                          produce(editedChart, draft => {
+                            const draftSeries = draft.series[i];
+                            if (draftSeries.type === chartType) {
+                              draftSeries.color = color;
+                            }
+                          }),
+                        );
+                      }}
+                    />
+                  )}
 
                   {editedChart.series.length > 1 && (
                     <Button
