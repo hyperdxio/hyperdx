@@ -13,6 +13,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import { ColorSwatchInput } from './components/ColorSwatchInput';
 import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
 import {
@@ -954,7 +955,23 @@ export const EditMultiSeriesChartForm = ({
           <div className="mb-2" key={i}>
             <Divider
               label={
-                <>
+                <Group gap="xs">
+                  {editedChart.seriesReturnType === 'column' && (
+                    <ColorSwatchInput
+                      value={series.color}
+                      onChange={(color?: string) => {
+                        setEditedChart(
+                          produce(editedChart, draft => {
+                            const draftSeries = draft.series[i];
+                            if (draftSeries.type === chartType) {
+                              draftSeries.color = color;
+                            }
+                          }),
+                        );
+                      }}
+                    />
+                  )}
+
                   {editedChart.series.length > 1 && (
                     <Button
                       variant="subtle"
@@ -975,7 +992,7 @@ export const EditMultiSeriesChartForm = ({
                       Remove {series.type === 'number' ? 'Ratio' : 'Series'}
                     </Button>
                   )}
-                </>
+                </Group>
               }
               c="dark.2"
               labelPosition="right"
