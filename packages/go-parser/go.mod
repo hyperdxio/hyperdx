@@ -5,7 +5,7 @@ go 1.21.4
 require (
 	github.com/DataDog/go-sqllexer v0.0.10
 	github.com/gin-gonic/gin v1.9.1
-	github.com/hashicorp/go-retryablehttp v0.7.5
+	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/hyperdxio/opentelemetry-go/otelzap v0.2.1
 	github.com/hyperdxio/opentelemetry-logs-go v0.4.2
 	github.com/hyperdxio/otel-config-go v1.12.3
@@ -68,7 +68,7 @@ require (
 	golang.org/x/arch v0.7.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230920204549-e6e6cdab5c13 // indirect
