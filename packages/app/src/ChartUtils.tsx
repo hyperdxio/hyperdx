@@ -178,6 +178,7 @@ export function seriesColumns({
                 ? series[0].columnWidthPercent
                 : undefined,
             visible: 'visible' in series[0] ? series[0].visible : undefined,
+            color: undefined,
           },
         ]
       : series.map((s, i) => {
@@ -192,6 +193,7 @@ export function seriesColumns({
             columnWidthPercent:
               'columnWidthPercent' in s ? s.columnWidthPercent : undefined,
             visible: 'visible' in s ? s.visible : undefined,
+            color: 'color' in s ? s.color : undefined,
           };
         });
 

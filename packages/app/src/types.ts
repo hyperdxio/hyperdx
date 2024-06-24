@@ -217,6 +217,7 @@ export type TimeChartSeries = {
   where: string;
   groupBy: string[];
   numberFormat?: NumberFormat;
+  color?: string;
 };
 
 export type TableChartSeries = {
@@ -231,6 +232,7 @@ export type TableChartSeries = {
   groupBy: string[];
   sortOrder?: 'desc' | 'asc';
   numberFormat?: NumberFormat;
+  color?: string;
 };
 
 export type ChartSeries =
@@ -254,6 +256,7 @@ export type ChartSeries =
       field: string | undefined;
       where: string;
       numberFormat?: NumberFormat;
+      color?: string;
     }
   | {
       type: 'markdown';

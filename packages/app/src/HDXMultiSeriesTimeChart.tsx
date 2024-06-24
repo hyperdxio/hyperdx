@@ -161,6 +161,7 @@ const MemoChart = memo(function MemoChart({
   dateRange,
   groupKeys,
   lineNames,
+  lineColors,
   alertThreshold,
   alertThresholdType,
   logReferenceTimestamp,
@@ -173,6 +174,7 @@ const MemoChart = memo(function MemoChart({
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   groupKeys: string[];
   lineNames: string[];
+  lineColors: Array<string | undefined>;
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
   displayType?: 'stacked_bar' | 'line';
@@ -199,7 +201,7 @@ const MemoChart = memo(function MemoChart({
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          fill={semanticKeyedColor(lineNames[i] ?? key)}
+          fill={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
           stackId="1"
         />
       ) : (
@@ -208,7 +210,7 @@ const MemoChart = memo(function MemoChart({
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          stroke={semanticKeyedColor(lineNames[i] ?? key)}
+          stroke={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
           dot={
             isContinuousGroup[key] === false ? { strokeWidth: 2, r: 1 } : false
           }
@@ -216,7 +218,7 @@ const MemoChart = memo(function MemoChart({
         />
       ),
     );
-  }, [groupKeys, displayType, lineNames, graphResults]);
+  }, [groupKeys, graphResults, displayType, lineNames, lineColors]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const {
@@ -406,6 +408,7 @@ const HDXMultiSeriesTimeChart = memo(
       [seriesGroup: string]: {
         dataKey: string;
         displayName: string;
+        color?: string;
       };
     } = {};
 
@@ -440,10 +443,13 @@ const HDXMultiSeriesTimeChart = memo(
                 : // Otherwise, show the series and a group if there is any
                   `${hasGroup ? `${row.group} • ` : ''}${meta.displayName}`;
 
+            const color = meta.color;
+
             acc[dataKey] = row[meta.dataKey];
             lineDataMap[dataKey] = {
               dataKey,
               displayName,
+              color,
             };
             return acc;
           }, {} as any),
@@ -457,6 +463,7 @@ const HDXMultiSeriesTimeChart = memo(
 
     const groupKeys = Object.values(lineDataMap).map(s => s.dataKey);
     const lineNames = Object.values(lineDataMap).map(s => s.displayName);
+    const lineColors = Object.values(lineDataMap).map(s => s.color);
 
     const [activeClickPayload, setActiveClickPayload] = useState<
       | {
@@ -615,6 +622,7 @@ const HDXMultiSeriesTimeChart = memo(
           )}
           <MemoChart
             lineNames={lineNames}
+            lineColors={lineColors}
             graphResults={graphResults}
             groupKeys={groupKeys}
             isClickActive={activeClickPayload}
