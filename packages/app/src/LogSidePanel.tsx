@@ -63,6 +63,7 @@ import TimelineChart from './TimelineChart';
 import { dateRangeToString } from './timeQuery';
 import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
 import { Dictionary } from './types';
+import { FormatTime } from './useFormatTime';
 import {
   formatDistanceToNowStrictShort,
   useFirstNonNullValue,
@@ -664,10 +665,7 @@ function TraceSubpanel({
                 </>
               )}
               <span className="text-muted">at</span>{' '}
-              {format(
-                new Date(selectedLogData.timestamp),
-                'MMM d HH:mm:ss.SSS',
-              )}
+              <FormatTime value={selectedLogData.timestamp} format="withMs" />
             </div>
             {isNetworkRequestSpan({ logData: selectedLogData }) && (
               <ErrorBoundary
@@ -1549,10 +1547,7 @@ function PropertySubpanel({
                   {isException && (
                     <span className="text-danger me-2">Exception</span>
                   )}
-                  {format(
-                    new Date(event.timestamp / 1000),
-                    'MMM d HH:mm:ss.SSS',
-                  )}
+                  <FormatTime value={event.timestamp / 1000} format="withMs" />
                 </div>
                 {isException ? (
                   <ExceptionEvent
@@ -2059,7 +2054,7 @@ function SidePanelHeader({
           ) : null}
           <span className="me-2">
             <span className="text-muted">at</span>{' '}
-            {format(new Date(logData.timestamp), 'MMM d HH:mm:ss.SSS')}{' '}
+            <FormatTime value={logData.timestamp} format="withMs" />{' '}
             <span className="text-muted">
               &middot;{' '}
               {formatDistanceToNowStrictShort(new Date(logData.timestamp))} ago

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 
@@ -161,11 +162,6 @@ export const useDebounce = <T,>(
   return debouncedValue;
 };
 
-export const TIME_TOKENS = {
-  '12h': 'MMM d h:mm:ss a',
-  '24h': 'MMM d HH:mm:ss.SSS',
-};
-
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State to store our value
   // Pass initial state function to useState so logic is only executed once
@@ -239,10 +235,6 @@ export function formatDistanceToNowStrictShort(date: Date) {
     .replace(' minutes', 'm')
     .replace(' minute', 'm')
     .replace(' seconds', 's');
-}
-
-export function formatHumanReadableDate(date: Date) {
-  return fnsFormat(date, 'MMMM d, h:mmaaa');
 }
 
 export const getLogLevelClass = (lvl: string | undefined) => {
@@ -462,4 +454,39 @@ export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
     name: mName,
     dataType: mDataType as MetricsDataType,
   };
+};
+
+// Date formatting
+const TIME_TOKENS = {
+  normal: {
+    '12h': 'MMM d h:mm:ss a',
+    '24h': 'MMM d HH:mm:ss',
+  },
+  short: {
+    '12h': 'MMM d h:mma',
+    '24h': 'MMM d HH:mm',
+  },
+  withMs: {
+    '12h': 'MMM d h:mm:ss.SSS a',
+    '24h': 'MMM d HH:mm:ss.SSS',
+  },
+};
+
+export const formatDate = (
+  date: Date,
+  {
+    isUTC = false,
+    format = 'normal',
+    clock = '12h',
+  }: {
+    isUTC?: boolean;
+    format?: 'normal' | 'short' | 'withMs';
+    clock?: '12h' | '24h';
+  },
+) => {
+  const formatStr = TIME_TOKENS[format][clock];
+
+  return isUTC
+    ? formatInTimeZone(date, 'Etc/UTC', formatStr)
+    : fnsFormat(date, formatStr);
 };
