@@ -47,362 +47,20 @@ import styles from '../styles/AppNav.module.scss';
 const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
 const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
 
-const APP_PERFORMANCE_DASHBOARD_CONFIG = {
-  id: '',
-  name: 'App Performance',
-  charts: [
-    {
-      id: '1624425',
-      name: 'P95 Latency by Operation',
-      x: 0,
-      y: 0,
-      w: 8,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where: '',
-          groupBy: ['span_name'],
-        },
-      ],
-    },
-    {
-      id: '401924',
-      name: 'Operations with Errors',
-      x: 8,
-      y: 0,
-      w: 4,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'level:err',
-          groupBy: ['span_name'],
-        },
-      ],
-    },
-    {
-      id: '883200',
-      name: 'Count of Operations',
-      x: 0,
-      y: 3,
-      w: 8,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: '',
-          groupBy: ['span_name'],
-        },
-      ],
-    },
-  ],
-};
-const HTTP_SERVER_DASHBOARD_CONFIG = {
-  id: '',
-  name: 'HTTP Server',
-  charts: [
-    {
-      id: '312739',
-      name: 'P95 Latency by Endpoint',
-      x: 0,
-      y: 0,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where: 'span.kind:server',
-          groupBy: ['http.route'],
-        },
-      ],
-    },
-    {
-      id: '434437',
-      name: 'HTTP Status Codes',
-      x: 0,
-      y: 2,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'span.kind:server',
-          groupBy: ['http.status_code'],
-        },
-      ],
-    },
-    {
-      id: '69137',
-      name: 'HTTP 4xx, 5xx',
-      x: 6,
-      y: 4,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'http.status_code:>=400 span.kind:server',
-          groupBy: ['http.status_code'],
-        },
-      ],
-    },
-    {
-      id: '34708',
-      name: 'HTTP 5xx by Endpoint',
-      x: 6,
-      y: 2,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'span.kind:server http.status_code:>=500',
-          groupBy: ['http.route'],
-        },
-      ],
-    },
-    {
-      id: '58773',
-      name: 'Request Volume by Endpoint',
-      x: 6,
-      y: 0,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'span.kind:server',
-          groupBy: ['http.route'],
-        },
-      ],
-    },
-  ],
-};
-const REDIS_DASHBOARD_CONFIG = {
-  id: '',
-  name: 'Redis',
-  charts: [
-    {
-      id: '38463',
-      name: 'GET Operations',
-      x: 0,
-      y: 0,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'db.system:"redis" span_name:GET',
-          groupBy: [],
-        },
-      ],
-    },
-    {
-      id: '488836',
-      name: 'P95 GET Latency',
-      x: 0,
-      y: 2,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where: 'db.system:"redis" span_name:GET',
-          groupBy: [],
-        },
-      ],
-    },
-    {
-      id: '8355753',
-      name: 'SET Operations',
-      x: 6,
-      y: 0,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where: 'db.system:"redis" span_name:SET',
-          groupBy: [],
-        },
-      ],
-    },
-    {
-      id: '93278',
-      name: 'P95 SET Latency',
-      x: 6,
-      y: 2,
-      w: 6,
-      h: 2,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where: 'db.system:"redis" span_name:SET',
-          groupBy: [],
-        },
-      ],
-    },
-  ],
-};
-const MONGO_DASHBOARD_CONFIG = {
-  id: '',
-  name: 'MongoDB',
-  charts: [
-    {
-      id: '98180',
-      name: 'P95 Read Operation Latency by Collection',
-      x: 0,
-      y: 0,
-      w: 6,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where:
-            'db.system:mongo (db.operation:"find" OR db.operation:"findOne" OR db.operation:"aggregate")',
-          groupBy: ['db.mongodb.collection'],
-        },
-      ],
-    },
-    {
-      id: '28877',
-      name: 'P95 Write Operation Latency by Collection',
-      x: 6,
-      y: 0,
-      w: 6,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'p95',
-          field: 'duration',
-          where:
-            'db.system:mongo (db.operation:"insert" OR db.operation:"findOneAndUpdate" OR db.operation:"save" OR db.operation:"findAndModify")',
-          groupBy: ['db.mongodb.collection'],
-        },
-      ],
-    },
-    {
-      id: '9901546',
-      name: 'Count of Write Operations by Collection',
-      x: 6,
-      y: 3,
-      w: 6,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where:
-            'db.system:mongo (db.operation:"insert" OR db.operation:"findOneAndUpdate" OR db.operation:"save" OR db.operation:"findAndModify")',
-          groupBy: ['db.mongodb.collection'],
-        },
-      ],
-    },
-    {
-      id: '6894669',
-      name: 'Count of Read Operations by Collection',
-      x: 0,
-      y: 3,
-      w: 6,
-      h: 3,
-      series: [
-        {
-          type: 'time',
-          aggFn: 'count',
-          where:
-            'db.system:mongo (db.operation:"find" OR db.operation:"findOne" OR db.operation:"aggregate")',
-          groupBy: ['db.mongodb.collection'],
-        },
-      ],
-    },
-  ],
-};
-const HYPERDX_USAGE_DASHBOARD_CONFIG = {
-  id: '',
-  name: 'HyperDX Usage',
-  charts: [
-    {
-      id: '15gykg',
-      name: 'Log/Span Usage in Bytes',
-      x: 0,
-      y: 0,
-      w: 3,
-      h: 2,
-      series: [
-        {
-          table: 'logs',
-          type: 'number',
-          aggFn: 'sum',
-          field: 'hyperdx_event_size',
-          where: '',
-          groupBy: [],
-          numberFormat: {
-            output: 'byte',
-          },
-        },
-      ],
-    },
-    {
-      id: '1k5pul',
-      name: 'Logs/Span Usage over Time',
-      x: 3,
-      y: 0,
-      w: 9,
-      h: 3,
-      series: [
-        {
-          table: 'logs',
-          type: 'time',
-          aggFn: 'sum',
-          field: 'hyperdx_event_size',
-          where: '',
-          groupBy: [],
-          numberFormat: {
-            output: 'byte',
-          },
-        },
-      ],
-    },
-  ],
-};
-
 function PresetDashboardLink({
-  query,
-  config,
   name,
+  presetName,
 }: {
-  query: any;
-  config: any;
   name: string;
+  presetName: string;
 }) {
+  const router = useRouter();
   return (
     <Link
-      href={`/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`}
+      href={`/dashboards/presets/${presetName}`}
       tabIndex={0}
       className={cx(styles.listLink, {
-        [styles.listLinkActive]:
-          query.config === JSON.stringify(config) && query.dashboardId == null,
-        'text-muted-hover': query.config !== JSON.stringify(config),
+        [styles.listLinkActive]: router.query.presetName === presetName,
       })}
     >
       {name}
@@ -1241,13 +899,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         styles.listLink,
                         pathname.includes('/dashboard') &&
                           query.dashboardId == null &&
-                          query.config !=
-                            JSON.stringify(APP_PERFORMANCE_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(HTTP_SERVER_DASHBOARD_CONFIG) &&
-                          query.config !=
-                            JSON.stringify(REDIS_DASHBOARD_CONFIG) &&
-                          query.config != JSON.stringify(MONGO_DASHBOARD_CONFIG)
+                          !pathname.includes('/presets')
                           ? [styles.listLinkActive]
                           : null,
                       )}
@@ -1314,30 +966,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     />
                     <Collapse in={!isDashboardsPresetsCollapsed}>
                       <PresetDashboardLink
-                        query={query}
-                        config={HYPERDX_USAGE_DASHBOARD_CONFIG}
+                        presetName={'hyperdx-usage'}
                         name="HyperDX Usage"
                       />
                       <PresetDashboardLink
-                        query={query}
-                        config={APP_PERFORMANCE_DASHBOARD_CONFIG}
+                        presetName={'app-performance'}
                         name="App Performance"
                       />
                       <PresetDashboardLink
-                        query={query}
-                        config={HTTP_SERVER_DASHBOARD_CONFIG}
+                        presetName={'http-server'}
                         name="HTTP Server"
                       />
-                      <PresetDashboardLink
-                        query={query}
-                        config={REDIS_DASHBOARD_CONFIG}
-                        name="Redis"
-                      />
-                      <PresetDashboardLink
-                        query={query}
-                        config={MONGO_DASHBOARD_CONFIG}
-                        name="Mongo"
-                      />
+                      <PresetDashboardLink presetName={'redis'} name="Redis" />
+                      <PresetDashboardLink presetName={'mongo'} name="Mongo" />
                     </Collapse>
                   </div>
                 </Collapse>
