@@ -113,10 +113,7 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer
-          label="Use UTC time in log tables"
-          description="Currently only applied to log table timestamps. Charts and other areas will be updated soon"
-        >
+        <SettingContainer label="Use UTC time">
           <Switch
             size="md"
             onLabel="UTC"

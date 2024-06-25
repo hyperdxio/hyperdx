@@ -14,8 +14,10 @@ import {
 import HyperDX from '@hyperdx/browser';
 import {
   ActionIcon,
+  Badge,
   CloseButton,
   Collapse,
+  Group,
   Input,
   Loader,
   ScrollArea,
@@ -23,6 +25,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 
 import { version } from '../package.json';
+import { useUserPreferences } from '../src/useUserPreferences';
 
 import api from './api';
 import {
@@ -911,6 +914,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     { close: closeUserPreferences, open: openUserPreferences },
   ] = useDisclosure(false);
 
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
   return (
     <>
       <AuthLoadingBlocker />
@@ -931,7 +938,21 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   <Icon size={22} />
                 </div>
               ) : (
-                <Logo />
+                <Group gap="xs" align="center">
+                  <Logo />
+                  {isUTC && (
+                    <Badge
+                      size="xs"
+                      color="gray"
+                      bg="gray.8"
+                      variant="light"
+                      fw="normal"
+                      title="Showing time in UTC"
+                    >
+                      UTC
+                    </Badge>
+                  )}
+                </Group>
               )}
             </Link>
             <Button

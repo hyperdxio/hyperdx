@@ -2,6 +2,7 @@ import * as React from 'react';
 import { format } from 'date-fns';
 import { Slider, Tooltip } from '@mantine/core';
 
+import { useFormatTime } from './useFormatTime';
 import { truncateText } from './utils';
 
 import styles from '../styles/PlaybarSlider.module.scss';
@@ -32,16 +33,18 @@ export const PlaybarSlider = ({
   onChange,
   setPlayerState,
 }: PlaybarSliderProps) => {
+  const formatTime = useFormatTime();
+
   const valueLabelFormat = React.useCallback(
     (ts: number) => {
       const value = Math.max(ts - min, 0);
       const minutes = Math.floor(value / 1000 / 60);
       const seconds = Math.floor((value / 1000) % 60);
       const timestamp = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-      const time = format(new Date(ts), 'hh:mm:ss a');
+      const time = formatTime(ts, { format: 'short' });
       return `${timestamp} at ${time}`;
     },
-    [min],
+    [formatTime, min],
   );
 
   const markersContent = React.useMemo(

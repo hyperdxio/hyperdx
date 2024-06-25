@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { add, format } from 'date-fns';
+import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
@@ -28,9 +28,9 @@ import {
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
 import type { ChartSeries, NumberFormat } from './types';
-import { useUserPreferences } from './useUserPreferences';
+import { FormatTime, useFormatTime } from './useFormatTime';
 import { formatNumber } from './utils';
-import { semanticKeyedColor, TIME_TOKENS, truncateMiddle } from './utils';
+import { semanticKeyedColor, truncateMiddle } from './utils';
 
 import styles from '../styles/HDXLineChart.module.scss';
 
@@ -38,16 +38,12 @@ const MAX_LEGEND_ITEMS = 4;
 
 const HDXLineChartTooltip = withErrorBoundary(
   memo((props: any) => {
-    const {
-      userPreferences: { timeFormat },
-    } = useUserPreferences();
-    const tsFormat = TIME_TOKENS[timeFormat];
     const { active, payload, label, numberFormat } = props;
     if (active && payload && payload.length) {
       return (
         <div className={styles.chartTooltip}>
           <div className={styles.chartTooltipHeader}>
-            {format(new Date(label * 1000), tsFormat)}
+            <FormatTime value={label * 1000} />
           </div>
           <div className={styles.chartTooltipContent}>
             {payload
@@ -221,11 +217,14 @@ const MemoChart = memo(function MemoChart({
   }, [groupKeys, graphResults, displayType, lineNames, lineColors]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
-  const {
-    userPreferences: { timeFormat },
-  } = useUserPreferences();
-  const tsFormat = TIME_TOKENS[timeFormat];
-  // Gets the preffered time format from User Preferences, then converts it to a formattable token
+
+  const formatTime = useFormatTime();
+  const xTickFormatter = useCallback(
+    (value: number) => {
+      return formatTime(value * 1000);
+    },
+    [formatTime],
+  );
 
   const tickFormatter = useCallback(
     (value: number) =>
@@ -290,7 +289,7 @@ const MemoChart = memo(function MemoChart({
           interval="preserveStartEnd"
           scale="time"
           type="number"
-          tickFormatter={tick => format(new Date(tick * 1000), tsFormat)}
+          tickFormatter={xTickFormatter}
           minTickGap={50}
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />

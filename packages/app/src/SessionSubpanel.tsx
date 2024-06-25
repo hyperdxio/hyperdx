@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
@@ -11,7 +10,9 @@ import Playbar from './Playbar';
 import SearchInput from './SearchInput';
 import { useSessionEvents } from './sessionUtils';
 import TabBar from './TabBar';
+import { FormatTime } from './useFormatTime';
 import { getShortUrl, usePrevious } from './utils';
+
 function SessionEventList({
   config: { where, dateRange },
   onClick,
@@ -229,7 +230,7 @@ function SessionEventList({
                   onClick={() => onTimeClick(row.timestamp)}
                 >
                   <i className="bi bi-play-fill me-1" />
-                  {format(new Date(row.timestamp), 'hh:mm:ss a')}
+                  <FormatTime value={row.timestamp} format="short" />
                 </div>
               </div>
 

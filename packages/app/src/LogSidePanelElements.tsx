@@ -8,6 +8,7 @@ import HyperJson from './components/HyperJson';
 import { TableCellButton } from './components/Table';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
+import { FormatTime } from './useFormatTime';
 import { useLocalStorage } from './utils';
 
 import styles from '../styles/LogSidePanel.module.scss';
@@ -286,7 +287,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     size: 220,
     cell: ({ row }) => (
       <span className="text-slate-500">
-        {format(new Date(row.original.timestamp * 1000), 'MMM d HH:mm:ss.SSS')}
+        <FormatTime value={row.original.timestamp * 1000} format="withMs" />
       </span>
     ),
   },

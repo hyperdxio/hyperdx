@@ -23,7 +23,7 @@ import { withAppNav } from './layout';
 import { Tags } from './Tags';
 import type { Alert, AlertHistory, LogView } from './types';
 import { AlertState } from './types';
-import { formatHumanReadableDate } from './utils';
+import { FormatTime } from './useFormatTime';
 
 import styles from '../styles/AlertsPage.module.scss';
 
@@ -165,7 +165,7 @@ function AckAlert({ alert }: { alert: Alert }) {
                 </>
               ) : null}{' '}
               on <br />
-              {formatHumanReadableDate(new Date(alert.silenced?.at))}
+              <FormatTime value={alert.silenced?.at} />
               .<br />
             </Menu.Label>
 
@@ -174,8 +174,7 @@ function AckAlert({ alert }: { alert: Alert }) {
                 'Alert resumed.'
               ) : (
                 <>
-                  Resumes{' '}
-                  {formatHumanReadableDate(new Date(alert.silenced.until))}
+                  Resumes <FormatTime value={alert.silenced.until} />.
                 </>
               )}
             </Menu.Label>
