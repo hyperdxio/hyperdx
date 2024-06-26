@@ -81,6 +81,54 @@ const buildAndWhereClause = (query1: string, query2: string) => {
   }
 };
 
+const useConfirmExit = ({
+  hasUnsavedChanges,
+}: {
+  hasUnsavedChanges?: boolean;
+}) => {
+  const router = useRouter();
+
+  const handleBeforeUnload = useCallback(
+    (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) {
+        return;
+      }
+      e.preventDefault();
+      e.returnValue = '';
+    },
+    [hasUnsavedChanges],
+  );
+
+  const handleRouteChangeStart = useCallback(
+    (route: string) => {
+      console.log(route, router.asPath);
+      if (!hasUnsavedChanges || route.startsWith('/dashboards')) {
+        return;
+      }
+      if (
+        window.confirm(
+          'You have unsaved changes. Are you sure you want to leave?',
+        )
+      ) {
+        return;
+      }
+      router.events.emit('routeChangeError');
+      throw 'aborted';
+    },
+    [hasUnsavedChanges, router.asPath, router.events],
+  );
+
+  useEffect(() => {
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    router.events.on('routeChangeStart', handleRouteChangeStart);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      router.events.off('routeChangeStart', handleRouteChangeStart);
+    };
+  }, [handleBeforeUnload, handleRouteChangeStart, router.events]);
+};
+
 const Tile = forwardRef(
   (
     {
@@ -568,7 +616,12 @@ function DashboardFilter({
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-export default function DashboardPage() {
+
+export default function DashboardPage({
+  presetConfig,
+}: {
+  presetConfig?: Dashboard;
+}) {
   const { data: dashboardsData, isLoading: isDashboardsLoading } =
     api.useDashboards();
   const { data: meData } = api.useMe();
@@ -578,7 +631,9 @@ export default function DashboardPage() {
   const deleteAlert = api.useDeleteAlert();
   const updateAlert = api.useUpdateAlert();
   const router = useRouter();
+
   const { dashboardId, config } = router.query;
+
   const queryClient = useQueryClient();
 
   const confirm = useConfirm();
@@ -600,6 +655,9 @@ export default function DashboardPage() {
     dashboardId != null ? dashboardId : hashCode(`${config}`);
 
   const dashboard: Dashboard | undefined = useMemo(() => {
+    if (presetConfig) {
+      return presetConfig;
+    }
     if (isLocalDashboard) {
       return localDashboard;
     }
@@ -609,7 +667,13 @@ export default function DashboardPage() {
       );
       return matchedDashboard;
     }
-  }, [dashboardsData, dashboardId, isLocalDashboard, localDashboard]);
+  }, [
+    presetConfig,
+    isLocalDashboard,
+    dashboardsData,
+    localDashboard,
+    dashboardId,
+  ]);
 
   // Update dashboard
   const [isSavedNow, _setSavedNow] = useState(false);
@@ -727,6 +791,13 @@ export default function DashboardPage() {
       onAddChart();
     }
   }, [isLocalDashboard, router, dashboard?.charts.length]);
+
+  useConfirmExit({
+    hasUnsavedChanges:
+      isLocalDashboard &&
+      (dashboard?.charts.length || 0) > 0 &&
+      presetConfig == null,
+  });
 
   const [highlightedChartId] = useQueryParam('highlightedChartId');
 
