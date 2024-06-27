@@ -181,7 +181,7 @@ export default function SearchTimeRangePicker({
           </InputGroup.Text>
           <Form.Control
             ref={inputRef}
-            className={cx('border-0 fs-7 px-2', {
+            className={cx('border-0 fs-8 px-2', {
               'text-success': inputValue.includes(LIVE_TAIL_TIME_QUERY),
             })}
             type="text"
