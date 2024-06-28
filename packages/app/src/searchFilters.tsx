@@ -22,13 +22,35 @@ export const filtersToQuery = (filters: FilterState) => {
   return parenthesize(query);
 };
 
+export const areFiltersEqual = (a: FilterState, b: FilterState) => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+
+  if (aKeys.length !== bKeys.length) {
+    return false;
+  }
+
+  for (const key of aKeys) {
+    if (!b[key] || a[key].size !== b[key].size) {
+      return false;
+    }
+
+    for (const value of a[key]) {
+      if (!b[key].has(value)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+};
+
 export const parseQuery = (
   q: string,
 ): {
-  userQuery: string;
   filters: FilterState;
+  filterQueryPosition?: [number, number];
 } => {
-  let userQuery = '';
   const filters: FilterState = {};
 
   // Filter string always starts and ends with double parentheses
@@ -37,15 +59,7 @@ export const parseQuery = (
 
   // No filter string
   if (startPos === -1 && endPos === -1) {
-    return { userQuery: q, filters };
-  }
-
-  // User query can be either before or after the filter query
-  if (startPos > 0) {
-    userQuery = q.slice(0, startPos).trim();
-  }
-  if (endPos < q.length - 2) {
-    userQuery += q.slice(endPos + 2).trim();
+    return { filters };
   }
 
   // Parse filter string
@@ -73,38 +87,67 @@ export const parseQuery = (
     }
   }
 
-  return { userQuery, filters };
+  return {
+    filters,
+    filterQueryPosition: startPos === -1 ? undefined : [startPos, endPos + 2],
+  };
 };
 
 export const useSearchPageFilterState = ({
   searchQuery = '',
+  onSearchQueryChange,
 }: {
   searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
 }) => {
   const [filters, setFilters] = React.useState<FilterState>({});
-
-  const filtersQuery = React.useMemo(() => filtersToQuery(filters), [filters]);
 
   const parsedQuery = React.useMemo(() => {
     try {
       return parseQuery(searchQuery);
     } catch (e) {
       console.error(e);
-      return { userQuery: searchQuery, filters: {} };
+      return { filters: {} };
     }
   }, [searchQuery]);
 
+  const updateFilterQuery = React.useCallback(
+    (newFilters: FilterState) => {
+      const { filterQueryPosition } = parsedQuery;
+
+      let newQuery = '';
+      if (!filterQueryPosition) {
+        // append the filter query to the end of the user query
+        newQuery = [searchQuery.trim(), filtersToQuery(newFilters)]
+          .filter(Boolean)
+          .join(' ');
+      } else {
+        const [start, end] = filterQueryPosition;
+        newQuery = [
+          searchQuery.slice(0, start).trim(),
+          filtersToQuery(newFilters),
+          searchQuery.slice(end).trim(),
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+      onSearchQueryChange?.(newQuery);
+    },
+    [onSearchQueryChange, parsedQuery, searchQuery],
+  );
+
   React.useEffect(() => {
-    if (filtersQuery && searchQuery.includes(filtersQuery)) {
-      return;
+    if (!areFiltersEqual(filters, parsedQuery.filters)) {
+      setFilters(parsedQuery.filters);
     }
-    setFilters(parsedQuery.filters);
-  }, [filtersQuery, parsedQuery, searchQuery]);
+    // only react to changes in parsed query
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedQuery.filters]);
 
   const setFilterValue = React.useCallback(
     (property: string, value: string, only?: boolean) => {
-      setFilters(prevFilters =>
-        produce(prevFilters, draft => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
             draft[property] = new Set();
           }
@@ -119,26 +162,31 @@ export const useSearchPageFilterState = ({
           } else {
             values.add(value);
           }
-        }),
-      );
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
     },
-    [setFilters],
+    [updateFilterQuery],
   );
 
-  const clearFilter = React.useCallback((property: string) => {
-    setFilters(prevFilters =>
-      produce(prevFilters, draft => {
-        delete draft[property];
-      }),
-    );
-  }, []);
+  const clearFilter = React.useCallback(
+    (property: string) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          delete draft[property];
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
 
   return {
     filters,
     clearFilter,
     setFilters,
     setFilterValue,
-    filtersQuery,
-    userQuery: parsedQuery.userQuery,
   };
 };

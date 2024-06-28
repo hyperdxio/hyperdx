@@ -14,7 +14,7 @@ import {
 
 import { Icon } from './components/Icon';
 import api from './api';
-import { parseQuery, useSearchPageFilterState } from './searchFilters';
+import { useSearchPageFilterState } from './searchFilters';
 
 import classes from '../styles/SearchPage.module.scss';
 
@@ -179,12 +179,10 @@ export const SearchPageFilters = ({
     }));
   }, [services]);
 
-  const { setFilterValue, filters, filtersQuery, clearFilter, userQuery } =
-    useSearchPageFilterState({ searchQuery });
-
-  React.useEffect(() => {
-    onSearchQueryChange([userQuery, filtersQuery].filter(Boolean).join(' '));
-  }, [userQuery, filtersQuery]);
+  const { setFilterValue, filters, clearFilter } = useSearchPageFilterState({
+    searchQuery,
+    onSearchQueryChange,
+  });
 
   if (!filtersVisible) {
     return null;
@@ -196,14 +194,6 @@ export const SearchPageFilters = ({
         <Text size="xxs" c="dimmed" fw="bold">
           Filters
         </Text>
-
-        {userQuery && (
-          <Card py={6} px="xs" bg="dark" m="-3" mb={4}>
-            <Text size="xxs" c="gray.5" lh={1.2}>
-              {userQuery}
-            </Text>
-          </Card>
-        )}
 
         <FilterGroup
           name="Event Type"
