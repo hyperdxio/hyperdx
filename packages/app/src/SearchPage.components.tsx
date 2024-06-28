@@ -7,6 +7,7 @@ import {
   Card,
   Checkbox,
   Group,
+  ScrollArea,
   Stack,
   Text,
   UnstyledButton,
@@ -199,41 +200,43 @@ export const SearchPageFilters = ({
 
   return (
     <div className={classes.filtersPanel}>
-      <Stack gap="sm">
-        <Text size="xxs" c="dimmed" fw="bold">
-          Filters
-        </Text>
+      <ScrollArea h="100%" scrollbarSize={4}>
+        <Stack gap="sm" p="xs">
+          <Text size="xxs" c="dimmed" fw="bold">
+            Filters
+          </Text>
 
-        <FilterGroup
-          name="Event Type"
-          options={EVENT_TYPE_OPTIONS}
-          selectedValues={filters['hyperdx_event_type']}
-          onChange={value => setFilterValue('hyperdx_event_type', value)}
-          onClearClick={() => clearFilter('hyperdx_event_type')}
-          onOnlyClick={value =>
-            setFilterValue('hyperdx_event_type', value, true)
-          }
-        />
+          <FilterGroup
+            name="Event Type"
+            options={EVENT_TYPE_OPTIONS}
+            selectedValues={filters['hyperdx_event_type']}
+            onChange={value => setFilterValue('hyperdx_event_type', value)}
+            onClearClick={() => clearFilter('hyperdx_event_type')}
+            onOnlyClick={value =>
+              setFilterValue('hyperdx_event_type', value, true)
+            }
+          />
 
-        <FilterGroup
-          name="Level"
-          options={EVENT_LEVEL_OPTIONS}
-          selectedValues={filters['level']}
-          onChange={value => setFilterValue('level', value)}
-          onClearClick={() => clearFilter('level')}
-          onOnlyClick={value => setFilterValue('level', value, true)}
-        />
+          <FilterGroup
+            name="Level"
+            options={EVENT_LEVEL_OPTIONS}
+            selectedValues={filters['level']}
+            onChange={value => setFilterValue('level', value)}
+            onClearClick={() => clearFilter('level')}
+            onOnlyClick={value => setFilterValue('level', value, true)}
+          />
 
-        <FilterGroup
-          name="Service"
-          options={servicesOptions}
-          optionsLoading={isServicesLoading}
-          selectedValues={filters['service']}
-          onChange={value => setFilterValue('service', value)}
-          onClearClick={() => clearFilter('service')}
-          onOnlyClick={value => setFilterValue('service', value, true)}
-        />
-      </Stack>
+          <FilterGroup
+            name="Service"
+            options={servicesOptions}
+            optionsLoading={isServicesLoading}
+            selectedValues={filters['service']}
+            onChange={value => setFilterValue('service', value)}
+            onClearClick={() => clearFilter('service')}
+            onOnlyClick={value => setFilterValue('service', value, true)}
+          />
+        </Stack>
+      </ScrollArea>
     </div>
   );
 };
