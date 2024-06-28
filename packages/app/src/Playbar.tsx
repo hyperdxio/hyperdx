@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { format } from 'date-fns';
 import uniqBy from 'lodash/uniqBy';
 import Button from 'react-bootstrap/Button';
 import { Group } from '@mantine/core';
@@ -8,34 +7,13 @@ import Checkbox from './Checkbox';
 import type { PlaybarMarker } from './PlaybarSlider';
 import { PlaybarSlider } from './PlaybarSlider';
 import { useSessionEvents } from './sessionUtils';
+import { FormatTime } from './useFormatTime';
 import { getShortUrl, useLocalStorage } from './utils';
 
-import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
-
-function formatTs({
-  ts,
-  minTs,
-  showRelativeTime,
-}: {
-  ts: number | null | undefined;
-  minTs: number;
-  showRelativeTime: boolean;
-}) {
-  if (ts == null) {
-    return '--:--';
-  } else if (showRelativeTime) {
-    const value = Math.max(ts - minTs, 0);
-    const minutes = Math.floor(value / 1000 / 60);
-    const seconds = Math.floor((value / 1000) % 60);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  } else {
-    try {
-      return format(new Date(ts), 'hh:mm:ss a');
-    } catch (err) {
-      console.error(err, ts);
-      return '--:--';
-    }
-  }
+function formatRelativeTime(seconds: number) {
+  const minutes = Math.floor(Math.max(seconds, 0) / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
 }
 
 export default function Playbar({
@@ -185,7 +163,11 @@ export default function Playbar({
           setShowRelativeTime(!showRelativeTime);
         }}
       >
-        {formatTs({ ts: focus?.ts, minTs, showRelativeTime })}
+        {showRelativeTime ? (
+          formatRelativeTime((focus?.ts || 0) - minTs / 1000)
+        ) : (
+          <FormatTime value={focus?.ts} format="short" />
+        )}
       </div>
       <div className="w-100 d-flex align-self-stretch align-items-center me-3">
         <PlaybarSlider

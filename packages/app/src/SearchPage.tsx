@@ -12,8 +12,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import cx from 'classnames';
-import { clamp, format, sub } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { clamp, sub } from 'date-fns';
 import { Button } from 'react-bootstrap';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -48,32 +47,18 @@ import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { Tags } from './Tags';
 import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
-import { useUserPreferences } from './useUserPreferences';
+import { FormatTime, useFormatTime } from './useFormatTime';
 
 import 'react-modern-drawer/dist/index.css';
 import styles from '../styles/SearchPage.module.scss';
 
-const formatDate = (
-  date: Date,
-  isUTC: boolean,
-  strFormat = 'MMM d HH:mm:ss',
-) => {
-  return isUTC
-    ? formatInTimeZone(date, 'Etc/UTC', strFormat)
-    : format(date, strFormat);
-};
-const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
-  return `${formatDate(range[0], isUTC)} - ${formatDate(range[1], isUTC)}`;
-};
-
 const HistogramBarChartTooltip = (props: any) => {
-  const tsFormat = 'MMM d HH:mm:ss.SSS';
   const { active, payload, label } = props;
   if (active && payload && payload.length) {
     return (
       <div className="bg-grey px-3 py-2 rounded fs-8">
         <div className="mb-2">
-          {formatDate(new Date(label * 1000), props.isUTC, tsFormat)}
+          <FormatTime value={label * 1000} format="withMs" />
         </div>
         {payload.map((p: any) => (
           <div key={p.name} style={{ color: p.color }}>
@@ -99,10 +84,6 @@ const HDXHistogram = memo(
     onTimeRangeSelect: (start: Date, end: Date) => void;
     isLive: boolean;
   }) => {
-    const {
-      userPreferences: { isUTC },
-    } = useUserPreferences();
-
     const { data: histogramResults, isLoading: isHistogramResultsLoading } =
       api.useLogHistogram(
         where,
@@ -132,6 +113,8 @@ const HDXHistogram = memo(
 
     const [highlightStart, setHighlightStart] = useState<string | undefined>();
     const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
+
+    const formatTime = useFormatTime();
 
     return isHistogramResultsLoading ? (
       <div className="w-100 h-100 d-flex align-items-center justify-content-center">
@@ -202,9 +185,7 @@ const HDXHistogram = memo(
             interval="preserveStartEnd"
             scale="time"
             type="number"
-            tickFormatter={tick =>
-              formatDate(new Date(tick * 1000), isUTC, 'MMM d HH:mm')
-            }
+            tickFormatter={tick => formatTime(tick * 1000, { format: 'short' })}
             minTickGap={50}
             tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
           />
@@ -459,10 +440,6 @@ function SearchPage() {
     [searchInput],
   );
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
-
   const [saveSearchModalMode, setSaveSearchModalMode] = useState<
     'update' | 'save' | 'hidden'
   >('hidden');
@@ -566,6 +543,7 @@ function SearchPage() {
     [setDisplayedSearchQuery, doSearch, displayedTimeInputValue],
   );
 
+  const formatTime = useFormatTime();
   const generateSearchUrl = useCallback(
     (newQuery?: string, newTimeRange?: [Date, Date], lid?: string) => {
       const fromDate = newTimeRange ? newTimeRange[0] : searchedTimeRange[0];
@@ -574,14 +552,14 @@ function SearchPage() {
         q: newQuery ?? searchedQuery,
         from: fromDate.getTime().toString(),
         to: toDate.getTime().toString(),
-        tq: dateRangeToString([fromDate, toDate], isUTC),
+        tq: `${formatTime(fromDate)} - ${formatTime(toDate)}`,
         ...(lid ? { lid } : {}),
       });
       return `/search${
         selectedSavedSearch != null ? `/${selectedSavedSearch._id}` : ''
       }?${qparams.toString()}`;
     },
-    [searchedQuery, searchedTimeRange, selectedSavedSearch, isUTC],
+    [searchedQuery, searchedTimeRange, selectedSavedSearch, formatTime],
   );
 
   const generateChartUrl = useCallback(

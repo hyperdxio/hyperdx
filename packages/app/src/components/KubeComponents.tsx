@@ -1,10 +1,11 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { format, sub } from 'date-fns';
+import { sub } from 'date-fns';
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 
 import api from '../api';
 import { KubePhase } from '../types';
+import { FormatTime } from '../useFormatTime';
 
 type KubeEvent = {
   id: string;
@@ -20,8 +21,6 @@ type AnchorEvent = {
   timestamp: string;
   label: React.ReactNode;
 };
-
-const FORMAT = 'MMM d hh:mm:ss a';
 
 const renderKubeEvent = (event: KubeEvent) => {
   let href = '#';
@@ -39,7 +38,7 @@ const renderKubeEvent = (event: KubeEvent) => {
     <Timeline.Item key={event.id}>
       <Link href={href} passHref legacyBehavior>
         <Anchor size="11" c="gray.6" title={event.timestamp}>
-          {format(new Date(event.timestamp), FORMAT)}
+          <FormatTime value={event.timestamp} />
         </Anchor>
       </Link>
       <Group gap="xs" my={4}>
@@ -152,7 +151,7 @@ export const KubeTimeline = ({
         {podEventsAfterAnchor.map(renderKubeEvent)}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
           <Text size="11" c="gray.6" title={anchorEvent.timestamp}>
-            {format(new Date(anchorEvent.timestamp), FORMAT)}
+            <FormatTime value={anchorEvent.timestamp} />
           </Text>
           <Group gap="xs" my={4}>
             <Text size="12" c="white" fw="bold">
