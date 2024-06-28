@@ -133,6 +133,15 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
 }: FilterGroupProps) => {
+  const augmentedOptions = React.useMemo(() => {
+    return [
+      ...Array.from(selectedValues)
+        .filter(value => !options.find(option => option.value === value))
+        .map(value => ({ value, label: value })),
+      ...options,
+    ];
+  }, [options, selectedValues]);
+
   return (
     <Stack gap={6}>
       <Group justify="space-between">
@@ -145,7 +154,7 @@ export const FilterGroup = ({
       </Group>
       <Stack gap={0}>
         {optionsLoading && <Text c="dimmed">Loading...</Text>}
-        {options.map(option => (
+        {augmentedOptions.map(option => (
           <FilterCheckbox
             key={option.value}
             label={option.label}
