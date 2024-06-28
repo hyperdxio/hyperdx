@@ -9,9 +9,8 @@
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
     "@hyperdx/lucene": "^3.1.1",
-    "@hyperdx/node-logger": "^0.2.8",
-    "@hyperdx/node-opentelemetry": "^0.6.0",
-    "@opentelemetry/api": "^1.7.0",
+    "@hyperdx/node-opentelemetry": "^0.8.0",
+    "@opentelemetry/api": "^1.8.0",
     "@sentry/node": "^7.85.0",
     "@slack/webhook": "^6.1.0",
     "axios": "^1.6.2",

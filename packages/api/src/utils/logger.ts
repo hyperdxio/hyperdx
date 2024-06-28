@@ -1,4 +1,4 @@
-import { getWinsonTransport } from '@hyperdx/node-opentelemetry';
+import { getWinstonTransport } from '@hyperdx/node-opentelemetry';
 import expressWinston from 'express-winston';
 import winston, { addColors } from 'winston';
 
@@ -28,7 +28,7 @@ const DEFAULT_FORMAT = winston.format.combine(
 );
 
 const hyperdxTransport = HYPERDX_API_KEY
-  ? getWinsonTransport(MAX_LEVEL, {
+  ? getWinstonTransport(MAX_LEVEL, {
       bufferSize: APP_TYPE === 'scheduled-task' ? 1 : 100,
       ...(INGESTOR_API_URL && { baseUrl: INGESTOR_API_URL }),
     })
