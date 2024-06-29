@@ -1,5 +1,23 @@
 # @hyperdx/api
 
+## 1.9.0
+
+### Minor Changes
+
+- 2488882: Allow to filter search results by event type (log or span)
+
+### Patch Changes
+
+- 63e7d30: fix: Properly show session replays from very long sessions in client
+  sessions search results
+- 884938a: fix: doesExceedThreshold greater than logic
+- 25faa4d: chore: bump HyperDX SDKs (node-opentelemetry v0.8.0 + browser 0.21.0)
+- 288c763: fix: handle null ratio value (alerting)
+- da866be: fix: revisit doesExceedThreshold logic
+- b192366: chore: bump node to v18.20.3
+- 148c92b: perf: remove redundant otel-logs fields (timestamp + spanID +
+  traceID)
+
 ## 1.8.0
 
 ### Minor Changes
