@@ -17,6 +17,7 @@ import {
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
 const OPTIONS_FONTS = [
+  'IBM Plex Sans',
   'IBM Plex Mono',
   'Roboto Mono',
   'Inter',

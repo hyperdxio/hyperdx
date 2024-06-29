@@ -162,7 +162,7 @@ export default function AutocompleteInput({
           ref={inputRef}
           type="text"
           placeholder={placeholder}
-          className="border-0 fs-7"
+          className="border-0 fs-7 mono"
           value={value}
           size={size}
           onChange={e => onChange(e.target.value)}

@@ -294,7 +294,7 @@ const MemoPatternTable = memo(
 
     return (
       <div
-        className="overflow-auto h-100 fs-8 bg-inherit"
+        className="overflow-auto h-100 fs-8 bg-inherit mono"
         ref={tableContainerRef}
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}
