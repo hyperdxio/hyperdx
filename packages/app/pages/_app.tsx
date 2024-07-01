@@ -3,6 +3,7 @@ import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
+import { enableMapSet } from 'immer';
 import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ReactQueryDevtools } from 'react-query/devtools';
@@ -21,6 +22,8 @@ import '@mantine/notifications/styles.css';
 import '../styles/globals.css';
 import '../styles/app.scss';
 import '../src/LandingPage.scss';
+
+enableMapSet();
 
 const queryClient = new QueryClient();
 
