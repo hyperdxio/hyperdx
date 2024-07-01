@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.1",
-    "@hyperdx/browser": "^0.20.0",
+    "@hyperdx/browser": "^0.21.0",
     "@hyperdx/lucene": "^3.1.1",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",

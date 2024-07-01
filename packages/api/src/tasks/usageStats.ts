@@ -1,5 +1,5 @@
 import type { ResponseJSON } from '@clickhouse/client';
-import { HyperDXWinston } from '@hyperdx/node-logger';
+import * as HyperDX from '@hyperdx/node-opentelemetry';
 import os from 'os';
 import winston from 'winston';
 
@@ -8,17 +8,17 @@ import * as config from '@/config';
 import Team from '@/models/team';
 import User from '@/models/user';
 
-const hyperdxTransport = new HyperDXWinston({
-  apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
-  baseUrl: 'https://in.hyperdx.io',
-  maxLevel: 'info',
-  service: 'hyperdx-oss-usage-stats',
-});
-
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.json(),
-  transports: [hyperdxTransport],
+  transports: [
+    HyperDX.getWinstonTransport('info', {
+      apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
+      baseUrl: 'https://in.hyperdx.io',
+      maxLevel: 'info',
+      service: 'hyperdx-oss-usage-stats',
+    } as any),
+  ],
 });
 
 const getClickhouseTableSize = async () => {
