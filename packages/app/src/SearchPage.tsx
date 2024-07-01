@@ -42,6 +42,7 @@ import LogTable from './LogTable';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import SaveSearchModal from './SaveSearchModal';
 import SearchInput from './SearchInput';
+import { SearchPageFilters, ToggleFilterButton } from './SearchPage.components';
 import SearchPageActionBar from './SearchPageActionBar';
 import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { Tags } from './Tags';
@@ -588,42 +589,6 @@ function SearchPage() {
     [setDisplayedSearchQuery],
   );
 
-  const searchedTypes = useMemo(() => {
-    if (searchedQuery.includes('hyperdx_event_type:"span"')) {
-      return ['span'];
-    } else if (searchedQuery.includes('hyperdx_event_type:"log"')) {
-      return ['log'];
-    }
-    return ['log', 'span'];
-  }, [searchedQuery]);
-
-  const handleToggleType = useCallback(
-    (type: 'log' | 'span') => {
-      let newQuery = displayedSearchQuery;
-
-      if (displayedSearchQuery.includes(`hyperdx_event_type:"${type}"`)) {
-        return; // Do nothing if the query already contains the type
-      }
-
-      newQuery = newQuery
-        .replaceAll('hyperdx_event_type:"log"', '')
-        .replaceAll('hyperdx_event_type:"span"', '')
-        .trim();
-
-      if (!displayedSearchQuery.includes('hyperdx_event_type:')) {
-        newQuery =
-          newQuery +
-          (newQuery.length ? ' ' : '') +
-          `hyperdx_event_type:"${type === 'log' ? 'span' : 'log'}"`;
-      }
-
-      if (newQuery !== displayedSearchQuery) {
-        doSearch(newQuery, displayedTimeInputValue);
-      }
-    },
-    [displayedSearchQuery, displayedTimeInputValue, doSearch],
-  );
-
   const chartsConfig = useMemo(() => {
     return {
       where: searchedQuery,
@@ -716,6 +681,15 @@ function SearchPage() {
   );
   const tagsCount = selectedSavedSearch?.tags?.length || 0;
 
+  const handleSearchQueryChange = useCallback(
+    (newQuery: string) => {
+      if (newQuery !== displayedSearchQuery) {
+        doSearch(newQuery, displayedTimeInputValue);
+      }
+    },
+    [displayedSearchQuery, displayedTimeInputValue, doSearch],
+  );
+
   return (
     <div style={{ height: '100vh' }}>
       <Head>
@@ -789,38 +763,14 @@ function SearchPage() {
           refetchLogViews();
         }}
       />
-      <div className="d-flex flex-column flex-grow-1 bg-hdx-dark h-100">
-        <div className="bg-body pb-3 pt-3 d-flex px-3 align-items-center">
-          <div className={styles.eventTypeSwitch}>
-            <div
-              className={cx(styles.eventTypeSwitchItem, {
-                [styles.eventTypeSwitchItemActive]:
-                  searchedTypes.includes('log'),
-              })}
-              onClick={() => handleToggleType('log')}
-            >
-              {searchedTypes.includes('log') ? (
-                <i className="bi bi-check" />
-              ) : (
-                <i />
-              )}
-              Logs
-            </div>
-            <div
-              className={cx(styles.eventTypeSwitchItem, {
-                [styles.eventTypeSwitchItemActive]:
-                  searchedTypes.includes('span'),
-              })}
-              onClick={() => handleToggleType('span')}
-            >
-              {searchedTypes.includes('span') ? (
-                <i className="bi bi-check" />
-              ) : (
-                <i />
-              )}
-              Spans
-            </div>
-          </div>
+      <div className="d-flex flex-column flex-grow-0 min-h-0 h-100 bg-hdx-dark">
+        <div
+          className="bg-body pb-3 pt-3 d-flex px-3 align-items-center"
+          style={{
+            borderBottom: '1px solid var(--mantine-color-gray-9)',
+          }}
+        >
+          <ToggleFilterButton />
           <form onSubmit={onSearchSubmit} className="d-flex flex-grow-1">
             <SearchInput
               inputRef={searchInput}
@@ -891,113 +841,139 @@ function SearchPage() {
             </Tags>
           )}
         </div>
-        <div className="d-flex mx-4 mt-2 justify-content-between">
-          <div className="fs-8 text-muted">
-            {isReady ? (
-              <HistogramResultCounter
-                config={{
-                  where: searchedQuery,
-                  dateRange: [
-                    searchedTimeRange[0] ?? new Date(),
-                    searchedTimeRange[1] ?? new Date(),
-                  ],
+        <div
+          className="d-flex flex-row flex-grow-0"
+          style={{
+            minHeight: 0,
+            height: '100%',
+          }}
+        >
+          <SearchPageFilters
+            searchQuery={searchedQuery}
+            onSearchQueryChange={handleSearchQueryChange}
+          />
+          <div className="d-flex flex-column flex-grow-1">
+            <div className="d-flex mx-4 mt-2 justify-content-between">
+              <div className="fs-8 text-muted">
+                {isReady ? (
+                  <HistogramResultCounter
+                    config={{
+                      where: searchedQuery,
+                      dateRange: [
+                        searchedTimeRange[0] ?? new Date(),
+                        searchedTimeRange[1] ?? new Date(),
+                      ],
+                    }}
+                  />
+                ) : null}
+              </div>
+              <div className="d-flex">
+                <Link
+                  href={generateSearchUrl(searchedQuery, [
+                    zoomOutFrom,
+                    zoomOutTo,
+                  ])}
+                  className="text-muted-hover text-decoration-none fs-8 me-3"
+                >
+                  <i className="bi bi-zoom-out me-1"></i>Zoom Out
+                </Link>
+                <Link
+                  href={generateSearchUrl(searchedQuery, [
+                    zoomInFrom,
+                    zoomInTo,
+                  ])}
+                  className="text-muted-hover text-decoration-none fs-8 me-3"
+                >
+                  <i className="bi bi-zoom-in me-1"></i>Zoom In
+                </Link>
+                <Link
+                  href={generateChartUrl({
+                    table: 'logs',
+                    aggFn: 'count',
+                    field: undefined,
+                    groupBy: ['level'],
+                  })}
+                  className="text-muted-hover text-decoration-none fs-8"
+                >
+                  <i className="bi bi-plus-circle me-1"></i>Create Chart
+                </Link>
+              </div>
+            </div>
+            <div style={{ height: 110 }} className="my-2 px-3 w-100">
+              {/* Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172 */}
+              <div
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  paddingBottom: '110px',
                 }}
-              />
-            ) : null}
-          </div>
-          <div className="d-flex">
-            <Link
-              href={generateSearchUrl(searchedQuery, [zoomOutFrom, zoomOutTo])}
-              className="text-muted-hover text-decoration-none fs-8 me-3"
-            >
-              <i className="bi bi-zoom-out me-1"></i>Zoom Out
-            </Link>
-            <Link
-              href={generateSearchUrl(searchedQuery, [zoomInFrom, zoomInTo])}
-              className="text-muted-hover text-decoration-none fs-8 me-3"
-            >
-              <i className="bi bi-zoom-in me-1"></i>Zoom In
-            </Link>
-            <Link
-              href={generateChartUrl({
-                table: 'logs',
-                aggFn: 'count',
-                field: undefined,
-                groupBy: ['level'],
-              })}
-              className="text-muted-hover text-decoration-none fs-8"
-            >
-              <i className="bi bi-plus-circle me-1"></i>Create Chart
-            </Link>
-          </div>
-        </div>
-        <div style={{ height: 110 }} className="my-2 px-3 w-100">
-          {/* Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172 */}
-          <div
-            style={{
-              position: 'relative',
-              width: '100%',
-              paddingBottom: '110px',
-            }}
-          >
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    top: 0,
+                  }}
+                >
+                  {isReady ? (
+                    <HDXHistogram
+                      config={chartsConfig}
+                      onTimeRangeSelect={onTimeRangeSelect}
+                      isLive={isLive}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {shouldShowLiveModeHint && resultsMode === 'search' && (
+              <div
+                className="d-flex justify-content-center"
+                style={{ height: 0 }}
+              >
+                <div style={{ position: 'relative', top: -22, zIndex: 2 }}>
+                  <Button
+                    variant="outline-success"
+                    className="fs-8 bg-hdx-dark py-1"
+                    onClick={() => {
+                      setIsLive(true);
+                    }}
+                  >
+                    <i className="bi text-success bi-lightning-charge-fill me-2" />
+                    Resume Live Tail
+                  </Button>
+                </div>
+              </div>
+            )}
             <div
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                top: 0,
-              }}
+              className="px-3 flex-grow-1 bg-inherit"
+              style={{ minHeight: 0 }}
             >
               {isReady ? (
-                <HDXHistogram
-                  config={chartsConfig}
-                  onTimeRangeSelect={onTimeRangeSelect}
-                  isLive={isLive}
-                />
+                resultsMode === 'search' || isLive ? (
+                  <LogViewerContainer
+                    config={chartsConfig}
+                    onPropertyAddClick={onPropertyAddClick}
+                    generateSearchUrl={generateSearchUrl}
+                    generateChartUrl={generateChartUrl}
+                    onPropertySearchClick={onPropertySearchClick}
+                    isLive={isLive}
+                    setIsLive={setIsLive}
+                    onShowPatternsClick={() => {
+                      setIsLive(false);
+                      setResultsMode('patterns');
+                    }}
+                  />
+                ) : (
+                  <MemoPatternTableWithSidePanel
+                    config={chartsConfig}
+                    onShowEventsClick={onShowEventsClick}
+                  />
+                )
               ) : null}
             </div>
           </div>
-        </div>
-        {shouldShowLiveModeHint && resultsMode === 'search' && (
-          <div className="d-flex justify-content-center" style={{ height: 0 }}>
-            <div style={{ position: 'relative', top: -22, zIndex: 2 }}>
-              <Button
-                variant="outline-success"
-                className="fs-8 bg-hdx-dark py-1"
-                onClick={() => {
-                  setIsLive(true);
-                }}
-              >
-                <i className="bi text-success bi-lightning-charge-fill me-2" />
-                Resume Live Tail
-              </Button>
-            </div>
-          </div>
-        )}
-        <div className="px-3 flex-grow-1 bg-inherit" style={{ minHeight: 0 }}>
-          {isReady ? (
-            resultsMode === 'search' || isLive ? (
-              <LogViewerContainer
-                config={chartsConfig}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                generateChartUrl={generateChartUrl}
-                onPropertySearchClick={onPropertySearchClick}
-                isLive={isLive}
-                setIsLive={setIsLive}
-                onShowPatternsClick={() => {
-                  setIsLive(false);
-                  setResultsMode('patterns');
-                }}
-              />
-            ) : (
-              <MemoPatternTableWithSidePanel
-                config={chartsConfig}
-                onShowEventsClick={onShowEventsClick}
-              />
-            )
-          ) : null}
         </div>
       </div>
     </div>
