@@ -101,7 +101,6 @@ const useConfirmExit = ({
 
   const handleRouteChangeStart = useCallback(
     (route: string) => {
-      console.log(route, router.asPath);
       if (!hasUnsavedChanges || route.startsWith('/dashboards')) {
         return;
       }
@@ -115,7 +114,7 @@ const useConfirmExit = ({
       router.events.emit('routeChangeError');
       throw 'aborted';
     },
-    [hasUnsavedChanges, router.asPath, router.events],
+    [hasUnsavedChanges, router.events],
   );
 
   useEffect(() => {
