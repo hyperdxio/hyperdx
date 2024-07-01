@@ -7,9 +7,11 @@ import {
   Card,
   Checkbox,
   Group,
+  Loader,
   ScrollArea,
   Stack,
   Text,
+  TextInput,
   UnstyledButton,
 } from '@mantine/core';
 
@@ -78,8 +80,8 @@ export const TextButton = ({
   label: React.ReactNode;
 }) => {
   return (
-    <UnstyledButton onClick={onClick}>
-      <Text size="xxs" c="gray.6" className={classes.textButton} lh={1}>
+    <UnstyledButton onClick={onClick} className={classes.textButton}>
+      <Text size="xxs" c="gray.6" lh={1}>
         {label}
       </Text>
     </UnstyledButton>
@@ -125,6 +127,8 @@ type FilterGroupProps = {
   onOnlyClick: (value: string) => void;
 };
 
+const MAX_FILTER_GROUP_ITEMS = 5;
+
 export const FilterGroup = ({
   name,
   options,
@@ -134,6 +138,9 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
 }: FilterGroupProps) => {
+  const [search, setSearch] = React.useState('');
+  const [isExpanded, setExpanded] = React.useState(false);
+
   const augmentedOptions = React.useMemo(() => {
     return [
       ...Array.from(selectedValues)
@@ -143,19 +150,58 @@ export const FilterGroup = ({
     ];
   }, [options, selectedValues]);
 
+  const displayedOptions = React.useMemo(() => {
+    if (search) {
+      return augmentedOptions.filter(option => {
+        return (
+          option.value &&
+          option.value.toLowerCase().includes(search.toLowerCase())
+        );
+      });
+    }
+    if (isExpanded) {
+      return augmentedOptions;
+    }
+    return augmentedOptions.slice(0, MAX_FILTER_GROUP_ITEMS);
+  }, [augmentedOptions, search, isExpanded]);
+
+  const showExpandButton =
+    !search && augmentedOptions.length > MAX_FILTER_GROUP_ITEMS;
+
   return (
-    <Stack gap={6}>
+    <Stack gap={0}>
       <Group justify="space-between">
-        <Text size="xs" c="dimmed">
-          {name}
-        </Text>
+        <TextInput
+          size="xs"
+          variant="unstyled"
+          placeholder={name}
+          leftSection={<Icon name="search" className="fs-8.5" />}
+          value={search}
+          w="60%"
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setSearch(event.currentTarget.value)
+          }
+        />
         {selectedValues.size > 0 && (
-          <TextButton label="Clear" onClick={onClearClick} />
+          <TextButton
+            label="Clear"
+            onClick={() => {
+              onClearClick();
+              setSearch('');
+            }}
+          />
         )}
       </Group>
       <Stack gap={0}>
-        {optionsLoading && <Text c="dimmed">Loading...</Text>}
-        {augmentedOptions.map(option => (
+        {optionsLoading && (
+          <Group m={6} gap="xs">
+            <Loader size={12} color="gray.6" />
+            <Text c="dimmed" size="xs">
+              Loading...
+            </Text>
+          </Group>
+        )}
+        {displayedOptions.map(option => (
           <FilterCheckbox
             key={option.value}
             label={option.label}
@@ -164,6 +210,24 @@ export const FilterGroup = ({
             onClickOnly={() => onOnlyClick(option.value)}
           />
         ))}
+        {showExpandButton && (
+          <div className="d-flex m-1">
+            <TextButton
+              label={
+                isExpanded ? (
+                  <>
+                    <Icon name="chevron-up" /> Less
+                  </>
+                ) : (
+                  <>
+                    <Icon name="chevron-down" /> Show more
+                  </>
+                )
+              }
+              onClick={() => setExpanded(!isExpanded)}
+            />
+          </div>
+        )}
       </Stack>
     </Stack>
   );

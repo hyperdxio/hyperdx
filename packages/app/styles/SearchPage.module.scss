@@ -27,12 +27,28 @@
   cursor: pointer;
   border-radius: 4px;
 
+  position: relative;
+
   input {
     opacity: 0.8;
   }
 
   .textButton {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
     display: none;
+    z-index: 1;
+    backdrop-filter: blur(4px);
+    padding: 0 8px;
+    border-radius: 4px;
+    &:hover {
+      background-color: $slate-900;
+    }
+    &:active {
+      background-color: $slate-950;
+    }
   }
 
   &:hover {
