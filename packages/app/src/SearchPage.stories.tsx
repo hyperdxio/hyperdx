@@ -1,7 +1,7 @@
 import React from 'react';
 import { Stack } from '@mantine/core';
 
-import { FilterCheckbox } from './SearchPage.components';
+import { FilterCheckbox, FilterGroup } from './SearchPage.components';
 
 const meta = {
   title: 'SearchPage/Filters',
@@ -32,6 +32,46 @@ export const Default = () => {
         />
       </Stack>
     </>
+  );
+};
+
+export const Group = () => {
+  return (
+    <div style={{ width: 200 }}>
+      <FilterGroup
+        name="Level"
+        options={[
+          ...Array.from({ length: 20 }).map((_, index) => ({
+            value: `level${index}`,
+            label: `Level ${index}`,
+          })),
+          {
+            value: 'very-long-super-long-absolutely-ridiculously-long',
+            label: 'very-long-super-long-absolutely-ridiculously-long',
+          },
+        ]}
+        selectedValues={new Set(['info'])}
+        onChange={() => {}}
+        onClearClick={() => {}}
+        onOnlyClick={() => {}}
+      />
+    </div>
+  );
+};
+
+export const GroupLoading = () => {
+  return (
+    <div style={{ width: 200 }}>
+      <FilterGroup
+        name="Level"
+        options={[]}
+        optionsLoading
+        selectedValues={new Set(['info'])}
+        onChange={() => {}}
+        onClearClick={() => {}}
+        onOnlyClick={() => {}}
+      />
+    </div>
   );
 };
 

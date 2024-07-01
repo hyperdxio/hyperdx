@@ -14,7 +14,6 @@ import { useRouter } from 'next/router';
 import cx from 'classnames';
 import { clamp, sub } from 'date-fns';
 import { Button } from 'react-bootstrap';
-import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -34,6 +33,7 @@ import {
 import { ActionIcon, Indicator } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { ErrorBoundary } from './components/ErrorBoundary';
 import api from './api';
 import CreateLogAlertModal from './CreateLogAlertModal';
 import { withAppNav } from './layout';
@@ -315,17 +315,7 @@ const LogViewerContainer = memo(function LogViewerContainer({
 
   return (
     <>
-      <ErrorBoundary
-        onError={err => {
-          console.error(err);
-        }}
-        fallbackRender={() => (
-          <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-            An error occurred while rendering the event details. Contact support
-            for more help.
-          </div>
-        )}
-      >
+      <ErrorBoundary message="An error occurred while rendering the event details. Contact support for more help.">
         <LogSidePanel
           key={openedLog?.id}
           logId={openedLog?.id}
@@ -848,10 +838,12 @@ function SearchPage() {
             height: '100%',
           }}
         >
-          <SearchPageFilters
-            searchQuery={searchedQuery}
-            onSearchQueryChange={handleSearchQueryChange}
-          />
+          <ErrorBoundary message="Unable to render search filters">
+            <SearchPageFilters
+              searchQuery={searchedQuery}
+              onSearchQueryChange={handleSearchQueryChange}
+            />
+          </ErrorBoundary>
           <div className="d-flex flex-column flex-grow-1">
             <div className="d-flex mx-4 mt-2 justify-content-between">
               <div className="fs-8 text-muted">
