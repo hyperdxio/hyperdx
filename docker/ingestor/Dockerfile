@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM timberio/vector:0.37.0-alpine AS base
+FROM timberio/vector:0.39.0-alpine AS base
 
 RUN mkdir -p /var/lib/vector
 VOLUME ["/var/lib/vector"]
