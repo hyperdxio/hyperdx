@@ -99,6 +99,60 @@ router.get(
 );
 
 router.get(
+  '/logs/search',
+  getDefaultRateLimiter(),
+  validateRequest({
+    query: z.object({
+      endTime: z.string(),
+      extraFields: z.array(z.string()).optional(),
+      q: z.string(),
+      startTime: z.string(),
+    }),
+  }),
+  validateUserAccessKey,
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team.toString();
+      const { endTime, q, startTime, extraFields } =
+        req.query;
+      if (teamId == null) {
+        throw new Api403Error('Forbidden');
+      }
+      const startTimeNum = parseInt(startTime);
+      const endTimeNum = parseInt(endTime);
+      if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
+        throw new Api400Error('startTime and endTime must be numbers');
+      }
+
+      const team = await getTeam(teamId);
+      if (team == null) {
+        throw new Api403Error('Forbidden');
+      }
+
+      const order = null;
+      res.json(
+        await clickhouse.getLogBatch({
+          endTime: endTimeNum,
+          limit: 100,
+          offset: 0,
+          extraFields: extraFields,
+          q: q,
+          order: order === 'null' ? null : order === 'asc' ? 'asc' : 'desc',
+          startTime: startTimeNum,
+          tableVersion: team.logStreamTableVersion,
+          teamId: teamId,
+        }),
+      );
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      next(e);
+    }
+  },
+);
+
+router.get(
   '/logs/chart',
   getDefaultRateLimiter(),
   validateRequest({
