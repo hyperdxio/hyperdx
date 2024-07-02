@@ -793,3 +793,10 @@ html.hdx-theme-light .hdx-background-image {
 a.mantine-focus-auto:hover {
   color: inherit;
 }
+
+.recharts-tooltip-wrapper {
+  &:focus,
+  &:focus-visible {
+    outline: none;
+  }
+}
