@@ -7,7 +7,6 @@ import Fuse from 'fuse.js';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
 import pickBy from 'lodash/pickBy';
-import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import Button from 'react-bootstrap/Button';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -21,9 +20,11 @@ import { useQueryParam } from 'use-query-params';
 import {
   ActionIcon,
   Box,
+  Button as MButton,
   Card,
   Group,
   Menu,
+  Popover,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
@@ -778,55 +779,64 @@ function EventTag({
   onPropertyAddClick?: (key: string, value: string) => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
 }) {
+  const [opened, setOpened] = useState(false);
+
   return (
-    <OverlayTrigger
-      key={name}
-      trigger="click"
-      overlay={
-        <Tooltip id={`tooltip`}>
-          <span className="me-2" />
-          {onPropertyAddClick != null ? (
-            <Button
-              className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
-              variant="link"
-              title="Add to search"
+    <Popover
+      position="top"
+      withinPortal={false}
+      withArrow
+      opened={opened}
+      onChange={setOpened}
+    >
+      <Popover.Target>
+        <div
+          key={name}
+          className="text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 cursor-pointer"
+          onClick={() => setOpened(!opened)}
+        >
+          {displayedKey || name}
+          {': '}
+          {value}
+        </div>
+      </Popover.Target>
+      <Popover.Dropdown p={2}>
+        <Stack gap={0} justify="stretch">
+          {onPropertyAddClick ? (
+            <MButton
+              justify="space-between"
+              color="gray"
+              variant="subtle"
+              size="xs"
+              rightSection={<i className="bi bi-plus-circle" />}
               onClick={() => {
                 onPropertyAddClick(name, value);
+                setOpened(false);
               }}
             >
-              <i className="bi bi-plus-circle" /> Add to Search
-            </Button>
+              Add to Search
+            </MButton>
           ) : null}
-          <span>
-            <Link
-              href={generateSearchUrl(
-                `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
-              )}
-              passHref
-              legacyBehavior
+          <Link
+            href={generateSearchUrl(
+              `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
+            )}
+            passHref
+            legacyBehavior
+          >
+            <MButton
+              justify="space-between"
+              color="gray"
+              variant="subtle"
+              size="xs"
+              rightSection={<i className="bi bi-search" />}
             >
-              <Button
-                className="fs-8 text-muted-hover child-hover-trigger py-0"
-                variant="link"
-                as="a"
-                title="Search for this value only"
-              >
-                <i className="bi bi-search" /> Search This Value
-              </Button>
-            </Link>
-          </span>
-        </Tooltip>
-      }
-    >
-      <div
-        key={name}
-        className="text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 cursor-pointer"
-      >
-        {displayedKey || name}
-        {': '}
-        {value}
-      </div>
-    </OverlayTrigger>
+              Search This Value
+            </MButton>
+          </Link>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
@@ -1750,42 +1760,40 @@ function PropertySubpanel({
                     : get(nestedProperties, parsedKeyPath);
 
                   return (
-                    <OverlayTrigger
-                      trigger="click"
-                      overlay={
-                        <Tooltip id={`tooltip`}>
-                          <CopyToClipboard
-                            text={JSON.stringify(copiedObj, null, 2)}
-                            onCopy={() => {
-                              notifications.show({
-                                color: 'green',
-                                message: `${
-                                  shouldCopyParent ? 'Parent object' : 'Object'
-                                } copied to clipboard`,
-                              });
-                            }}
+                    <Popover withinPortal={false}>
+                      <Popover.Target>
+                        <span className="cursor-pointer">{key}</span>
+                      </Popover.Target>
+                      <Popover.Dropdown>
+                        <CopyToClipboard
+                          text={JSON.stringify(copiedObj, null, 2)}
+                          onCopy={() => {
+                            notifications.show({
+                              color: 'green',
+                              message: `${
+                                shouldCopyParent ? 'Parent object' : 'Object'
+                              } copied to clipboard`,
+                            });
+                          }}
+                        >
+                          <Button
+                            className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
+                            variant="link"
+                            title={`Copy ${
+                              shouldCopyParent ? 'parent' : ''
+                            } object`}
                           >
-                            <Button
-                              className="p-0 fs-8 text-muted-hover child-hover-trigger me-2"
-                              variant="link"
-                              title={`Copy ${
-                                shouldCopyParent ? 'parent' : ''
-                              } object`}
-                            >
-                              <i className="bi bi-clipboard" /> Copy{' '}
-                              {shouldCopyParent ? 'Parent ' : ''}Object (
-                              {(shouldCopyParent
-                                ? parentKeyPath
-                                : parsedKeyPath
-                              ).join('.')}
-                              )
-                            </Button>
-                          </CopyToClipboard>
-                        </Tooltip>
-                      }
-                    >
-                      <span className="cursor-pointer">{key}</span>
-                    </OverlayTrigger>
+                            <i className="bi bi-clipboard" /> Copy{' '}
+                            {shouldCopyParent ? 'Parent ' : ''}Object (
+                            {(shouldCopyParent
+                              ? parentKeyPath
+                              : parsedKeyPath
+                            ).join('.')}
+                            )
+                          </Button>
+                        </CopyToClipboard>
+                      </Popover.Dropdown>
+                    </Popover>
                   );
                 }}
                 valueRenderer={(raw, value, ...rawKeyPath) => {
