@@ -4,8 +4,11 @@ import cx from 'classnames';
 import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
+  CartesianGrid,
   Label,
   Legend,
   Line,
@@ -30,7 +33,7 @@ import {
 import type { ChartSeries, NumberFormat } from './types';
 import { FormatTime, useFormatTime } from './useFormatTime';
 import { formatNumber } from './utils';
-import { semanticKeyedColor, truncateMiddle } from './utils';
+import { getColorProps, truncateMiddle } from './utils';
 
 import styles from '../styles/HDXLineChart.module.scss';
 
@@ -190,14 +193,24 @@ const MemoChart = memo(function MemoChart({
       return acc;
     }, {});
 
-    return limitedGroupKeys.map((key, i) =>
-      displayType === 'stacked_bar' ? (
+    return limitedGroupKeys.map((key, i) => {
+      const {
+        color: _color,
+        opacity,
+        strokeDasharray,
+        strokeWidth,
+      } = getColorProps(i, lineNames[i] ?? key);
+
+      const color = lineColors[i] ?? _color;
+
+      return displayType === 'stacked_bar' ? (
         <Bar
           key={key}
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          fill={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
+          fill={color}
+          opacity={opacity}
           stackId="1"
         />
       ) : (
@@ -206,14 +219,17 @@ const MemoChart = memo(function MemoChart({
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          stroke={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
+          stroke={color}
           dot={
             isContinuousGroup[key] === false ? { strokeWidth: 2, r: 1 } : false
           }
+          strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
           isAnimationActive={false}
+          opacity={opacity}
         />
-      ),
-    );
+      );
+    });
   }, [groupKeys, graphResults, displayType, lineNames, lineColors]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
@@ -280,6 +296,10 @@ const MemoChart = memo(function MemoChart({
           e.stopPropagation();
         }}
       >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="var(--mantine-color-gray-9)"
+        />
         <XAxis
           dataKey={'ts_bucket'}
           domain={[
