@@ -3,3 +3,6 @@ dist
 coverage
 tests
 .volumes
+
+# Ignore  helm templates and yamls https://github.com/prettier/prettier/issues/6517
+charts/
