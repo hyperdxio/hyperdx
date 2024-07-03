@@ -2871,7 +2871,7 @@ export default function LogSidePanel({
 
                 {/* Session Replay */}
                 {displayedTab === 'replay' ? (
-                  <div className="px-4 overflow-hidden flex-grow-1">
+                  <div className="overflow-hidden flex-grow-1">
                     {rumSessionId != null ? (
                       <SessionSubpanel
                         start={start}
