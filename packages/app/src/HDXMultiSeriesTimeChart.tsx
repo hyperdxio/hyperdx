@@ -6,6 +6,7 @@ import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
   BarChart,
+  CartesianGrid,
   Label,
   Legend,
   Line,
@@ -30,11 +31,50 @@ import {
 import type { ChartSeries, NumberFormat } from './types';
 import { FormatTime, useFormatTime } from './useFormatTime';
 import { formatNumber } from './utils';
-import { semanticKeyedColor, truncateMiddle } from './utils';
+import { getColorProps, truncateMiddle } from './utils';
 
 import styles from '../styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
+
+type TooltipPayload = {
+  dataKey: string;
+  name: string;
+  value: number;
+  color?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+  opacity?: number;
+};
+
+export const TooltipItem = memo(
+  ({ p, numberFormat }: { p: TooltipPayload; numberFormat?: NumberFormat }) => {
+    return (
+      <div className="d-flex gap-2 items-center justify-center">
+        <div>
+          <svg width="12" height="4">
+            <line
+              x1="0"
+              y1="2"
+              x2="12"
+              y2="2"
+              stroke={p.color}
+              opacity={p.opacity}
+              strokeDasharray={p.strokeDasharray}
+            />
+          </svg>
+        </div>
+        <div>
+          <span style={{ color: p.color }}>
+            {truncateMiddle(p.name ?? p.dataKey, 50)}
+          </span>
+          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+        </div>
+      </div>
+    );
+  },
+);
 
 const HDXLineChartTooltip = withErrorBoundary(
   memo((props: any) => {
@@ -49,10 +89,11 @@ const HDXLineChartTooltip = withErrorBoundary(
             {payload
               .sort((a: any, b: any) => b.value - a.value)
               .map((p: any) => (
-                <div key={p.dataKey} style={{ color: p.color }}>
-                  {truncateMiddle(p.name ?? p.dataKey, 70)}:{' '}
-                  {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
-                </div>
+                <TooltipItem
+                  key={p.dataKey}
+                  p={p}
+                  numberFormat={numberFormat}
+                />
               ))}
           </div>
         </div>
@@ -82,8 +123,22 @@ function CopyableLegendItem({ entry }: any) {
       }}
       title="Click to expand"
     >
-      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
-      {entry.value}
+      <div className="d-flex gap-1 items-center justify-center">
+        <div>
+          <svg width="12" height="4">
+            <line
+              x1="0"
+              y1="2"
+              x2="12"
+              y2="2"
+              stroke={entry.color}
+              opacity={entry.opacity}
+              strokeDasharray={entry.payload?.strokeDasharray}
+            />
+          </svg>
+        </div>
+        {entry.value}
+      </div>
     </span>
   );
 }
@@ -94,13 +149,25 @@ function ExpandableLegendItem({ entry, expanded }: any) {
 
   return (
     <span
-      className={styles.legendItem}
+      className={`d-flex gap-1 items-center justify-center ${styles.legendItem}`}
       style={{ color: entry.color }}
       role="button"
       onClick={() => setExpanded(v => !v)}
       title="Click to expand"
     >
-      <i className="bi bi-circle-fill me-1" style={{ fontSize: 6 }} />
+      <div>
+        <svg width="12" height="4">
+          <line
+            x1="0"
+            y1="2"
+            x2="12"
+            y2="2"
+            stroke={entry.color}
+            opacity={entry.opacity}
+            strokeDasharray={entry.payload?.strokeDasharray}
+          />
+        </svg>
+      </div>
       {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
     </span>
   );
@@ -113,6 +180,7 @@ export const LegendRenderer = memo<{
   }[];
 }>(props => {
   const payload = props.payload ?? [];
+
   const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
   const restItems = payload.slice(MAX_LEGEND_ITEMS);
 
@@ -190,14 +258,24 @@ const MemoChart = memo(function MemoChart({
       return acc;
     }, {});
 
-    return limitedGroupKeys.map((key, i) =>
-      displayType === 'stacked_bar' ? (
+    return limitedGroupKeys.map((key, i) => {
+      const {
+        color: _color,
+        opacity,
+        strokeDasharray,
+        strokeWidth,
+      } = getColorProps(i, lineNames[i] ?? key);
+
+      const color = lineColors[i] ?? _color;
+
+      return displayType === 'stacked_bar' ? (
         <Bar
           key={key}
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          fill={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
+          fill={color}
+          opacity={opacity}
           stackId="1"
         />
       ) : (
@@ -206,14 +284,17 @@ const MemoChart = memo(function MemoChart({
           type="monotone"
           dataKey={key}
           name={lineNames[i] ?? key}
-          stroke={lineColors[i] ?? semanticKeyedColor(lineNames[i] ?? key)}
+          stroke={color}
           dot={
             isContinuousGroup[key] === false ? { strokeWidth: 2, r: 1 } : false
           }
+          strokeWidth={strokeWidth}
+          strokeDasharray={strokeDasharray}
           isAnimationActive={false}
+          opacity={opacity}
         />
-      ),
-    );
+      );
+    });
   }, [groupKeys, graphResults, displayType, lineNames, lineColors]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
@@ -280,6 +361,10 @@ const MemoChart = memo(function MemoChart({
           e.stopPropagation();
         }}
       >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="var(--mantine-color-gray-8)"
+        />
         <XAxis
           dataKey={'ts_bucket'}
           domain={[

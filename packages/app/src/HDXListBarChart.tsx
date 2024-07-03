@@ -90,7 +90,7 @@ function ListBar({
 
   return (
     <>
-      {rows?.map(row => {
+      {rows?.map((row, index) => {
         const value = row['series_0.data'];
         const percentOfMax = (value / maxValue) * 100;
         const percentOfTotal = (value / totalValue) * 100;
@@ -142,7 +142,7 @@ function ListBar({
               <ListItem
                 title={group}
                 value={`${percentOfTotal.toFixed(2)}%`}
-                color={semanticKeyedColor(group)}
+                color={semanticKeyedColor(group, index)}
                 percent={percentOfMax}
                 hoverCardContent={hoverCardContent}
                 hoverCardPosition={hoverCardPosition}
@@ -154,7 +154,7 @@ function ListBar({
             <ListItem
               title={group}
               value={`${percentOfTotal.toFixed(2)}%`}
-              color={semanticKeyedColor(group)}
+              color={semanticKeyedColor(group, index)}
               percent={percentOfMax}
               hoverCardContent={hoverCardContent}
               hoverCardPosition={hoverCardPosition}
