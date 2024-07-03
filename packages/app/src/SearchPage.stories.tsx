@@ -59,6 +59,34 @@ export const Group = () => {
   );
 };
 
+export const GroupWithManyHiddenCheckedValues = () => {
+  return (
+    <div style={{ width: 200 }}>
+      <FilterGroup
+        name="Level"
+        options={[
+          ...Array.from({ length: 20 }).map((_, index) => ({
+            value: `level${index}`,
+            label: `Level ${index}`,
+          })),
+          {
+            value: 'very-long-super-long-absolutely-ridiculously-long',
+            label: 'very-long-super-long-absolutely-ridiculously-long',
+          },
+        ]}
+        selectedValues={
+          new Set(
+            Array.from({ length: 10 }).map((_, index) => `level${index + 10}`),
+          )
+        }
+        onChange={() => {}}
+        onClearClick={() => {}}
+        onOnlyClick={() => {}}
+      />
+    </div>
+  );
+};
+
 export const GroupLoading = () => {
   return (
     <div style={{ width: 200 }}>
@@ -67,6 +95,20 @@ export const GroupLoading = () => {
         options={[]}
         optionsLoading
         selectedValues={new Set(['info'])}
+        onChange={() => {}}
+        onClearClick={() => {}}
+        onOnlyClick={() => {}}
+      />
+    </div>
+  );
+};
+
+export const GroupEmpty = () => {
+  return (
+    <div style={{ width: 200 }}>
+      <FilterGroup
+        name="Level"
+        options={[]}
         onChange={() => {}}
         onClearClick={() => {}}
         onOnlyClick={() => {}}

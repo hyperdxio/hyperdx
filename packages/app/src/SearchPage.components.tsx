@@ -127,7 +127,7 @@ type FilterGroupProps = {
   onOnlyClick: (value: string) => void;
 };
 
-const MAX_FILTER_GROUP_ITEMS = 5;
+const MAX_FILTER_GROUP_ITEMS = 10;
 
 export const FilterGroup = ({
   name,
@@ -159,14 +159,40 @@ export const FilterGroup = ({
         );
       });
     }
-    if (isExpanded) {
+
+    if (isExpanded || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
       return augmentedOptions;
     }
-    return augmentedOptions.slice(0, MAX_FILTER_GROUP_ITEMS);
-  }, [augmentedOptions, search, isExpanded]);
+
+    // Do not rearrange items if all selected values are visible without expanding
+    const shouldSortBySelected =
+      isExpanded ||
+      augmentedOptions.some(
+        (option, index) =>
+          selectedValues.has(option.value) && index >= MAX_FILTER_GROUP_ITEMS,
+      );
+
+    return augmentedOptions
+      .slice()
+      .sort((a, b) => {
+        if (!shouldSortBySelected) {
+          return 0;
+        }
+        if (selectedValues.has(a.value) && !selectedValues.has(b.value)) {
+          return -1;
+        }
+        if (!selectedValues.has(a.value) && selectedValues.has(b.value)) {
+          return 1;
+        }
+        return 0;
+      })
+      .slice(0, Math.max(MAX_FILTER_GROUP_ITEMS, selectedValues.size));
+  }, [search, isExpanded, augmentedOptions, selectedValues]);
 
   const showExpandButton =
-    !search && augmentedOptions.length > MAX_FILTER_GROUP_ITEMS;
+    !search &&
+    augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
+    selectedValues.size < augmentedOptions.length;
 
   return (
     <Stack gap={0}>
@@ -193,14 +219,6 @@ export const FilterGroup = ({
         )}
       </Group>
       <Stack gap={0}>
-        {optionsLoading && (
-          <Group m={6} gap="xs">
-            <Loader size={12} color="gray.6" />
-            <Text c="dimmed" size="xs">
-              Loading...
-            </Text>
-          </Group>
-        )}
         {displayedOptions.map(option => (
           <FilterCheckbox
             key={option.value}
@@ -210,6 +228,20 @@ export const FilterGroup = ({
             onClickOnly={() => onOnlyClick(option.value)}
           />
         ))}
+        {optionsLoading ? (
+          <Group m={6} gap="xs">
+            <Loader size={12} color="gray.6" />
+            <Text c="dimmed" size="xs">
+              Loading...
+            </Text>
+          </Group>
+        ) : displayedOptions.length === 0 ? (
+          <Group m={6} gap="xs">
+            <Text c="dimmed" size="xs">
+              No options found
+            </Text>
+          </Group>
+        ) : null}
         {showExpandButton && (
           <div className="d-flex m-1">
             <TextButton
