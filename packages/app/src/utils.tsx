@@ -261,21 +261,26 @@ export const getLogLevelClass = (lvl: string | undefined) => {
     : undefined;
 };
 
+// Accessible chart colors
 const COLORS = [
-  '#d5dade', // White
   '#20c997', // Green
-  '#0dcaf0', // Turqoise
   '#8250dc', // Light Purple
   '#cdad7a', // Tan
-  '#6610f2', // Purple
   '#0d6efd', // Blue
   '#fd7e14', // Orange
+  '#0dcaf0', // Turqoise
   '#828c95', // Grey
   '#ff9382', // Coral
   '#39b5ab', // Olive-tealish?
   '#ffa600', // Yellow
-  // '#d63384', // Magenta, too close to red
 ];
+
+const STROKE_DASHARRAYS = ['0', '4 3', '5 5'];
+
+const STROKE_WIDTHS = [1.25];
+
+const STROKE_OPACITIES = [1];
+
 export function hashCode(str: string) {
   let hash = 0,
     i,
@@ -289,13 +294,11 @@ export function hashCode(str: string) {
   return hash;
 }
 
-const keyedColor = (key: string | number | undefined) => {
-  const num = Math.floor(Math.abs(hashCode(`${key}` ?? '')));
-  return COLORS[num % COLORS.length];
-};
-
 // Try to match log levels to colors
-export const semanticKeyedColor = (key: string | number | undefined) => {
+export const semanticKeyedColor = (
+  key: string | number | undefined,
+  index: number,
+) => {
   const logLevel = getLogLevelClass(`${key}`);
   if (logLevel != null) {
     return logLevel === 'error'
@@ -305,7 +308,42 @@ export const semanticKeyedColor = (key: string | number | undefined) => {
       : '#20c997'; // green;
   }
 
-  return keyedColor(key);
+  return COLORS[index % COLORS.length];
+};
+
+const getLevelColor = (logLevel?: string) => {
+  if (logLevel == null) {
+    return;
+  }
+  return logLevel === 'error'
+    ? '#d63384' // magenta
+    : logLevel === 'warn'
+    ? '#ffc107' // yellow
+    : '#20c997'; // green;
+};
+
+export const getColorProps = (
+  index: number,
+  level: string,
+): {
+  color: string;
+  strokeDasharray: string;
+  opacity: number;
+  strokeWidth: number;
+} => {
+  const logLevel = getLogLevelClass(level);
+  const colorOverride = getLevelColor(logLevel);
+
+  // How many same colored lines we already have
+  const colorStep = Math.floor(index / COLORS.length);
+
+  return {
+    color: colorOverride ?? COLORS[index % COLORS.length],
+    strokeDasharray:
+      STROKE_DASHARRAYS[Math.min(STROKE_DASHARRAYS.length, colorStep)],
+    opacity: STROKE_OPACITIES[Math.min(STROKE_OPACITIES.length, colorStep)],
+    strokeWidth: STROKE_WIDTHS[Math.min(STROKE_WIDTHS.length, colorStep)],
+  };
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
