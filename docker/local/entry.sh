@@ -18,6 +18,7 @@ export CLICKHOUSE_HOST="http://ch-server:8123"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export REDIS_URI="redis://redis:6379"
 
+export AGGREGATOR_PAYLOAD_SIZE_LIMIT="144mb"
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 export IS_LOCAL_APP_MODE="DANGEROUSLY_is_local_app_mode💀"
 export NEXT_TELEMETRY_DISABLED="1"

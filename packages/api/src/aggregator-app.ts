@@ -4,6 +4,7 @@ import express from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as clickhouse from './clickhouse';
+import * as config from './config';
 import { mongooseConnection } from './models';
 import routers from './routers/aggregator';
 import { BaseError, StatusCode } from './utils/errors';
@@ -32,9 +33,14 @@ const healthCheckMiddleware = async (
 
 app.disable('x-powered-by');
 app.use(compression());
-app.use(express.json({ limit: '144mb' })); // WARNING: should be greater than the upstream batch size limit
-app.use(express.text({ limit: '144mb' }));
-app.use(express.urlencoded({ extended: false, limit: '144mb' }));
+app.use(express.json({ limit: config.AGGREGATOR_PAYLOAD_SIZE_LIMIT })); // WARNING: should be greater than the upstream batch size limit
+app.use(express.text({ limit: config.AGGREGATOR_PAYLOAD_SIZE_LIMIT }));
+app.use(
+  express.urlencoded({
+    extended: false,
+    limit: config.AGGREGATOR_PAYLOAD_SIZE_LIMIT,
+  }),
+);
 
 app.use(expressLogger);
 
