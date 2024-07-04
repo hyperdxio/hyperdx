@@ -347,7 +347,7 @@ export const ToggleFilterButton = () => {
       size="lg"
       variant="subtle"
       radius="md"
-      title="Refresh Dashboard"
+      title="Toggle Filters"
       onClick={() => setFiltersVisible(!filtersVisible)}
     >
       <Icon
