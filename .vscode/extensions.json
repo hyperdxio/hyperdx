@@ -3,6 +3,8 @@
     "vunguyentuan.vscode-css-variables",
     "clinyong.vscode-css-modules",
     "streetsidesoftware.code-spell-checker",
-    "dbaeumer.vscode-eslint"
+    "dbaeumer.vscode-eslint",
+    "hossaini.bootstrap-intellisense",
+    "stylelint.vscode-stylelint"
   ]
 }
