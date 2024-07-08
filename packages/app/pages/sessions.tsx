@@ -1,3 +1,3 @@
-import SessionsPage from '../src/SessionsPage';
+import SessionsPage from '@/SessionsPage';
 
 export default SessionsPage;
