@@ -24,6 +24,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import {
+  ActionIcon,
   Badge,
   Box,
   Button as MButton,
@@ -40,6 +41,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { Icon } from './components/Icon';
 import api from './api';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
@@ -751,16 +753,30 @@ export default function DashboardPage({
     }
   }, [editedChart]);
 
-  const { searchedTimeRange, displayedTimeInputValue, onSearch } =
-    useNewTimeQuery({
-      initialDisplayValue: 'Past 1h',
-      initialTimeRange: defaultTimeRange,
-    });
+  const {
+    searchedTimeRange,
+    displayedTimeInputValue,
+    onSearch,
+    onTimeRangeSelect,
+  } = useNewTimeQuery({
+    initialDisplayValue: 'Past 1h',
+    initialTimeRange: defaultTimeRange,
+  });
 
   const [input, setInput] = useState<string>(displayedTimeInputValue);
   useEffect(() => {
     setInput(displayedTimeInputValue);
   }, [displayedTimeInputValue]);
+
+  const [isRefreshDisabled, setIsRefreshDisabled] = useState(false);
+  const handleRefreshDashboard = useCallback(() => {
+    // Extend the time range to now
+    onTimeRangeSelect(searchedTimeRange[0], new Date());
+    setIsRefreshDisabled(true);
+    setTimeout(() => {
+      setIsRefreshDisabled(false);
+    }, 1000);
+  }, [onTimeRangeSelect, searchedTimeRange]);
 
   const onAddChart = () => {
     setEditedChart({
@@ -1039,6 +1055,19 @@ export default function DashboardPage({
             </div>
           )}
           <div className="d-flex flex-grow-1 justify-content-end">
+            <ActionIcon
+              onClick={handleRefreshDashboard}
+              loading={isRefreshDisabled}
+              disabled={isRefreshDisabled}
+              color="gray"
+              mr="xs"
+              size="lg"
+              variant="subtle"
+              radius="md"
+              title="Refresh Dashboard"
+            >
+              <Icon name="arrow-clockwise" className="fs-5 text-slate-400" />
+            </ActionIcon>
             <div className="me-2 flex-grow-1" style={{ maxWidth: 450 }}>
               <form
                 className="d-flex align-items-center"
