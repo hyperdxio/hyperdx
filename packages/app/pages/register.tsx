@@ -1,4 +1,4 @@
-import AuthPage from '../src/AuthPage';
+import AuthPage from '@/AuthPage';
 export default function Register() {
   return (
     <div>

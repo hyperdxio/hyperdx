@@ -28,6 +28,7 @@
 .historyCardWrapper {
   display: flex;
   flex-direction: row;
+
   &:hover {
     .historyCard {
       opacity: 0.3;
