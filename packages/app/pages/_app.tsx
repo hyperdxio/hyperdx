@@ -11,17 +11,16 @@ import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
 import { ColorSchemeScript } from '@mantine/core';
 
-import { apiConfigs } from '../src/api';
-import { ThemeWrapper } from '../src/ThemeWrapper';
-import { useConfirmModal } from '../src/useConfirm';
-import { QueryParamProvider as HDXQueryParamProvider } from '../src/useQueryParam';
-import { useBackground, useUserPreferences } from '../src/useUserPreferences';
+import { apiConfigs } from '@/api';
+import { ThemeWrapper } from '@/ThemeWrapper';
+import { useConfirmModal } from '@/useConfirm';
+import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
+import { useBackground, useUserPreferences } from '@/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
-import '../styles/globals.css';
-import '../styles/app.scss';
-import '../src/LandingPage.scss';
+import '@styles/globals.css';
+import '@styles/app.scss';
 
 enableMapSet();
 

@@ -1,3 +1,3 @@
-import ServiceDashboardPage from '../src/ServiceDashboardPage';
+import ServiceDashboardPage from '@/ServiceDashboardPage';
 
 export default ServiceDashboardPage;

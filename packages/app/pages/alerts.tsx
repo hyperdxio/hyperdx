@@ -1,3 +1,3 @@
-import AlertsPage from '../src/AlertsPage';
+import AlertsPage from '@/AlertsPage';
 
 export default AlertsPage;

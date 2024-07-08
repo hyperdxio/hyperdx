@@ -3,7 +3,7 @@
   height: 100%;
   width: 100%;
   flex-direction: column;
-  padding: 0px 4px;
+  padding: 0 4px;
   font-size: 12px;
 }
 
@@ -29,7 +29,8 @@
   display: flex;
   gap: 10px;
   padding: 2px 24px;
-  // margin: 0 -10px;
+
+  // margin: 0 -10px;margin
   align-items: flex-start;
   border-radius: 3px;
   position: relative;
@@ -37,6 +38,7 @@
 
   &:hover {
     background-color: #26282b;
+
     .lineMenu {
       display: flex;
     }
@@ -55,10 +57,12 @@
     .key {
       margin-left: -10px;
     }
+
     .valueContainer {
       margin-left: 10px;
       word-break: break-all;
     }
+
     &:active {
       background-color: #1e1f21;
     }
@@ -69,8 +73,8 @@
   display: none;
   align-items: center;
   position: absolute;
-  right: 0px;
-  top: 0px;
+  right: 0;
+  top: 0;
   height: calc(100% + 1px);
   max-height: 24px;
   border-bottom: 1px solid #34373e;
@@ -78,11 +82,11 @@
 
 .lineMenuBtn {
   border: 0;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: rgb(0 0 0 / 20%);
   backdrop-filter: blur(4px);
   color: #b8b7c9;
   border-left: 1px solid #444;
-  padding: 0px 8px;
+  padding: 0 8px;
   height: 100%;
 
   &:hover {
@@ -95,7 +99,7 @@
 }
 
 .nestedLine {
-  // margin-bottom: 8px;
+  // margin-bottom: 8px;margin-bottom
 }
 
 .clickable {
@@ -107,14 +111,16 @@
 .hoverable {
   position: relative;
   cursor: pointer;
-  padding: 0px 4px;
-  margin: 0px -4px;
+  padding: 0 4px;
+  margin: 0 -4px;
   border-radius: 2px;
   display: flex;
   gap: 6px;
+
   &:hover,
   &:focus {
     background-color: #26282b;
+
     .hoverContent {
       display: flex;
     }
@@ -141,18 +147,20 @@
   font-size: 11px;
   border: 1px solid #444;
   border-radius: 3px;
-  padding: 0px 6px;
+  padding: 0 6px;
   margin-bottom: 2px;
+
   &:hover {
     background-color: #444;
   }
+
   &:active {
     background-color: #1e1f21;
   }
 }
 
 .keyContainer {
-  // min-width: 160px;
+  // min-width: 160px;min-width
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -189,6 +197,7 @@
   word-wrap: anywhere;
   overflow-wrap: anywhere;
   overflow: hidden;
+
   @extend .hoverable;
   @extend .clickable;
 }
@@ -196,7 +205,8 @@
 .string {
   color: #a6e22e;
   word-break: break-all;
-  // margin-left: -6px;
+
+  // margin-left: -6px;margin-left
   &::before,
   &::after {
     content: '"';
@@ -205,11 +215,11 @@
 }
 
 .number {
-  color: #ff9900;
+  color: #f90;
 }
 
 .boolean {
-  color: #ff9900;
+  color: #f90;
 }
 
 .object {
@@ -223,8 +233,9 @@
 }
 
 .expandMoreProps {
-  color: #ff9900;
+  color: #f90;
   font-weight: 500;
+
   i {
     margin-left: 4px;
   }

@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
-    "ci:lint": "yarn lint && yarn tsc --noEmit",
+    "lint:styles": "stylelint **/*/*.{css,scss}",
+    "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles",
     "ci:unit": "jest --ci --coverage",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build"
@@ -116,7 +117,12 @@
     "msw-storybook-addon": "^2.0.2",
     "postcss": "^8.4.38",
     "postcss-preset-mantine": "^1.15.0",
+    "prettier": "^3.3.2",
+    "scss": "^0.2.4",
     "storybook": "^8.1.5",
+    "stylelint": "^16.6.1",
+    "stylelint-config-standard-scss": "^13.1.0",
+    "stylelint-prettier": "^5.0.0",
     "ts-jest": "^28.0.7",
     "typescript": "^4.9.5"
   },

@@ -16,7 +16,12 @@
     "isolatedModules": true,
     "useUnknownInCatchVariables": false,
     "jsx": "preserve",
-    "types": ["@types/intercom-web", "jest"]
+    "types": ["@types/intercom-web", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@styles/*": ["styles/*"]
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]

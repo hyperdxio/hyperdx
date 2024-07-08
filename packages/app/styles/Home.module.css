@@ -65,8 +65,8 @@
   border-radius: 5px;
   padding: 0.75rem;
   font-size: 1.1rem;
-  font-family: Menlo, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono,
-    Bitstream Vera Sans Mono, Courier New, monospace;
+  font-family: Menlo, Monaco, 'Lucida Console', 'Liberation Mono',
+    'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Courier New', monospace;
 }
 
 .grid {
@@ -86,7 +86,9 @@
   text-decoration: none;
   border: 1px solid #eaeaea;
   border-radius: 10px;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
   width: 45%;
 }
 
@@ -98,7 +100,7 @@
 }
 
 .card h2 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 1rem;
   font-size: 1.5rem;
 }
 
@@ -113,7 +115,7 @@
   margin-left: 0.5rem;
 }
 
-@media (max-width: 600px) {
+@media (width <= 600px) {
   .grid {
     width: 100%;
     flex-direction: column;

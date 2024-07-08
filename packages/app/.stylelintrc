@@ -1,0 +1,16 @@
+{
+  "plugins": ["stylelint-prettier"],
+  "extends": ["stylelint-config-standard-scss"],
+  "rules": {
+    "prettier/prettier": true,
+    "selector-class-pattern": null,
+    "no-descending-specificity": null,
+    "scss/at-extend-no-missing-placeholder": [
+      true,
+      {
+        "severity": "warning"
+      }
+    ],
+    "scss/dollar-variable-pattern": null
+  }
+}

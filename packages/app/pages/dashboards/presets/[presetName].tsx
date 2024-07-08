@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router';
 
-import DashboardPage from '../../../src/DashboardPage';
-import { withAppNav } from '../../../src/layout';
+import DashboardPage from '@/DashboardPage';
+import { withAppNav } from '@/layout';
 
 const APP_PERFORMANCE_DASHBOARD_CONFIG = {
   id: '',

@@ -4,8 +4,7 @@
   height: 100vh;
   max-height: 100vh;
   display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
+  flex-flow: column nowrap;
   justify-content: space-between;
   border-right: 1px solid $slate-950;
 }
@@ -42,6 +41,7 @@
   width: 100%;
   display: flex;
   align-items: center;
+
   // justify-content: space-between;
   gap: 6px;
 
@@ -65,13 +65,16 @@
   padding-left: 16px;
   user-select: none;
   gap: 10px;
+
   &:hover {
     color: $slate-100;
   }
+
   &:focus-visible {
     outline: none;
     border-left: 2px solid $green;
   }
+
   &:last-of-type {
     margin-bottom: 12px;
   }
@@ -118,9 +121,11 @@
   cursor: pointer;
   box-shadow: 0 5px 10px 10px #0f1215e0;
   background: var(--mantine-color-gray-9);
+
   &:hover {
     background: var(--mantine-color-gray-8);
   }
+
   &:active {
     // background: var(--mantine-color-gray-9);
     transform: translate(0, 1px);

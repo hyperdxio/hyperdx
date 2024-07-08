@@ -5,7 +5,7 @@ import {
   HDX_COLLECTOR_URL,
   HDX_SERVICE_NAME,
   SERVER_URL,
-} from '../../src/config';
+} from '@/config';
 
 type ResponseData = {
   apiKey: string;

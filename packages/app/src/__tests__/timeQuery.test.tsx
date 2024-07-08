@@ -6,6 +6,8 @@ import { QueryParamProvider } from 'use-query-params';
 import { LocationMock } from '@jedmao/location';
 import { render } from '@testing-library/react';
 
+import { TestRouter } from '@/fixtures';
+
 import {
   getLiveTailTimeRange,
   useNewTimeQuery,
@@ -13,8 +15,6 @@ import {
   type UseTimeQueryReturnType,
 } from '../timeQuery';
 import { useUserPreferences } from '../useUserPreferences';
-
-import { TestRouter } from './fixtures';
 
 // Setting a fixed time of 10/03/23 at 12pm EDT
 const INITIAL_DATE_STRING =

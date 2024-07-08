@@ -1,2 +1,2 @@
-import TeamPage from '../../src/TeamPage';
+import TeamPage from '@/TeamPage';
 export default TeamPage;

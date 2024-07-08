@@ -9,10 +9,12 @@
 
 .textButton {
   user-select: none;
+
   &:hover {
     cursor: pointer;
     color: $slate-300 !important;
   }
+
   &:active {
     color: $slate-500 !important;
   }
@@ -26,7 +28,6 @@
   align-items: center;
   cursor: pointer;
   border-radius: 4px;
-
   position: relative;
 
   input {
@@ -43,9 +44,11 @@
     backdrop-filter: blur(4px);
     padding: 0 8px;
     border-radius: 4px;
+
     &:hover {
       background-color: $slate-900;
     }
+
     &:active {
       background-color: $slate-950;
     }
@@ -55,7 +58,9 @@
     input {
       opacity: 1;
     }
+
     background-color: $slate-950;
+
     .textButton {
       display: block;
     }
