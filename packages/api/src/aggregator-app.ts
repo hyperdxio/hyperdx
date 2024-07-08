@@ -63,18 +63,6 @@ app.use(
     res: Response,
     next: NextFunction,
   ) => {
-    // check if the status code is 413 (Request Entity Too Large)
-    if (
-      err instanceof SyntaxError &&
-      'body' in err &&
-      err.status === StatusCode.CONTENT_TOO_LARGE
-    ) {
-      // WARNING: return 413 so the ingestor will tune up the adaptive concurrency
-      return res
-        .status(StatusCode.CONTENT_TOO_LARGE)
-        .json({ message: err.message });
-    }
-
     void recordException(err, {
       mechanism: {
         type: 'generic',
@@ -87,6 +75,13 @@ app.use(
       location: 'appErrorHandler',
       error: serializeError(err),
     });
+
+    // TODO: for all non 5xx errors
+    if (err.status === StatusCode.CONTENT_TOO_LARGE) {
+      // WARNING: return origin status code so the ingestor will tune up the adaptive concurrency properly
+      return res.sendStatus(err.status);
+    }
+
     // WARNING: should always return 500 so the ingestor will queue logs
     res.status(StatusCode.INTERNAL_SERVER).send('Something broke!');
   },
