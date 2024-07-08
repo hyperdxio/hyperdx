@@ -1,3 +1,4 @@
+import { recordException } from '@hyperdx/node-opentelemetry';
 import compression from 'compression';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
@@ -9,6 +10,10 @@ import { mongooseConnection } from './models';
 import routers from './routers/aggregator';
 import { BaseError, StatusCode } from './utils/errors';
 import logger, { expressLogger } from './utils/logger';
+
+if (!config.AGGREGATOR_PAYLOAD_SIZE_LIMIT) {
+  throw new Error('AGGREGATOR_PAYLOAD_SIZE_LIMIT is not defined');
+}
 
 const app: express.Application = express();
 
@@ -51,13 +56,40 @@ app.use('/', healthCheckMiddleware, routers.rootRouter);
 // ---------------------------------------------------------
 
 // error handling
-app.use((err: BaseError, _: Request, res: Response, next: NextFunction) => {
-  logger.error({
-    location: 'appErrorHandler',
-    error: serializeError(err),
-  });
-  // WARNING: should always return 500 so the ingestor will queue logs
-  res.status(StatusCode.INTERNAL_SERVER).send('Something broke!');
-});
+app.use(
+  (
+    err: BaseError & { status?: number },
+    _: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    // check if the status code is 413 (Request Entity Too Large)
+    if (
+      err instanceof SyntaxError &&
+      'body' in err &&
+      err.status === StatusCode.CONTENT_TOO_LARGE
+    ) {
+      // WARNING: return 413 so the ingestor will tune up the adaptive concurrency
+      return res
+        .status(StatusCode.CONTENT_TOO_LARGE)
+        .json({ message: err.message });
+    }
+
+    void recordException(err, {
+      mechanism: {
+        type: 'generic',
+        handled: false,
+      },
+    });
+
+    // TODO: REPLACED WITH recordException once we enable tracing SDK
+    logger.error({
+      location: 'appErrorHandler',
+      error: serializeError(err),
+    });
+    // WARNING: should always return 500 so the ingestor will queue logs
+    res.status(StatusCode.INTERNAL_SERVER).send('Something broke!');
+  },
+);
 
 export default app;
