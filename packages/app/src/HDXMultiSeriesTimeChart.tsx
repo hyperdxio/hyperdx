@@ -444,7 +444,7 @@ const HDXMultiSeriesTimeChart = memo(
       granularity,
       dateRange,
       seriesReturnType = 'column',
-      displayType = 'line',
+      displayType: displayTypeProp = 'line',
     },
     onSettled,
     alertThreshold,
@@ -464,7 +464,7 @@ const HDXMultiSeriesTimeChart = memo(
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
-    setDisplayType: (type: 'stacked_bar' | 'line') => void;
+    setDisplayType?: (type: 'stacked_bar' | 'line') => void;
     logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart(
@@ -598,6 +598,25 @@ const HDXMultiSeriesTimeChart = memo(
     const numberFormat =
       series[0].type === 'time' ? series[0]?.numberFormat : undefined;
 
+    // To enable backward compatibility, allow non-controlled usage of displayType
+    const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
+
+    const displayType = useMemo(() => {
+      if (setDisplayType) {
+        return displayTypeProp;
+      } else {
+        return displayTypeLocal;
+      }
+    }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+
+    const handleSetDisplayType = (type: 'stacked_bar' | 'line') => {
+      if (setDisplayType) {
+        setDisplayType(type);
+      } else {
+        setDisplayTypeLocal(type);
+      }
+    };
+
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
@@ -691,7 +710,7 @@ const HDXMultiSeriesTimeChart = memo(
                 })}
                 role="button"
                 title="Display as line chart"
-                onClick={() => setDisplayType('line')}
+                onClick={() => handleSetDisplayType('line')}
               >
                 <i className="bi bi-graph-up"></i>
               </span>
@@ -702,7 +721,7 @@ const HDXMultiSeriesTimeChart = memo(
                 })}
                 role="button"
                 title="Display as bar chart"
-                onClick={() => setDisplayType('stacked_bar')}
+                onClick={() => handleSetDisplayType('stacked_bar')}
               >
                 <i className="bi bi-bar-chart"></i>
               </span>
