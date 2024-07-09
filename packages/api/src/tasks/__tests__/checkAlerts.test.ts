@@ -7,6 +7,7 @@ import {
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
+import * as alertsUtils from '@/tasks/alerts/utils';
 import { LogType } from '@/utils/logParser';
 
 import * as clickhouse from '../../clickhouse';
@@ -17,20 +18,7 @@ import Dashboard from '../../models/dashboard';
 import LogView from '../../models/logView';
 import Webhook from '../../models/webhook';
 import * as slack from '../../utils/slack';
-import * as checkAlert from '../alerts/checkUserAlerts';
-import {
-  buildAlertMessageTemplateHdxLink,
-  buildAlertMessageTemplateTitle,
-  buildLogSearchLink,
-  doesExceedThreshold,
-  escapeJsonString,
-  expandToNestedObject,
-  getDefaultExternalAction,
-  processAlert,
-  renderAlertTemplate,
-  roundDownToXMinutes,
-  translateExternalActionsToInternal,
-} from '../alerts/checkUserAlerts';
+import { processAlert } from '../alerts/checkUserAlerts';
 
 describe('checkAlerts', () => {
   afterAll(async () => {
@@ -39,7 +27,7 @@ describe('checkAlerts', () => {
 
   it('roundDownToXMinutes', () => {
     // 1 min
-    const roundDownTo1Minute = roundDownToXMinutes(1);
+    const roundDownTo1Minute = alertsUtils.roundDownToXMinutes(1);
     expect(
       roundDownTo1Minute(new Date('2023-03-17T22:13:03.103Z')).toISOString(),
     ).toBe('2023-03-17T22:13:00.000Z');
@@ -48,7 +36,7 @@ describe('checkAlerts', () => {
     ).toBe('2023-03-17T22:13:00.000Z');
 
     // 5 mins
-    const roundDownTo5Minutes = roundDownToXMinutes(5);
+    const roundDownTo5Minutes = alertsUtils.roundDownToXMinutes(5);
     expect(
       roundDownTo5Minutes(new Date('2023-03-17T22:13:03.103Z')).toISOString(),
     ).toBe('2023-03-17T22:10:00.000Z');
@@ -62,7 +50,7 @@ describe('checkAlerts', () => {
 
   it('buildLogSearchLink', () => {
     expect(
-      buildLogSearchLink({
+      alertsUtils.buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
         logViewId: '123',
@@ -71,7 +59,7 @@ describe('checkAlerts', () => {
       'http://localhost:9090/search/123?from=1679091183103&to=1679091239103',
     );
     expect(
-      buildLogSearchLink({
+      alertsUtils.buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
         logViewId: '123',
@@ -83,25 +71,27 @@ describe('checkAlerts', () => {
   });
 
   it('doesExceedThreshold', () => {
-    expect(doesExceedThreshold(true, 10, 11)).toBe(true);
-    expect(doesExceedThreshold(true, 10, 10)).toBe(true);
-    expect(doesExceedThreshold(false, 10, 9)).toBe(true);
-    expect(doesExceedThreshold(false, 10, 10)).toBe(false);
+    expect(alertsUtils.doesExceedThreshold(true, 10, 11)).toBe(true);
+    expect(alertsUtils.doesExceedThreshold(true, 10, 10)).toBe(true);
+    expect(alertsUtils.doesExceedThreshold(false, 10, 9)).toBe(true);
+    expect(alertsUtils.doesExceedThreshold(false, 10, 10)).toBe(false);
   });
 
   it('expandToNestedObject', () => {
-    expect(expandToNestedObject({}).__proto__).toBeUndefined();
-    expect(expandToNestedObject({})).toEqual({});
-    expect(expandToNestedObject({ foo: 'bar' })).toEqual({ foo: 'bar' });
-    expect(expandToNestedObject({ 'foo.bar': 'baz' })).toEqual({
+    expect(alertsUtils.expandToNestedObject({}).__proto__).toBeUndefined();
+    expect(alertsUtils.expandToNestedObject({})).toEqual({});
+    expect(alertsUtils.expandToNestedObject({ foo: 'bar' })).toEqual({
+      foo: 'bar',
+    });
+    expect(alertsUtils.expandToNestedObject({ 'foo.bar': 'baz' })).toEqual({
       foo: { bar: 'baz' },
     });
-    expect(expandToNestedObject({ 'foo.bar.baz': 'qux' })).toEqual({
+    expect(alertsUtils.expandToNestedObject({ 'foo.bar.baz': 'qux' })).toEqual({
       foo: { bar: { baz: 'qux' } },
     });
     // mix
     expect(
-      expandToNestedObject({
+      alertsUtils.expandToNestedObject({
         'foo.bar.baz': 'qux',
         'foo.bar.quux': 'quuz',
         'foo1.bar1.baz1': 'qux1',
@@ -112,13 +102,16 @@ describe('checkAlerts', () => {
     });
     // overwriting
     expect(
-      expandToNestedObject({ 'foo.bar.baz': 'qux', 'foo.bar': 'quuz' }),
+      alertsUtils.expandToNestedObject({
+        'foo.bar.baz': 'qux',
+        'foo.bar': 'quuz',
+      }),
     ).toEqual({
       foo: { bar: 'quuz' },
     });
     // max depth
     expect(
-      expandToNestedObject(
+      alertsUtils.expandToNestedObject(
         {
           'foo.bar.baz.qux.quuz.quux': 'qux',
         },
@@ -131,15 +124,15 @@ describe('checkAlerts', () => {
   });
 
   it('escapeJsonString', () => {
-    expect(escapeJsonString('foo')).toBe('foo');
-    expect(escapeJsonString("foo'")).toBe("foo'");
-    expect(escapeJsonString('foo"')).toBe('foo\\"');
-    expect(escapeJsonString('foo\\')).toBe('foo\\\\');
-    expect(escapeJsonString('foo\n')).toBe('foo\\n');
-    expect(escapeJsonString('foo\r')).toBe('foo\\r');
-    expect(escapeJsonString('foo\t')).toBe('foo\\t');
-    expect(escapeJsonString('foo\b')).toBe('foo\\b');
-    expect(escapeJsonString('foo\f')).toBe('foo\\f');
+    expect(alertsUtils.escapeJsonString('foo')).toBe('foo');
+    expect(alertsUtils.escapeJsonString("foo'")).toBe("foo'");
+    expect(alertsUtils.escapeJsonString('foo"')).toBe('foo\\"');
+    expect(alertsUtils.escapeJsonString('foo\\')).toBe('foo\\\\');
+    expect(alertsUtils.escapeJsonString('foo\n')).toBe('foo\\n');
+    expect(alertsUtils.escapeJsonString('foo\r')).toBe('foo\\r');
+    expect(alertsUtils.escapeJsonString('foo\t')).toBe('foo\\t');
+    expect(alertsUtils.escapeJsonString('foo\b')).toBe('foo\\b');
+    expect(alertsUtils.escapeJsonString('foo\f')).toBe('foo\\f');
   });
 
   describe('Alert Templates', () => {
@@ -207,22 +200,26 @@ describe('checkAlerts', () => {
     });
 
     it('buildAlertMessageTemplateHdxLink', () => {
-      expect(buildAlertMessageTemplateHdxLink(defaultSearchView)).toBe(
+      expect(
+        alertsUtils.buildAlertMessageTemplateHdxLink(defaultSearchView),
+      ).toBe(
         'http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22',
       );
-      expect(buildAlertMessageTemplateHdxLink(defaultChartView)).toBe(
+      expect(
+        alertsUtils.buildAlertMessageTemplateHdxLink(defaultChartView),
+      ).toBe(
         'http://localhost:9090/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103',
       );
     });
 
     it('buildAlertMessageTemplateTitle', () => {
       expect(
-        buildAlertMessageTemplateTitle({
+        alertsUtils.buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
       ).toBe('Alert for "My Search" - 10 lines found');
       expect(
-        buildAlertMessageTemplateTitle({
+        alertsUtils.buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toBe('Alert for "My Chart" in "My Dashboard" - 5 falls below 10');
@@ -230,7 +227,7 @@ describe('checkAlerts', () => {
 
     it('getDefaultExternalAction', () => {
       expect(
-        getDefaultExternalAction({
+        alertsUtils.getDefaultExternalAction({
           channel: {
             type: 'slack_webhook',
             webhookId: '123',
@@ -238,7 +235,7 @@ describe('checkAlerts', () => {
         } as any),
       ).toBe('@slack_webhook-123');
       expect(
-        getDefaultExternalAction({
+        alertsUtils.getDefaultExternalAction({
           channel: {
             type: 'foo',
           },
@@ -249,14 +246,14 @@ describe('checkAlerts', () => {
     it('translateExternalActionsToInternal', () => {
       // normal
       expect(
-        translateExternalActionsToInternal('@slack_webhook-123'),
+        alertsUtils.translateExternalActionsToInternal('@slack_webhook-123'),
       ).toMatchInlineSnapshot(
         `"{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}"`,
       );
 
       // with multiple breaks
       expect(
-        translateExternalActionsToInternal(`
+        alertsUtils.translateExternalActionsToInternal(`
 
 @slack_webhook-123
 `),
@@ -268,35 +265,41 @@ describe('checkAlerts', () => {
 
       // with body string
       expect(
-        translateExternalActionsToInternal('blabla @action-id'),
+        alertsUtils.translateExternalActionsToInternal('blabla @action-id'),
       ).toMatchInlineSnapshot(
         `"blabla {{__hdx_notify_channel__ channel=\\"action\\" id=\\"id\\"}}"`,
       );
 
       // multiple actions
       expect(
-        translateExternalActionsToInternal('blabla @action-id @action2-id2'),
+        alertsUtils.translateExternalActionsToInternal(
+          'blabla @action-id @action2-id2',
+        ),
       ).toMatchInlineSnapshot(
         `"blabla {{__hdx_notify_channel__ channel=\\"action\\" id=\\"id\\"}} {{__hdx_notify_channel__ channel=\\"action2\\" id=\\"id2\\"}}"`,
       );
 
       // id with special characters
       expect(
-        translateExternalActionsToInternal('send @email-mike@hyperdx.io'),
+        alertsUtils.translateExternalActionsToInternal(
+          'send @email-mike@hyperdx.io',
+        ),
       ).toMatchInlineSnapshot(
         `"send {{__hdx_notify_channel__ channel=\\"email\\" id=\\"mike@hyperdx.io\\"}}"`,
       );
 
       // id with multiple dashes
       expect(
-        translateExternalActionsToInternal('@action-id-with-multiple-dashes'),
+        alertsUtils.translateExternalActionsToInternal(
+          '@action-id-with-multiple-dashes',
+        ),
       ).toMatchInlineSnapshot(
         `"{{__hdx_notify_channel__ channel=\\"action\\" id=\\"id-with-multiple-dashes\\"}}"`,
       );
 
       // custom template id
       expect(
-        translateExternalActionsToInternal('@action-{{action_id}}'),
+        alertsUtils.translateExternalActionsToInternal('@action-{{action_id}}'),
       ).toMatchInlineSnapshot(
         `"{{__hdx_notify_channel__ channel=\\"action\\" id=\\"{{action_id}}\\"}}"`,
       );
@@ -327,7 +330,7 @@ describe('checkAlerts', () => {
         name: 'My_Webhook',
       }).save();
 
-      await renderAlertTemplate({
+      await alertsUtils.renderAlertTemplate({
         template: 'Custom body @slack_webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -377,7 +380,7 @@ describe('checkAlerts', () => {
         name: 'My_Webhook',
       }).save();
 
-      await renderAlertTemplate({
+      await alertsUtils.renderAlertTemplate({
         template: 'Custom body @slack_webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -449,7 +452,7 @@ describe('checkAlerts', () => {
         name: 'My_Webhook',
       }).save();
 
-      await renderAlertTemplate({
+      await alertsUtils.renderAlertTemplate({
         template: 'Custom body @slack_webhook-{{attributes.webhookName}}', // partial name should work
         view: {
           ...defaultSearchView,
@@ -528,7 +531,7 @@ describe('checkAlerts', () => {
         name: 'Another_Webhook',
       }).save();
 
-      await renderAlertTemplate({
+      await alertsUtils.renderAlertTemplate({
         template: `
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
   Runbook URL: {{attributes.runbook.url}}
@@ -565,7 +568,7 @@ describe('checkAlerts', () => {
       });
 
       // @slack_webhook should not be called
-      await renderAlertTemplate({
+      await alertsUtils.renderAlertTemplate({
         template:
           '{{#is_match "attributes.host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
         view: {
@@ -1194,7 +1197,7 @@ describe('checkAlerts', () => {
     });
 
     it('LOG alert - generic webhook', async () => {
-      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+      jest.spyOn(alertsUtils, 'handleSendGenericWebhook');
       jest
         .spyOn(clickhouse, 'checkAlert')
         .mockResolvedValueOnce({
@@ -1318,7 +1321,7 @@ describe('checkAlerts', () => {
     });
 
     it('CHART alert (logs table series) - generic webhook', async () => {
-      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+      jest.spyOn(alertsUtils, 'handleSendGenericWebhook');
       mockLogsPropertyTypeMappingsModel({
         runId: 'string',
       });
@@ -1480,7 +1483,7 @@ describe('checkAlerts', () => {
       const runId = Math.random().toString(); // dedup watch mode runs
       const teamId = team._id.toString();
 
-      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+      jest.spyOn(alertsUtils, 'handleSendGenericWebhook');
 
       const fetchMock = jest.fn().mockResolvedValue({});
       global.fetch = fetchMock;
