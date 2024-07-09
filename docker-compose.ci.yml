@@ -81,6 +81,7 @@ services:
     # ports:
     #   - 9000:9000
     environment:
+      AGGREGATOR_PAYLOAD_SIZE_LIMIT: '64mb'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch_server:8123
       CLICKHOUSE_PASSWORD: api
