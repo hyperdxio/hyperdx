@@ -1,24 +1,18 @@
-// --------------------------------------------------------
-// -------------- EXECUTE EVERY MINUTE --------------------
-// --------------------------------------------------------
-import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
-import { escapeRegExp, isString } from 'lodash';
+import { escapeRegExp } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
-import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
 import { ObjectId } from '@/models';
-import Alert, { AlertDocument, AlertState } from '@/models/alert';
-import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import { AlertDocument } from '@/models/alert';
+import { IDashboard } from '@/models/dashboard';
 import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
@@ -26,18 +20,15 @@ import { convertMsToGranularityString, truncateString } from '@/utils/common';
 import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
-import {
-  externalAlertSchema,
-  translateAlertDocumentToExternalAlert,
-} from '@/utils/zod';
+import { translateAlertDocumentToExternalAlert } from '@/utils/zod';
 
-type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
+export type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
+const IS_MATCH_FN_NAME = 'is_match';
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
-const IS_MATCH_FN_NAME = 'is_match';
 
-const getLogViewEnhanced = async (logViewId: ObjectId) => {
+export const getLogViewEnhanced = async (logViewId: ObjectId) => {
   const logView = await LogView.findById(logViewId).populate<{
     team: ITeam;
   }>('team');
@@ -45,6 +36,54 @@ const getLogViewEnhanced = async (logViewId: ObjectId) => {
     throw new Error(`LogView ${logViewId} not found `);
   }
   return logView;
+};
+
+export const buildCustomLink = ({
+  alert,
+  endTime,
+  granularity,
+  startTime,
+}: {
+  alert: any;
+  endTime: Date;
+  granularity: string;
+  startTime: Date;
+}) => {
+  const url = new URL(`${config.FRONTEND_URL}/dashboards`);
+  const dashboardConfig = {
+    id: '',
+    name: `${alert.name} Dashboard`,
+    charts: [
+      {
+        id: '4rro4',
+        name: `${alert.name} Chart`,
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 5,
+        series:
+          alert?.customConfig?.series.map(s => {
+            return {
+              ...s,
+              type: 'time', // display needs to be time series, while table is for raw data
+            };
+          }) ?? [],
+        seriesReturnType: 'column',
+      },
+    ],
+  };
+
+  // extend both start and end time by 7x granularity
+  const from = (startTime.getTime() - ms(granularity) * 7).toString();
+  const to = (endTime.getTime() + ms(granularity) * 7).toString();
+  const queryParams = new URLSearchParams({
+    from,
+    granularity: convertMsToGranularityString(ms(granularity)),
+    to,
+    config: JSON.stringify(dashboardConfig),
+  });
+  url.search = queryParams.toString();
+  return url.toString();
 };
 
 export const buildLogSearchLink = ({
@@ -142,9 +181,11 @@ export const expandToNestedObject = (
 // ----------------- Alert Message Template -------------------
 // ------------------------------------------------------------
 // should match the external alert schema
-type AlertMessageTemplateDefaultView = {
+export type AlertMessageTemplateDefaultView = {
   // FIXME: do we want to include groupBy in the external alert schema?
-  alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
+  alert: ReturnType<typeof translateAlertDocumentToExternalAlert> & {
+    groupBy?: string;
+  };
   attributes: ReturnType<typeof expandToNestedObject>;
   dashboard: ReturnType<
     typeof translateDashboardDocumentToExternalDashboard
@@ -161,6 +202,7 @@ type AlertMessageTemplateDefaultView = {
   startTime: Date;
   value: number;
 };
+
 export const notifyChannel = async ({
   channel,
   id,
@@ -338,6 +380,16 @@ export const buildAlertMessageTemplateHdxLink = ({
       granularity,
       startTime,
     });
+  } else if (alert.source === 'custom') {
+    if (!alert.isSystem) {
+      throw new Error(`Only system CUSTOM alerts are currently supported.`);
+    }
+    return buildCustomLink({
+      alert,
+      endTime,
+      granularity,
+      startTime,
+    });
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
@@ -349,7 +401,7 @@ export const buildAlertMessageTemplateTitle = ({
   template?: string | null;
   view: AlertMessageTemplateDefaultView;
 }) => {
-  const { alert, dashboard, savedSearch, value } = view;
+  const { alert, dashboard, savedSearch, value, granularity } = view;
   const handlebars = Handlebars.create();
   if (alert.source === 'search') {
     if (savedSearch == null) {
@@ -379,6 +431,13 @@ export const buildAlertMessageTemplateTitle = ({
             ? 'falls below'
             : 'exceeds'
         } ${alert.threshold}`;
+  } else if (alert.source === 'custom') {
+    if (!alert.isSystem) {
+      throw new Error(`Only system CUSTOM alerts are currently supported.`);
+    }
+    return template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${alert.name}" - ${value} events in the past ${granularity}`;
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
@@ -463,6 +522,7 @@ export const renderAlertTemplate = async ({
         if (channel !== 'slack_webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
+
         // render id template
         const renderedId = _hb.compile(id)(view);
         // render body template
@@ -546,6 +606,11 @@ ${value} ${
         : 'exceeds'
     } ${alert.threshold}
 ${targetTemplate}`;
+  } else if (alert.source === 'custom') {
+    if (!alert.isSystem) {
+      throw new Error(`Only system CUSTOM alerts are currently supported.`);
+    }
+    rawTemplateBody = `${targetTemplate}`;
   }
 
   // render the template
@@ -559,7 +624,11 @@ ${targetTemplate}`;
 };
 // ------------------------------------------------------------
 
-const fireChannelEvent = async ({
+export const roundDownTo = (roundTo: number) => (x: Date) =>
+  new Date(Math.floor(x.getTime() / roundTo) * roundTo);
+export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
+
+export const fireChannelEvent = async ({
   alert,
   attributes,
   dashboard,
@@ -569,6 +638,7 @@ const fireChannelEvent = async ({
   startTime,
   totalCount,
   windowSizeInMins,
+  team,
 }: {
   alert: AlertDocument;
   attributes: Record<string, string>; // TODO: support other types than string
@@ -579,12 +649,8 @@ const fireChannelEvent = async ({
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
+  team: ITeam;
 }) => {
-  const team = logView?.team ?? dashboard?.team;
-  if (team == null) {
-    throw new Error('Team not found');
-  }
-
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info({
       message: 'Skipped firing alert due to silence',
@@ -594,12 +660,13 @@ const fireChannelEvent = async ({
     return;
   }
 
+  const externalAlert = {
+    ...translateAlertDocumentToExternalAlert(alert),
+    groupBy: alert.groupBy,
+  };
   const attributesNested = expandToNestedObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
-    alert: {
-      ...translateAlertDocumentToExternalAlert(alert),
-      groupBy: alert.groupBy,
-    },
+    alert: externalAlert,
     attributes: attributesNested,
     dashboard: dashboard
       ? translateDashboardDocumentToExternalDashboard({
@@ -637,245 +704,4 @@ const fireChannelEvent = async ({
       logStreamTableVersion: team.logStreamTableVersion,
     },
   });
-};
-
-export const roundDownTo = (roundTo: number) => (x: Date) =>
-  new Date(Math.floor(x.getTime() / roundTo) * roundTo);
-export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
-
-export const processAlert = async (now: Date, alert: AlertDocument) => {
-  try {
-    const previous: IAlertHistory | undefined = (
-      await AlertHistory.find({ alert: alert._id })
-        .sort({ createdAt: -1 })
-        .limit(1)
-    )[0];
-
-    const windowSizeInMins = ms(alert.interval) / 60000;
-    const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
-    if (
-      previous &&
-      fns.getTime(previous.createdAt) === fns.getTime(nowInMinsRoundDown)
-    ) {
-      logger.info({
-        message: `Skipped to check alert since the time diff is still less than 1 window size`,
-        windowSizeInMins,
-        nowInMinsRoundDown,
-        previous,
-        now,
-        alert,
-      });
-      return;
-    }
-    const checkStartTime = previous
-      ? previous.createdAt
-      : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins);
-    const checkEndTime = nowInMinsRoundDown;
-
-    // Logs Source
-    let checksData:
-      | Awaited<ReturnType<typeof clickhouse.checkAlert>>
-      | Awaited<ReturnType<typeof clickhouse.getMultiSeriesChartLegacyFormat>>
-      | null = null;
-    let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
-    let targetDashboard: EnhancedDashboard | null = null;
-    if (alert.source === 'LOG' && alert.logView) {
-      logView = await getLogViewEnhanced(alert.logView);
-      // TODO: use getLogsChart instead so we can deprecate checkAlert
-      checksData = await clickhouse.checkAlert({
-        endTime: checkEndTime,
-        groupBy: alert.groupBy,
-        q: logView.query,
-        startTime: checkStartTime,
-        tableVersion: logView.team.logStreamTableVersion,
-        teamId: logView.team._id.toString(),
-        windowSizeInMins,
-      });
-      logger.info({
-        message: 'Received alert metric [LOG source]',
-        alert,
-        logView,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
-    }
-    // Chart Source
-    else if (alert.source === 'CHART' && alert.dashboardId && alert.chartId) {
-      const dashboard = await Dashboard.findOne(
-        {
-          _id: alert.dashboardId,
-          'charts.id': alert.chartId,
-        },
-        {
-          name: 1,
-          charts: {
-            $elemMatch: {
-              id: alert.chartId,
-            },
-          },
-        },
-      ).populate<{
-        team: ITeam;
-      }>('team');
-
-      if (
-        dashboard &&
-        Array.isArray(dashboard.charts) &&
-        dashboard.charts.length === 1
-      ) {
-        const chart = dashboard.charts[0];
-        // Doesn't work for metric alerts yet
-        const MAX_NUM_GROUPS = 20;
-        // TODO: assuming that the chart has only 1 series for now
-        const firstSeries = chart.series[0];
-        if (firstSeries.type === 'time' && firstSeries.table === 'logs') {
-          targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
-          const endTimeMs = fns.getTime(checkEndTime);
-
-          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-            series: chart.series,
-            endTime: endTimeMs,
-            granularity: `${windowSizeInMins} minute`,
-            maxNumGroups: MAX_NUM_GROUPS,
-            startTime: startTimeMs,
-            tableVersion: dashboard.team.logStreamTableVersion,
-            teamId: dashboard.team._id.toString(),
-            seriesReturnType: chart.seriesReturnType,
-          });
-        } else if (
-          firstSeries.type === 'time' &&
-          firstSeries.table === 'metrics' &&
-          firstSeries.field
-        ) {
-          targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
-          const endTimeMs = fns.getTime(checkEndTime);
-          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-            series: chart.series.map(series => {
-              if ('field' in series && series.field != null) {
-                const [metricName, rawMetricDataType] =
-                  series.field.split(' - ');
-                const metricDataType = z
-                  .nativeEnum(clickhouse.MetricsDataType)
-                  .parse(rawMetricDataType);
-                return {
-                  ...series,
-                  metricDataType,
-                  field: metricName,
-                };
-              }
-              return series;
-            }),
-            endTime: endTimeMs,
-            granularity: `${windowSizeInMins} minute`,
-            maxNumGroups: MAX_NUM_GROUPS,
-            startTime: startTimeMs,
-            tableVersion: dashboard.team.logStreamTableVersion,
-            teamId: dashboard.team._id.toString(),
-            seriesReturnType: chart.seriesReturnType,
-          });
-        }
-      }
-
-      logger.info({
-        message: 'Received alert metric [CHART source]',
-        alert,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
-    } else {
-      logger.error({
-        message: `Unsupported alert source: ${alert.source}`,
-        alert,
-      });
-      return;
-    }
-
-    // TODO: support INSUFFICIENT_DATA state
-    let alertState = AlertState.OK;
-    const history = await new AlertHistory({
-      alert: alert._id,
-      createdAt: nowInMinsRoundDown,
-      state: alertState,
-    }).save();
-
-    if (checksData?.rows && checksData?.rows > 0) {
-      for (const checkData of checksData.data) {
-        // TODO: we might want to fix the null value from the upstream
-        // this happens when the ratio is 0/0
-        if (checkData.data == null) {
-          continue;
-        }
-
-        const totalCount = isString(checkData.data)
-          ? parseInt(checkData.data)
-          : checkData.data;
-        const bucketStart = new Date(checkData.ts_bucket * 1000);
-        if (
-          doesExceedThreshold(
-            alert.type === 'presence',
-            alert.threshold,
-            totalCount,
-          )
-        ) {
-          alertState = AlertState.ALERT;
-          logger.info({
-            message: `Triggering ${alert.channel.type} alarm!`,
-            alert,
-            totalCount,
-            checkData,
-          });
-
-          try {
-            await fireChannelEvent({
-              alert,
-              attributes: checkData.attributes,
-              dashboard: targetDashboard,
-              endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: Array.isArray(checkData.group)
-                ? checkData.group.join(', ')
-                : checkData.group,
-              logView,
-              startTime: bucketStart,
-              totalCount,
-              windowSizeInMins,
-            });
-          } catch (e) {
-            logger.error({
-              message: 'Failed to fire channel event',
-              alert,
-              error: serializeError(e),
-            });
-          }
-
-          history.counts += 1;
-        }
-        history.lastValues.push({ count: totalCount, startTime: bucketStart });
-      }
-
-      history.state = alertState;
-      await history.save();
-    }
-
-    alert.state = alertState;
-    await alert.save();
-  } catch (e) {
-    // Uncomment this for better error messages locally
-    // console.error(e);
-    logger.error({
-      message: 'Failed to process alert',
-      alert,
-      error: serializeError(e),
-    });
-  }
-};
-
-export default async () => {
-  const now = new Date();
-  const alerts = await Alert.find({});
-  logger.info(`Going to process ${alerts.length} alerts`);
-  await Promise.all(alerts.map(alert => processAlert(now, alert)));
 };

@@ -17,7 +17,7 @@ import Dashboard from '../../models/dashboard';
 import LogView from '../../models/logView';
 import Webhook from '../../models/webhook';
 import * as slack from '../../utils/slack';
-import * as checkAlert from '../checkAlerts';
+import * as checkAlert from '../alerts/checkUserAlerts';
 import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
@@ -30,7 +30,7 @@ import {
   renderAlertTemplate,
   roundDownToXMinutes,
   translateExternalActionsToInternal,
-} from '../checkAlerts';
+} from '../alerts/checkUserAlerts';
 
 describe('checkAlerts', () => {
   afterAll(async () => {

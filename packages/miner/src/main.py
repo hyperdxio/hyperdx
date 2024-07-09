@@ -1,8 +1,6 @@
-from typing import List
+from typing import Any, Dict, List, Optional
 import hashlib
 import json
-import logging
-import os
 import time
 
 from drain3 import TemplateMiner
@@ -12,22 +10,12 @@ from drain3.template_miner_config import TemplateMinerConfig
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
+from .logger import logger
+from .anomaly_detection import DEFAULT_CONFIG, DEFAULT_STRENGTH, DataPoint, detect_anomalies, detect_anomaly
 
 API_VERSION = "0.0.1"
 
 app = FastAPI()
-
-
-def get_logging_level():
-    try:
-        return getattr(logging, os.environ.get("HYPERDX_LOG_LEVEL", "DEBUG").upper())
-    except Exception:
-        return logging.DEBUG
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel(get_logging_level())
-
 
 def get_template_miner():
     persistence = FilePersistence("hdx_state.bin")
@@ -116,3 +104,52 @@ def health_check():
     logger.info("🐱 Health check !!!!")
 
     return {"status": "ok", "version": API_VERSION}
+
+class DetectAnomaliesRequest(BaseModel):
+    history: List[List[DataPoint]]
+    strength: Optional[float] = DEFAULT_STRENGTH
+    config: Optional[Dict[str, Any]] = DEFAULT_CONFIG
+    
+class DetectAnomalyRequest(BaseModel):
+    history: List[DataPoint]
+    current: DataPoint
+    strength: Optional[float] = DEFAULT_STRENGTH
+    config: Optional[Dict[str, Any]] = DEFAULT_CONFIG
+
+@app.post("/detect_anomalies")
+def detect_anomalies_endpoint(request: DetectAnomaliesRequest):
+    history = request.history
+    strength = request.strength
+    config = request.config
+    results = detect_anomalies(history, strength, config)
+    
+    logger.info(
+        json.dumps(
+            {
+                "message": "Anomaly Detection Results: detect_anomalies",
+                "results": [[item.dict() for item in service] for service in results],
+            }
+        )
+    )
+    
+    return results
+
+# TODO: make sure we have traces/spans in place to debug and benchmark this endpoint performance
+@app.post("/detect_anomaly")
+def detect_anomaly_endpoint(request: DetectAnomalyRequest):
+    history = request.history
+    current = request.current
+    strength = request.strength
+    config = request.config
+    result = detect_anomaly(history, current, strength, config)
+    
+    logger.info(
+        json.dumps(
+            {
+                "message": "Anomaly Detection Result: detect_anomaly",
+                "result": result.dict(),
+            }
+        )
+    )
+    
+    return result

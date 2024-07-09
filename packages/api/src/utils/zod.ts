@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import { AggFn, MetricsDataType } from '@/clickhouse';
-import { AlertDocument } from '@/models/alert';
+import { AlertDocument, CheckerType } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
@@ -207,17 +207,58 @@ export const zChartAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
+export const anomalyConfigSchema = z.object({
+  models: z
+    .array(
+      z.object({
+        name: z.string(),
+        enabled: z.boolean(),
+        params: z.record(z.any()),
+      }),
+    )
+    .optional(),
+  mode: z.union([z.literal('any'), z.literal('combined')]).optional(),
+});
+
+export const alertCheckerSchema = z.object({
+  type: z.nativeEnum(CheckerType),
+  config: anomalyConfigSchema.optional(), // union and add more config types here when needed
+});
+
+export const zAlertInterval = z.enum([
+  '1m',
+  '5m',
+  '15m',
+  '30m',
+  '1h',
+  '6h',
+  '12h',
+  '1d',
+]);
+
+export const zCustomAlert = z.object({
+  source: z.literal('CUSTOM'),
+  isSystem: z.boolean().optional(),
+  customConfig: z
+    .object({
+      series: z.array(chartSeriesSchema),
+    })
+    .optional(),
+  historyWindow: z.number().min(5).max(10080).optional(),
+  checker: alertCheckerSchema.optional(),
+});
+
 export const alertSchema = z
   .object({
     channel: zChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+    interval: zAlertInterval,
     threshold: z.number().min(0),
     type: z.enum(['presence', 'absence']),
-    source: z.enum(['LOG', 'CHART']).default('LOG'),
+    source: z.enum(['LOG', 'CHART', 'CUSTOM']).default('LOG'),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
-  .and(zLogAlert.or(zChartAlert));
+  .and(zLogAlert.or(zChartAlert).or(zCustomAlert));
 
 // ==============================
 // External API Alerts
@@ -240,17 +281,38 @@ export const externalChartAlertSchema = z.object({
   dashboardId: objectIdSchema,
 });
 
+export const externalCustomAlertSchema = z.object({
+  source: z.literal('custom'),
+  isSystem: z.boolean().optional(),
+  customConfig: z
+    .object({
+      series: z.array(chartSeriesSchema),
+    })
+    .optional(),
+  historyWindow: z.number().min(5).max(10080).optional(),
+  checker: z
+    .object({
+      type: z.nativeEnum(CheckerType),
+      config: anomalyConfigSchema.optional(), // union and add more config types here when needed
+    })
+    .optional(),
+});
+
 export const externalAlertSchema = z
   .object({
     channel: externalSlackWebhookAlertChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
     threshold: z.number().min(0),
     threshold_type: z.enum(['above', 'below']),
-    source: z.enum(['search', 'chart']).default('search'),
+    source: z.enum(['search', 'chart', 'custom']).default('search'),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
-  .and(externalSearchAlertSchema.or(externalChartAlertSchema));
+  .and(
+    externalSearchAlertSchema
+      .or(externalChartAlertSchema)
+      .or(externalCustomAlertSchema),
+  );
 
 export const externalAlertSchemaWithId = externalAlertSchema.and(
   z.object({
@@ -280,6 +342,13 @@ export const translateExternalAlertToInternalAlert = (
           dashboardId: alertInput.dashboardId,
           chartId: alertInput.chartId,
         }
+      : alertInput.source === 'custom'
+      ? {
+          source: 'CUSTOM',
+          isSystem: alertInput.isSystem,
+          customConfig: alertInput.customConfig,
+          checker: alertInput.checker,
+        }
       : ({} as never)),
   };
 };
@@ -306,6 +375,13 @@ export const translateAlertDocumentToExternalAlert = (
           source: 'chart',
           dashboardId: alertDoc.dashboardId.toString(),
           chartId: alertDoc.chartId as string,
+        }
+      : alertDoc.source === 'CUSTOM'
+      ? {
+          source: 'custom',
+          isSystem: alertDoc.isSystem,
+          customConfig: alertDoc.customConfig,
+          checker: alertDoc.checker,
         }
       : ({} as never)),
   };

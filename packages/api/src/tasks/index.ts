@@ -5,11 +5,11 @@ import { serializeError } from 'serialize-error';
 
 import { IS_DEV } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
+import checkAnomalyAlerts from '@/tasks/alerts/checkAnomalyAlerts';
+import checkUserAlerts from '@/tasks/alerts/checkUserAlerts';
+import refreshPropertyTypeMappings from '@/tasks/refreshPropertyTypeMappings';
 import logger from '@/utils/logger';
 import redisClient from '@/utils/redis';
-
-import checkAlerts from './checkAlerts';
-import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
 const main = async () => {
   const argv = minimist(process.argv.slice(2));
@@ -21,8 +21,12 @@ const main = async () => {
   const t0 = performance.now();
   logger.info(`Task [${taskName}] started at ${new Date()}`);
   switch (taskName) {
+    // TODO: rename to check-users-alerts
     case 'check-alerts':
-      await checkAlerts();
+      await checkUserAlerts();
+      break;
+    case 'check-anomaly-alerts':
+      await checkAnomalyAlerts();
       break;
     case 'refresh-property-type-mappings':
       await refreshPropertyTypeMappings();
