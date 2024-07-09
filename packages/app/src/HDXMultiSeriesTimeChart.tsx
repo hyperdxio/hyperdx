@@ -21,7 +21,7 @@ import {
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
-import api from './api';
+import api, { useMultiSeriesChartV2 } from './api';
 import {
   convertGranularityToSeconds,
   Granularity,
@@ -231,6 +231,7 @@ const MemoChart = memo(function MemoChart({
   logReferenceTimestamp,
   displayType = 'line',
   numberFormat,
+  isLoading,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -244,6 +245,7 @@ const MemoChart = memo(function MemoChart({
   displayType?: 'stacked_bar' | 'line';
   numberFormat?: NumberFormat;
   logReferenceTimestamp?: number;
+  isLoading?: boolean;
 }) {
   const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
 
@@ -331,6 +333,7 @@ const MemoChart = memo(function MemoChart({
       onResize={(width, height) => {
         sizeRef.current = [width ?? 1, height ?? 1];
       }}
+      className={isLoading ? 'effect-pulse' : ''}
     >
       <ChartComponent
         width={500}
@@ -459,7 +462,7 @@ const HDXMultiSeriesTimeChart = memo(
     defaultDisplayType?: 'stacked_bar' | 'line';
     logReferenceTimestamp?: number;
   }) => {
-    const { data, isError, isLoading } = api.useMultiSeriesChart(
+    const { data, isError, isLoading } = useMultiSeriesChartV2(
       {
         series,
         granularity,
@@ -594,7 +597,7 @@ const HDXMultiSeriesTimeChart = memo(
       defaultDisplayType,
     );
 
-    return isLoading ? (
+    return isLoading && !data ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
         Loading Chart Data...
       </div>
@@ -645,7 +648,7 @@ const HDXMultiSeriesTimeChart = memo(
                 href={`/search?${qparams?.toString()}`}
                 className="text-white-hover text-decoration-none"
               >
-                <i className="bi bi-search"></i>View Events
+                <i className="bi bi-search me-1"></i> View Events
               </Link>
             </div>
           ) : null}
@@ -705,6 +708,7 @@ const HDXMultiSeriesTimeChart = memo(
             </div>
           )}
           <MemoChart
+            isLoading={isLoading}
             lineNames={lineNames}
             lineColors={lineColors}
             graphResults={graphResults}
