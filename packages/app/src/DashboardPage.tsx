@@ -140,6 +140,7 @@ const Tile = forwardRef(
       onEditClick,
       onAddAlertClick,
       onDeleteClick,
+      onUpdateChart,
       query,
       queued,
       onSettled,
@@ -161,6 +162,7 @@ const Tile = forwardRef(
       onEditClick: () => void;
       onAddAlertClick?: () => void;
       onDeleteClick: () => void;
+      onUpdateChart?: (chart: Chart) => void;
       query: string;
       onSettled?: () => void;
       queued?: boolean;
@@ -192,6 +194,7 @@ const Tile = forwardRef(
             dateRange,
             numberFormat: chart.series[0].numberFormat,
             seriesReturnType: chart.seriesReturnType,
+            displayType: chart.series[0].displayType,
             series: chart.series.map(s => ({
               ...s,
               where: buildAndWhereClause(
@@ -381,7 +384,19 @@ const Tile = forwardRef(
               }
             >
               {chart.series[0].type === 'time' && config.type === 'time' && (
-                <HDXMultiSeriesTimeChart config={config} />
+                <HDXMultiSeriesTimeChart
+                  config={config}
+                  setDisplayType={displayType =>
+                    onUpdateChart?.(
+                      produce(chart, draft => {
+                        if (draft.series[0]?.type !== 'time') {
+                          return chart;
+                        }
+                        draft.series[0].displayType = displayType;
+                      }),
+                    )
+                  }
+                />
               )}
               {chart.series[0].type === 'table' && config.type === 'table' && (
                 <HDXMultiSeriesTableChart config={config} />
@@ -827,6 +842,22 @@ export default function DashboardPage({
             granularity={granularityQuery}
             alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
             isHighlighed={highlightedChartId === chart.id}
+            onUpdateChart={newChart => {
+              if (!dashboard) {
+                return;
+              }
+              setDashboard(
+                produce(dashboard, draft => {
+                  const chartIndex = draft.charts.findIndex(
+                    c => c.id === chart.id,
+                  );
+                  if (chartIndex === -1) {
+                    return;
+                  }
+                  draft.charts[chartIndex] = newChart;
+                }),
+              );
+            }}
             onDuplicateClick={async () => {
               if (dashboard != null) {
                 if (!(await confirm(`Duplicate ${chart.name}?`, 'Duplicate'))) {

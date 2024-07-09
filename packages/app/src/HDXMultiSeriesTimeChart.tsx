@@ -28,6 +28,7 @@ import {
   seriesColumns,
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
+import type { Dashboard } from './types';
 import type { ChartSeries, NumberFormat } from './types';
 import { FormatTime, useFormatTime } from './useFormatTime';
 import { formatNumber } from './utils';
@@ -438,12 +439,18 @@ const MemoChart = memo(function MemoChart({
 
 const HDXMultiSeriesTimeChart = memo(
   ({
-    config: { series, granularity, dateRange, seriesReturnType = 'column' },
+    config: {
+      series,
+      granularity,
+      dateRange,
+      seriesReturnType = 'column',
+      displayType = 'line',
+    },
     onSettled,
     alertThreshold,
     alertThresholdType,
     showDisplaySwitcher = true,
-    defaultDisplayType = 'line',
+    setDisplayType,
     logReferenceTimestamp,
   }: {
     config: {
@@ -451,12 +458,13 @@ const HDXMultiSeriesTimeChart = memo(
       granularity: Granularity;
       dateRange: [Date, Date] | Readonly<[Date, Date]>;
       seriesReturnType: 'ratio' | 'column';
+      displayType?: 'stacked_bar' | 'line';
     };
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
-    defaultDisplayType?: 'stacked_bar' | 'line';
+    setDisplayType: (type: 'stacked_bar' | 'line') => void;
     logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } = api.useMultiSeriesChart(
@@ -589,10 +597,6 @@ const HDXMultiSeriesTimeChart = memo(
 
     const numberFormat =
       series[0].type === 'time' ? series[0]?.numberFormat : undefined;
-
-    const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
-      defaultDisplayType,
-    );
 
     return isLoading ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
