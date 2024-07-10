@@ -591,6 +591,13 @@ ${value} ${
 ${targetTemplate}`;
   }
 
+  // render the template
+  if (rawTemplateBody) {
+    registerHelpers(rawTemplateBody);
+    const compiledTemplate = hb.compile(rawTemplateBody);
+    return compiledTemplate(view);
+  }
+
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
 };
 // ------------------------------------------------------------
