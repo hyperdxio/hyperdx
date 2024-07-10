@@ -5,6 +5,12 @@ import { Chart } from './dashboard';
 
 export type AlertType = 'presence' | 'absence';
 
+export enum SystemAlertName {
+  ANOMALOUS_ERRORS = 'Anomalous HTTP Server Errors',
+  ANOMALOUS_REQUESTS = 'Anomalous HTTP Server Requests',
+  ANOMALOUS_ERROR_LOGS = 'Anomalous General Error Logs',
+}
+
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
@@ -81,6 +87,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // System
+  isSystem?: boolean;
 
   customConfig?: AlertCustomConfig;
   historyWindow?: number; // in minutes
@@ -197,6 +206,11 @@ const AlertSchema = new Schema<IAlert>(
         },
         required: false,
       },
+    },
+    isSystem: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
     customConfig: {
       type: Schema.Types.Mixed,
