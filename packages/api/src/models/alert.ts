@@ -7,8 +7,8 @@ export type AlertType = 'presence' | 'absence';
 
 export enum SystemAlertName {
   ANOMALOUS_ERRORS = 'Anomalous HTTP Server Errors',
-  ANOMALOUS_REQUESTS = 'Anomalous HTTP Server Requests',
-  ANOMALOUS_ERROR_LOGS = 'Anomalous General Error Logs',
+  ANOMALOUS_REQUESTS = 'Anomalous HTTP Successful Requests',
+  ANOMALOUS_ERROR_EVENTS = 'Anomalous Error Events',
 }
 
 export enum AlertState {

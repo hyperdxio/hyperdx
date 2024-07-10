@@ -5,6 +5,7 @@ import { serializeError } from 'serialize-error';
 
 import { IS_DEV } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
+import addSystemAlerts from '@/tasks/alerts/addSystemAlerts';
 import checkAnomalyAlerts from '@/tasks/alerts/checkAnomalyAlerts';
 import checkUserAlerts from '@/tasks/alerts/checkUserAlerts';
 import refreshPropertyTypeMappings from '@/tasks/refreshPropertyTypeMappings';
@@ -21,6 +22,9 @@ const main = async () => {
   const t0 = performance.now();
   logger.info(`Task [${taskName}] started at ${new Date()}`);
   switch (taskName) {
+    case 'add-system-alerts':
+      await addSystemAlerts();
+      break;
     // TODO: rename to check-users-alerts
     case 'check-alerts':
       await checkUserAlerts();
