@@ -266,6 +266,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
 export default async () => {
   const now = new Date();
   const alerts = await Alert.find({
+    isSystem: { $ne: true },
     state: { $ne: AlertState.DISABLED },
     $or: [
       { checker: { $exists: false } },
