@@ -14,6 +14,7 @@ import {
   Group,
   Menu,
   Stack,
+  Text,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -21,22 +22,11 @@ import { notifications } from '@mantine/notifications';
 import api from './api';
 import { withAppNav } from './layout';
 import { Tags } from './Tags';
-import type { Alert, AlertHistory, LogView } from './types';
+import type { Alert, AlertData, AlertHistory } from './types';
 import { AlertState } from './types';
 import { FormatTime } from './useFormatTime';
 
 import styles from '../styles/AlertsPage.module.scss';
-
-type AlertData = Alert & {
-  history: AlertHistory[];
-  dashboard?: {
-    _id: string;
-    name: string;
-    charts: { id: string; name: string }[];
-    tags?: string[];
-  };
-  logView?: LogView;
-};
 
 const DISABLE_ALERTS_ENABLED = false;
 
@@ -280,6 +270,9 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     if (alert.source === 'LOG' && alert.logView) {
       return alert.logView?.name;
     }
+    if (alert.source === 'CUSTOM') {
+      return alert.name;
+    }
     return '–';
   }, [alert]);
 
@@ -290,7 +283,91 @@ function AlertDetails({ alert }: { alert: AlertData }) {
     if (alert.source === 'LOG' && alert.logView) {
       return `/search/${alert.logView._id}`;
     }
+    if (alert.source === 'CUSTOM') {
+      const config = {
+        id: '',
+        name: `${alert.name} Dashboard`,
+        charts: [
+          {
+            id: '4rro4',
+            name: `${alert.name} Chart`,
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 5,
+            series:
+              alert?.customConfig?.series.map(s => {
+                return {
+                  ...s,
+                  type: 'time',
+                };
+              }) ?? [],
+            seriesReturnType: 'column',
+          },
+        ],
+      };
+
+      return `/dashboards?config=${encodeURIComponent(JSON.stringify(config))}`;
+    }
     return '';
+  }, [alert]);
+
+  const alertIcon = (() => {
+    switch (alert.source) {
+      case 'CHART':
+        return 'bi-graph-up';
+      case 'LOG':
+        return 'bi-layout-text-sidebar-reverse';
+      case 'CUSTOM':
+        return 'bi-robot';
+      default:
+        return 'bi-question';
+    }
+  })();
+
+  const alertType = React.useMemo(() => {
+    if (alert.source === 'LOG') {
+      return (
+        <>
+          If count is {alert.type === 'presence' ? 'over' : 'under'}{' '}
+          <span className="fw-bold">{alert.threshold}</span>
+          <span className="text-slate-400">&middot;</span>
+        </>
+      );
+    } else if (alert.source === 'CUSTOM') {
+      return <>If event occurrence is anomalous</>;
+    } else if (alert.source === 'CHART' && alert.checker?.type === 'anomaly') {
+      const threshold = alert.checker.config?.models?.find(
+        m => m.name === 'zscore',
+      )?.params.threshold;
+      return (
+        <>
+          If value exceeds {threshold} stdv from the last {alert.interval}{' '}
+          window average
+        </>
+      );
+    } else {
+      return (
+        <>
+          If value is {alert.type === 'presence' ? 'over' : 'under'}{' '}
+          <span className="fw-bold">{alert.threshold}</span>
+          <span className="text-slate-400">&middot;</span>
+        </>
+      );
+    }
+  }, [alert]);
+
+  const linkTitle = React.useMemo(() => {
+    switch (alert.source) {
+      case 'CHART':
+        return 'Dashboard chart';
+      case 'LOG':
+        return 'Saved search';
+      case 'CUSTOM':
+        return 'Custom chart';
+      default:
+        return '';
+    }
   }, [alert]);
 
   return (
@@ -313,25 +390,14 @@ function AlertDetails({ alert }: { alert: AlertData }) {
             <Link
               href={alertUrl}
               className={styles.alertLink}
-              title={
-                alert.source === 'CHART' ? 'Dashboard chart' : 'Saved search'
-              }
+              title={linkTitle}
             >
-              <i
-                className={`bi ${
-                  alert.source === 'CHART'
-                    ? 'bi-graph-up'
-                    : 'bi-layout-text-sidebar-reverse'
-                } text-slate-200 me-2 fs-8`}
-              />
+              <i className={`bi ${alertIcon} text-slate-200 me-2 fs-8`} />
               {alertName}
             </Link>
           </div>
           <div className="text-slate-400 fs-8 d-flex gap-2">
-            If {alert.source === 'LOG' ? 'count' : 'value'} is{' '}
-            {alert.type === 'presence' ? 'at least' : 'under'}{' '}
-            <span className="fw-bold">{alert.threshold}</span>
-            <span className="text-slate-400">&middot;</span>
+            {alertType}
             {alert.channel.type === 'webhook' && (
               <span>Notify via Webhook</span>
             )}
@@ -443,12 +509,19 @@ export default function AlertsPage() {
       <Head>
         <title>Alerts - HyperDX</title>
       </Head>
-      <div className={styles.header}>Alerts</div>
+      <div className={styles.sectionHeader}>
+        Your Alerts
+        <Text size="sm" c="gray.6" mt="xs">
+          Alerts created from dashboard charts and saved searches
+        </Text>
+      </div>
       <div className="my-4">
-        <Container>
+        <Container maw={1500}>
           <MAlert
             icon={<i className="bi bi-info-circle-fill text-slate-400" />}
             color="gray"
+            py="xs"
+            mt="md"
           >
             Alerts can be{' '}
             <a

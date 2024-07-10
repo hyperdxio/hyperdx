@@ -69,7 +69,7 @@ export type AlertInterval =
 
 export type AlertChannelType = 'webhook';
 
-export type AlertSource = 'LOG' | 'CHART';
+export type AlertSource = 'LOG' | 'CHART' | 'CUSTOM';
 
 export type AlertChannel = {
   channelId?: string;
@@ -86,6 +86,30 @@ export enum AlertState {
   OK = 'OK',
 }
 
+export interface AlertCustomConfig {
+  series: ChartSeries[];
+}
+
+export enum CheckerType {
+  Anomaly = 'anomaly',
+  Threshold = 'threshold',
+}
+
+interface AnomalyConfig {
+  models?: AnomalyModel[];
+  mode?: 'any' | 'combined';
+}
+
+interface AnomalyModel {
+  name: string;
+  enabled: boolean;
+  params: {
+    [key: string]: unknown;
+  };
+}
+
+type CheckerConfig = AnomalyConfig;
+
 export type Alert = {
   _id?: string;
   channel: AlertChannel;
@@ -101,14 +125,37 @@ export type Alert = {
     at: string;
     until: string;
   };
+
+  // Message template
+  name?: string | null;
+  message?: string | null;
+
   // Log alerts
   logView?: string;
-  message?: string;
   groupBy?: string;
 
   // Chart alerts
   dashboardId?: string;
   chartId?: string;
+
+  // Custom alerts
+  customConfig?: AlertCustomConfig;
+  historyWindow?: number; // number of minutes
+  checker?: {
+    type: CheckerType;
+    config?: CheckerConfig;
+  };
+};
+
+export type AlertData = Alert & {
+  history: AlertHistory[];
+  dashboard?: {
+    _id: string;
+    name: string;
+    charts: { id: string; name: string }[];
+    tags?: string[];
+  };
+  logView?: LogView;
 };
 
 export type AlertHistory = {

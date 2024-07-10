@@ -4,9 +4,11 @@ import cx from 'classnames';
 import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
+  Area,
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Label,
   Legend,
   Line,
@@ -88,6 +90,7 @@ const HDXLineChartTooltip = withErrorBoundary(
           <div className={styles.chartTooltipContent}>
             {payload
               .sort((a: any, b: any) => b.value - a.value)
+              .filter((p: any) => p.dataKey !== 'anomalyThreshold')
               .map((p: any) => (
                 <TooltipItem
                   key={p.dataKey}
@@ -240,12 +243,17 @@ const MemoChart = memo(function MemoChart({
   lineNames: string[];
   lineColors: Array<string | undefined>;
   alertThreshold?: number;
-  alertThresholdType?: 'above' | 'below';
+  alertThresholdType?: 'above' | 'below' | 'zscore';
   displayType?: 'stacked_bar' | 'line';
   numberFormat?: NumberFormat;
   logReferenceTimestamp?: number;
 }) {
-  const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
+  const ChartComponent =
+    displayType === 'stacked_bar'
+      ? BarChart
+      : alertThresholdType === 'zscore'
+      ? ComposedChart
+      : LineChart;
 
   const lines = useMemo(() => {
     const limitedGroupKeys = groupKeys.slice(0, HARD_LINES_LIMIT);
@@ -323,6 +331,33 @@ const MemoChart = memo(function MemoChart({
     [numberFormat],
   );
 
+  const zscoreBoundaries = useMemo(() => {
+    let sum = 0;
+    let sumSquared = 0;
+    let count = 0;
+    const stdDeviation = alertThreshold ?? 3;
+    return graphResults.map((data, index) => {
+      if (index === 0) {
+        return {
+          ...data,
+          anomalyThreshold: [0, 0],
+        };
+      }
+      sum += graphResults[index - 1]['series_0.data:::'];
+      sumSquared += graphResults[index - 1]['series_0.data:::'] ** 2;
+      count++;
+      const mean = sum / count;
+      const variance = sumSquared / count - mean ** 2;
+      const stdDev = Math.sqrt(variance);
+      const upperBound = mean + stdDev * stdDeviation;
+      const lowerBound = Math.max(mean - stdDev * stdDeviation, 0);
+      return {
+        ...data,
+        anomalyThreshold: [lowerBound, upperBound],
+      };
+    });
+  }, [graphResults, alertThreshold]);
+
   return (
     <ResponsiveContainer
       width="100%"
@@ -335,7 +370,11 @@ const MemoChart = memo(function MemoChart({
       <ChartComponent
         width={500}
         height={300}
-        data={graphResults}
+        data={
+          alertThresholdType === 'zscore' && graphResults.length > 10
+            ? graphResults.slice(3)
+            : graphResults
+        }
         syncId="hdx"
         syncMethod="value"
         onClick={(state, e) => {
@@ -367,10 +406,14 @@ const MemoChart = memo(function MemoChart({
         />
         <XAxis
           dataKey={'ts_bucket'}
-          domain={[
-            dateRange[0].getTime() / 1000,
-            dateRange[1].getTime() / 1000,
-          ]}
+          domain={
+            alertThresholdType === 'zscore' && graphResults.length > 10
+              ? [
+                  dateRange[0].getTime() / 1000,
+                  dateRange[1].getTime() / 1000,
+                ].slice(3)
+              : [dateRange[0].getTime() / 1000, dateRange[1].getTime() / 1000]
+          }
           interval="preserveStartEnd"
           scale="time"
           type="number"
@@ -405,7 +448,24 @@ const MemoChart = memo(function MemoChart({
             fillOpacity={0.05}
           />
         )}
-        {alertThreshold != null && (
+        {alertThreshold != null && alertThresholdType === 'zscore' && (
+          <Area
+            type="monotone"
+            data={
+              zscoreBoundaries.length > 10
+                ? zscoreBoundaries.slice(3)
+                : zscoreBoundaries
+            }
+            dataKey="anomalyThreshold"
+            fill="#1ef956"
+            fillOpacity={0.05}
+            strokeWidth={1}
+            strokeDasharray={'3 3'}
+            stroke="#1ef956"
+            connectNulls={true}
+          />
+        )}
+        {alertThreshold != null && alertThresholdType !== 'zscore' && (
           <ReferenceLine
             y={alertThreshold}
             label={<Label value="Alert Threshold" fill={'white'} />}
@@ -454,29 +514,18 @@ const HDXMultiSeriesTimeChart = memo(
     };
     onSettled?: () => void;
     alertThreshold?: number;
-    alertThresholdType?: 'above' | 'below';
+    alertThresholdType?: 'above' | 'below' | 'zscore';
     showDisplaySwitcher?: boolean;
     defaultDisplayType?: 'stacked_bar' | 'line';
     logReferenceTimestamp?: number;
   }) => {
-    const { data, isError, isLoading } = api.useMultiSeriesChart(
-      {
-        series,
-        granularity,
-        endDate: dateRange[1] ?? new Date(),
-        startDate: dateRange[0] ?? new Date(),
-        seriesReturnType,
-      },
-      {
-        enabled:
-          series.length > 0 &&
-          series[0].type === 'time' &&
-          series[0].table === 'metrics' &&
-          series[0].field == null
-            ? false
-            : true,
-      },
-    );
+    const { data, isError, isLoading } = api.useMultiSeriesChart({
+      series,
+      granularity,
+      endDate: dateRange[1] ?? new Date(),
+      startDate: dateRange[0] ?? new Date(),
+      seriesReturnType,
+    });
 
     const tsBucketMap = new Map();
     let graphResults: {
