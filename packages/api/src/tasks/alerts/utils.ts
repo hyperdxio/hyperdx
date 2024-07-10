@@ -380,16 +380,6 @@ export const buildAlertMessageTemplateHdxLink = ({
       granularity,
       startTime,
     });
-  } else if (alert.source === 'custom') {
-    if (!alert.isSystem) {
-      throw new Error(`Only system CUSTOM alerts are currently supported.`);
-    }
-    return buildCustomLink({
-      alert,
-      endTime,
-      granularity,
-      startTime,
-    });
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
@@ -431,13 +421,6 @@ export const buildAlertMessageTemplateTitle = ({
             ? 'falls below'
             : 'exceeds'
         } ${alert.threshold}`;
-  } else if (alert.source === 'custom') {
-    if (!alert.isSystem) {
-      throw new Error(`Only system CUSTOM alerts are currently supported.`);
-    }
-    return template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${alert.name}" - ${value} events in the past ${granularity}`;
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
@@ -606,18 +589,6 @@ ${value} ${
         : 'exceeds'
     } ${alert.threshold}
 ${targetTemplate}`;
-  } else if (alert.source === 'custom') {
-    if (!alert.isSystem) {
-      throw new Error(`Only system CUSTOM alerts are currently supported.`);
-    }
-    rawTemplateBody = `${targetTemplate}`;
-  }
-
-  // render the template
-  if (rawTemplateBody) {
-    registerHelpers(rawTemplateBody);
-    const compiledTemplate = hb.compile(rawTemplateBody);
-    return compiledTemplate(view);
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);

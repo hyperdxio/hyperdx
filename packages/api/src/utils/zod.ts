@@ -238,7 +238,6 @@ export const zAlertInterval = z.enum([
 
 export const zCustomAlert = z.object({
   source: z.literal('CUSTOM'),
-  isSystem: z.boolean().optional(),
   customConfig: z
     .object({
       series: z.array(chartSeriesSchema),
@@ -283,7 +282,6 @@ export const externalChartAlertSchema = z.object({
 
 export const externalCustomAlertSchema = z.object({
   source: z.literal('custom'),
-  isSystem: z.boolean().optional(),
   customConfig: z
     .object({
       series: z.array(chartSeriesSchema),
@@ -345,7 +343,6 @@ export const translateExternalAlertToInternalAlert = (
       : alertInput.source === 'custom'
       ? {
           source: 'CUSTOM',
-          isSystem: alertInput.isSystem,
           customConfig: alertInput.customConfig,
           checker: alertInput.checker,
         }
@@ -379,7 +376,6 @@ export const translateAlertDocumentToExternalAlert = (
       : alertDoc.source === 'CUSTOM'
       ? {
           source: 'custom',
-          isSystem: alertDoc.isSystem,
           customConfig: alertDoc.customConfig,
           checker: alertDoc.checker,
         }
