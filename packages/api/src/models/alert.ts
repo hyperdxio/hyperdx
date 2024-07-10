@@ -219,4 +219,9 @@ const AlertSchema = new Schema<IAlert>(
   },
 );
 
+AlertSchema.index({
+  state: 1,
+  checker: 1,
+});
+
 export default mongoose.model<IAlert>('Alert', AlertSchema);
