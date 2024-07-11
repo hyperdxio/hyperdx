@@ -818,7 +818,7 @@ export default function KubernetesDashboardPage() {
             }}
             searchQuery={_searchQuery ?? searchQuery}
             placeholder="Node"
-            dropdownClosedWidth={110}
+            dropdownClosedWidth={100}
             icon={<i className="bi bi-hdd-rack"></i>}
           />
           <K8sMetricTagValueSelect
@@ -829,8 +829,19 @@ export default function KubernetesDashboardPage() {
             searchQuery={_searchQuery ?? searchQuery}
             metricAttribute="k8s.namespace.name"
             placeholder="Namespace"
-            dropdownClosedWidth={150}
+            dropdownClosedWidth={140}
             icon={<i className="bi bi-braces"></i>}
+          />
+          <K8sMetricTagValueSelect
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            metricAttribute="k8s.cluster.name"
+            placeholder="Cluster"
+            dropdownClosedWidth={130}
+            icon={<i className="bi bi-grid"></i>}
           />
           <div style={{ flex: 1 }}>
             <form onSubmit={onSearchSubmit}>
