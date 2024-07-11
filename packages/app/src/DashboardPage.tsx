@@ -641,13 +641,16 @@ export default function DashboardPage({
 
   const [localDashboard, setLocalDashboard] = useQueryParam<Dashboard>(
     'config',
-    withDefault(JsonParam, {
-      id: '',
-      name: 'My New Dashboard',
-      charts: [],
-      alerts: [],
-      query: '',
-    }),
+    withDefault(
+      JsonParam,
+      presetConfig ?? {
+        id: '',
+        name: 'My New Dashboard',
+        charts: [],
+        alerts: [],
+        query: '',
+      },
+    ),
     { updateType: 'pushIn', enableBatching: true },
   );
 
@@ -656,9 +659,6 @@ export default function DashboardPage({
     dashboardId != null ? dashboardId : hashCode(`${config}`);
 
   const dashboard: Dashboard | undefined = useMemo(() => {
-    if (presetConfig) {
-      return presetConfig;
-    }
     if (isLocalDashboard) {
       return localDashboard;
     }
@@ -668,13 +668,7 @@ export default function DashboardPage({
       );
       return matchedDashboard;
     }
-  }, [
-    presetConfig,
-    isLocalDashboard,
-    dashboardsData,
-    localDashboard,
-    dashboardId,
-  ]);
+  }, [isLocalDashboard, dashboardsData, localDashboard, dashboardId]);
 
   // Update dashboard
   const [isSavedNow, _setSavedNow] = useState(false);
