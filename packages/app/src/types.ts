@@ -218,6 +218,7 @@ export type TimeChartSeries = {
   groupBy: string[];
   numberFormat?: NumberFormat;
   color?: string;
+  displayType?: 'stacked_bar' | 'line';
 };
 
 export type TableChartSeries = {

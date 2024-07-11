@@ -531,13 +531,13 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             displayName: 'Total Query Time',
@@ -563,13 +563,13 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             displayName: 'Total Query Count',
@@ -607,7 +607,6 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
@@ -615,6 +614,7 @@ export default function ServiceDashboardPage() {
                           60,
                         ),
                         seriesReturnType: 'column',
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             type: 'time',
@@ -818,10 +818,10 @@ function RequestErrorRateCard({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <HDXMultiSeriesTimeChart
           key={chartType}
-          defaultDisplayType={chartType === 'overall' ? 'line' : 'stacked_bar'}
           config={{
             dateRange,
             granularity: convertDateRangeToGranularityString(dateRange, 60),
+            displayType: chartType === 'overall' ? 'line' : 'stacked_bar',
             series: [
               {
                 displayName: 'Error Rate %',

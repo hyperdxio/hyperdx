@@ -1262,6 +1262,7 @@ export const EditLineChartForm = ({
             numberFormat: _editedChart.series[0].numberFormat,
             series: _editedChart.series,
             seriesReturnType: _editedChart.seriesReturnType,
+            displayType: _editedChart.series[0].displayType,
           }
         : null,
     [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
@@ -1415,6 +1416,16 @@ export const EditLineChartForm = ({
       >
         <HDXMultiSeriesTimeChart
           config={previewConfig}
+          setDisplayType={displayType =>
+            _setEditedChart(
+              produce(_editedChart, draft => {
+                if (draft.series[0].type !== 'time') {
+                  return draft;
+                }
+                draft.series[0].displayType = displayType;
+              }),
+            )
+          }
           {...(alertEnabled && {
             alertThreshold: editedAlert?.threshold,
             alertThresholdType:
