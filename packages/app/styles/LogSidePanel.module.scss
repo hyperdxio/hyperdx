@@ -1,6 +1,6 @@
 @import './variables';
 
-// TODO: Use variables for spacings
+// TODO: Use variables for spacings;
 $padding-x: 24px;
 
 .panel {
@@ -123,6 +123,7 @@ $padding-x: 24px;
   font-size: 11px;
   padding-right: 8px;
   letter-spacing: -0.3px;
+
   &:hover {
     opacity: 1;
   }
@@ -135,9 +136,11 @@ $padding-x: 24px;
 
 .stacktraceRowInteractive {
   cursor: pointer;
+
   &:hover {
     background-color: #ffffff08;
   }
+
   &:active {
     background-color: #ffffff12;
   }

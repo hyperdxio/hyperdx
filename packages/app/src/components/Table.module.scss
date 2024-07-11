@@ -63,9 +63,11 @@ $horizontalPadding: 12px;
     th,
     td {
       padding: 0;
+
       &:first-child {
         padding-left: 0;
       }
+
       &:last-child {
         padding-right: 0;
       }
