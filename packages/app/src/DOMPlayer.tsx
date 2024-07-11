@@ -1,15 +1,74 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
+import { ActionIcon, CopyButton, HoverCard } from '@mantine/core';
 
 import { useSearchEventStream } from './search';
 import { useDebugMode } from './utils';
 
+import styles from '../styles/SessionSubpanelV2.module.scss';
+
 function getPlayerCurrentTime(player: Replayer) {
   return Math.max(player.getCurrentTime(), 0); //getCurrentTime can be -startTime
 }
+
+const URLHoverCard = memo(({ url }: { url: string }) => {
+  let parsedUrl: URL | undefined;
+  try {
+    parsedUrl = new URL(url);
+  } catch (e) {
+    // ignore
+  }
+
+  let searchParams: { key: string; value: string }[] | undefined;
+  try {
+    const _searchParams = new URLSearchParams(parsedUrl?.search ?? '');
+    searchParams = [];
+    for (const [key, value] of _searchParams.entries()) {
+      searchParams.push({ key, value });
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return (
+    <HoverCard shadow="md" position="bottom-start">
+      <HoverCard.Target>
+        <div className={styles.playerHeaderUrl}>{url || 'Session Player'}</div>
+      </HoverCard.Target>
+      {url && (
+        <HoverCard.Dropdown>
+          <table className="table fs-8 mb-0">
+            <tr>
+              <td>
+                <i className="bi bi-globe fs-8 text-slate-300"></i>
+              </td>
+              <td>{parsedUrl?.host}</td>
+            </tr>
+            <tr>
+              <td>
+                <i className="bi bi-link-45deg text-slate-300 fs-7"></i>
+              </td>
+              <td>{parsedUrl?.pathname}</td>
+            </tr>
+            {searchParams &&
+              searchParams.length > 0 &&
+              searchParams.map(param => (
+                <tr key={param.key}>
+                  <td>
+                    <strong>{param.key}</strong>
+                  </td>
+                  <td>{param.value}</td>
+                </tr>
+              ))}
+          </table>
+        </HoverCard.Dropdown>
+      )}
+    </HoverCard>
+  );
+});
 
 export default function DOMPlayer({
   config: { sessionId, dateRange },
@@ -21,6 +80,8 @@ export default function DOMPlayer({
   skipInactive,
   setPlayerStartTimestamp,
   setPlayerEndTimestamp,
+  setPlayerFullWidth,
+  playerFullWidth,
   resizeKey,
 }: {
   config: {
@@ -34,8 +95,14 @@ export default function DOMPlayer({
   playerSpeed: number;
   setPlayerStartTimestamp?: (ts: number) => void;
   setPlayerEndTimestamp?: (ts: number) => void;
+  // setPlayerSpeed: (playerSpeed: number) => void;
   skipInactive: boolean;
+  // setSkipInactive: (skipInactive: boolean) => void;
+  // highlightedResultId: string | undefined;
+  // onClick: (logId: string, sortKey: number) => void;
   resizeKey?: string;
+  setPlayerFullWidth: (fullWidth: boolean) => void;
+  playerFullWidth: boolean;
 }) {
   const debug = useDebugMode();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -226,16 +293,24 @@ export default function DOMPlayer({
       return;
     }
 
-    const wrapperRect = wrapper.current.getBoundingClientRect();
-    const playerWidth = replayer?.current?.iframe?.offsetWidth ?? 1280;
-    const playerHeight = replayer?.current?.iframe?.offsetHeight ?? 720;
+    playerContainer.current.style.transform = `scale(0.0001)`;
 
-    const xScale = wrapperRect.width / playerWidth;
-    const yScale = wrapperRect.height / playerHeight;
-    playerContainer.current.style.transform = `scale(${Math.min(
-      xScale,
-      yScale,
-    )})`;
+    window.requestAnimationFrame(() => {
+      if (wrapper.current == null || playerContainer.current == null) {
+        return;
+      }
+
+      const wrapperRect = wrapper.current.getBoundingClientRect();
+      const playerWidth = replayer?.current?.iframe?.offsetWidth ?? 1280;
+      const playerHeight = replayer?.current?.iframe?.offsetHeight ?? 720;
+
+      const xScale = wrapperRect.width / playerWidth;
+      const yScale = wrapperRect.height / playerHeight;
+      playerContainer.current.style.transform = `scale(${Math.min(
+        xScale,
+        yScale,
+      )})`;
+    });
   }, [wrapper, playerContainer]);
 
   // Listen to window resizes to resize player
@@ -253,6 +328,7 @@ export default function DOMPlayer({
   useEffect(() => {
     if (
       // If we have no events yet, we can't mount yet.
+      // (results ?? []).length == 0 ||
       initialEvents.current.length < 2 ||
       // Just skip if we're already enabled
       playerContainer.current == null ||
@@ -263,7 +339,7 @@ export default function DOMPlayer({
 
     replayer.current = new Replayer(initialEvents.current, {
       root: playerContainer.current,
-      mouseTail: false,
+      mouseTail: true,
       pauseAnimation: false,
       showWarning: debug,
       skipInactive: true,
@@ -314,12 +390,12 @@ export default function DOMPlayer({
     }, 0);
   }, [
     handleResize,
+    // results,
     focus,
     pause,
     isInitialEventsLoaded,
     playerState,
     play,
-    debug,
   ]);
 
   // Set player to the correct time based on focus
@@ -388,47 +464,64 @@ export default function DOMPlayer({
 
   return (
     <>
-      {lastHref != '' && (
-        <div className="bg-dark rounded p-2 mb-2">{lastHref}</div>
-      )}
-      {(isLoading || isBuffering) && (
-        <div
-          className="d-flex align-items-center justify-content-center"
-          style={{ minHeight: 300 }}
+      <div className={styles.playerHeader}>
+        <ActionIcon
+          onClick={() => setPlayerFullWidth(!playerFullWidth)}
+          size="sm"
+          color="gray.7"
         >
+          {playerFullWidth ? (
+            <i className="bi bi-list"></i>
+          ) : (
+            <i className="bi bi-arrows-fullscreen fs-8"></i>
+          )}
+        </ActionIcon>
+        <CopyButton value={lastHref}>
+          {({ copied, copy }) => (
+            <>
+              <URLHoverCard url={lastHref} />
+              <ActionIcon
+                onClick={copy}
+                title="Copy URL"
+                variant="light"
+                size="sm"
+                color="gray"
+              >
+                {copied ? (
+                  <i className="bi bi-check2 fs-8" />
+                ) : (
+                  <i className="bi bi-copy fs-8" />
+                )}
+              </ActionIcon>
+            </>
+          )}
+        </CopyButton>
+      </div>
+
+      <div className={styles.playerContainer}>
+        {isLoading || isBuffering ? (
           <div className="text-center">
             <div className="spinner-border" role="status" />
             <div className="mt-2">
               {isBuffering ? 'Buffering to time...' : 'Loading replay...'}
             </div>
           </div>
-        </div>
-      )}
-      {isReplayFullyLoaded && replayer.current == null && (
-        <div className="d-flex align-items-center justify-content-center bg-hdx-dark p-4 text-center text-muted">
-          No replay available for this session, most likely due to this session
-          starting and ending in a background tab.
-        </div>
-      )}
-      <div
-        ref={wrapper}
-        className={cx('player-wrapper overflow-hidden', {
-          'd-none': isLoading || isBuffering,
-          started: (replayer.current?.getCurrentTime() ?? 0) > 0,
-        })}
-        style={{
-          marginBottom: 80, // XXX (mikeshi): This is a CSS hack as the side panel parent
-          // height is 100%, which is incorrect and will be higher than the actual height available
-          // however fixing the side panel to use flex will likely take longer to fix
-        }}
-      >
+        ) : isReplayFullyLoaded && replayer.current == null ? (
+          <div className="text-center">
+            No replay available for this session, most likely due to this
+            session starting and ending in a background tab.
+          </div>
+        ) : null}
         <div
-          className="player rr-block"
-          ref={playerContainer}
-          style={{
-            transformOrigin: '0 0',
-          }}
-        />
+          ref={wrapper}
+          className={cx(styles.domPlayerWrapper, 'overflow-hidden', {
+            'd-none': isLoading || isBuffering,
+            started: (replayer.current?.getCurrentTime() ?? 0) > 0,
+            [styles.domPlayerWrapperPaused]: playerState === 'paused',
+          })}
+        >
+          <div className="player rr-block" ref={playerContainer} />
+        </div>
       </div>
     </>
   );

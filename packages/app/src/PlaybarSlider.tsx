@@ -85,7 +85,7 @@ export const PlaybarSlider = ({
     <div className={styles.wrapper}>
       <div className={styles.markers}>{markersContent}</div>
       <Slider
-        color="gray.5"
+        color={playerState === 'playing' ? 'green' : 'gray.5'}
         size="sm"
         min={min}
         max={max}
