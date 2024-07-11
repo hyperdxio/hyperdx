@@ -33,10 +33,6 @@ export default function SessionSidePanel({
   }) => string;
   zIndex?: number;
 }) {
-  useHotkeys(['esc'], () => {
-    onClose();
-  });
-
   // TODO: DRY with sessions page?
   const { data: tableData } = api.useSessions({
     startDate: dateRange[0],
@@ -59,9 +55,15 @@ export default function SessionSidePanel({
     },
   );
 
+  // console.log({ logId: sessionId, subDrawerOpen });
   const maxTime =
     session != null ? new Date(session?.maxTimestamp) : new Date();
+  // const minTime =
+  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
+  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
+  //   .toISOString()
+  //   .slice(11, 19);
 
   return (
     <Drawer
@@ -81,67 +83,65 @@ export default function SessionSidePanel({
       zIndex={zIndex}
     >
       <ZIndexContext.Provider value={zIndex}>
-        <div>
-          <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
-            <div style={{ width: '50%', maxWidth: 500 }}>
-              {session?.userEmail || `Anonymous Session ${sessionId}`}
-              <div className="text-muted fs-8 mt-1">
-                <span>Last active {timeAgo} ago</span>
-                <span className="mx-2">·</span>
-                {Number.parseInt(session?.errorCount ?? '0') > 0 ? (
-                  <>
-                    <span className="text-danger fs-8">
-                      {session?.errorCount} Errors
-                    </span>
-                    <span className="mx-2">·</span>
-                  </>
-                ) : null}
-                <span>{session?.sessionCount} Events</span>
+        <div className="d-flex flex-column h-100">
+          <div>
+            <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
+              <div style={{ width: '50%', maxWidth: 500 }}>
+                {session?.userEmail || `Anonymous Session ${sessionId}`}
+                <div className="text-muted fs-8 mt-1">
+                  <span>Last active {timeAgo} ago</span>
+                  <span className="mx-2">·</span>
+                  {Number.parseInt(session?.errorCount ?? '0') > 0 ? (
+                    <>
+                      <span className="text-danger fs-8">
+                        {session?.errorCount} Errors
+                      </span>
+                      <span className="mx-2">·</span>
+                    </>
+                  ) : null}
+                  <span>{session?.sessionCount} Events</span>
+                </div>
               </div>
-            </div>
-            <div className="d-flex">
-              <CopyToClipboard
-                text={window.location.href}
-                onCopy={() => {
-                  notifications.show({
-                    color: 'green',
-                    message: 'Copied link to clipboard',
-                  });
-                }}
-              >
+              <div className="d-flex">
+                <CopyToClipboard
+                  text={window.location.href}
+                  onCopy={() => {
+                    notifications.show({
+                      color: 'green',
+                      message: 'Copied link to clipboard',
+                    });
+                  }}
+                >
+                  <Button
+                    variant="dark"
+                    className="text-muted-hover mx-2 d-flex align-items-center fs-8"
+                    size="sm"
+                  >
+                    <i className="bi bi-link-45deg me-2 fs-7.5" />
+                    Share Session
+                  </Button>
+                </CopyToClipboard>
                 <Button
                   variant="dark"
-                  className="text-muted-hover mx-2 d-flex align-items-center fs-8"
+                  className="text-muted-hover d-flex align-items-center"
                   size="sm"
+                  onClick={onClose}
                 >
-                  <i className="bi bi-link-45deg me-2 fs-7.5" />
-                  Share Session
+                  <i className="bi bi-x-lg" />
                 </Button>
-              </CopyToClipboard>
-              <Button
-                variant="dark"
-                className="text-muted-hover d-flex align-items-center"
-                size="sm"
-                onClick={onClose}
-              >
-                <i className="bi bi-x-lg" />
-              </Button>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="p-3 h-100 d-flex flex-column fs-8">
           {sessionId != null ? (
-            <div className="mt-3 overflow-hidden">
-              <SessionSubpanel
-                start={dateRange[0]}
-                end={dateRange[1]}
-                rumSessionId={sessionId}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                generateChartUrl={generateChartUrl}
-                setDrawerOpen={setSubDrawerOpen}
-              />
-            </div>
+            <SessionSubpanel
+              start={dateRange[0]}
+              end={dateRange[1]}
+              rumSessionId={sessionId}
+              onPropertyAddClick={onPropertyAddClick}
+              generateSearchUrl={generateSearchUrl}
+              generateChartUrl={generateChartUrl}
+              setDrawerOpen={setSubDrawerOpen}
+            />
           ) : null}
         </div>
       </ZIndexContext.Provider>
