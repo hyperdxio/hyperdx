@@ -7,9 +7,9 @@ import { NextAdapter } from 'next-query-params';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
+
 import '../styles/globals.css';
 import '../styles/app.scss';
-import '../src/LandingPage.scss';
 
 import { meHandler } from '../src/mocks/handlers';
 import { ThemeWrapper } from '../src/ThemeWrapper';

@@ -9,10 +9,8 @@ $green: #50fa7b;
 $red: #ff5d5b;
 $blue: #3788f6;
 $purple: #8f57f3;
-
 $gray-100: #f8f9fa;
 $body-color: $gray-100;
-
 $bg-hdx-dark: #1a1d23;
 $bg-dark-grey: #1f2429;
 $bg-grey: #21272e;
@@ -20,7 +18,6 @@ $bg-purple: #2e273b;
 $bg-purple-active: #4a4eb5;
 $body-bg: #0f1215;
 $code-color: #4bb74a;
-
 $info: $purple;
 
 // TODO: Adjust contrast ratios
@@ -57,15 +54,11 @@ $spacers: (
   14: $spacer * 14,
   16: $spacer * 16,
 );
-
 $navbar-dark-active-color: $green;
 $navbar-dark-color: rgba(#fff, 0.75);
 $navbar-dark-hover-color: rgba(#fff, 1);
-
 $dropdown-dark-bg: $bg-grey;
-
 $popover-bg: $bg-purple;
-
 $font-size-base: 1rem !default; // Assumes the browser default, typically `16px`
 
 $h1-font-size: $font-size-base * 2.5 !default;
@@ -74,6 +67,7 @@ $h3-font-size: $font-size-base * 1.75 !default;
 $h4-font-size: $font-size-base * 1.5 !default;
 $h5-font-size: $font-size-base * 1.25 !default;
 $h6-font-size: $font-size-base !default;
+
 // scss-docs-end font-variables
 
 // scss-docs-start font-sizes
@@ -91,14 +85,13 @@ $font-sizes: (
   8\.5: $font-size-base * 0.625,
   9: $font-size-base * 0.5,
 ) !default;
+
 // scss-docs-end font-sizes
 
 $input-bg: #ffffff1a;
-$input-border-width: 0px;
+$input-border-width: 0;
 $input-group-addon-bg: $input-bg;
-
 $form-select-indicator-color: $body-color;
-
 $accordion-button-bg: $bg-purple;
 $accordion-button-active-bg: $bg-purple-active;
 $accordion-button-active-color: $body-color;

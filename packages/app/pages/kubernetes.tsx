@@ -1,3 +1,3 @@
-import KubernetesDashboardPage from '../src/KubernetesDashboardPage';
+import KubernetesDashboardPage from '@/KubernetesDashboardPage';
 
 export default KubernetesDashboardPage;
