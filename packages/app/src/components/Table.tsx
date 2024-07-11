@@ -17,10 +17,12 @@ type TableProps<T extends Record<string, unknown> | string[]> = {
   emptyMessage?: string;
   hideHeader?: boolean;
   borderless?: boolean;
-  density?: 'compact' | 'normal' | 'comfortable';
+  density?: 'zero' | 'compact' | 'normal' | 'comfortable';
   interactive?: boolean;
+  tableMeta?: Record<string, any>;
 };
 
+// TODO: Retire this component in favor of Mantine
 export const Table = <T extends Record<string, unknown> | string[]>({
   data = [],
   columns,
@@ -29,10 +31,12 @@ export const Table = <T extends Record<string, unknown> | string[]>({
   borderless,
   density = 'normal',
   interactive,
+  tableMeta,
 }: TableProps<T>) => {
   const table = useReactTable({
     data,
     columns,
+    meta: tableMeta,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -44,6 +48,7 @@ export const Table = <T extends Record<string, unknown> | string[]>({
     <div
       className={cx(styles.tableWrapper, {
         [styles.tableBorderless]: borderless,
+        [styles.tableDensityZero]: density === 'zero',
         [styles.tableDensityCompact]: density === 'compact',
         [styles.tableDensityComfortable]: density === 'comfortable',
         [styles.tableInteractive]: interactive,

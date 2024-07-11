@@ -1,10 +1,11 @@
 import { memo, RefObject, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
-import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
-import Tooltip from 'react-bootstrap/Tooltip';
+import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useDrag, usePrevious } from './utils';
+
+import styles from '../styles/TimelineChart.module.scss';
 
 type TimelineEventT = {
   id: string;
@@ -23,7 +24,6 @@ const NewTimelineRow = memo(
     height,
     eventStyles,
     onEventHover,
-    onEventClick,
     scale,
     offset,
   }: {
@@ -37,7 +37,6 @@ const NewTimelineRow = memo(
     onEventClick?: (event: any) => any;
   }) {
     const onHover = onEventHover ?? (() => {});
-    const onClick = onEventClick ?? (() => {});
     return (
       <div
         className="d-flex overflow-hidden"
@@ -59,17 +58,22 @@ const NewTimelineRow = memo(
             scale * (((e.start - lastEventEnd) / maxVal) * 100);
 
           return (
-            <OverlayTrigger
+            <Tooltip
               key={e.id}
-              placement="top"
-              overlay={
-                <Tooltip className="TimelineEventTooltip">{e.tooltip}</Tooltip>
-              }
+              label={e.tooltip}
+              color="gray"
+              withArrow
+              multiline
+              transitionProps={{ transition: 'fade-right' }}
+              style={{
+                fontSize: 11,
+                maxWidth: 300,
+                wordBreak: 'break-word',
+              }}
             >
               <div
                 onMouseEnter={() => onHover(e.id)}
-                onClick={() => onClick(e)}
-                className="d-flex align-items-center h-100 cursor-pointer text-truncate"
+                className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
                 style={{
                   userSelect: 'none',
                   backgroundColor: e.color,
@@ -83,7 +87,7 @@ const NewTimelineRow = memo(
                   {e.body}
                 </div>
               </div>
-            </OverlayTrigger>
+            </Tooltip>
           );
         })}
       </div>
@@ -164,10 +168,12 @@ function TimelineXAxis({
           width: 1,
           marginRight: -1,
           marginLeft: i === 0 ? 0 : `${percSpacing.toFixed(6)}%`,
+          background: 'rgba(255, 255, 255, 0.08)',
         }}
-        className="bg-light-grey"
       >
-        <div className="ms-2 text-muted fs-7.5">{renderMs(i * interval)}</div>
+        <div className="ms-2 text-slate-400 fs-8.5">
+          {renderMs(i * interval)}
+        </div>
       </div>,
     );
   }
@@ -176,8 +182,9 @@ function TimelineXAxis({
     <div
       style={{
         position: 'sticky',
-        top: 10,
+        top: 0,
         height: 4,
+        paddingTop: 4,
         zIndex: 200,
         pointerEvents: 'none',
       }}
@@ -221,6 +228,7 @@ function TimelineCursor({
         height: 0,
         zIndex: 250,
         pointerEvents: 'none',
+        display: xPerc <= 0 ? 'none' : 'block',
       }}
     >
       <div className="d-flex">
@@ -321,7 +329,7 @@ function TimelineMouseCursor({
       overlay={renderMs(Math.max(cursorTime, 0))}
       height={height}
       labelWidth={labelWidth}
-      color="#8f57f388"
+      color="#ffffff88"
     />
   ) : null;
 }
@@ -452,6 +460,8 @@ export default function TimelineChart({
   });
   const items = rowVirtualizer.getVirtualItems();
 
+  const TIMELINE_AXIS_HEIGHT = 32;
+
   const [initialScrolled, setInitialScrolled] = useState(false);
   useEffect(() => {
     if (
@@ -460,7 +470,9 @@ export default function TimelineChart({
       initialScrollRowIndex >= 0
     ) {
       setInitialScrolled(true);
-      rowVirtualizer.scrollToIndex(initialScrollRowIndex);
+      rowVirtualizer.scrollToIndex(initialScrollRowIndex, {
+        align: 'center',
+      });
     }
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
@@ -508,7 +520,7 @@ export default function TimelineChart({
 
       <div
         style={{
-          height: `${rowVirtualizer.getTotalSize()}px`,
+          height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
           width: '100%',
           position: 'relative',
         }}
@@ -526,12 +538,14 @@ export default function TimelineChart({
             const row = rows?.[virtualRow.index] as Row;
             return (
               <div
+                onClick={() => onEventClick?.(row)}
                 key={virtualRow.index}
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
                 className={`${cx(
                   'd-flex align-items-center overflow-hidden',
                   row.className,
+                  styles.timelineRow,
                 )}`}
                 style={{
                   // position: 'absolute',
@@ -552,10 +566,10 @@ export default function TimelineChart({
                   maxVal={maxVal}
                   eventStyles={{
                     boxShadow: '0px 0px 4px rgba(0, 0, 0, 0.5)',
-                    borderRadius: 8,
+                    borderRadius: 2,
                     fontSize: rowHeight * 0.5,
+                    border: '1px solid #FFFFFF10',
                   }}
-                  onEventClick={onEventClick}
                   scale={scale}
                   offset={offset}
                 />

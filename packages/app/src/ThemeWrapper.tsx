@@ -7,6 +7,7 @@ const makeTheme = ({
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
+  cursorType: 'pointer',
   fontFamily,
   primaryColor: 'green',
   primaryShade: 8,
@@ -43,6 +44,7 @@ const makeTheme = ({
       '#1A1B1E',
       '#141517',
       '#101113',
+      '#14171b',
     ],
   },
   headings: {
@@ -75,16 +77,6 @@ const makeTheme = ({
         },
       },
     },
-    Checkbox: {
-      styles: {
-        input: {
-          cursor: 'pointer',
-        },
-        label: {
-          cursor: 'pointer',
-        },
-      },
-    },
   },
 });
 
@@ -99,7 +91,7 @@ export const ThemeWrapper = ({
 
   return (
     <MantineProvider forceColorScheme="dark" theme={theme}>
-      <Notifications />
+      <Notifications zIndex={999999} />
       {children}
     </MantineProvider>
   );
