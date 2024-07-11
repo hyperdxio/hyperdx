@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import cx from 'classnames';
-import { add, format, sub } from 'date-fns';
+import { add, format, min, sub } from 'date-fns';
 import Fuse from 'fuse.js';
 import get from 'lodash/get';
 import isPlainObject from 'lodash/isPlainObject';
@@ -19,6 +19,7 @@ import Timestamp from 'timestamp-nano';
 import { useQueryParam } from 'use-query-params';
 import {
   ActionIcon,
+  Alert,
   Box,
   Button as MButton,
   Card,
@@ -29,6 +30,7 @@ import {
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Text,
   TextInput,
 } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
@@ -44,6 +46,8 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
 import { CurlGenerator } from './curlGenerator';
+import { getFirstFrame, parseEvents } from './ExceptionsPage';
+import Icon from './Icon';
 import LogLevel from './LogLevel';
 import {
   breadcrumbColumns,
@@ -53,6 +57,7 @@ import {
   NetworkBody,
   networkColumns,
   SectionWrapper,
+  SourceMapsFtux,
   stacktraceColumns,
   StacktraceValue,
   useShowMoreRows,
@@ -73,7 +78,6 @@ import {
 } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
-import 'react-bootstrap-range-slider/dist/react-bootstrap-range-slider.css';
 import 'react-modern-drawer/dist/index.css';
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -131,6 +135,9 @@ function useParsedLogProperties(logData: any): { [key: string]: any } {
     };
   }, [logData]);
 }
+
+const getLogProperty = (log: any, key: string) =>
+  log?.['string.values']?.[log?.['string.names']?.indexOf(key)];
 
 function useTraceSpans(
   {
@@ -220,7 +227,9 @@ function useTraceSpansAroundHighlight({
   const hasHighlightedResult = initialHighlightedResult != null;
   const aboveSpanEndDate =
     initialHighlightedResult != null
-      ? new Date(Number.parseInt(initialHighlightedResult.sortKey.slice(0, 13)))
+      ? new Date(
+          Number.parseInt(initialHighlightedResult.sortKey?.slice(0, 13)),
+        )
       : dateRange[1] ?? new Date();
 
   const { data: aboveSpanData, isFetching: isAboveSpanFetching } =
@@ -247,7 +256,7 @@ function useTraceSpansAroundHighlight({
         limit: 1500,
       },
       {
-        enabled: hasHighlightedResult,
+        enabled: (enabled ?? true) && hasHighlightedResult,
       },
     );
 
@@ -378,13 +387,9 @@ function TraceChart({
       id: result.id,
       label: (
         <div
-          className={`${
-            isHighlighted
-              ? 'text-success'
-              : isError
-              ? 'text-danger'
-              : 'text-muted-hover'
-          } text-truncate cursor-pointer`}
+          className={`${isError && 'text-danger'} ${
+            isHighlighted && styles.traceTimelineLabelHighlighted
+          } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
           role="button"
           onClick={() => {
             onClick(result.id, result.sort_key);
@@ -392,12 +397,12 @@ function TraceChart({
         >
           {result._platform === 'sentry' ? (
             <i
-              className="bi bi-bug text-gray-600 fs-8 me-2 align-middle"
+              className="bi bi-bug fs-8 me-2 align-middle"
               title="Correlated Exception"
             />
           ) : result.type === 'log' ? (
             <i
-              className="bi bi-card-text text-gray-600 fs-8 me-2 align-middle"
+              className="bi bi-card-text fs-8 me-2 align-middle"
               title="Correlated Log Line"
             />
           ) : null}
@@ -405,8 +410,9 @@ function TraceChart({
         </div>
       ),
       style: {
-        paddingTop: i === 0 ? 32 : 4,
-        paddingBottom: 4,
+        paddingTop: 1,
+        marginTop: i === 0 ? 32 : 0,
+        backgroundColor: isHighlighted ? '#202127' : undefined,
       },
       events: [
         {
@@ -416,17 +422,14 @@ function TraceChart({
           tooltip: `${result.body} ${
             tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''
           }`,
-          color: isHighlighted ? '#50FA7B' : isError ? '#dc3545' : '#21262C',
-          body: (
-            <span
-              className={cx({
-                'text-dark': isHighlighted,
-                'text-white': !isHighlighted,
-              })}
-            >
-              {result.body}
-            </span>
-          ),
+          color: isError
+            ? isHighlighted
+              ? '#FF6E6E'
+              : '#f53749'
+            : isHighlighted
+            ? '#A9AFB7'
+            : '#6a7077',
+          body: <span style={{ color: '#FFFFFFEE' }}>{result.body}</span>,
           minWidthPerc: 1,
         },
       ],
@@ -455,7 +458,7 @@ function TraceChart({
           // setScale={setScale}
           // scaleWithScroll={scrollToZoom}
           // maxVal={maxVal}
-          rowHeight={24}
+          rowHeight={22}
           labelWidth={240}
           onClick={ts => {
             // onTimeClick(ts + startedAt);
@@ -497,7 +500,7 @@ function isExceptionSpan({ logData }: { logData: any }) {
   );
 }
 
-function TraceSubpanel({
+export function TraceSubpanel({
   logData,
   onClose,
   onPropertyAddClick,
@@ -606,45 +609,54 @@ function TraceSubpanel({
 
   return (
     <>
-      <form
-        className="mb-1"
-        style={{ zIndex: 100 }}
-        onSubmit={e => {
-          e.preventDefault();
-          setSearchedQuery(inputQuery);
-        }}
-      >
-        <SearchInput
-          inputRef={inputRef}
-          value={inputQuery}
-          onChange={value => setInputQuery(value)}
-          onSearch={() => {}}
-          placeholder="Filter spans by name, property, etc..."
-          showHotkey={false}
-          size="sm"
-        />
-        <button
-          type="submit"
-          style={{
-            width: 0,
-            height: 0,
-            border: 0,
-            padding: 0,
+      <Card bg="dark.10">
+        <Card.Section withBorder px="md" py={8}>
+          <Group>
+            <Text size="sm" fw="bold">
+              Trace
+            </Text>
+            <form
+              style={{ zIndex: 100, flex: 1 }}
+              onSubmit={e => {
+                e.preventDefault();
+                setSearchedQuery(inputQuery);
+              }}
+            >
+              <SearchInput
+                inputRef={inputRef}
+                value={inputQuery}
+                onChange={value => setInputQuery(value)}
+                onSearch={() => {}}
+                placeholder="Filter spans by name, property, etc..."
+                showHotkey={false}
+                size="sm"
+              />
+              <button
+                type="submit"
+                style={{
+                  width: 0,
+                  height: 0,
+                  border: 0,
+                  padding: 0,
+                  display: 'none',
+                }}
+              />
+            </form>
+          </Group>
+        </Card.Section>
+        <TraceChart
+          config={{
+            where: `trace_id:"${logData.trace_id}" ${searchedQuery}`,
+            dateRange: [start, end],
+          }}
+          highlightedResult={selectedLog}
+          onClick={(id, sortKey) => {
+            setSelectedLog({ id, sortKey });
           }}
         />
-      </form>
-      <TraceChart
-        config={{
-          where: `trace_id:"${logData.trace_id}" ${searchedQuery}`,
-          dateRange: [start, end],
-        }}
-        highlightedResult={selectedLog}
-        onClick={(id, sortKey) => {
-          setSelectedLog({ id, sortKey });
-        }}
-      />
+      </Card>
 
-      <div className="border-top border-dark mb-4">
+      <div className="mb-4">
         {selectedLogData != null ? (
           <>
             <div className="my-3 text-break">
@@ -699,11 +711,13 @@ function TraceSubpanel({
                   </div>
                 )}
               >
-                <ExceptionSubpanel
-                  breadcrumbs={exceptionBreadcrumbs}
-                  exceptionValues={exceptionValues}
-                  logData={selectedLogData}
-                />
+                <CollapsibleSection title="Stack Trace">
+                  <ExceptionSubpanel
+                    breadcrumbs={exceptionBreadcrumbs}
+                    exceptionValues={exceptionValues}
+                    logData={selectedLogData}
+                  />
+                </CollapsibleSection>
               </ErrorBoundary>
             )}
             {!isSelectedLogDataException && (
@@ -840,7 +854,7 @@ function EventTag({
   );
 }
 
-function EventTagSubpanel({
+export function EventTagSubpanel({
   generateSearchUrl,
   logData,
   onPropertyAddClick,
@@ -916,24 +930,99 @@ function ExceptionEvent({
 }) {
   const isMessageInStacktrace = stacktrace?.includes(message ?? '');
 
+  const parsedStacktrace = useMemo(() => {
+    try {
+      return JSON.parse(stacktrace ?? '') as { frames: StacktraceFrame[] };
+    } catch (e) {
+      return null;
+    }
+  }, [stacktrace]);
+
+  const stacktraceFrames = useMemo(() => {
+    if (!parsedStacktrace?.frames) {
+      return [];
+    }
+    return parsedStacktrace.frames.slice().reverse();
+  }, [parsedStacktrace]);
+
+  const firstFrameIndex = useMemo(() => {
+    const firstFrame = getFirstFrame(stacktraceFrames);
+    return firstFrame ? stacktraceFrames.indexOf(firstFrame) : -1;
+  }, [stacktraceFrames]);
+
+  const {
+    handleToggleMoreRows: handleStacktraceToggleMoreRows,
+    hiddenRowsCount: stacktraceHiddenRowsCount,
+    visibleRows: stacktraceVisibleRows,
+    isExpanded: stacktraceExpanded,
+  } = useShowMoreRows({
+    rows: stacktraceFrames,
+  });
+
   return (
-    <div className="my-3">
-      <div className="fw-bold text-danger mb-1">{type}</div>
-      {message != null && isMessageInStacktrace === false && (
-        <div>{message}</div>
+    <Card my="lg">
+      <Card.Section withBorder p="md">
+        <div className="fw-bold text-danger">{type}</div>
+        {message != null && isMessageInStacktrace === false && (
+          <div>{message}</div>
+        )}
+      </Card.Section>
+      {stacktraceFrames?.length > 0 ? (
+        <Card.Section>
+          <ErrorBoundary
+            onError={err => {
+              console.error(err);
+            }}
+            fallbackRender={() => (
+              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                An error occurred while rendering stacktrace
+              </div>
+            )}
+          >
+            <Table
+              hideHeader
+              columns={stacktraceColumns}
+              data={stacktraceVisibleRows}
+              density="zero"
+            />
+          </ErrorBoundary>
+          {stacktraceHiddenRowsCount ? (
+            <Button
+              variant="dark"
+              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+              size="sm"
+              as="a"
+              onClick={handleStacktraceToggleMoreRows}
+            >
+              {stacktraceExpanded ? (
+                <>
+                  <i className="bi bi-chevron-up me-2" /> Hide stack trace
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-chevron-down me-2" />
+                  Show {stacktraceHiddenRowsCount} more frames
+                </>
+              )}
+            </Button>
+          ) : null}
+        </Card.Section>
+      ) : (
+        stacktrace != null && (
+          <Card.Section p="md">
+            <pre
+              className="d-inline text-break text-muted"
+              style={{
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word',
+              }}
+            >
+              {stacktrace}
+            </pre>
+          </Card.Section>
+        )
       )}
-      {stacktrace != null && (
-        <pre
-          className="d-inline text-break text-muted"
-          style={{
-            whiteSpace: 'pre-wrap',
-            wordWrap: 'break-word',
-          }}
-        >
-          {stacktrace}
-        </pre>
-      )}
-    </div>
+    </Card>
   );
 }
 
@@ -1310,6 +1399,7 @@ function PropertySubpanel({
       !key.startsWith('otel.library.') &&
       !key.startsWith('telemetry.') &&
       !key.startsWith('hyperdx.') &&
+      !key.startsWith('exception.') &&
       !(key.startsWith('http.request.header.') && isNetworkReq) &&
       !(key.startsWith('http.response.header.') && isNetworkReq) &&
       key != '__events' &&
@@ -1529,6 +1619,27 @@ function PropertySubpanel({
     ],
   );
 
+  const exceptionValues = useMemo<ExceptionValues | undefined>(() => {
+    const __events = getLogProperty(logData, '__events');
+
+    const parsedEvents = parseEvents(__events);
+    const stacktrace =
+      parsedEvents?.['exception.stacktrace'] ||
+      parsedEvents?.['exception.parsed_stacktrace'];
+
+    return [
+      {
+        stacktrace,
+        type: parsedEvents?.['exception.type'],
+        value:
+          typeof parsedEvents?.['exception.message'] !== 'string'
+            ? JSON.stringify(parsedEvents?.['exception.message'])
+            : parsedEvents?.['exception.message'],
+        mechanism: parsedEvents?.['exception.mechanism'],
+      },
+    ];
+  }, [logData]);
+
   return (
     <div>
       {events != null && events.length > 0 && (
@@ -1553,17 +1664,16 @@ function PropertySubpanel({
                     Object.keys(eventObj).length === 1,
                 })}
               >
-                <div className="text-muted mt-3 mb-1">
+                <div className="text-muted mt-2 mb-1">
                   {isException && (
                     <span className="text-danger me-2">Exception</span>
                   )}
                   <FormatTime value={event.timestamp / 1000} format="withMs" />
                 </div>
-                {isException ? (
-                  <ExceptionEvent
-                    type={eventObj['exception.type']}
-                    message={eventObj['exception.message']}
-                    stacktrace={eventObj['exception.stacktrace']}
+                {isException && exceptionValues ? (
+                  <ExceptionSubpanel
+                    exceptionValues={exceptionValues}
+                    logData={logData}
                   />
                 ) : (
                   <JSONTree
@@ -1924,7 +2034,7 @@ function PropertySubpanel({
   );
 }
 
-function useTraceProperties({
+export function useTraceProperties({
   traceId,
   dateRange,
   initialHighlightedResult,
@@ -2150,53 +2260,68 @@ function SidePanelHeader({
   );
 }
 
-const ExceptionSubpanel = ({
+export type ExceptionValues = {
+  type: string;
+  value: string;
+  mechanism?: {
+    type: string;
+    handled: boolean;
+    data?: {
+      // TODO: Are these fields dynamic?
+      function?: string;
+      handler?: string;
+      target?: string;
+    };
+  };
+  stacktrace?: {
+    frames: StacktraceFrame[];
+  };
+}[];
+
+export const ExceptionSubpanel = ({
   logData,
   breadcrumbs,
   exceptionValues,
 }: {
   logData?: any;
   breadcrumbs?: StacktraceBreadcrumb[];
-  exceptionValues: {
-    type: string;
-    value: string;
-    mechanism?: {
-      type: string;
-      handled: boolean;
-      data?: {
-        // TODO: Are these fields dynamic?
-        function?: string;
-        handler?: string;
-        target?: string;
-      };
-    };
-    stacktrace?: {
-      frames: StacktraceFrame[];
-    };
-  }[];
+  exceptionValues: ExceptionValues;
 }) => {
   const firstException = exceptionValues[0];
 
-  const stacktraceFrames = useMemo(
-    () => firstException.stacktrace?.frames.reverse() ?? [],
-    [firstException.stacktrace?.frames],
-  );
+  const shouldShowSourceMapFtux = useMemo(() => {
+    return firstException?.stacktrace?.frames?.some(
+      f =>
+        f.filename.startsWith('http://') || f.filename.startsWith('https://'),
+    );
+  }, [firstException?.stacktrace?.frames]);
+
+  const stacktraceFrames = useMemo(() => {
+    if (!firstException?.stacktrace?.frames) {
+      return [];
+    }
+    return firstException?.stacktrace.frames.slice().reverse();
+  }, [firstException]);
+
+  const firstFrameIndex = useMemo(() => {
+    const firstFrame = getFirstFrame(stacktraceFrames);
+    return firstFrame ? stacktraceFrames.indexOf(firstFrame) : -1;
+  }, [stacktraceFrames]);
 
   const chronologicalBreadcrumbs = useMemo<StacktraceBreadcrumb[]>(() => {
     return [
-      {
-        category: 'exception',
-        timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
-        message: `${firstException.type}: ${firstException.value} `,
-      },
+      ...(firstException && breadcrumbs
+        ? [
+            {
+              category: 'exception',
+              timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
+              message: `${firstException.type}: ${firstException.value} `,
+            },
+          ]
+        : []),
       ...(breadcrumbs?.slice().reverse() ?? []),
     ];
-  }, [
-    breadcrumbs,
-    firstException.type,
-    firstException.value,
-    logData?.timestamp,
-  ]);
+  }, [breadcrumbs, firstException, logData?.timestamp]);
 
   const {
     handleToggleMoreRows: handleStacktraceToggleMoreRows,
@@ -2205,6 +2330,7 @@ const ExceptionSubpanel = ({
     isExpanded: stacktraceExpanded,
   } = useShowMoreRows({
     rows: stacktraceFrames,
+    maxRows: Math.max(5, firstFrameIndex + 1),
   });
 
   const {
@@ -2219,110 +2345,143 @@ const ExceptionSubpanel = ({
   // TODO: show all frames (stackable)
   return (
     <div>
-      <CollapsibleSection title="Stack Trace">
-        <SectionWrapper
-          title={
+      <SectionWrapper
+        title={
+          firstException && (
             <>
-              <div className="pb-3">
-                <div className="fw-bold fs-8">{firstException.type}</div>
-                <div className="text-muted">{firstException.value}</div>
+              <div>
+                <Text fw="bold" component="span" size="sm" c="red.6">
+                  {firstException.type}:{' '}
+                </Text>
+                <span className="text-muted">{firstException.value}</span>
               </div>
-              <div className="d-flex gap-2 flex-wrap">
-                <StacktraceValue
-                  label="mechanism"
-                  value={firstException.mechanism?.type}
-                />
-                <StacktraceValue
-                  label="handled"
-                  value={
-                    firstException.mechanism?.handled ? (
-                      <span className="text-success">true</span>
-                    ) : (
-                      <span className="text-danger">false</span>
-                    )
-                  }
-                />
-                {firstException.mechanism?.data?.function ? (
+
+              {firstException.mechanism && (
+                <div className="d-flex gap-2 flex-wrap pt-3">
                   <StacktraceValue
-                    label="function"
-                    value={firstException.mechanism.data.function}
+                    label="mechanism"
+                    value={firstException.mechanism?.type}
                   />
-                ) : null}
-                {firstException.mechanism?.data?.handler ? (
                   <StacktraceValue
-                    label="handler"
-                    value={firstException.mechanism.data.handler}
+                    label="handled"
+                    value={
+                      firstException.mechanism?.handled ? (
+                        <span className="text-success">true</span>
+                      ) : (
+                        <span className="text-danger">false</span>
+                      )
+                    }
                   />
-                ) : null}
-                {firstException.mechanism?.data?.target ? (
-                  <StacktraceValue
-                    label="target"
-                    value={firstException.mechanism.data.target}
-                  />
-                ) : null}
-              </div>
+
+                  {firstException.mechanism?.data?.function ? (
+                    <StacktraceValue
+                      label="function"
+                      value={firstException.mechanism.data.function}
+                    />
+                  ) : null}
+                  {firstException.mechanism?.data?.handler ? (
+                    <StacktraceValue
+                      label="handler"
+                      value={firstException.mechanism.data.handler}
+                    />
+                  ) : null}
+                  {firstException.mechanism?.data?.target ? (
+                    <StacktraceValue
+                      label="target"
+                      value={firstException.mechanism.data.target}
+                    />
+                  ) : null}
+                </div>
+              )}
+              {shouldShowSourceMapFtux && <SourceMapsFtux />}
             </>
-          }
+          )
+        }
+      >
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering stacktrace
+            </div>
+          )}
         >
           <Table
             hideHeader
             columns={stacktraceColumns}
             data={stacktraceVisibleRows}
-            emptyMessage="No stack trace found"
+            density="zero"
+            tableMeta={{ firstFrameIndex }}
           />
+        </ErrorBoundary>
 
-          {stacktraceHiddenRowsCount ? (
-            <Button
-              variant="dark"
-              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
-              size="sm"
-              as="a"
-              onClick={handleStacktraceToggleMoreRows}
-            >
-              {stacktraceExpanded ? (
-                <>
-                  <i className="bi bi-chevron-up me-2" /> Hide stack trace
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-chevron-down me-2" />
-                  Show {stacktraceHiddenRowsCount} more frames
-                </>
-              )}
-            </Button>
-          ) : null}
-        </SectionWrapper>
-      </CollapsibleSection>
+        {typeof exceptionValues[0].stacktrace === 'string' && (
+          <pre
+            className="px-4"
+            style={{
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+            }}
+          >
+            {exceptionValues[0].stacktrace}
+          </pre>
+        )}
 
-      <CollapsibleSection title="Breadcrumbs">
-        <SectionWrapper>
-          <Table
-            columns={breadcrumbColumns}
-            data={breadcrumbVisibleRows}
-            emptyMessage="No breadcrumbs found"
-          />
-          {breadcrumbHiddenRowsCount ? (
-            <Button
-              variant="dark"
-              className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
-              size="sm"
-              as="a"
-              onClick={handleBreadcrumbToggleMoreRows}
-            >
-              {breadcrumbExpanded ? (
-                <>
-                  <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-chevron-down me-2" />
-                  Show {breadcrumbHiddenRowsCount} more breadcrumbs
-                </>
-              )}
-            </Button>
-          ) : null}
-        </SectionWrapper>
-      </CollapsibleSection>
+        {stacktraceHiddenRowsCount ? (
+          <Button
+            variant="dark"
+            className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+            size="sm"
+            as="a"
+            onClick={handleStacktraceToggleMoreRows}
+          >
+            {stacktraceExpanded ? (
+              <>
+                <i className="bi bi-chevron-up me-2" /> Hide stack trace
+              </>
+            ) : (
+              <>
+                <i className="bi bi-chevron-down me-2" />
+                Show {stacktraceHiddenRowsCount} more frames
+              </>
+            )}
+          </Button>
+        ) : null}
+      </SectionWrapper>
+
+      {breadcrumbVisibleRows.length > 0 && (
+        <CollapsibleSection title="Breadcrumbs">
+          <SectionWrapper>
+            <Table
+              columns={breadcrumbColumns}
+              data={breadcrumbVisibleRows}
+              emptyMessage="No breadcrumbs found"
+            />
+            {breadcrumbHiddenRowsCount ? (
+              <Button
+                variant="dark"
+                className="text-muted-hover fs-8 mx-4 mt-1 mb-3"
+                size="sm"
+                as="a"
+                onClick={handleBreadcrumbToggleMoreRows}
+              >
+                {breadcrumbExpanded ? (
+                  <>
+                    <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-chevron-down me-2" />
+                    Show {breadcrumbHiddenRowsCount} more breadcrumbs
+                  </>
+                )}
+              </Button>
+            ) : null}
+          </SectionWrapper>
+        </CollapsibleSection>
+      )}
     </div>
   );
 };
@@ -2352,7 +2511,7 @@ const InfraSubpanelGroup = ({
     }[range];
     return [
       sub(new Date(timestamp), duration),
-      add(new Date(timestamp), duration),
+      min([add(new Date(timestamp), duration), new Date()]),
     ];
   }, [timestamp, range]);
 
@@ -2428,6 +2587,7 @@ const InfraSubpanelGroup = ({
                 ],
               }}
               logReferenceTimestamp={timestamp / 1000}
+              showDisplaySwitcher={false}
             />
           </Card.Section>
         </Card>
@@ -2454,6 +2614,7 @@ const InfraSubpanelGroup = ({
                 ],
               }}
               logReferenceTimestamp={timestamp / 1000}
+              showDisplaySwitcher={false}
             />
           </Card.Section>
         </Card>
@@ -2480,6 +2641,7 @@ const InfraSubpanelGroup = ({
                 ],
               }}
               logReferenceTimestamp={timestamp / 1000}
+              showDisplaySwitcher={false}
             />
           </Card.Section>
         </Card>
@@ -2563,7 +2725,7 @@ const InfraSubpanel = ({ logData }: { logData?: any }) => {
   );
 };
 
-const checkKeyExistsInLogData = (key: string, logData: any) => {
+export const checkKeyExistsInLogData = (key: string, logData: any) => {
   return logData?.['string.values']?.[logData?.['string.names']?.indexOf(key)];
 };
 
@@ -2694,6 +2856,8 @@ export default function LogSidePanel({
       checkKeyExistsInLogData('process.tag.k8s.node.name', logData) != null
     );
   }, [logData]);
+
+  const { data: meData } = api.useMe();
 
   const drawerRef = useClickOutside(() => {
     if (!subDrawerOpen) {
@@ -2871,7 +3035,7 @@ export default function LogSidePanel({
 
                 {/* Session Replay */}
                 {displayedTab === 'replay' ? (
-                  <div className="px-4 overflow-hidden flex-grow-1">
+                  <div className="overflow-hidden flex-grow-1">
                     {rumSessionId != null ? (
                       <SessionSubpanel
                         start={start}

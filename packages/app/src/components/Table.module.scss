@@ -59,6 +59,21 @@ $horizontalPadding: 12px;
   }
 
   // Density
+  &.tableDensityZero {
+    th,
+    td {
+      padding: 0;
+
+      &:first-child {
+        padding-left: 0;
+      }
+
+      &:last-child {
+        padding-right: 0;
+      }
+    }
+  }
+
   &.tableDensityCompact {
     th,
     td {

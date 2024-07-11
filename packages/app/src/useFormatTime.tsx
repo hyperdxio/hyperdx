@@ -5,7 +5,7 @@ import { formatDate } from './utils';
 
 type DateLike = number | string | Date;
 
-type DateFormat = 'normal' | 'short' | 'withMs';
+type DateFormat = 'normal' | 'short' | 'withMs' | 'time';
 
 const parse = (time: DateLike) => {
   if (time instanceof Date) {
