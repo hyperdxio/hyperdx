@@ -99,6 +99,7 @@ services:
     ports:
       - 8001:8001
     environment:
+      AGGREGATOR_PAYLOAD_SIZE_LIMIT: '144mb'
       APP_TYPE: 'aggregator'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_PASSWORD: aggregator

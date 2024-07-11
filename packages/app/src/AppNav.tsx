@@ -24,8 +24,9 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
+import { useUserPreferences } from '@/useUserPreferences';
+
 import { version } from '../package.json';
-import { useUserPreferences } from '../src/useUserPreferences';
 
 import api from './api';
 import {

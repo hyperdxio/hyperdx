@@ -1,6 +1,7 @@
 export enum StatusCode {
   BAD_REQUEST = 400,
   CONFLICT = 409,
+  CONTENT_TOO_LARGE = 413,
   FORBIDDEN = 403,
   INTERNAL_SERVER = 500,
   NOT_FOUND = 404,

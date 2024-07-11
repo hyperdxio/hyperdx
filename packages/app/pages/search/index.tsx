@@ -1,3 +1,3 @@
-import SearchPage from '../../src/SearchPage';
+import SearchPage from '@/SearchPage';
 
 export default SearchPage;

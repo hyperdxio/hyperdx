@@ -3,7 +3,6 @@
 $compactVerticalPadding: 6px;
 $normalVerticalPadding: 10px;
 $comfortableVerticalPadding: 14px;
-
 $horizontalPadding: 12px;
 
 .tableWrapper {
@@ -16,6 +15,7 @@ $horizontalPadding: 12px;
       &:first-child {
         padding-left: $horizontalPadding * 2;
       }
+
       &:last-child {
         padding-right: $horizontalPadding * 2;
       }
@@ -52,6 +52,7 @@ $horizontalPadding: 12px;
   // Borderless
   &.tableBorderless {
     padding: 4px 0;
+
     tr {
       border-bottom: none;
     }
@@ -91,6 +92,7 @@ $horizontalPadding: 12px;
       cursor: pointer;
       background-color: #ffffff08;
     }
+
     tr:active td {
       background-color: #00000050;
       opacity: 0.8;

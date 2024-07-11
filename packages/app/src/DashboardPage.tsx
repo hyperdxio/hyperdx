@@ -24,6 +24,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import {
+  ActionIcon,
   Badge,
   Box,
   Button as MButton,
@@ -40,6 +41,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { Icon } from './components/Icon';
 import api from './api';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
@@ -59,7 +61,7 @@ import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Alert, Chart, Dashboard } from './types';
 import { useConfirm } from './useConfirm';
-import { hashCode } from './utils';
+import { hashCode, omit } from './utils';
 import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -639,13 +641,16 @@ export default function DashboardPage({
 
   const [localDashboard, setLocalDashboard] = useQueryParam<Dashboard>(
     'config',
-    withDefault(JsonParam, {
-      id: '',
-      name: 'My New Dashboard',
-      charts: [],
-      alerts: [],
-      query: '',
-    }),
+    withDefault(
+      JsonParam,
+      presetConfig ?? {
+        id: '',
+        name: 'My New Dashboard',
+        charts: [],
+        alerts: [],
+        query: '',
+      },
+    ),
     { updateType: 'pushIn', enableBatching: true },
   );
 
@@ -654,9 +659,6 @@ export default function DashboardPage({
     dashboardId != null ? dashboardId : hashCode(`${config}`);
 
   const dashboard: Dashboard | undefined = useMemo(() => {
-    if (presetConfig) {
-      return presetConfig;
-    }
     if (isLocalDashboard) {
       return localDashboard;
     }
@@ -666,13 +668,7 @@ export default function DashboardPage({
       );
       return matchedDashboard;
     }
-  }, [
-    presetConfig,
-    isLocalDashboard,
-    dashboardsData,
-    localDashboard,
-    dashboardId,
-  ]);
+  }, [isLocalDashboard, dashboardsData, localDashboard, dashboardId]);
 
   // Update dashboard
   const [isSavedNow, _setSavedNow] = useState(false);
@@ -751,16 +747,30 @@ export default function DashboardPage({
     }
   }, [editedChart]);
 
-  const { searchedTimeRange, displayedTimeInputValue, onSearch } =
-    useNewTimeQuery({
-      initialDisplayValue: 'Past 1h',
-      initialTimeRange: defaultTimeRange,
-    });
+  const {
+    searchedTimeRange,
+    displayedTimeInputValue,
+    onSearch,
+    onTimeRangeSelect,
+  } = useNewTimeQuery({
+    initialDisplayValue: 'Past 1h',
+    initialTimeRange: defaultTimeRange,
+  });
 
   const [input, setInput] = useState<string>(displayedTimeInputValue);
   useEffect(() => {
     setInput(displayedTimeInputValue);
   }, [displayedTimeInputValue]);
+
+  const [isRefreshDisabled, setIsRefreshDisabled] = useState(false);
+  const handleRefreshDashboard = useCallback(() => {
+    // Extend the time range to now
+    onTimeRangeSelect(searchedTimeRange[0], new Date());
+    setIsRefreshDisabled(true);
+    setTimeout(() => {
+      setIsRefreshDisabled(false);
+    }, 1000);
+  }, [onTimeRangeSelect, searchedTimeRange]);
 
   const onAddChart = () => {
     setEditedChart({
@@ -1039,6 +1049,19 @@ export default function DashboardPage({
             </div>
           )}
           <div className="d-flex flex-grow-1 justify-content-end">
+            <ActionIcon
+              onClick={handleRefreshDashboard}
+              loading={isRefreshDisabled}
+              disabled={isRefreshDisabled}
+              color="gray"
+              mr="xs"
+              size="lg"
+              variant="subtle"
+              radius="md"
+              title="Refresh Dashboard"
+            >
+              <Icon name="arrow-clockwise" className="fs-5 text-slate-400" />
+            </ActionIcon>
             <div className="me-2 flex-grow-1" style={{ maxWidth: 450 }}>
               <form
                 className="d-flex align-items-center"
@@ -1157,6 +1180,25 @@ export default function DashboardPage({
                 </Paper>
               </Popover.Dropdown>
             </Popover>
+            {isLocalDashboard === false && dashboard != null && (
+              <Tooltip label="Clone to unsaved dashboard" color="gray">
+                <Button
+                  as="a"
+                  href={`/dashboards/?config=${encodeURIComponent(
+                    JSON.stringify({
+                      ...omit(dashboard, ['createdAt', 'updatedAt']),
+                      id: '',
+                    }),
+                  )}`}
+                  target="_blank"
+                  variant="dark"
+                  className="text-muted-hover-black me-2 text-nowrap"
+                  size="sm"
+                >
+                  <i className="bi bi-copy fs-8"></i>
+                </Button>
+              </Tooltip>
+            )}
             <Button
               variant="outline-success"
               className="text-muted-hover-black me-2 text-nowrap"
