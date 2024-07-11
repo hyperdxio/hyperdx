@@ -770,16 +770,6 @@ export default function DashboardPage({
     setInput(displayedTimeInputValue);
   }, [displayedTimeInputValue]);
 
-  const [isRefreshDisabled, setIsRefreshDisabled] = useState(false);
-  const handleRefreshDashboard = useCallback(() => {
-    // Extend the time range to now
-    onTimeRangeSelect(searchedTimeRange[0], new Date());
-    setIsRefreshDisabled(true);
-    setTimeout(() => {
-      setIsRefreshDisabled(false);
-    }, 1000);
-  }, [onTimeRangeSelect, searchedTimeRange]);
-
   const onAddChart = () => {
     setEditedChart({
       id: makeId(),
@@ -1129,13 +1119,19 @@ export default function DashboardPage({
                     onSearch(range);
                   }}
                 />
-                <div style={{ width: 200 }} className="ms-2">
-                  <GranularityPicker
-                    disabled={isRefreshEnabled}
-                    value={isRefreshEnabled ? undefined : granularityQuery}
-                    onChange={setGranularityQuery}
-                  />
-                </div>
+                <Tooltip
+                  color="gray"
+                  label="Granularity is set to auto while Live mode is enabled"
+                  disabled={!isRefreshEnabled}
+                >
+                  <div style={{ width: 200 }} className="ms-2">
+                    <GranularityPicker
+                      disabled={isRefreshEnabled}
+                      value={isRefreshEnabled ? undefined : granularityQuery}
+                      onChange={setGranularityQuery}
+                    />
+                  </div>
+                </Tooltip>
                 <input
                   type="submit"
                   value="Search Time Range"
