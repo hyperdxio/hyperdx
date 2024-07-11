@@ -386,7 +386,7 @@ body {
   align-items: center;
 }
 
-.player-wrapper {
+.replayer-wrapper {
   position: relative;
 
   .replayer-mouse {
@@ -397,7 +397,11 @@ body {
     border-radius: 50%;
     position: absolute;
     pointer-events: none; // Make sure the rrweb mouse doesn't obscure elements below it for the inspector
-    display: none;
+  }
+
+  .replayer-mouse-tail {
+    position: absolute;
+    pointer-events: none;
   }
 
   &.started .replayer-mouse {
