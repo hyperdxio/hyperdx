@@ -61,7 +61,7 @@ import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import type { Alert, Chart, Dashboard } from './types';
 import { useConfirm } from './useConfirm';
-import { hashCode } from './utils';
+import { hashCode, omit } from './utils';
 import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -1180,6 +1180,25 @@ export default function DashboardPage({
                 </Paper>
               </Popover.Dropdown>
             </Popover>
+            {isLocalDashboard === false && dashboard != null && (
+              <Tooltip label="Clone to unsaved dashboard" color="gray">
+                <Button
+                  as="a"
+                  href={`/dashboards/?config=${encodeURIComponent(
+                    JSON.stringify({
+                      ...omit(dashboard, ['createdAt', 'updatedAt']),
+                      id: '',
+                    }),
+                  )}`}
+                  target="_blank"
+                  variant="dark"
+                  className="text-muted-hover-black me-2 text-nowrap"
+                  size="sm"
+                >
+                  <i className="bi bi-copy fs-8"></i>
+                </Button>
+              </Tooltip>
+            )}
             <Button
               variant="outline-success"
               className="text-muted-hover-black me-2 text-nowrap"

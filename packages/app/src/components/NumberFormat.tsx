@@ -161,7 +161,9 @@ export const NumberFormatForm: React.VFC<{
             <NativeSelect
               size="sm"
               label="Input unit"
-              {...register('factor')}
+              {...register('factor', {
+                setValueAs: value => parseFloat(value),
+              })}
               data={[
                 { value: '1', label: 'Seconds' },
                 { value: '0.001', label: 'Milliseconds' },
