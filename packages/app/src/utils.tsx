@@ -8,6 +8,18 @@ import type { MutableRefObject } from 'react';
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
+export function omit<T extends object, K extends keyof T>(
+  obj: T,
+  paths: K[],
+): Omit<T, K> {
+  return {
+    ...paths.reduce(
+      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
+      obj as object,
+    ),
+  } as Omit<T, K>;
+}
+
 export function generateSearchUrl({
   query,
   dateRange,
