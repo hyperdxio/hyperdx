@@ -413,6 +413,7 @@ export type UseTimeQueryInputType = {
   initialDisplayValue?: string;
   /** The initial time range to get values for */
   initialTimeRange: [Date, Date];
+  showRelativeInterval?: boolean;
 };
 
 export type UseTimeQueryReturnType = {
@@ -424,9 +425,39 @@ export type UseTimeQueryReturnType = {
   onTimeRangeSelect: (start: Date, end: Date) => void;
 };
 
+const getRelativeInterval = (start: Date, end: Date): string | undefined => {
+  const diffInMinutes = Math.floor((end.getTime() - start.getTime()) / 60000);
+  if (diffInMinutes === 15) {
+    return 'Past 15m';
+  }
+  if (diffInMinutes === 60) {
+    return 'Past 1h';
+  }
+  if (diffInMinutes === 240) {
+    return 'Past 4h';
+  }
+  if (diffInMinutes === 720) {
+    return 'Past 12h';
+  }
+  if (diffInMinutes === 1440) {
+    return 'Past 1d';
+  }
+  if (diffInMinutes === 5760) {
+    return 'Past 4d';
+  }
+  if (diffInMinutes === 10080) {
+    return 'Past 7d';
+  }
+  if (diffInMinutes === 43200) {
+    return 'Past 30d';
+  }
+  return undefined;
+};
+
 export function useNewTimeQuery({
   initialDisplayValue,
   initialTimeRange,
+  showRelativeInterval,
 }: UseTimeQueryInputType): UseTimeQueryReturnType {
   const router = useRouter();
   // We need to return true in SSR to prevent mismatch issues
@@ -482,7 +513,10 @@ export function useNewTimeQuery({
       const end = new Date(to);
       if (isValid(start) && isValid(end)) {
         setSearchedTimeRange([start, end]);
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const relativeInterval =
+          showRelativeInterval && getRelativeInterval(start, end);
+        const dateRangeStr =
+          relativeInterval || dateRangeToString([start, end], isUTC);
         setDisplayedTimeInputValue(dateRangeStr);
       }
     } else if (
@@ -503,6 +537,7 @@ export function useNewTimeQuery({
     to,
     initialDisplayValue,
     initialTimeRange,
+    showRelativeInterval,
   ]);
 
   useEffect(() => {
@@ -527,7 +562,7 @@ export function useNewTimeQuery({
         const dateRangeStr = dateRangeToString([start, end], isUTC);
         setDisplayedTimeInputValue(dateRangeStr);
       },
-      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue],
+      [setTimeRangeQuery, isUTC],
     ),
   };
 }

@@ -42,6 +42,7 @@ import {
 import { notifications } from '@mantine/notifications';
 
 import { Icon } from './components/Icon';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import api from './api';
 import { convertDateRangeToGranularityString, Granularity } from './ChartUtils';
 import EditTileForm from './EditTileForm';
@@ -762,6 +763,12 @@ export default function DashboardPage({
     }
   }, [editedChart]);
 
+  const [isLive, setIsLive] = useState(false);
+
+  const toggleLive = useCallback(() => {
+    setIsLive(prev => !prev);
+  }, []);
+
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -770,22 +777,13 @@ export default function DashboardPage({
   } = useNewTimeQuery({
     initialDisplayValue: 'Past 1h',
     initialTimeRange: defaultTimeRange,
+    showRelativeInterval: isLive,
   });
 
   const [input, setInput] = useState<string>(displayedTimeInputValue);
   useEffect(() => {
     setInput(displayedTimeInputValue);
   }, [displayedTimeInputValue]);
-
-  const [isRefreshDisabled, setIsRefreshDisabled] = useState(false);
-  const handleRefreshDashboard = useCallback(() => {
-    // Extend the time range to now
-    onTimeRangeSelect(searchedTimeRange[0], new Date());
-    setIsRefreshDisabled(true);
-    setTimeout(() => {
-      setIsRefreshDisabled(false);
-    }, 1000);
-  }, [onTimeRangeSelect, searchedTimeRange]);
 
   const onAddChart = () => {
     setEditedChart({
@@ -825,6 +823,13 @@ export default function DashboardPage({
 
   const [highlightedChartId] = useQueryParam('highlightedChartId');
 
+  const {
+    refresh,
+    manualRefreshCooloff,
+    isRefreshEnabled,
+    granularityOverride,
+  } = useDashboardRefresh({ searchedTimeRange, onTimeRangeSelect, isLive });
+
   const tiles = useMemo(
     () =>
       (dashboard?.charts ?? []).map(chart => {
@@ -839,7 +844,9 @@ export default function DashboardPage({
               setIsAddingAlert(true);
               setEditedChart(chart);
             }}
-            granularity={granularityQuery}
+            granularity={
+              isRefreshEnabled ? granularityOverride : granularityQuery
+            }
             alert={dashboard?.alerts?.find(a => a.chartId === chart.id)}
             isHighlighed={highlightedChartId === chart.id}
             onUpdateChart={newChart => {
@@ -894,6 +901,8 @@ export default function DashboardPage({
       dashboard,
       dashboardQuery,
       searchedTimeRange,
+      isRefreshEnabled,
+      granularityOverride,
       granularityQuery,
       highlightedChartId,
       confirm,
@@ -1007,7 +1016,7 @@ export default function DashboardPage({
   return (
     <div>
       <Head>
-        <title>Dashboard - HyperDX</title>
+        <title>Dashboard – HyperDX</title>
       </Head>
       {dashboard != null ? (
         <EditTileModal
@@ -1080,12 +1089,44 @@ export default function DashboardPage({
             </div>
           )}
           <div className="d-flex flex-grow-1 justify-content-end">
-            <ActionIcon
-              onClick={handleRefreshDashboard}
-              loading={isRefreshDisabled}
-              disabled={isRefreshDisabled}
+            <Tooltip
+              withArrow
+              label={
+                isRefreshEnabled
+                  ? `Auto-refreshing with ${granularityOverride} interval`
+                  : 'Enable auto-refresh'
+              }
+              fz="xs"
               color="gray"
-              mr="xs"
+            >
+              <MButton
+                color="gray"
+                size="compact-lg"
+                mr={4}
+                variant="subtle"
+                radius="sm"
+                onClick={toggleLive}
+              >
+                {isRefreshEnabled ? (
+                  <Text c="red.6" fz="xs" mr={4}>
+                    <Icon name="record-fill" className="effect-pulse" />
+                  </Text>
+                ) : (
+                  <Text c="gray.7" fz="xs" mr={4}>
+                    <Icon name="record-fill" />
+                  </Text>
+                )}
+                <Text fz="xs" c={isRefreshEnabled ? 'gray.4' : 'gray.6'}>
+                  Live
+                </Text>
+              </MButton>
+            </Tooltip>
+            <ActionIcon
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              mr={6}
               size="lg"
               variant="subtle"
               radius="md"
@@ -1109,12 +1150,19 @@ export default function DashboardPage({
                     onSearch(range);
                   }}
                 />
-                <div style={{ width: 200 }} className="ms-2">
-                  <GranularityPicker
-                    value={granularityQuery}
-                    onChange={setGranularityQuery}
-                  />
-                </div>
+                <Tooltip
+                  color="gray"
+                  label="Granularity is set to auto while Live mode is enabled"
+                  disabled={!isRefreshEnabled}
+                >
+                  <div style={{ width: 200 }} className="ms-2">
+                    <GranularityPicker
+                      disabled={isRefreshEnabled}
+                      value={isRefreshEnabled ? undefined : granularityQuery}
+                      onChange={setGranularityQuery}
+                    />
+                  </div>
+                </Tooltip>
                 <input
                   type="submit"
                   value="Search Time Range"
@@ -1327,6 +1375,7 @@ export default function DashboardPage({
             />
           </div>
         )}
+
         {isDashboardsLoading && (
           <div className="d-flex justify-content-center align-items-center">
             Loading Dashboard...

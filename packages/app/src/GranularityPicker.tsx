@@ -4,12 +4,15 @@ import DSSelect from './DSSelect';
 export default function GranularityPicker({
   value,
   onChange,
+  disabled,
 }: {
   value: Granularity | undefined;
   onChange: (granularity: Granularity | undefined) => void;
+  disabled?: boolean;
 }) {
   return (
     <DSSelect
+      disabled={disabled}
       options={[
         {
           value: undefined,

@@ -6,13 +6,16 @@ export default function DSSelect<
   options,
   value,
   onChange,
+  disabled,
 }: {
   options: Option[];
+  disabled?: boolean;
   value: string | undefined;
   onChange: (value: Option['value'] | undefined) => void;
 }) {
   return (
     <Select
+      isDisabled={disabled}
       options={options}
       className="ds-select"
       value={options.find(v => v.value === value)}
