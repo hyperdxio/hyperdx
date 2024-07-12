@@ -1,3 +1,4 @@
+import React from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
@@ -44,6 +45,50 @@ type ServicesResponse = {
     }>
   >;
 };
+
+type MultiSeriesChartInput = {
+  series: ChartSeries[];
+  endDate: Date;
+  granularity?: string;
+  startDate: Date;
+  sortOrder?: 'asc' | 'desc';
+  seriesReturnType: 'column' | 'ratio';
+  postGroupWhere?: string;
+};
+
+type MultiSeriesChartResponse = {
+  data: {
+    ts_bucket: string;
+    group: string[];
+    [dataKey: `series_${number}.data`]: number;
+  }[];
+};
+
+const getEnrichedSeries = (series: ChartSeries[]) =>
+  series
+    .filter(s => {
+      // Skip time series without field
+      if (s.type === 'time') {
+        if (s.table === 'metrics' && !s.field) {
+          return false;
+        }
+        if (s.table === 'logs' && !s.field && s.aggFn !== 'count') {
+          return false;
+        }
+      }
+      return true;
+    })
+    .map(s => {
+      if (s.type != 'search' && s.type != 'markdown' && s.table === 'metrics') {
+        const [metricName, metricDataType] = (s.field ?? '').split(' - ');
+        return {
+          ...s,
+          field: metricName,
+          metricDataType,
+        };
+      }
+      return s;
+    });
 
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
@@ -216,58 +261,14 @@ const api = {
       endDate,
       seriesReturnType,
       postGroupWhere,
-    }: {
-      series: ChartSeries[];
-      endDate: Date;
-      granularity?: string;
-      startDate: Date;
-      sortOrder?: 'asc' | 'desc';
-      seriesReturnType: 'column' | 'ratio';
-      postGroupWhere?: string;
-    },
+    }: MultiSeriesChartInput,
     options?: UseQueryOptions<any, Error>,
   ) {
-    const enrichedSeries = series
-      .filter(s => {
-        // Skip time series without field
-        if (s.type === 'time') {
-          if (s.table === 'metrics' && !s.field) {
-            return false;
-          }
-          if (s.table === 'logs' && !s.field && s.aggFn !== 'count') {
-            return false;
-          }
-        }
-        return true;
-      })
-      .map(s => {
-        if (
-          s.type != 'search' &&
-          s.type != 'markdown' &&
-          s.table === 'metrics'
-        ) {
-          const [metricName, metricDataType] = (s.field ?? '').split(' - ');
-          return {
-            ...s,
-            field: metricName,
-            metricDataType,
-          };
-        }
-        return s;
-      });
+    const enrichedSeries = getEnrichedSeries(series);
 
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
-    return useQuery<
-      {
-        data: {
-          ts_bucket: string;
-          group: string[];
-          [dataKey: `series_${number}.data`]: number;
-        }[];
-      },
-      Error
-    >({
+    return useQuery<MultiSeriesChartResponse, Error>({
       refetchOnWindowFocus: false,
       queryKey: [
         'chart/series',
@@ -842,3 +843,57 @@ const api = {
   },
 };
 export default api;
+
+/**
+ * This reason for this hook is to provide a drop-in replacement for api.useMultiSeriesChart
+ * with a slightly different fetching logic.
+ *
+ * The original useMultiSeriesChart fetches data every time the input changes, even if the previous
+ * fetch is still in progress. This can be a problem for some queries that take more than ~30s to run.
+ * This hook will only fetch data if the input has changed and the previous fetch has completed.
+ */
+export const useMultiSeriesChartV2 = (
+  input: MultiSeriesChartInput,
+  { enabled = true }: { enabled?: boolean } = {},
+) => {
+  const [data, setData] = React.useState<MultiSeriesChartResponse | null>(null);
+  const [isError, setIsError] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [lastLoadedKey, setLastLoadedKey] = React.useState<string | null>(null);
+
+  const key = JSON.stringify(input);
+
+  React.useEffect(() => {
+    if (!enabled || isLoading || key === lastLoadedKey) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    hdxServer('chart/series', {
+      method: 'POST',
+      json: {
+        series: getEnrichedSeries(input.series),
+        endTime: input.endDate.getTime(),
+        startTime: input.startDate.getTime(),
+        granularity: input.granularity,
+        sortOrder: input.sortOrder,
+        seriesReturnType: input.seriesReturnType,
+        postGroupWhere: input.postGroupWhere,
+      },
+    })
+      .json()
+      .then((data: any) => setData(data as MultiSeriesChartResponse))
+      .catch(() => setIsError(true))
+      .finally(() => {
+        setIsLoading(false);
+        setLastLoadedKey(key);
+      });
+  }, [enabled, isLoading, key, lastLoadedKey, input]);
+
+  return {
+    data,
+    isError,
+    isLoading,
+  };
+};
