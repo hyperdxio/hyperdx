@@ -28,6 +28,7 @@ import {
   seriesColumns,
   seriesToUrlSearchQueryParam,
 } from './ChartUtils';
+import type { Dashboard } from './types';
 import type { ChartSeries, NumberFormat } from './types';
 import { FormatTime, useFormatTime } from './useFormatTime';
 import { formatNumber } from './utils';
@@ -441,12 +442,18 @@ const MemoChart = memo(function MemoChart({
 
 const HDXMultiSeriesTimeChart = memo(
   ({
-    config: { series, granularity, dateRange, seriesReturnType = 'column' },
+    config: {
+      series,
+      granularity,
+      dateRange,
+      seriesReturnType = 'column',
+      displayType: displayTypeProp = 'line',
+    },
     onSettled,
     alertThreshold,
     alertThresholdType,
     showDisplaySwitcher = true,
-    defaultDisplayType = 'line',
+    setDisplayType,
     logReferenceTimestamp,
   }: {
     config: {
@@ -454,12 +461,13 @@ const HDXMultiSeriesTimeChart = memo(
       granularity: Granularity;
       dateRange: [Date, Date] | Readonly<[Date, Date]>;
       seriesReturnType: 'ratio' | 'column';
+      displayType?: 'stacked_bar' | 'line';
     };
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
-    defaultDisplayType?: 'stacked_bar' | 'line';
+    setDisplayType?: (type: 'stacked_bar' | 'line') => void;
     logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } = useMultiSeriesChartV2(
@@ -593,9 +601,24 @@ const HDXMultiSeriesTimeChart = memo(
     const numberFormat =
       series[0].type === 'time' ? series[0]?.numberFormat : undefined;
 
-    const [displayType, setDisplayType] = useState<'stacked_bar' | 'line'>(
-      defaultDisplayType,
-    );
+    // To enable backward compatibility, allow non-controlled usage of displayType
+    const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
+
+    const displayType = useMemo(() => {
+      if (setDisplayType) {
+        return displayTypeProp;
+      } else {
+        return displayTypeLocal;
+      }
+    }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+
+    const handleSetDisplayType = (type: 'stacked_bar' | 'line') => {
+      if (setDisplayType) {
+        setDisplayType(type);
+      } else {
+        setDisplayTypeLocal(type);
+      }
+    };
 
     return isLoading && !data ? (
       <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -690,7 +713,7 @@ const HDXMultiSeriesTimeChart = memo(
                 })}
                 role="button"
                 title="Display as line chart"
-                onClick={() => setDisplayType('line')}
+                onClick={() => handleSetDisplayType('line')}
               >
                 <i className="bi bi-graph-up"></i>
               </span>
@@ -701,7 +724,7 @@ const HDXMultiSeriesTimeChart = memo(
                 })}
                 role="button"
                 title="Display as bar chart"
-                onClick={() => setDisplayType('stacked_bar')}
+                onClick={() => handleSetDisplayType('stacked_bar')}
               >
                 <i className="bi bi-bar-chart"></i>
               </span>
