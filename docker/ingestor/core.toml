@@ -164,7 +164,6 @@ if .hdx_platform == "vector-internal" {
   .b = .r
   if (to_int(.sentry_version) ?? 0) >= 7 && is_object(.b.contexts) {
     .ts = (to_float(.b.timestamp) ?? 0.0) * 1000000000
-
     .b._hdx_body = .b.message
     .h = .b.server_name
     .st = downcase(.b.level) ?? "fatal"
