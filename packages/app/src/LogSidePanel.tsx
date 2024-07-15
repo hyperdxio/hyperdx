@@ -1399,7 +1399,13 @@ function PropertySubpanel({
       !key.startsWith('otel.library.') &&
       !key.startsWith('telemetry.') &&
       !key.startsWith('hyperdx.') &&
-      !key.startsWith('exception.') &&
+      // We need to show exception properties if it's an exception log, which
+      // has exception.* at the top-level. We're using the existence of span events as a
+      // proxy for this behavior for now.
+      !(
+        key.startsWith('exception.') &&
+        getLogProperty(logData, '__events') != null
+      ) &&
       !(key.startsWith('http.request.header.') && isNetworkReq) &&
       !(key.startsWith('http.response.header.') && isNetworkReq) &&
       key != '__events' &&
