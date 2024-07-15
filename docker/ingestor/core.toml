@@ -40,8 +40,24 @@ inputs = ["http_server"]
 source = '''
   .hdx_content_type = del(."Content-Type")
   .hdx_trace_id = split(del(.Traceparent), "-")[1] ?? null
+  tmp_sentry_auth = del(."X-Sentry-Auth")
 
   # Hack sentry 😎
+  # for client like ruby
+  if is_string(tmp_sentry_auth) {
+    # input example: Sentry sentry_version=7, sentry_client=sentry-ruby/5.18.1, sentry_timestamp=1720998946, sentry_key=blabla
+    tmp_sentry_auth_headers = parse_key_value(tmp_sentry_auth, field_delimiter:",") ?? null
+    if is_object(tmp_sentry_auth_headers) {
+      .sentry_version = tmp_sentry_auth_headers."Sentry sentry_version"
+      .sentry_client = tmp_sentry_auth_headers.sentry_client
+      .sentry_key = tmp_sentry_auth_headers.sentry_key
+      tmp_timestamp = tmp_sentry_auth_headers.sentry_timestamp
+      if !is_nullish(tmp_timestamp) {
+        # override timestamp so its type is consistent
+        .b.timestamp = tmp_timestamp
+      }
+    }
+  }
   if is_string(.sentry_key) && length(to_string(.sentry_key) ?? "") == 32 { 
     .hdx_content_type = "application/json"
     .hdx_platform = "sentry"
@@ -548,6 +564,7 @@ del(.timestamp)
 del(.authorization)
 del(.hdx_content_type)
 del(.hdx_trace_id)
+del(.sentry_client)
 del(.sentry_key)
 del(.sentry_version)
 '''
