@@ -1412,18 +1412,18 @@ const buildEventSeriesQuery = async ({
       ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
       : '';
 
-  const groupByColumnNames = groupBy.map(g => {
+  const groupByColumnExpressions = groupBy.map(g => {
     const columnName = buildSearchColumnName(
       propertyTypeMappingsModel.get(g),
       g,
     );
     if (columnName != null) {
-      return columnName;
+      return `toString(${columnName})`;
     }
     throw new Error(`Group by field ${g} does not exist`);
   });
 
-  const hasGroupBy = groupByColumnNames.length > 0;
+  const hasGroupBy = groupByColumnExpressions.length > 0;
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
 
@@ -1497,11 +1497,13 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
+    hasGroupBy
+      ? `[${groupByColumnExpressions.join(',')}] as group`
+      : `[] as group`,
     `${label} as label`,
   ].join(',');
 
-  const groupByClause = ['ts_bucket', ...groupByColumnNames].join(',');
+  const groupByClause = ['ts_bucket', ...groupByColumnExpressions].join(',');
 
   const query = SqlString.format(
     `

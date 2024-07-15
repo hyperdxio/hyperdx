@@ -883,7 +883,10 @@ export const useMultiSeriesChartV2 = (
       },
     })
       .json()
-      .then((data: any) => setData(data as MultiSeriesChartResponse))
+      .then((data: any) => {
+        setData(data as MultiSeriesChartResponse);
+        setIsError(false);
+      })
       .catch(() => setIsError(true))
       .finally(() => {
         setIsLoading(false);
