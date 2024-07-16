@@ -17,6 +17,8 @@ import {
   Text,
 } from '@mantine/core';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -39,7 +41,6 @@ import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { ChartSeries } from './types';
 
@@ -207,7 +208,7 @@ export default function ServiceDashboardPage() {
               onSearch(displayedTimeInputValue);
             }}
           >
-            <SearchTimeRangePicker
+            <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
               onSearch={range => {

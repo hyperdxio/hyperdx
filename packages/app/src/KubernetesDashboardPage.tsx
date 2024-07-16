@@ -19,6 +19,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import { FormatPodStatus } from './components/KubeComponents';
 import api from './api';
 import {
@@ -34,7 +36,6 @@ import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -863,7 +864,7 @@ export default function KubernetesDashboardPage() {
               onSearch(displayedTimeInputValue);
             }}
           >
-            <SearchTimeRangePicker
+            <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
               onSearch={range => {

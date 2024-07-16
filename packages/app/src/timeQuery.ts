@@ -9,7 +9,14 @@ import {
 } from 'react';
 import { useRouter } from 'next/router';
 import * as chrono from 'chrono-node';
-import { format, isValid, startOfSecond, sub } from 'date-fns';
+import {
+  format,
+  formatDuration,
+  intervalToDuration,
+  isValid,
+  startOfSecond,
+  sub,
+} from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import {
   NumberParam,
@@ -426,32 +433,9 @@ export type UseTimeQueryReturnType = {
 };
 
 const getRelativeInterval = (start: Date, end: Date): string | undefined => {
-  const diffInMinutes = Math.floor((end.getTime() - start.getTime()) / 60000);
-  if (diffInMinutes === 15) {
-    return 'Past 15m';
-  }
-  if (diffInMinutes === 60) {
-    return 'Past 1h';
-  }
-  if (diffInMinutes === 240) {
-    return 'Past 4h';
-  }
-  if (diffInMinutes === 720) {
-    return 'Past 12h';
-  }
-  if (diffInMinutes === 1440) {
-    return 'Past 1d';
-  }
-  if (diffInMinutes === 5760) {
-    return 'Past 4d';
-  }
-  if (diffInMinutes === 10080) {
-    return 'Past 7d';
-  }
-  if (diffInMinutes === 43200) {
-    return 'Past 30d';
-  }
-  return undefined;
+  const duration = intervalToDuration({ start, end });
+  const durationStr = formatDuration(duration);
+  return `Past ${durationStr}`;
 };
 
 export function useNewTimeQuery({

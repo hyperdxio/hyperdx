@@ -41,6 +41,8 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import { Icon } from './components/Icon';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import api from './api';
@@ -56,7 +58,6 @@ import { dashboardToTerraform, dashboardToTerraformImport } from './iacUtils';
 import { withAppNav } from './layout';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import SearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { FloppyIcon, TerraformFlatIcon } from './SVGIcons';
 import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
@@ -1143,7 +1144,7 @@ export default function DashboardPage({
                 }}
                 style={{ height: 33 }}
               >
-                <SearchTimeRangePicker
+                <TimePicker
                   inputValue={input}
                   setInputValue={setInput}
                   onSearch={range => {
