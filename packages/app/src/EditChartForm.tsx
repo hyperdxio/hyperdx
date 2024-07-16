@@ -29,6 +29,7 @@ import {
 import Checkbox from './Checkbox';
 import * as config from './config';
 import EditChartFormAlerts from './EditChartFormAlerts';
+import FieldMultiSelect from './FieldMultiSelect';
 import GranularityPicker from './GranularityPicker';
 import HDXHistogramChart from './HDXHistogramChart';
 import HDXMarkdownChart from './HDXMarkdownChart';
@@ -1002,7 +1003,7 @@ export const EditMultiSeriesChartForm = ({
               table={series.table ?? 'logs'}
               aggFn={series.aggFn}
               where={series.where}
-              groupBy={series.type !== 'number' ? series.groupBy[0] : undefined}
+              groupBy={series.type !== 'number' ? series.groupBy : undefined}
               field={series.field ?? ''}
               numberFormat={series.numberFormat}
               setAggFn={aggFn =>
@@ -1036,7 +1037,7 @@ export const EditMultiSeriesChartForm = ({
                             draftSeries.type !== 'number'
                           ) {
                             if (groupBy != undefined) {
-                              draftSeries.groupBy[0] = groupBy;
+                              draftSeries.groupBy = groupBy;
                             } else {
                               draftSeries.groupBy = [];
                             }
@@ -1091,33 +1092,58 @@ export const EditMultiSeriesChartForm = ({
           <Flex align="center" gap="md" mb="sm">
             <div className="text-muted">Group By</div>
             <div className="flex-grow-1">
-              <GroupBySelect
-                table={editedChart.series[0].table ?? 'logs'}
-                groupBy={editedChart.series[0].groupBy[0]}
-                fields={
-                  editedChart.series
-                    .map(s => (s as TimeChartSeries).field)
-                    .filter(f => f != null) as string[]
-                }
-                setGroupBy={groupBy => {
-                  setEditedChart(
-                    produce(editedChart, draft => {
-                      draft.series.forEach((series, i) => {
-                        if (
-                          series.type === chartType &&
-                          series.type !== 'number'
-                        ) {
-                          if (groupBy != undefined) {
-                            series.groupBy[0] = groupBy;
-                          } else {
-                            series.groupBy = [];
+              {editedChart.series[0].table === 'logs' ? (
+                <FieldMultiSelect
+                  types={['number', 'bool', 'string']}
+                  values={editedChart.series[0].groupBy}
+                  setValues={(values: string[]) => {
+                    setEditedChart(
+                      produce(editedChart, draft => {
+                        draft.series.forEach((series, i) => {
+                          if (
+                            series.type === chartType &&
+                            series.type !== 'number'
+                          ) {
+                            if (values != undefined) {
+                              series.groupBy = values;
+                            } else {
+                              series.groupBy = [];
+                            }
                           }
-                        }
-                      });
-                    }),
-                  );
-                }}
-              />
+                        });
+                      }),
+                    );
+                  }}
+                />
+              ) : (
+                <GroupBySelect
+                  table={editedChart.series[0].table ?? 'logs'}
+                  groupBy={editedChart.series[0].groupBy[0]}
+                  fields={
+                    editedChart.series
+                      .map(s => (s as TimeChartSeries).field)
+                      .filter(f => f != null) as string[]
+                  }
+                  setGroupBy={groupBy => {
+                    setEditedChart(
+                      produce(editedChart, draft => {
+                        draft.series.forEach((series, i) => {
+                          if (
+                            series.type === chartType &&
+                            series.type !== 'number'
+                          ) {
+                            if (groupBy != undefined) {
+                              series.groupBy[0] = groupBy;
+                            } else {
+                              series.groupBy = [];
+                            }
+                          }
+                        });
+                      }),
+                    );
+                  }}
+                />
+              )}
             </div>
           </Flex>
         )}
@@ -1267,10 +1293,10 @@ export const EditLineChartForm = ({
         : null,
     [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
   );
-  const previewConfig = useDebounce(
-    withDashboardFilter(chartConfig, dashboardQuery),
-    500,
-  );
+  const chartConfigWithDashboardFilter = useMemo(() => {
+    return withDashboardFilter(chartConfig, dashboardQuery);
+  }, [chartConfig, dashboardQuery]);
+  const previewConfig = useDebounce(chartConfigWithDashboardFilter, 500);
 
   if (
     chartConfig == null ||
