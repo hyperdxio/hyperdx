@@ -102,6 +102,7 @@ export const TimePicker = ({
         endDate: dateRange[1],
       });
     }
+    // only run when dateRange changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange]);
 
@@ -216,10 +217,10 @@ export const TimePicker = ({
         />
       </Popover.Target>
       <Popover.Dropdown p={0}>
-        <Group justify="space-between" gap={4} px="xs" py={6}>
+        <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             <Button
-              size="compact-sm"
+              size="compact-xs"
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: -1 })}
@@ -228,7 +229,7 @@ export const TimePicker = ({
               1h back
             </Button>
             <Button
-              size="compact-sm"
+              size="compact-xs"
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: 1 })}
