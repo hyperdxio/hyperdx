@@ -1,5 +1,7 @@
 import React from 'react';
 import { add, Duration, format, sub } from 'date-fns';
+import { useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Button,
@@ -31,6 +33,8 @@ import {
   parseTimeRangeInput,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
+
+const modeAtom = atomWithStorage('hdx-time-picker-mode', 'Time range');
 
 const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
@@ -89,7 +93,8 @@ export const TimePicker = ({
     ];
   }, [showLive]);
 
-  const form = useTimePickerForm();
+  const [mode, setMode] = useAtom(modeAtom);
+  const form = useTimePickerForm({ mode });
 
   const dateRange = React.useMemo(() => {
     return parseTimeRangeInput(value);
@@ -136,18 +141,18 @@ export const TimePicker = ({
       return;
     }
     const { startDate, endDate } = form.values;
-    if (form.values.mode === 'Time range') {
+    if (mode === 'Time range') {
       handleSearch([startDate, endDate]);
       close();
     }
-    if (form.values.mode === 'Around a time') {
+    if (mode === 'Around a time') {
       const duration = DURATIONS[form.values.duration];
       const from = startDate && sub(startDate, duration);
       const to = startDate && add(startDate, duration);
       handleSearch([from, to]);
       close();
     }
-  }, [close, form, handleSearch, opened]);
+  }, [close, form, handleSearch, mode, opened]);
 
   useHotkeys('Enter', handleApply, [handleApply]);
 
@@ -273,12 +278,12 @@ export const TimePicker = ({
             <Stack gap={8} mb="sm">
               <SegmentedControl
                 size="xs"
-                data={['Time range', 'Around a time']}
-                value="Time range"
                 mb="xs"
-                {...form.getInputProps('mode')}
+                data={['Time range', 'Around a time']}
+                value={mode}
+                onChange={setMode}
               />
-              {form.values.mode === 'Time range' ? (
+              {mode === 'Time range' ? (
                 <>
                   <H>Start time</H>
                   <DateInputCmp
