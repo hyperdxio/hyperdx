@@ -24,6 +24,8 @@
     "@hyperdx/lucene": "^3.1.1",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
+    "@mantine/dates": "^7.11.2",
+    "@mantine/form": "^7.11.2",
     "@mantine/hooks": "7.9.2",
     "@mantine/notifications": "^7.9.2",
     "@mantine/spotlight": "7.9.2",

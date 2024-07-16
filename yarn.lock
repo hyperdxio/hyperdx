@@ -3534,6 +3534,21 @@
     react-textarea-autosize "8.5.3"
     type-fest "^4.12.0"
 
+"@mantine/dates@^7.11.2":
+  version "7.11.2"
+  resolved "https://registry.yarnpkg.com/@mantine/dates/-/dates-7.11.2.tgz#d639533c7f0e34f49ba909f6a0e6f61f9b5c0b6c"
+  integrity sha512-BEZs949EvfIG1fRNsEpcB0YqSe53z/KObwHyBwiqFjFHJ2eFPVMpxw6Rpy1Bud0/FZRV+QBokebxaf6+2tbCCw==
+  dependencies:
+    clsx "^2.1.1"
+
+"@mantine/form@^7.11.2":
+  version "7.11.2"
+  resolved "https://registry.yarnpkg.com/@mantine/form/-/form-7.11.2.tgz#a050d8a2d1d351932904862d61470ec432a90597"
+  integrity sha512-NRY4HDgcArDEP+wUaHITnoVh0Ce3rM3Blo9fLNj2VYO8k7AfuSWp+fQdqrjDI0k9wGU3YEj4/dbwOjKbtXEhxw==
+  dependencies:
+    fast-deep-equal "^3.1.3"
+    klona "^2.0.6"
+
 "@mantine/hooks@7.9.2":
   version "7.9.2"
   resolved "https://registry.yarnpkg.com/@mantine/hooks/-/hooks-7.9.2.tgz#5cb2abc5b293b6571456443cee858f98503cc7c5"
@@ -8824,6 +8839,11 @@ clsx@^1.1.1, clsx@^1.2.1:
   resolved "https://registry.yarnpkg.com/clsx/-/clsx-1.2.1.tgz#0ddc4a20a549b59c93a4116bb26f5294ca17dc12"
   integrity sha512-EcR6r5a8bj6pu3ycsa/E/cKVGuTgZJZdsyUYHOksG/UHIiKfjxzRxYJpyVBwYaQeOvghal9fcc4PidlgzugAQg==
 
+clsx@^2.1.1:
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/clsx/-/clsx-2.1.1.tgz#eed397c9fd8bd882bfb18deab7102049a2f32999"
+  integrity sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==
+
 cluster-key-slot@1.1.2:
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/cluster-key-slot/-/cluster-key-slot-1.1.2.tgz#88ddaa46906e303b5de30d3153b7d9fe0a0c19ac"
@@ -13314,7 +13334,7 @@ kleur@^4.0.3, kleur@^4.1.5:
   resolved "https://registry.yarnpkg.com/kleur/-/kleur-4.1.5.tgz#95106101795f7050c6c650f350c683febddb1780"
   integrity sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==
 
-klona@^2.0.4:
+klona@^2.0.4, klona@^2.0.6:
   version "2.0.6"
   resolved "https://registry.yarnpkg.com/klona/-/klona-2.0.6.tgz#85bffbf819c03b2f53270412420a4555ef882e22"
   integrity sha512-dhG34DXATL5hSxJbIexCft8FChFXtmskoZYnoPWjXQuebWYCNkVeV3KkGegCK9CP1oswI/vQibS2GY7Em/sJJA==

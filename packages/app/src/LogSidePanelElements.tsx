@@ -486,7 +486,7 @@ export const NetworkBody = ({
 /**
  * Keyboard shortcuts
  */
-const Kbd = ({ children }: { children: string }) => (
+export const Kbd = ({ children }: { children: string }) => (
   <div className={styles.kbd}>{children}</div>
 );
 
