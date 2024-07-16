@@ -13,6 +13,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import { ColorSwatchInput } from './components/ColorSwatchInput';
 import { NumberFormatInput } from './components/NumberFormat';
 import { intervalToGranularity } from './Alert';
@@ -37,7 +39,6 @@ import HDXMultiSeriesTableChart from './HDXMultiSeriesTableChart';
 import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import HDXNumberChart from './HDXNumberChart';
 import { LogTableWithSidePanel } from './LogTableWithSidePanel';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import type { Alert, Chart, ChartSeries, TimeChartSeries } from './types';
 import { useDebounce } from './utils';
 
@@ -456,7 +457,7 @@ export const EditNumberChartForm = ({
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
-                <SearchTimeRangePicker
+                <TimePicker
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
@@ -622,7 +623,7 @@ export const EditTableChartForm = ({
           displayedTimeInputValue != null &&
           onTimeRangeSearch != null && (
             <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
-              <SearchTimeRangePicker
+              <TimePicker
                 inputValue={displayedTimeInputValue}
                 setInputValue={setDisplayedTimeInputValue}
                 onSearch={range => {
@@ -853,7 +854,7 @@ export const EditHistogramChartForm = ({
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <div className="ms-3 flex-grow-1" style={{ maxWidth: 360 }}>
-                <SearchTimeRangePicker
+                <TimePicker
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {
@@ -1413,7 +1414,7 @@ export const EditLineChartForm = ({
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <div className="ms-3 flex-grow-1" style={{ maxWidth: 420 }}>
-                <SearchTimeRangePicker
+                <TimePicker
                   inputValue={displayedTimeInputValue}
                   setInputValue={setDisplayedTimeInputValue}
                   onSearch={range => {

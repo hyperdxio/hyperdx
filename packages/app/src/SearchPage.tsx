@@ -33,6 +33,8 @@ import {
 import { ActionIcon, Indicator } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import { ErrorBoundary } from './components/ErrorBoundary';
 import api from './api';
 import CreateLogAlertModal from './CreateLogAlertModal';
@@ -44,7 +46,6 @@ import SaveSearchModal from './SaveSearchModal';
 import SearchInput from './SearchInput';
 import { SearchPageFilters, ToggleFilterButton } from './SearchPage.components';
 import SearchPageActionBar from './SearchPageActionBar';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { Tags } from './Tags';
 import { useTimeQuery } from './timeQuery';
 import { useDisplayedColumns } from './useDisplayedColumns';
@@ -777,7 +778,7 @@ function SearchPage() {
               className="ms-2 w-100 d-flex"
               style={{ maxWidth: 360, height: 36 }}
             >
-              <SearchTimeRangePicker
+              <TimePicker
                 inputValue={displayedTimeInputValue}
                 setInputValue={setDisplayedTimeInputValue}
                 onSearch={rangeStr => {
