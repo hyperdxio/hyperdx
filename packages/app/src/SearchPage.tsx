@@ -13,6 +13,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import cx from 'classnames';
 import { clamp, sub } from 'date-fns';
+import { useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 import { Button } from 'react-bootstrap';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -30,13 +32,16 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
-import { ActionIcon, Indicator } from '@mantine/core';
+import { ActionIcon, Indicator, Tooltip as MTooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { TimePicker } from '@/components/TimePicker';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
-import api from './api';
+import { Heatmap } from './components/Heatmap/Heatmap';
+import { Icon } from './components/Icon';
+import api, { useMultiSeriesChartV2 } from './api';
+import { convertDateRangeToGranularityString } from './ChartUtils';
 import CreateLogAlertModal from './CreateLogAlertModal';
 import { withAppNav } from './layout';
 import LogSidePanel from './LogSidePanel';
@@ -48,11 +53,17 @@ import { SearchPageFilters, ToggleFilterButton } from './SearchPage.components';
 import SearchPageActionBar from './SearchPageActionBar';
 import { Tags } from './Tags';
 import { useTimeQuery } from './timeQuery';
+import type { TimeChartSeries } from './types';
 import { useDisplayedColumns } from './useDisplayedColumns';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import 'react-modern-drawer/dist/index.css';
 import styles from '../styles/SearchPage.module.scss';
+
+const chartModeAtom = atomWithStorage<'heatmap' | 'histogram'>(
+  'hdx-search-page-chart-mode',
+  'histogram',
+);
 
 const HistogramBarChartTooltip = (props: any) => {
   const { active, payload, label } = props;
@@ -119,7 +130,7 @@ const HDXHistogram = memo(
     const formatTime = useFormatTime();
 
     return isHistogramResultsLoading ? (
-      <div className="w-100 h-100 d-flex align-items-center justify-content-center">
+      <div className="w-100 h-100 fs-8 text-slate-300 d-flex align-items-center justify-content-center">
         Loading Graph...
       </div>
     ) : (
@@ -218,6 +229,79 @@ const HDXHistogram = memo(
     );
   },
 );
+
+function genLogScale(total_intervals: number, start: number, end: number) {
+  const x = (Math.log(end) - Math.log(start)) / total_intervals;
+  const factor = Math.exp(x);
+  const result = [start];
+  let i;
+
+  for (i = 1; i < total_intervals; i++) {
+    result.push(result[result.length - 1] * factor);
+  }
+  result.push(end);
+  return result;
+}
+
+const HDXHeatmap = ({
+  config,
+  isLive,
+}: {
+  config: {
+    dateRange: [Date, Date];
+    where: string;
+  };
+  isLive: boolean;
+}) => {
+  const formatTime = useFormatTime();
+
+  const input = useMemo(() => {
+    const scale = genLogScale(14, 1, 30 * 60 * 1000); // ms
+    return {
+      startDate: config.dateRange[0],
+      endDate: config.dateRange[1],
+      where: config.where,
+      series: scale.map((v, i) => ({
+        type: 'time' as const,
+        table: 'logs' as const,
+        aggFn: 'count' as const,
+        where: `duration:>${scale[i - 1] || 0} AND duration:<${v} AND ${
+          config.where
+        }`,
+        groupBy: [],
+      })),
+      seriesReturnType: 'column' as const,
+      granularity: convertDateRangeToGranularityString(config.dateRange, 200),
+    };
+  }, [config]);
+
+  const { isFetching, isLoading, data } = api.useMultiSeriesChart(input, {
+    keepPreviousData: true,
+  });
+
+  const xLabels = useMemo(() => {
+    return [formatTime(config.dateRange[0]), formatTime(config.dateRange[1])];
+  }, [config.dateRange, formatTime]);
+
+  const yLabels = useMemo(() => ['0ms', '30m'], []);
+
+  if (isLoading) {
+    return (
+      <div className="w-100 fs-8 text-slate-300 h-100 d-flex align-items-center justify-content-center">
+        Loading Graph...
+      </div>
+    );
+  }
+
+  return (
+    <Heatmap
+      xLabels={xLabels}
+      yLabels={yLabels}
+      data={data}
+      isFetching={isFetching}
+    />
+  );
+};
 
 const HistogramResultCounter = ({
   config: { dateRange, where },
@@ -681,6 +765,8 @@ function SearchPage() {
     [displayedSearchQuery, displayedTimeInputValue, doSearch],
   );
 
+  const [chartMode, setChartMode] = useAtom(chartModeAtom);
+
   return (
     <div style={{ height: '100vh' }}>
       <Head>
@@ -847,7 +933,31 @@ function SearchPage() {
           </ErrorBoundary>
           <div className="d-flex flex-column flex-grow-1">
             <div className="d-flex mx-4 mt-2 justify-content-between">
-              <div className="fs-8 text-muted">
+              <div className="fs-8 text-muted d-flex align-items-center gap-1">
+                <MTooltip label="Histogram" color="gray">
+                  <ActionIcon
+                    color="gray"
+                    variant={chartMode === 'histogram' ? 'filled' : 'subtle'}
+                    size="sm"
+                    onClick={() => setChartMode('histogram')}
+                  >
+                    <Icon
+                      name="bar-chart-line-fill"
+                      className="fs-8 text-success"
+                    />
+                  </ActionIcon>
+                </MTooltip>
+                <MTooltip color="gray" label="Heat map">
+                  <ActionIcon
+                    color="gray"
+                    size="sm"
+                    mr={4}
+                    variant={chartMode === 'heatmap' ? 'filled' : 'subtle'}
+                    onClick={() => setChartMode('heatmap')}
+                  >
+                    <Icon name="grid-fill" className="fs-8 text-success" />
+                  </ActionIcon>
+                </MTooltip>
                 {isReady ? (
                   <HistogramResultCounter
                     config={{
@@ -860,37 +970,41 @@ function SearchPage() {
                   />
                 ) : null}
               </div>
-              <div className="d-flex">
-                <Link
-                  href={generateSearchUrl(searchedQuery, [
-                    zoomOutFrom,
-                    zoomOutTo,
-                  ])}
-                  className="text-muted-hover text-decoration-none fs-8 me-3"
-                >
-                  <i className="bi bi-zoom-out me-1"></i>Zoom Out
-                </Link>
-                <Link
-                  href={generateSearchUrl(searchedQuery, [
-                    zoomInFrom,
-                    zoomInTo,
-                  ])}
-                  className="text-muted-hover text-decoration-none fs-8 me-3"
-                >
-                  <i className="bi bi-zoom-in me-1"></i>Zoom In
-                </Link>
-                <Link
-                  href={generateChartUrl({
-                    table: 'logs',
-                    aggFn: 'count',
-                    field: undefined,
-                    groupBy: ['level'],
-                  })}
-                  className="text-muted-hover text-decoration-none fs-8"
-                >
-                  <i className="bi bi-plus-circle me-1"></i>Create Chart
-                </Link>
-              </div>
+              {chartMode === 'histogram' ? (
+                <div className="d-flex">
+                  <Link
+                    href={generateSearchUrl(searchedQuery, [
+                      zoomOutFrom,
+                      zoomOutTo,
+                    ])}
+                    className="text-muted-hover text-decoration-none fs-8 me-3"
+                  >
+                    <i className="bi bi-zoom-out me-1"></i>Zoom Out
+                  </Link>
+                  <Link
+                    href={generateSearchUrl(searchedQuery, [
+                      zoomInFrom,
+                      zoomInTo,
+                    ])}
+                    className="text-muted-hover text-decoration-none fs-8 me-3"
+                  >
+                    <i className="bi bi-zoom-in me-1"></i>Zoom In
+                  </Link>
+                  <Link
+                    href={generateChartUrl({
+                      table: 'logs',
+                      aggFn: 'count',
+                      field: undefined,
+                      groupBy: ['level'],
+                    })}
+                    className="text-muted-hover text-decoration-none fs-8"
+                  >
+                    <i className="bi bi-plus-circle me-1"></i>Create Chart
+                  </Link>
+                </div>
+              ) : (
+                <div className="fs-8 text-slate-600">H Y P E R D X</div>
+              )}
             </div>
             <div style={{ height: 110 }} className="my-2 px-3 w-100">
               {/* Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172 */}
@@ -911,11 +1025,15 @@ function SearchPage() {
                   }}
                 >
                   {isReady ? (
-                    <HDXHistogram
-                      config={chartsConfig}
-                      onTimeRangeSelect={onTimeRangeSelect}
-                      isLive={isLive}
-                    />
+                    chartMode === 'histogram' ? (
+                      <HDXHistogram
+                        config={chartsConfig}
+                        onTimeRangeSelect={onTimeRangeSelect}
+                        isLive={isLive}
+                      />
+                    ) : (
+                      <HDXHeatmap isLive={isLive} config={chartsConfig} />
+                    )
                   ) : null}
                 </div>
               </div>
