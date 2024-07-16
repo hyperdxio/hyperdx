@@ -23,9 +23,9 @@ export function parseTimeRangeInput(str: string): [Date | null, Date | null] {
 export const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 
 export const RELATIVE_TIME_OPTIONS: ([string, string] | 'divider')[] = [
-  ['Last 15 seconds', '15s'],
-  ['Last 30 seconds', '30s'],
-  'divider',
+  // ['Last 15 seconds', '15s'],
+  // ['Last 30 seconds', '30s'],
+  // 'divider',
   ['Last 1 minute', '1m'],
   ['Last 5 minutes', '5m'],
   ['Last 15 minutes', '15m'],

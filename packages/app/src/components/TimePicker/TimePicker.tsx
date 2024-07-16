@@ -88,7 +88,7 @@ export const TimePicker = ({
 
   const relativeTimeOptions = React.useMemo(() => {
     return [
-      ...(showLive ? [['Live Tail', LIVE_TAIL_TIME_QUERY]] : []),
+      ...(showLive ? [['Live Tail', LIVE_TAIL_TIME_QUERY], 'divider'] : []),
       ...RELATIVE_TIME_OPTIONS,
     ];
   }, [showLive]);
