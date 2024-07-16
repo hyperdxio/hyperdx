@@ -17,6 +17,7 @@ router.post(
     body: z.object({
       series: z
         .array(externalQueryChartSeriesSchema)
+        .min(1)
         .max(5)
         .refine(
           series => {

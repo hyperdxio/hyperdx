@@ -137,7 +137,7 @@ router.post(
   '/series',
   validateRequest({
     body: z.object({
-      series: z.array(chartSeriesSchema),
+      series: z.array(chartSeriesSchema).min(1),
       endTime: z.number(),
       granularity: z.nativeEnum(clickhouse.Granularity).optional(),
       startTime: z.number(),
