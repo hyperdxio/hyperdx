@@ -206,6 +206,7 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
+  Summary = 'Summary',
 }
 
 export type TimeChartSeries = {

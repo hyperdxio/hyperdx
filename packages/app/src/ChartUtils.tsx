@@ -44,25 +44,34 @@ export const AGG_FNS = [
   { value: 'count_distinct' as const, label: 'Count Distinct' },
 ];
 
-export const getMetricAggFns = (dataType: MetricsDataType) => {
+export const getMetricAggFns = (
+  dataType: MetricsDataType,
+): { value: AggFn; label: string }[] => {
   if (dataType === MetricsDataType.Histogram) {
     return [
-      { value: 'p99' as const, label: '99th Percentile' },
-      { value: 'p95' as const, label: '95th Percentile' },
-      { value: 'p90' as const, label: '90th Percentile' },
-      { value: 'p50' as const, label: 'Median' },
+      { value: 'p99', label: '99th Percentile' },
+      { value: 'p95', label: '95th Percentile' },
+      { value: 'p90', label: '90th Percentile' },
+      { value: 'p50', label: 'Median' },
+    ];
+  } else if (dataType === MetricsDataType.Summary) {
+    return [
+      { value: 'sum', label: 'Sum' },
+      { value: 'max', label: 'Maximum' },
+      { value: 'min', label: 'Minimum' },
+      { value: 'count', label: 'Count' },
     ];
   }
 
   return [
-    { value: 'sum' as const, label: 'Sum' },
-    { value: 'p99' as const, label: '99th Percentile' },
-    { value: 'p95' as const, label: '95th Percentile' },
-    { value: 'p90' as const, label: '90th Percentile' },
-    { value: 'p50' as const, label: 'Median' },
-    { value: 'avg' as const, label: 'Average' },
-    { value: 'max' as const, label: 'Maximum' },
-    { value: 'min' as const, label: 'Minimum' },
+    { value: 'sum', label: 'Sum' },
+    { value: 'p99', label: '99th Percentile' },
+    { value: 'p95', label: '95th Percentile' },
+    { value: 'p90', label: '90th Percentile' },
+    { value: 'p50', label: 'Median' },
+    { value: 'avg', label: 'Average' },
+    { value: 'max', label: 'Maximum' },
+    { value: 'min', label: 'Minimum' },
   ];
 };
 
