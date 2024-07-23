@@ -52,6 +52,16 @@ export const getMetricAggFns = (dataType: MetricsDataType) => {
       { value: 'p90' as const, label: '90th Percentile' },
       { value: 'p50' as const, label: 'Median' },
     ];
+  } else if (dataType === MetricsDataType.Summary) {
+    return [
+      { value: 'count' as const, label: 'Count' },
+      { value: 'max' as const, label: 'Maximum' },
+      { value: 'min' as const, label: 'Minimum' },
+      { value: 'p50' as const, label: 'Median' },
+      { value: 'p90' as const, label: '90th Percentile' },
+      { value: 'p99' as const, label: '99th Percentile' },
+      { value: 'sum' as const, label: 'Sum' },
+    ];
   }
 
   return [
