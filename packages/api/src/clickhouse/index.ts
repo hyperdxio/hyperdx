@@ -1109,6 +1109,27 @@ export const buildMetricSeriesQuery = async ({
     if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
       throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
+  } else if (dataType === MetricsDataType.Summary) {
+    switch (aggFn) {
+      case AggFn.Sum:
+        name = `${name}_sum`;
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.Count:
+        name = `${name}_count`;
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.Min:
+        name = `${name}_0`;
+        selectClause.push('MIN(value) as data');
+        break;
+      case AggFn.Max:
+        name = `${name}_1`;
+        selectClause.push('MAX(value) as data');
+        break;
+      default:
+        throw new Error(`Unsupported aggFn for Summary: ${aggFn}`);
+    }
   } else {
     throw new Error(`Unsupported data type: ${dataType}`);
   }
