@@ -1068,6 +1068,7 @@ export const buildMetricSeriesQuery = async ({
     ? // If granularity is not defined (tables), we'll just look behind 5min
       startTime - ms(granularity ?? '5 minute')
     : startTime;
+  const startTimeUnixTs = Math.floor(startTime / 1000);
 
   const whereClause = await buildSearchQueryWhereCondition({
     endTime,
@@ -1075,6 +1076,18 @@ export const buildMetricSeriesQuery = async ({
     query: q,
     startTime: modifiedStartTime,
   });
+
+  const gaugeMetricSelectClause = [
+    granularity != null
+      ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+          granularity,
+        )}) as timestamp`
+      : modifiedStartTime
+      ? // Manually create the time buckets if we're including the prev time range
+        `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+      : // Otherwise lump everything into one bucket
+        '0 as timestamp',
+  ];
   const selectClause = [
     granularity != null
       ? SqlString.format(
@@ -1086,6 +1099,7 @@ export const buildMetricSeriesQuery = async ({
   ];
 
   if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
+    gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
@@ -1125,31 +1139,38 @@ export const buildMetricSeriesQuery = async ({
     switch (aggFn) {
       case AggFn.Sum:
         name = `${name}_sum`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
         selectClause.push('SUM(value) as data');
         break;
       case AggFn.Count:
         name = `${name}_count`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
         selectClause.push('SUM(value) as data');
         break;
       case AggFn.Min:
         name = `${name}_0`;
+        gaugeMetricSelectClause.push('MIN(value) as value');
         selectClause.push('MIN(value) as data');
         break;
       case AggFn.Max:
         name = `${name}_1`;
+        gaugeMetricSelectClause.push('MAX(value) as value');
         selectClause.push('MAX(value) as data');
         break;
       case AggFn.P50:
         name = `${name}_0.5`;
-        selectClause.push('LAST_VALUE(value) as data');
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
         break;
       case AggFn.P90:
         name = `${name}_0.9`;
-        selectClause.push('LAST_VALUE(value) as data');
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
         break;
       case AggFn.P99:
         name = `${name}_0.99`;
-        selectClause.push('LAST_VALUE(value) as data');
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
         break;
       default:
         throw new Error(`Unsupported aggFn for Summary: ${aggFn}`);
@@ -1158,17 +1179,14 @@ export const buildMetricSeriesQuery = async ({
     throw new Error(`Unsupported data type: ${dataType}`);
   }
 
-  const startTimeUnixTs = Math.floor(startTime / 1000);
-
   // TODO: Can remove the ORDER BY _string_attributes for Gauge metrics
   // since they don't get subjected to runningDifference afterwards
   const gaugeMetricSource = SqlString.format(
     `
       SELECT
-        ?,
         name,
-        last_value(value) as value,
-        _string_attributes
+        _string_attributes,
+        ?
       FROM ??
       WHERE name = ?
       AND data_type = ?
@@ -1177,17 +1195,7 @@ export const buildMetricSeriesQuery = async ({
       ORDER BY _string_attributes, timestamp ASC
     `.trim(),
     [
-      SqlString.raw(
-        granularity != null
-          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
-              granularity,
-            )}) as timestamp`
-          : modifiedStartTime
-          ? // Manually create the time buckets if we're including the prev time range
-            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
-          : // Otherwise lump everything into one bucket
-            '0 as timestamp',
-      ),
+      SqlString.raw(gaugeMetricSelectClause.join(',')),
       tableName,
       name,
       dataType,
