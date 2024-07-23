@@ -54,7 +54,8 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
-  // TODO: support 'Summary' and 'ExponentialHistogram'
+  Summary = 'Summary',
+  // TODO: support 'ExponentialHistogram'
 }
 
 export enum AggFn {
@@ -673,7 +674,7 @@ export const getMetricsNames = async ({
         any(is_monotonic) as is_monotonic,
         any(unit) as unit,
         data_type,
-        format('{} - {}', name, data_type) as name
+        if(data_type = ?, format('{} - {}', splitByChar('_', name)[1], data_type) ,format('{} - {}', name, data_type)) AS name
       FROM ??
       WHERE data_type IN (?)
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
@@ -682,6 +683,7 @@ export const getMetricsNames = async ({
       ORDER BY name
     `,
     [
+      MetricsDataType.Summary,
       tableName,
       Object.values(MetricsDataType),
       msToBigIntNs(startTime),
@@ -742,7 +744,7 @@ export const getMetricsTags = async ({
       SELECT 
         groupUniqArray(_string_attributes) AS tags,
         data_type,
-        format('{} - {}', name, data_type) AS combined_name
+        if(data_type = ?, format('{} - {}', splitByChar('_', name)[1], data_type) ,format('{} - {}', name, data_type)) AS combined_name
       FROM ??
       WHERE name = ?
       AND data_type = ?
@@ -751,8 +753,10 @@ export const getMetricsTags = async ({
       GROUP BY name, data_type
     `,
         [
+          MetricsDataType.Summary,
           tableName,
-          m.name,
+          // FIXME: since the summary data type doesn't include the postfix
+          m.dataType === MetricsDataType.Summary ? `${m.name}_sum` : m.name,
           m.dataType,
           msToBigIntNs(startTime),
           msToBigIntNs(endTime),
