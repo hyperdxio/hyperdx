@@ -670,11 +670,15 @@ export const getMetricsNames = async ({
   const query = SqlString.format(
     `
       SELECT
-        any(is_delta) as is_delta,
-        any(is_monotonic) as is_monotonic,
-        any(unit) as unit,
+        any(is_delta) AS is_delta,
+        any(is_monotonic) AS is_monotonic,
+        any(unit) AS unit,
         data_type,
-        if(data_type = ?, format('{} - {}', splitByChar('_', name)[1], data_type) ,format('{} - {}', name, data_type)) AS name
+        if(
+          data_type = ?,
+          format('{} - {}', splitByChar('_', name)[1], data_type),
+          format('{} - {}', name, data_type)
+        ) AS name
       FROM ??
       WHERE data_type IN (?)
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
@@ -744,9 +748,13 @@ export const getMetricsTags = async ({
       SELECT 
         groupUniqArray(_string_attributes) AS tags,
         data_type,
-        if(data_type = ?, format('{} - {}', splitByChar('_', name)[1], data_type) ,format('{} - {}', name, data_type)) AS combined_name
+        if(
+          data_type = ?,
+          format('{} - {}', splitByChar('_', name)[1], data_type),
+          format('{} - {}', name, data_type)
+        ) AS combined_name
       FROM ??
-      WHERE name = ?
+      WHERE ?
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
@@ -755,8 +763,12 @@ export const getMetricsTags = async ({
         [
           MetricsDataType.Summary,
           tableName,
-          // FIXME: since the summary data type doesn't include the postfix
-          m.dataType === MetricsDataType.Summary ? `${m.name}_sum` : m.name,
+          SqlString.raw(
+            m.dataType === MetricsDataType.Summary
+              ? // FIXME: since the summary data type doesn't include the postfix
+                SqlString.format('name LIKE ?', [`${m.name}_%`])
+              : SqlString.format('name = ?', [m.name]),
+          ),
           m.dataType,
           msToBigIntNs(startTime),
           msToBigIntNs(endTime),
