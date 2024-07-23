@@ -1127,6 +1127,18 @@ export const buildMetricSeriesQuery = async ({
         name = `${name}_1`;
         selectClause.push('MAX(value) as data');
         break;
+      case AggFn.P50:
+        name = `${name}_0.5`;
+        selectClause.push('LAST_VALUE(value) as data');
+        break;
+      case AggFn.P90:
+        name = `${name}_0.9`;
+        selectClause.push('LAST_VALUE(value) as data');
+        break;
+      case AggFn.P99:
+        name = `${name}_0.99`;
+        selectClause.push('LAST_VALUE(value) as data');
+        break;
       default:
         throw new Error(`Unsupported aggFn for Summary: ${aggFn}`);
     }
