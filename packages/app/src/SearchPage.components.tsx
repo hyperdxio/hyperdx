@@ -289,11 +289,9 @@ export const SearchPageFilters = ({
     const allAttrs = Object.values(services?.data ?? {});
     const envs = new Set<string>();
     for (const attrs of allAttrs) {
-      if (attrs.length > 0) {
-        for (const attr of attrs) {
-          if (attr['deployment.environment']) {
-            envs.add(attr['deployment.environment']);
-          }
+      for (const attr of attrs) {
+        if (attr['deployment.environment']) {
+          envs.add(attr['deployment.environment']);
         }
       }
     }
