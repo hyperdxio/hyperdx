@@ -676,7 +676,11 @@ export const getMetricsNames = async ({
         data_type,
         if(
           data_type = ?,
-          format('{} - {}', splitByChar('_', name)[1], data_type),
+          format(
+              '{} - {}',
+              replaceRegexpOne(name, '_[^_]+$', ''),
+              data_type
+          ),
           format('{} - {}', name, data_type)
         ) AS name
       FROM ??
@@ -750,7 +754,11 @@ export const getMetricsTags = async ({
         data_type,
         if(
           data_type = ?,
-          format('{} - {}', splitByChar('_', name)[1], data_type),
+          format(
+              '{} - {}',
+              replaceRegexpOne(name, '_[^_]+$', ''),
+              data_type
+          ),
           format('{} - {}', name, data_type)
         ) AS combined_name
       FROM ??
