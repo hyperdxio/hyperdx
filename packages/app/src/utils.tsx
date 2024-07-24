@@ -8,6 +8,18 @@ import type { MutableRefObject } from 'react';
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
 
+export function omit<T extends object, K extends keyof T>(
+  obj: T,
+  paths: K[],
+): Omit<T, K> {
+  return {
+    ...paths.reduce(
+      (mem, key) => ((k: K, { [k]: ignored, ...rest }) => rest)(key, mem),
+      obj as object,
+    ),
+  } as Omit<T, K>;
+}
+
 export function generateSearchUrl({
   query,
   dateRange,
@@ -235,6 +247,18 @@ export function formatDistanceToNowStrictShort(date: Date) {
     .replace(' minutes', 'm')
     .replace(' minute', 'm')
     .replace(' seconds', 's');
+}
+
+export function formatmmss(milliseconds?: number) {
+  if (milliseconds == null) {
+    return '--:--';
+  }
+
+  const value = Math.max(milliseconds, 0);
+  const minutes = Math.floor(value / 1000 / 60);
+  const seconds = Math.floor((value / 1000) % 60);
+
+  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
 
 export const getLogLevelClass = (lvl: string | undefined) => {
@@ -508,6 +532,10 @@ const TIME_TOKENS = {
     '12h': 'MMM d h:mm:ss.SSS a',
     '24h': 'MMM d HH:mm:ss.SSS',
   },
+  time: {
+    '12h': 'h:mm:ss a',
+    '24h': 'HH:mm:ss',
+  },
 };
 
 export const formatDate = (
@@ -518,7 +546,7 @@ export const formatDate = (
     clock = '12h',
   }: {
     isUTC?: boolean;
-    format?: 'normal' | 'short' | 'withMs';
+    format?: 'normal' | 'short' | 'withMs' | 'time';
     clock?: '12h' | '24h';
   },
 ) => {

@@ -50,6 +50,9 @@ export const timeChartSeriesSchema = z.object({
   groupBy: z.array(z.string()).max(10),
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  displayType: z.optional(
+    z.union([z.literal('stacked_bar'), z.literal('line')]),
+  ),
 });
 
 export const tableChartSeriesSchema = z.object({
@@ -143,6 +146,9 @@ export const chartSchema = z.object({
       content: z.string().optional(),
       numberFormat: numberFormatSchema.optional(),
       metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+      displayType: z.optional(
+        z.union([z.literal('stacked_bar'), z.literal('line')]),
+      ),
     }),
   ),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),

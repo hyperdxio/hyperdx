@@ -386,7 +386,7 @@ body {
   align-items: center;
 }
 
-.player-wrapper {
+.replayer-wrapper {
   position: relative;
 
   .replayer-mouse {
@@ -397,7 +397,11 @@ body {
     border-radius: 50%;
     position: absolute;
     pointer-events: none; // Make sure the rrweb mouse doesn't obscure elements below it for the inspector
-    display: none;
+  }
+
+  .replayer-mouse-tail {
+    position: absolute;
+    pointer-events: none;
   }
 
   &.started .replayer-mouse {
@@ -512,94 +516,6 @@ body {
   }
   &:hover .child-hover-trigger {
     visibility: visible;
-  }
-}
-
-// Overwrite react-datepicker component
-div.react-datepicker {
-  border-radius: 5px;
-  // border: 2px solid $text-muted;
-  border: 0;
-  // box-shadow: 0px 5px 7px -4px $dark;
-  // background-color: $bg-dark;
-  background-color: $body-bg;
-
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 14px;
-
-  // Calendar Month Header
-  .react-datepicker__header {
-    background-color: $bg-hdx-dark;
-  }
-
-  // Calendar Month Header Text
-  .react-datepicker__current-month {
-    color: $text-light;
-  }
-
-  // Calendar Day of the Week Header
-  .react-datepicker__day-name {
-    color: $text-muted;
-  }
-
-  // Calendar Day
-  .react-datepicker__day,
-  .react-datepicker__time-name {
-    color: $text-light;
-  }
-
-  // Selected Day
-  .react-datepicker__day--range-start,
-  .react-datepicker__day--keyboard-selected,
-  .react-datepicker__month-text--keyboard-selected,
-  .react-datepicker__quarter-text--keyboard-selected,
-  .react-datepicker__year-text--keyboard-selected {
-    background-color: $light !important;
-    color: $dark !important;
-  }
-
-  // Hovered Day
-  .react-datepicker__day:hover,
-  .react-datepicker__month-text:hover,
-  .react-datepicker__quarter-text:hover,
-  .react-datepicker__year-text:hover {
-    box-shadow: inset 0px 0px 0px 1px $light;
-    background-color: transparent;
-    color: $text-light;
-  }
-
-  // Inbetween Selected Date Range Dates
-  .react-datepicker__day--selected,
-  .react-datepicker__day--in-selecting-range,
-  .react-datepicker__day--in-range,
-  .react-datepicker__month-text--selected,
-  .react-datepicker__month-text--in-selecting-range,
-  .react-datepicker__month-text--in-range,
-  .react-datepicker__quarter-text--selected,
-  .react-datepicker__quarter-text--in-selecting-range,
-  .react-datepicker__quarter-text--in-range,
-  .react-datepicker__year-text--selected,
-  .react-datepicker__year-text--in-selecting-range,
-  .react-datepicker__year-text--in-range {
-    background-color: $bg-grey;
-  }
-
-  .react-datepicker__day--today {
-    color: $green;
-  }
-
-  // Disabled dates
-  .react-datepicker__day--disabled {
-    color: $text-muted;
-    &:hover {
-      color: $text-muted;
-      box-shadow: none;
-    }
-  }
-
-  // Better center month navigation arrows
-  .react-datepicker__navigation-icon {
-    font-size: 12px;
   }
 }
 

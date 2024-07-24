@@ -12,11 +12,12 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import api from './api';
 import Dropdown from './Dropdown';
 import { withAppNav } from './layout';
 import SearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import SessionSidePanel from './SessionSidePanel';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { FormatTime } from './useFormatTime';
@@ -365,7 +366,7 @@ export default function SessionsPage() {
                 onSearch(displayedTimeInputValue);
               }}
             >
-              <SearchTimeRangePicker
+              <TimePicker
                 inputValue={displayedTimeInputValue}
                 setInputValue={setDisplayedTimeInputValue}
                 onSearch={range => {

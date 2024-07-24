@@ -54,7 +54,8 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
-  // TODO: support 'Summary' and 'ExponentialHistogram'
+  Summary = 'Summary',
+  // TODO: support 'ExponentialHistogram'
 }
 
 export enum AggFn {
@@ -669,11 +670,19 @@ export const getMetricsNames = async ({
   const query = SqlString.format(
     `
       SELECT
-        any(is_delta) as is_delta,
-        any(is_monotonic) as is_monotonic,
-        any(unit) as unit,
+        any(is_delta) AS is_delta,
+        any(is_monotonic) AS is_monotonic,
+        any(unit) AS unit,
         data_type,
-        format('{} - {}', name, data_type) as name
+        if(
+          data_type = ?,
+          format(
+              '{} - {}',
+              replaceRegexpOne(name, '_[^_]+$', ''),
+              data_type
+          ),
+          format('{} - {}', name, data_type)
+        ) AS name
       FROM ??
       WHERE data_type IN (?)
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
@@ -682,6 +691,7 @@ export const getMetricsNames = async ({
       ORDER BY name
     `,
     [
+      MetricsDataType.Summary,
       tableName,
       Object.values(MetricsDataType),
       msToBigIntNs(startTime),
@@ -742,17 +752,31 @@ export const getMetricsTags = async ({
       SELECT 
         groupUniqArray(_string_attributes) AS tags,
         data_type,
-        format('{} - {}', name, data_type) AS combined_name
+        if(
+          data_type = ?,
+          format(
+              '{} - {}',
+              replaceRegexpOne(name, '_[^_]+$', ''),
+              data_type
+          ),
+          format('{} - {}', name, data_type)
+        ) AS combined_name
       FROM ??
-      WHERE name = ?
+      WHERE ?
       AND data_type = ?
       AND (_timestamp_sort_key >= ? AND _timestamp_sort_key < ?)
       AND (_created_at >= fromUnixTimestamp64Milli(?) AND _created_at < fromUnixTimestamp64Milli(?))
       GROUP BY name, data_type
     `,
         [
+          MetricsDataType.Summary,
           tableName,
-          m.name,
+          SqlString.raw(
+            m.dataType === MetricsDataType.Summary
+              ? // FIXME: since the summary data type doesn't include the postfix
+                SqlString.format('name LIKE ?', [`${m.name}_%`])
+              : SqlString.format('name = ?', [m.name]),
+          ),
           m.dataType,
           msToBigIntNs(startTime),
           msToBigIntNs(endTime),
@@ -1052,6 +1076,7 @@ export const buildMetricSeriesQuery = async ({
     ? // If granularity is not defined (tables), we'll just look behind 5min
       startTime - ms(granularity ?? '5 minute')
     : startTime;
+  const startTimeUnixTs = Math.floor(startTime / 1000);
 
   const whereClause = await buildSearchQueryWhereCondition({
     endTime,
@@ -1059,6 +1084,18 @@ export const buildMetricSeriesQuery = async ({
     query: q,
     startTime: modifiedStartTime,
   });
+
+  const gaugeMetricSelectClause = [
+    granularity != null
+      ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
+          granularity,
+        )}) as timestamp`
+      : modifiedStartTime
+      ? // Manually create the time buckets if we're including the prev time range
+        `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+      : // Otherwise lump everything into one bucket
+        '0 as timestamp',
+  ];
   const selectClause = [
     granularity != null
       ? SqlString.format(
@@ -1070,6 +1107,7 @@ export const buildMetricSeriesQuery = async ({
   ];
 
   if (dataType === MetricsDataType.Gauge || dataType === MetricsDataType.Sum) {
+    gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
     selectClause.push(
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
@@ -1105,21 +1143,58 @@ export const buildMetricSeriesQuery = async ({
     if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
       throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
+  } else if (dataType === MetricsDataType.Summary) {
+    switch (aggFn) {
+      case AggFn.Sum:
+        name = `${name}_sum`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.Count:
+        name = `${name}_count`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.Min:
+        name = `${name}_0`;
+        gaugeMetricSelectClause.push('MIN(value) as value');
+        selectClause.push('MIN(value) as data');
+        break;
+      case AggFn.Max:
+        name = `${name}_1`;
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
+        break;
+      case AggFn.P50:
+        name = `${name}_0.5`;
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
+        break;
+      case AggFn.P90:
+        name = `${name}_0.9`;
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
+        break;
+      case AggFn.P99:
+        name = `${name}_0.99`;
+        gaugeMetricSelectClause.push('MAX(value) as value');
+        selectClause.push('MAX(value) as data');
+        break;
+      default:
+        throw new Error(`Unsupported aggFn for Summary: ${aggFn}`);
+    }
   } else {
     throw new Error(`Unsupported data type: ${dataType}`);
   }
-
-  const startTimeUnixTs = Math.floor(startTime / 1000);
 
   // TODO: Can remove the ORDER BY _string_attributes for Gauge metrics
   // since they don't get subjected to runningDifference afterwards
   const gaugeMetricSource = SqlString.format(
     `
       SELECT
-        ?,
         name,
-        last_value(value) as value,
-        _string_attributes
+        _string_attributes,
+        ?
       FROM ??
       WHERE name = ?
       AND data_type = ?
@@ -1128,17 +1203,7 @@ export const buildMetricSeriesQuery = async ({
       ORDER BY _string_attributes, timestamp ASC
     `.trim(),
     [
-      SqlString.raw(
-        granularity != null
-          ? `toStartOfInterval(timestamp, INTERVAL ${SqlString.format(
-              granularity,
-            )}) as timestamp`
-          : modifiedStartTime
-          ? // Manually create the time buckets if we're including the prev time range
-            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
-          : // Otherwise lump everything into one bucket
-            '0 as timestamp',
-      ),
+      SqlString.raw(gaugeMetricSelectClause.join(',')),
       tableName,
       name,
       dataType,
@@ -1412,18 +1477,18 @@ const buildEventSeriesQuery = async ({
       ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
       : '';
 
-  const groupByColumnNames = groupBy.map(g => {
+  const groupByColumnExpressions = groupBy.map(g => {
     const columnName = buildSearchColumnName(
       propertyTypeMappingsModel.get(g),
       g,
     );
     if (columnName != null) {
-      return columnName;
+      return `toString(${columnName})`;
     }
     throw new Error(`Group by field ${g} does not exist`);
   });
 
-  const hasGroupBy = groupByColumnNames.length > 0;
+  const hasGroupBy = groupByColumnExpressions.length > 0;
 
   const serializer = new SQLSerializer(propertyTypeMappingsModel);
 
@@ -1497,11 +1562,13 @@ const buildEventSeriesQuery = async ({
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
-    hasGroupBy ? `[${groupByColumnNames.join(',')}] as group` : `[] as group`,
+    hasGroupBy
+      ? `[${groupByColumnExpressions.join(',')}] as group`
+      : `[] as group`,
     `${label} as label`,
   ].join(',');
 
-  const groupByClause = ['ts_bucket', ...groupByColumnNames].join(',');
+  const groupByClause = ['ts_bucket', ...groupByColumnExpressions].join(',');
 
   const query = SqlString.format(
     `

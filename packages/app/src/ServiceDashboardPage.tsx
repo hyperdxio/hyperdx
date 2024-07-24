@@ -17,6 +17,8 @@ import {
   Text,
 } from '@mantine/core';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -39,7 +41,6 @@ import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import { MemoPatternTableWithSidePanel } from './PatternTableWithSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { ChartSeries } from './types';
 
@@ -207,7 +208,7 @@ export default function ServiceDashboardPage() {
               onSearch(displayedTimeInputValue);
             }}
           >
-            <SearchTimeRangePicker
+            <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
               onSearch={range => {
@@ -531,13 +532,13 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             displayName: 'Total Query Time',
@@ -563,13 +564,13 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
                           dateRange,
                           60,
                         ),
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             displayName: 'Total Query Count',
@@ -607,7 +608,6 @@ export default function ServiceDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <HDXMultiSeriesTimeChart
-                      defaultDisplayType="stacked_bar"
                       config={{
                         dateRange,
                         granularity: convertDateRangeToGranularityString(
@@ -615,6 +615,7 @@ export default function ServiceDashboardPage() {
                           60,
                         ),
                         seriesReturnType: 'column',
+                        displayType: 'stacked_bar',
                         series: [
                           {
                             type: 'time',
@@ -818,10 +819,10 @@ function RequestErrorRateCard({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <HDXMultiSeriesTimeChart
           key={chartType}
-          defaultDisplayType={chartType === 'overall' ? 'line' : 'stacked_bar'}
           config={{
             dateRange,
             granularity: convertDateRangeToGranularityString(dateRange, 60),
+            displayType: chartType === 'overall' ? 'line' : 'stacked_bar',
             series: [
               {
                 displayName: 'Error Rate %',

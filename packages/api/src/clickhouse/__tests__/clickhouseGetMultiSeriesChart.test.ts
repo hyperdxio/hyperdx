@@ -427,6 +427,72 @@ describe('clickhouse - getMultiSeriesChart', () => {
           team_id: teamId,
         }),
       ]),
+      clickhouse.bulkInsertTeamMetricStream([
+        ...buildMetricSeries({
+          name: 'pg_client_queue_count',
+          tags: { host: 'host-a', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Summary,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 1, timestamp: now },
+            { value: 2, timestamp: now + ms('1m') },
+            { value: 2, timestamp: now + ms('2m') },
+            { value: 2, timestamp: now + ms('3m') },
+            { value: 4, timestamp: now + ms('4m') },
+          ],
+          team_id: teamId,
+        }),
+        ...buildMetricSeries({
+          name: 'pg_client_queue_sum',
+          tags: { host: 'host-a', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Summary,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 3, timestamp: now },
+            { value: 8, timestamp: now + ms('1m') },
+            { value: 10, timestamp: now + ms('2m') },
+            { value: 8, timestamp: now + ms('3m') },
+            { value: 16, timestamp: now + ms('4m') },
+          ],
+          team_id: teamId,
+        }),
+        ...buildMetricSeries({
+          name: 'pg_client_queue_0',
+          tags: { host: 'host-a', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Summary,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 3, timestamp: now },
+            { value: 8, timestamp: now + ms('1m') },
+            { value: 10, timestamp: now + ms('2m') },
+            { value: 8, timestamp: now + ms('3m') },
+            { value: 16, timestamp: now + ms('4m') },
+          ],
+          team_id: teamId,
+        }),
+        ...buildMetricSeries({
+          name: 'pg_client_queue_1',
+          tags: { host: 'host-a', region: 'region-a' },
+          data_type: clickhouse.MetricsDataType.Summary,
+          is_monotonic: false,
+          is_delta: false,
+          unit: '',
+          points: [
+            { value: 3, timestamp: now },
+            { value: 8, timestamp: now + ms('1m') },
+            { value: 10, timestamp: now + ms('2m') },
+            { value: 8, timestamp: now + ms('3m') },
+            { value: 16, timestamp: now + ms('4m') },
+          ],
+          team_id: teamId,
+        }),
+      ]),
     ]);
   });
 
@@ -1344,6 +1410,242 @@ Array [
       "region-a",
     ],
     "series_0.data": 24.444444444444443,
+    "ts_bucket": 1641341040,
+  },
+]
+`);
+  });
+
+  it('Summary (count)', async () => {
+    const data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.Count,
+            field: 'pg_client_queue',
+            where: '',
+            groupBy: ['host'],
+            metricDataType: clickhouse.MetricsDataType.Summary,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('5m'),
+        granularity: '2 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'ts_bucket',
+        'series_0.data_min',
+        'series_0.data_max',
+      ]);
+    });
+
+    expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 3,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 4,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 4,
+    "ts_bucket": 1641341040,
+  },
+]
+`);
+  });
+
+  it('Summary (sum)', async () => {
+    const data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.Sum,
+            field: 'pg_client_queue',
+            where: '',
+            groupBy: ['host'],
+            metricDataType: clickhouse.MetricsDataType.Summary,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('5m'),
+        granularity: '2 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'ts_bucket',
+        'series_0.data_min',
+        'series_0.data_max',
+      ]);
+    });
+
+    expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 11,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 18,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 16,
+    "ts_bucket": 1641341040,
+  },
+]
+`);
+  });
+
+  it('Summary (min)', async () => {
+    const data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.Min,
+            field: 'pg_client_queue',
+            where: '',
+            groupBy: ['host'],
+            metricDataType: clickhouse.MetricsDataType.Summary,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('5m'),
+        granularity: '2 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'ts_bucket',
+        'series_0.data_min',
+        'series_0.data_max',
+      ]);
+    });
+
+    expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 3,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 8,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 16,
+    "ts_bucket": 1641341040,
+  },
+]
+`);
+  });
+
+  it('Summary (max)', async () => {
+    const data = (
+      await clickhouse.getMultiSeriesChart({
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn: clickhouse.AggFn.Max,
+            field: 'pg_client_queue',
+            where: '',
+            groupBy: ['host'],
+            metricDataType: clickhouse.MetricsDataType.Summary,
+          },
+        ],
+        tableVersion: undefined,
+        teamId,
+        startTime: now,
+        endTime: now + ms('5m'),
+        granularity: '2 minute',
+        maxNumGroups: 20,
+        seriesReturnType: clickhouse.SeriesReturnType.Column,
+      })
+    ).data.map(d => {
+      return _.pick(d, [
+        'group',
+        'series_0.data',
+        'ts_bucket',
+        'series_0.data_min',
+        'series_0.data_max',
+      ]);
+    });
+
+    expect(data).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 8,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 10,
+    "ts_bucket": 1641340920,
+  },
+  Object {
+    "group": Array [
+      "host-a",
+    ],
+    "series_0.data": 16,
     "ts_bucket": 1641341040,
   },
 ]

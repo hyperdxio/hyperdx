@@ -9,7 +9,14 @@ import {
 } from 'react';
 import { useRouter } from 'next/router';
 import * as chrono from 'chrono-node';
-import { format, isValid, startOfSecond, sub } from 'date-fns';
+import {
+  format,
+  formatDuration,
+  intervalToDuration,
+  isValid,
+  startOfSecond,
+  sub,
+} from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import {
   NumberParam,
@@ -413,6 +420,7 @@ export type UseTimeQueryInputType = {
   initialDisplayValue?: string;
   /** The initial time range to get values for */
   initialTimeRange: [Date, Date];
+  showRelativeInterval?: boolean;
 };
 
 export type UseTimeQueryReturnType = {
@@ -424,9 +432,16 @@ export type UseTimeQueryReturnType = {
   onTimeRangeSelect: (start: Date, end: Date) => void;
 };
 
+const getRelativeInterval = (start: Date, end: Date): string | undefined => {
+  const duration = intervalToDuration({ start, end });
+  const durationStr = formatDuration(duration);
+  return `Past ${durationStr}`;
+};
+
 export function useNewTimeQuery({
   initialDisplayValue,
   initialTimeRange,
+  showRelativeInterval,
 }: UseTimeQueryInputType): UseTimeQueryReturnType {
   const router = useRouter();
   // We need to return true in SSR to prevent mismatch issues
@@ -482,7 +497,10 @@ export function useNewTimeQuery({
       const end = new Date(to);
       if (isValid(start) && isValid(end)) {
         setSearchedTimeRange([start, end]);
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const relativeInterval =
+          showRelativeInterval && getRelativeInterval(start, end);
+        const dateRangeStr =
+          relativeInterval || dateRangeToString([start, end], isUTC);
         setDisplayedTimeInputValue(dateRangeStr);
       }
     } else if (
@@ -503,6 +521,7 @@ export function useNewTimeQuery({
     to,
     initialDisplayValue,
     initialTimeRange,
+    showRelativeInterval,
   ]);
 
   useEffect(() => {
@@ -527,7 +546,7 @@ export function useNewTimeQuery({
         const dateRangeStr = dateRangeToString([start, end], isUTC);
         setDisplayedTimeInputValue(dateRangeStr);
       },
-      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue],
+      [setTimeRangeQuery, isUTC],
     ),
   };
 }

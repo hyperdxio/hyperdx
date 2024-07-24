@@ -12,6 +12,7 @@ import {
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
+import FieldMultiSelect from './FieldMultiSelect';
 import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
 import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
@@ -43,25 +44,34 @@ export const AGG_FNS = [
   { value: 'count_distinct' as const, label: 'Count Distinct' },
 ];
 
-export const getMetricAggFns = (dataType: MetricsDataType) => {
+export const getMetricAggFns = (
+  dataType: MetricsDataType,
+): { value: AggFn; label: string }[] => {
   if (dataType === MetricsDataType.Histogram) {
     return [
-      { value: 'p99' as const, label: '99th Percentile' },
-      { value: 'p95' as const, label: '95th Percentile' },
-      { value: 'p90' as const, label: '90th Percentile' },
-      { value: 'p50' as const, label: 'Median' },
+      { value: 'p99', label: '99th Percentile' },
+      { value: 'p95', label: '95th Percentile' },
+      { value: 'p90', label: '90th Percentile' },
+      { value: 'p50', label: 'Median' },
+    ];
+  } else if (dataType === MetricsDataType.Summary) {
+    return [
+      { value: 'sum', label: 'Sum' },
+      { value: 'max', label: 'Maximum' },
+      { value: 'min', label: 'Minimum' },
+      { value: 'count', label: 'Sample Count' },
     ];
   }
 
   return [
-    { value: 'sum' as const, label: 'Sum' },
-    { value: 'p99' as const, label: '99th Percentile' },
-    { value: 'p95' as const, label: '95th Percentile' },
-    { value: 'p90' as const, label: '90th Percentile' },
-    { value: 'p50' as const, label: 'Median' },
-    { value: 'avg' as const, label: 'Average' },
-    { value: 'max' as const, label: 'Maximum' },
-    { value: 'min' as const, label: 'Minimum' },
+    { value: 'sum', label: 'Sum' },
+    { value: 'p99', label: '99th Percentile' },
+    { value: 'p95', label: '95th Percentile' },
+    { value: 'p90', label: '90th Percentile' },
+    { value: 'p50', label: 'Median' },
+    { value: 'avg', label: 'Average' },
+    { value: 'max', label: 'Maximum' },
+    { value: 'min', label: 'Minimum' },
   ];
 };
 
@@ -930,12 +940,12 @@ export function ChartSeriesFormCompact({
 }: {
   aggFn: AggFn;
   field: string | undefined;
-  groupBy?: string | undefined;
+  groupBy?: string[] | undefined;
   setAggFn: (fn: AggFn) => void;
   setField: (field: string | undefined) => void;
   setFieldAndAggFn: (field: string | undefined, fn: AggFn) => void;
   setTableAndAggFn?: (table: SourceTable, fn: AggFn) => void;
-  setGroupBy?: (groupBy: string | undefined) => void;
+  setGroupBy?: (groupBy: string[] | undefined) => void;
   setSortOrder?: (sortOrder: SortOrder) => void;
   setWhere: (where: string) => void;
   sortOrder?: string;
@@ -1049,10 +1059,12 @@ export function ChartSeriesFormCompact({
           <div className="d-flex align-items-center">
             <div className="text-muted">Group By</div>
             <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
-              <GroupBySelect
-                groupBy={groupBy}
-                table={table}
-                setGroupBy={setGroupBy}
+              <FieldMultiSelect
+                types={['number', 'bool', 'string']}
+                values={groupBy ?? []}
+                setValues={(values: string[]) => {
+                  setGroupBy(values);
+                }}
               />
             </div>
           </div>
@@ -1093,10 +1105,10 @@ export function ChartSeriesFormCompact({
                 <div className="text-muted fw-500">Group By</div>
                 <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
                   <GroupBySelect
-                    groupBy={groupBy}
+                    groupBy={groupBy?.[0]}
                     fields={field != null ? [field] : []}
                     table={table}
-                    setGroupBy={setGroupBy}
+                    setGroupBy={g => setGroupBy(g != null ? [g] : undefined)}
                   />
                   {/* <MetricTagSelect
                     value={groupBy}

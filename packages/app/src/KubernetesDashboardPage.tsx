@@ -19,6 +19,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import { TimePicker } from '@/components/TimePicker';
+
 import { FormatPodStatus } from './components/KubeComponents';
 import api from './api';
 import {
@@ -34,7 +36,6 @@ import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import SearchTimeRangePicker from './SearchTimeRangePicker';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -818,7 +819,7 @@ export default function KubernetesDashboardPage() {
             }}
             searchQuery={_searchQuery ?? searchQuery}
             placeholder="Node"
-            dropdownClosedWidth={110}
+            dropdownClosedWidth={100}
             icon={<i className="bi bi-hdd-rack"></i>}
           />
           <K8sMetricTagValueSelect
@@ -829,8 +830,19 @@ export default function KubernetesDashboardPage() {
             searchQuery={_searchQuery ?? searchQuery}
             metricAttribute="k8s.namespace.name"
             placeholder="Namespace"
-            dropdownClosedWidth={150}
+            dropdownClosedWidth={140}
             icon={<i className="bi bi-braces"></i>}
+          />
+          <K8sMetricTagValueSelect
+            setSearchQuery={v => {
+              setSearchQuery(v);
+              _setSearchQuery(v);
+            }}
+            searchQuery={_searchQuery ?? searchQuery}
+            metricAttribute="k8s.cluster.name"
+            placeholder="Cluster"
+            dropdownClosedWidth={130}
+            icon={<i className="bi bi-grid"></i>}
           />
           <div style={{ flex: 1 }}>
             <form onSubmit={onSearchSubmit}>
@@ -852,7 +864,7 @@ export default function KubernetesDashboardPage() {
               onSearch(displayedTimeInputValue);
             }}
           >
-            <SearchTimeRangePicker
+            <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
               onSearch={range => {

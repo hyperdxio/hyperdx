@@ -206,6 +206,7 @@ export enum MetricsDataType {
   Gauge = 'Gauge',
   Histogram = 'Histogram',
   Sum = 'Sum',
+  Summary = 'Summary',
 }
 
 export type TimeChartSeries = {
@@ -218,6 +219,7 @@ export type TimeChartSeries = {
   groupBy: string[];
   numberFormat?: NumberFormat;
   color?: string;
+  displayType?: 'stacked_bar' | 'line';
 };
 
 export type TableChartSeries = {

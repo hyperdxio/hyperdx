@@ -1,14 +1,21 @@
 import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import cx from 'classnames';
 import { format } from 'date-fns';
 import { CloseButton } from 'react-bootstrap';
 import { JSONTree } from 'react-json-tree';
-import { ColumnDef, Row } from '@tanstack/react-table';
+import { Alert, Button, Text, Tooltip } from '@mantine/core';
+import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
 import HyperJson from './components/HyperJson';
+import { Icon } from './components/Icon';
+import { StacktraceFrame as StacktraceFrameCmp } from './components/StacktraceFrame';
 import { TableCellButton } from './components/Table';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
 import { FormatTime } from './useFormatTime';
+import { useSourceMappedFrame } from './useSourceMappedFrame';
 import { useLocalStorage } from './utils';
 
 import styles from '../styles/LogSidePanel.module.scss';
@@ -81,38 +88,71 @@ const StacktraceRowExpandButton = ({
 }) => {
   return (
     <TableCellButton
-      label={isOpen ? 'Hide context' : 'Show context'}
+      label=""
       biIcon={isOpen ? 'chevron-up' : 'chevron-down'}
       onClick={onClick}
     />
   );
 };
 
-export const StacktraceRow = ({ row }: { row: Row<StacktraceFrame> }) => {
-  const [lineContextOpen, setLineContextOpen] = React.useState(true);
+export const StacktraceRow = ({
+  row,
+  table,
+}: {
+  row: Row<StacktraceFrame>;
+  table: Table<StacktraceFrame>;
+}) => {
+  const tableMeta = table.options.meta as {
+    firstFrameIndex?: number;
+  };
 
-  const frame = row.original;
-  const hasContext = !!frame.context_line;
+  const [lineContextOpen, setLineContextOpen] = React.useState(
+    row.index === tableMeta.firstFrameIndex,
+  );
 
   const handleToggleContext = React.useCallback(() => {
     setLineContextOpen(!lineContextOpen);
   }, [lineContextOpen]);
 
+  const frame = row.original;
+
+  const { isLoading, enrichedFrame } = useSourceMappedFrame(frame);
+
+  const augmentedFrame = enrichedFrame ?? frame;
+  const hasContext = !!augmentedFrame.context_line;
+
   return (
     <>
-      <div className="w-100 d-flex justify-content-between align-items-center">
+      <div
+        className={cx(
+          'w-100 py-2 px-4 d-flex justify-content-between align-items-center',
+          { [styles.stacktraceRowInteractive]: hasContext },
+        )}
+        onClick={handleToggleContext}
+      >
         <div>
-          {frame.filename}
-          <span className="text-slate-400">{' in '}</span>
-          {frame.function}
-          {frame.lineno || frame.colno ? (
-            <>
-              <span className="text-slate-400">{' at line '}</span>
-              <span className="text-slate-300">
-                {frame.lineno}:{frame.colno}
-              </span>
-            </>
-          ) : null}
+          {!augmentedFrame.in_app && (
+            <Tooltip
+              label="in_app: false"
+              position="top"
+              withArrow
+              color="gray"
+            >
+              <i
+                className="bi bi-box-seam text-slate-400 me-2"
+                title="in_app: false"
+              />
+            </Tooltip>
+          )}
+          {augmentedFrame && (
+            <StacktraceFrameCmp
+              colno={augmentedFrame.colno}
+              filename={augmentedFrame.filename}
+              lineno={augmentedFrame.lineno}
+              function={augmentedFrame.function}
+              isLoading={isLoading}
+            />
+          )}
         </div>
         {hasContext && (
           <StacktraceRowExpandButton
@@ -124,24 +164,28 @@ export const StacktraceRow = ({ row }: { row: Row<StacktraceFrame> }) => {
 
       {lineContextOpen && hasContext && (
         <pre className={styles.lineContext}>
-          {frame.pre_context?.map((line, i) => (
-            <div key={line}>
+          {augmentedFrame.pre_context?.map((line, i) => (
+            <div key={line + i}>
               <span className={styles.lineContextLineNo}>
-                {(frame.lineno ?? 0) - (frame.pre_context?.length ?? 0) + i}
+                {(augmentedFrame.lineno ?? 0) -
+                  (augmentedFrame.pre_context?.length ?? 0) +
+                  i}
               </span>
               {line}
             </div>
           ))}
-          {frame.context_line && (
+          {augmentedFrame.context_line && (
             <div className={styles.lineContextCurrentLine}>
-              <span className={styles.lineContextLineNo}>{frame.lineno}</span>
-              {frame.context_line}
+              <span className={styles.lineContextLineNo}>
+                {augmentedFrame.lineno}
+              </span>
+              {augmentedFrame.context_line}
             </div>
           )}
-          {frame.post_context?.map((line, i) => (
-            <div key={line}>
+          {augmentedFrame.post_context?.map((line, i) => (
+            <div key={line + i}>
               <span className={styles.lineContextLineNo}>
-                {frame.lineno + i + 1}
+                {augmentedFrame.lineno + i + 1}
               </span>
               {line}
             </div>
@@ -442,7 +486,7 @@ export const NetworkBody = ({
 /**
  * Keyboard shortcuts
  */
-const Kbd = ({ children }: { children: string }) => (
+export const Kbd = ({ children }: { children: string }) => (
   <div className={styles.kbd}>{children}</div>
 );
 
@@ -481,5 +525,37 @@ export const LogSidePanelKbdShortcuts = () => {
         />
       </div>
     </div>
+  );
+};
+
+export const SourceMapsFtux = () => {
+  const [isDismissed, setIsDismissed] = useLocalStorage(
+    'sourceMapsFtuxDismissed',
+    false,
+  );
+
+  if (isDismissed) {
+    return null;
+  }
+
+  return (
+    <Alert
+      color="gray"
+      withCloseButton
+      py="xs"
+      mt="xs"
+      onClose={() => setIsDismissed(true)}
+    >
+      <Text size="xs" c="gray.4">
+        <Icon name="code-square" /> Some of the stack frames are pointing to
+        minified files. Use hyperdx-cli to upload your source maps and see the
+        original code.
+      </Text>
+      <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
+        <Button size="compact-xs" variant="light" mt="xs">
+          See docs
+        </Button>
+      </Link>
+    </Alert>
   );
 };
