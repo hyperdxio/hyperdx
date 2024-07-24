@@ -747,7 +747,7 @@ if is_object(.r) {
   }
 
   # extract common resource attributes 
-  if !is_nullish(.b.process.tag."deployment.environment") {
+  if is_nullish(.b."deployment.environment") && !is_nullish(.b.process.tag."deployment.environment") {
     .b."deployment.environment" = .b.process.tag."deployment.environment"
   }
 
