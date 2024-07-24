@@ -285,6 +285,21 @@ export const SearchPageFilters = ({
     }));
   }, [services]);
 
+  const environmentsOptions = React.useMemo(() => {
+    const allAttrs = Object.values(services?.data ?? {});
+    const envs = new Set<string>();
+    for (const attrs of allAttrs) {
+      if (attrs.length > 0) {
+        for (const attr of attrs) {
+          if (attr['deployment.environment']) {
+            envs.add(attr['deployment.environment']);
+          }
+        }
+      }
+    }
+    return Array.from(envs).map(env => ({ value: env, label: env }));
+  }, [services]);
+
   const { setFilterValue, filters, clearFilter } = useSearchPageFilterState({
     searchQuery,
     onSearchQueryChange,
@@ -330,6 +345,18 @@ export const SearchPageFilters = ({
             onChange={value => setFilterValue('service', value)}
             onClearClick={() => clearFilter('service')}
             onOnlyClick={value => setFilterValue('service', value, true)}
+          />
+
+          <FilterGroup
+            name="Environment"
+            options={environmentsOptions}
+            optionsLoading={isServicesLoading}
+            selectedValues={filters['deployment.environment']}
+            onChange={value => setFilterValue('deployment.environment', value)}
+            onClearClick={() => clearFilter('deployment.environment')}
+            onOnlyClick={value =>
+              setFilterValue('deployment.environment', value, true)
+            }
           />
         </Stack>
       </ScrollArea>
