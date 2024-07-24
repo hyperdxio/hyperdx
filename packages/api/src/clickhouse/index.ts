@@ -675,7 +675,7 @@ export const getMetricsNames = async ({
         any(unit) AS unit,
         data_type,
         if(
-          data_type = ?,
+          data_type IN (?),
           format(
               '{} - {}',
               replaceRegexpOne(name, '_[^_]+$', ''),
@@ -691,7 +691,7 @@ export const getMetricsNames = async ({
       ORDER BY name
     `,
     [
-      MetricsDataType.Summary,
+      [MetricsDataType.Summary, MetricsDataType.Histogram],
       tableName,
       Object.values(MetricsDataType),
       msToBigIntNs(startTime),
@@ -753,7 +753,7 @@ export const getMetricsTags = async ({
         groupUniqArray(_string_attributes) AS tags,
         data_type,
         if(
-          data_type = ?,
+          data_type IN (?),
           format(
               '{} - {}',
               replaceRegexpOne(name, '_[^_]+$', ''),
@@ -769,10 +769,12 @@ export const getMetricsTags = async ({
       GROUP BY name, data_type
     `,
         [
-          MetricsDataType.Summary,
+          [MetricsDataType.Summary, MetricsDataType.Histogram],
           tableName,
           SqlString.raw(
-            m.dataType === MetricsDataType.Summary
+            [MetricsDataType.Summary, MetricsDataType.Histogram].includes(
+              m.dataType,
+            )
               ? // FIXME: since the summary data type doesn't include the postfix
                 SqlString.format('name LIKE ?', [`${m.name}_%`])
               : SqlString.format('name = ?', [m.name]),
