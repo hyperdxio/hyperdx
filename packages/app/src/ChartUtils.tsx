@@ -49,10 +49,12 @@ export const getMetricAggFns = (
 ): { value: AggFn; label: string }[] => {
   if (dataType === MetricsDataType.Histogram) {
     return [
+      { value: 'sum', label: 'Sum' },
       { value: 'p99', label: '99th Percentile' },
       { value: 'p95', label: '95th Percentile' },
       { value: 'p90', label: '90th Percentile' },
       { value: 'p50', label: 'Median' },
+      { value: 'count', label: 'Sample Count' },
     ];
   } else if (dataType === MetricsDataType.Summary) {
     return [

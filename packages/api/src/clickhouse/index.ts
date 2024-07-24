@@ -1061,6 +1061,7 @@ export const buildMetricSeriesQuery = async ({
   const tableName = `default.${TableName.Metric}`;
 
   const isRate = isRateAggFn(aggFn);
+  let isHistogram = false;
 
   const groupByColumnNames = groupBy.map(g => {
     return SqlString.format(`_string_attributes[?]`, [g]);
@@ -1142,8 +1143,35 @@ export const buildMetricSeriesQuery = async ({
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else if (dataType === MetricsDataType.Histogram) {
-    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
-      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+    switch (aggFn) {
+      case AggFn.Sum:
+        name = `${name}_sum`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.Count:
+        name = `${name}_count`;
+        gaugeMetricSelectClause.push('SUM(value) as value');
+        selectClause.push('SUM(value) as data');
+        break;
+      case AggFn.P50:
+        isHistogram = true;
+        name = `${name}_bucket`;
+        break;
+      case AggFn.P90:
+        isHistogram = true;
+        name = `${name}_bucket`;
+        break;
+      case AggFn.P95:
+        isHistogram = true;
+        name = `${name}_bucket`;
+        break;
+      case AggFn.P99:
+        isHistogram = true;
+        name = `${name}_bucket`;
+        break;
+      default:
+        throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
   } else if (dataType === MetricsDataType.Summary) {
     switch (aggFn) {
@@ -1384,11 +1412,10 @@ export const buildMetricSeriesQuery = async ({
 
   // TODO: merge this with the histogram query
   const source = isRate ? rateMetricSource : gaugeMetricSource;
-  const query =
-    dataType === MetricsDataType.Histogram
-      ? histogramQuery
-      : SqlString.format(
-          `
+  const query = isHistogram
+    ? histogramQuery
+    : SqlString.format(
+        `
       WITH metrics AS (?)
       SELECT ?
       FROM metrics
@@ -1403,20 +1430,20 @@ export const buildMetricSeriesQuery = async ({
           : ''
       }
     `,
-          [
-            SqlString.raw(source),
-            SqlString.raw(selectClause.join(',')),
-            ...(granularity != null
-              ? [
-                  startTime / 1000,
-                  granularity,
-                  endTime / 1000,
-                  granularity,
-                  ms(granularity) / 1000,
-                ]
-              : []),
-          ],
-        );
+        [
+          SqlString.raw(source),
+          SqlString.raw(selectClause.join(',')),
+          ...(granularity != null
+            ? [
+                startTime / 1000,
+                granularity,
+                endTime / 1000,
+                granularity,
+                ms(granularity) / 1000,
+              ]
+            : []),
+        ],
+      );
 
   return {
     query,
