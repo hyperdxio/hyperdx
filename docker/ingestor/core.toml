@@ -746,7 +746,7 @@ if is_object(.r) {
     .b."k8s.deployment.name" = .b.process.tag."k8s.deployment.name"
   }
 
-  # extract common resource attributes 
+  # copy common resource attributes to the top level
   if is_nullish(.b."deployment.environment") && !is_nullish(.b.process.tag."deployment.environment") {
     .b."deployment.environment" = .b.process.tag."deployment.environment"
   }
