@@ -59,7 +59,7 @@ export const getMetricAggFns = (
       { value: 'sum', label: 'Sum' },
       { value: 'max', label: 'Maximum' },
       { value: 'min', label: 'Minimum' },
-      { value: 'count', label: 'Count' },
+      { value: 'count', label: 'Sample Count' },
     ];
   }
 
