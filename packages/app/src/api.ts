@@ -39,6 +39,7 @@ type ServicesResponse = {
   data: Record<
     string,
     Array<{
+      'deployment.environment'?: string;
       'k8s.namespace.name'?: string;
       'k8s.pod.name'?: string;
       'k8s.pod.uid'?: string;
