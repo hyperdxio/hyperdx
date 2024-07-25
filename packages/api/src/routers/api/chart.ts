@@ -24,7 +24,12 @@ router.get('/services', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const FIELDS = ['k8s.namespace.name', 'k8s.pod.name', 'k8s.pod.uid'];
+    const FIELDS = [
+      'deployment.environment',
+      'k8s.namespace.name',
+      'k8s.pod.name',
+      'k8s.pod.uid',
+    ];
     const nowInMs = Date.now();
     const startTime = nowInMs - ms('5d');
     const endTime = nowInMs;
