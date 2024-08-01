@@ -58,9 +58,8 @@ COPY --from=builder /app/package.json ./package.json
 
 USER nextjs
 
-ARG PORT
-
-ENV PORT=$PORT
+# Static API Server Port
+ENV PORT=8080
 
 EXPOSE ${PORT}
 

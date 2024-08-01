@@ -30,7 +30,6 @@ import { version } from '../package.json';
 
 import api from './api';
 import {
-  AppNavCloudBanner,
   AppNavHelpMenu,
   AppNavUserMenu,
 } from './AppNav.components';
@@ -1005,12 +1004,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           </div>
           {!isCollapsed && (
             <>
-              <div
-                style={{ width: navWidth, paddingBottom: 80 }}
-                className="px-3 mb-2 mt-4"
-              >
-                <AppNavCloudBanner />
-              </div>
             </>
           )}
         </ScrollArea>

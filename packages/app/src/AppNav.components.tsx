@@ -17,26 +17,6 @@ import InstallInstructionModal from './InstallInstructionsModal';
 
 import styles from '../styles/AppNav.module.scss';
 
-export const AppNavCloudBanner = () => {
-  return (
-    <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-      <span className="text-slate-300 fs-8">Ready to use HyperDX Cloud?</span>
-      <div className="mt-2 mb-2">
-        <Link href="https://www.hyperdx.io/register" passHref legacyBehavior>
-          <Button
-            variant="light"
-            size="xs"
-            component="a"
-            className="hover-color-white"
-          >
-            Get Started for Free
-          </Button>
-        </Link>
-      </div>
-    </div>
-  );
-};
-
 type AppNavUserMenuProps = {
   isCollapsed?: boolean;
   userName?: string;

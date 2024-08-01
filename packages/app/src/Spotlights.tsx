@@ -133,17 +133,6 @@ const useSpotlightActions = () => {
           router.push('https://www.hyperdx.io/docs');
         },
       },
-      {
-        id: 'cloud',
-        group: 'Menu',
-        leftSection: <Logo />,
-        label: 'HyperDX Cloud',
-        description: 'Ready to use HyperDX Cloud? Get started for free.',
-        keywords: ['account', 'profile'],
-        onClick: () => {
-          router.push('https://hyperdx.io/register');
-        },
-      },
     );
 
     return logViewActions;
