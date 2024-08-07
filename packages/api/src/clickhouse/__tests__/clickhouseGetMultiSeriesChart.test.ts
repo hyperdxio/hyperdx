@@ -117,7 +117,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_lower_bound',
+          name: 'test.two_timestamps_lower_bound_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -137,7 +137,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_lower_bound_inf',
+          name: 'test.two_timestamps_lower_bound_inf_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -157,7 +157,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_higher_bound',
+          name: 'test.two_timestamps_higher_bound_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -177,7 +177,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_higher_bound_inf',
+          name: 'test.two_timestamps_higher_bound_inf_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -197,7 +197,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_zero_offset',
+          name: 'test.two_timestamps_zero_offset_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -217,7 +217,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.two_timestamps_non_zero_offset',
+          name: 'test.two_timestamps_non_zero_offset_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -237,7 +237,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.three_timestamps',
+          name: 'test.three_timestamps_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -261,7 +261,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.three_timestamps_group_by',
+          name: 'test.three_timestamps_group_by_bucket',
           tags: { host: 'host-a', region: 'region-a' },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -285,7 +285,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.three_timestamps_group_by',
+          name: 'test.three_timestamps_group_by_bucket',
           tags: { host: 'host-b', region: 'region-a' },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -309,7 +309,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.four_timestamps',
+          name: 'test.four_timestamps_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -336,7 +336,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream(
         buildMetricSeries({
-          name: 'test.counter_reset_with_inconsistent_bucket_resolution',
+          name: 'test.counter_reset_with_inconsistent_bucket_resolution_bucket',
           tags: { host: 'test2', runId },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -367,7 +367,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
       ),
       clickhouse.bulkInsertTeamMetricStream([
         ...buildMetricSeries({
-          name: 'test.counter_might_reset',
+          name: 'test.counter_might_reset_bucket',
           tags: { host: 'host-a', region: 'region-a' },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
@@ -397,7 +397,7 @@ describe('clickhouse - getMultiSeriesChart', () => {
           team_id: teamId,
         }),
         ...buildMetricSeries({
-          name: 'test.counter_might_reset',
+          name: 'test.counter_might_reset_bucket',
           tags: { host: 'host-b', region: 'region-a' },
           data_type: clickhouse.MetricsDataType.Histogram,
           is_monotonic: false,
