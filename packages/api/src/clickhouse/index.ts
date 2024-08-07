@@ -1146,12 +1146,12 @@ export const buildMetricSeriesQuery = async ({
     switch (aggFn) {
       case AggFn.Sum:
         name = `${name}_sum`;
-        gaugeMetricSelectClause.push('SUM(value) as value');
+        gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
         selectClause.push('SUM(value) as data');
         break;
       case AggFn.Count:
         name = `${name}_count`;
-        gaugeMetricSelectClause.push('SUM(value) as value');
+        gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
         selectClause.push('SUM(value) as data');
         break;
       case AggFn.P50:
