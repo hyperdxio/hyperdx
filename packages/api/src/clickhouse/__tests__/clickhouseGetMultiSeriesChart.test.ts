@@ -874,55 +874,104 @@ Array [
   });
 
   it('three_timestamps histogram (sum + count)', async () => {
-    const sumData = (
-      await clickhouse.getMultiSeriesChart({
-        series: [
-          {
-            type: 'time',
-            table: 'metrics',
-            aggFn: clickhouse.AggFn.Sum,
-            field: 'test.three_timestamps',
-            where: `runId:${runId}`,
-            groupBy: [],
-            metricDataType: clickhouse.MetricsDataType.Histogram,
-          },
-        ],
-        tableVersion: undefined,
-        teamId,
-        startTime: now,
-        endTime: now + ms('3m'),
-        granularity: '1 minute',
-        maxNumGroups: 20,
-        seriesReturnType: clickhouse.SeriesReturnType.Column,
-      })
-    ).data.map(d => {
-      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
-    });
-
-    const countData = (
-      await clickhouse.getMultiSeriesChart({
-        series: [
-          {
-            type: 'time',
-            table: 'metrics',
-            aggFn: clickhouse.AggFn.Count,
-            field: 'test.three_timestamps',
-            where: `runId:${runId}`,
-            groupBy: [],
-            metricDataType: clickhouse.MetricsDataType.Histogram,
-          },
-        ],
-        tableVersion: undefined,
-        teamId,
-        startTime: now,
-        endTime: now + ms('3m'),
-        granularity: '1 minute',
-        maxNumGroups: 20,
-        seriesReturnType: clickhouse.SeriesReturnType.Column,
-      })
-    ).data.map(d => {
-      return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
-    });
+    const [sumData, sumRateData, countData, countRateData] = await Promise.all([
+      (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.Sum,
+              field: 'test.three_timestamps',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('3m'),
+          granularity: '1 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      }),
+      (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.SumRate,
+              field: 'test.three_timestamps',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('3m'),
+          granularity: '1 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      }),
+      (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.Count,
+              field: 'test.three_timestamps',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('3m'),
+          granularity: '1 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      }),
+      (
+        await clickhouse.getMultiSeriesChart({
+          series: [
+            {
+              type: 'time',
+              table: 'metrics',
+              aggFn: clickhouse.AggFn.CountRate,
+              field: 'test.three_timestamps',
+              where: `runId:${runId}`,
+              groupBy: [],
+              metricDataType: clickhouse.MetricsDataType.Histogram,
+            },
+          ],
+          tableVersion: undefined,
+          teamId,
+          startTime: now,
+          endTime: now + ms('3m'),
+          granularity: '1 minute',
+          maxNumGroups: 20,
+          seriesReturnType: clickhouse.SeriesReturnType.Column,
+        })
+      ).data.map(d => {
+        return _.pick(d, ['group', 'series_0.data', 'ts_bucket']);
+      }),
+    ]);
 
     expect(sumData).toMatchInlineSnapshot(`
 Array [
@@ -943,6 +992,25 @@ Array [
   },
 ]
 `);
+    expect(sumRateData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 2,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 1,
+    "ts_bucket": 1641340920,
+  },
+]
+`);
 
     expect(countData).toMatchInlineSnapshot(`
 Array [
@@ -959,6 +1027,25 @@ Array [
   Object {
     "group": Array [],
     "series_0.data": 3,
+    "ts_bucket": 1641340920,
+  },
+]
+`);
+    expect(countRateData).toMatchInlineSnapshot(`
+Array [
+  Object {
+    "group": Array [],
+    "series_0.data": 0,
+    "ts_bucket": 1641340800,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 2,
+    "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 1,
     "ts_bucket": 1641340920,
   },
 ]
