@@ -62,6 +62,7 @@ export enum AggFn {
   Avg = 'avg',
   AvgRate = 'avg_rate',
   Count = 'count',
+  CountRate = 'count_rate',
   CountDistinct = 'count_distinct',
   CountPerHour = 'count_per_hour',
   CountPerMin = 'count_per_min',
@@ -828,6 +829,7 @@ export const getMetricsTags = async ({
 
 export const isRateAggFn = (aggFn: AggFn) => {
   return (
+    aggFn === AggFn.CountRate ||
     aggFn === AggFn.SumRate ||
     aggFn === AggFn.AvgRate ||
     aggFn === AggFn.MaxRate ||
@@ -1148,28 +1150,36 @@ export const buildMetricSeriesQuery = async ({
 
     switch (aggFn) {
       case AggFn.Sum:
+      case AggFn.SumRate:
         name = `${name}_sum`;
         gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
-        selectClause.push('SUM(value) as data');
+        selectClause.push(`SUM(${isRate ? 'rate' : 'value'}) as data`);
         break;
       case AggFn.Count:
+      case AggFn.CountRate:
         name = `${name}_count`;
         gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
-        selectClause.push('SUM(value) as data');
+        selectClause.push(`SUM(${isRate ? 'rate' : 'value'}) as data`);
         break;
+      // FIXME: currently non-rate percentiles are not supported
+      // FIXME: the old p50, p90, p95, p99 are incorrect; they are meant to be rate percentiles
       case AggFn.P50:
+      case AggFn.P50Rate:
         isHistogram = true;
         name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P90:
+      case AggFn.P90Rate:
         isHistogram = true;
         name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P95:
+      case AggFn.P95Rate:
         isHistogram = true;
         name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P99:
+      case AggFn.P99Rate:
         isHistogram = true;
         name = isOlderVersion ? name : `${name}_bucket`;
         break;

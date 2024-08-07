@@ -432,7 +432,11 @@ export function MetricSelect({
               metric => metric.name === name,
             )?.data_type;
 
-            const newAggFn = aggFnWithMaybeRate(aggFn, metricType === 'Sum');
+            const newAggFn = aggFnWithMaybeRate(
+              aggFn,
+              metricType === MetricsDataType.Sum ||
+                metricType === MetricsDataType.Histogram,
+            );
 
             setFieldAndAggFn(name, newAggFn);
           }}
@@ -469,7 +473,8 @@ export function MetricRateSelect({
 
   return (
     <>
-      {metricType === 'Sum' ? (
+      {metricType === MetricsDataType.Sum ||
+      metricType === MetricsDataType.Histogram ? (
         <Checkbox
           title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
           id="metric-use-rate"
