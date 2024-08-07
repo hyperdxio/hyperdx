@@ -181,6 +181,7 @@ export type AggFn =
   | 'avg'
   | 'count_distinct'
   | 'count'
+  | 'count_rate'
   | 'count_per_sec'
   | 'count_per_min'
   | 'count_per_hour'

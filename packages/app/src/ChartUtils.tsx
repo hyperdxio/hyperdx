@@ -471,6 +471,8 @@ export function MetricRateSelect({
       ?.data_type;
   }, [metricNamesData, metricName]);
 
+  const isDisabled = metricType === MetricsDataType.Histogram;
+
   return (
     <>
       {metricType === MetricsDataType.Sum ||
@@ -482,6 +484,7 @@ export function MetricRateSelect({
           labelClassName="fs-7"
           checked={isRate}
           onChange={() => setIsRate(!isRate)}
+          disabled={isDisabled}
           label="Use Increase"
         />
       ) : null}
