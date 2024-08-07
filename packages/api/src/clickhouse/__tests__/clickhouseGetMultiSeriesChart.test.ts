@@ -890,7 +890,7 @@ Array [
         tableVersion: undefined,
         teamId,
         startTime: now,
-        endTime: now + ms('2m'),
+        endTime: now + ms('3m'),
         granularity: '1 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
@@ -915,7 +915,7 @@ Array [
         tableVersion: undefined,
         teamId,
         startTime: now,
-        endTime: now + ms('2m'),
+        endTime: now + ms('3m'),
         granularity: '1 minute',
         maxNumGroups: 20,
         seriesReturnType: clickhouse.SeriesReturnType.Column,
@@ -936,6 +936,11 @@ Array [
     "series_0.data": 2,
     "ts_bucket": 1641340860,
   },
+  Object {
+    "group": Array [],
+    "series_0.data": 3,
+    "ts_bucket": 1641340920,
+  },
 ]
 `);
 
@@ -950,6 +955,11 @@ Array [
     "group": Array [],
     "series_0.data": 2,
     "ts_bucket": 1641340860,
+  },
+  Object {
+    "group": Array [],
+    "series_0.data": 3,
+    "ts_bucket": 1641340920,
   },
 ]
 `);
