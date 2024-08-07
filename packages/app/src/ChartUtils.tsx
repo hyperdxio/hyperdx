@@ -398,6 +398,12 @@ export function MetricSelect({
   // TODO: Dedup with metric rate checkbox
   const { data: metricNamesData, isLoading, isError } = api.useMetricsNames();
 
+  // TODO: depcrcate this (backward compatibility)
+  if (metricName?.endsWith('- Histogram')) {
+    // patch for old histogram metric names
+    metricName = metricName.replace('_bucket', '');
+  }
+
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
       if (aggFn.includes('_rate')) {

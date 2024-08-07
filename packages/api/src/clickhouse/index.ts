@@ -1143,6 +1143,9 @@ export const buildMetricSeriesQuery = async ({
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else if (dataType === MetricsDataType.Histogram) {
+    // TODO: remove this (backward compatibility)
+    const isOlderVersion = name.endsWith('_bucket');
+
     switch (aggFn) {
       case AggFn.Sum:
         name = `${name}_sum`;
@@ -1156,19 +1159,19 @@ export const buildMetricSeriesQuery = async ({
         break;
       case AggFn.P50:
         isHistogram = true;
-        name = `${name}_bucket`;
+        name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P90:
         isHistogram = true;
-        name = `${name}_bucket`;
+        name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P95:
         isHistogram = true;
-        name = `${name}_bucket`;
+        name = isOlderVersion ? name : `${name}_bucket`;
         break;
       case AggFn.P99:
         isHistogram = true;
-        name = `${name}_bucket`;
+        name = isOlderVersion ? name : `${name}_bucket`;
         break;
       default:
         throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
