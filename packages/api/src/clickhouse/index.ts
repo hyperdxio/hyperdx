@@ -1,10 +1,10 @@
 import {
-  BaseResultSet,
   createClient,
   ErrorLogParams as _CHErrorLogParams,
   Logger as _CHLogger,
   LogParams as _CHLogParams,
   ResponseJSON,
+  ResultSet,
   SettingsMap,
 } from '@clickhouse/client';
 import opentelemetry from '@opentelemetry/api';
@@ -13,7 +13,6 @@ import _ from 'lodash';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
-import { Readable } from 'stream';
 import { z } from 'zod';
 
 import * as config from '@/config';
@@ -578,9 +577,7 @@ export const getCHServerMetrics = async () => {
     query,
     format: 'JSON',
   });
-  const result = await rows.json<
-    ResponseJSON<{ metric: string; value: string }>
-  >();
+  const result = await rows.json<{ metric: string; value: string }>();
   logger.info({
     message: 'getCHServerMetrics',
     query,
@@ -1745,13 +1742,11 @@ export const queryMultiSeriesChart = async ({
     format: 'JSON',
   });
 
-  const result = await rows.json<
-    ResponseJSON<{
-      ts_bucket: number;
-      group: string[];
-      [series_data: `series_${number}.data`]: number;
-    }>
-  >();
+  const result = await rows.json<{
+    ts_bucket: number;
+    group: string[];
+    [series_data: `series_${number}.data`]: number;
+  }>();
   return result;
 };
 
@@ -2924,7 +2919,7 @@ export const getLogBatchGroupedByBody = async ({
     ],
   );
 
-  type Response = ResponseJSON<{
+  type Response = {
     body: string;
     buckets: string[];
     ids: string[];
@@ -2933,9 +2928,9 @@ export const getLogBatchGroupedByBody = async ({
     lines_count: string;
     service: string;
     timestamps: string[];
-  }>;
+  };
 
-  let result: Response;
+  let result: ResponseJSON<Response>;
 
   await tracer.startActiveSpan(
     'clickhouse.getLogBatchGroupedByBody',
@@ -3016,16 +3011,14 @@ export const getLogBatch = async ({
         ),
       },
     });
-    result = await rows.json<
-      ResponseJSON<{
-        id: string;
-        timestamp: string;
-        severity_text: string;
-        body: string;
-        _host: string;
-        _source: string;
-      }>
-    >();
+    result = await rows.json<{
+      id: string;
+      timestamp: string;
+      severity_text: string;
+      body: string;
+      _host: string;
+      _source: string;
+    }>();
     span.setAttribute('results', result.data.length);
     span.end();
   });
@@ -3074,7 +3067,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: BaseResultSet<Readable>;
+  let resultSet: ResultSet<'JSONEachRow'>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -3133,7 +3126,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: BaseResultSet<Readable>;
+  let resultSet: ResultSet<'JSONEachRow'>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
