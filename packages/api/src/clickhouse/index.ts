@@ -158,10 +158,11 @@ export class CHLogger implements _CHLogger {
 
 // TODO: move this to somewhere else
 export const client = createClient({
-  host: config.CLICKHOUSE_HOST,
+  url: config.CLICKHOUSE_HOST,
   username: config.CLICKHOUSE_USER,
   password: config.CLICKHOUSE_PASSWORD,
   request_timeout: ms('1m'),
+  application: 'hyperdx',
   compression: {
     request: false,
     response: false, // has to be off to enable streaming
@@ -171,8 +172,7 @@ export const client = createClient({
     // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
     // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
     // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    socket_ttl: 60000,
-    retry_on_expired_socket: true,
+    idle_socket_ttl: 2500,
   },
   clickhouse_settings: {
     connect_timeout: ms('1m') / 1000,
