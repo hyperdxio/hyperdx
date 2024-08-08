@@ -61,6 +61,7 @@ export enum AggFn {
   Avg = 'avg',
   AvgRate = 'avg_rate',
   Count = 'count',
+  CountRate = 'count_rate',
   CountDistinct = 'count_distinct',
   CountPerHour = 'count_per_hour',
   CountPerMin = 'count_per_min',
@@ -670,7 +671,7 @@ export const getMetricsNames = async ({
         any(unit) AS unit,
         data_type,
         if(
-          data_type = ?,
+          data_type IN (?),
           format(
               '{} - {}',
               replaceRegexpOne(name, '_[^_]+$', ''),
@@ -686,7 +687,7 @@ export const getMetricsNames = async ({
       ORDER BY name
     `,
     [
-      MetricsDataType.Summary,
+      [MetricsDataType.Summary, MetricsDataType.Histogram],
       tableName,
       Object.values(MetricsDataType),
       msToBigIntNs(startTime),
@@ -746,7 +747,7 @@ export const getMetricsTags = async ({
         groupUniqArray(_string_attributes) AS tags,
         data_type,
         if(
-          data_type = ?,
+          data_type IN (?),
           format(
               '{} - {}',
               replaceRegexpOne(name, '_[^_]+$', ''),
@@ -762,10 +763,12 @@ export const getMetricsTags = async ({
       GROUP BY name, data_type
     `,
         [
-          MetricsDataType.Summary,
+          [MetricsDataType.Summary, MetricsDataType.Histogram],
           tableName,
           SqlString.raw(
-            m.dataType === MetricsDataType.Summary
+            [MetricsDataType.Summary, MetricsDataType.Histogram].includes(
+              m.dataType,
+            )
               ? // FIXME: since the summary data type doesn't include the postfix
                 SqlString.format('name LIKE ?', [`${m.name}_%`])
               : SqlString.format('name = ?', [m.name]),
@@ -817,6 +820,7 @@ export const getMetricsTags = async ({
 
 export const isRateAggFn = (aggFn: AggFn) => {
   return (
+    aggFn === AggFn.CountRate ||
     aggFn === AggFn.SumRate ||
     aggFn === AggFn.AvgRate ||
     aggFn === AggFn.MaxRate ||
@@ -1048,6 +1052,7 @@ export const buildMetricSeriesQuery = async ({
   const tableName = `default.${TableName.Metric}`;
 
   const isRate = isRateAggFn(aggFn);
+  let isHistogram = false;
 
   const groupByColumnNames = groupBy.map(g => {
     return SqlString.format(`_string_attributes[?]`, [g]);
@@ -1129,8 +1134,46 @@ export const buildMetricSeriesQuery = async ({
           })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else if (dataType === MetricsDataType.Histogram) {
-    if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
-      throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
+    // TODO: remove this (backward compatibility)
+    const isOlderVersion = name.endsWith('_bucket');
+
+    switch (aggFn) {
+      case AggFn.Sum:
+      case AggFn.SumRate:
+        name = `${name}_sum`;
+        gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
+        selectClause.push(`SUM(${isRate ? 'rate' : 'value'}) as data`);
+        break;
+      case AggFn.Count:
+      case AggFn.CountRate:
+        name = `${name}_count`;
+        gaugeMetricSelectClause.push('LAST_VALUE(value) as value');
+        selectClause.push(`SUM(${isRate ? 'rate' : 'value'}) as data`);
+        break;
+      // FIXME: currently non-rate percentiles are not supported
+      // FIXME: the old p50, p90, p95, p99 are incorrect; they are meant to be rate percentiles
+      case AggFn.P50:
+      case AggFn.P50Rate:
+        isHistogram = true;
+        name = isOlderVersion ? name : `${name}_bucket`;
+        break;
+      case AggFn.P90:
+      case AggFn.P90Rate:
+        isHistogram = true;
+        name = isOlderVersion ? name : `${name}_bucket`;
+        break;
+      case AggFn.P95:
+      case AggFn.P95Rate:
+        isHistogram = true;
+        name = isOlderVersion ? name : `${name}_bucket`;
+        break;
+      case AggFn.P99:
+      case AggFn.P99Rate:
+        isHistogram = true;
+        name = isOlderVersion ? name : `${name}_bucket`;
+        break;
+      default:
+        throw new Error(`Unsupported aggFn for Histogram: ${aggFn}`);
     }
   } else if (dataType === MetricsDataType.Summary) {
     switch (aggFn) {
@@ -1371,11 +1414,10 @@ export const buildMetricSeriesQuery = async ({
 
   // TODO: merge this with the histogram query
   const source = isRate ? rateMetricSource : gaugeMetricSource;
-  const query =
-    dataType === MetricsDataType.Histogram
-      ? histogramQuery
-      : SqlString.format(
-          `
+  const query = isHistogram
+    ? histogramQuery
+    : SqlString.format(
+        `
       WITH metrics AS (?)
       SELECT ?
       FROM metrics
@@ -1390,20 +1432,20 @@ export const buildMetricSeriesQuery = async ({
           : ''
       }
     `,
-          [
-            SqlString.raw(source),
-            SqlString.raw(selectClause.join(',')),
-            ...(granularity != null
-              ? [
-                  startTime / 1000,
-                  granularity,
-                  endTime / 1000,
-                  granularity,
-                  ms(granularity) / 1000,
-                ]
-              : []),
-          ],
-        );
+        [
+          SqlString.raw(source),
+          SqlString.raw(selectClause.join(',')),
+          ...(granularity != null
+            ? [
+                startTime / 1000,
+                granularity,
+                endTime / 1000,
+                granularity,
+                ms(granularity) / 1000,
+              ]
+            : []),
+        ],
+      );
 
   return {
     query,
