@@ -84,7 +84,7 @@ router.get('/:sessionId/rrweb', async (req, res, next) => {
       offset: offsetNum,
     });
 
-    stream.on('data', (rows: Row[]) => {
+    stream.on('data', rows => {
       res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
       res.flush();
     });
