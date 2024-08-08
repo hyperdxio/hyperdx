@@ -1,0 +1,152 @@
+{{- if .Values.aggregator.enabled }}
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "hyperdx.aggregator.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: aggregator
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.aggregator.replicaCount }}
+  {{- if .Values.aggregator.updateStrategy }}
+  strategy: {{- toYaml .Values.aggregator.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.aggregator.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+      app.kubernetes.io/component: aggregator
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.aggregator.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        checksum/default-configmap: {{ include (print $.Template.BasePath "/aggregator/default-configmap.yaml") . | sha256sum }}
+        {{- if .Values.aggregator.extraConfig }}
+        checksum/extra-configmap: {{ include (print $.Template.BasePath "/aggregator/extra-configmap.yaml") . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+        app.kubernetes.io/component: aggregator
+    spec:
+      serviceAccountName: {{ template "hyperdx.serviceAccountName" . }}
+      {{- include "hyperdx.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.aggregator.automountServiceAccountToken }}
+      {{- if .Values.aggregator.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aggregator.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.aggregator.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.aggregator.podAffinityPreset "component" "aggregator" "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.aggregator.podAntiAffinityPreset "component" "aggregator" "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.aggregator.nodeAffinityPreset.type "key" .Values.aggregator.nodeAffinityPreset.key "values" .Values.aggregator.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.aggregator.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.aggregator.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aggregator.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.tolerations "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aggregator.priorityClassName }}
+      priorityClassName: {{ .Values.aggregator.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.aggregator.schedulerName }}
+      schedulerName: {{ .Values.aggregator.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.aggregator.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aggregator.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.aggregator.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.aggregator.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.aggregator.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: hdx-oss-aggregator
+          image: {{ template "hyperdx.aggregator.image" . }}
+          imagePullPolicy: {{ .Values.aggregator.image.pullPolicy }}
+          {{- if .Values.aggregator.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.aggregator.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.aggregator.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.aggregator.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.aggregator.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyperdx.aggregator.defaultConfigmapName" . }}
+            {{- if .Values.aggregator.extraConfigExistingConfigmap }}
+            - configMapRef:
+                name: {{ include "hyperdx.aggregator.extraConfigmapName" . }}
+            {{- end }}
+            {{- if .Values.aggregator.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.aggregator.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.aggregator.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.aggregator.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- if .Values.aggregator.resources }}
+          resources: {{- toYaml .Values.aggregator.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.aggregator.containerPorts.http }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.aggregator.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.aggregator.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.aggregator.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.aggregator.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.aggregator.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.aggregator.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.aggregator.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.aggregator.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.aggregator.startupProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- end }}
+          {{- if .Values.aggregator.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          {{- if .Values.aggregator.extraVolumeMounts }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.extraVolumeMounts "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.aggregator.sidecars }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.aggregator.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.aggregator.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.aggregator.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}

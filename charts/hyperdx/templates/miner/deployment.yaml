@@ -1,0 +1,152 @@
+{{- if .Values.miner.enabled }}
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "hyperdx.miner.fullname" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/part-of: hyperdx
+    app.kubernetes.io/component: miner
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.miner.replicaCount }}
+  {{- if .Values.miner.updateStrategy }}
+  strategy: {{- toYaml .Values.miner.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.miner.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+      app.kubernetes.io/component: miner
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.miner.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.miner.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        checksum/default-configmap: {{ include (print $.Template.BasePath "/miner/default-configmap.yaml") . | sha256sum }}
+        {{- if .Values.miner.extraConfig }}
+        checksum/extra-configmap: {{ include (print $.Template.BasePath "/miner/extra-configmap.yaml") . | sha256sum }}
+        {{- end }}
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+        app.kubernetes.io/component: miner
+    spec:
+      serviceAccountName: {{ template "hyperdx.serviceAccountName" . }}
+      {{- include "hyperdx.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.miner.automountServiceAccountToken }}
+      {{- if .Values.miner.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.miner.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.miner.affinity }}
+      affinity: {{- include "common.tplvalues.render" ( dict "value" .Values.miner.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.miner.podAffinityPreset "component" "miner" "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.miner.podAntiAffinityPreset "component" "miner" "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.miner.nodeAffinityPreset.type "key" .Values.miner.nodeAffinityPreset.key "values" .Values.miner.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.miner.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" ( dict "value" .Values.miner.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.miner.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.miner.tolerations "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.miner.priorityClassName }}
+      priorityClassName: {{ .Values.miner.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.miner.schedulerName }}
+      schedulerName: {{ .Values.miner.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.miner.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.miner.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.miner.podSecurityContext.enabled }}
+      securityContext: {{- omit .Values.miner.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.miner.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.miner.terminationGracePeriodSeconds }}
+      {{- end }}
+      containers:
+        - name: hdx-oss-miner
+          image: {{ template "hyperdx.miner.image" . }}
+          imagePullPolicy: {{ .Values.miner.image.pullPolicy }}
+          {{- if .Values.miner.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.miner.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.miner.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.miner.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.miner.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.miner.args "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            {{- if .Values.miner.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.miner.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyperdx.miner.defaultConfigmapName" . }}
+            {{- if .Values.miner.extraConfigExistingConfigmap }}
+            - configMapRef:
+                name: {{ include "hyperdx.miner.extraConfigmapName" . }}
+            {{- end }}
+            {{- if .Values.miner.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.miner.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.miner.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.miner.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- if .Values.miner.resources }}
+          resources: {{- toYaml .Values.miner.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.miner.containerPorts.http }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.miner.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.miner.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.miner.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.miner.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.miner.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.miner.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.miner.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.miner.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- if .Values.miner.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.miner.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.miner.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.miner.startupProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /health
+              port: http
+          {{- end }}
+          {{- end }}
+          {{- if .Values.miner.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.miner.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          {{- if .Values.miner.extraVolumeMounts }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.miner.extraVolumeMounts "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.miner.sidecars }}
+        {{- include "common.tplvalues.render" ( dict "value" .Values.miner.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.miner.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.miner.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+{{- end }}

@@ -1,0 +1,18 @@
+dependencies:
+- name: common
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 2.14.1
+- name: redis
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 18.12.1
+- name: clickhouse
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 4.5.4
+- name: mongodb
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 14.8.2
+- name: kong
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 10.4.2
+digest: sha256:d077b3408144c1ba7a0d2127a024aee5579b46d3f75d2fa721e00ec7fa1dc176
+generated: "2024-02-12T01:36:17.450446-08:00"

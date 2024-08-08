@@ -1,0 +1,88 @@
+CHART NAME: {{ .Chart.Name }}
+CHART VERSION: {{ .Chart.Version }}
+APP VERSION: {{ .Chart.AppVersion }}
+
+** Please be patient while the chart is being deployed **
+
+The following elements have been deployed
+
+{{- if .Values.app.enabled }}
+  - app 
+{{- end }}
+{{- if .Values.api.enabled }}
+  - api
+{{- end }}
+{{- if .Values.ingestor.enabled }}
+  - ingestor
+{{- end }}
+{{- if .Values.aggregator.enabled }}
+  - aggregator
+{{- end }}
+{{- if .Values.goParser.enabled }}
+  - go-parser
+{{- end }}
+{{- if .Values.miner.enabled }}
+  - miner
+{{- end }}
+{{- if .Values.otelCollector.enabled }}
+  - opentelemetry-collector
+{{- end }}
+{{- if .Values.taskCheckAlerts.enabled }}
+  - task-check-alerts
+{{- end }}
+{{- if .Values.kong.enabled }}
+  - kong
+{{- end }}
+{{- if .Values.mongodb.enabled }}
+  - mongodb
+{{- end }}
+{{- if .Values.redis.enabled }}
+  - redis
+{{- end }}
+{{- if .Values.clickhouse.enabled }}
+  - clickhouse
+{{- end }}
+
+{{- if .Values.diagnosticMode.enabled }}
+The chart has been deployed in diagnostic mode. All probes have been disabled and the command has been overwritten with:
+
+  command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 4 }}
+  args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 4 }}
+
+Get the list of pods by executing:
+
+  kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Access the pod you want to debug by executing
+
+  kubectl exec --namespace {{ .Release.Namespace }} -ti <NAME OF THE POD> -- bash
+
+{{- else }}
+
+Hyperdx API can be accessed through the following DNS name from within your cluster:
+
+    {{ include "hyperdx.api.url" . }}
+
+{{- if .Values.publicUrl }}
+To access the Hyperdx API from outside the cluster
+
+    {{ include "hyperdx.api.publicUrl" . }}
+
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        Watch the status with: 'kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "hyperdx.kong.fullname" . }}'
+
+   Point your DNS record "{{ .Values.publicUrl }}" to the external IP of the load balancer once it's ready. This is required for the dashboard to work (see README for more details)
+   Wait for DNS to propagate and you can now access the dashboard at "{{ .Values.publicUrl }}"
+
+{{- else }}
+  TODO: provide portforward instructions and how to mimic an identical docker compose setup on a kind cluster
+  portforward the appropriate svcs specified in the README
+{{- end }}
+{{- end }}
+
+To get a quick preview of HyperDX and demo logs, enable self-instrumentation by 
+  - accessing your api key at {{ include "hyperdx.app.publicUrl" . }}/team
+  - set the api key secret and restart the stack
+
+    kubectl patch secret {{ include "hyperdx.apiKey.secretName" . }} -p '{"data":{"api-key":"<INGESTION_API_KEY>"}}'
+    kubectl delete pods --all -n {{ .Release.Namespace }} 
