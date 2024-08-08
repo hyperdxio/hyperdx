@@ -634,16 +634,14 @@ export const getMetricsTagsDEPRECATED = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data_type: string;
-      is_delta: boolean;
-      is_monotonic: boolean;
-      name: string;
-      tags: Record<string, string>[];
-      unit: string;
-    }>
-  >();
+  const result = await rows.json<{
+    data_type: string;
+    is_delta: boolean;
+    is_monotonic: boolean;
+    name: string;
+    tags: Record<string, string>[];
+    unit: string;
+  }>();
   logger.info({
     message: 'getMetricsTagsDEPRECATED',
     query,
@@ -708,15 +706,13 @@ export const getMetricsNames = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data_type: string;
-      is_delta: boolean;
-      is_monotonic: boolean;
-      name: string;
-      unit: string;
-    }>
-  >();
+  const result = await rows.json<{
+    data_type: string;
+    is_delta: boolean;
+    is_monotonic: boolean;
+    name: string;
+    unit: string;
+  }>();
   logger.info({
     message: 'getMetricsNames',
     query,
@@ -806,13 +802,11 @@ export const getMetricsTags = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      name: string;
-      data_type: string;
-      tags: Record<string, string>[];
-    }>
-  >();
+  const result = await rows.json<{
+    name: string;
+    data_type: string;
+    tags: Record<string, string>[];
+  }>();
   logger.info({
     message: 'getMetricsTags',
     query,
@@ -1012,13 +1006,11 @@ export const getMetricsChart = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data: number;
-      group: string;
-      ts_bucket: number;
-    }>
-  >();
+  const result = await rows.json<{
+    data: number;
+    group: string;
+    ts_bucket: number;
+  }>();
   logger.info({
     message: 'getMetricsChart',
     query,
@@ -2076,13 +2068,11 @@ LIMIT ?`,
             ),
           },
         });
-        const result = await rows.json<
-          ResponseJSON<{
-            data: string;
-            ts_bucket: number;
-            group: string[];
-          }>
-        >();
+        const result = await rows.json<{
+          data: string;
+          ts_bucket: number;
+          group: string[];
+        }>();
         return result;
       } catch (e) {
         span.recordException(e as any);
@@ -2248,15 +2238,13 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<
-        ResponseJSON<{
-          data: string;
-          ts_bucket: number;
-          group: string;
-          rank: string;
-          rank_order_by_value: string;
-        }>
-      >();
+      const result = await rows.json<{
+        data: string;
+        ts_bucket: number;
+        group: string;
+        rank: string;
+        rank_order_by_value: string;
+      }>();
       logger.info({
         message: 'getChart',
         query,
@@ -2342,7 +2330,7 @@ export const getChartHistogram = async ({
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getChartHistogram',
     query,
@@ -2493,7 +2481,7 @@ WHERE sessions.sessionId IN (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getSessions',
     query: executedQuery,
@@ -2564,7 +2552,7 @@ export const getHistogram = async (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getHistogram',
     query,
@@ -2629,7 +2617,7 @@ export const getLogById = async (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getLogById',
     query,
@@ -2739,14 +2727,12 @@ export const checkAlert = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data: string;
-      group?: string;
-      ts_bucket: number;
-      attributes: Record<string, string>;
-    }>
-  >();
+  const result = await rows.json<{
+    data: string;
+    group?: string;
+    ts_bucket: number;
+    attributes: Record<string, string>;
+  }>();
   logger.info({
     message: 'checkAlert',
     query,
