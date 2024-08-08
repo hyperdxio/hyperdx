@@ -3069,7 +3069,12 @@ export const getRrwebEvents = async ({
   });
 
   // @ts-ignore
-  return resultSet.stream();
+  return resultSet.stream<{
+    b: string;
+    t: number;
+    ck: number;
+    tcks: number;
+  }>();
 };
 
 export const getLogStream = async ({
@@ -3139,6 +3144,7 @@ export const getLogStream = async ({
     }
   });
 
+  // TODO: type this ?
   // @ts-ignore
   return resultSet.stream();
 };
