@@ -171,7 +171,7 @@ export const client = createClient({
     // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
     // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
     // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    idle_socket_ttl: 2500,
+    idle_socket_ttl: 60000,
   },
   clickhouse_settings: {
     connect_timeout: ms('1m') / 1000,
