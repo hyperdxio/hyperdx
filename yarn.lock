@@ -2378,17 +2378,17 @@
     react-confetti "^6.1.0"
     strip-ansi "^7.1.0"
 
-"@clickhouse/client-common@0.2.10":
-  version "0.2.10"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-0.2.10.tgz#62f454d2cc2ee27a325034a2cca47c6f5c90d22e"
-  integrity sha512-BvTY0IXS96y9RUeNCpKL4HUzHmY80L0lDcGN0lmUD6zjOqYMn78+xyHYJ/AIAX7JQsc+/KwFt2soZutQTKxoGQ==
+"@clickhouse/client-common@1.4.1":
+  version "1.4.1"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client-common/-/client-common-1.4.1.tgz#23c6ffbff5717729e533301c9f595cd79af221ef"
+  integrity sha512-f5eoTrUSDplrMoi3ddeZ0MzGTn0iGMByEQ8j63eVMoBSOI2+F6jEIPcW2tWofT79Rvnn3RRlveYcShiaIiCJyw==
 
-"@clickhouse/client@^0.2.10":
-  version "0.2.10"
-  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-0.2.10.tgz#519561f3a4fff837bb606c52abfe74e5e7e9abb3"
-  integrity sha512-ZwBgzjEAFN/ogS0ym5KHVbR7Hx/oYCX01qGp2baEyfN2HM73kf/7Vp3GvMHWRy+zUXISONEtFv7UTViOXnmFrg==
+"@clickhouse/client@^1.4.1":
+  version "1.4.1"
+  resolved "https://registry.yarnpkg.com/@clickhouse/client/-/client-1.4.1.tgz#be4303d81f42835c5f168de61babd1a67d821f5a"
+  integrity sha512-12iV+MeykxdQySRFHwaVU+hKUv3JP6kdwOI+z3zzyfPVYHynTlV8emJjjGZR0+VfRaj3PCMuQfryfsJ82nh9WQ==
   dependencies:
-    "@clickhouse/client-common" "0.2.10"
+    "@clickhouse/client-common" "1.4.1"
 
 "@codemirror/autocomplete@^6.0.0":
   version "6.13.0"
