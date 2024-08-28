@@ -5,7 +5,7 @@
 [sinks.go_parser]
 type = "http"
 uri = "${GO_PARSER_API_URL}"
-inputs = ["go_spans"] # only send spans for now
+inputs = ["post_spans.go"] # only send spans for now
 compression = "gzip"
 encoding.codec = "json"
 batch.max_bytes = 10485760 # 10MB, required for rrweb payloads 
@@ -16,7 +16,7 @@ batch.timeout_secs = 1
 [sinks.dev_hdx_aggregator]
 type = "http"
 uri = "${AGGREGATOR_API_URL}"
-inputs = ["post_spans", "post_logs"]
+inputs = ["post_spans._unmatched", "post_logs"]
 compression = "gzip"
 encoding.codec = "json"
 batch.max_bytes = 10485760 # 10MB, required for rrweb payloads 
