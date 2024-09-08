@@ -1,4 +1,5 @@
 import {
+  ClickHouseClientConfigOptions,
   createClient,
   ErrorLogParams as _CHErrorLogParams,
   Logger as _CHLogger,
@@ -156,7 +157,7 @@ export class CHLogger implements _CHLogger {
 }
 
 // TODO: move this to somewhere else
-export const client = createClient({
+const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
   url: config.CLICKHOUSE_HOST,
   username: config.CLICKHOUSE_USER,
   password: config.CLICKHOUSE_PASSWORD,
@@ -182,6 +183,15 @@ export const client = createClient({
   },
   log: {
     LoggerClass: CHLogger,
+  },
+};
+
+export const client = createClient(CH_CLIENT_CONFIG_OPTIONS);
+export const insertCHClient = createClient({
+  ...CH_CLIENT_CONFIG_OPTIONS,
+  compression: {
+    request: true,
+    response: true,
   },
 });
 
@@ -380,7 +390,7 @@ export const clientInsertWithRetries = async <T>({
   const ts = Date.now();
   while (maxRetries > 0) {
     try {
-      await client.insert({
+      await insertCHClient.insert({
         table,
         values,
         format: 'JSONEachRow',
