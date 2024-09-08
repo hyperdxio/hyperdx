@@ -1,5 +1,4 @@
 import {
-  ClickHouseClient,
   ClickHouseClientConfigOptions,
   createClient,
   ErrorLogParams as _CHErrorLogParams,
