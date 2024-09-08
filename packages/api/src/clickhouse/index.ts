@@ -190,7 +190,6 @@ const chClientConfig: ClickHouseClientConfigOptions = {
 export const client = createClient(chClientConfig);
 export const insertCHClient = createClient({
   ...chClientConfig,
-  // need to disable compression for bulk insert
   compression: {
     request: true,
     response: true,
