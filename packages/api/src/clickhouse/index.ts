@@ -158,7 +158,7 @@ export class CHLogger implements _CHLogger {
 }
 
 // TODO: move this to somewhere else
-const chClientConfig: ClickHouseClientConfigOptions = {
+const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
   url: config.CLICKHOUSE_HOST,
   username: config.CLICKHOUSE_USER,
   password: config.CLICKHOUSE_PASSWORD,
@@ -187,9 +187,9 @@ const chClientConfig: ClickHouseClientConfigOptions = {
   },
 };
 
-export const client = createClient(chClientConfig);
+export const client = createClient(CH_CLIENT_CONFIG_OPTIONS);
 export const insertCHClient = createClient({
-  ...chClientConfig,
+  ...CH_CLIENT_CONFIG_OPTIONS,
   compression: {
     request: true,
     response: true,
