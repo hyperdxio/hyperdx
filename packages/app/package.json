@@ -46,7 +46,7 @@
     "ky": "^0.30.0",
     "ky-universal": "^0.10.1",
     "lodash": "^4.17.21",
-    "next": "13",
+    "next": "14",
     "next-query-params": "^4.1.0",
     "next-seo": "^4.28.1",
     "nextra": "2.0.1",
