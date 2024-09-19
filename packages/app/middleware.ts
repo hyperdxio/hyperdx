@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-const healthCheckUrl = process.env.HEALTHCHECK_PATH || '/healthcheck';
+const healthCheckUrl = process.env.HEALTHCHECK_PATH || '/health';
 
 export function middleware(request: NextRequest) {
   if (healthCheckUrl === request.nextUrl.pathname) {
