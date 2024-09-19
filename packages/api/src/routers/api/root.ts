@@ -43,7 +43,7 @@ const registrationSchema = z
 
 const router = express.Router();
 
-router.get('/health', async (req, res) => {
+router.get(process.env.HEALTHCHECK_PATH || '/healthcheck', async (req, res) => {
   res.send({ data: 'OK', version: config.CODE_VERSION, ip: req.ip });
 });
 
