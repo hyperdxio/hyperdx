@@ -1,10 +1,11 @@
 import {
-  BaseResultSet,
+  ClickHouseClientConfigOptions,
   createClient,
   ErrorLogParams as _CHErrorLogParams,
   Logger as _CHLogger,
   LogParams as _CHLogParams,
   ResponseJSON,
+  ResultSet,
   SettingsMap,
 } from '@clickhouse/client';
 import opentelemetry from '@opentelemetry/api';
@@ -13,7 +14,6 @@ import _ from 'lodash';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
-import { Readable } from 'stream';
 import { z } from 'zod';
 
 import * as config from '@/config';
@@ -157,11 +157,12 @@ export class CHLogger implements _CHLogger {
 }
 
 // TODO: move this to somewhere else
-export const client = createClient({
-  host: config.CLICKHOUSE_HOST,
+const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
+  url: config.CLICKHOUSE_HOST,
   username: config.CLICKHOUSE_USER,
   password: config.CLICKHOUSE_PASSWORD,
   request_timeout: ms('1m'),
+  application: 'hyperdx',
   compression: {
     request: false,
     response: false, // has to be off to enable streaming
@@ -171,8 +172,7 @@ export const client = createClient({
     // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
     // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
     // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    socket_ttl: 60000,
-    retry_on_expired_socket: true,
+    idle_socket_ttl: 60000,
   },
   clickhouse_settings: {
     connect_timeout: ms('1m') / 1000,
@@ -183,6 +183,15 @@ export const client = createClient({
   },
   log: {
     LoggerClass: CHLogger,
+  },
+};
+
+export const client = createClient(CH_CLIENT_CONFIG_OPTIONS);
+export const insertCHClient = createClient({
+  ...CH_CLIENT_CONFIG_OPTIONS,
+  compression: {
+    request: true,
+    response: true,
   },
 });
 
@@ -381,7 +390,7 @@ export const clientInsertWithRetries = async <T>({
   const ts = Date.now();
   while (maxRetries > 0) {
     try {
-      await client.insert({
+      await insertCHClient.insert({
         table,
         values,
         format: 'JSONEachRow',
@@ -578,9 +587,7 @@ export const getCHServerMetrics = async () => {
     query,
     format: 'JSON',
   });
-  const result = await rows.json<
-    ResponseJSON<{ metric: string; value: string }>
-  >();
+  const result = await rows.json<{ metric: string; value: string }>();
   logger.info({
     message: 'getCHServerMetrics',
     query,
@@ -637,16 +644,14 @@ export const getMetricsTagsDEPRECATED = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data_type: string;
-      is_delta: boolean;
-      is_monotonic: boolean;
-      name: string;
-      tags: Record<string, string>[];
-      unit: string;
-    }>
-  >();
+  const result = await rows.json<{
+    data_type: string;
+    is_delta: boolean;
+    is_monotonic: boolean;
+    name: string;
+    tags: Record<string, string>[];
+    unit: string;
+  }>();
   logger.info({
     message: 'getMetricsTagsDEPRECATED',
     query,
@@ -711,15 +716,13 @@ export const getMetricsNames = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data_type: string;
-      is_delta: boolean;
-      is_monotonic: boolean;
-      name: string;
-      unit: string;
-    }>
-  >();
+  const result = await rows.json<{
+    data_type: string;
+    is_delta: boolean;
+    is_monotonic: boolean;
+    name: string;
+    unit: string;
+  }>();
   logger.info({
     message: 'getMetricsNames',
     query,
@@ -809,13 +812,11 @@ export const getMetricsTags = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      name: string;
-      data_type: string;
-      tags: Record<string, string>[];
-    }>
-  >();
+  const result = await rows.json<{
+    name: string;
+    data_type: string;
+    tags: Record<string, string>[];
+  }>();
   logger.info({
     message: 'getMetricsTags',
     query,
@@ -1015,13 +1016,11 @@ export const getMetricsChart = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data: number;
-      group: string;
-      ts_bucket: number;
-    }>
-  >();
+  const result = await rows.json<{
+    data: number;
+    group: string;
+    ts_bucket: number;
+  }>();
   logger.info({
     message: 'getMetricsChart',
     query,
@@ -1745,13 +1744,11 @@ export const queryMultiSeriesChart = async ({
     format: 'JSON',
   });
 
-  const result = await rows.json<
-    ResponseJSON<{
-      ts_bucket: number;
-      group: string[];
-      [series_data: `series_${number}.data`]: number;
-    }>
-  >();
+  const result = await rows.json<{
+    ts_bucket: number;
+    group: string[];
+    [series_data: `series_${number}.data`]: number;
+  }>();
   return result;
 };
 
@@ -2081,13 +2078,11 @@ LIMIT ?`,
             ),
           },
         });
-        const result = await rows.json<
-          ResponseJSON<{
-            data: string;
-            ts_bucket: number;
-            group: string[];
-          }>
-        >();
+        const result = await rows.json<{
+          data: string;
+          ts_bucket: number;
+          group: string[];
+        }>();
         return result;
       } catch (e) {
         span.recordException(e as any);
@@ -2253,15 +2248,13 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<
-        ResponseJSON<{
-          data: string;
-          ts_bucket: number;
-          group: string;
-          rank: string;
-          rank_order_by_value: string;
-        }>
-      >();
+      const result = await rows.json<{
+        data: string;
+        ts_bucket: number;
+        group: string;
+        rank: string;
+        rank_order_by_value: string;
+      }>();
       logger.info({
         message: 'getChart',
         query,
@@ -2347,7 +2340,7 @@ export const getChartHistogram = async ({
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getChartHistogram',
     query,
@@ -2498,7 +2491,7 @@ WHERE sessions.sessionId IN (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getSessions',
     query: executedQuery,
@@ -2569,7 +2562,7 @@ export const getHistogram = async (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getHistogram',
     query,
@@ -2634,7 +2627,7 @@ export const getLogById = async (
       ),
     },
   });
-  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
+  const result = await rows.json<Record<string, unknown>>();
   logger.info({
     message: 'getLogById',
     query,
@@ -2744,14 +2737,12 @@ export const checkAlert = async ({
       ),
     },
   });
-  const result = await rows.json<
-    ResponseJSON<{
-      data: string;
-      group?: string;
-      ts_bucket: number;
-      attributes: Record<string, string>;
-    }>
-  >();
+  const result = await rows.json<{
+    data: string;
+    group?: string;
+    ts_bucket: number;
+    attributes: Record<string, string>;
+  }>();
   logger.info({
     message: 'checkAlert',
     query,
@@ -2924,7 +2915,7 @@ export const getLogBatchGroupedByBody = async ({
     ],
   );
 
-  type Response = ResponseJSON<{
+  type Response = {
     body: string;
     buckets: string[];
     ids: string[];
@@ -2933,9 +2924,9 @@ export const getLogBatchGroupedByBody = async ({
     lines_count: string;
     service: string;
     timestamps: string[];
-  }>;
+  };
 
-  let result: Response;
+  let result: ResponseJSON<Response>;
 
   await tracer.startActiveSpan(
     'clickhouse.getLogBatchGroupedByBody',
@@ -3016,16 +3007,14 @@ export const getLogBatch = async ({
         ),
       },
     });
-    result = await rows.json<
-      ResponseJSON<{
-        id: string;
-        timestamp: string;
-        severity_text: string;
-        body: string;
-        _host: string;
-        _source: string;
-      }>
-    >();
+    result = await rows.json<{
+      id: string;
+      timestamp: string;
+      severity_text: string;
+      body: string;
+      _host: string;
+      _source: string;
+    }>();
     span.setAttribute('results', result.data.length);
     span.end();
   });
@@ -3074,7 +3063,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: BaseResultSet<Readable>;
+  let resultSet: ResultSet<'JSONEachRow'>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -3090,7 +3079,12 @@ export const getRrwebEvents = async ({
   });
 
   // @ts-ignore
-  return resultSet.stream();
+  return resultSet.stream<{
+    b: string;
+    t: number;
+    ck: number;
+    tcks: number;
+  }>();
 };
 
 export const getLogStream = async ({
@@ -3133,7 +3127,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: BaseResultSet<Readable>;
+  let resultSet: ResultSet<'JSONEachRow'>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
@@ -3160,6 +3154,7 @@ export const getLogStream = async ({
     }
   });
 
+  // TODO: type this ?
   // @ts-ignore
   return resultSet.stream();
 };

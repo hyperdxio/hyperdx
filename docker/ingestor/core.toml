@@ -746,6 +746,11 @@ if is_object(.r) {
     .b."k8s.deployment.name" = .b.process.tag."k8s.deployment.name"
   }
 
+  # copy common resource attributes to the top level
+  if is_nullish(.b."deployment.environment") && !is_nullish(.b.process.tag."deployment.environment") {
+    .b."deployment.environment" = .b.process.tag."deployment.environment"
+  }
+
   if (.b."span.kind" == "server") {
     if (exists(.b."http.status_code") && exists(.b."http.method") && exists(.b."http.route")) {
       .b._hdx_body = join([
@@ -819,18 +824,11 @@ if is_object(.r) {
 '''
 
 [transforms.post_spans]
-type = "filter"
+type = "route"
 inputs = ["spans"]
-condition = '''
-  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
-'''
-
-[transforms.go_spans]
-type = "filter"
-inputs = ["spans"]
-condition = '''
-  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
-'''
+reroute_unmatched = true
+  [transforms.post_spans.route]
+  go = '''"${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")'''
 # --------------------------------------------------------------------------------
 
 

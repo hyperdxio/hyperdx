@@ -1308,7 +1308,7 @@ Array [
 
   it('clientInsertWithRetries (success)', async () => {
     jest
-      .spyOn(clickhouse.client, 'insert')
+      .spyOn(clickhouse.insertCHClient, 'insert')
       .mockRejectedValueOnce(new Error('first error'))
       .mockRejectedValueOnce(new Error('second error'))
       .mockResolvedValueOnce(null as any);
@@ -1320,12 +1320,12 @@ Array [
       timeout: 100,
     });
 
-    expect(clickhouse.client.insert).toHaveBeenCalledTimes(3);
+    expect(clickhouse.insertCHClient.insert).toHaveBeenCalledTimes(3);
   });
 
   it('clientInsertWithRetries (fail)', async () => {
     jest
-      .spyOn(clickhouse.client, 'insert')
+      .spyOn(clickhouse.insertCHClient, 'insert')
       .mockRejectedValueOnce(new Error('first error'))
       .mockRejectedValueOnce(new Error('second error'));
 
@@ -1340,7 +1340,7 @@ Array [
       expect(error.message).toBe('second error');
     }
 
-    expect(clickhouse.client.insert).toHaveBeenCalledTimes(2);
+    expect(clickhouse.insertCHClient.insert).toHaveBeenCalledTimes(2);
     expect.assertions(2);
   });
 
