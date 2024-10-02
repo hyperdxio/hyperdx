@@ -19,7 +19,7 @@
     "cors": "^2.8.5",
     "date-fns": "^2.28.0",
     "date-fns-tz": "^2.0.0",
-    "express": "^4.19.2",
+    "express": "^4.20.0",
     "express-rate-limit": "^6.7.1",
     "express-session": "^1.17.3",
     "express-winston": "^4.2.0",
