@@ -23,6 +23,7 @@ module.exports = withNextra({
   swcMinify: false,
   publicRuntimeConfig: {
     version,
+    serverUrl: process.env.NEXT_PUBLIC_SERVER_URL
   },
   productionBrowserSourceMaps: false,
   ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
