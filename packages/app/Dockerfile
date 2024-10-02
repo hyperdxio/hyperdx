@@ -32,9 +32,10 @@ ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
 
 COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
-COPY ./packages/app/src ./src 
-COPY ./packages/app/pages ./pages 
-COPY ./packages/app/public ./public 
+COPY ./packages/app/middleware.ts ./
+COPY ./packages/app/src ./src
+COPY ./packages/app/pages ./pages
+COPY ./packages/app/public ./public
 COPY ./packages/app/styles ./styles
 COPY --from=base /app/node_modules ./node_modules
 RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
