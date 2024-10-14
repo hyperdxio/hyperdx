@@ -1,6 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
+import { Chart } from './dashboard';
 
 export type AlertType = 'presence' | 'absence';
 
@@ -27,8 +28,29 @@ export type AlertChannel = {
   webhookId: string;
 };
 
-export type AlertSource = 'LOG' | 'CHART';
+export type AlertSource = 'LOG' | 'CHART' | 'CUSTOM';
 
+export type AlertCustomConfig = Pick<Chart, 'series'>;
+
+export enum CheckerType {
+  Anomaly = 'anomaly',
+  Threshold = 'threshold',
+}
+
+interface AnomalyConfig {
+  models?: AnomalyModel[];
+  mode?: 'any' | 'combined';
+}
+
+export interface AnomalyModel {
+  name: string;
+  enabled: boolean;
+  params: {
+    [key: string]: unknown;
+  };
+}
+
+export type CheckerConfig = AnomalyConfig;
 export interface IAlert {
   _id: ObjectId;
   channel: AlertChannel;
@@ -59,9 +81,34 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  customConfig?: AlertCustomConfig;
+  historyWindow?: number; // in minutes
+
+  checker?: {
+    type: CheckerType;
+    config?: CheckerConfig;
+  };
 }
 
 export type AlertDocument = mongoose.HydratedDocument<IAlert>;
+
+interface IChecker {
+  type: CheckerType;
+  config?: CheckerConfig;
+}
+
+const checkerSchema = new Schema<IChecker>({
+  type: {
+    type: String,
+    enum: Object.values(CheckerType),
+    required: true,
+  },
+  config: {
+    type: Schema.Types.Mixed,
+    required: false,
+  },
+});
 
 const AlertSchema = new Schema<IAlert>(
   {
@@ -151,10 +198,30 @@ const AlertSchema = new Schema<IAlert>(
         required: false,
       },
     },
+    customConfig: {
+      type: Schema.Types.Mixed,
+      required: false,
+    },
+    historyWindow: {
+      type: Number,
+      required: false,
+    },
+    checker: {
+      type: checkerSchema,
+      required: false,
+      default: {
+        type: CheckerType.Threshold,
+      },
+    },
   },
   {
     timestamps: true,
   },
 );
+
+AlertSchema.index({
+  state: 1,
+  checker: 1,
+});
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);
