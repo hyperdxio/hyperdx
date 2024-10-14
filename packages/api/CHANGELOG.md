@@ -1,5 +1,29 @@
 # @hyperdx/api
 
+## 1.10.0
+
+### Minor Changes
+
+- 7b4993c: feat: support Summary metrics data type
+- 3b5ec64: feat: copy "deployment.environment" resource attribute to the top
+  level (span)
+- f322f46: chore: bump @clickhouse/client to v1.4.1
+- 4d6b362: feat: support sentry sdk 'X-Sentry-Auth' header
+
+### Patch Changes
+
+- 19a4086: fix: query to extract metrics names
+- b47c965: fix: remove webhook total counts limit
+- 90a5ca7: fix: validate the min length of series field at charts series
+  endpoint
+- f7ae1a4: perf: use route transform to reroute go spans
+- c5efb84: perf: enable compression for insertion
+- ac88c52: style: introduce AGGREGATOR_PAYLOAD_SIZE_LIMIT env var
+- 523443e: fix: aggregator should return 413 (Content Too Large) to make
+  ingestor ARC work properly
+- f1da5b6: chore: bump vector to v0.40.1
+- 3b5ec64: feat: support environment filtering
+
 ## 1.9.0
 
 ### Minor Changes
