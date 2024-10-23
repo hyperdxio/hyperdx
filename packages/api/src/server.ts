@@ -7,6 +7,7 @@ import * as config from './config';
 import { connectDB, mongooseConnection } from './models';
 import logger from './utils/logger';
 import redisClient from './utils/redis';
+import { userInitialize } from './utils/userInitialize';
 
 export default class Server {
   protected readonly appType = config.APP_TYPE;
@@ -99,6 +100,7 @@ export default class Server {
       connectDB(),
       redisClient.connect(),
       clickhouse.connect(),
+      userInitialize(),
     ]);
   }
 }

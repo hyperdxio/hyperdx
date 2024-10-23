@@ -178,6 +178,8 @@ services:
       REDIS_URL: redis://redis:6379
       SERVER_URL: ${HYPERDX_API_URL}:${HYPERDX_API_PORT}
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
+      EMAIL: ${EMAIL}
+      PASSWORD: ${PASSWORD}
     networks:
       - internal
     depends_on:
