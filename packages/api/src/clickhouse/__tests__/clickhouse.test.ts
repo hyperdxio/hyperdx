@@ -67,7 +67,7 @@ describe('clickhouse', () => {
         offset: 0,
         startTime: now - 1,
         endTime: now + 5,
-        order: 'desc',
+        order: clickhouse.SortOrder.Desc,
       })
     ).data.map(({ id, ...d }) => d); // pluck non-deterministic id
 
@@ -75,25 +75,15 @@ describe('clickhouse', () => {
     expect(data).toMatchInlineSnapshot(`
 Array [
   Object {
-    "_host": "",
-    "_platform": "nodejs",
     "_service": "test-service",
     "body": "",
-    "duration": -1641340800001,
     "severity_text": "",
-    "sort_key": "1641340800001000000",
-    "timestamp": "2022-01-05T00:00:00.001000000Z",
     "type": "log",
   },
   Object {
-    "_host": "",
-    "_platform": "nodejs",
     "_service": "test-service",
     "body": "",
-    "duration": -1641340800000,
     "severity_text": "",
-    "sort_key": "1641340800000000000",
-    "timestamp": "2022-01-05T00:00:00.000000000Z",
     "type": "log",
   },
 ]
@@ -1308,7 +1298,7 @@ Array [
 
   it('clientInsertWithRetries (success)', async () => {
     jest
-      .spyOn(clickhouse.insertCHClient, 'insert')
+      .spyOn(clickhouse.client, 'insert')
       .mockRejectedValueOnce(new Error('first error'))
       .mockRejectedValueOnce(new Error('second error'))
       .mockResolvedValueOnce(null as any);
@@ -1320,12 +1310,12 @@ Array [
       timeout: 100,
     });
 
-    expect(clickhouse.insertCHClient.insert).toHaveBeenCalledTimes(3);
+    expect(clickhouse.client.insert).toHaveBeenCalledTimes(3);
   });
 
   it('clientInsertWithRetries (fail)', async () => {
     jest
-      .spyOn(clickhouse.insertCHClient, 'insert')
+      .spyOn(clickhouse.client, 'insert')
       .mockRejectedValueOnce(new Error('first error'))
       .mockRejectedValueOnce(new Error('second error'));
 
@@ -1340,7 +1330,7 @@ Array [
       expect(error.message).toBe('second error');
     }
 
-    expect(clickhouse.insertCHClient.insert).toHaveBeenCalledTimes(2);
+    expect(clickhouse.client.insert).toHaveBeenCalledTimes(2);
     expect.assertions(2);
   });
 

@@ -1,103 +1,32 @@
 import mongoose, { Schema } from 'mongoose';
+import { z } from 'zod';
 
-import { SourceTable } from '@/utils/zod';
+import { DashboardSchema } from '@/utils/commonTypes';
 
-import { AggFn, SeriesReturnType } from '../clickhouse';
 import type { ObjectId } from '.';
 
-// Based on numbro.js format
-// https://numbrojs.com/format.html
-type NumberFormat = {
-  output?: 'currency' | 'percent' | 'byte' | 'time' | 'number';
-  mantissa?: number;
-  thousandSeparated?: boolean;
-  average?: boolean;
-  decimalBytes?: boolean;
-  factor?: number;
-  currencySymbol?: string;
-  unit?: string;
-};
-
-type Chart = {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  series: (
-    | {
-        table: SourceTable;
-        type: 'time';
-        aggFn: AggFn; // TODO: Type
-        field: string | undefined;
-        where: string;
-        groupBy: string[];
-        numberFormat?: NumberFormat;
-      }
-    | {
-        table: SourceTable;
-        type: 'histogram';
-        field: string | undefined;
-        where: string;
-      }
-    | {
-        type: 'search';
-        fields: string[];
-        where: string;
-      }
-    | {
-        type: 'number';
-        table: SourceTable;
-        aggFn: AggFn;
-        field: string | undefined;
-        where: string;
-        numberFormat?: NumberFormat;
-      }
-    | {
-        type: 'table';
-        table: SourceTable;
-        aggFn: AggFn;
-        field: string | undefined;
-        where: string;
-        groupBy: string[];
-        sortOrder: 'desc' | 'asc';
-        numberFormat?: NumberFormat;
-      }
-    | {
-        type: 'markdown';
-        content: string;
-      }
-  )[];
-  seriesReturnType?: SeriesReturnType;
-};
-
-export interface IDashboard {
-  _id: ObjectId;
-  name: string;
-  query: string;
+export interface IDashboard extends z.infer<typeof DashboardSchema> {
   team: ObjectId;
-  charts: Chart[];
-  tags: string[];
 }
 
-const DashboardSchema = new Schema<IDashboard>(
-  {
-    name: {
-      type: String,
-      required: true,
+export default mongoose.model<IDashboard>(
+  'Dashboard',
+  new Schema<IDashboard>(
+    {
+      name: {
+        type: String,
+        required: true,
+      },
+      tiles: { type: mongoose.Schema.Types.Mixed, required: true },
+      team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+      tags: {
+        type: [String],
+        default: [],
+      },
     },
-    query: String,
-    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-    charts: { type: mongoose.Schema.Types.Mixed, required: true },
-    tags: {
-      type: [String],
-      default: [],
+    {
+      timestamps: true,
+      toJSON: { getters: true },
     },
-  },
-  {
-    timestamps: true,
-  },
+  ),
 );
-
-export default mongoose.model<IDashboard>('Dashboard', DashboardSchema);

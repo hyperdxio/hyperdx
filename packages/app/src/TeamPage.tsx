@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import Head from 'next/head';
+import { HTTPError } from 'ky';
 import {
-  Button,
-  Form,
-  Modal,
+  Button as BSButton,
+  Form as BSForm,
+  Modal as BSModal,
   Row,
   Spinner,
   ToggleButton,
@@ -15,12 +16,14 @@ import { tags as lt } from '@lezer/highlight';
 import {
   Alert,
   Badge,
-  Button as MButton,
+  Box,
+  Button,
   Card,
   Checkbox,
   Container,
   CopyButton,
   Divider,
+  Flex,
   Group,
   Modal as MModal,
   NativeSelect,
@@ -32,14 +35,21 @@ import {
   Table,
   Text,
   TextInput,
+  Title,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { createTheme } from '@uiw/codemirror-themes';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
+import { ConnectionForm } from '@/components/ConnectionForm';
+import { TableSourceForm } from '@/components/SourceForm';
+import { IS_LOCAL_MODE } from '@/config';
+
 import api from './api';
+import { useConnections } from './connection';
 import { withAppNav } from './layout';
+import { useSources } from './source';
 import { WebhookFlatIcon } from './SVGIcons';
 import { WebhookService } from './types';
 import { truncateMiddle } from './utils';
@@ -56,7 +66,7 @@ const APIKeyCopyButton = ({
 }) => (
   <CopyButton value={value}>
     {({ copy, copied }) => (
-      <MButton
+      <Button
         onClick={copy}
         variant={copied ? 'light' : 'default'}
         color="gray"
@@ -74,7 +84,7 @@ const APIKeyCopyButton = ({
         <div data-test-id={dataTestId} className="text-wrap text-break">
           {value}
         </div>
-      </MButton>
+      </Button>
     )}
   </CopyButton>
 );
@@ -109,15 +119,195 @@ function InviteTeamMemberForm({
         <div className="text-slate-300 fs-8">
           The invite link will automatically expire after 30 days.
         </div>
-        <MButton
-          variant="light"
-          type="submit"
-          disabled={!email || isSubmitting}
-        >
+        <Button variant="light" type="submit" disabled={!email || isSubmitting}>
           Send Invite
-        </MButton>
+        </Button>
       </Stack>
     </form>
+  );
+}
+
+function ConnectionsSection() {
+  const { data: connections } = useConnections();
+
+  const [editedConnectionId, setEditedConnectionId] = useState<string | null>(
+    null,
+  );
+  const [isCreatingConnection, setIsCreatingConnection] = useState(false);
+
+  return (
+    <Box>
+      <Text size="md" c="gray.4">
+        Connections
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Stack mb="md">
+          {connections?.map(c => (
+            <Box key={c.id}>
+              <Flex justify="space-between" align="flex-start">
+                <Stack gap="xs">
+                  <Text fw={500} size="lg">
+                    {c.name}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <b>Host:</b> {c.host}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <b>Username:</b> {c.username}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <b>Password:</b> [Configured]
+                  </Text>
+                </Stack>
+                {editedConnectionId !== c.id && (
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    onClick={() => setEditedConnectionId(c.id)}
+                    size="sm"
+                  >
+                    <i className="bi bi-pencil-fill me-2" /> Edit
+                  </Button>
+                )}
+                {editedConnectionId === c.id && (
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    onClick={() => setEditedConnectionId(null)}
+                    size="sm"
+                  >
+                    <i className="bi bi-x-lg me-2" /> Cancel
+                  </Button>
+                )}
+              </Flex>
+              {editedConnectionId === c.id && (
+                <ConnectionForm
+                  connection={c}
+                  isNew={false}
+                  onSave={() => {
+                    setEditedConnectionId(null);
+                  }}
+                  showCancelButton={false}
+                />
+              )}
+              <Divider my="md" />
+            </Box>
+          ))}
+        </Stack>
+        {!isCreatingConnection &&
+          (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
+            <Button
+              variant="outline"
+              color="gray.4"
+              onClick={() => setIsCreatingConnection(true)}
+            >
+              Add Connection
+            </Button>
+          )}
+        {isCreatingConnection && (
+          <Stack gap="md">
+            <ConnectionForm
+              connection={{
+                id: 'new',
+                name: 'My New Connection',
+                host: 'http://localhost:8123',
+                username: 'default',
+                password: '',
+              }}
+              isNew={true}
+              onSave={() => setIsCreatingConnection(false)}
+              onClose={() => setIsCreatingConnection(false)}
+              showCancelButton
+            />
+          </Stack>
+        )}
+      </Card>
+    </Box>
+  );
+}
+
+function SourcesSection() {
+  const { data: sources } = useSources();
+
+  const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
+  const [isCreatingSource, setIsCreatingSource] = useState(false);
+
+  return (
+    <Box>
+      <Text size="md" c="gray.4">
+        Sources
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Stack>
+          {sources?.map(s => (
+            <>
+              <Flex key={s.id} justify="space-between" align="center">
+                <div>
+                  <Text>{s.name}</Text>
+                  <Text size="xxs" c="dimmed">
+                    {s.kind === 'log' ? 'Logs' : 'Metrics'}
+                    {s.from && (
+                      <>
+                        {' '}
+                        &middot; <span className="bi-database me-1" />
+                        {s.from.databaseName}.{s.from.tableName}
+                      </>
+                    )}
+                  </Text>
+                </div>
+                {editedSourceId !== s.id && (
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    onClick={() => setEditedSourceId(s.id)}
+                    size="sm"
+                  >
+                    <i className="bi bi-chevron-down" />
+                  </Button>
+                )}
+                {editedSourceId === s.id && (
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    onClick={() => setEditedSourceId(null)}
+                    size="sm"
+                  >
+                    <i className="bi bi-chevron-up" />
+                  </Button>
+                )}
+              </Flex>
+              {editedSourceId === s.id && (
+                <TableSourceForm
+                  sourceId={s.id}
+                  onSave={() => setEditedSourceId(null)}
+                />
+              )}
+              <Divider />
+            </>
+          ))}
+          {!IS_LOCAL_MODE && isCreatingSource && (
+            <TableSourceForm
+              isNew
+              onCreate={() => {
+                setIsCreatingSource(false);
+              }}
+              onCancel={() => setIsCreatingSource(false)}
+            />
+          )}
+          {!IS_LOCAL_MODE && !isCreatingSource && (
+            <Button
+              variant="outline"
+              onClick={() => setIsCreatingSource(true)}
+              color="gray.4"
+            >
+              Add Source
+            </Button>
+          )}
+        </Stack>
+      </Card>
+    </Box>
   );
 }
 
@@ -198,22 +388,24 @@ export default function TeamPage() {
         refetchTeam();
       },
       onError: e => {
-        e.response
-          .json()
-          .then(res => {
-            notifications.show({
-              color: 'red',
-              message: res.message,
-              autoClose: 5000,
+        if (e instanceof HTTPError) {
+          e.response
+            .json()
+            .then(res => {
+              notifications.show({
+                color: 'red',
+                message: res.message,
+                autoClose: 5000,
+              });
+            })
+            .catch(() => {
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+                autoClose: 5000,
+              });
             });
-          })
-          .catch(() => {
-            notifications.show({
-              color: 'red',
-              message: 'Something went wrong. Please contact HyperDX team.',
-              autoClose: 5000,
-            });
-          });
+        }
       },
     });
   };
@@ -231,22 +423,31 @@ export default function TeamPage() {
             refetchMembers();
           },
           onError: e => {
-            e.response
-              .json()
-              .then(res => {
-                notifications.show({
-                  color: 'red',
-                  message: res.message,
-                  autoClose: 5000,
+            if (e instanceof HTTPError) {
+              e.response
+                .json()
+                .then(res => {
+                  notifications.show({
+                    color: 'red',
+                    message: res.message,
+                    autoClose: 5000,
+                  });
+                })
+                .catch(() => {
+                  notifications.show({
+                    color: 'red',
+                    message:
+                      'Something went wrong. Please contact HyperDX team.',
+                    autoClose: 5000,
+                  });
                 });
-              })
-              .catch(() => {
-                notifications.show({
-                  color: 'red',
-                  message: 'Something went wrong. Please contact HyperDX team.',
-                  autoClose: 5000,
-                });
+            } else {
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+                autoClose: 5000,
               });
+            }
           },
         },
       );
@@ -266,23 +467,32 @@ export default function TeamPage() {
             refetchInvitations();
           },
           onError: e => {
-            e.response
-              .json()
-              .then(res => {
-                notifications.show({
-                  color: 'red',
-                  message: res.message,
-                  autoClose: 5000,
-                });
-              })
-              .catch(() => {
-                notifications.show({
-                  color: 'red',
-                  message: 'Something went wrong. Please contact HyperDX team.',
+            if (e instanceof HTTPError) {
+              e.response
+                .json()
+                .then(res => {
+                  notifications.show({
+                    color: 'red',
+                    message: res.message,
+                    autoClose: 5000,
+                  });
+                })
+                .catch(() => {
+                  notifications.show({
+                    color: 'red',
+                    message:
+                      'Something went wrong. Please contact HyperDX team.',
 
-                  autoClose: 5000,
+                    autoClose: 5000,
+                  });
                 });
+            } else {
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+                autoClose: 5000,
               });
+            }
           },
         },
       );
@@ -321,23 +531,32 @@ export default function TeamPage() {
             refetchInvitations();
           },
           onError: e => {
-            e.response
-              .json()
-              .then(res => {
-                notifications.show({
-                  color: 'red',
-                  message: res.message,
-                  autoClose: 5000,
-                });
-              })
-              .catch(() => {
-                notifications.show({
-                  color: 'red',
-                  message: 'Something went wrong. Please contact HyperDX team.',
+            if (e instanceof HTTPError) {
+              e.response
+                .json()
+                .then(res => {
+                  notifications.show({
+                    color: 'red',
+                    message: res.message,
+                    autoClose: 5000,
+                  });
+                })
+                .catch(() => {
+                  notifications.show({
+                    color: 'red',
+                    message:
+                      'Something went wrong. Please contact HyperDX team.',
 
-                  autoClose: 5000,
+                    autoClose: 5000,
+                  });
                 });
+            } else {
+              notifications.show({
+                color: 'red',
+                message: 'Something went wrong. Please contact HyperDX team.',
+                autoClose: 5000,
               });
+            }
           },
         },
       );
@@ -399,23 +618,31 @@ export default function TeamPage() {
             : refetchGenericWebhooks();
         },
         onError: e => {
-          e.response
-            .json()
-            .then(res => {
-              notifications.show({
-                color: 'red',
-                message: res.message,
-                autoClose: 5000,
-              });
-            })
-            .catch(() => {
-              notifications.show({
-                color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+          if (e instanceof HTTPError) {
+            e.response
+              .json()
+              .then(res => {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
+                  autoClose: 5000,
+                });
+              })
+              .catch(() => {
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
 
-                autoClose: 5000,
+                  autoClose: 5000,
+                });
               });
+          } else {
+            notifications.show({
+              color: 'red',
+              message: 'Something went wrong. Please contact HyperDX team.',
+              autoClose: 5000,
             });
+          }
         },
       },
     );
@@ -444,23 +671,31 @@ export default function TeamPage() {
             : refetchGenericWebhooks();
         },
         onError: e => {
-          e.response
-            .json()
-            .then(res => {
-              notifications.show({
-                color: 'red',
-                message: res.message,
-                autoClose: 5000,
-              });
-            })
-            .catch(() => {
-              notifications.show({
-                color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+          if (e instanceof HTTPError) {
+            e.response
+              .json()
+              .then(res => {
+                notifications.show({
+                  color: 'red',
+                  message: res.message,
+                  autoClose: 5000,
+                });
+              })
+              .catch(() => {
+                notifications.show({
+                  color: 'red',
+                  message: 'Something went wrong. Please contact HyperDX team.',
 
-                autoClose: 5000,
+                  autoClose: 5000,
+                });
               });
+          } else {
+            notifications.show({
+              color: 'red',
+              message: 'Something went wrong. Please contact HyperDX team.',
+              autoClose: 5000,
             });
+          }
         },
       },
     );
@@ -509,6 +744,8 @@ export default function TeamPage() {
           )}
           {!isLoading && team != null && (
             <Stack my={20} gap="xl">
+              <SourcesSection />
+              <ConnectionsSection />
               <div className={styles.sectionHeader}>API Keys</div>
               <Card>
                 <div className="mb-3 text-slate-300 fs-7">
@@ -517,31 +754,31 @@ export default function TeamPage() {
                 <Group gap="xs">
                   <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
                   {hasAdminAccess && (
-                    <MButton
+                    <Button
                       variant="light"
                       color="red"
                       onClick={() => setRotateApiKeyConfirmationModalShow(true)}
                     >
                       Rotate API Key
-                    </MButton>
+                    </Button>
                   )}
                 </Group>
                 <div className="">
-                  <Modal
+                  <BSModal
                     aria-labelledby="contained-modal-title-vcenter"
                     centered
                     onHide={() => setRotateApiKeyConfirmationModalShow(false)}
                     show={rotateApiKeyConfirmationModalShow}
                     size="lg"
                   >
-                    <Modal.Body className="bg-grey rounded">
+                    <BSModal.Body className="bg-grey rounded">
                       <h3 className="text-muted">Rotate API Key</h3>
                       <h5 className="text-muted">
                         Rotating the API key will invalidate your existing API
                         key and generate a new one for you. This action is not
                         reversible.
                       </h5>
-                      <Button
+                      <BSButton
                         variant="outline-secondary"
                         className="mt-2 px-4 ms-2 float-end"
                         size="sm"
@@ -550,17 +787,17 @@ export default function TeamPage() {
                         }
                       >
                         Cancel
-                      </Button>
-                      <Button
+                      </BSButton>
+                      <BSButton
                         variant="outline-danger"
                         className="mt-2 px-4 float-end"
                         size="sm"
                         onClick={onConfirmUpdateTeamApiKey}
                       >
                         Confirm
-                      </Button>
-                    </Modal.Body>
-                  </Modal>
+                      </BSButton>
+                    </BSModal.Body>
+                  </BSModal>
                 </div>
               </Card>
               {!isLoadingMe && me != null && (
@@ -605,7 +842,7 @@ export default function TeamPage() {
                           <div className="fw-bold text-white">
                             {webhook.url}
                           </div>
-                          <MButton
+                          <Button
                             ml="xs"
                             variant="light"
                             color="red"
@@ -618,7 +855,7 @@ export default function TeamPage() {
                             }
                           >
                             Delete
-                          </MButton>
+                          </Button>
                         </div>
                         {webhook.description && (
                           <div className="fw-regular text-muted">
@@ -628,32 +865,32 @@ export default function TeamPage() {
                       </div>
                     ))}
 
-                  <MButton
+                  <Button
                     variant="default"
                     leftSection={<i className="bi bi-slack" />}
                     onClick={() => setAddSlackWebhookModalShow(true)}
                   >
                     Add Slack Incoming Webhook
-                  </MButton>
+                  </Button>
 
-                  <Modal
+                  <BSModal
                     aria-labelledby="contained-modal-title-vcenter"
                     centered
                     onHide={() => setAddSlackWebhookModalShow(false)}
                     show={addSlackWebhookModalShow}
                     size="lg"
                   >
-                    <Modal.Body className="bg-grey rounded">
+                    <BSModal.Body className="bg-grey rounded">
                       <h5 className="text-muted">Add Slack Incoming Webhook</h5>
-                      <Form
+                      <BSForm
                         onSubmit={e =>
                           onSubmitAddWebhookForm(e, WebhookService.Slack)
                         }
                       >
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook Name
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="name"
                           name="name"
@@ -661,10 +898,10 @@ export default function TeamPage() {
                           className="border-0 mb-4 px-3"
                           required
                         />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook URL
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="url"
                           name="url"
@@ -672,27 +909,27 @@ export default function TeamPage() {
                           className="border-0 mb-4 px-3"
                           required
                         />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook Description (optional)
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="description"
                           name="description"
                           placeholder="A description of this webhook"
                           className="border-0 mb-4 px-3"
                         />
-                        <Button
+                        <BSButton
                           variant="success"
                           className="mt-2 px-4 float-end"
                           type="submit"
                           size="sm"
                         >
                           Add
-                        </Button>
-                      </Form>
-                    </Modal.Body>
-                  </Modal>
+                        </BSButton>
+                      </BSForm>
+                    </BSModal.Body>
+                  </BSModal>
                 </Card.Section>
               </Card>
 
@@ -727,7 +964,7 @@ export default function TeamPage() {
                                 </Tooltip>
                               </Table.Td>
                               <Table.Td align="right">
-                                <MButton
+                                <Button
                                   ml="xs"
                                   variant="light"
                                   color="red"
@@ -740,7 +977,7 @@ export default function TeamPage() {
                                   }
                                 >
                                   Delete
-                                </MButton>
+                                </Button>
                               </Table.Td>
                             </Table.Tr>
                           ))}
@@ -749,33 +986,33 @@ export default function TeamPage() {
                     </Card.Section>
                   )}
                 <Card.Section p="md">
-                  <MButton
+                  <Button
                     variant="default"
                     onClick={() => openAddGenericWebhookModal()}
                     leftSection={<WebhookFlatIcon width={16} />}
                   >
                     Add Generic Incoming Webhook
-                  </MButton>
-                  <Modal
+                  </Button>
+                  <BSModal
                     aria-labelledby="contained-modal-title-vcenter"
                     centered
                     onHide={() => setAddGenericWebhookModalShow(false)}
                     show={addGenericWebhookModalShow}
                     size="lg"
                   >
-                    <Modal.Body className="bg-grey rounded">
+                    <BSModal.Body className="bg-grey rounded">
                       <h5 className="text-muted">
                         Add Generic Incoming Webhook
                       </h5>
-                      <Form
+                      <BSForm
                         onSubmit={e =>
                           onSubmitAddWebhookForm(e, WebhookService.Generic)
                         }
                       >
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook Name
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="name"
                           name="name"
@@ -783,10 +1020,10 @@ export default function TeamPage() {
                           className="border-0 mb-4 px-3"
                           required
                         />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook URL
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="url"
                           name="url"
@@ -794,19 +1031,19 @@ export default function TeamPage() {
                           className="border-0 mb-4 px-3"
                           required
                         />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Webhook Description (optional)
-                        </Form.Label>
-                        <Form.Control
+                        </BSForm.Label>
+                        <BSForm.Control
                           size="sm"
                           id="description"
                           name="description"
                           placeholder="A description of this webhook"
                           className="border-0 mb-4 px-3"
                         />
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Custom Headers (optional)
-                        </Form.Label>
+                        </BSForm.Label>
                         <div className="mb-4">
                           <CodeMirror
                             value={headers}
@@ -821,9 +1058,9 @@ export default function TeamPage() {
                             onChange={onHeadersChange}
                           />
                         </div>
-                        <Form.Label className="text-start text-muted fs-7 mb-2 mt-2">
+                        <BSForm.Label className="text-start text-muted fs-7 mb-2 mt-2">
                           Custom Body (optional)
-                        </Form.Label>
+                        </BSForm.Label>
 
                         <div className="mb-2">
                           <CodeMirror
@@ -864,12 +1101,12 @@ export default function TeamPage() {
                             </code>
                           </span>
                         </Alert>
-                        <MButton variant="light" type="submit" size="sm">
+                        <Button variant="light" type="submit" size="sm">
                           Add
-                        </MButton>
-                      </Form>
-                    </Modal.Body>
-                  </Modal>
+                        </Button>
+                      </BSForm>
+                    </BSModal.Body>
+                  </BSModal>
                 </Card.Section>
               </Card>
 
@@ -904,7 +1141,7 @@ export default function TeamPage() {
                     )}
                 </>
               )}
-              <Modal
+              <BSModal
                 aria-labelledby="contained-modal-title-vcenter"
                 centered
                 onHide={() =>
@@ -917,7 +1154,7 @@ export default function TeamPage() {
                 show={deleteTeamMemberConfirmationModalData.id != null}
                 size="lg"
               >
-                <Modal.Body className="bg-grey rounded">
+                <BSModal.Body className="bg-grey rounded">
                   <h3 className="text-muted">Delete Team Member</h3>
                   <p className="text-muted">
                     Deleting this team member (
@@ -925,7 +1162,7 @@ export default function TeamPage() {
                     their access to the team&apos;s resources and services. This
                     action is not reversible.
                   </p>
-                  <Button
+                  <BSButton
                     variant="outline-secondary"
                     className="mt-2 px-4 ms-2 float-end"
                     size="sm"
@@ -938,8 +1175,8 @@ export default function TeamPage() {
                     }
                   >
                     Cancel
-                  </Button>
-                  <Button
+                  </BSButton>
+                  <BSButton
                     variant="outline-danger"
                     className="mt-2 px-4 float-end"
                     size="sm"
@@ -951,9 +1188,9 @@ export default function TeamPage() {
                     }
                   >
                     Confirm
-                  </Button>
-                </Modal.Body>
-              </Modal>
+                  </BSButton>
+                </BSModal.Body>
+              </BSModal>
 
               <div className={styles.sectionHeader}>Team</div>
 
@@ -961,13 +1198,13 @@ export default function TeamPage() {
                 <Card.Section withBorder py="sm" px="lg">
                   <Group align="center" justify="space-between">
                     <div className="text-slate-300 fs-7">Team Members</div>
-                    <MButton
+                    <Button
                       variant="light"
                       leftSection={<i className="bi bi-person-plus-fill" />}
                       onClick={() => setTeamInviteModalShow(true)}
                     >
                       Invite Team Member
-                    </MButton>
+                    </Button>
                   </Group>
                 </Card.Section>
                 <Card.Section>
@@ -1023,7 +1260,7 @@ export default function TeamPage() {
                             <Table.Td style={{ textAlign: 'right' }}>
                               {!member.isCurrentUser && hasAdminAccess && (
                                 <Group justify="flex-end" gap="8">
-                                  <MButton
+                                  <Button
                                     size="compact-sm"
                                     variant="light"
                                     color="red"
@@ -1036,7 +1273,7 @@ export default function TeamPage() {
                                     }
                                   >
                                     Delete
-                                  </MButton>
+                                  </Button>
                                 </Group>
                               )}
                             </Table.Td>
@@ -1061,19 +1298,19 @@ export default function TeamPage() {
                                 Pending Invite
                               </Badge>
                               <CopyToClipboard text={invitation.url}>
-                                <MButton
+                                <Button
                                   size="compact-xs"
                                   variant="default"
                                   ml="xs"
                                 >
                                   📋 Copy URL
-                                </MButton>
+                                </Button>
                               </CopyToClipboard>
                             </Table.Td>
                             <Table.Td style={{ textAlign: 'right' }}>
                               {hasAdminAccess && (
                                 <Group justify="flex-end" gap="8">
-                                  <MButton
+                                  <Button
                                     size="compact-sm"
                                     variant="light"
                                     color="red"
@@ -1086,7 +1323,7 @@ export default function TeamPage() {
                                     }
                                   >
                                     Delete
-                                  </MButton>
+                                  </Button>
                                 </Group>
                               )}
                             </Table.Td>
@@ -1105,7 +1342,7 @@ export default function TeamPage() {
               >
                 <InviteTeamMemberForm
                   onSubmit={onSubmitTeamInviteForm}
-                  isSubmitting={saveTeamInvitation.isLoading}
+                  isSubmitting={saveTeamInvitation.isPending}
                 />
               </MModal>
             </Stack>

@@ -1,4 +1,4 @@
-import { memo, RefObject, useEffect, useRef, useState } from 'react';
+import { memo, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -37,6 +37,7 @@ const NewTimelineRow = memo(
     onEventClick?: (event: any) => any;
   }) {
     const onHover = onEventHover ?? (() => {});
+
     return (
       <div
         className="d-flex overflow-hidden"
@@ -109,8 +110,27 @@ function renderMs(ms: number) {
   return ms < 1000
     ? `${Math.round(ms)}ms`
     : ms % 1000 === 0
-    ? `${Math.floor(ms / 1000)}s`
-    : `${(ms / 1000).toFixed(3)}s`;
+      ? `${Math.floor(ms / 1000)}s`
+      : `${(ms / 1000).toFixed(3)}s`;
+}
+
+function calculateInterval(value: number) {
+  // Calculate the approximate interval by dividing the value by 10
+  const interval = value / 10;
+
+  // Round the interval to the nearest power of 10 to make it a human-friendly number
+  const magnitude = Math.pow(10, Math.floor(Math.log10(interval)));
+
+  // Adjust the interval to the nearest standard bucket size
+  let bucketSize = magnitude;
+  if (interval >= 2 * magnitude) {
+    bucketSize = 2 * magnitude;
+  }
+  if (interval >= 5 * magnitude) {
+    bucketSize = 5 * magnitude;
+  }
+
+  return bucketSize;
 }
 
 function TimelineXAxis({
@@ -128,32 +148,7 @@ function TimelineXAxis({
 }) {
   const scaledMaxVal = maxVal / scale;
   // TODO: Turn this into a function
-  const interval =
-    scaledMaxVal < 10
-      ? 1
-      : scaledMaxVal < 100
-      ? 10
-      : scaledMaxVal < 300
-      ? 20
-      : scaledMaxVal < 1000
-      ? 100
-      : scaledMaxVal < 3000
-      ? 200
-      : scaledMaxVal < 10000
-      ? 1000
-      : scaledMaxVal < 30000
-      ? 2000
-      : scaledMaxVal < 100000
-      ? 10000
-      : scaledMaxVal < 300000
-      ? 20000
-      : scaledMaxVal < 10 * 60 * 1000
-      ? 1 * 60 * 1000
-      : scaledMaxVal < 30 * 60 * 1000
-      ? 3 * 60 * 1000
-      : scaledMaxVal < 60 * 60 * 1000
-      ? 6 * 60 * 1000
-      : 20 * 60 * 1000;
+  const interval = calculateInterval(scaledMaxVal);
 
   const numTicks = Math.floor(maxVal / interval);
   const percSpacing = (interval / maxVal) * 100 * scale;
@@ -346,7 +341,6 @@ export default function TimelineChart({
   rows,
   cursors,
   rowHeight,
-  maxVal,
   onMouseMove,
   onEventClick,
   labelWidth,
@@ -366,10 +360,9 @@ export default function TimelineChart({
   }[];
   scale?: number;
   rowHeight: number;
-  maxVal: number;
   onMouseMove?: (ts: number) => any;
   onClick?: (ts: number) => any;
-  onEventClick?: (e: any) => any;
+  onEventClick?: (e: Row) => any;
   labelWidth: number;
   className?: string;
   style?: any;
@@ -451,6 +444,16 @@ export default function TimelineChart({
       };
     }
   });
+
+  const maxVal = useMemo(() => {
+    let max = 0;
+    for (const row of rows ?? []) {
+      for (const event of row.events) {
+        max = Math.max(max, event.end);
+      }
+    }
+    return max * 1.1; // add 10% padding
+  }, [rows]);
 
   const rowVirtualizer = useVirtualizer({
     count: rows?.length ?? 0,

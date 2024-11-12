@@ -1,78 +1,33 @@
 version: '3'
+x-hyperdx-logging: &hyperdx-logging
+  driver: fluentd
+  options:
+    fluentd-address: tcp://localhost:24225
+    labels: 'service.name'
 services:
-  go-parser:
-    container_name: hdx-oss-dev-go-parser
-    build:
-      context: .
-      dockerfile: ./packages/go-parser/Dockerfile
-    environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_EXPORTER_OTLP_HEADERS: 'authorization=${HYPERDX_API_KEY}'
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hdx-oss-dev-go-parser
-      PORT: 7777
-    ports:
-      - 7777:7777
-    networks:
-      - internal
-  miner:
-    container_name: hdx-oss-dev-miner
-    build:
-      context: .
-      dockerfile: ./packages/miner/Dockerfile
-      target: dev
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hdx-oss-dev-miner
-    volumes:
-      - ./packages/miner/src:/app/src
-    ports:
-      - 5123:5123
-    networks:
-      - internal
-  hostmetrics:
-    container_name: hdx-oss-dev-hostmetrics
-    build:
-      context: ./docker/hostmetrics
-      target: dev
-    volumes:
-      - ./docker/hostmetrics/config.dev.yaml:/etc/otelcol-contrib/config.yaml
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hostmetrics
-    restart: always
-    networks:
-      - internal
-  ingestor:
-    container_name: hdx-oss-dev-ingestor
-    build:
-      context: ./docker/ingestor
-      target: dev
-    volumes:
-      - ./docker/ingestor:/app
-      - .volumes/ingestor_data:/var/lib/vector
-    ports:
-      - 8002:8002 # http-generic
-      - 8686:8686 # healthcheck
-    environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
-      ENABLE_GO_PARSER: 'true'
-      GO_PARSER_API_URL: 'http://go-parser:7777'
-      RUST_BACKTRACE: full
-      VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
-      VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
-    restart: always
-    networks:
-      - internal
+  # miner:
+  #   container_name: hdx-oss-dev-miner
+  #   build:
+  #     context: .
+  #     dockerfile: ./packages/miner/Dockerfile
+  #     target: dev
+  #   environment:
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_SERVICE_NAME: hdx-oss-dev-miner
+  #   volumes:
+  #     - ./packages/miner/src:/app/src
+  #   ports:
+  #     - 5123:5123
+  #   networks:
+  #     - internal
   redis:
+    logging: *hyperdx-logging
+    labels:
+      service.name: 'hdx-oss-dev-redis'
     image: redis:7.0.11-alpine
     container_name: hdx-oss-dev-redis
     volumes:
@@ -81,7 +36,12 @@ services:
       - 6379:6379
     networks:
       - internal
+    depends_on:
+      - otel-collector
   db:
+    logging: *hyperdx-logging
+    labels:
+      service.name: 'hdx-oss-dev-db'
     image: mongo:5.0.14-focal
     container_name: hdx-oss-dev-db
     volumes:
@@ -90,12 +50,12 @@ services:
       - 27017:27017
     networks:
       - internal
+    depends_on:
+      - otel-collector
   otel-collector:
-    container_name: hdx-oss-dev-otel-collector
-    build:
-      context: ./docker/otel-collector
-      target: dev
+    image: otel/opentelemetry-collector-contrib:0.112.0
     environment:
+      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       INGESTOR_API_URL: 'http://ingestor:8002'
@@ -103,95 +63,52 @@ services:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - '13133:13133' # health_check extension
-      - '1888:1888' # pprof extension
       - '24225:24225' # fluentd receiver
       - '4317:4317' # OTLP gRPC receiver
       - '4318:4318' # OTLP http receiver
-      - '55679:55679' # zpages extension
       - '8888:8888' # metrics extension
-      - '9411:9411' # zipkin
-    restart: always
-    networks:
-      - internal
-  aggregator:
-    container_name: hdx-oss-dev-aggregator
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: dev
-    ports:
-      - 8001:8001
-    environment:
-      AGGREGATOR_PAYLOAD_SIZE_LIMIT: '144mb'
-      APP_TYPE: 'aggregator'
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      CLICKHOUSE_PASSWORD: aggregator
-      CLICKHOUSE_USER: aggregator
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
-      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-      HDX_NODE_BETA_MODE: 1
-      HDX_NODE_CONSOLE_CAPTURE: 1
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
-      MINER_API_URL: 'http://miner:5123'
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-dev-aggregator'
-      SENTRY_DSN: ${SENTRY_DSN}
-      # uncomment to allow aggregator logs
-      # disabled by default due to possible infinite loop (aggregator aggregating aggregator logs)
-      # HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NODE_ENV: development
-      PORT: 8001
-      REDIS_URL: redis://redis:6379
-      SERVER_URL: 'http://localhost:8000'
-    volumes:
-      - ./packages/api/src:/app/src
-    networks:
-      - internal
-    depends_on:
-      - db
-      - redis
-      - ch-server
-  task-check-alerts:
-    container_name: hdx-oss-dev-task-check-alerts
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: dev
-    entrypoint: 'yarn'
-    command: 'dev:task check-alerts'
-    environment:
-      APP_TYPE: 'scheduled-task'
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      CLICKHOUSE_PASSWORD: worker
-      CLICKHOUSE_USER: worker
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
-      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-      HDX_NODE_BETA_MODE: 0
-      HDX_NODE_CONSOLE_CAPTURE: 1
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
-      MINER_API_URL: 'http://miner:5123'
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NODE_ENV: development
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-dev-task-check-alerts'
-      REDIS_URL: redis://redis:6379
-    volumes:
-      - ./packages/api/src:/app/src
     restart: always
     networks:
       - internal
     depends_on:
       - ch-server
-      - db
-      - redis
+  # task-check-alerts:
+  #   container_name: hdx-oss-dev-task-check-alerts
+  #   build:
+  #     context: .
+  #     dockerfile: ./packages/api/Dockerfile
+  #     target: dev
+  #   entrypoint: 'yarn'
+  #   command: 'dev:task check-alerts'
+  #   environment:
+  #     APP_TYPE: 'scheduled-task'
+  #     CLICKHOUSE_HOST: http://ch-server:8123
+  #     CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     CLICKHOUSE_PASSWORD: worker
+  #     CLICKHOUSE_USER: worker
+  #     EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+  #     FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
+  #     HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+  #     HDX_NODE_BETA_MODE: 0
+  #     HDX_NODE_CONSOLE_CAPTURE: 1
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     INGESTOR_API_URL: 'http://ingestor:8002'
+  #     MINER_API_URL: 'http://miner:5123'
+  #     MONGO_URI: 'mongodb://db:27017/hyperdx'
+  #     NODE_ENV: development
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+  #     OTEL_SERVICE_NAME: 'hdx-oss-dev-task-check-alerts'
+  #     REDIS_URL: redis://redis:6379
+  #   volumes:
+  #     - ./packages/api/src:/app/src
+  #   restart: always
+  #   networks:
+  #     - internal
+  #   depends_on:
+  #     - ch-server
+  #     - db
+  #     - redis
   api:
     container_name: hdx-oss-dev-api
     build:
@@ -242,10 +159,10 @@ services:
     ports:
       - 8080:8080
     environment:
-      NEXT_PUBLIC_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
+      NEXT_PUBLIC_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
       NODE_ENV: development
       PORT: 8080
     volumes:
@@ -261,7 +178,7 @@ services:
     depends_on:
       - api
   ch-server:
-    image: clickhouse/clickhouse-server:23.8.8-alpine
+    image: clickhouse/clickhouse-server:head-alpine
     container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api

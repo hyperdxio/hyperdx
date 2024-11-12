@@ -281,12 +281,12 @@ export const translateExternalAlertToInternalAlert = (
     ...(alertInput.source === 'search' && alertInput.savedSearchId
       ? { source: 'LOG', logViewId: alertInput.savedSearchId }
       : alertInput.source === 'chart' && alertInput.dashboardId
-      ? {
-          source: 'CHART',
-          dashboardId: alertInput.dashboardId,
-          chartId: alertInput.chartId,
-        }
-      : ({} as never)),
+        ? {
+            source: 'CHART',
+            dashboardId: alertInput.dashboardId,
+            chartId: alertInput.chartId,
+          }
+        : ({} as never)),
   };
 };
 
@@ -308,11 +308,11 @@ export const translateAlertDocumentToExternalAlert = (
     ...(alertDoc.source === 'LOG' && alertDoc.logView
       ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
       : alertDoc.source === 'CHART' && alertDoc.dashboardId
-      ? {
-          source: 'chart',
-          dashboardId: alertDoc.dashboardId.toString(),
-          chartId: alertDoc.chartId as string,
-        }
-      : ({} as never)),
+        ? {
+            source: 'chart',
+            dashboardId: alertDoc.dashboardId.toString(),
+            chartId: alertDoc.tileId as string,
+          }
+        : ({} as never)),
   };
 };

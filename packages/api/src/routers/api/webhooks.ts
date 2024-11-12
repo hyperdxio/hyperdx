@@ -58,6 +58,15 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
+      const totalWebhooks = await Webhook.countDocuments({
+        team: teamId,
+        service,
+      });
+      if (totalWebhooks >= 5) {
+        return res.status(400).json({
+          message: 'You can only have 5 webhooks per team per service',
+        });
+      }
       if (await Webhook.findOne({ team: teamId, service, url })) {
         return res.status(400).json({
           message: 'Webhook already exists',

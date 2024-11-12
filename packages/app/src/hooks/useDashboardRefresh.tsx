@@ -50,9 +50,12 @@ export const useDashboardRefresh = ({
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current);
       }
-      intervalRef.current = window.setInterval(() => {
-        refresh();
-      }, convertGranularityToSeconds(granularityOverride) * 1000);
+      intervalRef.current = window.setInterval(
+        () => {
+          refresh();
+        },
+        convertGranularityToSeconds(granularityOverride) * 1000,
+      );
     } else {
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current);

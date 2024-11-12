@@ -1,14 +1,20 @@
 import express from 'express';
 import { differenceBy, groupBy, uniq } from 'lodash';
+import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
+  createDashboard,
   deleteDashboardAndAlerts,
+  getDashboard,
+  getDashboards,
   updateDashboardAndAlerts,
 } from '@/controllers/dashboard';
+import { getNonNullUserWithTeam } from '@/middleware/auth';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { DashboardSchema, DashboardWithoutIdSchema } from '@/utils/commonTypes';
 import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -16,23 +22,9 @@ const router = express.Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
+    const { teamId } = getNonNullUserWithTeam(req);
 
-    const dashboards = await Dashboard.find(
-      { team: teamId },
-      {
-        _id: 1,
-        name: 1,
-        createdAt: 1,
-        updatedAt: 1,
-        charts: 1,
-        query: 1,
-        tags: 1,
-      },
-    ).sort({ name: -1 });
+    const dashboards = await getDashboards(teamId);
 
     const alertsByDashboard = groupBy(
       await Alert.find({
@@ -41,12 +33,12 @@ router.get('/', async (req, res, next) => {
       'dashboardId',
     );
 
-    res.json({
-      data: dashboards.map(d => ({
+    res.json(
+      dashboards.map(d => ({
         ...d.toJSON(),
         alerts: alertsByDashboard[d._id.toString()],
       })),
-    });
+    );
   } catch (e) {
     next(e);
   }
@@ -55,76 +47,54 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   validateRequest({
-    body: z.object({
-      name: z.string().max(1024),
-      charts: z.array(chartSchema),
-      query: z.string().max(2048),
-      tags: tagsSchema,
-    }),
+    body: DashboardWithoutIdSchema,
   }),
   async (req, res, next) => {
     try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        return res.sendStatus(403);
-      }
+      const { teamId } = getNonNullUserWithTeam(req);
 
-      const { name, charts, query, tags } = req.body ?? {};
+      const dashboard = req.body;
 
-      // Create new dashboard from name and charts
-      const newDashboard = await new Dashboard({
-        name,
-        charts,
-        query,
-        tags: tags && uniq(tags),
-        team: teamId,
-      }).save();
-      res.json({
-        data: newDashboard,
-      });
+      const newDashboard = await createDashboard(teamId, dashboard);
+
+      res.json(newDashboard.toJSON());
     } catch (e) {
       next(e);
     }
   },
 );
 
-router.put(
+router.patch(
   '/:id',
   validateRequest({
     params: z.object({
       id: objectIdSchema,
     }),
-    body: z.object({
-      name: z.string().max(1024).optional(),
-      charts: z.array(chartSchema).optional(),
-      query: z.string().max(2048).optional(),
-      tags: tagsSchema,
-    }),
+    body: DashboardSchema.partial(),
   }),
   async (req, res, next) => {
     try {
-      const teamId = req.user?.team;
+      const { teamId } = getNonNullUserWithTeam(req);
       const { id: dashboardId } = req.params;
-      if (teamId == null) {
-        return res.sendStatus(403);
+
+      const dashboard = await getDashboard(dashboardId, teamId);
+
+      if (dashboard == null) {
+        return res.sendStatus(404);
       }
 
-      const { name, charts, query, tags } = req.body ?? {};
+      const updates = _.omitBy(req.body, _.isNil);
 
       const updatedDashboard = await updateDashboardAndAlerts(
         dashboardId,
         teamId,
         {
-          name,
-          charts,
-          query,
-          tags,
+          ...dashboard.toJSON(),
+          ...updates,
         },
       );
 
-      res.json({
-        data: updatedDashboard,
-      });
+      res.json(updatedDashboard);
     } catch (e) {
       next(e);
     }
@@ -134,21 +104,16 @@ router.put(
 router.delete(
   '/:id',
   validateRequest({
-    params: z.object({
-      id: objectIdSchema,
-    }),
+    params: z.object({ id: objectIdSchema }),
   }),
   async (req, res, next) => {
     try {
-      const teamId = req.user?.team;
+      const { teamId } = getNonNullUserWithTeam(req);
       const { id: dashboardId } = req.params;
-      if (teamId == null) {
-        return res.sendStatus(403);
-      }
 
       await deleteDashboardAndAlerts(dashboardId, teamId);
 
-      res.json({});
+      res.sendStatus(204);
     } catch (e) {
       next(e);
     }

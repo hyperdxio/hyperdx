@@ -47,7 +47,7 @@ const getClickhouseTableSize = async () => {
       table3: clickhouse.TableName.Metric,
     },
   });
-  const result = await rows.json<any>();
+  const result = await rows.json<ResponseJSON<any>>();
   return result.data;
 };
 

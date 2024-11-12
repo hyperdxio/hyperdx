@@ -9,7 +9,6 @@ export default function MetricTagFilterInput({
   value,
   onChange,
   placeholder = 'Filter metric by tag...',
-  showHotkey = true,
   size = 'lg',
   metricName,
 }: {
@@ -17,7 +16,6 @@ export default function MetricTagFilterInput({
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  showHotkey?: boolean;
   size?: 'sm' | 'lg';
   metricName?: string;
 }) {
@@ -53,7 +51,6 @@ export default function MetricTagFilterInput({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={options}
-      showHotkey={showHotkey}
       size={size}
       showSuggestionsOnEmpty
       suggestionsHeader="Tags"

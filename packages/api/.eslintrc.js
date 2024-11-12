@@ -17,6 +17,7 @@ module.exports = {
   rules: {
     '@typescript-eslint/ban-ts-comment': 'warn',
     '@typescript-eslint/no-empty-interface': 'off',
+    '@typescript-eslint/no-empty-object-type': 'warn',
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-floating-promises': 'error',
     '@typescript-eslint/no-namespace': 'warn',

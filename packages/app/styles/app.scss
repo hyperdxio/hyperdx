@@ -74,6 +74,10 @@ html[class~='dark'] body {
   font-weight: 500;
 }
 
+.text-success {
+  color: var(--mantine-color-green-3) !important;
+}
+
 // Darker than text-muted
 .text-gray-600 {
   color: $gray-600;
@@ -588,13 +592,17 @@ body {
 // React Grid for Dashboarding
 .react-grid-item.react-grid-placeholder {
   // Override the default placeholder color from red
-  background: $green !important;
-  opacity: 0.1 !important;
+  background: rgba(#A1A1AA, 0.05) !important;
+  border: 1px solid rgba(#FAFAFA, 0.4) !important;
+  opacity: 1 !important;
 }
 .react-grid-item > .react-resizable-handle::after {
-  border-color: rgba($green, 0.4) !important;
-  width: 7px;
-  height: 7px;
+  // border-color: rgba($green, 0.4) !important;
+  border-color: rgba(#FAFAFA, 0.8) !important;
+  right: -4px;
+  bottom: -4px;
+  width: 4px;
+  height: 4px;
 }
 
 // Nextra Overrides
@@ -718,4 +726,10 @@ a.mantine-focus-auto:hover {
   &:focus-visible {
     outline: none;
   }
+}
+
+.u-select {
+  border: 1px solid #50fa7b;
+  background: #50fa7a0d !important;
+  color: #2E224788;
 }

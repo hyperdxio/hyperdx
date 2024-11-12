@@ -1,3 +1,7 @@
+import { z } from 'zod';
+
+import { DashboardSchema, SavedSearchSchema } from './commonTypes';
+
 export type Team = {
   allowedAuthMethods: any[];
   apiKey?: string;
@@ -36,24 +40,29 @@ export type LogStreamModel = KeyValuePairs & {
   trace_id?: string;
 };
 
-export type LogView = {
-  _id: string;
-  name: string;
-  query: string;
-  alerts?: Alert[];
-  tags?: string[];
-};
+// TODO: Migrate
+export type LogView = z.infer<typeof SavedSearchSchema>;
 
-export type Dashboard = {
-  _id: string;
-  createdAt: string;
-  updatedAt: string;
-  name: string;
-  charts: Chart[];
-  alerts?: Alert[];
-  query?: string;
-  tags: string[];
-};
+// {
+//   _id: string;
+//   name: string;
+//   query: string;
+//   alerts?: Alert[];
+//   tags?: string[];
+// };
+
+export type ServerDashboard = z.infer<typeof DashboardSchema>;
+
+// {
+//   _id: string;
+//   createdAt: string;
+//   updatedAt: string;
+//   name: string;
+//   charts: Chart[];
+//   alerts?: Alert[];
+//   query?: string;
+//   tags: string[];
+// };
 
 export type AlertType = 'presence' | 'absence';
 
@@ -209,6 +218,12 @@ export enum MetricsDataType {
   Summary = 'Summary',
 }
 
+type SeriesDBDataSource = {
+  databaseName?: string;
+  tableName?: string;
+  timestampColumn?: string;
+};
+
 export type TimeChartSeries = {
   displayName?: string;
   table: SourceTable;
@@ -220,7 +235,11 @@ export type TimeChartSeries = {
   numberFormat?: NumberFormat;
   color?: string;
   displayType?: 'stacked_bar' | 'line';
-};
+  implicitColumn?: string;
+  whereSql?: string;
+  groupBySql?: string;
+  fieldSql?: string;
+} & SeriesDBDataSource;
 
 export type TableChartSeries = {
   visible?: boolean;
@@ -235,23 +254,23 @@ export type TableChartSeries = {
   sortOrder?: 'desc' | 'asc';
   numberFormat?: NumberFormat;
   color?: string;
-};
+} & SeriesDBDataSource;
 
 export type ChartSeries =
   | TimeChartSeries
   | TableChartSeries
-  | {
+  | ({
       table: SourceTable;
       type: 'histogram';
       field: string | undefined;
       where: string;
-    }
-  | {
+    } & SeriesDBDataSource)
+  | ({
       type: 'search';
       fields: string[];
       where: string;
-    }
-  | {
+    } & SeriesDBDataSource)
+  | ({
       type: 'number';
       table: SourceTable;
       aggFn: AggFn;
@@ -259,7 +278,7 @@ export type ChartSeries =
       where: string;
       numberFormat?: NumberFormat;
       color?: string;
-    }
+    } & SeriesDBDataSource)
   | {
       type: 'markdown';
       content: string;

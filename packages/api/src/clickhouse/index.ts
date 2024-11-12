@@ -1,11 +1,10 @@
 import {
-  ClickHouseClientConfigOptions,
+  BaseResultSet,
   createClient,
   ErrorLogParams as _CHErrorLogParams,
   Logger as _CHLogger,
   LogParams as _CHLogParams,
   ResponseJSON,
-  ResultSet,
   SettingsMap,
 } from '@clickhouse/client';
 import opentelemetry from '@opentelemetry/api';
@@ -14,6 +13,7 @@ import _ from 'lodash';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
+import { Readable } from 'stream';
 import { z } from 'zod';
 
 import * as config from '@/config';
@@ -27,6 +27,7 @@ import type {
 import { chartSeriesSchema } from '@/utils/zod';
 
 import {
+  CustomEventsPropertyTypeMappingsModel,
   LogsPropertyTypeMappingsModel,
   MetricsPropertyTypeMappingsModel,
 } from './propertyTypeMappingsModel';
@@ -35,6 +36,8 @@ import {
   buildSearchColumnName,
   buildSearchColumnName_OLD,
   buildSearchQueryWhereCondition,
+  CustomSchemaConfig,
+  CustomSchemaSQLSerializer,
   isCustomColumn,
   msToBigIntNs,
   SearchQueryBuilder,
@@ -43,7 +46,10 @@ import {
 
 const tracer = opentelemetry.trace.getTracer(__filename);
 
-export type SortOrder = 'asc' | 'desc' | null;
+export enum SortOrder {
+  Asc = 'asc',
+  Desc = 'desc',
+}
 
 export enum SeriesReturnType {
   Ratio = 'ratio',
@@ -157,12 +163,11 @@ export class CHLogger implements _CHLogger {
 }
 
 // TODO: move this to somewhere else
-const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
-  url: config.CLICKHOUSE_HOST,
+export const client = createClient({
+  host: config.CLICKHOUSE_HOST,
   username: config.CLICKHOUSE_USER,
   password: config.CLICKHOUSE_PASSWORD,
   request_timeout: ms('1m'),
-  application: 'hyperdx',
   compression: {
     request: false,
     response: false, // has to be off to enable streaming
@@ -172,7 +177,8 @@ const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
     // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
     // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
     // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    idle_socket_ttl: 60000,
+    socket_ttl: 60000,
+    retry_on_expired_socket: true,
   },
   clickhouse_settings: {
     connect_timeout: ms('1m') / 1000,
@@ -183,15 +189,6 @@ const CH_CLIENT_CONFIG_OPTIONS: ClickHouseClientConfigOptions = {
   },
   log: {
     LoggerClass: CHLogger,
-  },
-};
-
-export const client = createClient(CH_CLIENT_CONFIG_OPTIONS);
-export const insertCHClient = createClient({
-  ...CH_CLIENT_CONFIG_OPTIONS,
-  compression: {
-    request: true,
-    response: true,
   },
 });
 
@@ -390,7 +387,7 @@ export const clientInsertWithRetries = async <T>({
   const ts = Date.now();
   while (maxRetries > 0) {
     try {
-      await insertCHClient.insert({
+      await client.insert({
         table,
         values,
         format: 'JSONEachRow',
@@ -449,6 +446,109 @@ export const bulkInsertTeamMetricStream = async (metrics: MetricModel[]) => {
     values: metrics,
   });
 };
+
+export const getColumns = async ({
+  database,
+  table,
+}: {
+  database: string;
+  table: string;
+}) => {
+  const rows = await client.query({
+    query: 'DESCRIBE {database:Identifier}.{table:Identifier}',
+    format: 'JSON',
+    query_params: {
+      database: database,
+      table: table,
+    },
+  });
+  return rows.json<
+    ResponseJSON<{
+      name: string;
+      type: string;
+      default_type: string;
+      default_expression: string;
+      comment: string;
+      codec_expression: string;
+      ttl_expression: string;
+    }>
+  >();
+};
+
+/**
+ * Translate field from user ex. column.property.subproperty to SQL expression
+ * Supports:
+ * - Materialized Columns
+ * - Map
+ * - JSON Strings (via JSONExtract)
+ * TODO:
+ * - Nested Map
+ * - JSONExtract for non-string types
+ */
+export async function buildColumnExpressionFromField({
+  database,
+  table,
+  field,
+  inferredSimpleType,
+}: {
+  database: string;
+  table: string;
+  field: string;
+  inferredSimpleType: 'string' | 'number' | 'bool' | undefined;
+}): Promise<{
+  found: boolean;
+  columnExpression: string;
+  columnType: string;
+}> {
+  const jsonRows = await getColumns({
+    database: database,
+    table: table,
+  });
+  const columns = jsonRows.data;
+
+  const columnMapByLowerName = columns.reduce((acc, column) => {
+    acc.set(column.name.toLowerCase(), column);
+    return acc;
+  }, new Map<string, (typeof columns)[number]>());
+  const lowerField = field.toLowerCase();
+
+  const exactMatch = columnMapByLowerName.get(lowerField);
+  if (exactMatch) {
+    return {
+      found: true,
+      columnType: exactMatch.type,
+      columnExpression: exactMatch.name,
+    };
+  }
+
+  const lowerFieldPrefix = lowerField.split('.')[0];
+  const prefixMatch = columnMapByLowerName.get(lowerFieldPrefix);
+  if (prefixMatch) {
+    const lowerFieldPostfix = lowerField.split('.').slice(1).join('.');
+    if (prefixMatch.type.startsWith('Map')) {
+      const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
+      return {
+        found: true,
+        columnExpression: SqlString.format(`??[?]`, [
+          prefixMatch.name,
+          lowerFieldPostfix,
+        ]),
+        columnType: valueType ?? 'Unknown',
+      };
+    } else if (prefixMatch.type === 'String') {
+      // TODO: Support non-strings
+      return {
+        found: true,
+        columnExpression: `JSONExtractString(lower(${prefixMatch.name}), '${lowerFieldPostfix}')`,
+        columnType: 'String',
+      };
+    }
+    // TODO: Support arrays and tuples
+    throw new Error('Unsupported column type for prefix match');
+  }
+
+  throw new Error('Column not found');
+}
 
 // since, until -> unix in ms
 // TODO: what if since is like 0 or the difference is too big?
@@ -565,6 +665,9 @@ export const buildMetricsPropertyTypeMappingsModel = async (
   teamId: string,
 ) => new MetricsPropertyTypeMappingsModel(tableVersion, teamId);
 
+export const buildCustomEventsPropertyTypeMappingsModel = () =>
+  new CustomEventsPropertyTypeMappingsModel();
+
 // TODO: move this to PropertyTypeMappingsModel
 export const doesLogsPropertyExist = (
   property: string | undefined,
@@ -587,7 +690,8 @@ export const getCHServerMetrics = async () => {
     query,
     format: 'JSON',
   });
-  const result = await rows.json<{ metric: string; value: string }>();
+  const result =
+    await rows.json<ResponseJSON<{ metric: string; value: string }>>();
   logger.info({
     message: 'getCHServerMetrics',
     query,
@@ -630,7 +734,14 @@ export const getMetricsTagsDEPRECATED = async ({
     `,
     [
       tableName,
-      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+      SqlString.raw(
+        SearchQueryBuilder.timestampInBetween(
+          '_timestamp_sort_key',
+          'Int64',
+          startTime,
+          endTime,
+        ),
+      ),
     ],
   );
   const ts = Date.now();
@@ -644,14 +755,16 @@ export const getMetricsTagsDEPRECATED = async ({
       ),
     },
   });
-  const result = await rows.json<{
-    data_type: string;
-    is_delta: boolean;
-    is_monotonic: boolean;
-    name: string;
-    tags: Record<string, string>[];
-    unit: string;
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      tags: Record<string, string>[];
+      unit: string;
+    }>
+  >();
   logger.info({
     message: 'getMetricsTagsDEPRECATED',
     query,
@@ -716,13 +829,15 @@ export const getMetricsNames = async ({
       ),
     },
   });
-  const result = await rows.json<{
-    data_type: string;
-    is_delta: boolean;
-    is_monotonic: boolean;
-    name: string;
-    unit: string;
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data_type: string;
+      is_delta: boolean;
+      is_monotonic: boolean;
+      name: string;
+      unit: string;
+    }>
+  >();
   logger.info({
     message: 'getMetricsNames',
     query,
@@ -812,11 +927,13 @@ export const getMetricsTags = async ({
       ),
     },
   });
-  const result = await rows.json<{
-    name: string;
-    data_type: string;
-    tags: Record<string, string>[];
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      name: string;
+      data_type: string;
+      tags: Record<string, string>[];
+    }>
+  >();
   logger.info({
     message: 'getMetricsTags',
     query,
@@ -887,30 +1004,30 @@ export const getMetricsChart = async ({
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
         : aggFn === AggFn.Sum
-        ? `SUM(value) as data`
-        : aggFn === AggFn.Avg
-        ? `AVG(value) as data`
-        : aggFn === AggFn.Max
-        ? `MAX(value) as data`
-        : aggFn === AggFn.Min
-        ? `MIN(value) as data`
-        : aggFn === AggFn.SumRate
-        ? `SUM(rate) as data`
-        : aggFn === AggFn.AvgRate
-        ? `AVG(rate) as data`
-        : aggFn === AggFn.MaxRate
-        ? `MAX(rate) as data`
-        : aggFn === AggFn.MinRate
-        ? `MIN(rate) as data`
-        : `quantile(${
-            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
-              ? '0.5'
-              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
-              ? '0.90'
-              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
-              ? '0.95'
-              : '0.99'
-          })(${isRate ? 'rate' : 'value'}) as data`,
+          ? `SUM(value) as data`
+          : aggFn === AggFn.Avg
+            ? `AVG(value) as data`
+            : aggFn === AggFn.Max
+              ? `MAX(value) as data`
+              : aggFn === AggFn.Min
+                ? `MIN(value) as data`
+                : aggFn === AggFn.SumRate
+                  ? `SUM(rate) as data`
+                  : aggFn === AggFn.AvgRate
+                    ? `AVG(rate) as data`
+                    : aggFn === AggFn.MaxRate
+                      ? `MAX(rate) as data`
+                      : aggFn === AggFn.MinRate
+                        ? `MIN(rate) as data`
+                        : `quantile(${
+                            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+                              ? '0.5'
+                              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+                                ? '0.90'
+                                : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
+                                  ? '0.95'
+                                  : '0.99'
+                          })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else {
     logger.error(`Unsupported data type: ${dataType}`);
@@ -992,9 +1109,9 @@ export const getMetricsChart = async ({
         isRate
           ? rateMetricSource
           : // Max/Min aggs are the same for both Sum and Gauge metrics
-          dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
-          ? sumMetricSource
-          : gaugeMetricSource,
+            dataType === 'Sum' && aggFn != AggFn.Max && aggFn != AggFn.Min
+            ? sumMetricSource
+            : gaugeMetricSource,
       ),
       SqlString.raw(selectClause.join(',')),
       startTime / 1000,
@@ -1016,11 +1133,13 @@ export const getMetricsChart = async ({
       ),
     },
   });
-  const result = await rows.json<{
-    data: number;
-    group: string;
-    ts_bucket: number;
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: number;
+      group: string;
+      ts_bucket: number;
+    }>
+  >();
   logger.info({
     message: 'getMetricsChart',
     query,
@@ -1090,10 +1209,10 @@ export const buildMetricSeriesQuery = async ({
           granularity,
         )}) as timestamp`
       : modifiedStartTime
-      ? // Manually create the time buckets if we're including the prev time range
-        `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
-      : // Otherwise lump everything into one bucket
-        '0 as timestamp',
+        ? // Manually create the time buckets if we're including the prev time range
+          `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+        : // Otherwise lump everything into one bucket
+          '0 as timestamp',
   ];
   const selectClause = [
     granularity != null
@@ -1111,32 +1230,33 @@ export const buildMetricSeriesQuery = async ({
       aggFn === AggFn.Count
         ? 'COUNT(value) as data'
         : aggFn === AggFn.LastValue
-        ? 'LAST_VALUE(value) as data'
-        : aggFn === AggFn.Sum
-        ? `SUM(value) as data`
-        : aggFn === AggFn.Avg
-        ? `AVG(value) as data`
-        : aggFn === AggFn.Max
-        ? `MAX(value) as data`
-        : aggFn === AggFn.Min
-        ? `MIN(value) as data`
-        : aggFn === AggFn.SumRate
-        ? `SUM(rate) as data`
-        : aggFn === AggFn.AvgRate
-        ? `AVG(rate) as data`
-        : aggFn === AggFn.MaxRate
-        ? `MAX(rate) as data`
-        : aggFn === AggFn.MinRate
-        ? `MIN(rate) as data`
-        : `quantile(${
-            aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
-              ? '0.5'
-              : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
-              ? '0.90'
-              : aggFn === AggFn.P95 || aggFn === AggFn.P95Rate
-              ? '0.95'
-              : '0.99'
-          })(${isRate ? 'rate' : 'value'}) as data`,
+          ? 'LAST_VALUE(value) as data'
+          : aggFn === AggFn.Sum
+            ? `SUM(value) as data`
+            : aggFn === AggFn.Avg
+              ? `AVG(value) as data`
+              : aggFn === AggFn.Max
+                ? `MAX(value) as data`
+                : aggFn === AggFn.Min
+                  ? `MIN(value) as data`
+                  : aggFn === AggFn.SumRate
+                    ? `SUM(rate) as data`
+                    : aggFn === AggFn.AvgRate
+                      ? `AVG(rate) as data`
+                      : aggFn === AggFn.MaxRate
+                        ? `MAX(rate) as data`
+                        : aggFn === AggFn.MinRate
+                          ? `MIN(rate) as data`
+                          : `quantile(${
+                              aggFn === AggFn.P50 || aggFn === AggFn.P50Rate
+                                ? '0.5'
+                                : aggFn === AggFn.P90 || aggFn === AggFn.P90Rate
+                                  ? '0.90'
+                                  : aggFn === AggFn.P95 ||
+                                      aggFn === AggFn.P95Rate
+                                    ? '0.95'
+                                    : '0.99'
+                            })(${isRate ? 'rate' : 'value'}) as data`,
     );
   } else if (dataType === MetricsDataType.Histogram) {
     if (!['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
@@ -1254,10 +1374,10 @@ export const buildMetricSeriesQuery = async ({
               granularity,
             )}) as timestamp`
           : modifiedStartTime
-          ? // Manually create the time buckets if we're including the prev time range
-            `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
-          : // Otherwise lump everything into one bucket
-            '0 as timestamp',
+            ? // Manually create the time buckets if we're including the prev time range
+              `if(timestamp < fromUnixTimestamp(${startTimeUnixTs}), 0, ${startTimeUnixTs}) as timestamp`
+            : // Otherwise lump everything into one bucket
+              '0 as timestamp',
       ),
       tableName,
       name,
@@ -1271,10 +1391,10 @@ export const buildMetricSeriesQuery = async ({
     aggFn === AggFn.P50
       ? '0.5'
       : aggFn === AggFn.P90
-      ? '0.90'
-      : aggFn === AggFn.P95
-      ? '0.95'
-      : '0.99';
+        ? '0.90'
+        : aggFn === AggFn.P95
+          ? '0.95'
+          : '0.99';
 
   // TODO:
   // 1. handle -Inf
@@ -1424,11 +1544,11 @@ export const buildMetricSeriesQuery = async ({
 
 const buildEventSeriesQuery = async ({
   aggFn,
+  customSchemaConfig,
   endTime,
   field,
   granularity,
   groupBy,
-  propertyTypeMappingsModel,
   q,
   sortOrder,
   startTime,
@@ -1436,11 +1556,11 @@ const buildEventSeriesQuery = async ({
   teamId,
 }: {
   aggFn: AggFn;
+  customSchemaConfig?: CustomSchemaConfig;
   endTime: number; // unix in ms,
   field?: string;
   granularity: string | undefined; // can be undefined in the number chart
   groupBy: string[];
-  propertyTypeMappingsModel: LogsPropertyTypeMappingsModel;
   q: string;
   sortOrder?: 'asc' | 'desc';
   startTime: number; // unix in ms
@@ -1463,33 +1583,86 @@ const buildEventSeriesQuery = async ({
     );
   }
 
-  const tableName = getLogStreamTableName(tableVersion, teamId);
-  const whereClause = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: q,
-    startTime,
-  });
+  const useCustomSchema = customSchemaConfig != null;
+  if (useCustomSchema) {
+    z.object({
+      databaseName: z.string(),
+      implicitColumn: z.string(),
+      tableName: z.string(),
+      timestampColumn: z.string(),
+    }).parse(customSchemaConfig);
+  }
+
+  const selectedTableName = useCustomSchema
+    ? `${customSchemaConfig.databaseName}.${customSchemaConfig.tableName}`
+    : getLogStreamTableName(tableVersion, teamId);
+
+  const timestampColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : 'timestamp';
+
+  const sortKeyColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : '_timestamp_sort_key';
+
+  const propertyTypeMappingsModel = useCustomSchema
+    ? buildCustomEventsPropertyTypeMappingsModel()
+    : await buildLogsPropertyTypeMappingsModel(
+        tableVersion,
+        teamId,
+        startTime,
+        endTime,
+      );
+
+  let queryBuilder: SearchQueryBuilder;
+
+  // build timestamp filter
+  if (useCustomSchema) {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    queryBuilder.setSerializer(
+      new CustomSchemaSQLSerializer(propertyTypeMappingsModel, {
+        useTokenization: true,
+        customSchemaConfig,
+      }),
+    );
+    const timestampColumnExpression = await buildColumnExpressionFromField({
+      database: customSchemaConfig.databaseName,
+      table: customSchemaConfig.tableName,
+      field: customSchemaConfig.timestampColumn,
+      inferredSimpleType: undefined,
+    });
+    queryBuilder.and(
+      SearchQueryBuilder.timestampInBetween(
+        timestampColumn,
+        timestampColumnExpression.columnType,
+        startTime,
+        endTime,
+      ),
+    );
+  } else {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    queryBuilder.timestampInBetween(startTime, endTime);
+  }
+  const whereCondition = await queryBuilder.build();
+
+  const serializer = queryBuilder.getSerializer();
 
   const selectField =
-    field != null
-      ? buildSearchColumnName(propertyTypeMappingsModel.get(field), field)
-      : '';
+    field != null ? (await serializer.getColumnForField(field)).column : '';
 
-  const groupByColumnExpressions = groupBy.map(g => {
-    const columnName = buildSearchColumnName(
-      propertyTypeMappingsModel.get(g),
-      g,
-    );
-    if (columnName != null) {
-      return `toString(${columnName})`;
-    }
-    throw new Error(`Group by field ${g} does not exist`);
-  });
+  const groupByColumnExpressions = await Promise.all(
+    groupBy.map(async g => {
+      const _column = await serializer.getColumnForField(g);
+      if (_column.column != null) {
+        return `toString(${_column.column})`;
+      }
+      throw new Error(`Group by field ${g} does not exist`);
+    }),
+  );
 
   const hasGroupBy = groupByColumnExpressions.length > 0;
-
-  const serializer = new SQLSerializer(propertyTypeMappingsModel);
 
   // compute additional where clause for group-by fields + select field
   let additionalSelectFieldCheck = '';
@@ -1511,55 +1684,59 @@ const buildEventSeriesQuery = async ({
     aggFn === AggFn.Count
       ? 'toFloat64(count()) as data'
       : aggFn === AggFn.CountPerSec
-      ? granularity
-        ? SqlString.format('divide(count(), ?) as data', [
-            ms(granularity) / ms('1 second'),
-          ])
-        : SqlString.format(
-            "divide(count(), age('ss', toDateTime(?), toDateTime(?))) as data",
-            [startTime / 1000, endTime / 1000],
-          )
-      : aggFn === AggFn.CountPerMin
-      ? granularity
-        ? SqlString.format('divide(count(), ?) as data', [
-            ms(granularity) / ms('1 minute'),
-          ])
-        : SqlString.format(
-            "divide(count(), age('mi', toDateTime(?), toDateTime(?))) as data",
-            [startTime / 1000, endTime / 1000],
-          )
-      : aggFn === AggFn.CountPerHour
-      ? granularity
-        ? SqlString.format('divide(count(), ?) as data', [
-            ms(granularity) / ms('1 hour'),
-          ])
-        : SqlString.format(
-            "divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data",
-            [startTime / 1000, endTime / 1000],
-          )
-      : aggFn === AggFn.LastValue
-      ? `toFloat64(last_value(${selectField})) as data`
-      : aggFn === AggFn.Sum
-      ? `toFloat64(sum(${selectField})) as data`
-      : aggFn === AggFn.Avg
-      ? `toFloat64(avg(${selectField})) as data`
-      : aggFn === AggFn.Max
-      ? `toFloat64(max(${selectField})) as data`
-      : aggFn === AggFn.Min
-      ? `toFloat64(min(${selectField})) as data`
-      : aggFn === AggFn.CountDistinct
-      ? `toFloat64(count(distinct ${selectField})) as data`
-      : `toFloat64(quantile(${
-          aggFn === AggFn.P50
-            ? '0.5'
-            : aggFn === AggFn.P90
-            ? '0.90'
-            : aggFn === AggFn.P95
-            ? '0.95'
-            : '0.99'
-        })(${selectField})) as data`,
+        ? granularity
+          ? SqlString.format('divide(count(), ?) as data', [
+              ms(granularity) / ms('1 second'),
+            ])
+          : SqlString.format(
+              "divide(count(), age('ss', toDateTime(?), toDateTime(?))) as data",
+              [startTime / 1000, endTime / 1000],
+            )
+        : aggFn === AggFn.CountPerMin
+          ? granularity
+            ? SqlString.format('divide(count(), ?) as data', [
+                ms(granularity) / ms('1 minute'),
+              ])
+            : SqlString.format(
+                "divide(count(), age('mi', toDateTime(?), toDateTime(?))) as data",
+                [startTime / 1000, endTime / 1000],
+              )
+          : aggFn === AggFn.CountPerHour
+            ? granularity
+              ? SqlString.format('divide(count(), ?) as data', [
+                  ms(granularity) / ms('1 hour'),
+                ])
+              : SqlString.format(
+                  "divide(count(), age('hh', toDateTime(?), toDateTime(?))) as data",
+                  [startTime / 1000, endTime / 1000],
+                )
+            : aggFn === AggFn.LastValue
+              ? `toFloat64(last_value(${selectField})) as data`
+              : aggFn === AggFn.Sum
+                ? `toFloat64(sum(${selectField})) as data`
+                : aggFn === AggFn.Avg
+                  ? `toFloat64(avg(${selectField})) as data`
+                  : aggFn === AggFn.Max
+                    ? `toFloat64(max(${selectField})) as data`
+                    : aggFn === AggFn.Min
+                      ? `toFloat64(min(${selectField})) as data`
+                      : aggFn === AggFn.CountDistinct
+                        ? `toFloat64(count(distinct ${selectField})) as data`
+                        : `toFloat64(quantile(${
+                            aggFn === AggFn.P50
+                              ? '0.5'
+                              : aggFn === AggFn.P90
+                                ? '0.90'
+                                : aggFn === AggFn.P95
+                                  ? '0.95'
+                                  : '0.99'
+                          })(${selectField})) as data`,
     granularity != null
-      ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
+      ? // FIXME: toStartOfInterval might not work with timestampColumn
+        SqlString.format(
+          `toUnixTimestamp(toStartOfInterval(??, INTERVAL ?)) as ts_bucket`,
+          [timestampColumn, granularity],
+        )
       : "'0' as ts_bucket",
     hasGroupBy
       ? `[${groupByColumnExpressions.join(',')}] as group`
@@ -1584,14 +1761,14 @@ const buildEventSeriesQuery = async ({
         STEP ?`
           : ''
       }${
-      sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
-    }
+        sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
+      }
     `,
     [
       SqlString.raw(selectClause),
-      tableName,
+      selectedTableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
-      SqlString.raw(whereClause),
+      SqlString.raw(whereCondition),
       SqlString.raw(additionalSelectFieldCheck),
       SqlString.raw(additionalGroupByFieldCheck),
       SqlString.raw(groupByClause),
@@ -1606,6 +1783,10 @@ const buildEventSeriesQuery = async ({
         : []),
     ],
   );
+
+  console.log('--------------------------------');
+  console.log('query', query);
+  console.log('--------------------------------');
 
   return {
     query,
@@ -1715,10 +1896,10 @@ export const queryMultiSeriesChart = async ({
         seriesReturnType === 'ratio'
           ? 'series_0.data'
           : // If the user specified a sorting order, we use that
-          seriesIndexWithSorting > -1
-          ? `series_${seriesIndexWithSorting}.data`
-          : // Otherwise we just grab the greatest value
-            `greatest(${queries.map((_, i) => `series_${i}.data`).join(', ')})`,
+            seriesIndexWithSorting > -1
+            ? `series_${seriesIndexWithSorting}.data`
+            : // Otherwise we just grab the greatest value
+              `greatest(${queries.map((_, i) => `series_${i}.data`).join(', ')})`,
       ),
       // ORDER BY rank_order_by_value ....
       SqlString.raw(sortOrder === 'asc' ? 'ASC' : 'DESC'),
@@ -1744,25 +1925,29 @@ export const queryMultiSeriesChart = async ({
     format: 'JSON',
   });
 
-  const result = await rows.json<{
-    ts_bucket: number;
-    group: string[];
-    [series_data: `series_${number}.data`]: number;
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      ts_bucket: number;
+      group: string[];
+      [series_data: `series_${number}.data`]: number;
+    }>
+  >();
   return result;
 };
 
 export const getMultiSeriesChart = async ({
-  series,
+  customSchemaConfig,
   endTime,
   granularity,
   maxNumGroups,
+  postGroupWhere,
+  series,
+  seriesReturnType = SeriesReturnType.Column,
   startTime,
   tableVersion,
   teamId,
-  seriesReturnType = SeriesReturnType.Column,
-  postGroupWhere,
 }: {
+  customSchemaConfig?: CustomSchemaConfig;
   series: z.infer<typeof chartSeriesSchema>[];
   endTime: number; // unix in ms,
   startTime: number; // unix in ms
@@ -1784,39 +1969,6 @@ export const getMultiSeriesChart = async ({
       (series[0].table === 'logs' || series[0].table == null)) ||
     !('table' in series[0])
   ) {
-    const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
-      tableVersion,
-      teamId.toString(),
-      startTime,
-      endTime,
-    );
-
-    const propertySet = new Set<string>();
-    series.map(s => {
-      if ('field' in s && s.field != null) {
-        propertySet.add(s.field);
-      }
-      if ('groupBy' in s && s.groupBy.length > 0) {
-        s.groupBy.map(g => propertySet.add(g));
-      }
-    });
-
-    // Hack to refresh property cache if needed
-    const properties = Array.from(propertySet);
-
-    if (
-      properties.some(p => {
-        return !doesLogsPropertyExist(p, propertyTypeMappingsModel);
-      })
-    ) {
-      logger.warn({
-        message: `getChart: Property type mappings cache is out of date (${properties.join(
-          ', ',
-        )})`,
-      });
-      await propertyTypeMappingsModel.refresh();
-    }
-
     queries = await Promise.all(
       series.map(s => {
         if (s.type != 'time' && s.type != 'table' && s.type != 'number') {
@@ -1828,11 +1980,11 @@ export const getMultiSeriesChart = async ({
 
         return buildEventSeriesQuery({
           aggFn: s.aggFn,
+          customSchemaConfig,
           endTime,
           field: s.field,
           granularity,
           groupBy: s.type === 'number' ? [] : s.groupBy,
-          propertyTypeMappingsModel,
           q: s.where,
           sortOrder: s.type === 'table' ? s.sortOrder : undefined,
           startTime,
@@ -1925,10 +2077,13 @@ export const getMultiSeriesChartLegacyFormat = async ({
       return series.map((s, i) => {
         const groupBy =
           s.type === 'number' ? [] : 'groupBy' in s ? s.groupBy : [];
-        const attributes = groupBy.reduce((acc, curVal, curIndex) => {
-          acc[curVal] = row.group[curIndex];
-          return acc;
-        }, {} as Record<string, string>);
+        const attributes = groupBy.reduce(
+          (acc, curVal, curIndex) => {
+            acc[curVal] = row.group[curIndex];
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
         return {
           attributes,
           data: row[`series_${i}.data`],
@@ -1943,12 +2098,15 @@ export const getMultiSeriesChartLegacyFormat = async ({
       series[0].type === 'number'
         ? []
         : 'groupBy' in series[0]
-        ? series[0].groupBy
-        : [];
-    const attributes = groupBy.reduce((acc, curVal, curIndex) => {
-      acc[curVal] = row.group[curIndex];
-      return acc;
-    }, {} as Record<string, string>);
+          ? series[0].groupBy
+          : [];
+    const attributes = groupBy.reduce(
+      (acc, curVal, curIndex) => {
+        acc[curVal] = row.group[curIndex];
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
     return [
       {
         attributes,
@@ -2078,11 +2236,13 @@ LIMIT ?`,
             ),
           },
         });
-        const result = await rows.json<{
-          data: string;
-          ts_bucket: number;
-          group: string[];
-        }>();
+        const result = await rows.json<
+          ResponseJSON<{
+            data: string;
+            ts_bucket: number;
+            group: string[];
+          }>
+        >();
         return result;
       } catch (e) {
         span.recordException(e as any);
@@ -2152,24 +2312,24 @@ export const getLogsChart = async ({
     isCountFn
       ? 'count() as data'
       : aggFn === AggFn.Sum
-      ? `sum(${selectField}) as data`
-      : aggFn === AggFn.Avg
-      ? `avg(${selectField}) as data`
-      : aggFn === AggFn.Max
-      ? `max(${selectField}) as data`
-      : aggFn === AggFn.Min
-      ? `min(${selectField}) as data`
-      : aggFn === AggFn.CountDistinct
-      ? `count(distinct ${selectField}) as data`
-      : `quantile(${
-          aggFn === AggFn.P50
-            ? '0.5'
-            : aggFn === AggFn.P90
-            ? '0.90'
-            : aggFn === AggFn.P95
-            ? '0.95'
-            : '0.99'
-        })(${selectField}) as data`,
+        ? `sum(${selectField}) as data`
+        : aggFn === AggFn.Avg
+          ? `avg(${selectField}) as data`
+          : aggFn === AggFn.Max
+            ? `max(${selectField}) as data`
+            : aggFn === AggFn.Min
+              ? `min(${selectField}) as data`
+              : aggFn === AggFn.CountDistinct
+                ? `count(distinct ${selectField}) as data`
+                : `quantile(${
+                    aggFn === AggFn.P50
+                      ? '0.5'
+                      : aggFn === AggFn.P90
+                        ? '0.90'
+                        : aggFn === AggFn.P95
+                          ? '0.95'
+                          : '0.99'
+                  })(${selectField}) as data`,
     granularity != null
       ? `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL ${granularity})) as ts_bucket`
       : "'0' as ts_bucket",
@@ -2204,8 +2364,8 @@ export const getLogsChart = async ({
         STEP ?`
           : ''
       }${
-      sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
-    }
+        sortOrder === 'asc' || sortOrder === 'desc' ? `, data ${sortOrder}` : ''
+      }
     `,
     [
       SqlString.raw(selectClause),
@@ -2248,13 +2408,15 @@ export const getLogsChart = async ({
           ),
         },
       });
-      const result = await rows.json<{
-        data: string;
-        ts_bucket: number;
-        group: string;
-        rank: string;
-        rank_order_by_value: string;
-      }>();
+      const result = await rows.json<
+        ResponseJSON<{
+          data: string;
+          ts_bucket: number;
+          group: string;
+          rank: string;
+          rank_order_by_value: string;
+        }>
+      >();
       logger.info({
         message: 'getChart',
         query,
@@ -2300,7 +2462,6 @@ export const getChartHistogram = async ({
     propertyTypeMappingsModel,
     query: q,
     startTime,
-    teamId,
   });
 
   // TODO: hacky way to make sure the cache is update to date
@@ -2340,7 +2501,7 @@ export const getChartHistogram = async ({
       ),
     },
   });
-  const result = await rows.json<Record<string, unknown>>();
+  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
   logger.info({
     message: 'getChartHistogram',
     query,
@@ -2467,9 +2628,23 @@ WHERE sessions.sessionId IN (
   )`,
     [
       `default.${TableName.Rrweb}`,
-      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+      SqlString.raw(
+        SearchQueryBuilder.timestampInBetween(
+          '_timestamp_sort_key',
+          'Int64',
+          startTime,
+          endTime,
+        ),
+      ),
       tableName,
-      SqlString.raw(SearchQueryBuilder.timestampInBetween(startTime, endTime)),
+      SqlString.raw(
+        SearchQueryBuilder.timestampInBetween(
+          '_timestamp_sort_key',
+          'Int64',
+          startTime,
+          endTime,
+        ),
+      ),
     ],
   );
 
@@ -2491,7 +2666,7 @@ WHERE sessions.sessionId IN (
       ),
     },
   });
-  const result = await rows.json<Record<string, unknown>>();
+  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
   logger.info({
     message: 'getSessions',
     query: executedQuery,
@@ -2501,28 +2676,91 @@ WHERE sessions.sessionId IN (
   return result;
 };
 
-export const getHistogram = async (
-  tableVersion: number | undefined,
-  teamId: string,
-  q: string,
-  startTime: number, // unix in ms
-  endTime: number, // unix in ms,
-) => {
+export const getHistogram = async ({
+  customSchemaConfig,
+  endTime,
+  q,
+  startTime,
+  tableVersion,
+  teamId,
+}: {
+  customSchemaConfig?: CustomSchemaConfig;
+  endTime: number; // unix in ms,
+  q: string;
+  startTime: number; // unix in ms
+  tableVersion: number | undefined;
+  teamId: string;
+}) => {
+  const useCustomSchema = customSchemaConfig != null;
+  if (useCustomSchema) {
+    z.object({
+      databaseName: z.string(),
+      implicitColumn: z.string(),
+      tableName: z.string(),
+      timestampColumn: z.string(),
+    }).parse(customSchemaConfig);
+  }
+
+  const selectedTableName = useCustomSchema
+    ? `${customSchemaConfig.databaseName}.${customSchemaConfig.tableName}`
+    : getLogStreamTableName(tableVersion, teamId);
+
+  const timestampColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : 'timestamp';
+  let timestampColumnType: string;
+
+  const sortKeyColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : '_timestamp_sort_key';
+
+  const propertyTypeMappingsModel = useCustomSchema
+    ? buildCustomEventsPropertyTypeMappingsModel()
+    : await buildLogsPropertyTypeMappingsModel(
+        tableVersion,
+        teamId,
+        startTime,
+        endTime,
+      );
+
+  let queryBuilder: SearchQueryBuilder;
+
+  // build timestamp filter
+  if (useCustomSchema) {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    queryBuilder.setSerializer(
+      new CustomSchemaSQLSerializer(propertyTypeMappingsModel, {
+        useTokenization: true,
+        customSchemaConfig,
+      }),
+    );
+    const timestampColumnExpression = await buildColumnExpressionFromField({
+      database: customSchemaConfig.databaseName,
+      table: customSchemaConfig.tableName,
+      field: customSchemaConfig.timestampColumn,
+      inferredSimpleType: undefined,
+    });
+    timestampColumnType = timestampColumnExpression.columnType;
+    queryBuilder.and(
+      SearchQueryBuilder.timestampInBetween(
+        timestampColumn,
+        timestampColumnExpression.columnType,
+        startTime,
+        endTime,
+      ),
+    );
+  } else {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    timestampColumnType = "DateTime64(9, 'UTC')";
+    queryBuilder.timestampInBetween(startTime, endTime);
+  }
+  const whereCondition = await queryBuilder.build();
+
   const msRange = endTime - startTime;
-  const tableName = getLogStreamTableName(tableVersion, teamId);
-  const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    startTime,
-    endTime,
-  );
-  const whereCondition = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: q,
-    startTime,
-  });
   const interval = msRangeToHistogramInterval(msRange, 120);
+  // TODO: bypass custom severity text field
   const query = SqlString.format(
     `
       SELECT
@@ -2541,7 +2779,7 @@ export const getHistogram = async (
     `,
     [
       interval,
-      tableName,
+      selectedTableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
       SqlString.raw(whereCondition),
       startTime / 1000,
@@ -2551,6 +2789,7 @@ export const getHistogram = async (
       ms(interval) / 1000,
     ],
   );
+
   const ts = Date.now();
   const rows = await client.query({
     query,
@@ -2562,7 +2801,7 @@ export const getHistogram = async (
       ),
     },
   });
-  const result = await rows.json<Record<string, unknown>>();
+  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
   logger.info({
     message: 'getHistogram',
     query,
@@ -2627,7 +2866,7 @@ export const getLogById = async (
       ),
     },
   });
-  const result = await rows.json<Record<string, unknown>>();
+  const result = await rows.json<ResponseJSON<Record<string, unknown>>>();
   logger.info({
     message: 'getLogById',
     query,
@@ -2737,12 +2976,14 @@ export const checkAlert = async ({
       ),
     },
   });
-  const result = await rows.json<{
-    data: string;
-    group?: string;
-    ts_bucket: number;
-    attributes: Record<string, string>;
-  }>();
+  const result = await rows.json<
+    ResponseJSON<{
+      data: string;
+      group?: string;
+      ts_bucket: number;
+      attributes: Record<string, string>;
+    }>
+  >();
   logger.info({
     message: 'checkAlert',
     query,
@@ -2761,18 +3002,7 @@ export type LogSearchRow = {
 };
 
 const buildLogQuery = async ({
-  defaultFields = [
-    'id',
-    'timestamp',
-    'severity_text',
-    '_timestamp_sort_key AS sort_key',
-    'type',
-    '_hdx_body as body',
-    '_duration as duration',
-    '_service',
-    '_host',
-    '_platform',
-  ],
+  customSchemaConfig,
   endTime,
   extraFields = [],
   limit,
@@ -2783,7 +3013,6 @@ const buildLogQuery = async ({
   tableVersion,
   teamId,
 }: {
-  defaultFields?: string[];
   endTime: number; // unix in ms
   extraFields?: string[];
   limit: number;
@@ -2793,58 +3022,132 @@ const buildLogQuery = async ({
   startTime: number; // unix in ms
   tableVersion: number | undefined;
   teamId: string;
+  customSchemaConfig?: CustomSchemaConfig;
 }) => {
-  // Validate order
-  if (!['asc', 'desc', null].includes(order)) {
-    throw new Error(`Invalid order: ${order}`);
+  const useCustomSchema = customSchemaConfig != null;
+  if (useCustomSchema) {
+    z.object({
+      databaseName: z.string(),
+      implicitColumn: z.string(),
+      tableName: z.string(),
+      timestampColumn: z.string(),
+    }).parse(customSchemaConfig);
   }
 
-  const tableName = getLogStreamTableName(tableVersion, teamId);
-  const propertyTypeMappingsModel = await buildLogsPropertyTypeMappingsModel(
-    tableVersion,
-    teamId,
-    startTime,
-    endTime,
-  );
+  const selectedTableName = useCustomSchema
+    ? `${customSchemaConfig.databaseName}.${customSchemaConfig.tableName}`
+    : getLogStreamTableName(tableVersion, teamId);
 
-  const whereCondition = await buildSearchQueryWhereCondition({
-    endTime,
-    propertyTypeMappingsModel,
-    query: q,
-    startTime,
-    teamId,
-  });
+  const timestampColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : 'timestamp';
+  let timestampColumnType: string;
 
-  const extraColumns = extraFields
-    .map(field => {
-      const fieldType = propertyTypeMappingsModel.get(field);
-      const column = buildSearchColumnName(fieldType, field);
-      // FIXME: sql injection ??
-      return column ? `${column} as "${field}"` : null;
-    })
-    .filter(f => f);
+  const sortKeyColumn = useCustomSchema
+    ? customSchemaConfig.timestampColumn
+    : '_timestamp_sort_key';
 
-  const columns = _.map([...defaultFields, ...extraColumns], SqlString.raw);
+  const propertyTypeMappingsModel = useCustomSchema
+    ? buildCustomEventsPropertyTypeMappingsModel()
+    : await buildLogsPropertyTypeMappingsModel(
+        tableVersion,
+        teamId,
+        startTime,
+        endTime,
+      );
+
+  let extraColumns: string[] = [];
+  let queryBuilder: SearchQueryBuilder;
+
+  // build timestamp filter
+  if (useCustomSchema) {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    queryBuilder.setSerializer(
+      new CustomSchemaSQLSerializer(propertyTypeMappingsModel, {
+        useTokenization: true,
+        customSchemaConfig,
+      }),
+    );
+    const timestampColumnExpression = await buildColumnExpressionFromField({
+      database: customSchemaConfig.databaseName,
+      table: customSchemaConfig.tableName,
+      field: customSchemaConfig.timestampColumn,
+      inferredSimpleType: undefined,
+    });
+    timestampColumnType = timestampColumnExpression.columnType;
+    queryBuilder.and(
+      SearchQueryBuilder.timestampInBetween(
+        timestampColumn,
+        timestampColumnExpression.columnType,
+        startTime,
+        endTime,
+      ),
+    );
+    extraColumns = (
+      await Promise.all(
+        extraFields.map(async field => {
+          const columnExpression = await buildColumnExpressionFromField({
+            database: customSchemaConfig.databaseName,
+            table: customSchemaConfig.tableName,
+            field,
+            inferredSimpleType: undefined,
+          });
+          if (columnExpression.found) {
+            return SqlString.format(`?? as ??`, [
+              columnExpression.columnExpression,
+              field,
+            ]);
+          }
+          return null;
+        }),
+      )
+    ).filter(f => f) as string[];
+  } else {
+    // Copied from buildSearchQueryWhereCondition
+    queryBuilder = new SearchQueryBuilder(q, propertyTypeMappingsModel);
+    timestampColumnType = "DateTime64(9, 'UTC')";
+    queryBuilder.timestampInBetween(startTime, endTime);
+    extraColumns = extraFields
+      .map(field => {
+        const fieldType = propertyTypeMappingsModel.get(field);
+        const column = buildSearchColumnName(fieldType, field);
+        return column ? `${column} as "${field}"` : null;
+      })
+      .filter(f => f) as string[];
+  }
+  const whereCondition = await queryBuilder.build();
+
+  const _columns = useCustomSchema
+    ? extraColumns
+    : ['id', 'type', 'severity_text', '_hdx_body AS body', '_service'];
+
+  // FIXME: THIS IS A SECURITY VULN
+  const columns = _.map(_columns, SqlString.raw);
+
   const query = SqlString.format(
     `
       SELECT ?
       FROM ??
       WHERE ? AND (?)
-      ?
+      ORDER BY ?? ?
       LIMIT ?, ?
     `,
     [
       columns,
-      tableName,
+      selectedTableName,
       buildTeamLogStreamWhereCondition(tableVersion, teamId),
       SqlString.raw(whereCondition),
-      SqlString.raw(
-        order !== null ? `ORDER BY _timestamp_sort_key ${order}` : '',
-      ),
+      sortKeyColumn,
+      SqlString.raw(order),
       offset,
       limit,
     ],
   );
+
+  console.log('--------------------------------');
+  console.log('query', query);
+  console.log('--------------------------------');
 
   return query;
 };
@@ -2915,7 +3218,7 @@ export const getLogBatchGroupedByBody = async ({
     ],
   );
 
-  type Response = {
+  type Response = ResponseJSON<{
     body: string;
     buckets: string[];
     ids: string[];
@@ -2924,9 +3227,9 @@ export const getLogBatchGroupedByBody = async ({
     lines_count: string;
     service: string;
     timestamps: string[];
-  };
+  }>;
 
-  let result: ResponseJSON<Response>;
+  let result: Response;
 
   await tracer.startActiveSpan(
     'clickhouse.getLogBatchGroupedByBody',
@@ -3007,14 +3310,16 @@ export const getLogBatch = async ({
         ),
       },
     });
-    result = await rows.json<{
-      id: string;
-      timestamp: string;
-      severity_text: string;
-      body: string;
-      _host: string;
-      _source: string;
-    }>();
+    result = await rows.json<
+      ResponseJSON<{
+        id: string;
+        timestamp: string;
+        severity_text: string;
+        body: string;
+        _host: string;
+        _source: string;
+      }>
+    >();
     span.setAttribute('results', result.data.length);
     span.end();
   });
@@ -3063,7 +3368,7 @@ export const getRrwebEvents = async ({
     ],
   );
 
-  let resultSet: ResultSet<'JSONEachRow'>;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getRrwebEvents', async span => {
     span.setAttribute('query', query);
 
@@ -3079,15 +3384,11 @@ export const getRrwebEvents = async ({
   });
 
   // @ts-ignore
-  return resultSet.stream<{
-    b: string;
-    t: number;
-    ck: number;
-    tcks: number;
-  }>();
+  return resultSet.stream();
 };
 
 export const getLogStream = async ({
+  customSchemaConfig,
   endTime,
   extraFields = [],
   limit,
@@ -3098,6 +3399,7 @@ export const getLogStream = async ({
   tableVersion,
   teamId,
 }: {
+  customSchemaConfig?: CustomSchemaConfig;
   endTime: number; // unix in ms
   extraFields?: string[];
   limit: number;
@@ -3109,6 +3411,7 @@ export const getLogStream = async ({
   teamId: string;
 }) => {
   const query = await buildLogQuery({
+    customSchemaConfig,
     endTime,
     extraFields,
     limit,
@@ -3127,7 +3430,7 @@ export const getLogStream = async ({
     limit,
   });
 
-  let resultSet: ResultSet<'JSONEachRow'>;
+  let resultSet: BaseResultSet<Readable>;
   await tracer.startActiveSpan('clickhouse.getLogStream', async span => {
     span.setAttribute('query', query);
     span.setAttribute('search', q);
@@ -3154,7 +3457,6 @@ export const getLogStream = async ({
     }
   });
 
-  // TODO: type this ?
   // @ts-ignore
   return resultSet.stream();
 };

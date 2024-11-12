@@ -3,6 +3,7 @@ import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
 import session from 'express-session';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import ms from 'ms';
 import onHeaders from 'on-headers';
 
@@ -11,6 +12,10 @@ import { isUserAuthenticated } from './middleware/auth';
 import defaultCors from './middleware/cors';
 import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
+import clickhouseProxyRouter from './routers/api/clickhouseProxy';
+import connectionsRouter from './routers/api/connections';
+import savedSearchRouter from './routers/api/savedSearch';
+import sourcesRouter from './routers/api/sources';
 import externalRoutersV1 from './routers/external-api/v1';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
@@ -98,7 +103,6 @@ app.use('/', routers.rootRouter);
 // PRIVATE ROUTES
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
-app.use('/log-views', isUserAuthenticated, routers.logViewsRouter);
 app.use('/logs', isUserAuthenticated, routers.logsRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
@@ -106,6 +110,11 @@ app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/chart', isUserAuthenticated, routers.chartRouter);
+app.use('/datasources', isUserAuthenticated, routers.datasourceRouter);
+app.use('/connections', isUserAuthenticated, connectionsRouter);
+app.use('/sources', isUserAuthenticated, sourcesRouter);
+app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
+app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers
@@ -114,8 +123,8 @@ app.use('/chart', isUserAuthenticated, routers.chartRouter);
 // ---------------------------------------------------------------------
 // API v1
 app.use('/api/v1', externalRoutersV1);
-// ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
 // The error handler must be before any other error middleware and after all controllers
 app.use(Sentry.Handlers.errorHandler());
 

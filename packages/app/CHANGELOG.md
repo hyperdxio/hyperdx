@@ -1,36 +1,5 @@
 # @hyperdx/app
 
-## 1.10.0
-
-### Minor Changes
-
-- 7b4993c: feat: support Summary metrics data type
-- 3b5ec64: feat: copy "deployment.environment" resource attribute to the top
-  level (span)
-- 4d6b362: feat: support sentry sdk 'X-Sentry-Auth' header
-
-### Patch Changes
-
-- fc07472: Filter Panel improvements
-- 3be5652: Search page filters
-- d221f5f: Fix Search This Value button
-- 8d37ed1: Filter panel improvements
-- f7ae1a4: perf: use route transform to reroute go spans
-- 19a4086: style: Summary count UI label
-- ac88c52: style: introduce AGGREGATOR_PAYLOAD_SIZE_LIMIT env var
-- 523443e: fix: aggregator should return 413 (Content Too Large) to make
-  ingestor ARC work properly
-- f1da5b6: chore: bump vector to v0.40.1
-- dc50edf: Update session player design
-- 016c1d0: Deconflict Dashboard Chart Colors
-- 76f4db9: Dashboard auto-refresh
-- 01b7d46: New date range picker
-- 3b5ec64: feat: support environment filtering
-- f90946b: Add k8s cluster dropdown
-- d0d6d48: Fix a bug that prevented adding new charts to preset dashboards
-- 16c0796: Dashboard refresh button
-- a379aaa: Update log side panel components, add exception rendering
-
 ## 1.9.0
 
 ### Minor Changes

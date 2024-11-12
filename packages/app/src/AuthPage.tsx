@@ -1,3 +1,5 @@
+// @ts-nocheck TODO: remove this line
+
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -130,8 +132,8 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             {config.IS_OSS && isRegister
               ? 'Setup '
               : isRegister
-              ? 'Register for '
-              : 'Login to '}
+                ? 'Register for '
+                : 'Login to '}
             <span className="text-success fw-bold">HyperDX</span>
           </div>
           {action === 'login' && (
@@ -215,14 +217,14 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   {err === 'missing'
                     ? 'Please provide a valid email and password'
                     : err === 'invalid'
-                    ? 'Email or password is invalid'
-                    : err === 'authFail'
-                    ? 'Failed to login with email and password, please try again.'
-                    : err === 'passwordAuthNotAllowed'
-                    ? 'Password authentication is not allowed by your team admin.'
-                    : err === 'teamAlreadyExists'
-                    ? 'Team already exists, please login instead.'
-                    : 'Unknown error occurred, please try again later.'}
+                      ? 'Email or password is invalid'
+                      : err === 'authFail'
+                        ? 'Failed to login with email and password, please try again.'
+                        : err === 'passwordAuthNotAllowed'
+                          ? 'Password authentication is not allowed by your team admin.'
+                          : err === 'teamAlreadyExists'
+                            ? 'Team already exists, please login instead.'
+                            : 'Unknown error occurred, please try again later.'}
                 </Notification>
               )}
 

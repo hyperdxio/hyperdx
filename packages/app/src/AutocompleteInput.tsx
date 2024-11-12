@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
-import { Form, InputGroup, OverlayTrigger } from 'react-bootstrap';
+import { OverlayTrigger } from 'react-bootstrap';
+import { TextInput } from '@mantine/core';
 
+import InputLanguageSwitch from './components/InputLanguageSwitch';
 import { useDebounce } from './utils';
 
 export default function AutocompleteInput({
@@ -10,19 +12,22 @@ export default function AutocompleteInput({
   onChange,
   placeholder = 'Search your events for anything...',
   autocompleteOptions,
-  showHotkey = true,
-  size = 'lg',
+  size = 'sm',
   aboveSuggestions,
   belowSuggestions,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
+  onLanguageChange,
+  language,
+  showHotkey,
+  onSubmit,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   value: string;
   onChange: (value: string) => void;
+  onSubmit?: () => void;
   placeholder?: string;
-  showHotkey?: boolean;
   size?: 'sm' | 'lg';
   autocompleteOptions?: { value: string; label: string }[];
   aboveSuggestions?: React.ReactNode;
@@ -30,9 +35,11 @@ export default function AutocompleteInput({
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
+  onLanguageChange?: (language: 'sql' | 'lucene') => void;
+  language?: 'sql' | 'lucene';
+  showHotkey?: boolean;
 }) {
   const suggestionsLimit = 10;
-  const inputGroupRef = useRef<HTMLDivElement>(null);
 
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -56,7 +63,7 @@ export default function AutocompleteInput({
     [autocompleteOptions],
   );
 
-  const debouncedValue = useDebounce(value, 200);
+  const debouncedValue = useDebounce(value ?? '', 200);
   const suggestedProperties = useMemo(() => {
     const tokens = debouncedValue.split(' ');
     const lastToken = tokens[tokens.length - 1];
@@ -96,7 +103,7 @@ export default function AutocompleteInput({
           className="bg-body border border-dark rounded"
           style={{
             ...style,
-            maxWidth: inputGroupRef.current?.clientWidth ?? 720,
+            maxWidth: inputRef.current?.clientWidth ?? 720,
             width: '100%',
             zIndex,
           }}
@@ -157,88 +164,86 @@ export default function AutocompleteInput({
       }}
       trigger={[]}
     >
-      <InputGroup ref={inputGroupRef}>
-        <Form.Control
-          ref={inputRef}
-          type="text"
-          placeholder={placeholder}
-          className="border-0 fs-8"
-          value={value}
-          size={size}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => {
-            setSelectedAutocompleteIndex(-1);
-            setIsSearchInputFocused(true);
-          }}
-          onBlur={() => {
-            setSelectedAutocompleteIndex(-1);
-            setIsSearchInputFocused(false);
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
-              e.target.blur();
-            }
+      <TextInput
+        ref={inputRef}
+        type="text"
+        style={{ flexGrow: 1 }}
+        placeholder={placeholder}
+        className="border-0 fs-8"
+        value={value}
+        size={size}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => {
+          setSelectedAutocompleteIndex(-1);
+          setIsSearchInputFocused(true);
+        }}
+        onBlur={() => {
+          setSelectedAutocompleteIndex(-1);
+          setIsSearchInputFocused(false);
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
+            e.target.blur();
+          }
 
-            // Autocomplete Navigation/Acceptance Keys
-            if (e.key === 'Tab' && e.target instanceof HTMLInputElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
-                e.preventDefault();
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              }
+          // Autocomplete Navigation/Acceptance Keys
+          if (e.key === 'Tab' && e.target instanceof HTMLInputElement) {
+            if (
+              suggestedProperties.length > 0 &&
+              selectedAutocompleteIndex < suggestedProperties.length &&
+              selectedAutocompleteIndex >= 0
+            ) {
+              e.preventDefault();
+              onAcceptSuggestion(
+                suggestedProperties[selectedAutocompleteIndex].value,
+              );
             }
-            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              }
+          }
+          if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+            if (
+              suggestedProperties.length > 0 &&
+              selectedAutocompleteIndex < suggestedProperties.length &&
+              selectedAutocompleteIndex >= 0
+            ) {
+              onAcceptSuggestion(
+                suggestedProperties[selectedAutocompleteIndex].value,
+              );
+            } else {
+              onSubmit?.();
             }
-            if (e.key === 'ArrowDown' && e.target instanceof HTMLInputElement) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.min(
-                    selectedAutocompleteIndex + 1,
-                    suggestedProperties.length - 1,
-                    suggestionsLimit - 1,
-                  ),
-                );
-              }
+          }
+          if (e.key === 'ArrowDown' && e.target instanceof HTMLInputElement) {
+            if (suggestedProperties.length > 0) {
+              setSelectedAutocompleteIndex(
+                Math.min(
+                  selectedAutocompleteIndex + 1,
+                  suggestedProperties.length - 1,
+                  suggestionsLimit - 1,
+                ),
+              );
             }
-            if (e.key === 'ArrowUp' && e.target instanceof HTMLInputElement) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.max(selectedAutocompleteIndex - 1, 0),
-                );
-              }
+          }
+          if (e.key === 'ArrowUp' && e.target instanceof HTMLInputElement) {
+            if (suggestedProperties.length > 0) {
+              setSelectedAutocompleteIndex(
+                Math.max(selectedAutocompleteIndex - 1, 0),
+              );
             }
-          }}
-        />
-        {isSearchInputFocused && showHotkey ? (
-          <InputGroup.Text className="ps-0 pe-3">
-            <div
-              className="mono px-1 fs-8 text-muted"
-              style={{
-                border: '1px solid #37414d',
-                borderRadius: 3,
-                padding: '1px 4px',
-                background: '#626262',
-              }}
-            >
-              {'/'}
-            </div>
-          </InputGroup.Text>
-        ) : null}
-      </InputGroup>
+          }
+        }}
+        rightSectionWidth="auto"
+        rightSection={
+          <>
+            {language != null && onLanguageChange != null && (
+              <InputLanguageSwitch
+                showHotkey={showHotkey && isSearchInputFocused}
+                language={language}
+                onLanguageChange={onLanguageChange}
+              />
+            )}
+          </>
+        }
+      />
     </OverlayTrigger>
   );
 }

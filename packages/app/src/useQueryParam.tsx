@@ -84,8 +84,8 @@ export function useQueryParam<T>(
         Array.isArray(input)
           ? input.map(i => (i != null ? JSON.parse(i) : undefined))
           : input != null
-          ? JSON.parse(input)
-          : undefined,
+            ? JSON.parse(input)
+            : undefined,
     },
   },
 ): [T, (value: T) => void] {

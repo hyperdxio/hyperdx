@@ -1,3 +1,3 @@
-import DashboardPage from '@/DashboardPage';
+import DashboardPage from '@/DBDashboardPage';
 
 export default DashboardPage;

@@ -52,7 +52,10 @@ router.get('/', async (req, res, next) => {
           : 100,
         offset: parseInt(offset as string),
         q: q as string,
-        order: order === 'null' ? null : order === 'asc' ? 'asc' : 'desc',
+        order:
+          order === 'null'
+            ? clickhouse.SortOrder.Desc
+            : (order as clickhouse.SortOrder),
         startTime: parseInt(startTime as string),
         tableVersion: team.logStreamTableVersion,
         teamId: teamId.toString(),
@@ -207,87 +210,124 @@ router.get('/patterns', async (req, res, next) => {
   }
 });
 
-router.get('/stream', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { endTime, offset, q, startTime, order, limit } = req.query;
-    let { extraFields } = req.query;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
+router.get(
+  '/stream',
+  validateRequest({
+    query: z.object({
+      databaseName: z.string().optional(),
+      endTime: z.string(),
+      extraFields: z.array(z.string()).optional(),
+      limit: z.string().optional(),
+      offset: z.string(),
+      order: z.nativeEnum(clickhouse.SortOrder),
+      q: z.string(),
+      startTime: z.string(),
+      tableName: z.string().optional(),
+      timestampColumn: z.string().optional(),
+      implicitColumn: z.string().optional(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const {
+        endTime,
+        limit,
+        offset,
+        order,
+        q,
+        startTime,
+        // for custom scheme config
+        databaseName,
+        implicitColumn,
+        tableName,
+        timestampColumn,
+      } = req.query;
+      let { extraFields } = req.query;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
 
-    if (extraFields == null) {
-      extraFields = [];
-    }
+      if (extraFields == null) {
+        extraFields = [];
+      }
 
-    if (
-      !Array.isArray(extraFields) ||
-      (extraFields?.length > 0 && typeof extraFields[0] != 'string')
-    ) {
-      return res.sendStatus(400);
-    }
+      const team = await getTeam(teamId);
+      if (team == null) {
+        return res.sendStatus(403);
+      }
 
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
+      const MAX_LIMIT = 4000;
 
-    const MAX_LIMIT = 4000;
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders(); // flush the headers to establish SSE with client
 
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders(); // flush the headers to establish SSE with client
+      const useCustomSchema =
+        databaseName != null &&
+        tableName != null &&
+        timestampColumn != null &&
+        implicitColumn != null;
 
-    // TODO: verify query
-    const stream = await clickhouse.getLogStream({
-      extraFields: extraFields as string[],
-      endTime: parseInt(endTime as string),
-      limit: Number.isInteger(Number.parseInt(`${limit}`))
-        ? Math.min(MAX_LIMIT, Number.parseInt(`${limit}`))
-        : 100,
-      offset: parseInt(offset as string),
-      order: order === 'null' ? null : order === 'asc' ? 'asc' : 'desc',
-      q: q as string,
-      startTime: parseInt(startTime as string),
-      tableVersion: team.logStreamTableVersion,
-      teamId: teamId.toString(),
-    });
-
-    let resultCount = 0;
-
-    if (stream == null) {
-      logger.info('No results found for query');
-
-      res.write('event: end\ndata:\n\n');
-      res.end();
-    } else {
-      stream.on('data', (rows: Row[]) => {
-        resultCount += rows.length;
-        logger.info(`Sending ${rows.length} rows`);
-
-        res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
-        res.flush();
+      // TODO: verify query
+      const stream = await clickhouse.getLogStream({
+        extraFields,
+        endTime: parseInt(endTime),
+        limit: Number.isInteger(Number.parseInt(`${limit}`))
+          ? Math.min(MAX_LIMIT, Number.parseInt(`${limit}`))
+          : 100,
+        offset: parseInt(offset),
+        order,
+        q,
+        startTime: parseInt(startTime),
+        tableVersion: team.logStreamTableVersion,
+        teamId: teamId.toString(),
+        ...(useCustomSchema && {
+          customSchemaConfig: {
+            databaseName,
+            tableName,
+            timestampColumn,
+            implicitColumn,
+          },
+        }),
       });
-      stream.on('end', () => {
+
+      let resultCount = 0;
+
+      if (stream == null) {
+        logger.info('No results found for query');
+
         res.write('event: end\ndata:\n\n');
         res.end();
+      } else {
+        stream.on('data', (rows: Row[]) => {
+          resultCount += rows.length;
+          logger.info(`Sending ${rows.length} rows`);
+
+          res.write(`${rows.map(row => `data: ${row.text}`).join('\n')}\n\n`);
+          res.flush();
+        });
+        stream.on('end', () => {
+          res.write('event: end\ndata:\n\n');
+          res.end();
+        });
+      }
+    } catch (e) {
+      const span = opentelemetry.trace.getActiveSpan();
+      span?.recordException(e as Error);
+      span?.setStatus({ code: SpanStatusCode.ERROR });
+      // WARNING: no need to call next(e) here, as the stream will be closed
+      logger.error({
+        message: 'Error streaming logs',
+        error: serializeError(e),
+        teamId: req.user?.team,
+        query: req.query,
       });
+      res.end();
     }
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span?.recordException(e as Error);
-    span?.setStatus({ code: SpanStatusCode.ERROR });
-    // WARNING: no need to call next(e) here, as the stream will be closed
-    logger.error({
-      message: 'Error streaming logs',
-      error: serializeError(e),
-      teamId: req.user?.team,
-      query: req.query,
-    });
-    res.end();
-  }
-});
+  },
+);
 
 router.get('/propertyTypeMappings', async (req, res, next) => {
   try {
@@ -512,75 +552,5 @@ router.get(
     }
   },
 );
-
-router.get('/histogram', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { endTime, q, startTime } = req.query;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    const startTimeNum = parseInt(startTime as string);
-    const endTimeNum = parseInt(endTime as string);
-    if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
-      return res.sendStatus(400);
-    }
-
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
-
-    res.json(
-      await clickhouse.getHistogram(
-        team.logStreamTableVersion,
-        teamId.toString(),
-        q as string,
-        startTimeNum,
-        endTimeNum,
-      ),
-    );
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span?.recordException(e as Error);
-    span?.setStatus({ code: SpanStatusCode.ERROR });
-
-    next(e);
-  }
-});
-
-router.get('/:id', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const logId = req.params.id;
-    const { sortKey } = req.query;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    if (!sortKey) {
-      return res.sendStatus(400);
-    }
-
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
-
-    res.json(
-      await clickhouse.getLogById(
-        team.logStreamTableVersion,
-        teamId.toString(),
-        sortKey as string,
-        logId,
-      ),
-    );
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span?.recordException(e as Error);
-    span?.setStatus({ code: SpanStatusCode.ERROR });
-
-    next(e);
-  }
-});
 
 export default router;

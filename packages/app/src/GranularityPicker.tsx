@@ -1,3 +1,5 @@
+import { useController, UseControllerProps } from 'react-hook-form';
+
 import { Granularity } from './ChartUtils';
 import DSSelect from './DSSelect';
 
@@ -6,8 +8,8 @@ export default function GranularityPicker({
   onChange,
   disabled,
 }: {
-  value: Granularity | undefined;
-  onChange: (granularity: Granularity | undefined) => void;
+  value: Granularity | 'auto' | undefined;
+  onChange: (granularity: Granularity | 'auto' | undefined) => void;
   disabled?: boolean;
 }) {
   return (
@@ -15,7 +17,7 @@ export default function GranularityPicker({
       disabled={disabled}
       options={[
         {
-          value: undefined,
+          value: 'auto' as const,
           label: 'Auto Granularity',
         },
         {
@@ -59,4 +61,14 @@ export default function GranularityPicker({
       value={value}
     />
   );
+}
+
+export function GranularityPickerControlled(props: UseControllerProps<any>) {
+  const {
+    field,
+    fieldState: { invalid, isTouched, isDirty },
+    formState: { touchedFields, dirtyFields },
+  } = useController(props);
+
+  return <GranularityPicker value={field.value} onChange={field.onChange} />;
 }

@@ -1,25 +1,23 @@
 import React from 'react';
 import produce from 'immer';
 
+import { Filter } from './renderChartConfig';
+
 export type FilterState = {
   [key: string]: Set<string>;
 };
 
-const parenthesize = (s: string) => (s.length ? `(${s})` : '');
-
-export const filtersToQuery = (filters: FilterState) => {
-  const query = Object.entries(filters)
-    .map(([property, values]) => {
-      const v = Array.from(values)
-        .map(value => `${property}:"${value}"`)
-        .filter(Boolean)
-        .join(' OR ');
-      return parenthesize(v);
-    })
-    .filter(Boolean)
-    .join(' AND ');
-
-  return parenthesize(query);
+export const filtersToQuery = (filters: FilterState): Filter[] => {
+  return Object.entries(filters)
+    .filter(([_, values]) => values.size > 0)
+    .map(([key, values]) => {
+      return {
+        type: 'sql',
+        condition: `${key} IN (${Array.from(values)
+          .map(v => `'${v}'`)
+          .join(', ')})`,
+      };
+    });
 };
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
@@ -46,62 +44,35 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
 };
 
 export const parseQuery = (
-  q: string,
+  q: Filter[],
 ): {
   filters: FilterState;
-  filterQueryPosition?: [number, number];
 } => {
-  const filters: FilterState = {};
-
-  // Filter string always starts and ends with double parentheses
-  const startPos = q.indexOf('((');
-  const endPos = q.lastIndexOf('))');
-
-  // No filter string
-  if (startPos === -1 && endPos === -1) {
-    return { filters };
-  }
-
-  // Parse filter string
-  const filterString = q.slice(startPos + 2, endPos);
-  const filterGroups = filterString.split(') AND (');
-
-  for (const groupString of filterGroups) {
-    let propertyName = '';
-    const values = groupString.split(' OR ');
-    for (const valueString of values) {
-      // valueString is in the format 'property:"value"'
-      const [property, value] = valueString.split(':');
-      if (!propertyName) {
-        propertyName = property;
-      } else if (propertyName !== property) {
-        throw new Error(
-          `Invalid filter string, expected ${propertyName} but got ${property}`,
-        );
-      }
-      const unquotedValue = value?.replaceAll('"', '');
-      if (!filters[propertyName]) {
-        filters[propertyName] = new Set();
-      }
-      filters[propertyName].add(unquotedValue);
+  const state = new Map<string, Set<string>>();
+  for (const filter of q) {
+    if (filter.type !== 'sql' || filter.condition.indexOf(' IN ') === -1) {
+      continue;
     }
-  }
 
-  return {
-    filters,
-    filterQueryPosition: startPos === -1 ? undefined : [startPos, endPos + 2],
-  };
+    const [key, values] = filter.condition.split(' IN ');
+    const keyStr = key.trim();
+    const valuesStr = values
+      .replace('(', '')
+      .replace(')', '')
+      .split(',')
+      .map(v => v.trim().replace(/'/g, ''));
+    state.set(keyStr, new Set(valuesStr));
+  }
+  return { filters: Object.fromEntries(state) };
 };
 
 export const useSearchPageFilterState = ({
-  searchQuery = '',
-  onSearchQueryChange,
+  searchQuery = [],
+  onFilterChange,
 }: {
-  searchQuery?: string;
-  onSearchQueryChange?: (query: string) => void;
+  searchQuery?: Filter[];
+  onFilterChange: (filters: Filter[]) => void;
 }) => {
-  const [filters, setFilters] = React.useState<FilterState>({});
-
   const parsedQuery = React.useMemo(() => {
     try {
       return parseQuery(searchQuery);
@@ -111,38 +82,25 @@ export const useSearchPageFilterState = ({
     }
   }, [searchQuery]);
 
-  const updateFilterQuery = React.useCallback(
-    (newFilters: FilterState) => {
-      const { filterQueryPosition } = parsedQuery;
-
-      let newQuery = '';
-      if (!filterQueryPosition) {
-        // append the filter query to the end of the user query
-        newQuery = [searchQuery.trim(), filtersToQuery(newFilters)]
-          .filter(Boolean)
-          .join(' ');
-      } else {
-        const [start, end] = filterQueryPosition;
-        newQuery = [
-          searchQuery.slice(0, start).trim(),
-          filtersToQuery(newFilters),
-          searchQuery.slice(end).trim(),
-        ]
-          .filter(Boolean)
-          .join(' ');
-      }
-      onSearchQueryChange?.(newQuery);
-    },
-    [onSearchQueryChange, parsedQuery, searchQuery],
-  );
+  const [filters, setFilters] = React.useState<FilterState>({});
 
   React.useEffect(() => {
-    if (!areFiltersEqual(filters, parsedQuery.filters)) {
+    if (
+      !areFiltersEqual(filters, parsedQuery.filters) &&
+      Object.values(parsedQuery.filters).length > 0
+    ) {
       setFilters(parsedQuery.filters);
     }
     // only react to changes in parsed query
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
+
+  const updateFilterQuery = React.useCallback(
+    (newFilters: FilterState) => {
+      onFilterChange(filtersToQuery(newFilters));
+    },
+    [onFilterChange],
+  );
 
   const setFilterValue = React.useCallback(
     (property: string, value: string, only?: boolean) => {
@@ -183,10 +141,16 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  const clearAllFilters = React.useCallback(() => {
+    setFilters({});
+    updateFilterQuery({});
+  }, [updateFilterQuery]);
+
   return {
     filters,
     clearFilter,
     setFilters,
     setFilterValue,
+    clearAllFilters,
   };
 };

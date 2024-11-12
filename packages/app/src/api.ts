@@ -2,19 +2,24 @@ import React from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
-import type { UseQueryOptions } from 'react-query';
-import { useInfiniteQuery, useMutation, useQuery } from 'react-query';
+import type {
+  InfiniteData,
+  QueryKey,
+  UseInfiniteQueryOptions,
+  UseQueryOptions,
+} from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
-import { SERVER_URL } from './config';
+import { IS_LOCAL_MODE, SERVER_URL } from './config';
 import type {
   AlertChannel,
   AlertInterval,
   AlertSource,
   AlertType,
   ChartSeries,
-  Dashboard,
   LogView,
   MetricsDataType,
+  ServerDashboard,
   Session,
 } from './types';
 
@@ -91,7 +96,7 @@ const getEnrichedSeries = (series: ChartSeries[]) =>
       return s;
     });
 
-function loginHook(request: Request, options: any, response: Response) {
+export function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
     '/',
@@ -124,7 +129,7 @@ export const server = ky.create({
   timeout: false,
 });
 
-const hdxServer = (
+export const hdxServer = (
   url: string,
   options?: Options | undefined,
 ): ResponsePromise => {
@@ -136,19 +141,18 @@ const hdxServer = (
 
 const api = {
   usePropertyTypeMappings(options?: UseQueryOptions<any, Error>) {
-    return useQuery<Map<string, 'string' | 'number' | 'bool'>, Error>(
-      `logs/propertyTypeMappings`,
-      () =>
+    return useQuery({
+      queryKey: [`logs/propertyTypeMappings`],
+
+      queryFn: () =>
         hdxServer(`logs/propertyTypeMappings`, {
           method: 'GET',
         })
           .json<{ data: any[] }>()
           .then(res => new Map(res.data)),
-      {
-        staleTime: 1000 * 60 * 5, // Cache every 5 min
-        ...options,
-      },
-    );
+      staleTime: 1000 * 60 * 5, // Cache every 5 min
+      ...options,
+    });
   },
   useMetricsNames() {
     return useQuery<
@@ -451,13 +455,34 @@ const api = {
       order: 'asc' | 'desc' | null;
       limit?: number;
     },
-    options?: UseQueryOptions<any, Error>,
+    options?: Partial<
+      UseInfiniteQueryOptions<
+        any,
+        Error,
+        InfiniteData<{ data: any[] }>,
+        any,
+        QueryKey,
+        number
+      >
+    >,
   ) {
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
-    return useInfiniteQuery<{ data: any[] }, Error>({
+    return useInfiniteQuery<
+      { data: any[] },
+      Error,
+      InfiniteData<{ data: any[] }>,
+      QueryKey,
+      number
+    >({
       queryKey: ['logs', q, startTime, endTime, extraFields, order, limit],
-      queryFn: async ({ pageParam = 0 }) =>
+      initialPageParam: 0,
+      getNextPageParam: (lastPage: any, allPages: any) => {
+        if (lastPage.rows === 0) return undefined;
+        // @ts-ignore
+        return allPages.flatMap(page => page.data).length;
+      },
+      queryFn: async ({ pageParam }: { pageParam: number }) =>
         hdxServer('logs', {
           method: 'GET',
           searchParams: [
@@ -467,281 +492,110 @@ const api = {
             ['startTime', startTime],
             ['order', order],
             ['limit', limit],
-            ...extraFields.map(field => ['extraFields[]', field]),
-          ],
-        }).json(),
-      ...options,
-    });
-  },
-  useLogPatterns(
-    {
-      q,
-      startDate,
-      endDate,
-      sampleRate,
-    }: {
-      q: string;
-      startDate: Date;
-      endDate: Date;
-      sampleRate: number;
-    },
-    options?: UseQueryOptions<any, Error>,
-  ) {
-    const startTime = startDate.getTime();
-    const endTime = endDate.getTime();
-    return useQuery<{ data: any[] }, Error>({
-      queryKey: ['logs', 'patterns', q, startTime, endTime],
-      queryFn: async () =>
-        hdxServer('logs/patterns', {
-          method: 'GET',
-          searchParams: [
-            ['endTime', endTime],
-            ['q', q],
-            ['startTime', startTime],
-            ['sampleRate', sampleRate],
-          ],
-        }).json(),
-      ...options,
-    });
-  },
-  useSessions({
-    endDate,
-    startDate,
-    q,
-  }: {
-    endDate: Date;
-    startDate: Date;
-    q: string;
-  }) {
-    const startTime = startDate.getTime();
-    const endTime = endDate.getTime();
-    return useQuery<{ data: Session[] }, Error>({
-      refetchOnWindowFocus: false,
-      queryKey: [startTime, endTime, q],
-      queryFn: () =>
-        hdxServer('sessions', {
-          method: 'GET',
-          searchParams: [
-            ['endTime', endTime],
-            ['q', q],
-            ['startTime', startTime],
-          ],
-        }).json(),
-    });
-  },
-  useLogViews() {
-    return useQuery<{ data: LogView[] }, Error>({
-      queryKey: ['log-views'],
-      queryFn: () => hdxServer('log-views', { method: 'GET' }).json(),
-    });
-  },
-  useDeleteLogView() {
-    return useMutation<any, Error, string>(
-      `log-views`,
-      async (logViewId: string) =>
-        hdxServer(`log-views/${logViewId}`, {
-          method: 'DELETE',
-        }),
-    );
-  },
-  useSaveLogView() {
-    return useMutation<
-      any,
-      Error,
-      {
-        name: string;
-        query: string;
-        tags?: string;
-      }
-    >(`log-views`, async ({ name, query, tags }) =>
-      hdxServer('log-views', {
-        method: 'POST',
-        json: {
-          query,
-          name,
-          tags,
-        },
-      }).json(),
-    );
-  },
-  useUpdateLogView() {
-    return useMutation<
-      any,
-      Error,
-      {
-        id: string;
-        name?: string;
-        query?: string;
-        tags?: string[];
-      }
-    >(`log-views`, async ({ id, name, query, tags }) =>
-      hdxServer(`log-views/${id}`, {
-        method: 'PATCH',
-        json: {
-          name,
-          query,
-          tags,
-        },
-      }).json(),
-    );
-  },
-  useAlerts() {
-    return useQuery<any, Error>(`alerts`, () =>
-      hdxServer(`alerts`, { method: 'GET' }).json(),
-    );
-  },
-  useSaveAlert() {
-    return useMutation<any, Error, ApiAlertInput>(`alerts`, async alert =>
-      hdxServer('alerts', {
-        method: 'POST',
-        json: alert,
-      }).json(),
-    );
-  },
-  useUpdateAlert() {
-    return useMutation<any, Error, { id: string } & ApiAlertInput>(
-      `alerts`,
-      async alert =>
-        hdxServer(`alerts/${alert.id}`, {
-          method: 'PUT',
-          json: alert,
-        }).json(),
-    );
-  },
-  useDeleteAlert() {
-    return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
-      hdxServer(`alerts/${alertId}`, {
-        method: 'DELETE',
-      }),
-    );
-  },
-  useSilenceAlert() {
-    return useMutation<any, Error, ApiAlertAckInput>('alerts', async alertAck =>
-      hdxServer(`alerts/${alertAck.alertId}/silenced`, {
-        method: 'POST',
-        json: alertAck,
-      }),
-    );
-  },
-  useUnsilenceAlert() {
-    return useMutation<any, Error, string>(`alerts`, async (alertId: string) =>
-      hdxServer(`alerts/${alertId}/silenced`, {
-        method: 'DELETE',
-      }),
-    );
-  },
-  useLogHistogram(
-    q: string,
-    startDate: Date,
-    endDate: Date,
-    options?: UseQueryOptions<any, Error>,
-  ) {
-    const st = startDate.getTime();
-    const et = endDate.getTime();
-    return useQuery<any, Error>({
-      queryKey: ['logs/histogram', q, st, et],
-      queryFn: () =>
-        hdxServer('logs/histogram', {
-          method: 'GET',
-          searchParams: [
-            ['q', q],
-            ['startTime', st],
-            ['endTime', et],
-          ],
+            ...extraFields.map(field => ['extraFields[]', field] as const),
+          ] as Array<Array<string | number | boolean>>,
         }).json(),
       ...options,
     });
   },
   useDashboards(options?: UseQueryOptions<any, Error>) {
-    return useQuery<{ data: Dashboard[] }, Error>(
-      `dashboards`,
-      () => hdxServer(`dashboards`, { method: 'GET' }).json(),
-      options,
-    );
+    return useQuery({
+      queryKey: [`dashboards`],
+      queryFn: () => {
+        if (IS_LOCAL_MODE) {
+          return null;
+        }
+        return hdxServer(`dashboards`, { method: 'GET' }).json();
+      },
+      ...options,
+    });
   },
   useCreateDashboard() {
-    return useMutation<
-      any,
-      HTTPError,
-      { name: string; query: string; charts: any[]; tags?: string[] }
-    >(async ({ name, charts, query, tags }) =>
-      hdxServer(`dashboards`, {
-        method: 'POST',
-        json: { name, charts, query, tags },
-      }).json(),
-    );
+    return useMutation({
+      mutationFn: async ({
+        name,
+        charts,
+        query,
+        tags,
+      }: {
+        name: string;
+        charts: any;
+        query: any;
+        tags: any;
+      }) =>
+        hdxServer(`dashboards`, {
+          method: 'POST',
+          json: { name, charts, query, tags },
+        }).json(),
+    });
   },
   useUpdateDashboard() {
-    return useMutation<
-      any,
-      HTTPError,
-      {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        name,
+        charts,
+        query,
+        tags,
+      }: {
         id: string;
-        name?: string;
-        query?: string;
-        charts?: any[];
-        tags?: string[];
-      }
-    >(async ({ id, name, charts, query, tags }) =>
-      hdxServer(`dashboards/${id}`, {
-        method: 'PUT',
-        json: { name, charts, query, tags },
-      }).json(),
-    );
+        name: string;
+        charts: any;
+        query: any;
+        tags: any;
+      }) =>
+        hdxServer(`dashboards/${id}`, {
+          method: 'PUT',
+          json: { name, charts, query, tags },
+        }).json(),
+    });
   },
   useDeleteDashboard() {
-    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      hdxServer(`dashboards/${id}`, {
-        method: 'DELETE',
-      }).json(),
-    );
+    return useMutation({
+      mutationFn: async ({ id }: { id: string }) =>
+        hdxServer(`dashboards/${id}`, {
+          method: 'DELETE',
+        }).json(),
+    });
   },
   useServices() {
-    return useQuery<ServicesResponse, Error>(
-      `services`,
-      () =>
+    return useQuery({
+      queryKey: [`services`],
+      queryFn: () =>
         hdxServer(`chart/services`, {
           method: 'GET',
         }).json() as Promise<ServicesResponse>,
-    );
-  },
-  useLogDetails(
-    logId: string,
-    sortKey: string,
-    options?: UseQueryOptions<any, Error>,
-  ) {
-    return useQuery<any, Error>(
-      `logs/${logId}`,
-      () =>
-        hdxServer(`logs/${logId}?sortKey=${sortKey}`, { method: 'GET' }).json(),
-      {
-        staleTime: 1000 * 60 * 5, // 5 min
-        ...options,
-      },
-    );
+    });
   },
   useRotateTeamApiKey() {
-    return useMutation<any, HTTPError>(async () =>
-      hdxServer(`team/apiKey`, {
-        method: 'PATCH',
-      }).json(),
-    );
+    return useMutation<any, Error | HTTPError>({
+      mutationFn: async () =>
+        hdxServer(`team/apiKey`, {
+          method: 'PATCH',
+        }).json(),
+    });
   },
   useDeleteTeamMember() {
-    return useMutation<any, HTTPError, { userId: string }>(async ({ userId }) =>
-      hdxServer(`team/member/${userId}`, {
-        method: 'DELETE',
-      }).json(),
-    );
+    return useMutation<any, Error | HTTPError, { userId: string }>({
+      mutationFn: async ({ userId }: { userId: string }) =>
+        hdxServer(`team/member/${userId}`, {
+          method: 'DELETE',
+        }).json(),
+    });
   },
   useTeamInvitations() {
-    return useQuery<any, HTTPError>(`team/invitations`, () =>
-      hdxServer(`team/invitations`).json(),
-    );
+    return useQuery<any>({
+      queryKey: [`team/invitations`],
+      queryFn: () => hdxServer(`team/invitations`).json(),
+    });
   },
   useSaveTeamInvitation() {
-    return useMutation<any, HTTPError, { name?: string; email: string }>(
-      async ({ name, email }) =>
+    return useMutation<
+      any,
+      Error | HTTPError,
+      { name?: string; email: string }
+    >({
+      mutationFn: async ({ name, email }: { name?: string; email: string }) =>
         hdxServer(`team/invitation`, {
           method: 'POST',
           json: {
@@ -749,65 +603,106 @@ const api = {
             email,
           },
         }).json(),
-    );
+    });
   },
   useDeleteTeamInvitation() {
-    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      hdxServer(`team/invitation/${id}`, {
-        method: 'DELETE',
-      }).json(),
-    );
+    return useMutation({
+      mutationFn: async ({ id }: { id: string }) =>
+        hdxServer(`team/invitation/${id}`, {
+          method: 'DELETE',
+        }).json(),
+    });
   },
   useInstallation() {
-    return useQuery<any, HTTPError>(`installation`, () =>
-      hdxServer(`installation`).json(),
-    );
+    return useQuery<any, Error>({
+      queryKey: [`installation`],
+      queryFn: () => {
+        if (IS_LOCAL_MODE) {
+          return;
+        }
+        return hdxServer(`installation`).json();
+      },
+    });
   },
   useMe() {
-    return useQuery<any, HTTPError>(`me`, () => hdxServer(`me`).json());
+    return useQuery<any>({
+      queryKey: [`me`],
+      queryFn: () => {
+        if (IS_LOCAL_MODE) {
+          return null;
+        }
+        return hdxServer(`me`).json();
+      },
+    });
   },
   useTeam() {
-    return useQuery<any, HTTPError>(`team`, () => hdxServer(`team`).json(), {
+    return useQuery<any, Error>({
+      queryKey: [`team`],
+      queryFn: () => {
+        if (IS_LOCAL_MODE) {
+          return null;
+        }
+        return hdxServer(`team`).json();
+      },
       retry: 1,
     });
   },
   useTeamMembers() {
-    return useQuery<any, HTTPError>(`team/members`, () =>
-      hdxServer(`team/members`).json(),
-    );
+    return useQuery<any>({
+      queryKey: [`team/members`],
+      queryFn: () => hdxServer(`team/members`).json(),
+    });
   },
   useTags() {
-    return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
-      hdxServer(`team/tags`).json<{ data: string[] }>(),
-    );
+    return useQuery({
+      queryKey: [`team/tags`],
+      queryFn: () => hdxServer(`team/tags`).json<{ data: string[] }>(),
+    });
   },
   useSaveWebhook() {
     return useMutation<
       any,
-      HTTPError,
+      Error | HTTPError,
       {
         service: string;
         url: string;
         name: string;
-        description?: string;
-        queryParams?: Map<string, string>;
-        headers?: Map<string, string>;
+        description: string;
+        queryParams?: string;
+        headers: string;
         body?: string;
       }
-    >(async ({ service, url, name, description, queryParams, headers, body }) =>
-      hdxServer(`webhooks`, {
-        method: 'POST',
-        json: {
-          name,
-          service,
-          url,
-          description,
-          queryParams,
-          headers,
-          body,
-        },
-      }).json(),
-    );
+    >({
+      mutationFn: async ({
+        service,
+        url,
+        name,
+        description,
+        queryParams,
+        headers,
+        body,
+      }: {
+        service: string;
+        url: string;
+        name: string;
+        description: string;
+        queryParams?: string;
+        headers: string;
+        body?: string;
+      }) =>
+        hdxServer(`webhooks`, {
+          method: 'POST',
+          json: {
+            name,
+            service,
+            url,
+            description,
+            queryParams,
+            headers,
+            body,
+          },
+        }).json(),
+    });
   },
   useWebhooks(services: string[]) {
     return useQuery<any, Error>({
@@ -820,27 +715,47 @@ const api = {
     });
   },
   useDeleteWebhook() {
-    return useMutation<any, HTTPError, { id: string }>(async ({ id }) =>
-      hdxServer(`webhooks/${id}`, {
-        method: 'DELETE',
-      }).json(),
-    );
+    return useMutation<any, Error | HTTPError, { id: string }>({
+      mutationFn: async ({ id }: { id: string }) =>
+        hdxServer(`webhooks/${id}`, {
+          method: 'DELETE',
+        }).json(),
+    });
   },
   useRegisterPassword() {
-    return useMutation<
-      any,
-      HTTPError,
-      { email: string; password: string; confirmPassword: string }
-    >(async ({ email, password, confirmPassword }) =>
-      hdxServer(`register/password`, {
-        method: 'POST',
-        json: {
-          email,
-          password,
-          confirmPassword,
-        },
-      }).json(),
-    );
+    return useMutation({
+      // @ts-ignore
+      mutationFn: async ({ email, password, confirmPassword }) =>
+        hdxServer(`register/password`, {
+          method: 'POST',
+          json: {
+            email,
+            password,
+            confirmPassword,
+          },
+        }).json(),
+    });
+  },
+  useTestConnection() {
+    return useMutation({
+      mutationFn: async ({
+        host,
+        username,
+        password,
+      }: {
+        host: string;
+        username: string;
+        password: string;
+      }) =>
+        hdxServer(`clickhouse-proxy/test`, {
+          method: 'POST',
+          json: {
+            host,
+            username,
+            password,
+          },
+        }).json() as Promise<{ success: boolean }>,
+    });
   },
 };
 export default api;
@@ -881,6 +796,22 @@ export const useMultiSeriesChartV2 = (
         sortOrder: input.sortOrder,
         seriesReturnType: input.seriesReturnType,
         postGroupWhere: input.postGroupWhere,
+        databaseName:
+          input.series[0].type === 'time'
+            ? input.series[0].databaseName
+            : undefined,
+        tableName:
+          input.series[0].type === 'time'
+            ? input.series[0].tableName
+            : undefined,
+        timestampColumn:
+          input.series[0].type === 'time'
+            ? input.series[0].timestampColumn
+            : undefined,
+        implicitColumn:
+          input.series[0].type === 'time'
+            ? input.series[0].implicitColumn
+            : undefined,
       },
     })
       .json()

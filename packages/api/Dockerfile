@@ -1,11 +1,11 @@
 ## base #############################################################################################
-FROM node:18.20.3-alpine AS base
+FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS base
 
 WORKDIR /app
 
 COPY .yarn ./.yarn
-COPY .yarnrc yarn.lock ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./
-RUN yarn install --frozen-lockfile && yarn cache clean
+COPY .yarnrc.yml yarn.lock ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./
+RUN yarn install && yarn cache clean
 
 
 ## dev #############################################################################################
@@ -28,7 +28,7 @@ RUN yarn run build
 
 ## prod ############################################################################################
 
-FROM node:18.20.3-alpine AS prod
+FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS prod
 
 ARG CODE_VERSION
 

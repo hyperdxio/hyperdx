@@ -9,11 +9,16 @@ import {
   Select as MSelect,
 } from '@mantine/core';
 
+import type { SQLInterval } from '@/sqlTypes';
+
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
+import { DisplayType } from './DisplayType';
 import FieldMultiSelect from './FieldMultiSelect';
 import MetricTagFilterInput from './MetricTagFilterInput';
+import { SavedChartConfig } from './renderChartConfig';
+import { ChartConfigWithDateRange } from './renderChartConfig';
 import SearchInput from './SearchInput';
 import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';
@@ -76,6 +81,7 @@ export const getMetricAggFns = (
 };
 
 export enum Granularity {
+  FifteenSecond = '15 second',
   ThirtySecond = '30 second',
   OneMinute = '1 minute',
   FiveMinute = '5 minute',
@@ -92,26 +98,46 @@ export enum Granularity {
   ThirtyDay = '30 day',
 }
 
-export const GRANULARITY_SECONDS_MAP: Record<Granularity, number> = {
-  [Granularity.ThirtySecond]: 30,
-  [Granularity.OneMinute]: 60,
-  [Granularity.FiveMinute]: 5 * 60,
-  [Granularity.TenMinute]: 10 * 60,
-  [Granularity.FifteenMinute]: 15 * 60,
-  [Granularity.ThirtyMinute]: 30 * 60,
-  [Granularity.OneHour]: 60 * 60,
-  [Granularity.TwoHour]: 2 * 60 * 60,
-  [Granularity.SixHour]: 6 * 60 * 60,
-  [Granularity.TwelveHour]: 12 * 60 * 60,
-  [Granularity.OneDay]: 24 * 60 * 60,
-  [Granularity.TwoDay]: 2 * 24 * 60 * 60,
-  [Granularity.SevenDay]: 7 * 24 * 60 * 60,
-  [Granularity.ThirtyDay]: 30 * 24 * 60 * 60,
+export const DEFAULT_CHART_CONFIG: Omit<
+  SavedChartConfig,
+  'source' | 'connection'
+> = {
+  name: '',
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  displayType: DisplayType.Line,
+  granularity: 'auto',
 };
 
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
+
+export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
+  const autoGranularity = useMemo(() => {
+    return convertDateRangeToGranularityString(chartConfig.dateRange, 80);
+  }, [chartConfig.dateRange]);
+
+  const granularity =
+    chartConfig.granularity === 'auto' || chartConfig.granularity == null
+      ? autoGranularity
+      : chartConfig.granularity;
+
+  return {
+    displayType: chartConfig.displayType,
+    dateRange: chartConfig.dateRange,
+    fillNulls: chartConfig.fillNulls,
+    granularity,
+  };
+}
 
 const seriesDisplayName = (
   s: ChartSeries | undefined,
@@ -136,7 +162,7 @@ const seriesDisplayName = (
     const displayField =
       s.aggFn !== 'count'
         ? s.table === 'metrics'
-          ? s.field?.split(' - ')?.[0] ?? s.field
+          ? (s.field?.split(' - ')?.[0] ?? s.field)
           : s.field
         : '';
 
@@ -280,6 +306,7 @@ export function usePropertyOptions(types: ('number' | 'string' | 'bool')[]) {
   const propertyOptions = useMemo(() => {
     return Array.from(propertyTypeMappings.entries())
       .flatMap(([key, value]) =>
+        // @ts-ignore
         types.includes(value)
           ? [
               {
@@ -507,8 +534,8 @@ export function MetricNameSelect({
         isLoading
           ? 'Loading...'
           : isError
-          ? 'Unable to load metrics'
-          : 'Select a metric...'
+            ? 'Unable to load metrics'
+            : 'Select a metric...'
       }
       data={options}
       limit={100}
@@ -1049,7 +1076,6 @@ export function ChartSeriesFormCompact({
                 value={where}
                 onChange={v => setWhere(v)}
                 onSearch={() => {}}
-                showHotkey={false}
                 zIndex={99999}
               />
             </div>
@@ -1096,7 +1122,6 @@ export function ChartSeriesFormCompact({
                   value={where}
                   onChange={v => setWhere(v)}
                   metricName={field}
-                  showHotkey={false}
                 />
               </div>
             </div>
@@ -1177,7 +1202,9 @@ export function convertDateRangeToGranularityString(
   const diffSeconds = Math.floor((end - start) / 1000);
   const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
 
-  if (granularitySizeSeconds <= 30) {
+  if (granularitySizeSeconds <= 15) {
+    return Granularity.FifteenSecond;
+  } else if (granularitySizeSeconds <= 30) {
     return Granularity.ThirtySecond;
   } else if (granularitySizeSeconds <= 60) {
     return Granularity.OneMinute;
@@ -1210,7 +1237,7 @@ export function convertDateRangeToGranularityString(
   return Granularity.ThirtyDay;
 }
 
-export function convertGranularityToSeconds(granularity: Granularity): number {
+export function convertGranularityToSeconds(granularity: SQLInterval): number {
   const [num, unit] = granularity.split(' ');
   const numInt = Number.parseInt(num);
   switch (unit) {
@@ -1231,7 +1258,7 @@ export function convertGranularityToSeconds(granularity: Granularity): number {
 // additionally it doesn't support seconds or > 30min
 // so we need to write our own :(
 // see: https://github.com/date-fns/date-fns/pull/3267/files
-export function toStartOfInterval(date: Date, granularity: Granularity): Date {
+export function toStartOfInterval(date: Date, granularity: SQLInterval): Date {
   const [num, unit] = granularity.split(' ');
   const numInt = Number.parseInt(num);
   const roundFn = Math.floor;
@@ -1283,7 +1310,7 @@ export function toStartOfInterval(date: Date, granularity: Granularity): Date {
 export function timeBucketByGranularity(
   start: Date,
   end: Date,
-  granularity: Granularity,
+  granularity: SQLInterval,
 ): Date[] {
   const buckets: Date[] = [];
 

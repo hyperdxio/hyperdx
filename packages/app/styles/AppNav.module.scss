@@ -89,11 +89,13 @@
 }
 
 .listLinkActive {
-  color: $green;
+  // color: $green;
+  color: var(--mantine-color-green-3);
   font-weight: 500;
 
   &:hover {
-    color: $green;
+    // color: $green;
+    color: var(--mantine-color-green-3);
   }
 }
 

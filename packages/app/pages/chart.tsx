@@ -1,3 +1,3 @@
-import ChartPage from '@/ChartPage';
+import ChartPage from '@/DBChartPage';
 
 export default ChartPage;

@@ -18,6 +18,7 @@ import {
   sub,
 } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+import { parseAsFloat, useQueryStates } from 'nuqs';
 import {
   NumberParam,
   StringParam,
@@ -30,7 +31,7 @@ import { useUserPreferences } from './useUserPreferences';
 import { usePrevious } from './utils';
 
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
-const LIVE_TAIL_REFRESH_INTERVAL_MS = 4000;
+const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
 const formatDate = (
   date: Date,
@@ -74,16 +75,16 @@ export function parseTimeQuery(
     parsedTimeResult.length === 1
       ? parsedTimeResult[0].start?.date()
       : parsedTimeResult.length > 1
-      ? parsedTimeResult[1].start?.date()
-      : null;
+        ? parsedTimeResult[1].start?.date()
+        : null;
   const end =
     parsedTimeResult.length === 1 && parsedTimeResult[0].end != null
       ? parsedTimeResult[0].end.date()
       : parsedTimeResult.length > 1 && parsedTimeResult[1].end != null
-      ? parsedTimeResult[1].end.date()
-      : start != null && start instanceof Date
-      ? new Date()
-      : null;
+        ? parsedTimeResult[1].end.date()
+        : start != null && start instanceof Date
+          ? new Date()
+          : null;
 
   return [start, end];
 }
@@ -421,6 +422,8 @@ export type UseTimeQueryInputType = {
   /** The initial time range to get values for */
   initialTimeRange: [Date, Date];
   showRelativeInterval?: boolean;
+  setDisplayedTimeInputValue?: (value: string) => void;
+  updateInput?: boolean;
 };
 
 export type UseTimeQueryReturnType = {
@@ -429,7 +432,11 @@ export type UseTimeQueryReturnType = {
   setDisplayedTimeInputValue: Dispatch<SetStateAction<string>>;
   searchedTimeRange: [Date, Date];
   onSearch: (timeQuery: string) => void;
-  onTimeRangeSelect: (start: Date, end: Date) => void;
+  onTimeRangeSelect: (
+    start: Date,
+    end: Date,
+    displayedTimeInputValue?: string,
+  ) => void;
 };
 
 const getRelativeInterval = (start: Date, end: Date): string | undefined => {
@@ -438,10 +445,18 @@ const getRelativeInterval = (start: Date, end: Date): string | undefined => {
   return `Past ${durationStr}`;
 };
 
+// This needs to be a stable reference to prevent rerenders
+const timeRangeQueryStateMap = {
+  from: parseAsFloat,
+  to: parseAsFloat,
+};
+
 export function useNewTimeQuery({
   initialDisplayValue,
   initialTimeRange,
   showRelativeInterval,
+  setDisplayedTimeInputValue,
+  updateInput,
 }: UseTimeQueryInputType): UseTimeQueryReturnType {
   const router = useRouter();
   // We need to return true in SSR to prevent mismatch issues
@@ -451,34 +466,25 @@ export function useNewTimeQuery({
     userPreferences: { isUTC },
   } = useUserPreferences();
 
-  const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState<string>(() => {
-      return initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC);
-    });
+  const [
+    deprecatedDisplayedTimeInputValue,
+    deprecatedSetDisplayedTimeInputValue,
+  ] = useState<string>(() => {
+    return initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC);
+  });
 
-  const [{ from, to }, setTimeRangeQuery] = useQueryParams(
+  const _setDisplayedTimeInputValue =
+    setDisplayedTimeInputValue ?? deprecatedSetDisplayedTimeInputValue;
+
+  const [{ from, to }, setTimeRangeQuery] = useQueryStates(
+    timeRangeQueryStateMap,
     {
-      from: withDefault(NumberParam, undefined),
-      to: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
+      history: 'push',
     },
   );
 
   const [searchedTimeRange, setSearchedTimeRange] =
     useState<[Date, Date]>(initialTimeRange);
-
-  // Allow browser back/fwd button to modify the displayed time input value
-  const [inputTimeQuery, setInputTimeQuery] = useQueryParam(
-    'tq',
-    withDefault(StringParam, undefined),
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
-  );
 
   const onSearch = useCallback(
     (timeQuery: string) => {
@@ -492,7 +498,7 @@ export function useNewTimeQuery({
   );
 
   useEffect(() => {
-    if (from != null && to != null && inputTimeQuery == null && isReady) {
+    if (from != null && to != null && isReady) {
       const start = new Date(from);
       const end = new Date(to);
       if (isValid(start) && isValid(end)) {
@@ -501,52 +507,44 @@ export function useNewTimeQuery({
           showRelativeInterval && getRelativeInterval(start, end);
         const dateRangeStr =
           relativeInterval || dateRangeToString([start, end], isUTC);
-        setDisplayedTimeInputValue(dateRangeStr);
+        if (updateInput !== false) {
+          _setDisplayedTimeInputValue(dateRangeStr);
+        }
       }
-    } else if (
-      from == null &&
-      to == null &&
-      inputTimeQuery == null &&
-      isReady
-    ) {
+    } else if (from == null && to == null && isReady) {
       setSearchedTimeRange(initialTimeRange);
       const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
-      setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
+      if (updateInput !== false) {
+        _setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
+      }
     }
   }, [
     isReady,
-    inputTimeQuery,
     isUTC,
     from,
     to,
     initialDisplayValue,
     initialTimeRange,
     showRelativeInterval,
+    _setDisplayedTimeInputValue,
+    updateInput,
   ]);
-
-  useEffect(() => {
-    // If there is a `tq` param passed in, use it to set the time range and
-    // then clear the param.
-    if (inputTimeQuery) {
-      onSearch(inputTimeQuery);
-      setInputTimeQuery(undefined);
-    }
-  }, [inputTimeQuery, onSearch, setInputTimeQuery]);
 
   return {
     isReady,
-    displayedTimeInputValue,
+    displayedTimeInputValue: deprecatedDisplayedTimeInputValue,
     setDisplayedTimeInputValue: () => {},
     searchedTimeRange,
     onSearch,
     onTimeRangeSelect: useCallback(
-      (start: Date, end: Date) => {
+      (start: Date, end: Date, displayedTimeInputValue?: string) => {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         setSearchedTimeRange([start, end]);
         const dateRangeStr = dateRangeToString([start, end], isUTC);
-        setDisplayedTimeInputValue(dateRangeStr);
+
+        _setDisplayedTimeInputValue(displayedTimeInputValue ?? dateRangeStr);
       },
-      [setTimeRangeQuery, isUTC],
+      [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue],
     ),
   };
 }

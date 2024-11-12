@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
-import { Button } from 'react-bootstrap';
+import { Button as RButton } from 'react-bootstrap';
 import {
   NumberParam,
   StringParam,
@@ -15,6 +15,7 @@ import HyperDX from '@hyperdx/browser';
 import {
   ActionIcon,
   Badge,
+  Button,
   CloseButton,
   Collapse,
   Group,
@@ -24,6 +25,11 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
+import {
+  useCreateDashboard,
+  useDashboards,
+  useUpdateDashboard,
+} from '@/dashboard';
 import { useUserPreferences } from '@/useUserPreferences';
 
 import { version } from '../package.json';
@@ -38,8 +44,9 @@ import AuthLoadingBlocker from './AuthLoadingBlocker';
 import { IS_LOCAL_MODE, SERVER_URL } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
+import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
 import { KubernetesFlatIcon } from './SVGIcons';
-import type { Dashboard, LogView } from './types';
+import type { LogView, ServerDashboard } from './types';
 import { UserPreferencesModal } from './UserPreferencesModal';
 import { useLocalStorage, useWindowSize } from './utils';
 
@@ -47,6 +54,46 @@ import styles from '../styles/AppNav.module.scss';
 
 const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
 const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
+
+function NewDashboardButton() {
+  const createDashboard = useCreateDashboard();
+
+  if (IS_LOCAL_MODE) {
+    return (
+      <Link href="/dashboards">
+        <Button variant="transparent" py="0px" px="sm" fw={400} color="gray.2">
+          + Create Dashboard
+        </Button>
+      </Link>
+    );
+  }
+
+  return (
+    <Button
+      variant="transparent"
+      py="0px"
+      px="sm"
+      fw={400}
+      color="gray.2"
+      onClick={() =>
+        createDashboard.mutate(
+          {
+            name: 'My Dashboard',
+            tiles: [],
+            tags: [],
+          },
+          {
+            onSuccess: data => {
+              Router.push(`/dashboards/${data.id}`);
+            },
+          },
+        )
+      }
+    >
+      + Create Dashboard
+    </Button>
+  );
+}
 
 function PresetDashboardLink({
   name,
@@ -169,7 +216,7 @@ function SearchInput({
 }
 
 interface AppNavLinkItem {
-  _id: string;
+  id: string;
   name: string;
   tags?: string[];
 }
@@ -347,21 +394,18 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     data: logViewsData,
     isLoading: isLogViewsLoading,
     refetch: refetchLogViews,
-  } = api.useLogViews();
-  const logViews = logViewsData?.data ?? [];
+  } = useSavedSearches();
+  const logViews = logViewsData ?? [];
 
-  const updateDashboard = api.useUpdateDashboard();
-  const updateLogView = api.useUpdateLogView();
+  const updateDashboard = useUpdateDashboard();
+  const updateLogView = useUpdateSavedSearch();
 
   const {
     data: dashboardsData,
     isLoading: isDashboardsLoading,
     refetch: refetchDashboards,
-  } = api.useDashboards();
-  const dashboards = dashboardsData?.data ?? [];
-
-  const { data: alertsData, isLoading: isAlertsLoading } = api.useAlerts();
-  const alerts = alertsData?.data ?? [];
+  } = useDashboards();
+  const dashboards = dashboardsData ?? [];
 
   const router = useRouter();
   const { pathname, query } = router;
@@ -414,13 +458,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     }
   }, [meData]);
 
-  const alertState =
-    Array.isArray(alerts) && alerts.length > 0
-      ? alerts.some(a => a.state === 'ALERT')
-        ? 'alarming' // Some alerts are firing
-        : 'ok' // All alerts are green
-      : 'none'; // No alerts are set up
-
   const {
     q: searchesListQ,
     setQ: setSearchesListQ,
@@ -455,7 +492,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const renderLogViewLink = useCallback(
     (lv: LogView) => (
       <Link
-        href={`/search/${lv._id}?${new URLSearchParams(
+        href={`/search/${lv.id}?${new URLSearchParams(
           timeRangeQuery.from != -1 && timeRangeQuery.to != -1
             ? {
                 from: timeRangeQuery.from.toString(),
@@ -464,18 +501,18 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               }
             : {},
         ).toString()}`}
-        key={lv._id}
+        key={lv.id}
         tabIndex={0}
         className={cx(
           styles.listLink,
-          lv._id === query.savedSearchId && styles.listLinkActive,
+          lv.id === query.savedSearchId && styles.listLinkActive,
         )}
         title={lv.name}
         draggable
-        data-savedsearchid={lv._id}
+        data-savedsearchid={lv.id}
       >
         <div className="d-inline-block text-truncate">{lv.name}</div>
-        {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
+        {/* {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
           lv.alerts.some(a => a.state === 'ALERT') ? (
             <i
               className="bi bi-bell float-end text-danger"
@@ -487,7 +524,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               title="Has Alerts and is in OK state"
             ></i>
           )
-        ) : null}
+        ) : null} */}
       </Link>
     ),
     [
@@ -504,7 +541,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         return;
       }
       const logView = logViews.find(
-        lv => lv._id === target.dataset.savedsearchid,
+        lv => lv.id === target.dataset.savedsearchid,
       );
       if (logView?.tags?.includes(name)) {
         return;
@@ -525,16 +562,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   );
 
   const renderDashboardLink = useCallback(
-    (dashboard: Dashboard) => (
+    (dashboard: ServerDashboard) => (
       <Link
-        href={`/dashboards/${dashboard._id}`}
-        key={dashboard._id}
+        href={`/dashboards/${dashboard.id}`}
+        key={dashboard.id}
         tabIndex={0}
         className={cx(styles.listLink, {
-          [styles.listLinkActive]: dashboard._id === query.dashboardId,
+          [styles.listLinkActive]: dashboard.id === query.dashboardId,
         })}
         draggable
-        data-dashboardid={dashboard._id}
+        data-dashboardid={dashboard.id}
       >
         {dashboard.name}
       </Link>
@@ -548,7 +585,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         return;
       }
       const dashboard = dashboards.find(
-        d => d._id === target.dataset.dashboardid,
+        d => d.id === target.dataset.dashboardid,
       );
       if (dashboard?.tags?.includes(name)) {
         return;
@@ -579,7 +616,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   return (
     <>
-      <AuthLoadingBlocker />
+      {/* <AuthLoadingBlocker /> */}
       {fixed && (
         <div style={{ width: navWidth + 1, minWidth: navWidth + 1 }}></div>
       )}
@@ -615,14 +652,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               )}
             </Link>
             <Button
-              variant="dark"
-              size="sm"
+              variant="subtle"
+              color="gray.4"
+              p={isCollapsed ? '0px' : '8px'}
+              // variant="dark"
+              h="32px"
+              size="md"
               className={isCollapsed ? 'mt-4' : ''}
-              style={isCollapsed ? { marginLeft: '-0.5rem' } : {}}
+              style={
+                { marginRight: -4 }
+                // { height: 'var(--button-height-xs)' }
+                // isCollapsed ? { marginLeft: '-0.5rem', padding: '2px' } : {}
+              }
               title="Collapse/Expand Navigation"
               onClick={() => setIsPreferCollapsed(v => !v)}
             >
-              <i className="bi bi-arrows-angle-expand"></i>
+              <i className="bi bi-layout-sidebar"></i>
             </Button>
           </div>
         </div>
@@ -659,21 +704,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     {!isCollapsed && <span>Search</span>}
                   </span>
                 </Link>
-                {!isCollapsed && (
-                  <ActionIcon
-                    variant="default"
-                    size="sm"
-                    onClick={() => {
-                      setIsSearchExpanded(!isSearchExpanded);
-                    }}
-                  >
-                    <i
-                      className={`fs-8 bi bi-chevron-${
-                        isSearchExpanded ? 'up' : 'down'
-                      } text-muted-hover`}
-                    />
-                  </ActionIcon>
-                )}
+                {!isCollapsed &&
+                  // we currently dont have anything to show in local mode
+                  !IS_LOCAL_MODE && (
+                    <ActionIcon
+                      variant="subtle"
+                      color="dark.2"
+                      size="sm"
+                      onClick={() => {
+                        setIsSearchExpanded(!isSearchExpanded);
+                      }}
+                    >
+                      <i
+                        className={`fs-8 bi bi-chevron-${
+                          isSearchExpanded ? 'up' : 'down'
+                        } text-muted-hover`}
+                      />
+                    </ActionIcon>
+                  )}
               </div>
               {!isCollapsed && (
                 <Collapse in={isSearchExpanded}>
@@ -687,42 +735,45 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         size="sm"
                       />
                     ) : (
-                      <>
-                        <SearchInput
-                          placeholder="Saved Searches"
-                          value={searchesListQ}
-                          onChange={setSearchesListQ}
-                          onEnterDown={() => {
-                            (
-                              savedSearchesResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-
-                        {logViews.length === 0 && (
-                          <div className={styles.listEmptyMsg}>
-                            No saved searches
-                          </div>
-                        )}
-                        <div ref={savedSearchesResultsRef}>
-                          <AppNavLinkGroups
-                            name="saved-searches"
-                            groups={groupedFilteredSearchesList}
-                            renderLink={renderLogViewLink}
-                            forceExpandGroups={!!searchesListQ}
-                            onDragEnd={handleLogViewDragEnd}
+                      !IS_LOCAL_MODE && (
+                        <>
+                          <SearchInput
+                            placeholder="Saved Searches"
+                            value={searchesListQ}
+                            onChange={setSearchesListQ}
+                            onEnterDown={() => {
+                              (
+                                savedSearchesResultsRef?.current
+                                  ?.firstChild as HTMLAnchorElement
+                              )?.focus?.();
+                            }}
                           />
-                        </div>
 
-                        {searchesListQ && filteredSearchesList.length === 0 ? (
-                          <div className={styles.listEmptyMsg}>
-                            No results matching <i>{searchesListQ}</i>
+                          {logViews.length === 0 && (
+                            <div className={styles.listEmptyMsg}>
+                              No saved searches
+                            </div>
+                          )}
+                          <div ref={savedSearchesResultsRef}>
+                            <AppNavLinkGroups
+                              name="saved-searches"
+                              groups={groupedFilteredSearchesList}
+                              renderLink={renderLogViewLink}
+                              forceExpandGroups={!!searchesListQ}
+                              onDragEnd={handleLogViewDragEnd}
+                            />
                           </div>
-                        ) : null}
-                      </>
+
+                          {searchesListQ &&
+                          filteredSearchesList.length === 0 ? (
+                            <div className={styles.listEmptyMsg}>
+                              No results matching <i>{searchesListQ}</i>
+                            </div>
+                          ) : null}
+                        </>
+                      )
                     )}
-                    <AppNavGroupLabel
+                    {/* <AppNavGroupLabel
                       name="Presets"
                       collapsed={isSearchPresetsCollapsed}
                       onClick={() =>
@@ -738,7 +789,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         query="http.status_code:>=400"
                         name="HTTP Status >= 400"
                       />
-                    </Collapse>
+                    </Collapse> */}
                   </div>
                 </Collapse>
               )}
@@ -758,7 +809,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </span>
                 </Link>
               </div>
-              <div className="px-3 my-3">
+              {/* <div className="px-3 my-3">
                 <Link
                   href="/sessions"
                   className={cx(
@@ -797,8 +848,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                               alertState == 'alarming'
                                 ? '#e74c3c'
                                 : alertState === 'ok'
-                                ? '#00d474'
-                                : 'gray',
+                                  ? '#00d474'
+                                  : 'gray',
                             height: 8,
                             width: 8,
                           }}
@@ -806,8 +857,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             alertState === 'alarming'
                               ? 'Some alerts are firing'
                               : alertState === 'ok'
-                              ? 'All alerts are ok'
-                              : 'No alerts are set up'
+                                ? 'All alerts are ok'
+                                : 'No alerts are set up'
                           }
                         ></div>
                       </div>
@@ -853,7 +904,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     {!isCollapsed && <span>Kubernetes</span>}
                   </span>
                 </Link>
-              </div>
+              </div> */}
 
               <div>
                 <div
@@ -875,7 +926,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </Link>
                   {!isCollapsed && (
                     <ActionIcon
-                      variant="default"
+                      variant="subtle"
+                      color="dark.2"
                       size="sm"
                       onClick={() => {
                         setIsDashboardExpanded(!isDashboardsExpanded);
@@ -894,7 +946,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               {!isCollapsed && (
                 <Collapse in={isDashboardsExpanded}>
                   <div className={styles.list}>
-                    <Link
+                    {/* <Link
                       href="/dashboards"
                       className={cx(
                         styles.listLink,
@@ -909,7 +961,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         <i className="bi bi-plus-lg me-2" />
                         New Dashboard
                       </div>
-                    </Link>
+                    </Link> */}
+                    <NewDashboardButton />
 
                     {isDashboardsLoading ? (
                       <Loader
@@ -920,40 +973,42 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         size="sm"
                       />
                     ) : (
-                      <>
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
+                      !IS_LOCAL_MODE && (
+                        <>
+                          <SearchInput
+                            placeholder="Saved Dashboards"
+                            value={dashboardsListQ}
+                            onChange={setDashboardsListQ}
+                            onEnterDown={() => {
+                              (
+                                dashboardsResultsRef?.current
+                                  ?.firstChild as HTMLAnchorElement
+                              )?.focus?.();
+                            }}
+                          />
 
-                        <AppNavLinkGroups
-                          name="dashboards"
-                          groups={groupedFilteredDashboardsList}
-                          renderLink={renderDashboardLink}
-                          forceExpandGroups={!!dashboardsListQ}
-                          onDragEnd={handleDashboardDragEnd}
-                        />
+                          <AppNavLinkGroups
+                            name="dashboards"
+                            groups={groupedFilteredDashboardsList}
+                            renderLink={renderDashboardLink}
+                            forceExpandGroups={!!dashboardsListQ}
+                            onDragEnd={handleDashboardDragEnd}
+                          />
 
-                        {dashboards.length === 0 && (
-                          <div className={styles.listEmptyMsg}>
-                            No saved dashboards
-                          </div>
-                        )}
+                          {dashboards.length === 0 && (
+                            <div className={styles.listEmptyMsg}>
+                              No saved dashboards
+                            </div>
+                          )}
 
-                        {dashboardsListQ &&
-                        filteredDashboardsList.length === 0 ? (
-                          <div className={styles.listEmptyMsg}>
-                            No results matching <i>{dashboardsListQ}</i>
-                          </div>
-                        ) : null}
-                      </>
+                          {dashboardsListQ &&
+                          filteredDashboardsList.length === 0 ? (
+                            <div className={styles.listEmptyMsg}>
+                              No results matching <i>{dashboardsListQ}</i>
+                            </div>
+                          ) : null}
+                        </>
+                      )
                     )}
 
                     <AppNavGroupLabel
@@ -966,7 +1021,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       }
                     />
                     <Collapse in={!isDashboardsPresetsCollapsed}>
-                      <PresetDashboardLink
+                      <Link
+                        href={`/clickhouse`}
+                        tabIndex={0}
+                        className={cx(styles.listLink, {
+                          [styles.listLinkActive]:
+                            pathname.startsWith('/clickhouse'),
+                        })}
+                      >
+                        Clickhouse
+                      </Link>
+                      <Link
+                        href={`/services`}
+                        tabIndex={0}
+                        className={cx(styles.listLink, {
+                          [styles.listLinkActive]:
+                            pathname.startsWith('/services'),
+                        })}
+                      >
+                        Services
+                      </Link>
+                      {/* <PresetDashboardLink
                         presetName={'hyperdx-usage'}
                         name="HyperDX Usage"
                       />
@@ -979,28 +1054,30 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         name="HTTP Server"
                       />
                       <PresetDashboardLink presetName={'redis'} name="Redis" />
-                      <PresetDashboardLink presetName={'mongo'} name="Mongo" />
+                      <PresetDashboardLink presetName={'mongo'} name="Mongo" /> */}
                     </Collapse>
                   </div>
                 </Collapse>
               )}
 
-              <div className="px-3 my-3">
-                <Link
-                  href="/team"
-                  className={cx(
-                    'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-                    {
-                      'fw-bold text-success': pathname.includes('/team'),
-                    },
-                  )}
-                >
-                  <span>
-                    <i className="bi bi-gear pe-1 text-slate-300" />{' '}
-                    {!isCollapsed && <span>Team Settings</span>}
-                  </span>
-                </Link>
-              </div>
+              {!IS_LOCAL_MODE && (
+                <div className="px-3 my-3">
+                  <Link
+                    href="/team"
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/team'),
+                      },
+                    )}
+                  >
+                    <span>
+                      <i className="bi bi-gear pe-1 text-slate-300" />{' '}
+                      {!isCollapsed && <span>Team Settings</span>}
+                    </span>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
           {!isCollapsed && (

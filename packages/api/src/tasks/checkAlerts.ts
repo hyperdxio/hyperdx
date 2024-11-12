@@ -1,3 +1,4 @@
+// @ts-nocheck TODO: Fix When Restoring Alerts
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
@@ -376,8 +377,8 @@ export const buildAlertMessageTemplateTitle = ({
               ? 'exceeds'
               : 'falls below'
             : alert.threshold_type === 'above'
-            ? 'falls below'
-            : 'exceeds'
+              ? 'falls below'
+              : 'exceeds'
         } ${alert.threshold}`;
   }
 
@@ -498,7 +499,7 @@ export const renderAlertTemplate = async ({
       endTime: endTime.getTime(),
       limit: 5,
       offset: 0,
-      order: 'desc',
+      order: clickhouse.SortOrder.Desc,
       q: searchQuery,
       startTime: startTime.getTime(),
       tableVersion: team.logStreamTableVersion,
@@ -542,8 +543,8 @@ ${value} ${
           ? 'exceeds'
           : 'falls below'
         : alert.threshold_type === 'above'
-        ? 'falls below'
-        : 'exceeds'
+          ? 'falls below'
+          : 'exceeds'
     } ${alert.threshold}
 ${targetTemplate}`;
   }

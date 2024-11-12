@@ -1,3 +1,3 @@
-import SearchPage from '@/SearchPage';
+import SearchPage from '@/DBSearchPage';
 
 export default SearchPage;

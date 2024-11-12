@@ -4,7 +4,33 @@ import { z } from 'zod';
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { DashboardSchema, DashboardWithoutIdSchema } from '@/utils/commonTypes';
 import { chartSchema, tagsSchema } from '@/utils/zod';
+
+export async function getDashboards(teamId: ObjectId) {
+  const dashboards = await Dashboard.find({
+    team: teamId,
+  });
+  return dashboards;
+}
+
+export async function getDashboard(dashboardId: string, teamId: ObjectId) {
+  return Dashboard.findOne({
+    _id: dashboardId,
+    team: teamId,
+  });
+}
+
+export async function createDashboard(
+  teamId: ObjectId,
+  dashboard: z.infer<typeof DashboardWithoutIdSchema>,
+) {
+  const newDashboard = await new Dashboard({
+    ...dashboard,
+    team: teamId,
+  }).save();
+  return newDashboard;
+}
 
 export async function deleteDashboardAndAlerts(
   dashboardId: string,
@@ -54,17 +80,7 @@ export async function updateDashboard(
 export async function updateDashboardAndAlerts(
   dashboardId: string,
   teamId: ObjectId,
-  {
-    name,
-    charts,
-    query,
-    tags,
-  }: {
-    name?: string;
-    charts?: z.infer<typeof chartSchema>[];
-    query?: string;
-    tags?: z.infer<typeof tagsSchema>;
-  },
+  dashboard: z.infer<typeof DashboardWithoutIdSchema>,
 ) {
   const oldDashboard = await Dashboard.findOne({
     _id: dashboardId,
@@ -80,10 +96,8 @@ export async function updateDashboardAndAlerts(
       team: teamId,
     },
     {
-      name,
-      charts,
-      query,
-      tags: tags && uniq(tags),
+      ...dashboard,
+      tags: dashboard.tags && uniq(dashboard.tags),
     },
     { new: true },
   );
@@ -93,8 +107,8 @@ export async function updateDashboardAndAlerts(
 
   // Delete related alerts
   const deletedChartIds = differenceBy(
-    oldDashboard?.charts || [],
-    updatedDashboard?.charts || [],
+    oldDashboard?.tiles || [],
+    updatedDashboard?.tiles || [],
     'id',
   ).map(c => c.id);
 
