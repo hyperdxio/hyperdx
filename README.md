@@ -11,104 +11,53 @@
 
 # HyperDX
 
-[HyperDX](https://hyperdx.io) helps engineers quickly figure out why production is
-broken by centralizing and correlating logs, metrics, traces, exceptions
-and session replays in one place. An open source and developer-friendly
-alternative to Datadog and New Relic.
+[HyperDX](https://hyperdx.io) helps engineers quickly figure out why production
+is broken by making it easy to search & visualize logs and traces on top of any
+Clickhouse cluster (imagine Kibana, for Clickhouse).
 
 <p align="center">
-  <a href="https://www.hyperdx.io/docs">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://api.hyperdx.io/login/demo">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a>
+  <a href="https://www.hyperdx.io/docs/v2/">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://play.hyperdx.io/search">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a> • <a href="https://hyperdx.io/v2">Website</a>
 </p>
 
-- 🕵️ Correlate end to end, go from browser session replay to logs and traces in
-  just a few clicks
-- 🔥 Blazing fast performance powered by Clickhouse
-- 🔍 Intuitive full-text search and property search syntax (ex. `level:err`)
-- ⏱️ Monitor health and performance from HTTP requests to DB queries (APM)
-- 🤖 Automatically cluster event patterns from billions of events
+- 🕵️ Correlate/search logs and traces all in one place
+- 📝 Schema agnostic, works on top of your existing Clickhouse schema
+- 🔥 Blazing fast searches & visualizations optimized for Clickhouse
+- 🔍 Intuitive full-text search and property search syntax (ex. `level:err`),
+  SQL optional!
+- 📊 Analyze trends in anomalies with event deltas
 - 📈 Dashboard high cardinality events without a complex query language
-- 🔔 Set up alerts on logs, metrics, or traces in just a few clicks
-- `{` Automatic JSON/structured log parsing
-- 🔭 OpenTelemetry native
+- `{` Native JSON string querying
+- ⚡ Live tail logs and traces to always get the freshest events
+- 🔭 OpenTelemetry supported out of the box
+- ⏱️ Monitor health and performance from HTTP requests to DB queries (APM)
 
 <br/>
 <img alt="Search logs and traces all in one place" src="./.github/images/search_splash.png" title="Search logs and traces all in one place">
 
-### Additional Screenshots
-
-<details>
-  <summary><b>📈 Dashboards</b></summary>
-  <img alt="Dashboard" src="./.github/images/dashboard.png">
-</details>
-<details>
-  <summary><b>🤖 Automatic Event Pattern Clustering</b></summary>
-  <img alt="Event Pattern Clustering" src="./.github/images/pattern3.png">
-</details>
-<details>
-  <summary><b>🖥️ Session Replay & RUM</b></summary>
-  <img alt="Event Pattern Clustering" src="./.github/images/session.png">
-</details>
-
 ## Spinning Up HyperDX
 
-The HyperDX stack ingests, stores, and searches/graphs your telemetry data.
-After standing up the Docker Compose stack, you'll want to instrument your app
-to send data over to HyperDX.
+> **Note:** HyperDX v2 is currently in beta for local mode.
 
-You can get started by deploying a complete stack via Docker Compose. After
-cloning this repository, simply start the stack with:
+You can get started by standing up the HyperDX local container, which will run
+an OpenTelemetry collector (on port 4317), Clickhouse (on port 8123), and the
+HyperDX UI (on port 8080).
+
+You can spin up the container with the following command:
 
 ```bash
-docker compose up -d
+docker run -p 8080:8080 -p 8123:8123 -p 4317:4317 -p 4318:4318 hyperdx/hyperdx-local:2-beta
 ```
 
-Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.
+Afterwards, you can visit http://localhost:8080 to access the HyperDX UI. If
+you're connecting to an external Clickhouse cluster, you can simply just forward
+port 8080 and set up the connection in the UI.
 
-> If your server is behind a firewall, you'll need to open/forward port 8080,
-> 8000 and 4318 on your firewall for the UI, API and OTel collector
-> respectively.
+> **Safari & Brave Browser Users:** There are known issues with Safari & Brave's
+> CORS implementation that can prevent connecting to Clickhouse in local mode.
+> We recommend using another browser in the interim.
 
-> We recommend at least 4GB of RAM and 2 cores for testing.
-
-**Enabling Self-instrumentation/Demo Logs**
-
-To get a quick preview of HyperDX, you can enable self-instrumentation and demo
-logs by setting the `HYPERDX_API_KEY` to your ingestion key (go to
-[http://localhost:8080/team](http://localhost:8080/team) after creating your
-account) and then restart the stack.
-
-This will redirect internal telemetry from the frontend app, API, host metrics
-and demo logs to your new HyperDX instance.
-
-ex.
-
-```sh
-HYPERDX_API_KEY=<YOUR_INGESTION_KEY> docker compose up -d
-```
-
-> If you need to use `sudo` for docker, make sure to forward the environment
-> variable with the `-E` flag:
-> `HYPERDX_API_KEY=<YOUR_KEY> sudo -E docker compose up -d`
-
-**Changing Hostname and Port**
-
-By default, HyperDX app/api will run on localhost with port `8080`/`8000`. You
-can change this by updating `HYPERDX_APP_**` and `HYPERDX_API_**` variables in
-the `.env` file. After making your changes, rebuild images with
-`make build-local`.
-
-**DB Migration**
-
-Before running the migration, you'll need to install the migration tools:
-
-1. Install local dependencies with `make`.
-2. Install
-   [golang-migrate](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
-   CLI.
-
-You can initiate the DB migration process by executing `make dev-migrate-db`.
-This will run the migration scripts in `/packages/api/migrations` against the
-local DB.
+> We recommend having _at least_ 1GB of RAM and 1 CPU core available for the
+> container if using the included OpenTelemetry collector and Clickhouse server.
 
 ### Hosted Cloud
 
@@ -152,18 +101,6 @@ include:
 
 Once HyperDX is running, you can point your OpenTelemetry SDK to the
 OpenTelemetry collector spun up at `http://localhost:4318`.
-
-## Local Mode
-
-Interested in using HyperDX for local development and debugging? Check out HyperDX Local, a single container local-optimized version of HyperDX that allows you to pipe OpenTelemetry telemetry (logs, metrics, traces) to a local instance of HyperDX running on your own machine.
-
-Get started with HyperDX Local by running the following Docker command:
-
-```bash
-docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 hyperdx/hyperdx-local
-```
-
-[Read more about HyperDX Local](./LOCAL.md)
 
 ## Contributing
 
@@ -210,14 +147,6 @@ continue building HyperDX as an open source platform. We hope to have more
 comprehensive documentation on how we balance between cloud-only and open source
 features in the future. In the meantime, we're highly aligned with Gitlab's
 [stewardship model](https://handbook.gitlab.com/handbook/company/stewardship/).
-
-## Frequently Asked Questions
-
-#### How to suppress all logs from HyperDX itself ?
-
-To suppress logs of a service, you can comment out the `HYPERDX_API_KEY`
-environment variable in the docker-compose.yml file. The alternative is to set
-the `HYPERDX_LOG_LEVEL` environment variable to 'error' to only log errors.
 
 ## Contact
 
