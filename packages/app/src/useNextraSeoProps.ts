@@ -12,10 +12,10 @@ export default function useNextraSeoProps() {
   const pageTitleSuffix = isBlog
     ? 'HyperDX Blog'
     : isDocs
-    ? 'HyperDX Docs'
-    : isTerms
-    ? 'HyperDX'
-    : '';
+      ? 'HyperDX Docs'
+      : isTerms
+        ? 'HyperDX'
+        : '';
 
   return {
     title: `${frontMatter.title ?? title} - ${pageTitleSuffix}`,

@@ -15,13 +15,15 @@ module.exports = {
   ],
   rules: {
     '@typescript-eslint/ban-ts-comment': 'warn',
-    '@typescript-eslint/ban-types': 'warn',
     '@typescript-eslint/no-empty-function': 'warn',
-    'react/display-name': 'off',
     '@typescript-eslint/no-explicit-any': 'off',
-    '@typescript-eslint/no-empty-function': 'off',
-    'simple-import-sort/imports': 'error',
+    '@typescript-eslint/no-unsafe-function-type': 'warn',
+    '@typescript-eslint/no-unused-expressions': 'warn',
+    '@typescript-eslint/no-unused-vars': 'warn',
+    'react/display-name': 'off',
     'simple-import-sort/exports': 'error',
+    'simple-import-sort/imports': 'error',
+    'no-console': ['error', { allow: ['warn', 'error'] }],
   },
   overrides: [
     {

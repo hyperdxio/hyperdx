@@ -1,7 +1,4 @@
 receivers:
-  # Data sources: traces
-  zipkin:
-    endpoint: '0.0.0.0:9411'
   # Data sources: logs
   fluentforward:
     endpoint: '0.0.0.0:24225'
@@ -30,22 +27,6 @@ processors:
       - key: __HDX_API_KEY
         from_context: authorization
         action: upsert
-  # TODO: use transform to attach __HDX_API_KEY attribute to spans/metrics/logs
-  transform:
-    error_mode: ignore
-    metric_statements:
-      - context: resource
-        statements:
-          # map metrics context to resource context (so splunk_hec will capture it)
-          - set(attributes["metric_aggregation_temporality"], "0")
-          - set(attributes["metric_unit"], "")
-          - set(attributes["metric_is_monotonic"], false)
-      - context: metric
-        statements:
-          - set(resource.attributes["metric_aggregation_temporality"],
-            aggregation_temporality)
-          - set(resource.attributes["metric_unit"], unit)
-          - set(resource.attributes["metric_is_monotonic"], is_monotonic)
   batch:
   memory_limiter:
     # 80% of maximum memory up to 2G
@@ -54,49 +35,43 @@ processors:
     spike_limit_mib: 512
     check_interval: 5s
 exporters:
-  logging:
-    loglevel: ${env:HYPERDX_LOG_LEVEL}
-  logzio/traces:
-    account_token: 'X' # required but we don't use it
-    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-traces'
-  logzio/logs:
-    account_token: 'X' # required but we don't use it
-    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-logs'
-  # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter
-  splunk_hec:
-    token: 'X' # required but we don't use it
-    # endpoint: 'http://ingestor:8002?hdx_platform=otel-metrics'
-    endpoint: '${env:INGESTOR_API_URL}?hdx_platform=otel-metrics'
-    # HTTP timeout when sending data. Defaults to 10s.
-    timeout: 10s
-    max_content_length_logs: 0
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
+  clickhouse:
+    endpoint: tcp://${env:CLICKHOUSE_SERVER_ENDPOINT}?dial_timeout=10s&compress=lz4
+    database: default
+    ttl: 72h
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    metrics_table_name: otel_metrics
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
 extensions:
   health_check:
     endpoint: :13133
-  pprof:
-    endpoint: :1888
-  zpages:
-    endpoint: :55679
-  memory_ballast:
-    # Memory Ballast size should be max 1/3 to 1/2 of memory.
-    size_mib: 683
 service:
   telemetry:
     metrics:
       address: ':8888'
     logs:
-      level: ${env:HYPERDX_LOG_LEVEL}
-  extensions: [health_check, zpages, memory_ballast]
+      level: debug
+  extensions: [health_check]
   pipelines:
     traces:
-      receivers: [otlp, zipkin]
+      receivers: [otlp]
       processors: [attributes/attachHdxKey, memory_limiter, batch]
-      exporters: [logzio/traces, logging]
+      exporters: [debug, clickhouse]
     metrics:
       receivers: [otlp]
-      processors: [attributes/attachHdxKey, transform, memory_limiter, batch]
-      exporters: [splunk_hec, logging]
+      processors: [attributes/attachHdxKey, memory_limiter, batch]
+      exporters: [debug, clickhouse]
     logs:
       receivers: [otlp, fluentforward]
       processors: [attributes/attachHdxKey, memory_limiter, batch]
-      exporters: [logzio/logs, logging]
+      exporters: [debug, clickhouse]

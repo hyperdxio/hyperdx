@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 
-import api from './api';
-import AuthLoadingBlocker from './AuthLoadingBlocker';
+import api from '@/api';
+import AuthLoadingBlocker from '@/AuthLoadingBlocker';
+import { IS_LOCAL_MODE } from '@/config';
 
 export default function LandingPage() {
   const { data: installation, isLoading: installationIsLoading } =
@@ -13,7 +14,7 @@ export default function LandingPage() {
   const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn || IS_LOCAL_MODE) {
       router.push('/search');
     }
   }, [isLoggedIn, router]);

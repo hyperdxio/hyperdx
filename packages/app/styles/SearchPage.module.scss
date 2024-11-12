@@ -1,14 +1,16 @@
 @import './variables';
 
 .filtersPanel {
-  width: 200px;
+  width: 220px;
   max-height: 100%;
   background-color: #00000030;
   flex-shrink: 0;
+  word-break: break-all;
 }
 
 .textButton {
   user-select: none;
+  flex-shrink: 0;
 
   &:hover {
     cursor: pointer;

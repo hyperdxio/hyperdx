@@ -221,8 +221,8 @@ const StatusChip = React.memo(({ status }: { status?: number }) => {
     status >= 500
       ? 'text-danger bg-danger'
       : status >= 400
-      ? 'text-warning bg-warning'
-      : 'text-success bg-success';
+        ? 'text-warning bg-warning'
+        : 'text-success bg-success';
   return (
     <span
       className={`badge lh-base rounded-5 bg-opacity-10 fw-normal ${className}`}
@@ -239,8 +239,8 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
   const className = level.includes('error')
     ? 'text-danger bg-danger'
     : level.includes('warn') || level.includes('warning')
-    ? 'text-warning bg-warning'
-    : 'text-slate-300 bg-grey';
+      ? 'text-warning bg-warning'
+      : 'text-slate-300 bg-grey';
 
   return (
     <span

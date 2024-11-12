@@ -11,9 +11,11 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { Icon } from './components/Icon';
-import api from './api';
-import InstallInstructionModal from './InstallInstructionsModal';
+import { Icon } from '@/components/Icon';
+import InstallInstructionModal from '@/InstallInstructionsModal';
+import { useSources } from '@/source';
+
+import { IS_LOCAL_MODE } from './config';
 
 import styles from '../styles/AppNav.module.scss';
 
@@ -80,7 +82,7 @@ export const AppNavUserMenu = ({
               <>
                 <div style={{ flex: 1 }}>
                   <Text size="xs" fw="bold" lh={1.1} c="gray.3">
-                    {userName}
+                    {IS_LOCAL_MODE ? 'Local mode' : userName}
                   </Text>
                   <Text
                     size="xs"
@@ -103,13 +105,17 @@ export const AppNavUserMenu = ({
         </Paper>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Item
-          href="/team"
-          component={Link}
-          leftSection={<Icon name="gear" />}
-        >
-          Team Settings
-        </Menu.Item>
+        {IS_LOCAL_MODE ? (
+          <Menu.Label fz="xs">Local mode</Menu.Label>
+        ) : (
+          <Menu.Item
+            href="/team"
+            component={Link}
+            leftSection={<Icon name="gear" />}
+          >
+            Team Settings
+          </Menu.Item>
+        )}
         <Menu.Item
           leftSection={<Icon name="person-gear" />}
           onClick={onClickUserPreferences}
@@ -141,20 +147,9 @@ const useIsTeamHasNoData = () => {
     [],
   );
 
-  const { data: team } = api.useTeam();
-  const { data: logs } = api.useLogBatch(
-    {
-      q: '',
-      limit: 1,
-      order: 'desc',
-      endDate: now,
-      startDate: ago14d,
-      extraFields: [],
-    },
-    { refetchOnWindowFocus: false },
-  );
+  const { data: sources } = useSources();
 
-  return logs?.pages?.[0]?.data.length === 0;
+  return Array.isArray(sources) && sources?.length > 0 ? false : true;
 };
 
 export const AppNavHelpMenu = ({
@@ -169,7 +164,7 @@ export const AppNavHelpMenu = ({
     { close: closeInstallModal, open: openInstallModal },
   ] = useDisclosure(false);
 
-  const isTeamHasNoData = useIsTeamHasNoData();
+  // const isTeamHasNoData = useIsTeamHasNoData();
   const size = 28;
 
   return (
@@ -190,7 +185,7 @@ export const AppNavHelpMenu = ({
           withArrow
           position="top-start"
           transitionProps={{ transition: 'fade-up' }}
-          defaultOpened={isTeamHasNoData}
+          defaultOpened={false}
         >
           <Menu.Target>
             <UnstyledButton w="100%">

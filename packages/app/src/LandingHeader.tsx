@@ -1,3 +1,5 @@
+// @ts-nocheck TODO: remove this line
+
 import Link from 'next/link';
 import { Button, Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
 

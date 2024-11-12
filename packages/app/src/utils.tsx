@@ -193,6 +193,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       }
     } catch (error) {
       // If error also return initialValue
+      // eslint-disable-next-line no-console
       console.log(error);
     }
   }, [key]);
@@ -213,6 +214,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
       // A more advanced implementation would handle the error case
+      // eslint-disable-next-line no-console
       console.log(error);
     }
   };
@@ -274,20 +276,21 @@ export const getLogLevelClass = (lvl: string | undefined) => {
     level.startsWith('fatal')
     ? 'error'
     : level.startsWith('warn')
-    ? 'warn'
-    : level.startsWith('info') ||
-      level.startsWith('debug') ||
-      level.startsWith('ok') ||
-      level.startsWith('notice') ||
-      level.startsWith('verbose') ||
-      level.startsWith('trace')
-    ? 'info'
-    : undefined;
+      ? 'warn'
+      : level.startsWith('info') ||
+          level.startsWith('debug') ||
+          level.startsWith('ok') ||
+          level.startsWith('notice') ||
+          level.startsWith('verbose') ||
+          level.startsWith('trace')
+        ? 'info'
+        : undefined;
 };
 
 // Accessible chart colors
-const COLORS = [
-  '#20c997', // Green
+export const COLORS = [
+  '#09D99C', // Green
+  // '#F81358', // Red
   '#8250dc', // Light Purple
   '#cdad7a', // Tan
   '#0d6efd', // Blue
@@ -328,8 +331,8 @@ export const semanticKeyedColor = (
     return logLevel === 'error'
       ? '#d63384' // magenta
       : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+        ? '#ffc107' // yellow
+        : '#20c997'; // green;
   }
 
   return COLORS[index % COLORS.length];
@@ -342,8 +345,8 @@ const getLevelColor = (logLevel?: string) => {
   return logLevel === 'error'
     ? '#d63384' // magenta
     : logLevel === 'warn'
-    ? '#ffc107' // yellow
-    : '#20c997'; // green;
+      ? '#ffc107' // yellow
+      : '#20c997'; // green;
 };
 
 export const getColorProps = (

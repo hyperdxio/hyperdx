@@ -173,6 +173,31 @@ export abstract class PropertyTypeMappingsModel {
   }
 }
 
+export class CustomEventsPropertyTypeMappingsModel extends PropertyTypeMappingsModel {
+  protected async needsRefresh() {
+    return false;
+  }
+
+  constructor() {
+    super(undefined, '', async () => {
+      // do nothing
+    });
+  }
+
+  // TODO: implement this
+  get(property: string): 'string' | 'number' | 'bool' | undefined {
+    return 'string';
+  }
+
+  getCacheKey() {
+    return `custom_events_property_type_mappings:${this.teamId}`;
+  }
+
+  ttl() {
+    return IS_DEV ? ms('5s') : ms('1d');
+  }
+}
+
 export class LogsPropertyTypeMappingsModel extends PropertyTypeMappingsModel {
   getCacheKey() {
     return `logs_property_type_mappings:${this.teamId}`;

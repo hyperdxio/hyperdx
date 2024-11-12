@@ -142,12 +142,16 @@ router.post(
   '/series',
   validateRequest({
     body: z.object({
-      series: z.array(chartSeriesSchema).min(1),
+      databaseName: z.string().optional(),
       endTime: z.number(),
       granularity: z.nativeEnum(clickhouse.Granularity).optional(),
-      startTime: z.number(),
-      seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
+      implicitColumn: z.string().optional(),
       postGroupWhere: z.optional(z.string().max(1024)),
+      series: z.array(chartSeriesSchema).min(1),
+      seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
+      startTime: z.number(),
+      tableName: z.string().optional(),
+      timestampColumn: z.string().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -160,6 +164,11 @@ router.post(
         seriesReturnType,
         series,
         postGroupWhere,
+        // for custom scheme config
+        databaseName,
+        implicitColumn,
+        tableName,
+        timestampColumn,
       } = req.body;
 
       if (teamId == null) {
@@ -170,6 +179,12 @@ router.post(
       if (team == null) {
         return res.sendStatus(403);
       }
+
+      const useCustomSchema =
+        databaseName != null &&
+        tableName != null &&
+        timestampColumn != null &&
+        implicitColumn != null;
 
       // TODO: expose this to the frontend
       const MAX_NUM_GROUPS = 20;
@@ -185,6 +200,14 @@ router.post(
           teamId: teamId.toString(),
           seriesReturnType,
           postGroupWhere,
+          ...(useCustomSchema && {
+            customSchemaConfig: {
+              databaseName,
+              tableName,
+              timestampColumn,
+              implicitColumn,
+            },
+          }),
         }),
       );
     } catch (e) {

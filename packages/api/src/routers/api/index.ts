@@ -1,8 +1,8 @@
 import alertsRouter from './alerts';
 import chartRouter from './chart';
 import dashboardRouter from './dashboards';
+import datasourceRouter from './datasources';
 import logsRouter from './logs';
-import logViewsRouter from './logViews';
 import meRouter from './me';
 import metricsRouter from './metrics';
 import rootRouter from './root';
@@ -12,8 +12,8 @@ import webhooksRouter from './webhooks';
 
 export default {
   alertsRouter,
+  datasourceRouter,
   dashboardRouter,
-  logViewsRouter,
   logsRouter,
   meRouter,
   metricsRouter,

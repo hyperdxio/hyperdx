@@ -38,16 +38,21 @@
 }
 
 .chartTooltip {
-  background-color: rgb(0 0 0 / 80%);
-  backdrop-filter: blur(2px);
-  border-radius: 4px;
+  backdrop-filter: blur(8px);
+  background-color: rgba(#1a1d23, 0.75);
+  border: 1px solid #5f6776;
+  border-radius: 2px;
+
+  // background-color: rgb(0 0 0 / 80%);
+  // backdrop-filter: blur(2px);
+  // border-radius: 4px;
   font-size: 11px;
 }
 
 .chartTooltipHeader {
   padding: 2px 12px;
   color: $slate-200;
-  border-bottom: 1px solid $slate-700;
+  border-bottom: 1px solid var(--mantine-color-dark-4);
 }
 
 .chartTooltipContent {

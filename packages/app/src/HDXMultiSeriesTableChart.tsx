@@ -23,7 +23,7 @@ import { UNDEFINED_WIDTH } from './tableUtils';
 import type { ChartSeries, NumberFormat } from './types';
 import { formatNumber } from './utils';
 
-const Table = ({
+export const Table = ({
   data,
   groupColumnName,
   columns,
@@ -39,7 +39,7 @@ const Table = ({
     columnWidthPercent?: number;
     visible?: boolean;
   }[];
-  groupColumnName: string;
+  groupColumnName?: string;
   getRowSearchLink?: (row: any) => string;
   onSortClick?: (columnNumber: number) => void;
 }) => {
@@ -64,14 +64,20 @@ const Table = ({
   );
 
   const reactTableColumns: ColumnDef<any>[] = [
-    {
-      accessorKey: 'group',
-      header: groupColumnName,
-      size:
-        tableWidth != null
-          ? Math.max(tableWidth * (labelColumnWidthPercent / 100), 100)
-          : 200,
-    },
+    // DB table charts dont have a default column, we should stop using
+    // this across the app
+    ...(groupColumnName != null
+      ? [
+          {
+            accessorKey: 'group',
+            header: groupColumnName,
+            size:
+              tableWidth != null
+                ? Math.max(tableWidth * (labelColumnWidthPercent / 100), 100)
+                : 200,
+          },
+        ]
+      : []),
     ...columns
       .filter(c => c.visible !== false)
       .map(({ dataKey, displayName, numberFormat, columnWidthPercent }, i) => ({
@@ -113,13 +119,13 @@ const Table = ({
           i === numColumns - 2
             ? UNDEFINED_WIDTH
             : tableWidth != null && columnWidthPercent != null
-            ? Math.max(
-                tableWidth * (columnWidthPercent / 100),
-                MIN_COLUMN_WIDTH_PX,
-              )
-            : tableWidth != null
-            ? tableWidth / numColumns
-            : 200,
+              ? Math.max(
+                  tableWidth * (columnWidthPercent / 100),
+                  MIN_COLUMN_WIDTH_PX,
+                )
+              : tableWidth != null
+                ? tableWidth / numColumns
+                : 200,
         enableResizing: i !== numColumns - 2,
       })),
   ];
@@ -159,6 +165,7 @@ const Table = ({
   const csvData = useMemo(() => {
     return data.map(row => {
       const csvRow: { [key: string]: string } = {
+        // @ts-ignore
         [groupColumnName]: row.group,
       };
       columns.forEach(({ displayName, dataKey }) => {

@@ -1,16 +1,19 @@
+// @ts-nocheck TODO: remove this line
+
 import * as React from 'react';
 import { useRouter } from 'next/router';
 import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
 
 import api from './api';
 import Logo from './Icon';
+import { useSavedSearches } from './savedSearch';
 
 import '@mantine/spotlight/styles.css';
 
 const useSpotlightActions = () => {
   const router = useRouter();
 
-  const { data: logViewsData } = api.useLogViews();
+  const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
 
   const actions = React.useMemo<SpotlightActionData[]>(() => {

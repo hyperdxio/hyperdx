@@ -51,7 +51,7 @@ export interface IAlert {
 
   // Chart alerts
   dashboardId?: ObjectId;
-  chartId?: string;
+  tileId?: string;
 
   // Silenced
   silenced?: {
@@ -128,7 +128,7 @@ const AlertSchema = new Schema<IAlert>(
       ref: 'Dashboard',
       required: false,
     },
-    chartId: {
+    tileId: {
       type: String,
       required: false,
     },

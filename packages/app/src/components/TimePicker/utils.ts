@@ -6,16 +6,16 @@ export function parseTimeRangeInput(str: string): [Date | null, Date | null] {
     parsedTimeResult.length === 1
       ? parsedTimeResult[0].start?.date()
       : parsedTimeResult.length > 1
-      ? parsedTimeResult[1].start?.date()
-      : null;
+        ? parsedTimeResult[1].start?.date()
+        : null;
   const end =
     parsedTimeResult.length === 1 && parsedTimeResult[0].end != null
       ? parsedTimeResult[0].end.date()
       : parsedTimeResult.length > 1 && parsedTimeResult[1].end != null
-      ? parsedTimeResult[1].end.date()
-      : start != null && start instanceof Date
-      ? new Date()
-      : null;
+        ? parsedTimeResult[1].end.date()
+        : start != null && start instanceof Date
+          ? new Date()
+          : null;
 
   return [start, end];
 }

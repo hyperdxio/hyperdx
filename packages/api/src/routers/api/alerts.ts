@@ -84,8 +84,8 @@ router.get('/', async (req, res, next) => {
           channel: _.pick(alert.channel, ['type']),
           ...(alert.dashboardId && {
             dashboard: {
-              charts: alert.dashboardId.charts
-                .filter(chart => chart.id === alert.chartId)
+              charts: alert.dashboardId.tiles
+                .filter(chart => chart.id === alert.tileId)
                 .map(chart => _.pick(chart, ['id', 'name'])),
               ..._.pick(alert.dashboardId, [
                 '_id',

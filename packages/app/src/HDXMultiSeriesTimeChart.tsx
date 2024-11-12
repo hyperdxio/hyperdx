@@ -1,9 +1,19 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -21,18 +31,18 @@ import {
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
-import api, { useMultiSeriesChartV2 } from './api';
+import { useMultiSeriesChartV2 } from '@/api';
 import {
   convertGranularityToSeconds,
   Granularity,
   seriesColumns,
   seriesToUrlSearchQueryParam,
-} from './ChartUtils';
-import type { Dashboard } from './types';
-import type { ChartSeries, NumberFormat } from './types';
+} from '@/ChartUtils';
+import { DisplayType } from '@/DisplayType';
+import type { ChartSeries, NumberFormat } from '@/types';
+import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
+
 import { FormatTime, useFormatTime } from './useFormatTime';
-import { formatNumber } from './utils';
-import { getColorProps, truncateMiddle } from './utils';
 
 import styles from '../styles/HDXLineChart.module.scss';
 
@@ -219,7 +229,7 @@ export const LegendRenderer = memo<{
 });
 
 const HARD_LINES_LIMIT = 60;
-const MemoChart = memo(function MemoChart({
+export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
   isClickActive,
@@ -230,9 +240,12 @@ const MemoChart = memo(function MemoChart({
   alertThreshold,
   alertThresholdType,
   logReferenceTimestamp,
-  displayType = 'line',
+  displayType = DisplayType.Line,
   numberFormat,
   isLoading,
+  timestampKey = 'ts_bucket',
+  onTimeRangeSelect,
+  showLegend = true,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -243,12 +256,21 @@ const MemoChart = memo(function MemoChart({
   lineColors: Array<string | undefined>;
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
-  displayType?: 'stacked_bar' | 'line';
+  displayType?: DisplayType;
   numberFormat?: NumberFormat;
   logReferenceTimestamp?: number;
   isLoading?: boolean;
+  timestampKey?: string;
+  onTimeRangeSelect?: (start: Date, end: Date) => void;
+  showLegend?: boolean;
 }) {
-  const ChartComponent = displayType === 'stacked_bar' ? BarChart : LineChart;
+  const _id = useId();
+  const id = _id.replace(/:/g, '');
+
+  const [isHovered, setIsHovered] = useState(false);
+
+  const ChartComponent =
+    displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
 
   const lines = useMemo(() => {
     const limitedGroupKeys = groupKeys.slice(0, HARD_LINES_LIMIT);
@@ -280,39 +302,50 @@ const MemoChart = memo(function MemoChart({
           fill={color}
           opacity={opacity}
           stackId="1"
+          isAnimationActive={false}
         />
       ) : (
-        <Line
+        <Area
           key={key}
-          type="monotone"
           dataKey={key}
-          name={lineNames[i] ?? key}
+          type="monotone"
           stroke={color}
-          dot={
-            isContinuousGroup[key] === false ? { strokeWidth: 2, r: 1 } : false
-          }
-          strokeWidth={strokeWidth}
-          strokeDasharray={strokeDasharray}
+          fillOpacity={1}
+          {...(isHovered
+            ? { fill: 'none' }
+            : {
+                fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
+              })}
+          name={lineNames[i] ?? key}
           isAnimationActive={false}
-          opacity={opacity}
         />
       );
     });
-  }, [groupKeys, graphResults, displayType, lineNames, lineColors]);
+  }, [
+    groupKeys,
+    graphResults,
+    displayType,
+    lineNames,
+    lineColors,
+    id,
+    isHovered,
+  ]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
-    (value: number) => {
-      return formatTime(value * 1000);
+    (value: number, index: number) => {
+      return formatTime(value * 1000, {
+        format: index === 0 ? 'normal' : 'time',
+      });
     },
     [formatTime],
   );
 
   const tickFormatter = useCallback(
-    (value: number) =>
-      numberFormat
+    (value: number, index: number) => {
+      return numberFormat
         ? formatNumber(value, {
             ...numberFormat,
             average: true,
@@ -322,9 +355,13 @@ const MemoChart = memo(function MemoChart({
         : new Intl.NumberFormat('en-US', {
             notation: 'compact',
             compactDisplay: 'short',
-          }).format(value),
+          }).format(value);
+    },
     [numberFormat],
   );
+
+  const [highlightStart, setHighlightStart] = useState<string | undefined>();
+  const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
 
   return (
     <ResponsiveContainer
@@ -342,6 +379,52 @@ const MemoChart = memo(function MemoChart({
         data={graphResults}
         syncId="hdx"
         syncMethod="value"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={e => {
+          setIsHovered(false);
+
+          setHighlightStart(undefined);
+          setHighlightEnd(undefined);
+        }}
+        onMouseDown={e => e != null && setHighlightStart(e.activeLabel)}
+        onMouseMove={e => {
+          setIsHovered(true);
+
+          if (highlightStart != null) {
+            setHighlightEnd(e.activeLabel);
+          }
+        }}
+        onMouseUp={e => {
+          if (e?.activeLabel != null && highlightStart === e.activeLabel) {
+            // If it's just a click, don't zoom
+            setHighlightStart(undefined);
+            setHighlightEnd(undefined);
+          }
+          if (highlightStart != null && highlightEnd != null) {
+            try {
+              onTimeRangeSelect?.(
+                new Date(
+                  Number.parseInt(
+                    highlightStart <= highlightEnd
+                      ? highlightStart
+                      : highlightEnd,
+                  ) * 1000,
+                ),
+                new Date(
+                  Number.parseInt(
+                    highlightEnd >= highlightStart
+                      ? highlightEnd
+                      : highlightStart,
+                  ) * 1000,
+                ),
+              );
+            } catch (e) {
+              console.error('failed to highlight range', e);
+            }
+            setHighlightStart(undefined);
+            setHighlightEnd(undefined);
+          }
+        }}
         onClick={(state, e) => {
           if (
             state != null &&
@@ -365,12 +448,31 @@ const MemoChart = memo(function MemoChart({
           e.stopPropagation();
         }}
       >
-        <CartesianGrid
-          strokeDasharray="3 3"
-          stroke="var(--mantine-color-gray-8)"
-        />
+        <defs>
+          {COLORS.map(c => {
+            return (
+              <linearGradient
+                key={c}
+                id={`time-chart-lin-grad-${id}-${c.replace('#', '').toLowerCase()}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="0%" stopColor={c} stopOpacity={0.15} />
+                <stop offset="10%" stopColor={c} stopOpacity={0.003} />
+              </linearGradient>
+            );
+          })}
+        </defs>
+        {isHovered && (
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--mantine-color-dark-6)"
+          />
+        )}
         <XAxis
-          dataKey={'ts_bucket'}
+          dataKey={timestampKey ?? 'ts_bucket'}
           domain={[
             dateRange[0].getTime() / 1000,
             dateRange[1].getTime() / 1000,
@@ -379,18 +481,22 @@ const MemoChart = memo(function MemoChart({
           scale="time"
           type="number"
           tickFormatter={xTickFormatter}
-          minTickGap={50}
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          minTickGap={100}
+          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <YAxis
           width={40}
           minTickGap={25}
           tickFormatter={tickFormatter}
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         {lines}
         <Tooltip
           content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+          wrapperStyle={{
+            zIndex: 1000,
+          }}
+          allowEscapeViewBox={{ y: true }}
         />
         {alertThreshold != null && alertThresholdType === 'below' && (
           <ReferenceArea
@@ -417,12 +523,22 @@ const MemoChart = memo(function MemoChart({
             strokeDasharray="3 3"
           />
         )}
-        <Legend
-          iconSize={10}
-          verticalAlign="bottom"
-          content={<LegendRenderer />}
-          offset={-100}
-        />
+        {highlightStart && highlightEnd ? (
+          <ReferenceArea
+            // yAxisId="1"
+            x1={highlightStart}
+            x2={highlightEnd}
+            strokeOpacity={0.3}
+          />
+        ) : null}
+        {showLegend && (
+          <Legend
+            iconSize={10}
+            verticalAlign="bottom"
+            content={<LegendRenderer />}
+            offset={-100}
+          />
+        )}
         {/** Needs to be at the bottom to prevent re-rendering */}
         {isClickActive != null ? (
           <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
@@ -447,7 +563,7 @@ const HDXMultiSeriesTimeChart = memo(
       granularity,
       dateRange,
       seriesReturnType = 'column',
-      displayType: displayTypeProp = 'line',
+      displayType: displayTypeProp = DisplayType.Line,
     },
     onSettled,
     alertThreshold,
@@ -461,13 +577,13 @@ const HDXMultiSeriesTimeChart = memo(
       granularity: Granularity;
       dateRange: [Date, Date] | Readonly<[Date, Date]>;
       seriesReturnType: 'ratio' | 'column';
-      displayType?: 'stacked_bar' | 'line';
+      displayType?: DisplayType;
     };
     onSettled?: () => void;
     alertThreshold?: number;
     alertThresholdType?: 'above' | 'below';
     showDisplaySwitcher?: boolean;
-    setDisplayType?: (type: 'stacked_bar' | 'line') => void;
+    setDisplayType?: (type: DisplayType) => void;
     logReferenceTimestamp?: number;
   }) => {
     const { data, isError, isLoading } = useMultiSeriesChartV2(
@@ -612,7 +728,7 @@ const HDXMultiSeriesTimeChart = memo(
       }
     }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
-    const handleSetDisplayType = (type: 'stacked_bar' | 'line') => {
+    const handleSetDisplayType = (type: DisplayType) => {
       if (setDisplayType) {
         setDisplayType(type);
       } else {
@@ -713,18 +829,18 @@ const HDXMultiSeriesTimeChart = memo(
                 })}
                 role="button"
                 title="Display as line chart"
-                onClick={() => handleSetDisplayType('line')}
+                onClick={() => handleSetDisplayType(DisplayType.Line)}
               >
                 <i className="bi bi-graph-up"></i>
               </span>
               <span
                 className={cx('text-decoration-none fs-7 cursor-pointer', {
-                  'text-success': displayType === 'stacked_bar',
-                  'text-muted-hover': displayType !== 'stacked_bar',
+                  'text-success': displayType === DisplayType.StackedBar,
+                  'text-muted-hover': displayType !== DisplayType.StackedBar,
                 })}
                 role="button"
                 title="Display as bar chart"
-                onClick={() => handleSetDisplayType('stacked_bar')}
+                onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
               >
                 <i className="bi bi-bar-chart"></i>
               </span>

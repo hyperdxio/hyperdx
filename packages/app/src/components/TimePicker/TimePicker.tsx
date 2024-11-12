@@ -207,7 +207,6 @@ export const TimePicker = ({
           onClick={toggle}
           placeholder="Time Range"
           size="sm"
-          variant="filled"
           w={350}
           onKeyDown={e => {
             if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {

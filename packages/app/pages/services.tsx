@@ -1,3 +1,2 @@
-import ServiceDashboardPage from '@/ServiceDashboardPage';
-
-export default ServiceDashboardPage;
+import ServicesDashboardPage from '@/ServicesDashboardPage';
+export default ServicesDashboardPage;

@@ -50,9 +50,9 @@ export function handleAuthError(
     lastMessage === 'Password or username is incorrect'
       ? 'authFail'
       : lastMessage ===
-        'Authentication method password is not allowed by your team admin.'
-      ? 'passwordAuthNotAllowed'
-      : 'unknown';
+          'Authentication method password is not allowed by your team admin.'
+        ? 'passwordAuthNotAllowed'
+        : 'unknown';
 
   res.redirect(`${config.FRONTEND_URL}/login?err=${returnErr}`);
 }
@@ -109,4 +109,18 @@ export function isUserAuthenticated(
     return next();
   }
   res.sendStatus(401);
+}
+
+export function getNonNullUserWithTeam(req: Request) {
+  const user = req.user;
+
+  if (!user) {
+    throw new Error('User is not authenticated');
+  }
+
+  if (!user.team) {
+    throw new Error(`User ${user._id} is not associated with a team`);
+  }
+
+  return { teamId: user.team, userId: user._id, email: user.email };
 }

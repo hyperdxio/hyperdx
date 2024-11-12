@@ -2,9 +2,9 @@ import lucene from '@hyperdx/lucene';
 import { serializeError } from 'serialize-error';
 import SqlString from 'sqlstring';
 
+import { buildColumnExpressionFromField } from '@/clickhouse';
+import { PropertyTypeMappingsModel } from '@/clickhouse/propertyTypeMappingsModel';
 import { LogPlatform, LogType } from '@/utils/logParser';
-
-import { PropertyTypeMappingsModel } from './propertyTypeMappingsModel';
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -29,6 +29,7 @@ export function parse(query: string): lucene.AST {
 }
 
 const IMPLICIT_FIELD = '<implicit>';
+const DEFAULT_IMPLICIT_COLUMN = '_source';
 
 export const msToBigIntNs = (ms: number) => BigInt(ms * 1000000);
 export const isLikelyTokenTerm = (term: string) => {
@@ -36,7 +37,7 @@ export const isLikelyTokenTerm = (term: string) => {
 };
 
 const customColumnMap: { [level: string]: string } = {
-  [IMPLICIT_FIELD]: '_source',
+  [IMPLICIT_FIELD]: DEFAULT_IMPLICIT_COLUMN,
   body: '_hdx_body',
   duration: '_duration',
   end_timestamp: 'end_timestamp',
@@ -159,7 +160,11 @@ export class SQLSerializer implements Serializer {
     };
   }
 
-  private getCustomFieldOnly(field: string) {
+  getCustomFieldOnly(field: string): {
+    column?: string;
+    propertyType?: 'string' | 'number' | 'bool';
+    found: boolean;
+  } {
     return {
       column: customColumnMap[field],
       propertyType: customColumnMapType[field],
@@ -227,7 +232,8 @@ export class SQLSerializer implements Serializer {
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
+      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
+        column,
         normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
@@ -337,13 +343,14 @@ export class SQLSerializer implements Serializer {
     if (propertyType === 'bool') {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
+      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
+        column,
         normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
     } else if (propertyType === 'number') {
       return SqlString.format(
-        `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
-        [term],
+        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
+        [column, term],
       );
     }
 
@@ -358,8 +365,11 @@ export class SQLSerializer implements Serializer {
       // to utilize the token bloom filter unless a prefix/sufix wildcard is specified
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
-          `(lower(${column}) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
-          [`${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`],
+          `(lower(??) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
+          [
+            column,
+            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+          ],
         );
       } else {
         // We can't search multiple tokens with `hasToken`, so we need to split up the term into tokens
@@ -368,19 +378,21 @@ export class SQLSerializer implements Serializer {
           const tokens = this.tokenizeTerm(term);
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
-              SqlString.format(`hasTokenCaseInsensitive(${column}, ?)`, [
+              SqlString.format(`hasTokenCaseInsensitive(??, ?)`, [
+                column,
                 token,
               ]),
             ),
             // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(${column}) LIKE lower(?))`, [`%${term}%`]),
+            SqlString.format(`(lower(??) LIKE lower(?))`, [
+              column,
+              `%${term}%`,
+            ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
-            `(${
-              isNegatedField ? 'NOT ' : ''
-            }hasTokenCaseInsensitive(${column}, ?))`,
-            [term],
+            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(??, ?))`,
+            [column, term],
           );
         }
       }
@@ -407,6 +419,60 @@ export class SQLSerializer implements Serializer {
       `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?)`,
       [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
     );
+  }
+}
+
+export type CustomSchemaConfig = {
+  databaseName: string;
+  implicitColumn: string;
+  tableName: string;
+  timestampColumn: string;
+};
+
+export class CustomSchemaSQLSerializer extends SQLSerializer {
+  private readonly customSchemaConfig: CustomSchemaConfig;
+
+  constructor(
+    propertyTypeMappingsModel: PropertyTypeMappingsModel,
+    options: SQLSerializerOptions & {
+      customSchemaConfig: CustomSchemaConfig;
+    },
+  ) {
+    super(propertyTypeMappingsModel, options);
+    this.customSchemaConfig = options.customSchemaConfig;
+  }
+
+  getCustomFieldOnly(field: string) {
+    // IMPLICIT_FIELD is the only custom field
+    if (field === IMPLICIT_FIELD) {
+      return {
+        column: this.customSchemaConfig.implicitColumn,
+        propertyType: 'string' as any,
+        found: true,
+      };
+    }
+    return {
+      found: false,
+    };
+  }
+
+  async getColumnForField(field: string) {
+    const customField = this.getCustomFieldOnly(field);
+    if (customField.found) {
+      return customField;
+    }
+
+    const expression = await buildColumnExpressionFromField({
+      database: this.customSchemaConfig.databaseName,
+      table: this.customSchemaConfig.tableName,
+      field,
+      inferredSimpleType: undefined,
+    });
+    return {
+      column: expression.columnExpression,
+      propertyType: expression.columnType,
+      found: expression.found,
+    };
   }
 }
 
@@ -548,15 +614,18 @@ async function serialize(
   return '';
 }
 
+// TODO: can just inline this within getSearchQuery
 export async function genWhereSQL(
   ast: lucene.AST,
   propertyTypeMappingsModel: PropertyTypeMappingsModel,
-  teamId?: string,
+  serializer?: Serializer,
 ): Promise<string> {
-  const serializer = new SQLSerializer(propertyTypeMappingsModel, {
-    useTokenization: true,
-  });
-  return await serialize(ast, serializer);
+  const _serializer =
+    serializer ??
+    new SQLSerializer(propertyTypeMappingsModel, {
+      useTokenization: true,
+    });
+  return await serialize(ast, _serializer);
 }
 
 export class SearchQueryBuilder {
@@ -566,7 +635,7 @@ export class SearchQueryBuilder {
 
   private readonly propertyTypeMappingsModel: PropertyTypeMappingsModel;
 
-  teamId?: string;
+  private serializer: SQLSerializer;
 
   constructor(
     searchQ: string,
@@ -575,6 +644,19 @@ export class SearchQueryBuilder {
     this.conditions = [];
     this.searchQ = searchQ;
     this.propertyTypeMappingsModel = propertyTypeMappingsModel;
+    // init default serializer
+    this.serializer = new SQLSerializer(propertyTypeMappingsModel, {
+      useTokenization: true,
+    });
+  }
+
+  setSerializer(serializer: SQLSerializer) {
+    this.serializer = serializer;
+    return this;
+  }
+
+  getSerializer() {
+    return this.serializer;
   }
 
   private async genSearchQuery() {
@@ -582,10 +664,15 @@ export class SearchQueryBuilder {
       return '';
     }
 
+    const implicitColumn = this.serializer.getCustomFieldOnly(IMPLICIT_FIELD);
+
     let querySql = this.searchQ
       .split(/\s+/)
       .map(queryToken =>
-        SqlString.format(`lower(_source) LIKE lower(?)`, [`%${queryToken}%`]),
+        SqlString.format(`lower(??) LIKE lower(?)`, [
+          implicitColumn.column,
+          `%${queryToken}%`,
+        ]),
       )
       .join(' AND ');
 
@@ -596,7 +683,7 @@ export class SearchQueryBuilder {
         querySql = await genWhereSQL(
           parsedQ,
           this.propertyTypeMappingsModel,
-          this.teamId,
+          this.serializer,
         );
       }
     } catch (e) {
@@ -629,15 +716,57 @@ export class SearchQueryBuilder {
     return this;
   }
 
-  static timestampInBetween(startTime: number, endTime: number) {
-    return `_timestamp_sort_key >= ${msToBigIntNs(
-      startTime,
-    )} AND _timestamp_sort_key < ${msToBigIntNs(endTime)}`;
+  static timestampInBetween(
+    tsColumn: string,
+    tsColumnType: string,
+    startTime: number,
+    endTime: number,
+  ) {
+    // TODO: adjustable presicion?
+    const presicion = 9;
+    if (tsColumnType.startsWith('Int64')) {
+      return SqlString.format(
+        `?? >= ${msToBigIntNs(startTime)} AND ?? < ${msToBigIntNs(endTime)}`,
+        [tsColumn, tsColumn],
+      );
+    } else if (tsColumnType.startsWith('DateTime64')) {
+      return SqlString.format(
+        `?? >= toDateTime64(?, ?) AND ?? < toDateTime64(?, ?)`,
+        [
+          tsColumn,
+          startTime / 1e3,
+          presicion,
+          tsColumn,
+          endTime / 1e3,
+          presicion,
+        ],
+      );
+    } else if (tsColumnType.startsWith('DateTime')) {
+      return SqlString.format(
+        `?? >= toDateTime(?, ?) AND ?? < toDateTime(?, ?)`,
+        [
+          tsColumn,
+          startTime / 1e3,
+          presicion,
+          tsColumn,
+          endTime / 1e3,
+          presicion,
+        ],
+      );
+    }
+    throw new Error(`Unsupported timestamp column type: ${tsColumnType}`);
   }
 
   // startTime and endTime are unix in ms
   timestampInBetween(startTime: number, endTime: number) {
-    this.and(SearchQueryBuilder.timestampInBetween(startTime, endTime));
+    this.and(
+      SearchQueryBuilder.timestampInBetween(
+        '_timestamp_sort_key',
+        'Int64',
+        startTime,
+        endTime,
+      ),
+    );
     return this;
   }
 
@@ -652,20 +781,17 @@ export class SearchQueryBuilder {
 
 // TODO: replace with a proper query builder
 export const buildSearchQueryWhereCondition = async ({
-  startTime,
   endTime,
-  query,
   propertyTypeMappingsModel,
-  teamId,
+  query,
+  startTime,
 }: {
-  startTime: number; // unix in ms
   endTime: number; // unix in ms,
-  query: string;
   propertyTypeMappingsModel: PropertyTypeMappingsModel;
-  teamId?: string;
+  query: string;
+  startTime: number; // unix in ms
 }) => {
   const builder = new SearchQueryBuilder(query, propertyTypeMappingsModel);
-  builder.teamId = teamId;
   return await builder.timestampInBetween(startTime, endTime).build();
 };
 

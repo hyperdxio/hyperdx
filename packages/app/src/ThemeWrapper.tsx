@@ -1,5 +1,11 @@
 import React from 'react';
-import { MantineProvider, MantineThemeOverride } from '@mantine/core';
+import {
+  Button,
+  MantineProvider,
+  MantineThemeOverride,
+  rem,
+  Select,
+} from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
 const makeTheme = ({
@@ -7,6 +13,7 @@ const makeTheme = ({
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
+  defaultRadius: 'xs',
   cursorType: 'pointer',
   fontFamily,
   primaryColor: 'green',
@@ -20,18 +27,42 @@ const makeTheme = ({
     lg: '16px',
     xl: '18px',
   },
+  spacing: {
+    xxxs: 'calc(0.375rem * var(--mantine-scale))',
+    xxs: 'calc(0.5rem * var(--mantine-scale))',
+    xs: 'calc(0.625rem * var(--mantine-scale))',
+    sm: 'calc(0.75rem * var(--mantine-scale))',
+    md: 'calc(1rem * var(--mantine-scale))',
+    lg: 'calc(1.25rem * var(--mantine-scale))',
+    xl: 'calc(2rem * var(--mantine-scale))',
+  },
   colors: {
+    // https://mantine.dev/colors-generator/?color=09D99C
     green: [
-      '#e2ffeb',
-      '#cdffd9',
-      '#9bfdb5',
-      '#67fb8d',
-      '#3bf96b',
-      '#1ef956',
-      '#03f84a',
-      '#00dd3a',
-      '#00c531',
-      '#00aa23',
+      '#e2fff8',
+      '#cefef0',
+      '#a0fbe0',
+      '#6df9cf',
+      '#09D99C', // Toned Down
+      '#2ff5b8',
+      '#1ef5b3',
+      '#09da9d',
+      '#00c28a',
+      '#00a875',
+    ],
+    // https://mantine.dev/colors-generator/?color=A1A1AA
+    // Customized with FAFAFA, D7D8DB, A1A1AA
+    gray: [
+      '#FAFAFA', // Off White
+      '#e6e6ee',
+      '#D7D8DB', // Light Gray
+      '#aeaeb7',
+      '#A1A1AA', // Primary Gray
+      '#868691',
+      '#7e7e8b',
+      '#6c6c79',
+      '#5f5f6e',
+      '#515264',
     ],
     dark: [
       '#C1C2C5',
@@ -70,6 +101,20 @@ const makeTheme = ({
         },
       },
     },
+    Select: Select.extend({
+      styles: {
+        input: {
+          border: '1px solid var(--mantine-color-gray-7)',
+        },
+      },
+    }),
+    Input: {
+      styles: {
+        input: {
+          border: '1px solid var(--mantine-color-gray-7)',
+        },
+      },
+    },
     Card: {
       styles: {
         root: {
@@ -77,6 +122,21 @@ const makeTheme = ({
         },
       },
     },
+    Button: Button.extend({
+      vars: (theme, props) => {
+        if (props.size === 'xxs') {
+          return {
+            root: {
+              '--button-height': rem(22),
+              '--button-padding-x': rem(4),
+              '--button-fz': rem(12),
+            },
+          };
+        }
+
+        return { root: {} };
+      },
+    }),
   },
 });
 

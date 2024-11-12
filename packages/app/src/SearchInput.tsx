@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import api from './api';
-import AutocompleteInput from './AutocompleteInput';
-import { genEnglishExplanation } from './queryv2';
+import api from '@/api';
+import AutocompleteInput from '@/AutocompleteInput';
+import { genEnglishExplanation } from '@/queryParser';
 
 export default function SearchInput({
   inputRef,
@@ -10,7 +10,6 @@ export default function SearchInput({
   onChange,
   onSearch,
   placeholder = 'Search your events for anything...',
-  showHotkey = true,
   size = 'lg',
   zIndex,
 }: {
@@ -19,7 +18,6 @@ export default function SearchInput({
   onChange: (value: string) => void;
   onSearch: (searchQuery: string) => void;
   placeholder?: string;
-  showHotkey?: boolean;
   size?: 'sm' | 'lg';
   zIndex?: number;
 }) {
@@ -58,7 +56,6 @@ export default function SearchInput({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={propertyTypeMappings}
-      showHotkey={showHotkey}
       size={size}
       zIndex={zIndex}
       aboveSuggestions={

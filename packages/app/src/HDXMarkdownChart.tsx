@@ -3,15 +3,15 @@ import ReactMarkdown from 'react-markdown';
 
 const HDXMarkdownChart = memo(
   ({
-    config: { content },
+    config: { markdown },
   }: {
     config: {
-      content: string;
+      markdown?: string;
     };
   }) => {
     return (
       <div className="HDXMarkdownChart">
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown>{markdown ?? ''}</ReactMarkdown>
       </div>
     );
   },

@@ -17,7 +17,9 @@ export const withAppNav = (page: React.ReactNode) => {
     <HDXSpotlightProvider>
       <div className="d-flex">
         <AppNav fixed />
-        <div className="w-100">{page}</div>
+        <div className="w-100 min-w-0" style={{ minWidth: 0 }}>
+          {page}
+        </div>
       </div>
     </HDXSpotlightProvider>
   );

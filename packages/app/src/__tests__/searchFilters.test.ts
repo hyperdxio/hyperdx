@@ -14,63 +14,51 @@ describe('searchFilters', () => {
   describe('filtersToQuery', () => {
     it('should return empty string when no filters', () => {
       const filters = {};
-      expect(filtersToQuery(filters)).toBe('');
+      expect(filtersToQuery(filters)).toEqual([]);
     });
 
     it('should return query for one filter', () => {
       const filters = { a: new Set(['b']) };
-      expect(filtersToQuery(filters)).toBe('((a:"b"))');
+      expect(filtersToQuery(filters)).toEqual([
+        { type: 'sql', condition: "a IN ('b')" },
+      ]);
     });
 
     it('should return query for multiple filters', () => {
-      const filters = { a: new Set(['b']), c: new Set(['d']) };
-      expect(filtersToQuery(filters)).toBe('((a:"b") AND (c:"d"))');
+      const filters = { a: new Set(['b']), c: new Set(['d', 'x']) };
+      expect(filtersToQuery(filters)).toEqual([
+        { type: 'sql', condition: "a IN ('b')" },
+        { type: 'sql', condition: "c IN ('d', 'x')" },
+      ]);
     });
   });
 
   describe('parseQuery', () => {
     it('empty query', () => {
-      const result = parseQuery('');
-      expect(result.filters).toEqual({});
-    });
-
-    it('user query only', () => {
-      const result = parseQuery('foo');
-      expect(result.filters).toEqual({});
-    });
-
-    it('user query only, complex', () => {
-      const q = '(foo AND service:"bar") OR baz';
-      const result = parseQuery(q);
+      const result = parseQuery([]);
       expect(result.filters).toEqual({});
     });
 
     it('parses one filter', () => {
-      const result = parseQuery('((service:"z"))');
-      expect(result.filters).toEqual({ service: new Set(['z']) });
-    });
-
-    it('parses one filter with user query, left', () => {
-      const result = parseQuery('user query here ((service:"z"))');
-      expect(result.filters).toEqual({ service: new Set(['z']) });
-    });
-
-    it('parses one filter with user query, right', () => {
-      const result = parseQuery('((service:"z")) user query here');
+      const result = parseQuery([
+        { type: 'sql', condition: `service IN ('z')` },
+      ]);
       expect(result.filters).toEqual({ service: new Set(['z']) });
     });
 
     it('parses 1 group, multiple values', () => {
-      const result = parseQuery(
-        '((service:"z" OR service:"y" OR service:"x"))',
-      );
+      const result = parseQuery([
+        { type: 'sql', condition: `service IN ('z', 'y', 'x')` },
+      ]);
       expect(result.filters).toEqual({ service: new Set(['z', 'y', 'x']) });
     });
 
     it('parses 3 groups, multiple values', () => {
-      const result = parseQuery(
-        '((service:"z" OR service:"y" OR service:"x") AND (level:"info" OR level:"error") AND (type:"event"))',
-      );
+      const result = parseQuery([
+        { type: 'sql', condition: `service IN ('z', 'y', 'x')` },
+        { type: 'sql', condition: `level IN ('info', 'error')` },
+        { type: 'sql', condition: `type IN ('event')` },
+      ]);
       expect(result.filters).toEqual({
         service: new Set(['z', 'y', 'x']),
         level: new Set(['info', 'error']),
@@ -78,15 +66,9 @@ describe('searchFilters', () => {
       });
     });
 
-    it('throws when filter query is invalid', () => {
-      try {
-        parseQuery(
-          '((service:"z" OR level:"y" OR service:"x") AND (level:"info" OR level:"error") AND (type:"event"))',
-        );
-        expect(false).toBe(true); // should not reach here
-      } catch (e) {
-        expect(e.message).not.toBeNull();
-      }
+    it('skips non-supported filters', () => {
+      const result = parseQuery([{ type: 'lucene', condition: `app:*` }]);
+      expect(result.filters).toEqual({});
     });
   });
 
@@ -119,13 +101,13 @@ describe('searchFilters', () => {
   });
 
   describe('useSearchPageFilterState', () => {
-    const onSearchQueryChange = jest.fn();
+    const onFilterChange = jest.fn();
 
     it('adding filter to empty query', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({
-          searchQuery: '',
-          onSearchQueryChange,
+          searchQuery: [],
+          onFilterChange,
         }),
       );
 
@@ -134,36 +116,27 @@ describe('searchFilters', () => {
         result.current.setFilterValue('level', 'error');
       });
 
-      expect(onSearchQueryChange).toHaveBeenLastCalledWith(
-        '((service:"app") AND (level:"error"))',
-      );
-    });
-
-    it('adding filter to existing user query, left', () => {
-      const { result } = renderHook(() =>
-        useSearchPageFilterState({
-          searchQuery: 'user query here',
-          onSearchQueryChange,
-        }),
-      );
-
-      act(() => {
-        result.current.setFilterValue('service', 'app');
-        result.current.setFilterValue('level', 'error');
-        result.current.setFilterValue('service', 'app'); // deselect
-      });
-
-      expect(onSearchQueryChange).toHaveBeenLastCalledWith(
-        'user query here ((level:"error"))',
-      );
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        {
+          type: 'sql',
+          condition: "service IN ('app')",
+        },
+        {
+          type: 'sql',
+          condition: "level IN ('error')",
+        },
+      ]);
     });
 
     it('updating filter query', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({
-          searchQuery:
-            '((service:"hdx-oss-dev-app") AND (hyperdx_event_type:"span") AND (level:"info" OR level:"ok"))',
-          onSearchQueryChange,
+          searchQuery: [
+            { type: 'sql', condition: `service IN ('hdx-oss-dev-app')` },
+            { type: 'sql', condition: `hyperdx_event_type IN ('span')` },
+            { type: 'sql', condition: `level IN ('info', 'ok')` },
+          ],
+          onFilterChange,
         }),
       );
 
@@ -172,36 +145,22 @@ describe('searchFilters', () => {
         result.current.setFilterValue('another_facet', 'some_value');
       });
 
-      expect(onSearchQueryChange).toHaveBeenLastCalledWith(
-        '((hyperdx_event_type:"span") AND (level:"info" OR level:"ok") AND (another_facet:"some_value"))',
-      );
-    });
-
-    it('updating filter query with user query on both sides', () => {
-      const { result } = renderHook(() =>
-        useSearchPageFilterState({
-          searchQuery:
-            'user query here ((service:"hdx-oss-dev-app")) user query here',
-          onSearchQueryChange,
-        }),
-      );
-
-      act(() => {
-        result.current.setFilterValue('service', 'hdx-oss-dev-app'); // deselect
-        result.current.setFilterValue('another_facet', 'some_value');
-      });
-
-      expect(onSearchQueryChange).toHaveBeenLastCalledWith(
-        'user query here ((another_facet:"some_value")) user query here',
-      );
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: `hyperdx_event_type IN ('span')` },
+        { type: 'sql', condition: `level IN ('info', 'ok')` },
+        { type: 'sql', condition: `another_facet IN ('some_value')` },
+      ]);
     });
 
     it('clearing filter', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({
-          searchQuery:
-            '((service:"hdx-oss-dev-app") AND (hyperdx_event_type:"span") AND (level:"info" OR level:"ok"))',
-          onSearchQueryChange,
+          searchQuery: [
+            { type: 'sql', condition: `service IN ('hdx-oss-dev-app')` },
+            { type: 'sql', condition: `hyperdx_event_type IN ('span')` },
+            { type: 'sql', condition: `level IN ('info', 'ok')` },
+          ],
+          onFilterChange,
         }),
       );
 
@@ -209,17 +168,21 @@ describe('searchFilters', () => {
         result.current.clearFilter('level');
       });
 
-      expect(onSearchQueryChange).toHaveBeenLastCalledWith(
-        '((service:"hdx-oss-dev-app") AND (hyperdx_event_type:"span"))',
-      );
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: `service IN ('hdx-oss-dev-app')` },
+        { type: 'sql', condition: `hyperdx_event_type IN ('span')` },
+      ]);
     });
 
     it('correctly hydrates filter state from query', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({
-          searchQuery:
-            'some user query here ((service:"hdx-oss-dev-app") AND (hyperdx_event_type:"span") AND (level:"info" OR level:"ok")) do not mind me',
-          onSearchQueryChange,
+          searchQuery: [
+            { type: 'sql', condition: `service IN ('hdx-oss-dev-app')` },
+            { type: 'sql', condition: `hyperdx_event_type IN ('span')` },
+            { type: 'sql', condition: `level IN ('info', 'ok')` },
+          ],
+          onFilterChange,
         }),
       );
 
