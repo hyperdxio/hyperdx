@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import { MouseEventHandler, useCallback, useId, useMemo, useState } from 'react';
 import { add } from 'date-fns';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -79,6 +79,21 @@ export default function DBRowSidePanel({
     'tab',
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Parsed),
   );
+
+  const [panelWidth, setPanelWidth] = useState(Math.round(window.innerWidth * 0.8));
+  const handleResize = useCallback((e: MouseEvent) => {
+    const offsetRight = document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
+    setPanelWidth(offsetRight + 3); // ensure we bury the cursor in the panel
+  }, []);
+  const startResize: MouseEventHandler<HTMLDivElement> = useCallback((e) => {
+    e.preventDefault();
+    document.addEventListener('mousemove', handleResize);
+    document.addEventListener('mouseup', endResize);
+  }, []);
+  const endResize = useCallback(() => {
+    document.removeEventListener('mousemove', handleResize);
+    document.removeEventListener('mouseup', endResize);
+  }, []);
 
   // const [queryTab, setQueryTab] = useQueryParam(
   //   'tb',
@@ -162,12 +177,13 @@ export default function DBRowSidePanel({
         }
       }}
       direction="right"
-      size={'80vw'}
+      size={panelWidth}
       zIndex={drawerZIndex}
       enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel} ref={drawerRef}>
+          <Box className={styles.panelDragBar} onMouseDown={startResize}/>
           {isRowLoading && (
             <div className={styles.loadingState}>Loading...</div>
           )}

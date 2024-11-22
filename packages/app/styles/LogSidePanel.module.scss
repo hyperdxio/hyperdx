@@ -13,6 +13,13 @@ $padding-x: 24px;
   border-left: 1px solid $slate-900;
 }
 
+.panelDragBar {
+    position: absolute;
+    width: 3px;
+    height: 100%;
+    cursor: col-resize;
+}
+
 .panelHeader {
   display: flex;
   justify-content: space-between;
