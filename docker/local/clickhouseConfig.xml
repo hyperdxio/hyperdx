@@ -7,15 +7,10 @@
         <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
     </logger>
 
-    <query_log>
-        <database>system</database>
-        <table>query_log</table>
-    </query_log>
-
     <listen_host>0.0.0.0</listen_host>
     <http_port>8123</http_port>
     <tcp_port>9000</tcp_port>
-    <interserver_http_host>ch_server</interserver_http_host>
+    <interserver_http_host>ch-server</interserver_http_host>
     <interserver_http_port>9009</interserver_http_port>
 
     <max_connections>4096</max_connections>
@@ -36,11 +31,41 @@
     <default_database>default</default_database>
     <timezone>UTC</timezone>
     <mlock_executable>false</mlock_executable>
+
+    <!-- Query log. Used only for queries with setting log_queries = 1. -->
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_log>
+
+    <!-- Metric log contains rows with current values of ProfileEvents, CurrentMetrics collected with "collect_interval_milliseconds" interval. -->
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <collect_interval_milliseconds>1000</collect_interval_milliseconds>
+    </metric_log>
+
+    <!--
+        Asynchronous metric log contains values of metrics from
+        system.asynchronous_metrics.
+    -->
+    <asynchronous_metric_log>
+        <database>system</database>
+        <table>asynchronous_metric_log</table>
+        <!--
+            Asynchronous metrics are updated once a minute, so there is
+            no need to flush more often.
+        -->
+        <flush_interval_milliseconds>7000</flush_interval_milliseconds>
+    </asynchronous_metric_log>
+
     <!--
         OpenTelemetry log contains OpenTelemetry trace spans.
     -->
-    <!-- <opentelemetry_span_log> -->
-    <!--
+    <opentelemetry_span_log>
+        <!--
             The default table creation code is insufficient, this <engine> spec
             is a workaround. There is no 'event_time' for this log, but two times,
             start and finish. It is sorted by finish time, to avoid inserting
@@ -50,7 +75,7 @@
             global order that we can use to e.g. retry insertion into some external
             system.
         -->
-    <!-- <engine>
+        <engine>
             engine MergeTree
             partition by toYYYYMM(finish_date)
             order by (finish_date, finish_time_us, trace_id)
@@ -58,18 +83,64 @@
         <database>system</database>
         <table>opentelemetry_span_log</table>
         <flush_interval_milliseconds>7500</flush_interval_milliseconds>
-    </opentelemetry_span_log> -->
+    </opentelemetry_span_log>
 
-    <!-- <remote_servers>
-        <hdx_cluster>
-            <shard>
-                <replica>
-                    <host>ch_server</host>
-                    <port>9000</port>
-                </replica>
-            </shard>
-        </hdx_cluster>
-    </remote_servers> -->
+
+    <!-- Crash log. Stores stack traces for fatal errors.
+         This table is normally empty. -->
+    <crash_log>
+        <database>system</database>
+        <table>crash_log</table>
+
+        <partition_by />
+        <flush_interval_milliseconds>1000</flush_interval_milliseconds>
+    </crash_log>
+
+    <!-- Profiling on Processors level. -->
+    <processors_profile_log>
+        <database>system</database>
+        <table>processors_profile_log</table>
+
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </processors_profile_log>
+
+    <!-- Uncomment if use part log.
+         Part log contains information about all actions with parts in MergeTree tables (creation, deletion, merges, downloads).-->
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </part_log>
+
+    <!-- Trace log. Stores stack traces collected by query profilers.
+         See query_profiler_real_time_period_ns and query_profiler_cpu_time_period_ns settings. -->
+    <trace_log>
+        <database>system</database>
+        <table>trace_log</table>
+
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </trace_log>
+
+    <!-- Query thread log. Has information about all threads participated in query execution.
+         Used only for queries with setting log_query_threads = 1. -->
+    <query_thread_log>
+        <database>system</database>
+        <table>query_thread_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_thread_log>
+
+    <!-- Query views log. Has information about all dependent views associated with a query.
+         Used only for queries with setting log_query_views = 1. -->
+    <query_views_log>
+        <database>system</database>
+        <table>query_views_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_views_log>
 
     <distributed_ddl>
         <path>/clickhouse/task_queue/ddl</path>

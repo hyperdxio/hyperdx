@@ -39,6 +39,7 @@ import { useTimeChartSettings } from '@/ChartUtils';
 import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart from '@/components/DBHeatmapChart';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
+import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -66,6 +67,7 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
+import { useSearchPageFilterState } from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
 import { getDurationMsExpression, useSource, useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
@@ -667,6 +669,49 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: watch('filters') ?? undefined,
+    onFilterChange: handleSetFilters,
+  });
+
+  const displayedColumns = (
+    dbSqlRowTableConfig?.select ??
+    searchedSource?.defaultTableSelectExpression ??
+    ''
+  )
+    .split(',')
+    .map(s => s.trim());
+
+  const toggleColumn = (column: string) => {
+    const newSelectArray = displayedColumns.includes(column)
+      ? displayedColumns.filter(s => s !== column)
+      : [...displayedColumns, column];
+    setValue('select', newSelectArray.join(', '));
+    onSubmit();
+  };
+
+  const generateSearchUrl = useCallback(
+    (query?: string) => {
+      const qParams = new URLSearchParams({
+        where: query || searchedConfig.where || '',
+        whereLanguage: 'sql',
+        from: searchedTimeRange[0].getTime().toString(),
+        to: searchedTimeRange[1].getTime().toString(),
+        select: searchedConfig.select || '',
+        source: searchedSource?.id || '',
+        filters: JSON.stringify(searchedConfig.filters),
+      });
+      return `/search?${qParams.toString()}`;
+    },
+    [
+      searchedConfig.filters,
+      searchedConfig.select,
+      searchedConfig.where,
+      searchedSource?.id,
+      searchedTimeRange,
+    ],
+  );
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       <OnboardingModal />
@@ -831,16 +876,22 @@ function DBSearchPage() {
           </Button>
         </Flex>
       </form>
-      {searchedSource && (
-        <DBRowSidePanel
-          source={searchedSource}
-          rowId={rowId ?? undefined}
-          onClose={() => setRowId(null)}
-          shareUrl=""
-          generateSearchUrl={() => ''}
-          generateChartUrl={() => ''}
-        />
-      )}
+      <RowSidePanelContext.Provider
+        value={{
+          onPropertyAddClick: searchFilters.setFilterValue,
+          displayedColumns,
+          toggleColumn,
+          generateSearchUrl,
+        }}
+      >
+        {searchedSource && (
+          <DBRowSidePanel
+            source={searchedSource}
+            rowId={rowId ?? undefined}
+            onClose={() => setRowId(null)}
+          />
+        )}
+      </RowSidePanelContext.Provider>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
           opened={saveSearchModalState != null}
@@ -884,8 +935,7 @@ function DBSearchPage() {
                     ...chartConfig,
                     dateRange: searchedTimeRange,
                   }}
-                  filters={watch('filters')}
-                  onFilterChange={handleSetFilters}
+                  {...searchFilters}
                 />
               </ErrorBoundary>
               {analysisMode === 'delta' && searchedSource != null && (
@@ -963,6 +1013,7 @@ function DBSearchPage() {
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                         />
                         <DBTimeChart
+                          sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
                           config={{
                             ...chartConfig,

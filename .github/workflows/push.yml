@@ -1,4 +1,4 @@
-name: Push Downstream
+name: Push Downstream V1
 on:
   push:
     branches: [main]

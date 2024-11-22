@@ -82,6 +82,90 @@ export default function OnboardingModal({
               You can always add and edit connections later.
             </Text>
           )}
+          <Divider label="OR" my="md" />
+          <Button
+            variant="outline"
+            w="100%"
+            color="gray.4"
+            onClick={async () => {
+              try {
+                await createConnectionMutation.mutateAsync({
+                  connection: {
+                    id: 'local',
+                    name: 'Demo',
+                    host: 'https://demo-ch.hyperdx.io',
+                    username: 'demo',
+                    password: 'demo',
+                  },
+                });
+                const traceSource = await createSourceMutation.mutateAsync({
+                  source: {
+                    kind: 'trace',
+                    name: 'Demo Traces',
+                    connection: 'local',
+                    from: {
+                      databaseName: 'default',
+                      tableName: 'otel_traces',
+                    },
+                    timestampValueExpression: 'Timestamp',
+                    defaultTableSelectExpression:
+                      'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
+                    serviceNameExpression: 'ServiceName',
+                    eventAttributesExpression: 'SpanAttributes',
+                    resourceAttributesExpression: 'ResourceAttributes',
+                    traceIdExpression: 'TraceId',
+                    spanIdExpression: 'SpanId',
+                    implicitColumnExpression: 'SpanName',
+                    durationExpression: 'Duration',
+                    durationPrecision: 9,
+                    parentSpanIdExpression: 'ParentSpanId',
+                    spanKindExpression: 'SpanKind',
+                    spanNameExpression: 'SpanName',
+                    logSourceId: 'l-758211293',
+                    statusCodeExpression: 'StatusCode',
+                    statusMessageExpression: 'StatusMessage',
+                  },
+                });
+                await createSourceMutation.mutateAsync({
+                  source: {
+                    kind: 'log',
+                    name: 'Demo Logs',
+                    connection: 'local',
+                    from: {
+                      databaseName: 'default',
+                      tableName: 'otel_logs',
+                    },
+                    timestampValueExpression: 'TimestampTime',
+                    defaultTableSelectExpression:
+                      'Timestamp, ServiceName, SeverityText, Body',
+                    serviceNameExpression: 'ServiceName',
+                    severityTextExpression: 'SeverityText',
+                    eventAttributesExpression: 'LogAttributes',
+                    resourceAttributesExpression: 'ResourceAttributes',
+                    traceSourceId: traceSource.id,
+                    traceIdExpression: 'TraceId',
+                    spanIdExpression: 'SpanId',
+                    implicitColumnExpression: 'Body',
+                  },
+                });
+                notifications.show({
+                  title: 'Success',
+                  message: 'Connected to HyperDX demo server.',
+                });
+                setStep(undefined);
+              } catch (err) {
+                console.error(err);
+                notifications.show({
+                  color: 'red',
+                  title: 'Error',
+                  message:
+                    'Could not connect to the HyperDX demo server, please try again later.',
+                });
+              }
+            }}
+          >
+            Connect to Demo Server
+          </Button>
         </>
       )}
       {step === 'source' && (
@@ -110,105 +194,6 @@ export default function OnboardingModal({
           </Text>
         </>
       )}
-      <Divider label="OR" my="md" />
-      <Button
-        variant="outline"
-        w="100%"
-        color="gray.4"
-        onClick={() => {
-          createConnectionMutation.mutate(
-            {
-              connection: {
-                id: 'local',
-                name: 'Demo',
-                host: 'https://demo-ch.hyperdx.io',
-                username: 'demo',
-                password: 'demo',
-              },
-            },
-            {
-              onError: () => {
-                notifications.show({
-                  color: 'red',
-                  title: 'Error',
-                  message:
-                    'Could not connect to the HyperDX demo server, please try again later.',
-                });
-              },
-              onSuccess: () => {
-                createSourceMutation.mutate(
-                  {
-                    source: {
-                      kind: 'trace',
-                      name: 'Demo Traces',
-                      connection: 'local',
-                      from: {
-                        databaseName: 'default',
-                        tableName: 'otel_traces',
-                      },
-                      timestampValueExpression: 'Timestamp',
-                      defaultTableSelectExpression:
-                        'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
-                      serviceNameExpression: 'ServiceName',
-                      eventAttributesExpression: 'SpanAttributes',
-                      resourceAttributesExpression: 'ResourceAttributes',
-                      traceIdExpression: 'TraceId',
-                      spanIdExpression: 'SpanId',
-                      implicitColumnExpression: 'SpanName',
-                      durationExpression: 'Duration',
-                      durationPrecision: 9,
-                      parentSpanIdExpression: 'ParentSpanId',
-                      spanNameExpression: 'SpanName',
-                      logSourceId: 'l-758211293',
-                      statusCodeExpression: 'StatusCode',
-                      statusMessageExpression: 'StatusMessage',
-                    },
-                  },
-                  {
-                    onSuccess: traceSource => {
-                      createSourceMutation.mutate(
-                        {
-                          source: {
-                            kind: 'log',
-                            name: 'Demo Logs',
-                            connection: 'local',
-                            from: {
-                              databaseName: 'default',
-                              tableName: 'otel_logs',
-                            },
-                            timestampValueExpression: 'TimestampTime',
-                            defaultTableSelectExpression:
-                              'Timestamp, ServiceName, SeverityText, Body',
-                            serviceNameExpression: 'ServiceName',
-                            severityTextExpression: 'SeverityText',
-                            eventAttributesExpression: 'LogAttributes',
-                            resourceAttributesExpression: 'ResourceAttributes',
-                            traceSourceId: traceSource.id,
-                            traceIdExpression: 'TraceId',
-                            spanIdExpression: 'SpanId',
-                            implicitColumnExpression: 'Body',
-                          },
-                        },
-                        {
-                          onSuccess: () => {
-                            notifications.show({
-                              title: 'Success',
-                              message: 'Connected to HyperDX demo server.',
-                            });
-                            setStep(undefined);
-                          },
-                        },
-                      );
-                    },
-                  },
-                );
-              },
-            },
-          );
-        }}
-      >
-        Connect to Demo Server
-      </Button>
     </Modal>
   );
 }

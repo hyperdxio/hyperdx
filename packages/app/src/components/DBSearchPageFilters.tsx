@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import produce from 'immer';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Checkbox,
@@ -16,8 +15,8 @@ import {
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import { ChartConfigWithDateRange } from '@/renderChartConfig';
-import { Filter } from '@/renderChartConfig';
 import { useSearchPageFilterState } from '@/searchFilters';
+import { mergePath } from '@/utils';
 
 import classes from '../../styles/SearchPage.module.scss';
 
@@ -248,21 +247,23 @@ export const FilterGroup = ({
   );
 };
 
+type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
+
 export const DBSearchPageFilters = ({
+  filters: filterState,
+  clearAllFilters,
+  clearFilter,
+  setFilterValue,
   isLive,
-  filters,
   chartConfig,
-  onFilterChange,
   analysisMode,
   setAnalysisMode,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
-  filters: Filter[];
   chartConfig: ChartConfigWithDateRange;
-  onFilterChange: (filters: Filter[]) => void;
-}) => {
+} & FilterStateHook) => {
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -281,25 +282,26 @@ export const DBSearchPageFilters = ({
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
           type.includes('LowCardinality');
-        return isLowCardinality(a.type) ? -1 : isLowCardinality(b.type) ? 1 : 0;
+        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
       })
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
       )
-      // query only low cardinality fields by default
-      .filter(field => showMoreFields || field.type.includes('LowCardinality'))
-      .map(({ path }) => {
-        const [key, ...rest] = path;
-        if (rest.length === 0) {
-          return key;
-        }
-        return `${key}['${rest.join("']['")}']`;
+      .map(({ path, type }) => {
+        return { type, path: mergePath(path) };
       })
+      .filter(
+        field =>
+          showMoreFields ||
+          field.type.includes('LowCardinality') || // query only low cardinality fields by default
+          Object.keys(filterState).includes(field.path), // keep selected fields
+      )
+      .map(({ path }) => path)
       .filter(path => !['Body', 'Timestamp'].includes(path));
 
     return strings;
-  }, [data, showMoreFields]);
+  }, [data, filterState, showMoreFields]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -321,16 +323,6 @@ export const DBSearchPageFilters = ({
   } = useGetKeyValues({
     chartConfig: { ...chartConfig, dateRange },
     keys: datum,
-  });
-
-  const {
-    filters: filterState,
-    setFilterValue,
-    clearFilter,
-    clearAllFilters,
-  } = useSearchPageFilterState({
-    searchQuery: filters ?? undefined,
-    onFilterChange,
   });
 
   const shownFacets = useMemo(() => {

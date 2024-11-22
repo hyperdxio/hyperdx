@@ -824,11 +824,18 @@ if is_object(.r) {
 '''
 
 [transforms.post_spans]
-type = "route"
+type = "filter"
 inputs = ["spans"]
-reroute_unmatched = true
-  [transforms.post_spans.route]
-  go = '''"${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")'''
+condition = '''
+  ("${ENABLE_GO_PARSER:-false}" == "true" && is_nullish(.b."db.statement")) || "${ENABLE_GO_PARSER:-false}" == "false"
+'''
+
+[transforms.go_spans]
+type = "filter"
+inputs = ["spans"]
+condition = '''
+  "${ENABLE_GO_PARSER:-false}" == "true" && !is_nullish(.b."db.statement")
+'''
 # --------------------------------------------------------------------------------
 
 

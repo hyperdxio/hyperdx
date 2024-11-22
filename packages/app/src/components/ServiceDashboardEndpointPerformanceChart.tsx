@@ -4,7 +4,7 @@ import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { TSource } from '@/commonTypes';
 import { ChartBox } from '@/components/ChartBox';
 import DBListBarChart from '@/components/DBListBarChart';
-import { CH_COLUMNS, durationInMsExpr } from '@/ServicesDashboardPage';
+import { getExpressions } from '@/serviceDashboard';
 
 const MAX_NUM_GROUPS = 200;
 
@@ -19,18 +19,15 @@ export default function ServiceDashboardEndpointPerformanceChart({
   service?: string;
   endpoint?: string;
 }) {
-  const traceIdExpression = source?.traceIdExpression || CH_COLUMNS.traceId;
-  const spanName = source?.spanNameExpression || CH_COLUMNS.spanName;
-  const serviceName = source?.serviceNameExpression || CH_COLUMNS.service;
-  const duration = durationInMsExpr(source);
+  const expressions = getExpressions(source);
 
   if (!source) {
     return null;
   }
 
   const parentSpanWhereCondition = [
-    service && `${serviceName} = '${service}'`,
-    endpoint && `${spanName} = '${endpoint}'`,
+    service && `${expressions.service} = '${service}'`,
+    endpoint && `${expressions.spanName} = '${endpoint}'`,
     // Ideally should use `timeFilterExpr`, but it returns chSql while filter.condition is string
     `${source.timestampValueExpression} >=
         fromUnixTimestamp64Milli(${dateRange[0].getTime()}) AND
@@ -40,7 +37,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
     .filter(Boolean)
     .join(' AND ');
 
-  const selectTraceIdsSql = `SELECT distinct ${traceIdExpression}
+  const selectTraceIdsSql = `SELECT distinct ${expressions.traceId}
     FROM ${source.from.databaseName}.${source.from.tableName}
     WHERE ${parentSpanWhereCondition}
     `;
@@ -64,12 +61,12 @@ export default function ServiceDashboardEndpointPerformanceChart({
               {
                 alias: 'group',
                 valueExpression: `concat(
-                  ${spanName}, ' ',
+                  ${expressions.spanName}, ' ',
                   if(
-                    has(['HTTP DELETE', 'DELETE', 'HTTP GET', 'GET', 'HTTP HEAD', 'HEAD', 'HTTP OPTIONS', 'OPTIONS', 'HTTP PATCH', 'PATCH', 'HTTP POST', 'POST', 'HTTP PUT', 'PUT'], ${spanName}),
+                    has(['HTTP DELETE', 'DELETE', 'HTTP GET', 'GET', 'HTTP HEAD', 'HEAD', 'HTTP OPTIONS', 'OPTIONS', 'HTTP PATCH', 'PATCH', 'HTTP POST', 'POST', 'HTTP PUT', 'PUT'], ${expressions.spanName}),
                     COALESCE(
-                      NULLIF(${CH_COLUMNS.serverAddress}, ''),
-                      NULLIF(${CH_COLUMNS.httpHost}, '')
+                      NULLIF(${expressions.serverAddress}, ''),
+                      NULLIF(${expressions.httpHost}, '')
                     ),
                     ''
                   ))`,
@@ -78,7 +75,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
                 alias: 'Total Time Spent',
                 aggFn: 'sum',
                 aggCondition: '',
-                valueExpression: duration,
+                valueExpression: expressions.durationInMillis,
               },
               {
                 alias: 'Number of Calls',
@@ -88,25 +85,25 @@ export default function ServiceDashboardEndpointPerformanceChart({
                 alias: 'Average Duration',
                 aggFn: 'avg',
                 aggCondition: '',
-                valueExpression: duration,
+                valueExpression: expressions.durationInMillis,
               },
               {
                 alias: 'Min Duration',
                 aggFn: 'min',
                 aggCondition: '',
-                valueExpression: duration,
+                valueExpression: expressions.durationInMillis,
               },
               {
                 alias: 'Max Duration',
                 aggFn: 'max',
                 aggCondition: '',
-                valueExpression: duration,
+                valueExpression: expressions.durationInMillis,
               },
               {
                 alias: 'Number of Requests',
                 aggFn: 'count_distinct',
                 aggCondition: '',
-                valueExpression: traceIdExpression,
+                valueExpression: expressions.traceId,
               },
               {
                 alias: 'Calls per Request',
@@ -121,17 +118,17 @@ export default function ServiceDashboardEndpointPerformanceChart({
                 ? [
                     {
                       type: 'sql' as const,
-                      condition: `${serviceName} = '${service}'`,
+                      condition: `${expressions.service} = '${service}'`,
                     },
                   ]
                 : []),
               {
                 type: 'sql',
-                condition: `${traceIdExpression} IN (${selectTraceIdsSql})`,
+                condition: `${expressions.traceId} IN (${selectTraceIdsSql})`,
               },
               {
                 type: 'sql',
-                condition: `${duration} >= 0 AND ${spanName} != '${endpoint}'`,
+                condition: `${expressions.duration} >= 0 AND ${expressions.spanName} != '${endpoint}'`,
               },
             ],
             numberFormat: MS_NUMBER_FORMAT,

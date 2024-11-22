@@ -13,12 +13,8 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import ServiceDashboardEndpointPerformanceChart from '@/components/ServiceDashboardEndpointPerformanceChart';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
 import { Filter } from '@/renderChartConfig';
-import {
-  CH_COLUMNS,
-  CH_IS_ERROR,
-  CH_IS_SERVER_KIND,
-  EndpointLatencyChart,
-} from '@/ServicesDashboardPage';
+import { getExpressions } from '@/serviceDashboard';
+import { EndpointLatencyChart } from '@/ServicesDashboardPage';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -35,6 +31,7 @@ export default function ServiceDashboardEndpointSidePanel({
   searchedTimeRange: [Date, Date];
 }) {
   const { data: source } = useSource({ id: sourceId });
+  const expressions = getExpressions(source);
 
   const [endpoint, setEndpoint] = useQueryState('endpoint', parseAsString);
   const onClose = useCallback(() => {
@@ -48,17 +45,17 @@ export default function ServiceDashboardEndpointSidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${CH_COLUMNS.spanName} = '${endpoint}' AND ${CH_IS_SERVER_KIND}`,
+        condition: `${expressions.spanName} = '${endpoint}' AND ${expressions.isSpanKindServer}`,
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${CH_COLUMNS.service} = '${service}'`,
+        condition: `${expressions.service} = '${service}'`,
       });
     }
     return filters;
-  }, [endpoint, service]);
+  }, [endpoint, service, expressions]);
 
   if (!endpoint || !source) {
     return null;
@@ -106,7 +103,7 @@ export default function ServiceDashboardEndpointSidePanel({
                         whereLanguage: 'sql',
                         select: [
                           {
-                            valueExpression: `countIf(${CH_IS_ERROR}) / count()`,
+                            valueExpression: `countIf(${expressions.isError}) / count()`,
                             alias: 'Error Rate %',
                           },
                         ],
@@ -115,7 +112,7 @@ export default function ServiceDashboardEndpointSidePanel({
                           ...endpointFilters,
                           {
                             type: 'sql',
-                            condition: `${CH_COLUMNS.httpScheme} = 'http'`,
+                            condition: `${expressions.httpScheme} = 'http'`,
                           },
                         ],
                         dateRange: searchedTimeRange,

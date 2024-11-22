@@ -357,6 +357,19 @@ export function TraceTableModelForm({
           disableKeywordAutocomplete
         />
       </FormRow>
+      <FormRow
+        label={'Default Select'}
+        helpText="Default columns selected in search results (this can be customized per search later)"
+      >
+        <SQLInlineEditorControlled
+          database={databaseName}
+          table={tableName}
+          control={control}
+          name="defaultTableSelectExpression"
+          placeholder="Timestamp, ServiceName, StatusCode, Duration, SpanName"
+          connectionId={connectionId}
+        />
+      </FormRow>
       <Divider />
       <FormRow label={'Duration Expression'}>
         <SQLInlineEditorControlled
@@ -434,6 +447,16 @@ export function TraceTableModelForm({
           placeholder="SpanName"
         />
       </FormRow>
+      <FormRow label={'Span Kind Expression'}>
+        <SQLInlineEditorControlled
+          connectionId={connectionId}
+          database={databaseName}
+          table={tableName}
+          control={control}
+          name="spanKindExpression"
+          placeholder="SpanKind"
+        />
+      </FormRow>
       <Divider />
       <FormRow
         label={'Correlated Log Source'}
@@ -469,6 +492,26 @@ export function TraceTableModelForm({
           control={control}
           name="serviceNameExpression"
           placeholder="ServiceName"
+        />
+      </FormRow>
+      <FormRow label={'Resource Attributes Expression'}>
+        <SQLInlineEditorControlled
+          database={databaseName}
+          table={tableName}
+          control={control}
+          name="resourceAttributesExpression"
+          placeholder="ResourceAttributes"
+          connectionId={connectionId}
+        />
+      </FormRow>
+      <FormRow label={'Event Attributes Expression'}>
+        <SQLInlineEditorControlled
+          database={databaseName}
+          table={tableName}
+          control={control}
+          name="eventAttributesExpression"
+          placeholder="SpanAttributes"
+          connectionId={connectionId}
         />
       </FormRow>
     </Stack>

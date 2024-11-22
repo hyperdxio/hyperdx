@@ -20,8 +20,6 @@ import {
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
-  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-  K8S_MEM_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
 } from '@/ChartUtils';
 import { TSource } from '@/commonTypes';
@@ -43,31 +41,10 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { withAppNav } from '@/layout';
 import { Filter } from '@/renderChartConfig';
 import SearchInputV2 from '@/SearchInputV2';
+import { getExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-
-// TODO: Make configurable
-export const CH_COLUMNS = {
-  service: 'ServiceName',
-  spanName: 'SpanName',
-  spanKind: 'SpanKind',
-  level: `SpanAttributes['level']`, // ???
-  k8sResourceName: "SpanAttributes['k8s.resource.name']",
-  k8sPodName: "SpanAttributes['k8s.pod.name']",
-  httpScheme: "SpanAttributes['http.scheme']",
-  duration: 'Duration',
-  serverAddress: "SpanAttributes['server.address']",
-  httpHost: "SpanAttributes['http.host']",
-  traceId: 'TraceID',
-};
-export const CH_IS_ERROR = `${CH_COLUMNS.level} = 'Error'`;
-export const CH_IS_SERVER_KIND = `${CH_COLUMNS.spanKind} IN ['Server', 'SPAN_KIND_SERVER']`;
-export const DB_STATEMENT_PROPERTY = `SpanAttributes['db.query.text']`;
-export const IS_DB_SPAN_FILTER: Filter = {
-  type: 'sql',
-  condition: `${DB_STATEMENT_PROPERTY} <> ''`,
-};
 
 type AppliedConfig = {
   source?: string | null;
@@ -76,27 +53,24 @@ type AppliedConfig = {
   whereLanguage?: 'sql' | 'lucene' | null;
 };
 
-export const durationInMsExpr = (
-  source: { durationExpression?: string; durationPrecision?: number } = {},
-) => {
-  const durationExpression = source.durationExpression || CH_COLUMNS.duration;
-  const durationPrecision = source.durationPrecision || 9;
-
-  // precision is per second
-  return `${durationExpression}/1e${durationPrecision - 3}`;
-};
-
-function getScopedFilters(appliedConfig: AppliedConfig): Filter[] {
-  const filters: Filter[] = [
-    {
+function getScopedFilters(
+  source: TSource,
+  appliedConfig: AppliedConfig,
+  includeIsSpanKindServer = true,
+): Filter[] {
+  const expressions = getExpressions(source);
+  const filters: Filter[] = [];
+  // Database spans are of kind Client. To be cleaned up in HDX-1219
+  if (includeIsSpanKindServer) {
+    filters.push({
       type: 'sql',
-      condition: CH_IS_SERVER_KIND,
-    },
-  ];
+      condition: expressions.isSpanKindServer,
+    });
+  }
   if (appliedConfig.service) {
     filters.push({
       type: 'sql',
-      condition: `${CH_COLUMNS.service} = '${appliedConfig.service}'`,
+      condition: `${expressions.service} IN ('${appliedConfig.service}')`,
     });
   }
   return filters;
@@ -112,6 +86,7 @@ function ServiceSelectControlled({
   onCreate?: () => void;
 } & UseControllerProps<any>) {
   const { data: source } = useSource({ id: sourceId });
+  const expressions = getExpressions(source);
 
   const queriedConfig = {
     ...source,
@@ -123,10 +98,10 @@ function ServiceSelectControlled({
     select: [
       {
         alias: 'service',
-        valueExpression: `distinct(${CH_COLUMNS.service})`,
+        valueExpression: `distinct(${expressions.service})`,
       },
     ],
-    where: `${CH_COLUMNS.service} IS NOT NULL`,
+    where: `${expressions.service} IS NOT NULL`,
     whereLanguage: 'sql' as const,
     limit: { limit: 200 },
   };
@@ -174,6 +149,7 @@ export function EndpointLatencyChart({
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
 }) {
+  const expressions = getExpressions(source);
   const [latencyChartType, setLatencyChartType] = useState<
     'line' | 'histogram'
   >('line');
@@ -212,6 +188,7 @@ export function EndpointLatencyChart({
         (latencyChartType === 'line' ? (
           <DBTimeChart
             showDisplaySwitcher={false}
+            sourceId={source.id}
             config={{
               ...source,
               where: appliedConfig.where || '',
@@ -221,24 +198,27 @@ export function EndpointLatencyChart({
                   alias: '95th Percentile',
                   aggFn: 'quantile',
                   level: 0.95,
-                  valueExpression: durationInMsExpr(source),
+                  valueExpression: expressions.durationInMillis,
                   aggCondition: '',
                 },
                 {
                   alias: 'Median',
                   aggFn: 'quantile',
                   level: 0.5,
-                  valueExpression: durationInMsExpr(source),
+                  valueExpression: expressions.durationInMillis,
                   aggCondition: '',
                 },
                 {
                   alias: 'Avg',
                   aggFn: 'avg',
-                  valueExpression: durationInMsExpr(source),
+                  valueExpression: expressions.durationInMillis,
                   aggCondition: '',
                 },
               ],
-              filters: [...extraFilters, ...getScopedFilters(appliedConfig)],
+              filters: [
+                ...extraFilters,
+                ...getScopedFilters(source, appliedConfig),
+              ],
               numberFormat: MS_NUMBER_FORMAT,
               dateRange,
             }}
@@ -252,10 +232,13 @@ export function EndpointLatencyChart({
               select: [
                 {
                   alias: 'data',
-                  valueExpression: `histogram(20)(${durationInMsExpr(source)})`,
+                  valueExpression: `histogram(20)(${expressions.durationInMillis})`,
                 },
               ],
-              filters: [...extraFilters, ...getScopedFilters(appliedConfig)],
+              filters: [
+                ...extraFilters,
+                ...getScopedFilters(source, appliedConfig),
+              ],
               dateRange,
             }}
           />
@@ -272,6 +255,7 @@ function HttpTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
+  const expressions = getExpressions(source);
 
   const [reqChartType, setReqChartType] = useQueryState(
     'reqChartType',
@@ -311,6 +295,7 @@ function HttpTab({
           </Group>
           {source && (
             <DBTimeChart
+              sourceId={source.id}
               config={{
                 ...source,
                 where: appliedConfig.where || '',
@@ -321,7 +306,7 @@ function HttpTab({
                     : DisplayType.StackedBar,
                 select: [
                   {
-                    valueExpression: `countIf(${CH_IS_ERROR}) / count()`,
+                    valueExpression: `countIf(${expressions.isError}) / count()`,
                     alias: 'Error Rate %',
                   },
                 ],
@@ -329,14 +314,14 @@ function HttpTab({
                 filters: [
                   {
                     type: 'sql',
-                    condition: `${CH_COLUMNS.httpScheme} = 'http'`,
+                    condition: `${expressions.httpScheme} = 'http'`,
                   },
-                  ...getScopedFilters(appliedConfig),
+                  ...getScopedFilters(source, appliedConfig),
                 ],
                 groupBy:
                   reqChartType === 'overall'
                     ? undefined
-                    : source.spanNameExpression || CH_COLUMNS.spanName,
+                    : source.spanNameExpression || expressions.spanName,
                 dateRange: searchedTimeRange,
               }}
               showDisplaySwitcher={false}
@@ -353,6 +338,7 @@ function HttpTab({
           </Group>
           {source && (
             <DBTimeChart
+              sourceId={source.id}
               config={{
                 ...source,
                 where: appliedConfig.where || '',
@@ -371,7 +357,7 @@ function HttpTab({
                   },
                 ],
                 numberFormat: { ...INTEGER_NUMBER_FORMAT, unit: 'requests' },
-                filters: getScopedFilters(appliedConfig),
+                filters: getScopedFilters(source, appliedConfig),
                 dateRange: searchedTimeRange,
               }}
             />
@@ -399,12 +385,12 @@ function HttpTab({
                   {
                     alias: 'Endpoint',
                     valueExpression:
-                      source.spanNameExpression || CH_COLUMNS.spanName,
+                      source.spanNameExpression || expressions.spanName,
                   },
                   {
                     alias: 'Total (ms)',
                     aggFn: 'sum',
-                    valueExpression: durationInMsExpr(source),
+                    valueExpression: expressions.durationInMillis,
                     aggCondition: '',
                   },
                   {
@@ -416,28 +402,28 @@ function HttpTab({
                   {
                     alias: 'P95 (ms)',
                     aggFn: 'quantile',
-                    valueExpression: durationInMsExpr(source),
+                    valueExpression: expressions.durationInMillis,
                     aggCondition: '',
                     level: 0.5,
                   },
                   {
                     alias: 'Median (ms)',
                     aggFn: 'quantile',
-                    valueExpression: durationInMsExpr(source),
+                    valueExpression: expressions.durationInMillis,
                     aggCondition: '',
                     level: 0.95,
                   },
 
                   {
                     alias: 'Errors/Min',
-                    valueExpression: `countIf(${CH_IS_ERROR}) /
+                    valueExpression: `countIf(${expressions.isError}) /
                       age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000}))`,
                   },
                 ],
                 selectGroupBy: false,
-                groupBy: source.spanNameExpression || CH_COLUMNS.spanName,
+                groupBy: source.spanNameExpression || expressions.spanName,
                 orderBy: '"Total (ms)" DESC',
-                filters: getScopedFilters(appliedConfig),
+                filters: getScopedFilters(source, appliedConfig),
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
               }}
@@ -488,43 +474,34 @@ function HttpTab({
                   {
                     alias: 'Endpoint',
                     valueExpression:
-                      source.spanNameExpression || CH_COLUMNS.spanName,
+                      source.spanNameExpression || expressions.spanName,
                   },
                   {
                     alias: 'Req/Min',
-                    valueExpression: `
-                      count() /
-                      age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000}))`,
+                    valueExpression: `round(count() /
+                        age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000})), 1)`,
                   },
                   {
                     alias: 'P95 (ms)',
-                    aggFn: 'quantile',
-                    valueExpression: durationInMsExpr(source),
-                    aggCondition: '',
-                    level: 0.5,
+                    valueExpression: `round(quantile(0.95)(${expressions.durationInMillis}), 2)`,
                   },
                   {
                     alias: 'Median (ms)',
-                    aggFn: 'quantile',
-                    valueExpression: durationInMsExpr(source),
-                    aggCondition: '',
-                    level: 0.95,
+                    valueExpression: `round(quantile(0.5)(${expressions.durationInMillis}), 2)`,
                   },
                   {
                     alias: 'Total (ms)',
-                    aggFn: 'sum',
-                    valueExpression: durationInMsExpr(source),
-                    aggCondition: '',
+                    valueExpression: `round(sum(${expressions.durationInMillis}), 2)`,
                   },
                   {
                     alias: 'Errors/Min',
-                    valueExpression: `countIf(${CH_IS_ERROR}) /
-                      age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000}))`,
+                    valueExpression: `round(countIf(${expressions.isError}) /
+                      age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000})), 1)`,
                   },
                 ],
-                filters: getScopedFilters(appliedConfig),
+                filters: getScopedFilters(source, appliedConfig),
                 selectGroupBy: false,
-                groupBy: source.spanNameExpression || CH_COLUMNS.spanName,
+                groupBy: source.spanNameExpression || expressions.spanName,
                 dateRange: searchedTimeRange,
                 orderBy:
                   topEndpointsChartType === 'time'
@@ -548,6 +525,7 @@ function DatabaseTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
+  const expressions = getExpressions(source);
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
 
@@ -568,6 +546,7 @@ function DatabaseTab({
           </Group>
           {source && (
             <DBTimeChart
+              sourceId={source.id}
               config={{
                 ...source,
                 displayType: DisplayType.StackedBar,
@@ -577,16 +556,16 @@ function DatabaseTab({
                   {
                     alias: 'Total Query Time',
                     aggFn: 'sum',
-                    valueExpression: durationInMsExpr(source),
+                    valueExpression: expressions.durationInMillis,
                     aggCondition: '',
                   },
                 ],
                 filters: [
-                  ...getScopedFilters(appliedConfig),
-                  IS_DB_SPAN_FILTER,
+                  ...getScopedFilters(source, appliedConfig, false),
+                  { type: 'sql', condition: expressions.isDbSpan },
                 ],
                 numberFormat: MS_NUMBER_FORMAT,
-                groupBy: DB_STATEMENT_PROPERTY,
+                groupBy: expressions.dbStatement,
                 dateRange: searchedTimeRange,
               }}
             />
@@ -602,6 +581,7 @@ function DatabaseTab({
           </Group>
           {source && (
             <DBTimeChart
+              sourceId={source.id}
               config={{
                 ...source,
                 displayType: DisplayType.StackedBar,
@@ -611,19 +591,19 @@ function DatabaseTab({
                   {
                     alias: 'Total Query Count',
                     aggFn: 'count',
-                    valueExpression: durationInMsExpr(source),
+                    valueExpression: expressions.durationInMillis,
                     aggCondition: '',
                   },
                 ],
                 filters: [
-                  ...getScopedFilters(appliedConfig),
-                  IS_DB_SPAN_FILTER,
+                  ...getScopedFilters(source, appliedConfig, false),
+                  { type: 'sql', condition: expressions.isDbSpan },
                 ],
                 numberFormat: {
                   ...INTEGER_NUMBER_FORMAT,
                   unit: 'queries',
                 },
-                groupBy: DB_STATEMENT_PROPERTY,
+                groupBy: expressions.dbStatement,
                 dateRange: searchedTimeRange,
               }}
             />
@@ -672,19 +652,19 @@ function DatabaseTab({
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
-                  groupBy: DB_STATEMENT_PROPERTY,
+                  groupBy: expressions.dbStatement,
                   selectGroupBy: false,
                   orderBy: '"Total" DESC',
                   select: [
                     {
                       alias: 'Statement',
-                      valueExpression: DB_STATEMENT_PROPERTY,
+                      valueExpression: expressions.dbStatement,
                     },
                     {
                       alias: 'Total',
                       aggFn: 'sum',
                       aggCondition: '',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                     },
                     {
                       alias: 'Queries/Min',
@@ -695,28 +675,28 @@ function DatabaseTab({
                     {
                       alias: 'P95 (ms)',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.5,
                     },
                     {
                       alias: 'Median (ms)',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.95,
                     },
                     {
                       alias: 'Median',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.5,
                     },
                   ],
                   filters: [
-                    ...getScopedFilters(appliedConfig),
-                    IS_DB_SPAN_FILTER,
+                    ...getScopedFilters(source, appliedConfig, false),
+                    { type: 'sql', condition: expressions.isDbSpan },
                   ],
                 }}
               />
@@ -728,19 +708,19 @@ function DatabaseTab({
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
-                  groupBy: DB_STATEMENT_PROPERTY,
+                  groupBy: expressions.dbStatement,
                   orderBy: '"Total" DESC',
                   selectGroupBy: false,
                   select: [
                     {
                       alias: 'Statement',
-                      valueExpression: DB_STATEMENT_PROPERTY,
+                      valueExpression: expressions.dbStatement,
                     },
                     {
                       alias: 'Total',
                       aggFn: 'sum',
                       aggCondition: '',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                     },
                     {
                       alias: 'Queries/Min',
@@ -751,144 +731,32 @@ function DatabaseTab({
                     {
                       alias: 'P95 (ms)',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.5,
                     },
                     {
                       alias: 'Median (ms)',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.95,
                     },
                     {
                       alias: 'Median',
                       aggFn: 'quantile',
-                      valueExpression: durationInMsExpr(source),
+                      valueExpression: expressions.durationInMillis,
                       aggCondition: '',
                       level: 0.5,
                     },
                   ],
-                  filters: getScopedFilters(appliedConfig),
+                  filters: [
+                    ...getScopedFilters(source, appliedConfig, false),
+                    { type: 'sql', condition: expressions.isDbSpan },
+                  ],
                 }}
               />
             ))}
-        </ChartBox>
-      </Grid.Col>
-    </Grid>
-  );
-}
-
-// Kubernetes Tab
-// TODO this is a placeholder for now
-// TODO where to get metrics from?
-const K8S_POD_CPU_UTILIZATION = "SpanAttributes['k8s.pod.cpu.utilization']";
-const K8S_POD_MEM_USAGE = "SpanAttributes['k8s.pod.memory.usage']";
-const K8S_POD_NAME = "SpanAttributes['k8s.pod.name']";
-
-const K8S_METRICS = {
-  CONTAINER_RESTARTS: 'k8s.container.restarts',
-  POD_PHASE: 'k8s.pod.phase',
-  POD_UPTIME: 'k8s.pod.uptime',
-  POD_CPU_UTILIZATION: 'k8s.pod.cpu.utilization',
-  POD_CPU_LIMIT_UTILIZATION: 'k8s.pod.cpu.limit.utilization',
-  POD_MEM_USAGE: 'k8s.pod.memory.usage',
-  POD_MEM_LIMIT_UTILIZATION: 'k8s.pod.memory.limit.utilization',
-};
-
-function KubernetesTab({
-  searchedTimeRange,
-  appliedConfig,
-}: {
-  searchedTimeRange: [Date, Date];
-  appliedConfig: AppliedConfig;
-}) {
-  const { data: source } = useSource({ id: appliedConfig.source });
-
-  return (
-    <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
-      <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              CPU Usage
-            </Text>
-          </Group>
-          {source && (
-            <DBTimeChart
-              config={{
-                ...source,
-                // TODO: This should come from source
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'CPU',
-                    aggFn: 'avg',
-                    // TODO: aggCondition: 'METRIC_NAME = K8S_METRICS.POD_CPU_UTILIZATION',
-                    // TODO: valueExpression: 'METRIC_VALUE',
-                    valueExpression: K8S_POD_CPU_UTILIZATION,
-                    aggCondition: `${K8S_POD_NAME} <> ''`,
-                    aggConditionLanguage: 'sql',
-                  },
-                ],
-                filters: getScopedFilters(appliedConfig),
-                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                groupBy: K8S_POD_NAME,
-                dateRange: searchedTimeRange,
-              }}
-            />
-          )}
-        </ChartBox>
-      </Grid.Col>
-      <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Memory Usage
-            </Text>
-          </Group>
-          {source && (
-            <DBTimeChart
-              config={{
-                ...source,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'Memory',
-                    aggFn: 'avg',
-                    valueExpression: K8S_POD_MEM_USAGE,
-                    aggCondition: `${K8S_POD_NAME} <> ''`,
-                    aggConditionLanguage: 'sql',
-                  },
-                ],
-                filters: getScopedFilters(appliedConfig),
-                numberFormat: K8S_MEM_NUMBER_FORMAT,
-                groupBy: K8S_POD_NAME,
-                dateRange: searchedTimeRange,
-              }}
-            />
-          )}
-        </ChartBox>
-      </Grid.Col>
-      <Grid.Col span={12}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Pods
-            </Text>
-          </Group>
-        </ChartBox>
-      </Grid.Col>
-      <Grid.Col span={12}>
-        <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Kubernetes Warning Events
-            </Text>
-          </Group>
         </ChartBox>
       </Grid.Col>
     </Grid>
@@ -904,6 +772,7 @@ function ErrorsTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
+  const expressions = getExpressions(source);
 
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
@@ -916,6 +785,7 @@ function ErrorsTab({
           </Group>
           {source && (
             <DBTimeChart
+              sourceId={source.id}
               config={{
                 ...source,
                 where: appliedConfig.where || '',
@@ -930,11 +800,11 @@ function ErrorsTab({
                 filters: [
                   {
                     type: 'sql',
-                    condition: CH_IS_ERROR,
+                    condition: expressions.isError,
                   },
-                  ...getScopedFilters(appliedConfig),
+                  ...getScopedFilters(source, appliedConfig),
                 ],
-                groupBy: source.serviceNameExpression || CH_COLUMNS.service,
+                groupBy: source.serviceNameExpression || expressions.service,
                 dateRange: searchedTimeRange,
               }}
             />
@@ -958,12 +828,9 @@ const appliedConfigMap = {
 function ServicesDashboardPage() {
   const [tab, setTab] = useQueryState(
     'tab',
-    parseAsStringEnum<string>([
+    parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
       'http',
-      'database',
-      'infrastructure',
-      'errors',
-    ]).withDefault('http'),
+    ),
   );
 
   const { data: sources } = useSources();
@@ -1098,44 +965,43 @@ function ServicesDashboardPage() {
           </Group>
         </Group>
       </form>
-      <Tabs
-        mt="md"
-        keepMounted={false}
-        defaultValue="http"
-        onChange={setTab}
-        value={tab}
-      >
-        <Tabs.List>
-          <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
-          <Tabs.Tab value="database">Database</Tabs.Tab>
-          <Tabs.Tab value="infrastructure">Kubernetes</Tabs.Tab>
-          <Tabs.Tab value="errors">Errors</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="http">
-          <HttpTab
-            appliedConfig={appliedConfig}
-            searchedTimeRange={searchedTimeRange}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="database">
-          <DatabaseTab
-            appliedConfig={appliedConfig}
-            searchedTimeRange={searchedTimeRange}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="infrastructure">
-          <KubernetesTab
-            appliedConfig={appliedConfig}
-            searchedTimeRange={searchedTimeRange}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="errors">
-          <ErrorsTab
-            appliedConfig={appliedConfig}
-            searchedTimeRange={searchedTimeRange}
-          />
-        </Tabs.Panel>
-      </Tabs>
+      {source?.kind !== 'trace' ? (
+        <Group align="center" justify="center" h="300px">
+          <Text c="gray">Please select a trace source</Text>
+        </Group>
+      ) : (
+        <Tabs
+          mt="md"
+          keepMounted={false}
+          defaultValue="http"
+          onChange={setTab}
+          value={tab}
+        >
+          <Tabs.List>
+            <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
+            <Tabs.Tab value="database">Database</Tabs.Tab>
+            <Tabs.Tab value="errors">Errors</Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="http">
+            <HttpTab
+              appliedConfig={appliedConfig}
+              searchedTimeRange={searchedTimeRange}
+            />
+          </Tabs.Panel>
+          <Tabs.Panel value="database">
+            <DatabaseTab
+              appliedConfig={appliedConfig}
+              searchedTimeRange={searchedTimeRange}
+            />
+          </Tabs.Panel>
+          <Tabs.Panel value="errors">
+            <ErrorsTab
+              appliedConfig={appliedConfig}
+              searchedTimeRange={searchedTimeRange}
+            />
+          </Tabs.Panel>
+        </Tabs>
+      )}
     </Box>
   );
 }

@@ -9,11 +9,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
 import { Filter } from '@/renderChartConfig';
-import {
-  CH_COLUMNS,
-  DB_STATEMENT_PROPERTY,
-  durationInMsExpr,
-} from '@/ServicesDashboardPage';
+import { getExpressions } from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -30,6 +26,7 @@ export default function ServiceDashboardDbQuerySidePanel({
   searchedTimeRange: [Date, Date];
 }) {
   const { data: source } = useSource({ id: sourceId });
+  const expressions = getExpressions(source);
 
   const [dbQuery, setDbQuery] = useQueryState('dbquery', parseAsString);
   const onClose = useCallback(() => {
@@ -43,17 +40,17 @@ export default function ServiceDashboardDbQuerySidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${DB_STATEMENT_PROPERTY} = '${dbQuery}'`,
+        condition: `${expressions.dbStatement} IN ('${dbQuery}')`,
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${CH_COLUMNS.service} = '${service}'`,
+        condition: `${expressions.service} IN ('${service}')`,
       });
     }
     return filters;
-  }, [dbQuery, service]);
+  }, [dbQuery, expressions, service]);
 
   if (!dbQuery) {
     return null;
@@ -95,6 +92,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   </Group>
                   {source && (
                     <DBTimeChart
+                      sourceId={sourceId}
                       config={{
                         ...source,
                         where: '',
@@ -102,7 +100,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                         select: [
                           {
                             aggFn: 'sum' as const,
-                            valueExpression: durationInMsExpr(source),
+                            valueExpression: expressions.durationInMillis,
                             alias: 'Total Query Time',
                             aggCondition: '',
                           },
@@ -124,6 +122,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   </Group>
                   {source && (
                     <DBTimeChart
+                      sourceId={sourceId}
                       config={{
                         ...source,
                         where: '',
