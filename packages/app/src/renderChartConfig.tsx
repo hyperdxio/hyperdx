@@ -6,6 +6,7 @@ import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import { DisplayType } from '@/DisplayType';
 import { Metadata, metadata } from '@/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import { getFirstTimestampValueExpression } from '@/source';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -16,7 +17,6 @@ import {
   SortSpecificationList,
   SQLInterval,
 } from '@/sqlTypes';
-import { getFirstTimestampValueExpression } from './source';
 
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {
@@ -460,7 +460,6 @@ function timeFilterExpr(
     }),
   );
 }
-
 
 async function renderSelect(
   chartConfig: ChartConfigWithOptDateRange,

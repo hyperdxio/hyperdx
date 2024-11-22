@@ -63,7 +63,11 @@ import GranularityPicker, {
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
-import { getFirstTimestampValueExpression, useSource, useSources } from './source';
+import {
+  getFirstTimestampValueExpression,
+  useSource,
+  useSources,
+} from './source';
 import {
   SearchCondition,
   SearchConditionLanguage,
