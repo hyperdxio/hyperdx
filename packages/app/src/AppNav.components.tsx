@@ -210,22 +210,16 @@ export const AppNavHelpMenu = ({
             </Menu.Label>
 
             <Menu.Item
-              href="https://hyperdx.io/docs"
+              href="https://hyperdx.io/docs/v2"
               component="a"
               leftSection={<Icon name="book" />}
             >
               Documentation
             </Menu.Item>
             <Menu.Item
-              leftSection={<Icon name="lightbulb" />}
-              onClick={openInstallModal}
-            >
-              Setup Instructions
-            </Menu.Item>
-            <Menu.Item
               leftSection={<Icon name="discord" />}
               component="a"
-              href="https://discord.gg/FErRRKU78j"
+              href="https://hyperdx.io/discord"
               target="_blank"
             >
               Discord Community

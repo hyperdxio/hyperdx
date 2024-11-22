@@ -392,6 +392,7 @@ export const MemoChart = memo(function MemoChart({
 
           if (highlightStart != null) {
             setHighlightEnd(e.activeLabel);
+            setIsClickActive(undefined); // Clear out any click state as we're highlighting
           }
         }}
         onMouseUp={e => {
@@ -430,7 +431,9 @@ export const MemoChart = memo(function MemoChart({
             state != null &&
             state.chartX != null &&
             state.chartY != null &&
-            state.activeLabel != null
+            state.activeLabel != null &&
+            // If we didn't drag and highlight yet
+            highlightStart == null
           ) {
             setIsClickActive({
               x: state.chartX,

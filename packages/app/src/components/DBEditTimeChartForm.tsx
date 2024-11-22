@@ -627,6 +627,7 @@ export default function EditTimeChartForm({
           style={{ minHeight: 400 }}
         >
           <DBTimeChart
+            sourceId={sourceId}
             config={queriedConfig}
             onTimeRangeSelect={onTimeRangeSelect}
           />

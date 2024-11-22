@@ -63,7 +63,7 @@ import GranularityPicker, {
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
-import { useSource, useSources } from './source';
+import { getFirstTimestampValueExpression, useSource, useSources } from './source';
 import {
   SearchCondition,
   SearchConditionLanguage,
@@ -253,6 +253,7 @@ const Tile = forwardRef(
             {(queriedConfig?.displayType === DisplayType.Line ||
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
+                sourceId={chart.config.source}
                 showDisplaySwitcher={false}
                 config={queriedConfig}
                 onTimeRangeSelect={onTimeRangeSelect}
@@ -277,7 +278,9 @@ const Tile = forwardRef(
                   orderBy: [
                     {
                       ordering: 'DESC',
-                      valueExpression: queriedConfig.timestampValueExpression,
+                      valueExpression: getFirstTimestampValueExpression(
+                        queriedConfig.timestampValueExpression,
+                      ),
                     },
                   ],
                   dateRange,
@@ -814,9 +817,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           source={rowSidePanelSource}
           rowId={rowId}
           onClose={handleSidePanelClose}
-          shareUrl=""
-          generateSearchUrl={() => ''}
-          generateChartUrl={() => ''}
         />
       )}
     </Box>

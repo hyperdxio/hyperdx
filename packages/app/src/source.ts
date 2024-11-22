@@ -1,3 +1,5 @@
+import omit from 'lodash/omit';
+import objectHash from 'object-hash';
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -14,6 +16,12 @@ function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
 }
 function getLocalSources(): TSource[] {
   return store.get('hdx-local-source', []) ?? [];
+}
+
+// If a user specifies a timestampValueExpression with multiple columns,
+// this will return the first one. We'll want to refine this over time
+export function getFirstTimestampValueExpression(valueExpression: string) {
+  return valueExpression.split(',')[0].trim();
 }
 
 export function getSpanEventBody(eventModel: TSource) {
@@ -101,6 +109,12 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
+        const existingSource = getLocalSources().find(
+          stored => objectHash(omit(stored, 'id')) === objectHash(source),
+        );
+        if (existingSource) {
+          return existingSource;
+        }
         const newSource = {
           ...source,
           id: `l${hashCode(Math.random().toString())}`,

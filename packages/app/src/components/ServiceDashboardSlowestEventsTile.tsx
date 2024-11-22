@@ -6,7 +6,7 @@ import { ChartBox } from '@/components/ChartBox';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { Filter } from '@/renderChartConfig';
-import { CH_COLUMNS, durationInMsExpr } from '@/ServicesDashboardPage';
+import { getExpressions } from '@/serviceDashboard';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -27,6 +27,8 @@ export default function SlowestEventsTile({
   enabled?: boolean;
   extraFilters?: Filter[];
 }) {
+  const expressions = getExpressions(source);
+
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
       ...source,
@@ -37,7 +39,7 @@ export default function SlowestEventsTile({
           alias: 'p95',
           aggFn: 'quantile',
           aggCondition: '',
-          valueExpression: durationInMsExpr(source),
+          valueExpression: expressions.durationInMillis,
           level: 0.95,
         },
       ],
@@ -112,21 +114,21 @@ export default function SlowestEventsTile({
                   alias: 'Timestamp',
                 },
                 {
-                  valueExpression: CH_COLUMNS.level,
-                  alias: 'Level',
+                  valueExpression: expressions.severityText,
+                  alias: 'Severity',
                 },
                 {
-                  valueExpression: CH_COLUMNS.spanName,
+                  valueExpression: expressions.spanName,
                   alias: 'Span Name',
                 },
                 {
-                  valueExpression: durationInMsExpr(source),
+                  valueExpression: expressions.durationInMillis,
                   alias: 'Duration (ms)',
                 },
               ],
               orderBy: [
                 {
-                  valueExpression: durationInMsExpr(source),
+                  valueExpression: expressions.durationInMillis,
                   ordering: 'DESC',
                 },
               ],
@@ -136,7 +138,7 @@ export default function SlowestEventsTile({
                 ...extraFilters,
                 {
                   type: 'sql',
-                  condition: `${durationInMsExpr(source)} > ${roundedP95}`,
+                  condition: `${expressions.durationInMillis} > ${roundedP95}`,
                 },
               ],
             }}

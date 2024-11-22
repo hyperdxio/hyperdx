@@ -89,6 +89,18 @@ build-local:
 version:
 	sh ./version.sh
 
+.PHONY: release-v2-beta
+release-v2-beta:
+	docker buildx build --squash . -f ./docker/local/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context local=./docker/local \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${V2_BETA_IMAGE_VERSION} \
+		-t ${LOCAL_IMAGE_NAME}:${V2_BETA_IMAGE_VERSION} --push
+
 .PHONY: release
 release:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod --push &

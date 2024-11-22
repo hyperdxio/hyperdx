@@ -559,3 +559,11 @@ export const formatDate = (
     ? formatInTimeZone(date, 'Etc/UTC', formatStr)
     : fnsFormat(date, formatStr);
 };
+
+export const mergePath = (path: string[]) => {
+  const [key, ...rest] = path;
+  if (rest.length === 0) {
+    return key;
+  }
+  return `${key}['${rest.join("']['")}']`;
+};

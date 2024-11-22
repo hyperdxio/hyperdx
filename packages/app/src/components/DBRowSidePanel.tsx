@@ -1,4 +1,12 @@
-import { MouseEventHandler, useCallback, useId, useMemo, useState } from 'react';
+import {
+  MouseEventHandler,
+  createContext,
+  useCallback,
+  useContext,
+  useId,
+  useMemo,
+  useState,
+} from 'react';
 import { add } from 'date-fns';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -20,40 +28,33 @@ import DBTracePanel from './DBTracePanel';
 import 'react-modern-drawer/dist/index.css';
 import styles from '@/../styles/LogSidePanel.module.scss';
 
+export const RowSidePanelContext = createContext<{
+  onPropertyAddClick?: (keyPath: string, value: string) => void;
+  generateSearchUrl?: (query?: string) => string;
+  generateChartUrl?: (config: {
+    aggFn: string;
+    field: string;
+    groupBy: string[];
+  }) => string;
+  displayedColumns?: string[];
+  toggleColumn?: (column: string) => void;
+  shareUrl?: string;
+}>({});
+
 export default function DBRowSidePanel({
   rowId: rowId,
   source,
   // where,
   q,
   onClose,
-  onPropertyAddClick,
-  generateSearchUrl,
-  generateChartUrl,
   isNestedPanel = false,
-  displayedColumns,
-  toggleColumn,
-  shareUrl: shareUrlProp,
 }: {
   // where?: string;
   source: TSource;
   q?: string;
   rowId: string | undefined;
   onClose: () => void;
-  onPropertyAddClick?: (name: string, value: string) => void;
-  generateSearchUrl: (
-    query?: string,
-    timeRange?: [Date, Date],
-    lid?: string,
-  ) => string;
-  generateChartUrl: (config: {
-    aggFn: string;
-    field: string;
-    groupBy: string[];
-  }) => string;
   isNestedPanel?: boolean;
-  displayedColumns?: string[];
-  toggleColumn?: (column: string) => void;
-  shareUrl?: string;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import cx from 'classnames';
+import { add } from 'date-fns';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -8,6 +10,7 @@ import {
   Granularity,
   useTimeChartSettings,
 } from '@/ChartUtils';
+import { convertGranularityToSeconds } from '@/ChartUtils';
 import { ClickHouseQueryError, formatResponseForTimeChart } from '@/clickhouse';
 import { DisplayType } from '@/DisplayType';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
@@ -20,6 +23,7 @@ import { SQLPreview } from './ChartSQLPreview';
 
 export function DBTimeChart({
   config,
+  sourceId,
   onSettled,
   alertThreshold,
   alertThresholdType,
@@ -32,6 +36,7 @@ export function DBTimeChart({
   showLegend = true,
 }: {
   config: ChartConfigWithDateRange;
+  sourceId?: string;
   onSettled?: () => void;
   alertThreshold?: number;
   alertThresholdType?: 'above' | 'below';
@@ -112,6 +117,30 @@ export function DBTimeChart({
     | undefined
   >(undefined);
 
+  const clickedActiveLabelDate = useMemo(() => {
+    return activeClickPayload?.activeLabel != null
+      ? new Date(Number.parseInt(activeClickPayload.activeLabel) * 1000)
+      : undefined;
+  }, [activeClickPayload]);
+
+  const qparams = useMemo(() => {
+    if (!clickedActiveLabelDate || !sourceId) {
+      return null;
+    }
+    const from = clickedActiveLabelDate.getTime();
+    const to = add(clickedActiveLabelDate, {
+      seconds: convertGranularityToSeconds(granularity),
+    }).getTime();
+    return new URLSearchParams({
+      source: sourceId,
+      where: config.where,
+      whereLanguage: config.whereLanguage || 'lucene',
+      filters: JSON.stringify(config.filters),
+      from: from.toString(),
+      to: to.toString(),
+    });
+  }, [clickedActiveLabelDate, config, granularity, sourceId]);
+
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
       Loading Chart Data...
@@ -166,30 +195,31 @@ export function DBTimeChart({
           top: 0,
         }}
       >
-        {/* {activeClickPayload != null && clickedActiveLabelDate != null ? (
-              <div
-                className="bg-grey px-3 py-2 rounded fs-8"
-                style={{
-                  zIndex: 5,
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  visibility: 'visible',
-                  transform: `translate(${
-                    activeClickPayload.xPerc > 0.5
-                      ? (activeClickPayload?.x ?? 0) - 130
-                      : (activeClickPayload?.x ?? 0) + 4
-                  }px, ${activeClickPayload?.y ?? 0}px)`,
-                }}
-              >
-                <Link
-                  href={`/search?${qparams?.toString()}`}
-                  className="text-white-hover text-decoration-none"
-                >
-                  <i className="bi bi-search me-1"></i> View Events
-                </Link>
-              </div>
-            ) : null} */}
+        {activeClickPayload != null && qparams != null ? (
+          <div
+            className="bg-grey px-3 py-2 rounded fs-8"
+            style={{
+              zIndex: 5,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              visibility: 'visible',
+              transform: `translate(${
+                activeClickPayload.xPerc > 0.5
+                  ? (activeClickPayload?.x ?? 0) - 130
+                  : (activeClickPayload?.x ?? 0) + 4
+              }px, ${activeClickPayload?.y ?? 0}px)`,
+            }}
+          >
+            <Link
+              href={`/search?${qparams?.toString()}`}
+              className="text-white-hover text-decoration-none"
+              onClick={() => setActiveClickPayload(undefined)}
+            >
+              <i className="bi bi-search me-1"></i> View Events
+            </Link>
+          </div>
+        ) : null}
         {/* {totalGroups > groupKeys.length ? (
                 <div
                   className="bg-grey px-3 py-2 rounded fs-8"
