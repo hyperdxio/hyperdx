@@ -36,7 +36,7 @@ import {
   SavedChartConfig,
 } from '@/renderChartConfig';
 import SearchInputV2 from '@/SearchInputV2';
-import { useSource } from '@/source';
+import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
@@ -655,7 +655,9 @@ export default function EditTimeChartForm({
                 orderBy: [
                   {
                     ordering: 'DESC' as const,
-                    valueExpression: tableSource.timestampValueExpression,
+                    valueExpression: getFirstTimestampValueExpression(
+                      tableSource.timestampValueExpression,
+                    ),
                   },
                 ],
                 dateRange,
@@ -701,8 +703,9 @@ export default function EditTimeChartForm({
                         orderBy: [
                           {
                             ordering: 'DESC' as const,
-                            valueExpression:
+                            valueExpression: getFirstTimestampValueExpression(
                               tableSource.timestampValueExpression,
+                            ),
                           },
                         ],
                         dateRange,

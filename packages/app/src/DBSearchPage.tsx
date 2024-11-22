@@ -69,7 +69,12 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
-import { getDurationMsExpression, useSource, useSources } from '@/source';
+import {
+  getDurationMsExpression,
+  getFirstTimestampValueExpression,
+  useSource,
+  useSources,
+} from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
@@ -660,7 +665,9 @@ function DBSearchPage() {
       ...chartConfig,
       orderBy: [
         {
-          valueExpression: chartConfig.timestampValueExpression,
+          valueExpression: getFirstTimestampValueExpression(
+            chartConfig.timestampValueExpression,
+          ),
           ordering: 'DESC' as const,
         },
       ],
@@ -963,8 +970,8 @@ function DBSearchPage() {
                           [
                             `${searchedSource.durationExpression} >= ${yMin} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
                             `${searchedSource.durationExpression} <= ${yMax} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${chartConfig.timestampValueExpression} >= ${xMin}`,
-                            `${chartConfig.timestampValueExpression} <= ${xMax}`,
+                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
+                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
                           ].join(' AND '),
                         );
                       }}

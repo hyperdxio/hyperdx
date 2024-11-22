@@ -31,7 +31,7 @@ export function getSpanEventBody(eventModel: TSource) {
 export function getDisplayedTimestampValueExpression(eventModel: TSource) {
   return (
     eventModel.displayedTimestampValueExpression ??
-    eventModel.timestampValueExpression
+    getFirstTimestampValueExpression(eventModel.timestampValueExpression)
   );
 }
 

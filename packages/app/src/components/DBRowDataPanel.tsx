@@ -18,7 +18,7 @@ import { notifications } from '@mantine/notifications';
 import { TSource } from '@/commonTypes';
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { getEventBody } from '@/source';
+import { getEventBody, getFirstTimestampValueExpression } from '@/source';
 import { mergePath } from '@/utils';
 
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -143,7 +143,9 @@ export function useRowData({
           valueExpression: '*',
         },
         {
-          valueExpression: source.timestampValueExpression,
+          valueExpression: getFirstTimestampValueExpression(
+            source.timestampValueExpression,
+          ),
           alias: '__hdx_timestamp',
         },
         ...(eventBodyExpr
