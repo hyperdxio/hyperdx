@@ -253,6 +253,7 @@ const Tile = forwardRef(
             {(queriedConfig?.displayType === DisplayType.Line ||
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
+                sourceId={chart.config.source}
                 showDisplaySwitcher={false}
                 config={queriedConfig}
                 onTimeRangeSelect={onTimeRangeSelect}
@@ -814,9 +815,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           source={rowSidePanelSource}
           rowId={rowId}
           onClose={handleSidePanelClose}
-          shareUrl=""
-          generateSearchUrl={() => ''}
-          generateChartUrl={() => ''}
         />
       )}
     </Box>

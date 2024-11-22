@@ -53,7 +53,7 @@ services:
     depends_on:
       - otel-collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.112.0
+    image: otel/opentelemetry-collector-contrib:0.113.0
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}

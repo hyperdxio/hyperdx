@@ -54,19 +54,17 @@ service:
   telemetry:
     metrics:
       address: ':8888'
-    logs:
-      level: ${HYPERDX_LOG_LEVEL}
   extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug, clickhouse]
+      exporters: [clickhouse]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug, clickhouse]
+      exporters: [clickhouse]
     logs:
       receivers: [otlp, fluentforward]
       processors: [memory_limiter, batch]
-      exporters: [debug, clickhouse]
+      exporters: [clickhouse]

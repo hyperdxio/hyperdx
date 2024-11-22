@@ -1,3 +1,4 @@
+# TODO: migrate to V2
 version: '3'
 services:
   go-parser:
@@ -83,13 +84,10 @@ services:
       INGESTOR_API_URL: 'http://ingestor:8002'
     ports:
       - '13133:13133' # health_check extension
-      - '1888:1888' # pprof extension
       - '24225:24225' # fluentd receiver
       - '4317:4317' # OTLP gRPC receiver
       - '4318:4318' # OTLP http receiver
-      - '55679:55679' # zpages extension
       - '8888:8888' # metrics extension
-      - '9411:9411' # zipkin
     restart: always
     networks:
       - internal

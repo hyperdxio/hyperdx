@@ -1,3 +1,5 @@
+import omit from 'lodash/omit';
+import objectHash from 'object-hash';
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -101,6 +103,12 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
+        const existingSource = getLocalSources().find(
+          stored => objectHash(omit(stored, 'id')) === objectHash(source),
+        );
+        if (existingSource) {
+          return existingSource;
+        }
         const newSource = {
           ...source,
           id: `l${hashCode(Math.random().toString())}`,
