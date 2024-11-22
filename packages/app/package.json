@@ -11,7 +11,7 @@
     "dev:local": "NEXT_PUBLIC_CLICKHOUSE_HOST=http://localhost:8123 NEXT_PUBLIC_IS_LOCAL_MODE=true next dev -p 8080",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint --quiet . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "lint:styles": "stylelint **/*/*.{css,scss}",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
