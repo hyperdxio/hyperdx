@@ -18,6 +18,12 @@ function getLocalSources(): TSource[] {
   return store.get('hdx-local-source', []) ?? [];
 }
 
+// If a user specifies a timestampValueExpression with multiple columns,
+// this will return the first one. We'll want to refine this over time
+export function getFirstTimestampValueExpression(valueExpression: string) {
+  return valueExpression.split(',')[0].trim();
+}
+
 export function getSpanEventBody(eventModel: TSource) {
   return eventModel.bodyExpression ?? eventModel?.spanNameExpression;
 }

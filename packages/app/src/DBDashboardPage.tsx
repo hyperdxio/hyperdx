@@ -63,7 +63,7 @@ import GranularityPicker, {
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
-import { useSource, useSources } from './source';
+import { getFirstTimestampValueExpression, useSource, useSources } from './source';
 import {
   SearchCondition,
   SearchConditionLanguage,
@@ -278,7 +278,9 @@ const Tile = forwardRef(
                   orderBy: [
                     {
                       ordering: 'DESC',
-                      valueExpression: queriedConfig.timestampValueExpression,
+                      valueExpression: getFirstTimestampValueExpression(
+                        queriedConfig.timestampValueExpression,
+                      ),
                     },
                   ],
                   dateRange,

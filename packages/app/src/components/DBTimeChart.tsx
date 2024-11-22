@@ -214,6 +214,7 @@ export function DBTimeChart({
             <Link
               href={`/search?${qparams?.toString()}`}
               className="text-white-hover text-decoration-none"
+              onClick={() => setActiveClickPayload(undefined)}
             >
               <i className="bi bi-search me-1"></i> View Events
             </Link>

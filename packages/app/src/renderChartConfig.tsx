@@ -16,6 +16,7 @@ import {
   SortSpecificationList,
   SQLInterval,
 } from '@/sqlTypes';
+import { getFirstTimestampValueExpression } from './source';
 
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {
@@ -420,7 +421,7 @@ function timeBucketExpr({
   alias?: string;
 }) {
   const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: timestampValueExpression,
+    UNSAFE_RAW_SQL: getFirstTimestampValueExpression(timestampValueExpression),
   };
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
@@ -439,20 +440,27 @@ function timeFilterExpr(
   dateRange: [Date, Date],
   dateRangeStartInclusive = true,
 ) {
-  const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: timestampValueExpression,
-  };
+  const valueExpressions = timestampValueExpression.split(',');
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 
-  return chSql`(${unsafeTimestampValueExpression} ${
-    dateRangeStartInclusive ? '>=' : '>'
-  } fromUnixTimestamp64Milli(${{
-    Int64: startTime,
-  }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
-    Int64: endTime,
-  }}))`;
+  return concatChSql(
+    'AND',
+    ...valueExpressions.map(expr => {
+      const unsafeTimestampValueExpression = {
+        UNSAFE_RAW_SQL: expr.trim(),
+      };
+      return chSql`(${unsafeTimestampValueExpression} ${
+        dateRangeStartInclusive ? '>=' : '>'
+      } fromUnixTimestamp64Milli(${{
+        Int64: startTime,
+      }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
+        Int64: endTime,
+      }}))`;
+    }),
+  );
 }
+
 
 async function renderSelect(
   chartConfig: ChartConfigWithOptDateRange,
