@@ -22,7 +22,7 @@ jobs:
             const result = await github.rest.actions.createWorkflowDispatch({
               owner: '${{ secrets.DOWNSTREAM_OWNER }}',
               repo: '${{ secrets.DOWNSTREAM_REPO_V2 }}',
-              workflow_id: '${{ secrets.DOWNSTREAM_WORKFLOW_ID }}',
+              workflow_id: '${{ secrets.DOWNSTREAM_WORKFLOW_ID_V2 }}',
               ref: 'main',
               inputs: {
                 sha: SHA,
