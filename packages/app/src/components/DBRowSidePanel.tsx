@@ -1,6 +1,6 @@
 import {
-  MouseEventHandler,
   createContext,
+  MouseEventHandler,
   useCallback,
   useContext,
   useId,
@@ -81,12 +81,15 @@ export default function DBRowSidePanel({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Parsed),
   );
 
-  const [panelWidth, setPanelWidth] = useState(Math.round(window.innerWidth * 0.8));
+  const [panelWidth, setPanelWidth] = useState(
+    Math.round(window.innerWidth * 0.8),
+  );
   const handleResize = useCallback((e: MouseEvent) => {
-    const offsetRight = document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
+    const offsetRight =
+      document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
     setPanelWidth(offsetRight + 3); // ensure we bury the cursor in the panel
   }, []);
-  const startResize: MouseEventHandler<HTMLDivElement> = useCallback((e) => {
+  const startResize: MouseEventHandler<HTMLDivElement> = useCallback(e => {
     e.preventDefault();
     document.addEventListener('mousemove', handleResize);
     document.addEventListener('mouseup', endResize);
@@ -184,7 +187,7 @@ export default function DBRowSidePanel({
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel} ref={drawerRef}>
-          <Box className={styles.panelDragBar} onMouseDown={startResize}/>
+          <Box className={styles.panelDragBar} onMouseDown={startResize} />
           {isRowLoading && (
             <div className={styles.loadingState}>Loading...</div>
           )}
