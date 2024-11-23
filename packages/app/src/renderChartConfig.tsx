@@ -435,30 +435,69 @@ function timeBucketExpr({
   }}\``;
 }
 
-function timeFilterExpr(
-  timestampValueExpression: string,
-  dateRange: [Date, Date],
-  dateRangeStartInclusive = true,
-) {
+async function timeFilterExpr({
+  timestampValueExpression,
+  dateRange,
+  dateRangeStartInclusive,
+  databaseName,
+  tableName,
+  metadata,
+  connectionId,
+}: {
+  timestampValueExpression: string;
+  dateRange: [Date, Date];
+  dateRangeStartInclusive: boolean;
+  metadata: Metadata;
+  connectionId: string;
+  databaseName: string;
+  tableName: string;
+}) {
   const valueExpressions = timestampValueExpression.split(',');
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 
-  return concatChSql(
-    'AND',
-    ...valueExpressions.map(expr => {
+  const whereExprs = await Promise.all(
+    valueExpressions.map(async expr => {
+      const col = expr.trim();
+      const columnMeta = await metadata.getColumn({
+        databaseName,
+        tableName,
+        column: col,
+        connectionId,
+      });
+
       const unsafeTimestampValueExpression = {
-        UNSAFE_RAW_SQL: expr.trim(),
+        UNSAFE_RAW_SQL: col,
       };
-      return chSql`(${unsafeTimestampValueExpression} ${
-        dateRangeStartInclusive ? '>=' : '>'
-      } fromUnixTimestamp64Milli(${{
-        Int64: startTime,
-      }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
-        Int64: endTime,
-      }}))`;
+
+      if (columnMeta == null) {
+        console.warn(
+          `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
+        );
+      }
+
+      // If it's a date type
+      if (columnMeta?.type === 'Date') {
+        return chSql`(${unsafeTimestampValueExpression} ${
+          dateRangeStartInclusive ? '>=' : '>'
+        } toDate(fromUnixTimestamp64Milli(${{
+          Int64: startTime,
+        }})) AND ${unsafeTimestampValueExpression} <= toDate(fromUnixTimestamp64Milli(${{
+          Int64: endTime,
+        }})))`;
+      } else {
+        return chSql`(${unsafeTimestampValueExpression} ${
+          dateRangeStartInclusive ? '>=' : '>'
+        } fromUnixTimestamp64Milli(${{
+          Int64: startTime,
+        }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
+          Int64: endTime,
+        }}))`;
+      }
     }),
   );
+
+  return concatChSql('AND', ...whereExprs);
 }
 
 async function renderSelect(
@@ -622,11 +661,15 @@ async function renderWhere(
     ' AND ',
     chartConfig.dateRange != null &&
       chartConfig.timestampValueExpression != null
-      ? timeFilterExpr(
-          chartConfig.timestampValueExpression,
-          chartConfig.dateRange,
-          chartConfig.dateRangeStartInclusive,
-        )
+      ? await timeFilterExpr({
+          timestampValueExpression: chartConfig.timestampValueExpression,
+          dateRange: chartConfig.dateRange,
+          dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
+          metadata,
+          connectionId: chartConfig.connection,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+        })
       : [],
     whereSearchCondition,
     // Add aggConditions to where clause to utilize index
