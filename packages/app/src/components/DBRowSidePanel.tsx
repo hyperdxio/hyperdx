@@ -87,7 +87,8 @@ export default function DBRowSidePanel({
   const handleResize = useCallback((e: MouseEvent) => {
     const offsetRight =
       document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
-    setPanelWidth(offsetRight + 3); // ensure we bury the cursor in the panel
+    const maxWidth = document.body.offsetWidth - 25;
+    setPanelWidth(Math.min(offsetRight + 3, maxWidth)); // ensure we bury the cursor in the panel
   }, []);
   const startResize: MouseEventHandler<HTMLDivElement> = useCallback(e => {
     e.preventDefault();
