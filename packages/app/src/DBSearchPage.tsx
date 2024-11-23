@@ -999,7 +999,7 @@ function DBSearchPage() {
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {analysisMode === 'results' && (
-                  <Box style={{ height: 120, minHeight: 120 }} p="xs">
+                  <Box style={{ height: 120, minHeight: 120 }} p="xs" mb="md">
                     {chartConfig && (
                       <>
                         <SearchTotalCount
