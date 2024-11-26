@@ -2,9 +2,11 @@ import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { IS_LOCAL_MODE } from '@/config';
+import { testLocalConnection } from '@/clickhouse';
+import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
+import { parseJSON } from '@/utils';
 
-import { testLocalConnection } from './clickhouse';
+const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
 export type Connection = {
   id: string;
@@ -14,8 +16,25 @@ export type Connection = {
   password: string;
 };
 
-export function getLocalConnection(): Connection | undefined {
-  return store.session.get('connections')?.[0];
+function setLocalConnections(newConnections: Connection[]) {
+  store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
+}
+
+export function getLocalConnections(): Connection[] {
+  if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
+    return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
+  }
+  // pull sources from env var
+  try {
+    const defaultConnections = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
+    if (defaultConnections != null) {
+      return defaultConnections;
+    }
+  } catch (e) {
+    console.error('Error fetching default connections', e);
+  }
+  // fallback to empty array
+  return [];
 }
 
 export function useConnections() {
@@ -23,7 +42,7 @@ export function useConnections() {
     queryKey: ['connections'],
     queryFn: () => {
       if (IS_LOCAL_MODE) {
-        return store.session.get('connections') ?? [];
+        return getLocalConnections();
       }
 
       return hdxServer('connections').json();
@@ -49,13 +68,12 @@ export function useCreateConnection() {
           );
         }
 
-        const connections = store.session.get('connections') ?? [];
+        const connections = getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
         };
-        store.session.set('connections', connections);
-
+        setLocalConnections(connections);
         return;
       }
 
@@ -84,12 +102,12 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = store.session.get('connections');
+        const connections = getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
         };
-        store.session.set('connections', connections);
+        setLocalConnections(connections);
 
         return;
       }
@@ -117,9 +135,11 @@ export function useDeleteConnection() {
       id: string; // Ignored for local
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = store.session.get('connections');
-        delete connections[id];
-        store.session.set('connections', connections);
+        const connections = getLocalConnections();
+        const newConnections = connections.filter(
+          connection => connection.id !== id,
+        );
+        setLocalConnections(newConnections);
 
         return;
       }

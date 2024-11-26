@@ -6,10 +6,9 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { loginHook } from '@/api';
 import { timeBucketByGranularity } from '@/ChartUtils';
 import { CLICKHOUSE_HOST, IS_LOCAL_MODE, SERVER_URL } from '@/config';
+import { getLocalConnections } from '@/connection';
 import { SQLInterval } from '@/sqlTypes';
 import { hashCode } from '@/utils';
-
-import { getLocalConnection } from './connection';
 
 export enum JSDataType {
   Array = 'array',
@@ -351,13 +350,13 @@ export const sendQuery = async <T extends DataFormat>({
 }) => {
   let host, username, password;
   if (IS_LOCAL_MODE) {
-    const localConnection = getLocalConnection();
-    if (localConnection == null) {
+    const localConnections = getLocalConnections();
+    if (localConnections.length === 0) {
       throw new Error('No local connection found');
     }
-    host = localConnection.host;
-    username = localConnection.username;
-    password = localConnection.password;
+    host = localConnections[0].host;
+    username = localConnections[0].username;
+    password = localConnections[0].password;
   }
 
   return client.query<T>({

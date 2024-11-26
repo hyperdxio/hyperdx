@@ -139,7 +139,7 @@ export const useDebugMode = () => {
 const returnFalse = () => false;
 
 // From: https://usehooks.com/useDebounce/
-export const useDebounce = <T,>(
+export const useDebounce = <T>(
   value: T,
   delay: number,
   immediate?: (value: T) => boolean,
@@ -398,7 +398,7 @@ export const useIsTerms = () => {
   return router?.pathname.startsWith('/terms');
 };
 
-export const usePrevious = <T,>(value: T): T | undefined => {
+export const usePrevious = <T>(value: T): T | undefined => {
   const ref = useRef<T>();
   useEffect(() => {
     ref.current = value;
@@ -566,4 +566,21 @@ export const mergePath = (path: string[]) => {
     return key;
   }
   return `${key}['${rest.join("']['")}']`;
+};
+
+export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
+  let output = null;
+  let error = null;
+  try {
+    output = fn();
+    return [error, output];
+  } catch (e) {
+    error = e;
+    return [error, output];
+  }
+};
+
+export const parseJSON = <T = any>(json: string) => {
+  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  return result;
 };
