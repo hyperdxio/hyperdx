@@ -11,7 +11,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { metadata } from '@/metadata';
 import { hashCode, parseJSON } from '@/utils';
 
-const LOCAL_STORE_SOUCES_KEY = 'hdx-local-sources';
+const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
 
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
   store.transact(LOCAL_STORE_SOUCES_KEY, fn, []);

@@ -6,7 +6,7 @@ import { testLocalConnection } from '@/clickhouse';
 import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
-const LOCAL_STORE_CONNECTIONS_KEY = 'hdx-local-connections';
+const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
 export type Connection = {
   id: string;
