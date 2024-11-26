@@ -16,7 +16,7 @@ export type Connection = {
 };
 
 export async function getLocalConnections(): Promise<Connection[]> {
-  if (store.has('connections')) {
+  if (store.session.has('connections')) {
     return store.session.get('connections') ?? [];
   }
   // pull sources from env var
