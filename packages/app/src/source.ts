@@ -11,20 +11,22 @@ import { metadata } from '@/metadata';
 import type { NextApiConfigResponseData } from '@/types';
 import { hashCode, parseJSON } from '@/utils';
 
+const LOCAL_STORE_SOUCES_KEY = 'hdx-local-sources';
+
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
-  store.transact('hdx-local-source', fn, []);
+  store.transact(LOCAL_STORE_SOUCES_KEY, fn, []);
 }
 
 async function getLocalSources(): Promise<TSource[]> {
-  if (store.has('hdx-local-source')) {
-    return store.get('hdx-local-source', []) ?? [];
+  if (store.has(LOCAL_STORE_SOUCES_KEY)) {
+    return store.get(LOCAL_STORE_SOUCES_KEY, []) ?? [];
   }
   // pull sources from env var
   const respData: NextApiConfigResponseData =
     await nextServer('api/config').json();
   if (respData?.defaultSources) {
     const defaultSources = parseJSON(respData.defaultSources);
-    store.set('hdx-local-source', defaultSources);
+    store.set(LOCAL_STORE_SOUCES_KEY, defaultSources);
     return defaultSources;
   }
   return [];

@@ -7,6 +7,8 @@ import { IS_LOCAL_MODE } from '@/config';
 import type { NextApiConfigResponseData } from '@/types';
 import { parseJSON } from '@/utils';
 
+const LOCAL_STORE_CONNECTIONS_KEY = 'hdx-local-connections';
+
 export type Connection = {
   id: string;
   name: string;
@@ -15,16 +17,20 @@ export type Connection = {
   password: string;
 };
 
+function setLocalConnections(newConnections: Connection[]) {
+  store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
+}
+
 export async function getLocalConnections(): Promise<Connection[]> {
-  if (store.session.has('connections')) {
-    return store.session.get('connections') ?? [];
+  if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
+    return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
   }
   // pull sources from env var
   const respData: NextApiConfigResponseData =
     await nextServer('api/config').json();
   if (respData?.defaultConnections) {
     const defaultConnections = parseJSON(respData.defaultConnections);
-    store.session.set('connections', defaultConnections);
+    store.session.set(LOCAL_STORE_CONNECTIONS_KEY, defaultConnections);
     return defaultConnections;
   }
   return [];
@@ -66,8 +72,7 @@ export function useCreateConnection() {
           ...connection,
           id: 'local',
         };
-        store.session.set('connections', connections);
-
+        setLocalConnections(connections);
         return;
       }
 
@@ -101,7 +106,7 @@ export function useUpdateConnection() {
           ...connection,
           id: 'local',
         };
-        store.session.set('connections', connections);
+        setLocalConnections(connections);
 
         return;
       }
@@ -133,7 +138,7 @@ export function useDeleteConnection() {
         const newConnections = connections.filter(
           connection => connection.id !== id,
         );
-        store.session.set('connections', newConnections);
+        setLocalConnections(newConnections);
 
         return;
       }
