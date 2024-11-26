@@ -129,15 +129,6 @@ export const server = ky.create({
   timeout: false,
 });
 
-export const nextServer = (
-  url: string,
-  options?: Options | undefined,
-): ResponsePromise => {
-  return ky(url, {
-    ...options,
-  });
-};
-
 export const hdxServer = (
   url: string,
   options?: Options | undefined,

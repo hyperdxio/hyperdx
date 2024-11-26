@@ -313,7 +313,5 @@ export type NextApiConfigResponseData = {
   apiKey: string;
   apiServerUrl: string;
   collectorUrl: string;
-  defaultConnections?: string;
-  defaultSources?: string;
   serviceName: string;
 };

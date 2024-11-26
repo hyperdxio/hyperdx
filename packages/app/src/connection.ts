@@ -1,10 +1,9 @@
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { hdxServer, nextServer } from '@/api';
+import { hdxServer } from '@/api';
 import { testLocalConnection } from '@/clickhouse';
-import { IS_LOCAL_MODE } from '@/config';
-import type { NextApiConfigResponseData } from '@/types';
+import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
 const LOCAL_STORE_CONNECTIONS_KEY = 'hdx-local-connections';
@@ -21,17 +20,14 @@ function setLocalConnections(newConnections: Connection[]) {
   store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
 }
 
-export async function getLocalConnections(): Promise<Connection[]> {
+export function getLocalConnections(): Connection[] {
   if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
     return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
   }
   // pull sources from env var
   try {
-    const respData: NextApiConfigResponseData =
-      await nextServer('api/config').json();
-    const defaultConnections = parseJSON(respData.defaultConnections ?? '');
+    const defaultConnections = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
     if (defaultConnections != null) {
-      store.session.set(LOCAL_STORE_CONNECTIONS_KEY, defaultConnections);
       return defaultConnections;
     }
   } catch (e) {
@@ -72,7 +68,7 @@ export function useCreateConnection() {
           );
         }
 
-        const connections = await getLocalConnections();
+        const connections = getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
@@ -106,7 +102,7 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = await getLocalConnections();
+        const connections = getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
@@ -139,7 +135,7 @@ export function useDeleteConnection() {
       id: string; // Ignored for local
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = await getLocalConnections();
+        const connections = getLocalConnections();
         const newConnections = connections.filter(
           connection => connection.id !== id,
         );
