@@ -6,17 +6,11 @@ import {
   HDX_SERVICE_NAME,
   SERVER_URL,
 } from '@/config';
-
-type ResponseData = {
-  apiKey: string;
-  apiServerUrl: string;
-  collectorUrl: string;
-  serviceName: string;
-};
+import type { NextApiConfigResponseData } from '@/types';
 
 export default function handler(
   req: NextApiRequest,
-  res: NextApiResponse<ResponseData>,
+  res: NextApiResponse<NextApiConfigResponseData>,
 ) {
   res.status(200).json({
     apiKey: HDX_API_KEY,

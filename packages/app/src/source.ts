@@ -3,19 +3,35 @@ import objectHash from 'object-hash';
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { hdxServer } from '@/api';
+import { ColumnMeta, filterColumnMetaByType, JSDataType } from '@/clickhouse';
 import { TSource } from '@/commonTypes';
+import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
+import { metadata } from '@/metadata';
+import { hashCode, parseJSON } from '@/utils';
 
-import { hdxServer } from './api';
-import { ColumnMeta, filterColumnMetaByType, JSDataType } from './clickhouse';
-import { metadata } from './metadata';
-import { hashCode } from './utils';
+const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
 
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
-  store.transact('hdx-local-source', fn, []);
+  store.transact(LOCAL_STORE_SOUCES_KEY, fn, []);
 }
+
 function getLocalSources(): TSource[] {
-  return store.get('hdx-local-source', []) ?? [];
+  if (store.has(LOCAL_STORE_SOUCES_KEY)) {
+    return store.get(LOCAL_STORE_SOUCES_KEY, []) ?? [];
+  }
+  // pull sources from env var
+  try {
+    const defaultSources = parseJSON(HDX_LOCAL_DEFAULT_SOURCES ?? '');
+    if (defaultSources != null) {
+      return defaultSources;
+    }
+  } catch (e) {
+    console.error('Error fetching default sources', e);
+  }
+  // fallback to empty array
+  return [];
 }
 
 // If a user specifies a timestampValueExpression with multiple columns,
@@ -109,7 +125,8 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
-        const existingSource = getLocalSources().find(
+        const localSources = getLocalSources();
+        const existingSource = localSources.find(
           stored => objectHash(omit(stored, 'id')) === objectHash(source),
         );
         if (existingSource) {
