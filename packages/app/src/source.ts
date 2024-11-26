@@ -14,15 +14,20 @@ import { hashCode, parseJSON } from '@/utils';
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
   store.transact('hdx-local-source', fn, []);
 }
+
 async function getLocalSources(): Promise<TSource[]> {
+  if (store.has('hdx-local-source')) {
+    return store.get('hdx-local-source', []) ?? [];
+  }
   // pull sources from env var
   const respData: NextApiConfigResponseData =
     await nextServer('api/config').json();
   if (respData?.defaultSources) {
     const defaultSources = parseJSON(respData.defaultSources);
+    store.set('hdx-local-source', defaultSources);
     return defaultSources;
   }
-  return store.get('hdx-local-source', []) ?? [];
+  return [];
 }
 
 // If a user specifies a timestampValueExpression with multiple columns,

@@ -350,13 +350,13 @@ export const sendQuery = async <T extends DataFormat>({
 }) => {
   let host, username, password;
   if (IS_LOCAL_MODE) {
-    const localConnection = (await getLocalConnections())[0];
-    if (localConnection == null) {
+    const localConnections = await getLocalConnections();
+    if (localConnections.length === 0) {
       throw new Error('No local connection found');
     }
-    host = localConnection.host;
-    username = localConnection.username;
-    password = localConnection.password;
+    host = localConnections[0].host;
+    username = localConnections[0].username;
+    password = localConnections[0].password;
   }
 
   return client.query<T>({

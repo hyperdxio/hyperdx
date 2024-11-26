@@ -16,14 +16,18 @@ export type Connection = {
 };
 
 export async function getLocalConnections(): Promise<Connection[]> {
+  if (store.has('connections')) {
+    return store.session.get('connections') ?? [];
+  }
   // pull sources from env var
   const respData: NextApiConfigResponseData =
     await nextServer('api/config').json();
   if (respData?.defaultConnections) {
-    const defaultSources = parseJSON(respData.defaultConnections);
-    return defaultSources;
+    const defaultConnections = parseJSON(respData.defaultConnections);
+    store.session.set('connections', defaultConnections);
+    return defaultConnections;
   }
-  return store.session.get('connections') ?? [];
+  return [];
 }
 
 export function useConnections() {
@@ -57,7 +61,7 @@ export function useCreateConnection() {
           );
         }
 
-        const connections = store.session.get('connections') ?? [];
+        const connections = await getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
@@ -92,7 +96,7 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = store.session.get('connections');
+        const connections = await getLocalConnections();
         connections[0] = {
           ...connection,
           id: 'local',
@@ -125,9 +129,11 @@ export function useDeleteConnection() {
       id: string; // Ignored for local
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = store.session.get('connections');
-        delete connections[id];
-        store.session.set('connections', connections);
+        const connections = await getLocalConnections();
+        const newConnections = connections.filter(
+          connection => connection.id !== id,
+        );
+        store.session.set('connections', newConnections);
 
         return;
       }
