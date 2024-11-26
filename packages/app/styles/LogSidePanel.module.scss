@@ -13,6 +13,19 @@ $padding-x: 24px;
   border-left: 1px solid $slate-900;
 }
 
+.panelDragBar {
+  position: absolute;
+  width: 3px;
+  height: 100%;
+  cursor: col-resize;
+  background-color: transparent;
+
+  &:hover {
+    background-color: $slate-900;
+    transition: background-color 0.2s ease-in-out;
+  }
+}
+
 .panelHeader {
   display: flex;
   justify-content: space-between;
