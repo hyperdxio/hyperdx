@@ -129,6 +129,15 @@ export const server = ky.create({
   timeout: false,
 });
 
+export const nextServer = (
+  url: string,
+  options?: Options | undefined,
+): ResponsePromise => {
+  return ky(url, {
+    ...options,
+  });
+};
+
 export const hdxServer = (
   url: string,
   options?: Options | undefined,
@@ -140,6 +149,12 @@ export const hdxServer = (
 };
 
 const api = {
+  useNextApiConfig() {
+    return useQuery({
+      queryKey: ['next', 'api/config'],
+      queryFn: () => nextServer('/api/config').json(),
+    });
+  },
   usePropertyTypeMappings(options?: UseQueryOptions<any, Error>) {
     return useQuery({
       queryKey: [`logs/propertyTypeMappings`],

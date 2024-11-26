@@ -3,18 +3,25 @@ import objectHash from 'object-hash';
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { hdxServer, nextServer } from '@/api';
+import { ColumnMeta, filterColumnMetaByType, JSDataType } from '@/clickhouse';
 import { TSource } from '@/commonTypes';
 import { IS_LOCAL_MODE } from '@/config';
-
-import { hdxServer } from './api';
-import { ColumnMeta, filterColumnMetaByType, JSDataType } from './clickhouse';
-import { metadata } from './metadata';
-import { hashCode } from './utils';
+import { metadata } from '@/metadata';
+import type { NextApiConfigResponseData } from '@/types';
+import { hashCode, parseJSON } from '@/utils';
 
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
   store.transact('hdx-local-source', fn, []);
 }
-function getLocalSources(): TSource[] {
+async function getLocalSources(): Promise<TSource[]> {
+  // pull sources from env var
+  const respData: NextApiConfigResponseData =
+    await nextServer('api/config').json();
+  if (respData?.defaultSources) {
+    const defaultSources = parseJSON(respData.defaultSources);
+    return defaultSources;
+  }
   return store.get('hdx-local-source', []) ?? [];
 }
 
@@ -109,7 +116,7 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
-        const existingSource = getLocalSources().find(
+        const existingSource = (await getLocalSources()).find(
           stored => objectHash(omit(stored, 'id')) === objectHash(source),
         );
         if (existingSource) {

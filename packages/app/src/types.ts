@@ -308,3 +308,12 @@ export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
 }
+
+export type NextApiConfigResponseData = {
+  apiKey: string;
+  apiServerUrl: string;
+  collectorUrl: string;
+  defaultConnections?: string;
+  defaultSources?: string;
+  serviceName: string;
+};

@@ -1,10 +1,11 @@
 import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { hdxServer } from '@/api';
+import { hdxServer, nextServer } from '@/api';
+import { testLocalConnection } from '@/clickhouse';
 import { IS_LOCAL_MODE } from '@/config';
-
-import { testLocalConnection } from './clickhouse';
+import type { NextApiConfigResponseData } from '@/types';
+import { parseJSON } from '@/utils';
 
 export type Connection = {
   id: string;
@@ -14,8 +15,15 @@ export type Connection = {
   password: string;
 };
 
-export function getLocalConnection(): Connection | undefined {
-  return store.session.get('connections')?.[0];
+export async function getLocalConnections(): Promise<Connection[]> {
+  // pull sources from env var
+  const respData: NextApiConfigResponseData =
+    await nextServer('api/config').json();
+  if (respData?.defaultConnections) {
+    const defaultSources = parseJSON(respData.defaultConnections);
+    return defaultSources;
+  }
+  return store.session.get('connections') ?? [];
 }
 
 export function useConnections() {
@@ -23,7 +31,7 @@ export function useConnections() {
     queryKey: ['connections'],
     queryFn: () => {
       if (IS_LOCAL_MODE) {
-        return store.session.get('connections') ?? [];
+        return getLocalConnections();
       }
 
       return hdxServer('connections').json();

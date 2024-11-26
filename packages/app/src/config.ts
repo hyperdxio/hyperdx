@@ -5,6 +5,11 @@ export const USE_CLICKHOUSE_PROXY = !process.env.NEXT_PUBLIC_CLICKHOUSE_HOST;
 export const CLICKHOUSE_HOST =
   process.env.NEXT_PUBLIC_CLICKHOUSE_HOST ?? `${SERVER_URL}/clickhouse-proxy`;
 
+// ONLY USED IN LOCAL MODE
+export const HDX_LOCAL_DEFAULT_CONNECTIONS =
+  process.env.HDX_LOCAL_DEFAULT_CONNECTIONS;
+export const HDX_LOCAL_DEFAULT_SOURCES = process.env.HDX_LOCAL_DEFAULT_SOURCES;
+
 export const HDX_API_KEY = process.env.HYPERDX_API_KEY as string; // for nextjs server
 export const HDX_SERVICE_NAME =
   process.env.NEXT_PUBLIC_OTEL_SERVICE_NAME ?? 'hdx-oss-dev-app';
