@@ -26,13 +26,18 @@ export async function getLocalConnections(): Promise<Connection[]> {
     return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
   }
   // pull sources from env var
-  const respData: NextApiConfigResponseData =
-    await nextServer('api/config').json();
-  if (respData?.defaultConnections) {
-    const defaultConnections = parseJSON(respData.defaultConnections);
-    store.session.set(LOCAL_STORE_CONNECTIONS_KEY, defaultConnections);
-    return defaultConnections;
+  try {
+    const respData: NextApiConfigResponseData =
+      await nextServer('api/config').json();
+    const defaultConnections = parseJSON(respData.defaultConnections ?? '');
+    if (defaultConnections != null) {
+      store.session.set(LOCAL_STORE_CONNECTIONS_KEY, defaultConnections);
+      return defaultConnections;
+    }
+  } catch (e) {
+    console.error('Error fetching default connections', e);
   }
+  // fallback to empty array
   return [];
 }
 

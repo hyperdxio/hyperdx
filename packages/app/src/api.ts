@@ -149,12 +149,6 @@ export const hdxServer = (
 };
 
 const api = {
-  useNextApiConfig() {
-    return useQuery({
-      queryKey: ['next', 'api/config'],
-      queryFn: () => nextServer('/api/config').json(),
-    });
-  },
   usePropertyTypeMappings(options?: UseQueryOptions<any, Error>) {
     return useQuery({
       queryKey: [`logs/propertyTypeMappings`],

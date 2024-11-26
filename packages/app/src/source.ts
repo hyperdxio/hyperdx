@@ -22,13 +22,18 @@ async function getLocalSources(): Promise<TSource[]> {
     return store.get(LOCAL_STORE_SOUCES_KEY, []) ?? [];
   }
   // pull sources from env var
-  const respData: NextApiConfigResponseData =
-    await nextServer('api/config').json();
-  if (respData?.defaultSources) {
-    const defaultSources = parseJSON(respData.defaultSources);
-    store.set(LOCAL_STORE_SOUCES_KEY, defaultSources);
-    return defaultSources;
+  try {
+    const respData: NextApiConfigResponseData =
+      await nextServer('api/config').json();
+    const defaultSources = parseJSON(respData.defaultSources ?? '');
+    if (defaultSources != null) {
+      store.set(LOCAL_STORE_SOUCES_KEY, defaultSources);
+      return defaultSources;
+    }
+  } catch (e) {
+    console.error('Error fetching default sources', e);
   }
+  // fallback to empty array
   return [];
 }
 
@@ -123,7 +128,8 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
-        const existingSource = (await getLocalSources()).find(
+        const localSources = await getLocalSources();
+        const existingSource = localSources.find(
           stored => objectHash(omit(stored, 'id')) === objectHash(source),
         );
         if (existingSource) {
