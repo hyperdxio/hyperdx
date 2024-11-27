@@ -11,7 +11,7 @@ export function SourceSelectControlled({
   ...props
 }: { size?: string; onCreate?: () => void } & UseControllerProps<any>) {
   const { data } = useSources();
-  const hasLocalSources = !!HDX_LOCAL_DEFAULT_SOURCES;
+  const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
 
   const values = useMemo(
     () => [
@@ -19,7 +19,7 @@ export function SourceSelectControlled({
         value: d.id,
         label: d.name,
       })) ?? []),
-      ...(onCreate && !hasLocalSources
+      ...(onCreate && !hasLocalDefaultSources
         ? [
             {
               value: '_create_new_value',
