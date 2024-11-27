@@ -6,3 +6,5 @@ export default function Register() {
     </div>
   );
 }
+
+export { getServerSideProps } from '@/emptyGetServerSideProps';
