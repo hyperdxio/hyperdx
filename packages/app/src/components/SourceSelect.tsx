@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { UseControllerProps } from 'react-hook-form';
 
 import SelectControlled from '@/components/SelectControlled';
+import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { useSources } from '@/source';
 
 export function SourceSelectControlled({
@@ -10,6 +11,7 @@ export function SourceSelectControlled({
   ...props
 }: { size?: string; onCreate?: () => void } & UseControllerProps<any>) {
   const { data } = useSources();
+  const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
 
   const values = useMemo(
     () => [
@@ -17,7 +19,7 @@ export function SourceSelectControlled({
         value: d.id,
         label: d.name,
       })) ?? []),
-      ...(onCreate
+      ...(onCreate && !hasLocalDefaultSources
         ? [
             {
               value: '_create_new_value',
