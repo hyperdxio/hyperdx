@@ -27,9 +27,11 @@ FROM base AS builder
 ARG OTEL_EXPORTER_OTLP_ENDPOINT
 ARG OTEL_SERVICE_NAME
 ARG SERVER_URL
+ARG IS_LOCAL_MODE
 ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
+ENV NEXT_PUBLIC_IS_LOCAL_MODE $IS_LOCAL_MODE
 
 COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
 COPY ./packages/app/src ./src 
@@ -37,7 +39,7 @@ COPY ./packages/app/pages ./pages
 COPY ./packages/app/public ./public 
 COPY ./packages/app/styles ./styles
 COPY --from=base /app/node_modules ./node_modules
-RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
+RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 
 ## prod ############################################################################################
@@ -50,7 +52,7 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 
 # You only need to copy next.config.js if you are NOT using the default configuration
-# COPY --from=builder /app/next.config.js ./
+COPY --from=builder /app/next.config.js ./
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules

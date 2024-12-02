@@ -51,7 +51,7 @@ COPY --from=app ./styles ./styles
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE true
-RUN yarn build
+RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 # == Clickhouse/Base Image ==
 FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS clickhouse_base
@@ -118,9 +118,11 @@ COPY --from=otel-collector ./config.local.yaml /etc/otelcol-contrib/config.yaml
 
 # Set up App
 WORKDIR /app/app
-COPY --from=app_builder ./app/app/public .
-COPY --from=app_builder ./app/app/.next/standalone .
-COPY --from=app_builder ./app/app/.next/static ./.next/static
+COPY --from=app_builder /app/app/next.config.js ./
+COPY --from=app_builder /app/app/public ./public
+COPY --from=app_builder /app/app/.next ./.next
+COPY --from=app_builder /app/app/node_modules ./node_modules
+COPY --from=app_builder /app/app/package.json ./package.json
 
 # Expose ports
 EXPOSE 8000 8080 4317 4318 13133 8123 9000

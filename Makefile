@@ -89,6 +89,16 @@ build-local:
 version:
 	sh ./version.sh
 
+.PHONY: release-v2-beta-ui
+release-v2-beta-ui:
+	docker buildx build . -f ./packages/app/Dockerfile \
+		--build-arg IS_LOCAL_MODE=true \
+		--build-arg PORT=${HYPERDX_APP_PORT} \
+		--target prod \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${V2_BETA_IMAGE_VERSION}-ui \
+		-t ${LOCAL_IMAGE_NAME}:${V2_BETA_IMAGE_VERSION}-ui --push
+
 .PHONY: release-v2-beta
 release-v2-beta:
 	docker buildx build --squash . -f ./docker/local/Dockerfile \

@@ -5,7 +5,7 @@ const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
 export const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8000'; // NEXT_PUBLIC_SERVER_URL can be empty string
 
-export const USE_CLICKHOUSE_PROXY = !process.env.NEXT_PUBLIC_CLICKHOUSE_HOST;
+export const USE_CLICKHOUSE_PROXY = !!process.env.NEXT_PUBLIC_CLICKHOUSE_HOST;
 export const CLICKHOUSE_HOST =
   process.env.NEXT_PUBLIC_CLICKHOUSE_HOST ?? `${SERVER_URL}/clickhouse-proxy`;
 

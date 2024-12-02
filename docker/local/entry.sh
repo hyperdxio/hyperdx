@@ -60,9 +60,8 @@ otelcol-contrib --config /etc/otelcol-contrib/config.yaml &
 
 # App
 NODE_ENV=production \
-PORT=8080 \
 NEXT_PUBLIC_SERVER_URL="${SERVER_URL}" \
-node /app/app/server.js > /var/log/app.log 2>&1 &
+/app/app/node_modules/.bin/next start -p ${HYPERDX_APP_PORT:-8080} > /var/log/app.log 2>&1 &
 
 # Wait for any process to exit
 wait -n
