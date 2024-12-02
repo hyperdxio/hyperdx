@@ -1,4 +1,7 @@
+const { configureRuntimeEnv } = require('next-runtime-env/build/configure');
 const { version } = require('./package.json');
+
+configureRuntimeEnv();
 
 const withNextra = require('nextra')({
   theme: 'nextra-theme-docs',
@@ -23,8 +26,6 @@ module.exports = withNextra({
   swcMinify: false,
   publicRuntimeConfig: {
     version,
-    hdxLocalDefaultConnections: process.env.HDX_LOCAL_DEFAULT_CONNECTIONS,
-    hdxLocalDefaultSources: process.env.HDX_LOCAL_DEFAULT_SOURCES,
   },
   productionBrowserSourceMaps: false,
   ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'

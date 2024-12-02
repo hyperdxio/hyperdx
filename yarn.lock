@@ -4166,6 +4166,7 @@ __metadata:
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:13"
     next-query-params: "npm:^4.1.0"
+    next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
@@ -20695,6 +20696,15 @@ __metadata:
     react: ^16.8.0 || ^17.0.0 || ^18.0.0
     use-query-params: ^2.0.0
   checksum: 10c0/0e1c0cd270956742be0f17cfded0fead834bee966ca350d5dd5a17a6109d9da9ad101cae4f68065b20ebfd3da89f05121ccb7eeb3424977fb20305ced70e486f
+  languageName: node
+  linkType: hard
+
+"next-runtime-env@npm:1":
+  version: 1.7.4
+  resolution: "next-runtime-env@npm:1.7.4"
+  dependencies:
+    chalk: "npm:^4.1.2"
+  checksum: 10c0/fc169fd4c77cf610fe4e82a170638023a836f3e406efc62735bd9db5b8d63ba5a797037285d6608a9814375643c95ce97b8272f71911c7d7cd29e5b977350c79
   languageName: node
   linkType: hard
 

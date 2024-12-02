@@ -4,3 +4,5 @@
 
 # Sentry
 next.config.original.js
+
+public/__ENV.js
