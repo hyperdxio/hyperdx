@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS base
+FROM node:18.20.3-alpine AS base
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -43,7 +43,7 @@ RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 
 ## prod ############################################################################################
-FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS prod
+FROM node:18.20.3-alpine AS prod
 WORKDIR /app
 
 ENV NODE_ENV production
