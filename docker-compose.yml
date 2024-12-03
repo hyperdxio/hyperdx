@@ -1,59 +1,42 @@
 version: '3'
 name: hdx-oss
 services:
-  go-parser:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-go-parser
-    environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hdx-oss-go-parser
-      PORT: 7777
-    ports:
-      - 7777:7777
-    networks:
-      - internal
-  miner:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hdx-oss-miner
-    ports:
-      - 5123:5123
-    networks:
-      - internal
-  hostmetrics:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OTEL_SERVICE_NAME: hostmetrics
-    restart: always
-    networks:
-      - internal
-  ingestor:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
-    volumes:
-      - .volumes/ingestor_data:/var/lib/vector
-    ports:
-      - 8002:8002 # http-generic
-      - 8686:8686 # healthcheck
-    environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
-      ENABLE_GO_PARSER: 'true'
-      GO_PARSER_API_URL: 'http://go-parser:7777'
-      RUST_BACKTRACE: full
-      VECTOR_LOG: ${HYPERDX_LOG_LEVEL}
-      VECTOR_OPENSSL_LEGACY_PROVIDER: 'false'
-    restart: always
-    networks:
-      - internal
+  # go-parser:
+  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-go-parser
+  #   environment:
+  #     AGGREGATOR_API_URL: 'http://aggregator:8001'
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_SERVICE_NAME: hdx-oss-go-parser
+  #     PORT: 7777
+  #   ports:
+  #     - 7777:7777
+  #   networks:
+  #     - internal
+  # miner:
+  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
+  #   environment:
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_SERVICE_NAME: hdx-oss-miner
+  #   ports:
+  #     - 5123:5123
+  #   networks:
+  #     - internal
+  # hostmetrics:
+  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
+  #   environment:
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     OTEL_SERVICE_NAME: hostmetrics
+  #   restart: always
+  #   networks:
+  #     - internal
   redis:
     image: redis:7.0.11-alpine
     volumes:
@@ -71,8 +54,9 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.113.0
     environment:
+      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       INGESTOR_API_URL: 'http://ingestor:8002'
     ports:
@@ -84,66 +68,44 @@ services:
     restart: always
     networks:
       - internal
-  aggregator:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
-    ports:
-      - 8001:8001
-    environment:
-      AGGREGATOR_PAYLOAD_SIZE_LIMIT: '144mb'
-      APP_TYPE: 'aggregator'
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_PASSWORD: aggregator
-      CLICKHOUSE_USER: aggregator
-      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NODE_ENV: development
-      PORT: 8001
-      REDIS_URL: redis://redis:6379
-      SERVER_URL: ${HYPERDX_API_URL}:${HYPERDX_API_PORT}
-    networks:
-      - internal
-    depends_on:
-      - db
-      - redis
-      - ch-server
-  task-check-alerts:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
-    entrypoint: 'node'
-    command: './build/tasks/index.js check-alerts'
-    environment:
-      APP_TYPE: 'scheduled-task'
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      CLICKHOUSE_PASSWORD: worker
-      CLICKHOUSE_USER: worker
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
-      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-      HDX_NODE_BETA_MODE: 0
-      HDX_NODE_CONSOLE_CAPTURE: 1
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
-      MINER_API_URL: 'http://miner:5123'
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NODE_ENV: development
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
-      REDIS_URL: redis://redis:6379
-    restart: always
-    networks:
-      - internal
     depends_on:
       - ch-server
-      - db
-      - redis
+  # task-check-alerts:
+  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+  #   entrypoint: 'node'
+  #   command: './build/tasks/index.js check-alerts'
+  #   environment:
+  #     APP_TYPE: 'scheduled-task'
+  #     CLICKHOUSE_HOST: http://ch-server:8123
+  #     CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     CLICKHOUSE_PASSWORD: worker
+  #     CLICKHOUSE_USER: worker
+  #     EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+  #     FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
+  #     HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+  #     HDX_NODE_BETA_MODE: 0
+  #     HDX_NODE_CONSOLE_CAPTURE: 1
+  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+  #     INGESTOR_API_URL: 'http://ingestor:8002'
+  #     MINER_API_URL: 'http://miner:5123'
+  #     MONGO_URI: 'mongodb://db:27017/hyperdx'
+  #     NODE_ENV: development
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+  #     OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
+  #     REDIS_URL: redis://redis:6379
+  #   restart: always
+  #   networks:
+  #     - internal
+  #   depends_on:
+  #     - ch-server
+  #     - db
+  #     - redis
   api:
     image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
     environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -186,7 +148,7 @@ services:
     depends_on:
       - api
   ch-server:
-    image: clickhouse/clickhouse-server:23.8.8-alpine
+    image: clickhouse/clickhouse-server:head-alpine
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native
