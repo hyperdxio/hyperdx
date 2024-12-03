@@ -1,4 +1,5 @@
 version: '3'
+name: hdx-oss-dev
 x-hyperdx-logging: &hyperdx-logging
   driver: fluentd
   options:
@@ -6,7 +7,6 @@ x-hyperdx-logging: &hyperdx-logging
     labels: 'service.name'
 services:
   # miner:
-  #   container_name: hdx-oss-dev-miner
   #   build:
   #     context: .
   #     dockerfile: ./packages/miner/Dockerfile
@@ -29,7 +29,6 @@ services:
     labels:
       service.name: 'hdx-oss-dev-redis'
     image: redis:7.0.11-alpine
-    container_name: hdx-oss-dev-redis
     volumes:
       - .volumes/redis:/data
     ports:
@@ -43,7 +42,6 @@ services:
     labels:
       service.name: 'hdx-oss-dev-db'
     image: mongo:5.0.14-focal
-    container_name: hdx-oss-dev-db
     volumes:
       - .volumes/db:/data/db
     ports:
@@ -73,7 +71,6 @@ services:
     depends_on:
       - ch-server
   # task-check-alerts:
-  #   container_name: hdx-oss-dev-task-check-alerts
   #   build:
   #     context: .
   #     dockerfile: ./packages/api/Dockerfile
@@ -110,7 +107,6 @@ services:
   #     - db
   #     - redis
   api:
-    container_name: hdx-oss-dev-api
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
@@ -151,7 +147,6 @@ services:
       - db
       - redis
   app:
-    container_name: hdx-oss-dev-app
     build:
       context: .
       dockerfile: ./packages/app/Dockerfile
@@ -179,7 +174,6 @@ services:
       - api
   ch-server:
     image: clickhouse/clickhouse-server:head-alpine
-    container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native

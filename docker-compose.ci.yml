@@ -1,7 +1,7 @@
 version: '3'
+name: hdx-ci
 services:
   otel-collector:
-    container_name: hdx-ci-otel-collector
     build:
       context: ./docker/otel-collector
       target: dev
@@ -23,7 +23,6 @@ services:
     depends_on:
       - ch-server
   ch-server:
-    container_name: hdx-ci-ch-server
     image: clickhouse/clickhouse-server:23.8.8-alpine
     environment:
       # default settings
@@ -38,7 +37,6 @@ services:
     networks:
       - internal
   db:
-    container_name: hdx-ci-db
     image: mongo:5.0.14-focal
     command: --port 29999
     # ports:
@@ -46,7 +44,6 @@ services:
     networks:
       - internal
   redis:
-    container_name: hdx-ci-redis
     image: redis:7.0.11-alpine
     # ports:
     #   - 6379:6379
@@ -57,7 +54,6 @@ services:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
-    container_name: hdx-ci-api
     image: hyperdx/ci/api
     # ports:
     #   - 9000:9000
