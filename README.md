@@ -161,7 +161,7 @@ deployment simplicity, native SQL support, and improved performance for PB+
 deployments. Currently we've released a subset of features with the goal of
 getting early feedback from the community.
 
-Here's a list of high-level list of support we're working on delivering as part
+Here's a high-level list of support we're working on delivering as part
 of v2:
 
 - [x] Log & Trace Search w/ Lucene & SQL
