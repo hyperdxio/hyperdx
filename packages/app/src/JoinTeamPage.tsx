@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import { Button, Form } from 'react-bootstrap';
+import { Paper } from '@mantine/core';
 
 import { SERVER_URL } from './config';
 
@@ -16,10 +17,7 @@ export default function JoinTeam() {
           <div className="text-center mb-4">
             <h2 className="me-2 text-center">Join Team</h2>
           </div>
-          <div
-            className="bg-purple rounded py-4 px-3 my-3 mt-2"
-            style={{ maxWidth: 400, width: '100%' }}
-          >
+          <Paper p="xl" withBorder>
             <div className="text-center">
               <Form
                 className="text-start"
@@ -60,7 +58,7 @@ export default function JoinTeam() {
                 </div>
               </Form>
             </div>
-          </div>
+          </Paper>
         </div>
       </div>
     </div>
