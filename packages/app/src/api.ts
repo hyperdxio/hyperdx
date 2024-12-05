@@ -116,10 +116,6 @@ export function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
-export const apiConfigs = {
-  prefixUrl: '/api',
-};
-
 export const server = ky.create({
   prefixUrl: '/api',
   credentials: 'include',
@@ -134,7 +130,6 @@ export const hdxServer = (
   options?: Options | undefined,
 ): ResponsePromise => {
   return server(url, {
-    ...apiConfigs,
     ...options,
   });
 };
