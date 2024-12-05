@@ -58,6 +58,7 @@
     "lodash": "^4.17.21",
     "next": "13",
     "next-query-params": "^4.1.0",
+    "next-runtime-env": "1",
     "next-seo": "^4.28.1",
     "nextra": "2.0.1",
     "nextra-theme-docs": "^2.0.2",
