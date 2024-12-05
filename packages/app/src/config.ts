@@ -2,9 +2,6 @@ import getConfig from 'next/config';
 
 const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
 
-export const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8000'; // NEXT_PUBLIC_SERVER_URL can be empty string
-
 export const CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
 // ONLY USED IN LOCAL MODE

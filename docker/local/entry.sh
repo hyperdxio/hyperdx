@@ -7,7 +7,7 @@ export CLICKHOUSE_LOG_LEVEL="error"
 # User can specify either an entire SERVER_URL, or override slectively the 
 # HYPERDX_API_URL or HYPERDX_API_PORT from the defaults
 # Same applies to the frontend/app
-export SERVER_URL="${SERVER_URL:-${HYPERDX_API_URL:-http://localhost}:${HYPERDX_API_PORT:-8000}}"
+export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}"
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Internal Services

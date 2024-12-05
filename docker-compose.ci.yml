@@ -69,7 +69,6 @@ services:
       NODE_ENV: ci
       PORT: 9000
       REDIS_URL: redis://redis:6379
-      SERVER_URL: http://localhost:9000
     volumes:
       - ./packages/api/src:/app/src
     networks:

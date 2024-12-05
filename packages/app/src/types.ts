@@ -311,7 +311,6 @@ export enum WebhookService {
 
 export type NextApiConfigResponseData = {
   apiKey: string;
-  apiServerUrl: string;
   collectorUrl: string;
   serviceName: string;
 };

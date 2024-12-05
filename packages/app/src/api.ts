@@ -10,7 +10,7 @@ import type {
 } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
-import { IS_LOCAL_MODE, SERVER_URL } from './config';
+import { IS_LOCAL_MODE } from './config';
 import type {
   AlertChannel,
   AlertInterval,

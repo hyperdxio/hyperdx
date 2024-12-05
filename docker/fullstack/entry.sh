@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}}"
+export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}"
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Use concurrently to run both the API and App servers
