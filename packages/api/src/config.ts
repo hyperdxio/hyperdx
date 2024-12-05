@@ -26,7 +26,6 @@ export const OTEL_EXPORTER_OTLP_ENDPOINT =
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
-export const SERVER_URL = env.SERVER_URL as string;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 
 // Only for single container local deployments, disable authentication

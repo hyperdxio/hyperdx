@@ -7,7 +7,7 @@
     "node": ">=18.12.0"
   },
   "scripts": {
-    "dev": "NEXT_PUBLIC_SERVER_URL=http://localhost:8000 next dev -p 8080",
+    "dev": "next dev",
     "dev:local": "NEXT_PUBLIC_CLICKHOUSE_HOST=http://localhost:8123 NEXT_PUBLIC_IS_LOCAL_MODE=true next dev -p 8080",
     "build": "next build",
     "start": "next start",

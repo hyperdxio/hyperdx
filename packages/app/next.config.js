@@ -5,31 +5,41 @@ const withNextra = require('nextra')({
   themeConfig: './src/nextra.config.tsx',
 });
 
-module.exports = withNextra({
-  async headers() {
+module.exports = {
+  async rewrites() {
     return [
       {
-        source: '/(.*)?', // Matches all pages
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-        ],
+        source: '/api/:path*',
+        destination: `${process.env.NEXT_PUBLIC_SERVER_URL}/:path*`,
       },
     ];
   },
-  // This slows down builds by 2x for some reason...
-  swcMinify: false,
-  publicRuntimeConfig: {
-    version,
-    hdxLocalDefaultConnections: process.env.HDX_LOCAL_DEFAULT_CONNECTIONS,
-    hdxLocalDefaultSources: process.env.HDX_LOCAL_DEFAULT_SOURCES,
-  },
-  productionBrowserSourceMaps: false,
-  ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
-    ? {
-        output: 'standalone',
-      }
-    : {}),
-});
+  ...withNextra({
+    async headers() {
+      return [
+        {
+          source: '/(.*)?', // Matches all pages
+          headers: [
+            {
+              key: 'X-Frame-Options',
+              value: 'DENY',
+            },
+          ],
+        },
+      ];
+    },
+    // This slows down builds by 2x for some reason...
+    swcMinify: false,
+    publicRuntimeConfig: {
+      version,
+      hdxLocalDefaultConnections: process.env.HDX_LOCAL_DEFAULT_CONNECTIONS,
+      hdxLocalDefaultSources: process.env.HDX_LOCAL_DEFAULT_SOURCES,
+    },
+    productionBrowserSourceMaps: false,
+    ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
+      ? {
+          output: 'standalone',
+        }
+      : {}),
+  }),
+};

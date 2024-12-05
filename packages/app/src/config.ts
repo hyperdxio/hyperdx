@@ -5,9 +5,7 @@ const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
 export const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:8000'; // NEXT_PUBLIC_SERVER_URL can be empty string
 
-export const USE_CLICKHOUSE_PROXY = !!process.env.NEXT_PUBLIC_CLICKHOUSE_HOST;
-export const CLICKHOUSE_HOST =
-  process.env.NEXT_PUBLIC_CLICKHOUSE_HOST ?? `${SERVER_URL}/clickhouse-proxy`;
+export const CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
 // ONLY USED IN LOCAL MODE
 // ex: HDX_LOCAL_DEFAULT_CONNECTIONS='[{"id":"local","name":"Demo","host":"https://demo-ch.hyperdx.io","username":"demo","password":"demo"}]' HDX_LOCAL_DEFAULT_SOURCES='[{"id":"l701179602","kind":"trace","name":"Demo Traces","connection":"local","from":{"databaseName":"default","tableName":"otel_traces"},"timestampValueExpression":"Timestamp","defaultTableSelectExpression":"Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","traceIdExpression":"TraceId","spanIdExpression":"SpanId","implicitColumnExpression":"SpanName","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanKindExpression":"SpanKind","spanNameExpression":"SpanName","logSourceId":"l-758211293","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage"},{"id":"l-758211293","kind":"log","name":"Demo Logs","connection":"local","from":{"databaseName":"default","tableName":"otel_logs"},"timestampValueExpression":"TimestampTime","defaultTableSelectExpression":"Timestamp, ServiceName, SeverityText, Body","serviceNameExpression":"ServiceName","severityTextExpression":"SeverityText","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","traceIdExpression":"TraceId","spanIdExpression":"SpanId","implicitColumnExpression":"Body","traceSourceId":"l701179602"}]' yarn dev:local

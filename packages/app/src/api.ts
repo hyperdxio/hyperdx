@@ -117,11 +117,11 @@ export function loginHook(request: Request, options: any, response: Response) {
 }
 
 export const apiConfigs = {
-  prefixUrl: SERVER_URL,
+  prefixUrl: '/api',
 };
 
 export const server = ky.create({
-  prefixUrl: SERVER_URL,
+  prefixUrl: '/api',
   credentials: 'include',
   hooks: {
     afterResponse: [loginHook],
