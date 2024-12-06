@@ -95,8 +95,9 @@ release-ui:
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-ui \
 		-t ${IMAGE_NAME}:${IMAGE_VERSION}-ui --push
 
-.PHONY: release-app
-release-app:
+.PHONY: release
+release:
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector --target prod --push &
 	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
 		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \

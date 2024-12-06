@@ -1,4 +1,3 @@
-version: '3'
 name: hdx-oss-dev
 x-hyperdx-logging: &hyperdx-logging
   driver: fluentd
@@ -127,7 +126,6 @@ services:
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      SENTRY_DSN: ${SENTRY_DSN}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'

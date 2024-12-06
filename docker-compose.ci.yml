@@ -1,4 +1,3 @@
-version: '3'
 name: hdx-ci
 services:
   otel-collector:
