@@ -84,12 +84,14 @@ type SearchConfig = {
   where?: ChartConfig['where'] | null;
   whereLanguage?: ChartConfig['whereLanguage'] | null;
   filters?: Filter[] | null;
+  orderBy?: string | null;
 };
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']),
+  orderBy: z.string(),
   filters: z.array(
     z.union([
       z.object({
@@ -213,6 +215,7 @@ function SaveSearchModal({
             where: searchedConfig.where ?? '',
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
+            orderBy: searchedConfig.orderBy ?? '',
             tags: [],
           },
           {
@@ -262,10 +265,16 @@ function SaveSearchModal({
                   {chartConfig.where}
                 </Text>
               ) : (
-                <Text size="xs" c="gray.4">
+                <Text size="xxs" c="gray.4" fs="italic">
                   None
                 </Text>
               )}
+              <Text c="gray.4" size="xs" mb="xs" mt="sm">
+                ORDER BY
+              </Text>
+              <Text size="xs" c="gray.2">
+                {chartConfig.orderBy}
+              </Text>
             </Card>
           ) : (
             <Text c="gray.4">Loading Chart Config...</Text>
@@ -341,6 +350,7 @@ function useSearchedConfigToChartConfig({
   whereLanguage,
   where,
   filters,
+  orderBy,
 }: SearchConfig) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
@@ -370,6 +380,11 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
+          orderBy:
+            orderBy ||
+            `${getFirstTimestampValueExpression(
+              sourceObj.timestampValueExpression,
+            )} DESC`,
         },
       };
     }
@@ -385,6 +400,7 @@ const queryStateMap = {
   select: parseAsString,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
   filters: parseAsJson<Filter[]>(),
+  orderBy: parseAsString,
 };
 
 function DBSearchPage() {
@@ -420,17 +436,19 @@ function DBSearchPage() {
           where: savedSearch.where,
           select: savedSearch.select,
           whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
+          orderBy: savedSearch.orderBy ?? '',
         });
         return;
       }
 
       // Landed on a new search
-      if (inputSource) {
+      if (inputSource && savedSearchId == null) {
         setSearchedConfig({
           source: inputSource,
           where: '',
           select: '',
           whereLanguage: 'lucene',
+          orderBy: '',
         });
         return;
       }
@@ -483,6 +501,7 @@ function DBSearchPage() {
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
       source: searchedConfig.source ?? sources?.[0]?.id ?? '',
       filters: searchedConfig.filters ?? [],
+      orderBy: searchedConfig.orderBy ?? '',
     },
     resetOptions: {
       keepDirtyValues: true,
@@ -490,30 +509,6 @@ function DBSearchPage() {
     },
     resolver: zodResolver(SearchConfigSchema),
   });
-
-  // // Set default source to first source if not set yet by user
-  // // and we're a new search
-  // useEffect(() => {
-  //   if (
-  //     sources != null &&
-  //     sources.length > 0 &&
-  //     !getValues().source &&
-  //     formState.dirtyFields.source != true
-  //   ) {
-  //     reset(
-  //       {
-  //         select: searchedConfig.select || '',
-  //         where: searchedConfig.where || '',
-  //         whereLanguage: searchedConfig.whereLanguage ?? 'sql',
-  //         source: searchedConfig.source ?? sources?.[0]?.id,
-  //       },
-  //       {
-  //         keepDirtyValues: true,
-  //         keepErrors: true,
-  //       },
-  //     );
-  //   }
-  // }, [sources, reset, searchedConfig, getValues, formState]);
 
   const [rowId, setRowId] = useQueryState('rowWhere');
 
@@ -541,6 +536,7 @@ function DBSearchPage() {
         whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
+        orderBy: searchedConfig?.orderBy ?? '',
       });
     }
   }, [searchedConfig, reset, prevSearched]);
@@ -578,16 +574,19 @@ function DBSearchPage() {
 
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
-    handleSubmit(({ select, where, whereLanguage, source, filters }) => {
-      setSearchedConfig({
-        select,
-        where,
-        whereLanguage,
-        source,
-        filters,
-      });
-    })();
-  }, [handleSubmit, setSearchedConfig, displayedTimeInputValue]);
+    handleSubmit(
+      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+        setSearchedConfig({
+          select,
+          where,
+          whereLanguage,
+          source,
+          filters,
+          orderBy,
+        });
+      },
+    )();
+  }, [handleSubmit, setSearchedConfig, displayedTimeInputValue, onSearch]);
 
   const queryReady =
     chartConfig?.from?.databaseName &&
@@ -663,14 +662,6 @@ function DBSearchPage() {
 
     return {
       ...chartConfig,
-      orderBy: [
-        {
-          valueExpression: getFirstTimestampValueExpression(
-            chartConfig.timestampValueExpression,
-          ),
-          ordering: 'DESC' as const,
-        },
-      ],
       dateRange: searchedTimeRange,
       limit: { limit: 200 },
     };
@@ -767,6 +758,21 @@ function DBSearchPage() {
             label="SELECT"
             size="xs"
           />
+          <Box style={{ maxWidth: 400, width: '20%' }}>
+            <SQLInlineEditorControlled
+              connectionId={inputSourceObj?.connection}
+              database={databaseName}
+              table={tableName}
+              control={control}
+              name="orderBy"
+              defaultValue={`${getFirstTimestampValueExpression(
+                inputSourceObj?.timestampValueExpression ?? '',
+              )} DESC`}
+              onSubmit={onSubmit}
+              label="ORDER BY"
+              size="xs"
+            />
+          </Box>
           {!IS_LOCAL_MODE && (
             <>
               <Button
@@ -940,6 +946,7 @@ function DBSearchPage() {
                   setAnalysisMode={setAnalysisMode}
                   chartConfig={{
                     ...chartConfig,
+                    orderBy: undefined,
                     dateRange: searchedTimeRange,
                   }}
                   {...searchFilters}
@@ -1012,8 +1019,8 @@ function DBSearchPage() {
                                 valueExpression: '',
                               },
                             ],
+                            orderBy: undefined,
                             granularity: 'auto',
-                            // groupBy: 'SeverityText',
                             dateRange: searchedTimeRange,
                             displayType: DisplayType.StackedBar,
                           }}
@@ -1031,8 +1038,8 @@ function DBSearchPage() {
                                 valueExpression: '',
                               },
                             ],
+                            orderBy: undefined,
                             granularity: 'auto',
-                            // groupBy: 'SeverityText',
                             dateRange: searchedTimeRange,
                             displayType: DisplayType.StackedBar,
                           }}

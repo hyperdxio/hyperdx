@@ -135,6 +135,9 @@ export function useRowData({
 
   const searchedTraceIdExpr = source.traceIdExpression;
 
+  const severityTextExpr =
+    source.severityTextExpression || source.statusCodeExpression;
+
   return useQueriedChartConfig(
     {
       connection: source.connection,
@@ -161,6 +164,14 @@ export function useRowData({
               {
                 valueExpression: searchedTraceIdExpr,
                 alias: '__hdx_trace_id',
+              },
+            ]
+          : []),
+        ...(severityTextExpr
+          ? [
+              {
+                valueExpression: severityTextExpr,
+                alias: '__hdx_severity_text',
               },
             ]
           : []),

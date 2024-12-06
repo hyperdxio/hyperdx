@@ -288,6 +288,7 @@ function HeatmapContainer({
 
   const minMaxConfig: ChartConfigWithDateRange = {
     ...config,
+    orderBy: undefined,
     granularity: undefined,
     select: [
       {

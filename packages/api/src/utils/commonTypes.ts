@@ -12,6 +12,7 @@ export const SavedSearchSchema = z.object({
   whereLanguage: z.string().optional(),
   source: z.string(),
   tags: z.array(z.string()),
+  orderBy: z.string().optional(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
