@@ -66,9 +66,6 @@ dev-migrate-db:
 	@echo "Migrating ClickHouse db...\n"
 	npx nx run @hyperdx/api:dev:migrate-ch
 
-.PHONY: build-local
-build-local:
-
 .PHONY: version
 version:
 	sh ./version.sh
