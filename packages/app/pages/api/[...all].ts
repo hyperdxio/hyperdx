@@ -1,6 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 
+import { IS_DEV } from '@/config';
+
 export const config = {
   api: {
     externalResolver: true,
@@ -21,6 +23,9 @@ export default (req: NextApiRequest, res: NextApiResponse) => {
     on: {
       proxyReq: fixRequestBody,
     },
+    ...(IS_DEV && {
+      logger: console,
+    }),
   });
   return proxy(req, res, error => {
     if (error) {

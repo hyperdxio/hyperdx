@@ -11,12 +11,16 @@ export const HDX_LOCAL_DEFAULT_SOURCES = env(
   'NEXT_PUBLIC_HDX_LOCAL_DEFAULT_SOURCES',
 );
 
+export const NODE_ENV = process.env.NODE_ENV as string;
 export const HDX_API_KEY = process.env.HYPERDX_API_KEY as string; // for nextjs server
 export const HDX_SERVICE_NAME =
   process.env.NEXT_PUBLIC_OTEL_SERVICE_NAME ?? 'hdx-oss-dev-app';
 export const HDX_COLLECTOR_URL =
   process.env.NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT ??
   'http://localhost:4318';
+export const IS_CI = NODE_ENV === 'ci';
+export const IS_DEV = NODE_ENV === 'development';
+export const IS_PROD = NODE_ENV === 'production';
 
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 export const IS_LOCAL_MODE = //true;
