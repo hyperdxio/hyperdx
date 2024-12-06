@@ -1,4 +1,3 @@
-import * as HyperDX from '@hyperdx/node-opentelemetry';
 import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
@@ -19,8 +18,6 @@ import externalRoutersV1 from './routers/external-api/v1';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
 import passport from './utils/passport';
-
-HyperDX.init({});
 
 const app: express.Application = express();
 

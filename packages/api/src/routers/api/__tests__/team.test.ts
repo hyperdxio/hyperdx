@@ -27,8 +27,7 @@ describe('team router', () => {
     expect(_.omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
-  "name": "fake@deploysentinel.com's Team",
-  "sentryDSN": "",
+  "name": "fake@deploysentinel.com's Team"
 }
 `);
   });

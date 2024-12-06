@@ -156,15 +156,17 @@ services:
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
       NEXT_PUBLIC_SERVER_URL: 'http://api:${HYPERDX_API_PORT}'
       NODE_ENV: development
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-app'
       PORT: ${HYPERDX_APP_PORT}
     volumes:
+      - ./packages/app/mdx.d.ts:/app/mdx.d.ts
+      - ./packages/app/next-env.d.ts:/app/next-env.d.ts
+      - ./packages/app/next.config.js:/app/next.config.js
       - ./packages/app/pages:/app/pages
       - ./packages/app/public:/app/public
       - ./packages/app/src:/app/src
       - ./packages/app/styles:/app/styles
-      - ./packages/app/mdx.d.ts:/app/mdx.d.ts
-      - ./packages/app/next-env.d.ts:/app/next-env.d.ts
-      - ./packages/app/next.config.js:/app/next.config.js
     networks:
       - internal
     depends_on:
