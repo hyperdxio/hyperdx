@@ -26,11 +26,9 @@ FROM base AS builder
 # doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
 ARG OTEL_EXPORTER_OTLP_ENDPOINT
 ARG OTEL_SERVICE_NAME
-ARG SERVER_URL
 ARG IS_LOCAL_MODE
 ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
-ENV NEXT_PUBLIC_SERVER_URL $SERVER_URL
 ENV NEXT_PUBLIC_IS_LOCAL_MODE $IS_LOCAL_MODE
 
 COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./

@@ -125,6 +125,7 @@ services:
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NEXT_PUBLIC_CLICKHOUSE_HOST: http://ch-server:8123
+      NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       REDIS_URL: redis://redis:6379

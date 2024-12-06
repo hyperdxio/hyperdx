@@ -105,7 +105,6 @@ release:
 		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
-		--build-arg HYPERDX_API_PORT=${HYPERDX_API_PORT} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-app \
 		-t ${IMAGE_NAME}:${IMAGE_VERSION}-app \
