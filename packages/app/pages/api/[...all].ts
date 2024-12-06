@@ -25,8 +25,9 @@ export default (req: NextApiRequest, res: NextApiResponse) => {
   return proxy(req, res, error => {
     if (error) {
       console.error(error);
-      res.status(500).end('Proxy error');
+      res.status(500).send('API proxy error');
+      return;
     }
-    res.status(404).end('Not found');
+    res.status(404).send('Not found');
   });
 };
