@@ -44,9 +44,11 @@ COPY --from=app ./pages ./pages
 COPY --from=app ./public ./public 
 COPY --from=app ./styles ./styles
 
+ARG HYPERDX_API_PORT
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE false
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
+ENV NEXT_PUBLIC_SERVER_URL http://127.0.0.1:${HYPERDX_API_PORT}
 RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 

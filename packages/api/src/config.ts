@@ -9,7 +9,6 @@ export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
 export const CODE_VERSION = env.CODE_VERSION as string;
-export const COOKIE_DOMAIN = env.COOKIE_DOMAIN as string; // prod ONLY
 export const EXPRESS_SESSION_SECRET = env.EXPRESS_SESSION_SECRET as string;
 export const FRONTEND_URL = env.FRONTEND_URL as string;
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;

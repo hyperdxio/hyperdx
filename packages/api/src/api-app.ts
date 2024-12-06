@@ -3,7 +3,6 @@ import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
 import session from 'express-session';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import ms from 'ms';
 import onHeaders from 'on-headers';
 
@@ -51,10 +50,13 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   store: new MongoStore({ mongoUrl: config.MONGO_URI }),
 };
 
-if (config.IS_PROD) {
-  app.set('trust proxy', 1); // Super important or cookies don't get set in prod
-  sess.cookie.secure = true;
-  sess.cookie.domain = config.COOKIE_DOMAIN;
+app.set('trust proxy', 1);
+if (config.FRONTEND_URL) {
+  const feUrl = new URL(config.FRONTEND_URL);
+  sess.cookie.domain = feUrl.hostname;
+  if (feUrl.protocol === 'https:') {
+    sess.cookie.secure = true;
+  }
 }
 
 app.disable('x-powered-by');
