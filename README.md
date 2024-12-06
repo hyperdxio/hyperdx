@@ -154,6 +154,32 @@ features in the future. In the meantime, we're highly aligned with Gitlab's
 - [Discord](https://discord.gg/FErRRKU78j)
 - [Email](mailto:support@hyperdx.io)
 
+## HyperDX V2 Roadmap
+
+HyperDX v2 is currently in early beta, with the goals of accomplishing
+deployment simplicity, native SQL support, and improved performance for PB+
+deployments. Currently we've released a subset of features with the goal of
+getting early feedback from the community.
+
+Here's a high-level list of support we're working on delivering as part
+of v2:
+
+- [x] Log & Trace Search w/ Lucene & SQL
+- [x] Charting & Dashboarding
+- [x] Event Deltas
+- [x] Performance Improvements
+- [ ] Authentication & Saving Sources/Connections
+- [ ] Saved Searches & Dashboards
+- [ ] Alerting
+- [ ] PromQL-based Metrics
+- [ ] OTLP/SQL-based Metrics
+- [ ] Browser Monitoring/Session Replay
+- [ ] Raw SQL Charting
+- [ ] Improved Custom Domain/TLS Support
+- [ ] Official Helm Chart
+- [ ] v1 Migration Tooling
+- [ ] Public API
+
 ## License
 
 [MIT](/LICENSE)
