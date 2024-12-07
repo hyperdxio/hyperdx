@@ -1,4 +1,4 @@
-version: '3'
+name: hdx-oss-dev
 x-hyperdx-logging: &hyperdx-logging
   driver: fluentd
   options:
@@ -6,7 +6,6 @@ x-hyperdx-logging: &hyperdx-logging
     labels: 'service.name'
 services:
   # miner:
-  #   container_name: hdx-oss-dev-miner
   #   build:
   #     context: .
   #     dockerfile: ./packages/miner/Dockerfile
@@ -29,7 +28,6 @@ services:
     labels:
       service.name: 'hdx-oss-dev-redis'
     image: redis:7.0.11-alpine
-    container_name: hdx-oss-dev-redis
     volumes:
       - .volumes/redis:/data
     ports:
@@ -43,7 +41,6 @@ services:
     labels:
       service.name: 'hdx-oss-dev-db'
     image: mongo:5.0.14-focal
-    container_name: hdx-oss-dev-db
     volumes:
       - .volumes/db:/data/db
     ports:
@@ -73,7 +70,6 @@ services:
     depends_on:
       - ch-server
   # task-check-alerts:
-  #   container_name: hdx-oss-dev-task-check-alerts
   #   build:
   #     context: .
   #     dockerfile: ./packages/api/Dockerfile
@@ -110,13 +106,12 @@ services:
   #     - db
   #     - redis
   api:
-    container_name: hdx-oss-dev-api
     build:
       context: .
       dockerfile: ./packages/api/Dockerfile
       target: dev
     ports:
-      - 8000:8000
+      - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
@@ -125,22 +120,20 @@ services:
       CLICKHOUSE_PASSWORD: api
       CLICKHOUSE_USER: api
       EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: 'http://localhost:8080' # need to be localhost (CORS)
+      FRONTEND_URL: 'http://localhost:${HYPERDX_APP_PORT}' # need to be localhost (CORS)
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 1
       HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      SENTRY_DSN: ${SENTRY_DSN}
       INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NODE_ENV: development
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-dev-api'
-      PORT: 8000
+      PORT: ${HYPERDX_API_PORT}
       REDIS_URL: redis://redis:6379
-      SERVER_URL: 'http://localhost:8000'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-false}
     volumes:
       - ./packages/api/src:/app/src
@@ -151,35 +144,35 @@ services:
       - db
       - redis
   app:
-    container_name: hdx-oss-dev-app
     build:
       context: .
       dockerfile: ./packages/app/Dockerfile
       target: dev
     ports:
-      - 8080:8080
+      - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
       NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
-      NEXT_PUBLIC_SERVER_URL: 'http://localhost:8000' # need to be localhost (CORS)
+      NEXT_PUBLIC_SERVER_URL: 'http://api:${HYPERDX_API_PORT}'
       NODE_ENV: development
-      PORT: 8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-dev-app'
+      PORT: ${HYPERDX_APP_PORT}
     volumes:
+      - ./packages/app/mdx.d.ts:/app/mdx.d.ts
+      - ./packages/app/next-env.d.ts:/app/next-env.d.ts
+      - ./packages/app/next.config.js:/app/next.config.js
       - ./packages/app/pages:/app/pages
       - ./packages/app/public:/app/public
       - ./packages/app/src:/app/src
       - ./packages/app/styles:/app/styles
-      - ./packages/app/mdx.d.ts:/app/mdx.d.ts
-      - ./packages/app/next-env.d.ts:/app/next-env.d.ts
-      - ./packages/app/next.config.js:/app/next.config.js
     networks:
       - internal
     depends_on:
       - api
   ch-server:
     image: clickhouse/clickhouse-server:head-alpine
-    container_name: hdx-oss-dev-ch-server
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native

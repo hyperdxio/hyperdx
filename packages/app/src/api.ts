@@ -10,7 +10,7 @@ import type {
 } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
-import { IS_LOCAL_MODE, SERVER_URL } from './config';
+import { IS_LOCAL_MODE } from './config';
 import type {
   AlertChannel,
   AlertInterval,
@@ -116,12 +116,8 @@ export function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
-export const apiConfigs = {
-  prefixUrl: SERVER_URL,
-};
-
 export const server = ky.create({
-  prefixUrl: SERVER_URL,
+  prefixUrl: '/api',
   credentials: 'include',
   hooks: {
     afterResponse: [loginHook],
@@ -134,7 +130,6 @@ export const hdxServer = (
   options?: Options | undefined,
 ): ResponsePromise => {
   return server(url, {
-    ...apiConfigs,
     ...options,
   });
 };

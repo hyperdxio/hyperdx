@@ -5,7 +5,7 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { loginHook } from '@/api';
 import { timeBucketByGranularity } from '@/ChartUtils';
-import { CLICKHOUSE_HOST, IS_LOCAL_MODE, SERVER_URL } from '@/config';
+import { CLICKHOUSE_HOST, IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
 import { SQLInterval } from '@/sqlTypes';
 import { hashCode } from '@/utils';
