@@ -17,14 +17,11 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import api from '@/api';
-import Checkbox from '@/Checkbox';
 import {
   ClickHouseQueryError,
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@/clickhouse';
-import FieldMultiSelect from '@/FieldMultiSelect';
 import { useTablePrimaryKey } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
@@ -33,9 +30,15 @@ import { SelectList } from '@/sqlTypes';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
-import { useLocalStorage, usePrevious, useWindowSize } from '@/utils';
+import {
+  getLogLevelClass,
+  useLocalStorage,
+  usePrevious,
+  useWindowSize,
+} from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
 type Row = Record<string, any> & { duration: number };
@@ -56,6 +59,40 @@ const MAX_CELL_LENGTH = 500;
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
   return accessor(row, column);
+}
+
+function inferLogLevelColumn(rows: Record<string, any>[]) {
+  const MAX_ROWS_TO_INSPECT = 100;
+  const levelCounts: Record<string, number> = {};
+  const inspectRowCount = Math.min(rows.length, MAX_ROWS_TO_INSPECT);
+  for (let i = 0; i < inspectRowCount; i++) {
+    const row = rows[i];
+    Object.keys(row).forEach(key => {
+      const value = row[key];
+      if (
+        (value?.length || 0) > 0 &&
+        (value?.length || 0) < 512 && // avoid inspecting long strings
+        getLogLevelClass(value) != null
+      ) {
+        levelCounts[key] = (levelCounts[key] ?? 0) + 1;
+      }
+    });
+  }
+
+  let maxCount = 0;
+  let maxKey = '';
+  for (const [key, count] of Object.entries(levelCounts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      maxKey = key;
+    }
+  }
+
+  if (maxCount > 0) {
+    return maxKey;
+  }
+
+  return undefined;
 }
 
 export const RawLogTable = memo(
@@ -162,6 +199,10 @@ export const RawLogTable = memo(
       }
     }, [isLive, prevIsLive]);
 
+    const logLevelColumn = useMemo(() => {
+      return inferLogLevelColumn(dedupedRows);
+    }, [dedupedRows]);
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
         {
@@ -192,64 +233,14 @@ export const RawLogTable = memo(
           size: 8,
           enableResizing: false,
         },
-        // {
-        //   accessorKey: 'timestamp',
-        //   header: () =>
-        //     isSmallScreen
-        //       ? 'Time'
-        //       : `Timestamp${isUTC ? ' (UTC)' : ' (Local)'}`,
-        //   cell: info => {
-        //     // FIXME: since original timestamp doesn't come with timezone info
-        //     const date = new Date(info.getValue<string>());
-        //     return (
-        //       <span className="text-muted">
-        //         <FormatTime
-        //           value={date}
-        //           format={isSmallScreen ? 'short' : 'withMs'}
-        //         />
-        //       </span>
-        //     );
-        //   },
-        //   size: columnSizeStorage.timestamp ?? (isSmallScreen ? 75 : 180),
-        // },
-        // {
-        //   accessorKey: 'severity_text',
-        //   header: 'Level',
-        //   cell: info => (
-        //     <span
-        //     // role="button"
-        //     // onClick={() =>
-        //     //   onPropertySearchClick('level', info.getValue<string>())
-        //     // }
-        //     >
-        //       <LogLevel level={info.getValue<string>()} />
-        //     </span>
-        //   ),
-        //   size: columnSizeStorage.severity_text ?? (isSmallScreen ? 50 : 100),
-        // },
-        // ...(showServiceColumn
-        //   ? [
-        //       {
-        //         accessorKey: '_service',
-        //         header: 'Service',
-        //         cell: (info: CellContext<any, unknown>) => (
-        //           <span
-        //           // role="button"
-        //           // onClick={() =>
-        //           //   onPropertySearchClick('service', info.getValue<string>())
-        //           // }
-        //           >
-        //             {info.getValue<string>()}
-        //           </span>
-        //         ),
-        //         size: columnSizeStorage._service ?? (isSmallScreen ? 70 : 100),
-        //       },
-        //     ]
-        //   : []),
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
           return {
+            meta: {
+              column,
+              jsColumnType,
+            },
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
@@ -265,6 +256,11 @@ export const RawLogTable = memo(
               }
 
               const strValue = typeof value === 'string' ? value : `${value}`;
+
+              if (column === logLevelColumn) {
+                return <LogLevel level={strValue} />;
+              }
+
               const truncatedStrValue =
                 strValue.length > MAX_CELL_LENGTH
                   ? `${strValue.slice(0, MAX_CELL_LENGTH)}...`
@@ -286,42 +282,16 @@ export const RawLogTable = memo(
                 : (columnSizeStorage[column] ?? 150),
           };
         }) as ColumnDef<any>[]),
-        // {
-        //   accessorKey: 'body',
-        //   header: () => (
-        //     <span>
-        //       Message{' '}
-        //       {onShowPatternsClick != null && !IS_LOCAL_MODE && (
-        //         <span>
-        //           •{' '}
-        //           <Text
-        //             span
-        //             size="xs"
-        //             c="green"
-        //             onClick={onShowPatternsClick}
-        //             role="button"
-        //           >
-        //             <i className="bi bi-collection"></i> Group Similar Events
-        //           </Text>
-        //         </span>
-        //       )}
-        //     </span>
-        //   ),
-        //   cell: info => <div>{stripAnsi(info.getValue<string>())}</div>,
-        //   size: UNDEFINED_WIDTH,
-        //   enableResizing: false,
-        // },
       ],
       [
         isUTC,
         highlightedLineId,
         _onRowExpandClick,
         displayedColumns,
-        onShowPatternsClick,
-        isSmallScreen,
         columnSizeStorage,
-        showServiceColumn,
         columnNameMap,
+        columnTypeMap,
+        logLevelColumn,
       ],
     );
 
@@ -512,7 +482,7 @@ export const RawLogTable = memo(
                 {headerGroup.headers.map((header, headerIndex) => {
                   return (
                     <th
-                      className="overflow-hidden text-truncate"
+                      className="overflow-hidden text-truncate bg-hdx-dark"
                       key={header.id}
                       colSpan={header.colSpan}
                       style={{

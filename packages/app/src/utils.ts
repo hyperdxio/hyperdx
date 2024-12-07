@@ -282,6 +282,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
           level.startsWith('ok') ||
           level.startsWith('notice') ||
           level.startsWith('verbose') ||
+          level.startsWith('unset') ||
           level.startsWith('trace')
         ? 'info'
         : undefined;

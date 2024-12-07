@@ -6,6 +6,8 @@ import { TableSourceForm } from '@/components/SourceForm';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import LogLevel from './LogLevel';
+
 const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
 
 const MAX_MAIN_CONTENT_LENGTH = 2000;
@@ -38,12 +40,14 @@ export default function DBRowSidePanelHeader({
   mainContent = '',
   mainContentHeader,
   date,
+  severityText,
 }: {
   sourceId: string;
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
   tags: { [key: string]: string };
+  severityText?: string;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
 
@@ -58,14 +62,20 @@ export default function DBRowSidePanelHeader({
 
   return (
     <>
-      {isValidDate(date) && (
-        <>
+      <Flex>
+        {severityText && <LogLevel level={severityText} />}
+        {severityText && isValidDate(date) && (
+          <Text size="xs" mx="xs" c="gray.4">
+            &middot;
+          </Text>
+        )}
+        {isValidDate(date) && (
           <Text c="gray.4" size="xs">
             <FormatTime value={date} /> &middot;{' '}
             {formatDistanceToNowStrictShort(date)} ago
           </Text>
-        </>
-      )}
+        )}
+      </Flex>
       {mainContent ? (
         <Paper
           bg="dark.7"

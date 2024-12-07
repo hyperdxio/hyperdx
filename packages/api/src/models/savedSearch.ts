@@ -27,6 +27,7 @@ export const SavedSearch = mongoose.model<ISavedSearch>(
       select: String,
       where: String,
       whereLanguage: String,
+      orderBy: String,
       source: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,

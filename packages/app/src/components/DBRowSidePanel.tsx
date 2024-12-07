@@ -140,7 +140,7 @@ export default function DBRowSidePanel({
   );
 
   const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen) {
+    if (!subDrawerOpen && rowId != null) {
       _onClose();
     }
   }, ['mouseup', 'touchend']);
@@ -157,6 +157,8 @@ export default function DBRowSidePanel({
 
   const mainContentColumn = getEventBody(source);
   const mainContent: string | undefined = normalizedRow?.['__hdx_body'];
+  const severityText: string | undefined =
+    normalizedRow?.['__hdx_severity_text'];
 
   const rng = useMemo(() => {
     return [
@@ -201,6 +203,7 @@ export default function DBRowSidePanel({
                   tags={{}}
                   mainContent={mainContent}
                   mainContentHeader={mainContentColumn}
+                  severityText={severityText}
                 />
               </Box>
               {/* <SidePanelHeader

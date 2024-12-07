@@ -103,7 +103,7 @@ export default function SQLInlineEditor({
                 keywords.join(' ') +
                 (disableKeywordAutocomplete
                   ? ''
-                  : ' AND OR NOT IN LIKE ILIKE BETWEEN'),
+                  : ' AND OR NOT IN LIKE ILIKE BETWEEN ASC DESC'),
               // identifierQuotes: '`',
             }),
           }),

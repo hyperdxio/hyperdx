@@ -12,6 +12,9 @@ module.exports = {
   moduleNameMapper: {
     '@/(.*)$': '<rootDir>/src/$1',
   },
+  // Prettier 3 not supported yet
+  // See: https://stackoverflow.com/a/76818962
+  prettierPath: null,
   globals: {
     // This is necessary because next.js forces { "jsx": "preserve" }, but ts-jest appears to require { "jsx": "react-jsx" }
     'ts-jest': {

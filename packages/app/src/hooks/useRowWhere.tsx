@@ -70,10 +70,16 @@ export default function useRowWhere({
             default:
               // Handle the case when string is too long
               if (value.length > MAX_STRING_LENGTH) {
-                return SqlString.format(`lower(hex(MD5(?)))=?`, [
-                  SqlString.raw(valueExpr),
-                  MD5(value).toString(),
-                ]);
+                return SqlString.format(
+                  // We need to slice since md5 can be slow on big payloads
+                  // which will block the main thread on search table render
+                  // UTF8 since js only slices in utf8 points, not bytes
+                  `lower(hex(MD5(leftUTF8(?, 1000))))=?`,
+                  [
+                    SqlString.raw(valueExpr),
+                    MD5(value.substring(0, 1000)).toString(),
+                  ],
+                );
               }
               return SqlString.format(`?=?`, [
                 SqlString.raw(valueExpr), // don't escape expressions
