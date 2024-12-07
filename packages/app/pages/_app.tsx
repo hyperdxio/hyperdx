@@ -16,7 +16,6 @@ import {
 } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
-import { apiConfigs } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
@@ -62,16 +61,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     fetch('/api/config')
       .then(res => res.json())
       .then(_jsonData => {
-        // Set API url dynamically for users who aren't rebuilding
-        try {
-          const url = new URL(_jsonData.apiServerUrl);
-          if (url != null) {
-            apiConfigs.prefixUrl = url.toString().replace(/\/$/, '');
-          }
-        } catch (err) {
-          // ignore
-        }
-
         if (_jsonData?.apiKey) {
           let hostname;
           try {
@@ -86,6 +75,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             maskAllInputs: true,
             maskAllText: true,
             service: _jsonData.serviceName,
+            disableReplay: true,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
           });

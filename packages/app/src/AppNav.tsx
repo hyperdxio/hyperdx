@@ -41,7 +41,7 @@ import {
   AppNavUserMenu,
 } from './AppNav.components';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import { IS_LOCAL_MODE, SERVER_URL } from './config';
+import { IS_LOCAL_MODE } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
@@ -1106,7 +1106,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             teamName={meData?.team?.name}
             isCollapsed={isCollapsed}
             onClickUserPreferences={openUserPreferences}
-            logoutUrl={IS_LOCAL_MODE ? null : `${SERVER_URL}/logout`}
+            logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
         </div>
       </div>

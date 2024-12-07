@@ -66,31 +66,12 @@ dev-migrate-db:
 	@echo "Migrating ClickHouse db...\n"
 	npx nx run @hyperdx/api:dev:migrate-ch
 
-.PHONY: build-local
-build-local:
-	docker build ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod &
-	docker build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
-	docker build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
-	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
-	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser &
-	docker build \
-		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg PORT=${HYPERDX_API_PORT} \
-		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod &
-	docker build \
-		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
-		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
-		--build-arg PORT=${HYPERDX_APP_PORT} \
-		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
-		. -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod
-
 .PHONY: version
 version:
 	sh ./version.sh
 
-.PHONY: release-v2-beta
-release-v2-beta:
+.PHONY: release-local
+release-local:
 	docker buildx build --squash . -f ./docker/local/Dockerfile \
 		--build-context clickhouse=./docker/clickhouse \
 		--build-context otel-collector=./docker/otel-collector \
@@ -98,35 +79,30 @@ release-v2-beta:
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${V2_BETA_IMAGE_VERSION} \
-		-t ${LOCAL_IMAGE_NAME}:${V2_BETA_IMAGE_VERSION} --push
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION} --push
+
+.PHONY: release-ui
+release-ui:
+	docker buildx build . -f ./packages/app/Dockerfile \
+		--build-arg IS_LOCAL_MODE=true \
+		--build-arg PORT=${HYPERDX_APP_PORT} \
+		--target prod \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-ui \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}-ui --push
 
 .PHONY: release
 release:
-	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod --push &
-	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod --push &
-	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod --push &
-	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod --push &
-	docker buildx build --build-arg CODE_VERSION=${LATEST_VERSION} --platform ${BUILD_PLATFORMS} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser --push &
-	docker buildx build \
-		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg PORT=${HYPERDX_API_PORT} \
-		--platform ${BUILD_PLATFORMS} . -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod --push &
-	docker buildx build \
-		--build-arg CODE_VERSION=${LATEST_VERSION} \
-		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
-		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
-		--build-arg PORT=${HYPERDX_APP_PORT} \
-		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
-		--platform ${BUILD_PLATFORMS} . -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod --push &
-	docker buildx build \
-		--squash . -f ./docker/local/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context ingestor=./docker/ingestor \
-		--build-context local=./docker/local \
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-otel-collector \
+		--target prod --push &
+	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
+		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:latest -t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${LATEST_VERSION} \
-		-t ${LOCAL_IMAGE_NAME}:latest -t ${LOCAL_IMAGE_NAME}:${LATEST_VERSION} --push
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-app \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION}-app \
+		--target prod --push

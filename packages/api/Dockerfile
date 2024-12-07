@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS base
+FROM node:18.20.3-alpine AS base
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN yarn run build
 
 ## prod ############################################################################################
 
-FROM 597726328204.dkr.ecr.us-east-2.amazonaws.com/ecr-public/docker/library/node:18.20.3-alpine AS prod
+FROM node:18.20.3-alpine AS prod
 
 ARG CODE_VERSION
 

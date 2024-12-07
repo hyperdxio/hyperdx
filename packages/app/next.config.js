@@ -8,29 +8,45 @@ const withNextra = require('nextra')({
   themeConfig: './src/nextra.config.tsx',
 });
 
-module.exports = withNextra({
-  async headers() {
-    return [
-      {
-        source: '/(.*)?', // Matches all pages
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-        ],
-      },
-    ];
+module.exports = {
+  experimental: {
+    instrumentationHook: true,
   },
-  // This slows down builds by 2x for some reason...
-  swcMinify: false,
-  publicRuntimeConfig: {
-    version,
+  // Ignore otel pkgs warnings
+  // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
+  webpack: (
+    config,
+    { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack },
+  ) => {
+    if (isServer) {
+      config.ignoreWarnings = [{ module: /opentelemetry/ }];
+    }
+    return config;
   },
-  productionBrowserSourceMaps: false,
-  ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
-    ? {
-        output: 'standalone',
-      }
-    : {}),
-});
+  ...withNextra({
+    async headers() {
+      return [
+        {
+          source: '/(.*)?', // Matches all pages
+          headers: [
+            {
+              key: 'X-Frame-Options',
+              value: 'DENY',
+            },
+          ],
+        },
+      ];
+    },
+    // This slows down builds by 2x for some reason...
+    swcMinify: false,
+    publicRuntimeConfig: {
+      version,
+    },
+    productionBrowserSourceMaps: false,
+    ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
+      ? {
+          output: 'standalone',
+        }
+      : {}),
+  }),
+};

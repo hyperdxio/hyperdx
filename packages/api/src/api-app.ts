@@ -1,9 +1,7 @@
-import * as Sentry from '@sentry/node';
 import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
 import session from 'express-session';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import ms from 'ms';
 import onHeaders from 'on-headers';
 
@@ -23,22 +21,6 @@ import passport from './utils/passport';
 
 const app: express.Application = express();
 
-if (config.SENTRY_DSN) {
-  Sentry.init({
-    dsn: config.SENTRY_DSN,
-    environment: config.NODE_ENV,
-    release: config.CODE_VERSION,
-  });
-
-  Sentry.setContext('hyperdx', {
-    serviceName: config.OTEL_SERVICE_NAME,
-  });
-}
-
-// RequestHandler creates a separate execution context using domains, so that every
-// transaction/span/breadcrumb is attached to its own Hub instance
-app.use(Sentry.Handlers.requestHandler());
-
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
   saveUninitialized: false,
@@ -51,10 +33,13 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   store: new MongoStore({ mongoUrl: config.MONGO_URI }),
 };
 
-if (config.IS_PROD) {
-  app.set('trust proxy', 1); // Super important or cookies don't get set in prod
-  sess.cookie.secure = true;
-  sess.cookie.domain = config.COOKIE_DOMAIN;
+app.set('trust proxy', 1);
+if (config.FRONTEND_URL) {
+  const feUrl = new URL(config.FRONTEND_URL);
+  sess.cookie.domain = feUrl.hostname;
+  if (feUrl.protocol === 'https:') {
+    sess.cookie.secure = true;
+  }
 }
 
 app.disable('x-powered-by');
@@ -123,10 +108,6 @@ app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 // API v1
 app.use('/api/v1', externalRoutersV1);
-
-// ---------------------------------------------------------------------
-// The error handler must be before any other error middleware and after all controllers
-app.use(Sentry.Handlers.errorHandler());
 
 // error handling
 app.use(appErrorHandler);

@@ -16,7 +16,6 @@ import {
 } from '@mantine/core';
 
 import api from './api';
-import { SERVER_URL } from './config';
 import * as config from './config';
 import LandingHeader from './LandingHeader';
 import { CheckOrX, PasswordCheck } from './PasswordCheck';
@@ -112,7 +111,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       }
     : {
         controller: {
-          action: `${SERVER_URL}/login/password`,
+          action: `/api/login/password`,
           method: 'POST',
         },
         email: { name: 'email' },
