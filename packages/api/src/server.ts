@@ -2,7 +2,6 @@ import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
 
-import * as clickhouse from './clickhouse';
 import * as config from './config';
 import { connectDB, mongooseConnection } from './models';
 import logger from './utils/logger';
@@ -35,12 +34,10 @@ export default class Server {
   protected async shutdown(signal?: string) {
     let hasError = false;
     logger.info('Closing all db clients...');
-    const [redisCloseResult, mongoCloseResult, clickhouseCloseResult] =
-      await Promise.allSettled([
-        redisClient.disconnect(),
-        mongooseConnection.close(false),
-        clickhouse.client.close(),
-      ]);
+    const [redisCloseResult, mongoCloseResult] = await Promise.allSettled([
+      redisClient.disconnect(),
+      mongooseConnection.close(false),
+    ]);
 
     if (redisCloseResult.status === 'rejected') {
       hasError = true;
@@ -54,13 +51,6 @@ export default class Server {
       logger.error(serializeError(mongoCloseResult.reason));
     } else {
       logger.info('MongoDB client closed.');
-    }
-
-    if (clickhouseCloseResult.status === 'rejected') {
-      hasError = true;
-      logger.error(serializeError(clickhouseCloseResult.reason));
-    } else {
-      logger.info('Clickhouse client closed.');
     }
 
     if (hasError) {
@@ -95,10 +85,6 @@ export default class Server {
       });
     }
 
-    await Promise.all([
-      connectDB(),
-      redisClient.connect(),
-      clickhouse.connect(),
-    ]);
+    await Promise.all([connectDB(), redisClient.connect()]);
   }
 }

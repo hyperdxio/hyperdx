@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
-import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -13,24 +12,9 @@ import {
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
-import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
-
-const getSentryDSN = (apiKey: string, ingestorApiUrl: string) => {
-  try {
-    const url = new URL(ingestorApiUrl);
-    url.username = apiKey.replaceAll('-', '');
-    url.pathname = '0';
-    // TODO: Set up hostname from env variable
-    url.hostname = 'localhost';
-    return url.toString();
-  } catch (e) {
-    logger.error(serializeError(e));
-    return '';
-  }
-};
 
 router.get('/', async (req, res, next) => {
   try {
@@ -56,10 +40,7 @@ router.get('/', async (req, res, next) => {
       throw new Error(`Team ${teamId} not found for user ${userId}`);
     }
 
-    res.json({
-      ...team.toJSON(),
-      sentryDSN: getSentryDSN(team.apiKey, config.INGESTOR_API_URL),
-    });
+    res.json(team.toJSON());
   } catch (e) {
     next(e);
   }

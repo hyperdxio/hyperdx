@@ -3,8 +3,6 @@ import { NextSeo } from 'next-seo';
 import { Button, Form } from 'react-bootstrap';
 import { Paper } from '@mantine/core';
 
-import { SERVER_URL } from './config';
-
 export default function JoinTeam() {
   const router = useRouter();
   const { err, token } = router.query;
@@ -21,7 +19,7 @@ export default function JoinTeam() {
             <div className="text-center">
               <Form
                 className="text-start"
-                action={`${SERVER_URL}/team/setup/${token}`}
+                action={`/api/team/setup/${token}`}
                 method="POST"
               >
                 <Form.Label
