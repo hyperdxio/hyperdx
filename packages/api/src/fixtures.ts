@@ -105,16 +105,10 @@ class MockAPIServer extends MockServer {
   protected readonly appType = 'api';
 }
 
-class MockAggregatorServer extends MockServer {
-  protected readonly appType = 'aggregator';
-}
-
-export const getServer = (appType: 'api' | 'aggregator' = 'api') => {
+export const getServer = (appType: 'api' = 'api') => {
   switch (appType) {
     case 'api':
       return new MockAPIServer();
-    case 'aggregator':
-      return new MockAggregatorServer();
     default:
       throw new Error(`Invalid app type: ${appType}`);
   }

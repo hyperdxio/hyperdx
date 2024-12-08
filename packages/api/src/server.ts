@@ -21,11 +21,6 @@ export default class Server {
           // eslint-disable-next-line n/no-unsupported-features/es-syntax
           (await import('./api-app').then(m => m.default)) as any,
         );
-      case 'aggregator':
-        return http.createServer(
-          // eslint-disable-next-line n/no-unsupported-features/es-syntax
-          (await import('./aggregator-app').then(m => m.default)) as any,
-        );
       default:
         throw new Error(`Invalid APP_TYPE: ${config.APP_TYPE}`);
     }
