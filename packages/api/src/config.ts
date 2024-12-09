@@ -1,10 +1,7 @@
 const env = process.env;
 export const NODE_ENV = env.NODE_ENV as string;
 
-export const AGGREGATOR_API_URL = env.AGGREGATOR_API_URL as string;
-export const AGGREGATOR_PAYLOAD_SIZE_LIMIT =
-  env.AGGREGATOR_PAYLOAD_SIZE_LIMIT as string;
-export const APP_TYPE = env.APP_TYPE as 'api' | 'aggregator' | 'scheduled-task';
+export const APP_TYPE = env.APP_TYPE as 'api' | 'scheduled-task';
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;

@@ -113,7 +113,6 @@ services:
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
     environment:
-      AGGREGATOR_API_URL: 'http://aggregator:8001'
       APP_TYPE: 'api'
       CLICKHOUSE_HOST: http://ch-server:8123
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}

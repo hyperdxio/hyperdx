@@ -26,14 +26,6 @@
             </networks>
             <quota>default</quota>
         </api>
-        <aggregator>
-            <password>aggregator</password>
-            <profile>default</profile>
-            <networks>
-                <ip>::/0</ip>
-            </networks>
-            <quota>default</quota>
-        </aggregator>
         <worker>
             <password>worker</password>
             <profile>default</profile>

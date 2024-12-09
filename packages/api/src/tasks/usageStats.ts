@@ -14,7 +14,7 @@ const logger = winston.createLogger({
   transports: [
     HyperDX.getWinstonTransport('info', {
       apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
-      baseUrl: 'https://in.hyperdx.io',
+      baseUrl: 'https://in-otel.hyperdx.io/v1/logs',
       maxLevel: 'info',
       service: 'hyperdx-oss-usage-stats',
     } as any),
@@ -61,32 +61,17 @@ const healthChecks = async () => {
     }
   };
 
-  const ingestorUrl = new URL(config.INGESTOR_API_URL ?? '');
   const otelCollectorUrl = new URL(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
-  const aggregatorUrl = new URL(config.AGGREGATOR_API_URL ?? '');
 
-  const [pingIngestor, pingOtelCollector, pingAggregator, pingMiner, pingCH] =
-    await Promise.all([
-      ingestorUrl.hostname && ingestorUrl.protocol
-        ? ping(`${ingestorUrl.protocol}//${ingestorUrl.hostname}:8686/health`)
-        : Promise.resolve(null),
-      otelCollectorUrl.hostname && otelCollectorUrl.protocol
-        ? ping(
-            `${otelCollectorUrl.protocol}//${otelCollectorUrl.hostname}:13133`,
-          )
-        : Promise.resolve(null),
-      aggregatorUrl.href
-        ? ping(`${aggregatorUrl.href}health`)
-        : Promise.resolve(null),
-      ping(`${config.MINER_API_URL}/health`),
-      ping(`${config.CLICKHOUSE_HOST}/ping`),
-    ]);
+  const [pingOtelCollector, pingCH] = await Promise.all([
+    otelCollectorUrl.hostname && otelCollectorUrl.protocol
+      ? ping(`${otelCollectorUrl.protocol}//${otelCollectorUrl.hostname}:13133`)
+      : Promise.resolve(null),
+    ping(`${config.CLICKHOUSE_HOST}/ping`),
+  ]);
 
   return {
-    pingIngestor,
     pingOtelCollector,
-    pingAggregator,
-    pingMiner,
     pingCH,
   };
 };
