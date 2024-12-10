@@ -1,7 +1,7 @@
 version: '3'
 services:
   go-parser:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-go-parser
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-go-parser
     container_name: hdx-oss-go-parser
     environment:
       AGGREGATOR_API_URL: 'http://aggregator:8001'
@@ -16,7 +16,7 @@ services:
     networks:
       - internal
   miner:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-miner
     container_name: hdx-oss-miner
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
@@ -30,7 +30,7 @@ services:
     networks:
       - internal
   hostmetrics:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-hostmetrics
     container_name: hdx-oss-hostmetrics
     environment:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
@@ -40,7 +40,7 @@ services:
     networks:
       - internal
   ingestor:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-ingestor
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-ingestor
     container_name: hdx-oss-ingestor
     volumes:
       - .volumes/ingestor_data:/var/lib/vector
@@ -76,7 +76,7 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-otel-collector
     container_name: hdx-oss-otel-collector
     environment:
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -94,7 +94,7 @@ services:
     networks:
       - internal
   aggregator:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-api
     container_name: hdx-oss-aggregator
     ports:
       - 8001:8001
@@ -118,7 +118,7 @@ services:
       - redis
       - ch-server
   task-check-alerts:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-api
     container_name: hdx-oss-task-check-alerts
     entrypoint: 'node'
     command: './build/tasks/index.js check-alerts'
@@ -150,7 +150,7 @@ services:
       - db
       - redis
   api:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-api
     container_name: hdx-oss-api
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
@@ -185,7 +185,7 @@ services:
       - db
       - redis
   app:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-app
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
     container_name: hdx-oss-app
     ports:
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
