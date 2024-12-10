@@ -78,16 +78,20 @@ export function useDashboard({
   dashboardId?: string;
   presetConfig?: Dashboard;
 }) {
-  const [localDashboard, setLocalDashboard] = useQueryState(
-    'dashboard',
-    parseAsJson<Dashboard>().withDefault(
+  const defaultDashboard = useMemo(() => {
+    return (
       presetConfig ?? {
         id: '',
         name: 'My New Dashboard',
         tiles: [],
         tags: [],
-      },
-    ),
+      }
+    );
+  }, [presetConfig]);
+
+  const [localDashboard, setLocalDashboard] = useQueryState(
+    'dashboard',
+    parseAsJson<Dashboard>(),
   );
 
   const updateDashboard = useUpdateDashboard();
@@ -107,23 +111,23 @@ export function useDashboard({
 
   const dashboard: Dashboard | undefined = useMemo(() => {
     if (isLocalDashboard) {
-      return localDashboard;
+      return localDashboard ?? defaultDashboard;
     }
     return remoteDashboard;
-  }, [isLocalDashboard, localDashboard, remoteDashboard]);
+  }, [isLocalDashboard, localDashboard, defaultDashboard, remoteDashboard]);
 
   const setDashboard = useCallback(
     (newDashboard: Dashboard, onSuccess?: VoidFunction) => {
       if (isLocalDashboard) {
         setLocalDashboard(newDashboard);
         onSuccess?.();
+      } else {
+        return updateDashboard.mutate(newDashboard, {
+          onSuccess: () => {
+            onSuccess?.();
+          },
+        });
       }
-
-      return updateDashboard.mutate(newDashboard, {
-        onSuccess: () => {
-          onSuccess?.();
-        },
-      });
     },
     [isLocalDashboard, setLocalDashboard, updateDashboard],
   );
@@ -138,6 +142,7 @@ export function useDashboard({
     setDashboard,
     dashboardHash,
     isLocalDashboard,
+    isLocalDashboardEmpty: localDashboard == null,
   };
 }
 
