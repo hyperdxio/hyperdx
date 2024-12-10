@@ -4,7 +4,12 @@ import store from 'store2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { ColumnMeta, filterColumnMetaByType, JSDataType } from '@/clickhouse';
+import {
+  ColumnMeta,
+  extractColumnReference,
+  filterColumnMetaByType,
+  JSDataType,
+} from '@/clickhouse';
 import { TSource } from '@/commonTypes';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
@@ -174,23 +179,6 @@ export function useDeleteSource() {
   });
 }
 
-function extractColumnReference(
-  sql: string,
-  maxIterations = 10,
-): string | null {
-  let iterations = 0;
-
-  // Loop until we remove all function calls and get just the column, with a maximum limit
-  while (/\w+\([^()]*\)/.test(sql) && iterations < maxIterations) {
-    // Replace the outermost function with its content
-    sql = sql.replace(/\w+\(([^()]*)\)/, '$1');
-    iterations++;
-  }
-
-  // If we reached the max iterations without resolving, return null to indicate an issue
-  return iterations < maxIterations ? sql.trim() : null;
-}
-
 function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   const nameToMeta = new Map(columns.map(c => [c.name, c]));
   const missingColumns = Array.from(requiredColumns).filter(
@@ -217,11 +205,13 @@ export async function inferTableSourceConfig({
     connectionId,
   });
 
-  const primaryKeys = await metadata.getTablePrimaryKey({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const primaryKeys = (
+    await metadata.getTableMetadata({
+      databaseName,
+      tableName,
+      connectionId,
+    })
+  ).primary_key;
   const keys = primaryKeys.split(',').map(k => k.trim());
 
   const isOtelLogSchema = hasAllColumns(columns, [
