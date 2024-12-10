@@ -45,7 +45,7 @@ HyperDX UI (on port 8080).
 You can spin up the container with the following command:
 
 ```bash
-docker run -p 8080:8080 -p 8123:8123 -p 4317:4317 -p 4318:4318 hyperdx/hyperdx-local:2-beta
+docker run -p 8080:8080 -p 8123:8123 -p 4317:4317 -p 4318:4318 docker.hyperdx.io/hyperdx/hyperdx-local:2-beta
 ```
 
 Afterwards, you can visit http://localhost:8080 to access the HyperDX UI. If
