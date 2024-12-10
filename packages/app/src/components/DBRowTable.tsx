@@ -20,9 +20,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ClickHouseQueryError,
   convertCHDataTypeToJSType,
+  extractColumnReference,
   JSDataType,
 } from '@/clickhouse';
-import { useTablePrimaryKey } from '@/hooks/useMetadata';
+import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import { ChartConfigWithDateRange } from '@/renderChartConfig';
@@ -681,24 +682,30 @@ export const RawLogTable = memo(
   },
 );
 
-function mergeSelectWithPrimaryKey(
+function mergeSelectWithPrimaryAndPartitionKey(
   select: SelectList,
   primaryKeys: string,
+  partitionKey: string,
 ): { select: SelectList; additionalKeysLength: number } {
-  const keys = primaryKeys.split(',').map(k => k.trim());
+  const partitionKeyArr = partitionKey
+    .split(',')
+    .map(k => extractColumnReference(k.trim()))
+    .filter((k): k is string => k != null && k.length > 0);
+  const primaryKeyArr = primaryKeys.split(',').map(k => k.trim());
+  const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
     const selectSplit = select
       .split(',')
       .map(s => s.trim())
       .filter(s => s.length > 0);
     const selectColumns = new Set(selectSplit);
-    const additionalKeys = keys.filter(k => !selectColumns.has(k));
+    const additionalKeys = allKeys.filter(k => !selectColumns.has(k));
     return {
       select: [...selectColumns, ...additionalKeys].join(','),
       additionalKeysLength: additionalKeys.length,
     };
   } else {
-    const additionalKeys = keys.map(k => ({ valueExpression: k }));
+    const additionalKeys = allKeys.map(k => ({ valueExpression: k }));
     return {
       select: [...select, ...additionalKeys],
       additionalKeysLength: additionalKeys.length,
@@ -731,23 +738,28 @@ export function DBSqlRowTable({
   isLive?: boolean;
   onScroll: (scrollTop: number) => void;
 }) {
-  const { data: primaryKey } = useTablePrimaryKey({
+  const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
     tableName: config.from.tableName,
     connectionId: config.connection,
   });
 
+  const primaryKey = tableMetadata?.primary_key;
+  const partitionKey = tableMetadata?.partition_key;
+
   const mergedConfig = useMemo(() => {
-    if (primaryKey == null) {
+    if (primaryKey == null || partitionKey == null) {
       return undefined;
     }
 
-    const { select, additionalKeysLength } = mergeSelectWithPrimaryKey(
-      config.select,
-      primaryKey,
-    );
+    const { select, additionalKeysLength } =
+      mergeSelectWithPrimaryAndPartitionKey(
+        config.select,
+        primaryKey,
+        partitionKey,
+      );
     return { ...config, select, additionalKeysLength };
-  }, [primaryKey, config]);
+  }, [primaryKey, partitionKey, config]);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
