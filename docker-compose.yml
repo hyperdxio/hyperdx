@@ -1,7 +1,7 @@
 name: hdx-oss
 services:
   # go-parser:
-  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-go-parser
+  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-go-parser
   #   environment:
   #     AGGREGATOR_API_URL: 'http://aggregator:8001'
   #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
@@ -15,7 +15,7 @@ services:
   #   networks:
   #     - internal
   # miner:
-  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-miner
+  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-miner
   #   environment:
   #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
   #     HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
@@ -28,7 +28,7 @@ services:
   #   networks:
   #     - internal
   # hostmetrics:
-  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-hostmetrics
+  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-hostmetrics
   #   environment:
   #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
   #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -53,7 +53,7 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-otel-collector
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -70,7 +70,7 @@ services:
     depends_on:
       - ch-server
   # task-check-alerts:
-  #   image: ${IMAGE_NAME}:${IMAGE_VERSION}-api
+  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
   #   entrypoint: 'node'
   #   command: './build/tasks/index.js check-alerts'
   #   environment:
@@ -101,7 +101,7 @@ services:
   #     - db
   #     - redis
   app:
-    image: ${IMAGE_NAME}:${IMAGE_VERSION}-app
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
