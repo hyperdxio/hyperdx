@@ -10,7 +10,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@/clickhouse';
-import { Field, metadata } from '@/metadata';
+import { Field, metadata, TableMetadata } from '@/metadata';
 import { ChartConfigWithDateRange } from '@/renderChartConfig';
 
 export function useColumns(
@@ -63,7 +63,7 @@ export function useAllFields(
   });
 }
 
-export function useTablePrimaryKey(
+export function useTableMetadata(
   {
     databaseName,
     tableName,
@@ -75,10 +75,10 @@ export function useTablePrimaryKey(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  return useQuery<string>({
-    queryKey: ['useMetadata.useTablePrimaryKeys', { databaseName, tableName }],
+  return useQuery<TableMetadata>({
+    queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
-      return await metadata.getTablePrimaryKey({
+      return await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
