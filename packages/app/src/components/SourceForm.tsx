@@ -514,6 +514,19 @@ export function TraceTableModelForm({
           connectionId={connectionId}
         />
       </FormRow>
+      <FormRow
+        label={'Implicit Column Expression'}
+        helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
+      >
+        <SQLInlineEditorControlled
+          database={databaseName}
+          table={tableName}
+          control={control}
+          name="implicitColumnExpression"
+          placeholder="SpanName"
+          connectionId={connectionId}
+        />
+      </FormRow>
     </Stack>
   );
 }

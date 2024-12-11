@@ -136,7 +136,7 @@ export const RawLogTable = memo(
     // ) => void;
     hasNextPage: boolean;
     highlightedLineId: string | undefined;
-    onScroll: (scrollTop: number) => void;
+    onScroll?: (scrollTop: number) => void;
     isLive: boolean;
     onShowPatternsClick?: () => void;
     tableId?: string;
@@ -465,7 +465,7 @@ export const RawLogTable = memo(
 
           if (e.target != null) {
             const { scrollTop } = e.target as HTMLDivElement;
-            onScroll(scrollTop);
+            onScroll?.(scrollTop);
           }
         }}
         ref={tableContainerRef}
@@ -731,12 +731,12 @@ export function DBSqlRowTable({
   onScroll,
 }: {
   config: ChartConfigWithDateRange;
-  onRowExpandClick: (where: string) => void;
+  onRowExpandClick?: (where: string) => void;
   highlightedLineId: string | undefined;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
-  onScroll: (scrollTop: number) => void;
+  onScroll?: (scrollTop: number) => void;
 }) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -825,7 +825,7 @@ export function DBSqlRowTable({
 
   const _onRowExpandClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowExpandClick(getRowWhere(row));
+      return onRowExpandClick?.(getRowWhere(row));
     },
     [onRowExpandClick, getRowWhere],
   );
