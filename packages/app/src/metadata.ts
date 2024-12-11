@@ -49,6 +49,33 @@ class MetadataCache {
   // TODO: Shard cache by time
 }
 
+export type TableMetadata = {
+  database: string;
+  name: string;
+  uuid: string;
+  engine: string;
+  is_temporary: number;
+  data_paths: string[];
+  metadata_path: string;
+  metadata_modification_time: string;
+  metadata_version: number;
+  create_table_query: string;
+  engine_full: string;
+  as_select: string;
+  partition_key: string;
+  sorting_key: string;
+  primary_key: string;
+  sampling_key: string;
+  storage_policy: string;
+  total_rows: string;
+  total_bytes: string;
+  total_bytes_uncompressed: string;
+  parts: string;
+  active_parts: string;
+  total_marks: string;
+  comment: string;
+};
+
 export class Metadata {
   private cache = new MetadataCache();
 
@@ -69,34 +96,7 @@ export class Metadata {
         query: sql.sql,
         query_params: sql.params,
         connectionId,
-      }).then(res =>
-        res.json<{
-          database: string;
-          name: string;
-          uuid: string;
-          engine: string;
-          is_temporary: number;
-          data_paths: string[];
-          metadata_path: string;
-          metadata_modification_time: string;
-          metadata_version: number;
-          create_table_query: string;
-          engine_full: string;
-          as_select: string;
-          partition_key: string;
-          sorting_key: string;
-          primary_key: string;
-          sampling_key: string;
-          storage_policy: string;
-          total_rows: string;
-          total_bytes: string;
-          total_bytes_uncompressed: string;
-          parts: string;
-          active_parts: string;
-          total_marks: string;
-          comment: string;
-        }>(),
-      );
+      }).then(res => res.json<TableMetadata>());
       return json.data[0];
     });
   }
@@ -379,7 +379,7 @@ export class Metadata {
     return fields;
   }
 
-  async getTablePrimaryKey({
+  async getTableMetadata({
     databaseName,
     tableName,
     connectionId,
@@ -395,7 +395,7 @@ export class Metadata {
       connectionId,
     });
 
-    return tableMetadata.primary_key;
+    return tableMetadata;
   }
 
   async getKeyValues({

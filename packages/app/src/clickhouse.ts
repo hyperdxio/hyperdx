@@ -216,6 +216,23 @@ export class ClickHouseQueryError extends Error {
   }
 }
 
+export function extractColumnReference(
+  sql: string,
+  maxIterations = 10,
+): string | null {
+  let iterations = 0;
+
+  // Loop until we remove all function calls and get just the column, with a maximum limit
+  while (/\w+\([^()]*\)/.test(sql) && iterations < maxIterations) {
+    // Replace the outermost function with its content
+    sql = sql.replace(/\w+\(([^()]*)\)/, '$1');
+    iterations++;
+  }
+
+  // If we reached the max iterations without resolving, return null to indicate an issue
+  return iterations < maxIterations ? sql.trim() : null;
+}
+
 const client = {
   async query<T extends DataFormat>({
     query,

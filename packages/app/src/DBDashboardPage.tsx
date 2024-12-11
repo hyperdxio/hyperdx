@@ -48,7 +48,12 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { Dashboard, type Tile, useDeleteDashboard } from '@/dashboard';
+import {
+  Dashboard,
+  type Tile,
+  useCreateDashboard,
+  useDeleteDashboard,
+} from '@/dashboard';
 import { DisplayType } from '@/DisplayType';
 import { ChartConfigWithDateRange, Filter } from '@/renderChartConfig';
 
@@ -56,6 +61,7 @@ import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
+import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import GranularityPicker, {
   GranularityPickerControlled,
@@ -431,11 +437,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const router = useRouter();
   const { dashboardId } = router.query;
 
-  const { dashboard, setDashboard, dashboardHash, isLocalDashboard } =
-    useDashboard({
-      dashboardId: dashboardId as string | undefined,
-      presetConfig,
-    });
+  const {
+    dashboard,
+    setDashboard,
+    dashboardHash,
+    isLocalDashboard,
+    isLocalDashboardEmpty,
+  } = useDashboard({
+    dashboardId: dashboardId as string | undefined,
+    presetConfig,
+  });
 
   const { data: sources } = useSources();
 
@@ -638,6 +649,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setRowSource(null);
   }, [setRowId, setRowSource]);
 
+  const createDashboard = useCreateDashboard();
+  const onCreateDashboard = useCallback(() => {
+    createDashboard.mutate(
+      {
+        name: 'My Dashboard',
+        tiles: [],
+        tags: [],
+      },
+      {
+        onSuccess: data => {
+          router.push(`/dashboards/${data.id}`);
+        },
+      },
+    );
+  }, [createDashboard, router]);
+
   return (
     <Box p="sm">
       <Head>
@@ -670,6 +697,23 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           setEditedTile(undefined);
         }}
       />
+      {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
+        <Paper my="lg" p="md">
+          <Flex justify="space-between" align="center">
+            <Text c="gray.4" size="sm">
+              This is a temporary dashboard and can not be saved.
+            </Text>
+            <Button
+              variant="outline"
+              color="green"
+              fw={400}
+              onClick={onCreateDashboard}
+            >
+              Create New Saved Dashboard
+            </Button>
+          </Flex>
+        </Paper>
+      )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
         <DashboardName
           key={`${dashboardHash}`}
