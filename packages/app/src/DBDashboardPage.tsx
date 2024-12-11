@@ -172,6 +172,7 @@ const Tile = forwardRef(
           granularity,
           timestampValueExpression: source.timestampValueExpression,
           from: source.from,
+          implicitColumnExpression: source.implicitColumnExpression,
           filters,
         });
       }

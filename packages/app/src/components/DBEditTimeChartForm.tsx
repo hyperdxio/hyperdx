@@ -352,6 +352,34 @@ export default function EditTimeChartForm({
     queriedConfig?.from?.tableName &&
     queriedConfig?.timestampValueExpression;
 
+  const previewConfig = useMemo(
+    () =>
+      tableSource != null && queriedConfig != null && queryReady
+        ? {
+            ...queriedConfig,
+            orderBy: [
+              {
+                ordering: 'DESC' as const,
+                valueExpression: getFirstTimestampValueExpression(
+                  tableSource.timestampValueExpression,
+                ),
+              },
+            ],
+            dateRange,
+            timestampValueExpression: tableSource.timestampValueExpression,
+            connection: tableSource.connection,
+            from: tableSource.from,
+            limit: { limit: 200 },
+            select: tableSource?.defaultTableSelectExpression || '',
+            groupBy: undefined,
+            granularity: undefined,
+            filters: seriesToFilters(queriedConfig.select),
+            filtersLogicalOperator: 'OR' as const,
+          }
+        : null,
+    [queriedConfig, tableSource, dateRange, queryReady],
+  );
+
   return (
     <>
       <Controller
@@ -692,40 +720,17 @@ export default function EditTimeChartForm({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {queryReady && queriedConfig != null && tableSource != null && (
+                {previewConfig != null && (
                   <div
                     className="flex-grow-1 d-flex flex-column"
                     style={{ height: 400 }}
                   >
                     <DBSqlRowTable
-                      config={{
-                        ...queriedConfig,
-                        orderBy: [
-                          {
-                            ordering: 'DESC' as const,
-                            valueExpression: getFirstTimestampValueExpression(
-                              tableSource.timestampValueExpression,
-                            ),
-                          },
-                        ],
-                        dateRange,
-                        timestampValueExpression:
-                          tableSource.timestampValueExpression,
-                        connection: tableSource.connection,
-                        from: tableSource.from,
-                        limit: { limit: 200 },
-                        select: tableSource?.defaultTableSelectExpression || '',
-                        groupBy: undefined,
-                        granularity: undefined,
-                        filters: seriesToFilters(queriedConfig.select),
-                        filtersLogicalOperator: 'OR',
-                      }}
-                      onRowExpandClick={() => {}}
+                      config={previewConfig}
                       highlightedLineId={undefined}
                       enabled
                       isLive={false}
                       queryKeyPrefix={'search'}
-                      onScroll={() => {}}
                     />
                   </div>
                 )}
