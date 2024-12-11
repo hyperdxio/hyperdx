@@ -564,10 +564,13 @@ function ClickhousePage() {
                       color="gray.4"
                       variant="subtle"
                       onClick={() => {
+                        // Clears the min/max latency filters that are used to filter the query results
                         setLatencyFilter({
                           latencyMin: null,
                           latencyMax: null,
                         });
+                        // Updates the URL state and triggers a new data fetch
+                        onSearch(DEFAULT_INTERVAL);
                       }}
                     >
                       Reset
