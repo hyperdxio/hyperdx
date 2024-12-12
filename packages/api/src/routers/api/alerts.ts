@@ -95,8 +95,8 @@ router.get('/', async (req, res, next) => {
               ]),
             },
           }),
-          ...(alert.logView && {
-            logView: _.pick(alert.logView, [
+          ...(alert.savedSearch && {
+            savedSearch: _.pick(alert.savedSearch, [
               '_id',
               'createdAt',
               'name',

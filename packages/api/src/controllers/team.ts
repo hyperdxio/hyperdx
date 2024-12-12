@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as config from '@/config';
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
-import LogView from '@/models/logView';
+import { SavedSearch } from '@/models/savedSearch';
 import Team from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
@@ -62,13 +62,13 @@ export function rotateTeamApiKey(teamId: ObjectId) {
 }
 
 export async function getTags(teamId: ObjectId) {
-  const [dashboardTags, logViewTags] = await Promise.all([
+  const [dashboardTags, savedSearchTags] = await Promise.all([
     Dashboard.aggregate([
       { $match: { team: teamId } },
       { $unwind: '$tags' },
       { $group: { _id: '$tags' } },
     ]),
-    LogView.aggregate([
+    SavedSearch.aggregate([
       { $match: { team: teamId } },
       { $unwind: '$tags' },
       { $group: { _id: '$tags' } },
@@ -78,7 +78,7 @@ export async function getTags(teamId: ObjectId) {
   return [
     ...new Set([
       ...dashboardTags.map(t => t._id),
-      ...logViewTags.map(t => t._id),
+      ...savedSearchTags.map(t => t._id),
     ]),
   ];
 }

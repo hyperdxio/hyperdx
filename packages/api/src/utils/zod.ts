@@ -204,7 +204,7 @@ export const zChannel = z.object({
 export const zLogAlert = z.object({
   source: z.literal('LOG'),
   groupBy: z.string().optional(),
-  logViewId: z.string().min(1),
+  savedSearchId: z.string().min(1),
 });
 
 export const zChartAlert = z.object({
@@ -279,7 +279,7 @@ export const translateExternalAlertToInternalAlert = (
     name: alertInput.name,
     message: alertInput.message,
     ...(alertInput.source === 'search' && alertInput.savedSearchId
-      ? { source: 'LOG', logViewId: alertInput.savedSearchId }
+      ? { source: 'LOG', savedSearchId: alertInput.savedSearchId }
       : alertInput.source === 'chart' && alertInput.dashboardId
         ? {
             source: 'CHART',
@@ -305,8 +305,8 @@ export const translateAlertDocumentToExternalAlert = (
     },
     name: alertDoc.name,
     message: alertDoc.message,
-    ...(alertDoc.source === 'LOG' && alertDoc.logView
-      ? { source: 'search', savedSearchId: alertDoc.logView.toString() }
+    ...(alertDoc.source === 'LOG' && alertDoc.savedSearch
+      ? { source: 'search', savedSearchId: alertDoc.savedSearch.toString() }
       : alertDoc.source === 'CHART' && alertDoc.dashboardId
         ? {
             source: 'chart',
