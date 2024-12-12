@@ -337,10 +337,11 @@ export function mockSpyMetricPropertyTypeMappingsModel(propertyMap: {
   return model;
 }
 
-const randomId = () => Math.random().toString(36).substring(7);
+export const randomMongoId = () =>
+  Math.floor(Math.random() * 1000000000000).toString();
 
 export const makeTile = (opts?: { id?: string }): Tile => ({
-  id: opts?.id ?? randomId(),
+  id: opts?.id ?? randomMongoId(),
   x: 1,
   y: 1,
   w: 1,
@@ -349,7 +350,7 @@ export const makeTile = (opts?: { id?: string }): Tile => ({
 });
 
 export const makeChart = (opts?: { id?: string }) => ({
-  id: opts?.id ?? randomId(),
+  id: opts?.id ?? randomMongoId(),
   name: 'Test Chart',
   x: 1,
   y: 1,
