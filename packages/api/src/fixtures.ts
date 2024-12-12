@@ -20,6 +20,7 @@ import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
 import Server from './server';
+import { Tile } from './utils/commonTypes';
 import { externalAlertSchema } from './utils/zod';
 
 const MOCK_USER = {
@@ -93,11 +94,7 @@ class MockServer extends Server {
   }
 
   clearDBs() {
-    return Promise.all([
-      clearDBCollections(),
-      clearClickhouseTables(),
-      clearRedis(),
-    ]);
+    return Promise.all([clearDBCollections(), clearRedis()]);
   }
 }
 
@@ -340,10 +337,20 @@ export function mockSpyMetricPropertyTypeMappingsModel(propertyMap: {
   return model;
 }
 
-const randomId = () => Math.random().toString(36).substring(7);
+export const randomMongoId = () =>
+  Math.floor(Math.random() * 1000000000000).toString();
+
+export const makeTile = (opts?: { id?: string }): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: makeChart(),
+});
 
 export const makeChart = (opts?: { id?: string }) => ({
-  id: opts?.id ?? randomId(),
+  id: opts?.id ?? randomMongoId(),
   name: 'Test Chart',
   x: 1,
   y: 1,
@@ -374,10 +381,10 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
 
 export const makeAlert = ({
   dashboardId,
-  chartId,
+  tileId,
 }: {
   dashboardId: string;
-  chartId: string;
+  tileId: string;
 }) => ({
   channel: {
     type: 'webhook',
@@ -388,7 +395,7 @@ export const makeAlert = ({
   type: 'presence',
   source: 'CHART',
   dashboardId,
-  chartId,
+  tileId,
 });
 
 export const makeExternalAlert = ({

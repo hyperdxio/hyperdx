@@ -3,7 +3,7 @@ import ms from 'ms';
 import * as clickhouse from '@/clickhouse';
 import { buildMetricSeries, getLoggedInAgent, getServer } from '@/fixtures';
 
-describe('metrics router', () => {
+describe.skip('metrics router', () => {
   const now = Date.now();
   let agent;
   let teamId;

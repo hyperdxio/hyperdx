@@ -6,7 +6,7 @@ import { SavedSearchSchema } from '@/utils/commonTypes';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-interface ISavedSearch
+export interface ISavedSearch
   extends Omit<z.infer<typeof SavedSearchSchema>, 'source' | 'id'> {
   _id: ObjectId;
   team: ObjectId;

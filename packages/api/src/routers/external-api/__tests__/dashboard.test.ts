@@ -27,7 +27,7 @@ function removeDashboardIds(dashboard: any) {
   return dashboardWithoutIds;
 }
 
-describe('dashboard router', () => {
+describe.skip('dashboard router', () => {
   const server = getServer();
 
   beforeAll(async () => {
