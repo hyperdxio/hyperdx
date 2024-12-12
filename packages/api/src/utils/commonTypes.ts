@@ -33,6 +33,7 @@ export const TileSchema = z.object({
   config: SavedChartConfigSchema,
 });
 
+export type Tile = z.infer<typeof TileSchema>;
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string(),

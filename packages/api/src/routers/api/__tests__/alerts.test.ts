@@ -1,9 +1,10 @@
-import { getLoggedInAgent, getServer, makeAlert, makeChart } from '@/fixtures';
+import { getLoggedInAgent, getServer, makeAlert, makeTile } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
+  id: '1',
   name: 'Test Dashboard',
-  charts: [makeChart(), makeChart(), makeChart(), makeChart(), makeChart()],
-  query: 'test query',
+  tiles: [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()],
+  tags: ['test'],
 };
 
 describe('alerts router', () => {
@@ -28,15 +29,15 @@ describe('alerts router', () => {
     const initialDashboards = await agent.get('/dashboards').expect(200);
 
     // Create alerts for all charts
-    const dashboard = initialDashboards.body.data[0];
+    const dashboard = initialDashboards.body[0];
     await Promise.all(
-      dashboard.charts.map(chart =>
+      dashboard.tiles.map(tile =>
         agent
           .post('/alerts')
           .send(
             makeAlert({
               dashboardId: dashboard._id,
-              chartId: chart.id,
+              tileId: tile.id,
             }),
           )
           .expect(200),
@@ -46,7 +47,7 @@ describe('alerts router', () => {
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data.length).toBe(5);
     for (const alert of alerts.body.data) {
-      expect(alert.chartId).toBeDefined();
+      expect(alert.tileId).toBeDefined();
       expect(alert.dashboard).toBeDefined();
     }
   });

@@ -36,7 +36,7 @@ export type AlertInput = {
 
   // Chart alerts
   dashboardId?: string;
-  chartId?: string;
+  tileId?: string;
 
   // Silenced
   silenced?: {
@@ -113,7 +113,7 @@ const makeAlert = (alert: AlertInput) => {
     groupBy: alert.groupBy,
     // Chart alerts
     dashboardId: alert.dashboardId,
-    chartId: alert.chartId,
+    tileId: alert.tileId,
     cron: getCron(alert.interval),
     timezone: 'UTC', // TODO: support different timezone
   };

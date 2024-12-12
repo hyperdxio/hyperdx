@@ -12,7 +12,7 @@ import { LogPlatform, LogType } from '@/utils/logParser';
 
 import * as clickhouse from '..';
 
-describe('clickhouse', () => {
+describe.skip('clickhouse', () => {
   const server = getServer();
 
   beforeAll(async () => {

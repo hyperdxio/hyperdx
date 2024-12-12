@@ -209,7 +209,7 @@ export const zLogAlert = z.object({
 
 export const zChartAlert = z.object({
   source: z.literal('CHART'),
-  chartId: z.string().min(1),
+  tileId: z.string().min(1),
   dashboardId: z.string().min(1),
 });
 
@@ -284,7 +284,7 @@ export const translateExternalAlertToInternalAlert = (
         ? {
             source: 'CHART',
             dashboardId: alertInput.dashboardId,
-            chartId: alertInput.chartId,
+            tileId: alertInput.chartId,
           }
         : ({} as never)),
   };

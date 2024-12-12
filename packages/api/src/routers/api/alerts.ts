@@ -111,7 +111,7 @@ router.get('/', async (req, res, next) => {
             'state',
             'type',
             'source',
-            'chartId',
+            'tileId',
             'createdAt',
             'updatedAt',
           ]),
