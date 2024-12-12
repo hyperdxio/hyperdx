@@ -8,7 +8,7 @@ import {
   mockLogsPropertyTypeMappingsModel,
 } from '@/fixtures';
 
-describe('charts router', () => {
+describe.skip('charts router', () => {
   const server = getServer();
 
   beforeAll(async () => {

@@ -1,9 +1,10 @@
-import { getLoggedInAgent, getServer, makeAlert, makeChart } from '@/fixtures';
+import { getLoggedInAgent, getServer, makeAlert, makeTile } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
+  id: '1',
   name: 'Test Dashboard',
-  charts: [makeChart(), makeChart(), makeChart(), makeChart(), makeChart()],
-  query: 'test query',
+  tiles: [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()],
+  tags: ['test'],
 };
 
 describe('dashboard router', () => {
@@ -21,22 +22,22 @@ describe('dashboard router', () => {
     await server.stop();
   });
 
-  it('deletes attached alerts when deleting charts', async () => {
+  it('deletes attached alerts when deleting tiles', async () => {
     const { agent } = await getLoggedInAgent(server);
 
     await agent.post('/dashboards').send(MOCK_DASHBOARD).expect(200);
     const initialDashboards = await agent.get('/dashboards').expect(200);
 
     // Create alerts for all charts
-    const dashboard = initialDashboards.body.data[0];
+    const dashboard = initialDashboards.body[0];
     await Promise.all(
-      dashboard.charts.map(chart =>
+      dashboard.tiles.map(tile =>
         agent
           .post('/alerts')
           .send(
             makeAlert({
               dashboardId: dashboard._id,
-              chartId: chart.id,
+              tileId: tile.id,
             }),
           )
           .expect(200),
@@ -46,31 +47,31 @@ describe('dashboard router', () => {
     const dashboards = await agent.get(`/dashboards`).expect(200);
 
     // Make sure all alerts are attached to the dashboard charts
-    const allCharts = dashboard.charts.map(chart => chart.id).sort();
-    const chartsWithAlerts = dashboards.body.data[0].alerts
-      .map(alert => alert.chartId)
+    const allTiles = dashboard.tiles.map(tile => tile.id).sort();
+    const tilesWithAlerts = dashboards.body[0].alerts
+      .map(alert => alert.tileId)
       .sort();
-    expect(allCharts).toEqual(chartsWithAlerts);
+    expect(allTiles).toEqual(tilesWithAlerts);
 
     // Delete the first chart
     await agent
-      .put(`/dashboards/${dashboard._id}`)
+      .patch(`/dashboards/${dashboard._id}`)
       .send({
         ...dashboard,
-        charts: dashboard.charts.slice(1),
+        tiles: dashboard.tiles.slice(1),
       })
       .expect(200);
 
     const dashboardPostDelete = (await agent.get(`/dashboards`).expect(200))
-      .body.data[0];
+      .body[0];
 
     // Make sure all alerts are attached to the dashboard charts
-    const allChartsPostDelete = dashboardPostDelete.charts
-      .map(chart => chart.id)
+    const allTilesPostDelete = dashboardPostDelete.tiles
+      .map(tile => tile.id)
       .sort();
-    const chartsWithAlertsPostDelete = dashboardPostDelete.alerts
-      .map(alert => alert.chartId)
+    const tilesWithAlertsPostDelete = dashboardPostDelete.alerts
+      .map(alert => alert.tileId)
       .sort();
-    expect(allChartsPostDelete).toEqual(chartsWithAlertsPostDelete);
+    expect(allTilesPostDelete).toEqual(tilesWithAlertsPostDelete);
   });
 });

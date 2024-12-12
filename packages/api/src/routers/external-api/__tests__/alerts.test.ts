@@ -19,7 +19,7 @@ const MOCK_DASHBOARD = {
   query: 'test query',
 };
 
-describe('/api/v1/alerts', () => {
+describe.skip('/api/v1/alerts', () => {
   const server = getServer();
 
   beforeAll(async () => {

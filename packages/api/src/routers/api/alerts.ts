@@ -7,7 +7,7 @@ import {
   createAlert,
   deleteAlert,
   getAlertById,
-  getAlertsWithLogViewAndDashboard,
+  getAlertsEnhanced,
   updateAlert,
   validateGroupByProperty,
 } from '@/controllers/alerts';
@@ -55,7 +55,7 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const alerts = await getAlertsWithLogViewAndDashboard(teamId);
+    const alerts = await getAlertsEnhanced(teamId);
 
     const data = await Promise.all(
       alerts.map(async alert => {
@@ -95,8 +95,8 @@ router.get('/', async (req, res, next) => {
               ]),
             },
           }),
-          ...(alert.logView && {
-            logView: _.pick(alert.logView, [
+          ...(alert.savedSearch && {
+            savedSearch: _.pick(alert.savedSearch, [
               '_id',
               'createdAt',
               'name',
@@ -111,7 +111,7 @@ router.get('/', async (req, res, next) => {
             'state',
             'type',
             'source',
-            'chartId',
+            'tileId',
             'createdAt',
             'updatedAt',
           ]),

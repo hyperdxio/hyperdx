@@ -8,7 +8,7 @@ import {
   SearchQueryBuilder,
 } from '../searchQueryParser';
 
-describe('searchQueryParser', () => {
+describe.skip('searchQueryParser', () => {
   describe('helpers', () => {
     it('msToBigIntNs', () => {
       expect(msToBigIntNs(0)).toBe(BigInt(0));

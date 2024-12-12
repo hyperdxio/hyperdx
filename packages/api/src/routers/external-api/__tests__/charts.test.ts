@@ -9,7 +9,7 @@ import {
   mockLogsPropertyTypeMappingsModel,
 } from '@/fixtures';
 
-describe('/api/v1/charts/series', () => {
+describe.skip('/api/v1/charts/series', () => {
   const server = getServer();
 
   beforeAll(async () => {

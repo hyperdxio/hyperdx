@@ -38,9 +38,7 @@ jobs:
         uses: bahmutov/npm-install@v1
       - name: Run unit tests
         run: make ci-unit
-  # TEMPORARILY DISABLED
   integration:
-    if: false
     timeout-minutes: 8
     runs-on: ubuntu-20.04
     steps:

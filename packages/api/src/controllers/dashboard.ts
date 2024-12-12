@@ -106,16 +106,16 @@ export async function updateDashboardAndAlerts(
   }
 
   // Delete related alerts
-  const deletedChartIds = differenceBy(
+  const deletedTileIds = differenceBy(
     oldDashboard?.tiles || [],
     updatedDashboard?.tiles || [],
     'id',
   ).map(c => c.id);
 
-  if (deletedChartIds?.length > 0) {
+  if (deletedTileIds?.length > 0) {
     await Alert.deleteMany({
       dashboardId: dashboardId,
-      chartId: { $in: deletedChartIds },
+      tileId: { $in: deletedTileIds },
     });
   }
 

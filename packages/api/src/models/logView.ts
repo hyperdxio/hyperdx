@@ -1,3 +1,5 @@
+// TODO: TO BE DEPRECATED
+
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';

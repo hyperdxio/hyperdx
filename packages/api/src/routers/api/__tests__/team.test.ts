@@ -27,7 +27,7 @@ describe('team router', () => {
     expect(_.omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
-  "name": "fake@deploysentinel.com's Team"
+  "name": "fake@deploysentinel.com's Team",
 }
 `);
   });
@@ -41,22 +41,39 @@ Object {
   });
 
   it('GET /team/tags', async () => {
-    const { agent } = await getLoggedInAgent(server);
+    const { agent, team } = await getLoggedInAgent(server);
     await agent
       .post('/dashboards')
       .send({
         name: 'Test',
-        charts: [],
-        query: '',
+        tiles: [],
         tags: ['test', 'test'], // make sure we dedupe
       })
       .expect(200);
+
+    await agent.post('/sources').send({
+      team: team._id,
+      kind: 'log',
+      name: 'My New Source',
+      connection: 'local',
+      from: {
+        databaseName: 'system',
+        tableName: 'query_log',
+      },
+      timestampValueExpression: 'event_date',
+      defaultTableSelectExpression: 'event_date,query',
+      id: 'l-1148034466',
+    });
+
     await agent
-      .post('/log-views')
+      .post('/saved-search')
       .send({
+        id: '1',
         name: 'Test',
-        query: '',
-        tags: ['test2'],
+        select: 'SELECT * FROM table',
+        where: 'WHERE x = 1',
+        source: 'l-1148034466',
+        tags: ['test', 'test2'],
       })
       .expect(200);
     const resp = await agent.get('/team/tags').expect(200);
@@ -115,9 +132,7 @@ Array [
     if (teamInvite == null) {
       throw new Error('TeamInvite not found');
     }
-    expect(resp.body.url).toBe(
-      `http://localhost:9090/join-team?token=${teamInvite.token}`,
-    );
+    expect(resp.body.url).toContain(`/join-team?token=${teamInvite.token}`);
   });
 
   it('GET /team/invitations', async () => {

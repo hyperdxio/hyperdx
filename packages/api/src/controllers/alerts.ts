@@ -14,7 +14,7 @@ import Alert, {
   IAlert,
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import LogView, { ILogView } from '@/models/logView';
+import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
 import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
@@ -32,11 +32,11 @@ export type AlertInput = {
 
   // Log alerts
   groupBy?: string;
-  logViewId?: string;
+  savedSearchId?: string;
 
   // Chart alerts
   dashboardId?: string;
-  chartId?: string;
+  tileId?: string;
 
   // Silenced
   silenced?: {
@@ -109,11 +109,11 @@ const makeAlert = (alert: AlertInput) => {
     message: alert.message == null ? null : alert.message,
 
     // Log alerts
-    logView: alert.logViewId,
+    savedSearch: alert.savedSearchId,
     groupBy: alert.groupBy,
     // Chart alerts
     dashboardId: alert.dashboardId,
-    chartId: alert.chartId,
+    tileId: alert.tileId,
     cron: getCron(alert.interval),
     timezone: 'UTC', // TODO: support different timezone
   };
@@ -130,7 +130,7 @@ export const createAlert = async (
   }
 
   if (alertInput.source === 'LOG') {
-    if ((await LogView.findById(alertInput.logViewId)) == null) {
+    if ((await SavedSearch.findById(alertInput.savedSearchId)) == null) {
       throw new Error('Saved Search ID not found');
     }
   }
@@ -141,18 +141,6 @@ export const createAlert = async (
   }).save();
 };
 
-const dashboardLogViewIds = async (teamId: ObjectId | string) => {
-  const [dashboards, logViews] = await Promise.all([
-    Dashboard.find({ team: teamId }, { _id: 1 }),
-    LogView.find({ team: teamId }, { _id: 1 }),
-  ]);
-
-  return [
-    logViews.map(logView => logView._id),
-    dashboards.map(dashboard => dashboard._id),
-  ];
-};
-
 // create an update alert function based off of the above create alert function
 export const updateAlert = async (
   id: string,
@@ -160,23 +148,10 @@ export const updateAlert = async (
   alertInput: AlertInput,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
-  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
-
   return Alert.findOneAndUpdate(
     {
       _id: id,
-      $or: [
-        {
-          logView: {
-            $in: logViewIds,
-          },
-        },
-        {
-          dashboardId: {
-            $in: dashboardIds,
-          },
-        },
-      ],
+      team: teamId,
     },
     makeAlert(alertInput),
     {
@@ -186,89 +161,33 @@ export const updateAlert = async (
 };
 
 export const getAlerts = async (teamId: ObjectId) => {
-  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
-
-  return Alert.find({
-    $or: [
-      {
-        logView: {
-          $in: logViewIds,
-        },
-      },
-      {
-        dashboardId: {
-          $in: dashboardIds,
-        },
-      },
-    ],
-  });
+  return Alert.find({ team: teamId });
 };
 
 export const getAlertById = async (
   alertId: ObjectId | string,
   teamId: ObjectId | string,
 ) => {
-  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
-
   return Alert.findOne({
     _id: alertId,
-    $or: [
-      {
-        logView: {
-          $in: logViewIds,
-        },
-      },
-      {
-        dashboardId: {
-          $in: dashboardIds,
-        },
-      },
-    ],
+    team: teamId,
   });
 };
 
-export const getAlertsWithLogViewAndDashboard = async (teamId: ObjectId) => {
-  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
-
-  return Alert.find({
-    $or: [
-      {
-        logView: {
-          $in: logViewIds,
-        },
-      },
-      {
-        dashboardId: {
-          $in: dashboardIds,
-        },
-      },
-    ],
-  }).populate<{
-    logView: ILogView;
+export const getAlertsEnhanced = async (teamId: ObjectId) => {
+  return Alert.find({ team: teamId }).populate<{
+    savedSearch: ISavedSearch;
     dashboardId: IDashboard;
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
-  }>(['logView', 'dashboardId', 'silenced.by']);
+  }>(['savedSearch', 'dashboardId', 'silenced.by']);
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {
-  const [logViewIds, dashboardIds] = await dashboardLogViewIds(teamId);
-
   return Alert.deleteOne({
     _id: id,
-    $or: [
-      {
-        logView: {
-          $in: logViewIds,
-        },
-      },
-      {
-        dashboardId: {
-          $in: dashboardIds,
-        },
-      },
-    ],
+    team: teamId,
   });
 };
 

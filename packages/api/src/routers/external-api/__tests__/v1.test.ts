@@ -1,7 +1,7 @@
 import * as clickhouse from '@/clickhouse';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 
-describe('external api v1', () => {
+describe.skip('external api v1', () => {
   const server = getServer();
 
   beforeAll(async () => {

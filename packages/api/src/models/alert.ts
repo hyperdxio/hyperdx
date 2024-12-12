@@ -47,7 +47,7 @@ export interface IAlert {
 
   // Log alerts
   groupBy?: string;
-  logView?: ObjectId;
+  savedSearch?: ObjectId;
 
   // Chart alerts
   dashboardId?: ObjectId;
@@ -112,9 +112,9 @@ const AlertSchema = new Schema<IAlert>(
     },
 
     // Log alerts
-    logView: {
+    savedSearch: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'LogView',
+      ref: 'SavedSearch',
       required: false,
     },
     groupBy: {
