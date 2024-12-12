@@ -141,18 +141,6 @@ export const createAlert = async (
   }).save();
 };
 
-const dashboardSavedSearchIds = async (teamId: ObjectId | string) => {
-  const [dashboards, savedSearches] = await Promise.all([
-    Dashboard.find({ team: teamId }, { _id: 1 }),
-    SavedSearch.find({ team: teamId }, { _id: 1 }),
-  ]);
-
-  return [
-    savedSearches.map(savedSearch => savedSearch._id),
-    dashboards.map(dashboard => dashboard._id),
-  ];
-};
-
 // create an update alert function based off of the above create alert function
 export const updateAlert = async (
   id: string,
@@ -186,7 +174,7 @@ export const getAlertById = async (
   });
 };
 
-export const getAlertsWithLogViewAndDashboard = async (teamId: ObjectId) => {
+export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboardId: IDashboard;
