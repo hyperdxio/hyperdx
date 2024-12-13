@@ -80,8 +80,12 @@ class MockServer extends Server {
     if (!config.IS_CI) {
       throw new Error('ONLY execute this in CI env 😈 !!!');
     }
-    await super.start();
-    await initCiEnvs();
+    try {
+      await super.start();
+      await initCiEnvs();
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   stop() {

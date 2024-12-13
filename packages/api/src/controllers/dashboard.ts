@@ -4,8 +4,8 @@ import { z } from 'zod';
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
-import { DashboardSchema, DashboardWithoutIdSchema } from '@/utils/commonTypes';
-import { chartSchema, tagsSchema } from '@/utils/zod';
+import { DashboardWithoutIdSchema, Tile } from '@/utils/commonTypes';
+import { tagsSchema } from '@/utils/zod';
 
 export async function getDashboards(teamId: ObjectId) {
   const dashboards = await Dashboard.find({
@@ -50,13 +50,11 @@ export async function updateDashboard(
   teamId: ObjectId,
   {
     name,
-    charts,
-    query,
+    tiles,
     tags,
   }: {
     name: string;
-    charts: z.infer<typeof chartSchema>[];
-    query: string;
+    tiles: Tile[];
     tags: z.infer<typeof tagsSchema>;
   },
 ) {
@@ -67,8 +65,7 @@ export async function updateDashboard(
     },
     {
       name,
-      charts,
-      query,
+      tiles,
       tags: tags && uniq(tags),
     },
     { new: true },
