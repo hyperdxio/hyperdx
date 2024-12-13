@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { SavedChartConfig } from '@/common/renderChartConfig';
+
 // --------------------------
 // SAVED SEARCH
 // --------------------------
@@ -33,7 +35,15 @@ export const TileSchema = z.object({
   config: SavedChartConfigSchema,
 });
 
-export type Tile = z.infer<typeof TileSchema>;
+export type Tile = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  config: SavedChartConfig;
+};
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string(),
