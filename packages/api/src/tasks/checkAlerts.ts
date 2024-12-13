@@ -20,7 +20,6 @@ import { ObjectId } from '@/models';
 import Alert, { AlertDocument, AlertState } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import LogView from '@/models/logView';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
@@ -38,28 +37,28 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
-const getLogViewEnhanced = async (logViewId: ObjectId) => {
-  const logView = await LogView.findById(logViewId).populate<{
+const getSavedSearchEnhanced = async (savedSearchId: ObjectId) => {
+  const savedSearch = await SavedSearch.findById(savedSearchId).populate<{
     team: ITeam;
   }>('team');
-  if (!logView) {
-    throw new Error(`LogView ${logViewId} not found `);
+  if (!savedSearch) {
+    throw new Error(`SavedSearch ${savedSearchId} not found `);
   }
-  return logView;
+  return savedSearch;
 };
 
 export const buildLogSearchLink = ({
   endTime,
-  logViewId,
+  savedSearchId,
   q,
   startTime,
 }: {
   endTime: Date;
-  logViewId: string;
+  savedSearchId: string;
   q?: string;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${logViewId}`);
+  const url = new URL(`${config.FRONTEND_URL}/search/${savedSearchId}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
@@ -318,14 +317,14 @@ export const buildAlertMessageTemplateHdxLink = ({
 }: AlertMessageTemplateDefaultView) => {
   if (alert.source === 'search') {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error('Source is LOG but savedSearch is null');
     }
     const searchQuery = alert.groupBy
       ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
       : savedSearch.query;
     return buildLogSearchLink({
       endTime,
-      logViewId: savedSearch.id,
+      savedSearchId: savedSearch.id,
       q: searchQuery,
       startTime,
     });
@@ -354,7 +353,7 @@ export const buildAlertMessageTemplateTitle = ({
   const handlebars = Handlebars.create();
   if (alert.source === 'search') {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error('Source is LOG but savedSearch is null');
     }
     // TODO: using template engine to render the title
     return template
@@ -364,10 +363,10 @@ export const buildAlertMessageTemplateTitle = ({
     if (dashboard == null) {
       throw new Error('Source is CHART but dashboard is null');
     }
-    const chart = dashboard.charts[0];
+    const tile = dashboard.tiles[0];
     return template
       ? handlebars.compile(template)(view)
-      : `Alert for "${chart.name}" in "${dashboard.name}" - ${value} ${
+      : `Alert for "${tile.name}" in "${dashboard.name}" - ${value} ${
           doesExceedThreshold(
             alert.threshold_type === 'above',
             alert.threshold,
@@ -489,7 +488,7 @@ export const renderAlertTemplate = async ({
   // users should be able to use '@' syntax to trigger alerts
   if (alert.source === 'search') {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error('Source is LOG but savedSearch is null');
     }
     const searchQuery = alert.groupBy
       ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
@@ -566,7 +565,7 @@ const fireChannelEvent = async ({
   dashboard,
   endTime,
   group,
-  logView,
+  savedSearch,
   startTime,
   totalCount,
   windowSizeInMins,
@@ -576,12 +575,12 @@ const fireChannelEvent = async ({
   dashboard: EnhancedDashboard | null;
   endTime: Date;
   group?: string;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
+  savedSearch: Awaited<ReturnType<typeof getSavedSearchEnhanced>> | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
 }) => {
-  const team = logView?.team ?? dashboard?.team;
+  const team = savedSearch?.team ?? dashboard?.team;
   if (team == null) {
     throw new Error('Team not found');
   }
@@ -608,18 +607,18 @@ const fireChannelEvent = async ({
           name: dashboard.name,
           query: dashboard.query,
           team: team._id,
-          charts: dashboard.charts,
+          tiles: dashboard.tiles,
           tags: dashboard.tags,
         })
       : null,
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    savedSearch: logView
+    savedSearch: savedSearch
       ? {
-          id: logView._id.toString(),
-          name: logView.name,
-          query: logView.query,
+          id: savedSearch._id.toString(),
+          name: savedSearch.name,
+          query: savedSearch.query,
         }
       : null,
     startTime,
@@ -678,41 +677,42 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
       | Awaited<ReturnType<typeof clickhouse.checkAlert>>
       | Awaited<ReturnType<typeof clickhouse.getMultiSeriesChartLegacyFormat>>
       | null = null;
-    let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
+    let savedSearch: Awaited<ReturnType<typeof getSavedSearchEnhanced>> | null =
+      null;
     let targetDashboard: EnhancedDashboard | null = null;
-    if (alert.source === 'LOG' && alert.logView) {
-      logView = await getLogViewEnhanced(alert.logView);
+    if (alert.source === 'LOG' && alert.savedSearch) {
+      savedSearch = await getSavedSearchEnhanced(alert.savedSearch);
       // TODO: use getLogsChart instead so we can deprecate checkAlert
       checksData = await clickhouse.checkAlert({
         endTime: checkEndTime,
         groupBy: alert.groupBy,
-        q: logView.query,
+        q: savedSearch.query,
         startTime: checkStartTime,
-        tableVersion: logView.team.logStreamTableVersion,
-        teamId: logView.team._id.toString(),
+        tableVersion: savedSearch.team.logStreamTableVersion,
+        teamId: savedSearch.team._id.toString(),
         windowSizeInMins,
       });
       logger.info({
         message: 'Received alert metric [LOG source]',
         alert,
-        logView,
+        savedSearch,
         checksData,
         checkStartTime,
         checkEndTime,
       });
     }
     // Chart Source
-    else if (alert.source === 'CHART' && alert.dashboardId && alert.chartId) {
+    else if (alert.source === 'CHART' && alert.dashboardId && alert.tileId) {
       const dashboard = await Dashboard.findOne(
         {
           _id: alert.dashboardId,
-          'charts.id': alert.chartId,
+          'tiles.id': alert.tileId,
         },
         {
           name: 1,
-          charts: {
+          tiles: {
             $elemMatch: {
-              id: alert.chartId,
+              id: alert.tileId,
             },
           },
         },
@@ -722,10 +722,10 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
 
       if (
         dashboard &&
-        Array.isArray(dashboard.charts) &&
-        dashboard.charts.length === 1
+        Array.isArray(dashboard.tiles) &&
+        dashboard.tiles.length === 1
       ) {
-        const chart = dashboard.charts[0];
+        const tile = dashboard.tiles[0];
         // Doesn't work for metric alerts yet
         const MAX_NUM_GROUPS = 20;
         // TODO: assuming that the chart has only 1 series for now
@@ -839,7 +839,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
               group: Array.isArray(checkData.group)
                 ? checkData.group.join(', ')
                 : checkData.group,
-              logView,
+              savedSearch,
               startTime: bucketStart,
               totalCount,
               windowSizeInMins,

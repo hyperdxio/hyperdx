@@ -41,7 +41,7 @@ export async function deleteDashboardAndAlerts(
     team: teamId,
   });
   if (dashboard) {
-    await Alert.deleteMany({ dashboardId: dashboard._id });
+    await Alert.deleteMany({ dashboard: dashboard._id });
   }
 }
 
@@ -114,7 +114,7 @@ export async function updateDashboardAndAlerts(
 
   if (deletedTileIds?.length > 0) {
     await Alert.deleteMany({
-      dashboardId: dashboardId,
+      dashboard: dashboardId,
       tileId: { $in: deletedTileIds },
     });
   }

@@ -2,7 +2,10 @@ import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
 
-export type AlertType = 'presence' | 'absence';
+export enum AlertThresholdType {
+  ABOVE = 'above',
+  BELOW = 'below',
+}
 
 export enum AlertState {
   ALERT = 'ALERT',
@@ -27,30 +30,31 @@ export type AlertChannel = {
   webhookId: string;
 };
 
-export type AlertSource = 'LOG' | 'CHART';
+export enum AlertSource {
+  SAVED_SEARCH = 'SAVED_SEARCH',
+  TILE = 'TILE',
+}
 
 export interface IAlert {
   _id: ObjectId;
   channel: AlertChannel;
-  cron: string;
   interval: AlertInterval;
   source?: AlertSource;
   state: AlertState;
   team: ObjectId;
   threshold: number;
-  timezone: string;
-  type: AlertType;
+  thresholdType: AlertThresholdType;
 
   // Message template
   name?: string | null;
   message?: string | null;
 
-  // Log alerts
+  // SavedSearch alerts
   groupBy?: string;
   savedSearch?: ObjectId;
 
-  // Chart alerts
-  dashboardId?: ObjectId;
+  // Tile alerts
+  dashboard?: ObjectId;
   tileId?: string;
 
   // Silenced
@@ -65,23 +69,16 @@ export type AlertDocument = mongoose.HydratedDocument<IAlert>;
 
 const AlertSchema = new Schema<IAlert>(
   {
-    type: {
-      type: String,
-      required: true,
-    },
     threshold: {
       type: Number,
       required: true,
     },
+    thresholdType: {
+      type: String,
+      enum: AlertThresholdType,
+      required: false,
+    },
     interval: {
-      type: String,
-      required: true,
-    },
-    timezone: {
-      type: String,
-      required: true,
-    },
-    cron: {
       type: String,
       required: true,
     },
@@ -94,7 +91,7 @@ const AlertSchema = new Schema<IAlert>(
     source: {
       type: String,
       required: false,
-      default: 'LOG',
+      default: AlertSource.SAVED_SEARCH,
     },
     team: {
       type: mongoose.Schema.Types.ObjectId,
@@ -123,7 +120,7 @@ const AlertSchema = new Schema<IAlert>(
     },
 
     // Chart alerts
-    dashboardId: {
+    dashboard: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Dashboard',
       required: false,

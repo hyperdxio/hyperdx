@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import { AggFn, MetricsDataType } from '@/clickhouse';
-import { AlertDocument } from '@/models/alert';
+import { AlertSource, AlertThresholdType } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
@@ -201,14 +201,14 @@ export const zChannel = z.object({
   webhookId: z.string().min(1),
 });
 
-export const zLogAlert = z.object({
-  source: z.literal('LOG'),
+export const zSavedSearchAlert = z.object({
+  source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().optional(),
   savedSearchId: z.string().min(1),
 });
 
-export const zChartAlert = z.object({
-  source: z.literal('CHART'),
+export const zTileAlert = z.object({
+  source: z.literal(AlertSource.TILE),
   tileId: z.string().min(1),
   dashboardId: z.string().min(1),
 });
@@ -218,101 +218,9 @@ export const alertSchema = z
     channel: zChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
     threshold: z.number().min(0),
-    type: z.enum(['presence', 'absence']),
-    source: z.enum(['LOG', 'CHART']).default('LOG'),
+    thresholdType: z.nativeEnum(AlertThresholdType),
+    source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
   })
-  .and(zLogAlert.or(zChartAlert));
-
-// ==============================
-// External API Alerts
-// ==============================
-
-export const externalSlackWebhookAlertChannel = z.object({
-  type: z.literal('slack_webhook'),
-  webhookId: objectIdSchema,
-});
-
-export const externalSearchAlertSchema = z.object({
-  source: z.literal('search'),
-  groupBy: z.string().optional(),
-  savedSearchId: objectIdSchema,
-});
-
-export const externalChartAlertSchema = z.object({
-  source: z.literal('chart'),
-  chartId: z.string().min(1),
-  dashboardId: objectIdSchema,
-});
-
-export const externalAlertSchema = z
-  .object({
-    channel: externalSlackWebhookAlertChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    threshold: z.number().min(0),
-    threshold_type: z.enum(['above', 'below']),
-    source: z.enum(['search', 'chart']).default('search'),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-  })
-  .and(externalSearchAlertSchema.or(externalChartAlertSchema));
-
-export const externalAlertSchemaWithId = externalAlertSchema.and(
-  z.object({
-    id: objectIdSchema,
-  }),
-);
-
-// TODO: move this to utils file since its not zod instance
-export const translateExternalAlertToInternalAlert = (
-  alertInput: z.infer<typeof externalAlertSchema>,
-): z.infer<typeof alertSchema> => {
-  return {
-    interval: alertInput.interval,
-    threshold: alertInput.threshold,
-    type: alertInput.threshold_type === 'above' ? 'presence' : 'absence',
-    channel: {
-      ...alertInput.channel,
-      type: 'webhook',
-    },
-    name: alertInput.name,
-    message: alertInput.message,
-    ...(alertInput.source === 'search' && alertInput.savedSearchId
-      ? { source: 'LOG', savedSearchId: alertInput.savedSearchId }
-      : alertInput.source === 'chart' && alertInput.dashboardId
-        ? {
-            source: 'CHART',
-            dashboardId: alertInput.dashboardId,
-            tileId: alertInput.chartId,
-          }
-        : ({} as never)),
-  };
-};
-
-// TODO: move this to utils file since its not zod instance
-export const translateAlertDocumentToExternalAlert = (
-  alertDoc: AlertDocument,
-): z.infer<typeof externalAlertSchemaWithId> => {
-  return {
-    id: alertDoc._id.toString(),
-    interval: alertDoc.interval,
-    threshold: alertDoc.threshold,
-    threshold_type: alertDoc.type === 'absence' ? 'below' : 'above',
-    channel: {
-      ...alertDoc.channel,
-      type: 'slack_webhook',
-    },
-    name: alertDoc.name,
-    message: alertDoc.message,
-    ...(alertDoc.source === 'LOG' && alertDoc.savedSearch
-      ? { source: 'search', savedSearchId: alertDoc.savedSearch.toString() }
-      : alertDoc.source === 'CHART' && alertDoc.dashboardId
-        ? {
-            source: 'chart',
-            dashboardId: alertDoc.dashboardId.toString(),
-            chartId: alertDoc.tileId as string,
-          }
-        : ({} as never)),
-  };
-};
+  .and(zSavedSearchAlert.or(zTileAlert));

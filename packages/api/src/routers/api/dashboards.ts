@@ -28,9 +28,9 @@ router.get('/', async (req, res, next) => {
 
     const alertsByDashboard = groupBy(
       await Alert.find({
-        dashboardId: { $in: dashboards.map(d => d._id) },
+        dashboard: { $in: dashboards.map(d => d._id) },
       }),
-      'dashboardId',
+      'dashboard',
     );
 
     res.json(

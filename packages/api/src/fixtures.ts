@@ -16,12 +16,18 @@ import {
 import { redisClient } from '@/utils/redis';
 
 import * as config from './config';
+import { AlertInput } from './controllers/alerts';
 import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
+import {
+  AlertInterval,
+  AlertSource,
+  AlertThresholdType,
+  IAlert,
+} from './models/alert';
 import Server from './server';
 import { Tile } from './utils/commonTypes';
-import { externalAlertSchema } from './utils/zod';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -381,48 +387,23 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
 
 export const makeAlert = ({
   dashboardId,
+  interval = '15m',
+  threshold = 8,
   tileId,
 }: {
   dashboardId: string;
+  interval?: AlertInterval;
+  threshold?: number;
   tileId: string;
-}) => ({
+}): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
     webhookId: 'test-webhook-id',
   },
-  interval: '15m',
-  threshold: 8,
-  type: 'presence',
-  source: 'CHART',
-  dashboardId,
-  tileId,
-});
-
-export const makeExternalAlert = ({
-  dashboardId,
-  chartId,
-  threshold = 8,
-  interval = '15m',
-  name,
-  message,
-}: {
-  dashboardId: string;
-  chartId: string;
-  threshold?: number;
-  interval?: '15m' | '1m' | '5m' | '30m' | '1h' | '6h' | '12h' | '1d';
-  name?: string;
-  message?: string;
-}): z.infer<typeof externalAlertSchema> => ({
-  channel: {
-    type: 'slack_webhook',
-    webhookId: '65ad876b6b08426ab4ba7830',
-  },
   interval,
   threshold,
-  threshold_type: 'above',
-  source: 'chart',
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.TILE,
   dashboardId,
-  chartId,
-  name,
-  message,
+  tileId,
 });
