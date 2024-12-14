@@ -4223,7 +4223,7 @@ __metadata:
     uplot: "npm:^1.6.30"
     uplot-react: "npm:^1.2.2"
     use-query-params: "npm:^2.1.2"
-    zod: "npm:^3.22.3"
+    zod: "npm:^3.24.1"
   languageName: unknown
   linkType: soft
 
@@ -27942,6 +27942,13 @@ __metadata:
   version: 3.23.8
   resolution: "zod@npm:3.23.8"
   checksum: 10c0/8f14c87d6b1b53c944c25ce7a28616896319d95bc46a9660fe441adc0ed0a81253b02b5abdaeffedbeb23bdd25a0bf1c29d2c12dd919aef6447652dd295e3e69
+  languageName: node
+  linkType: hard
+
+"zod@npm:^3.24.1":
+  version: 3.24.1
+  resolution: "zod@npm:3.24.1"
+  checksum: 10c0/0223d21dbaa15d8928fe0da3b54696391d8e3e1e2d0283a1a070b5980a1dbba945ce631c2d1eccc088fdbad0f2dfa40155590bf83732d3ac4fcca2cc9237591b
   languageName: node
   linkType: hard
 
