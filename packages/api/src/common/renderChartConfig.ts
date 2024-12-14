@@ -1,7 +1,6 @@
 import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 
-import { convertDateRangeToGranularityString } from '@/common/ChartUtils';
 import {
   ChSql,
   chSql,
@@ -14,7 +13,6 @@ import {
   CustomSchemaSQLSerializerV2,
   SearchQueryBuilder,
 } from '@/common/queryParser';
-import { getFirstTimestampValueExpression } from '@/common/source';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -25,6 +23,10 @@ import {
   SortSpecificationList,
   SQLInterval,
 } from '@/common/sqlTypes';
+import {
+  convertDateRangeToGranularityString,
+  getFirstTimestampValueExpression,
+} from '@/common/utils';
 
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {

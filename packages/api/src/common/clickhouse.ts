@@ -9,6 +9,8 @@ import { SQLInterval } from '@/common/sqlTypes';
 import { timeBucketByGranularity } from '@/common/utils';
 import { hashCode } from '@/common/utils';
 
+export const CLICKHOUSE_HOST = '/api/clickhouse-proxy';
+
 export enum JSDataType {
   Array = 'array',
   Date = 'date',
@@ -303,8 +305,6 @@ const client = {
 
     // TODO: Send command to CH to cancel query on abort_signal
     if (!res.ok) {
-      loginHook({} as any, {}, res as any);
-
       if (!isSuccessfulResponse(res.status)) {
         const text = await res.text();
         throw new ClickHouseQueryError(`${text}`, debugSql);
@@ -364,17 +364,19 @@ export const sendQuery = async <T extends DataFormat>({
   connectionId: string;
   queryId?: string;
 }) => {
+  const IS_LOCAL_MODE = false;
+
   // TODO: decide what to do here
-  // let host, username, password;
-  // if (IS_LOCAL_MODE) {
-  //   const localConnections = getLocalConnections();
-  //   if (localConnections.length === 0) {
-  //     throw new Error('No local connection found');
-  //   }
-  //   host = localConnections[0].host;
-  //   username = localConnections[0].username;
-  //   password = localConnections[0].password;
-  // }
+  let host, username, password;
+  if (IS_LOCAL_MODE) {
+    const localConnections: any = [];
+    if (localConnections.length === 0) {
+      throw new Error('No local connection found');
+    }
+    host = localConnections[0].host;
+    username = localConnections[0].username;
+    password = localConnections[0].password;
+  }
 
   return client.query<T>({
     query,

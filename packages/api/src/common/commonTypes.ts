@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
+import { DisplayType } from '@/common/DisplayType';
 import type { SavedChartConfig } from '@/common/renderChartConfig';
 
 // --------------------------
 // SAVED SEARCH
 // --------------------------
-
 export const SavedSearchSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -20,11 +20,151 @@ export const SavedSearchSchema = z.object({
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
 // --------------------------
+//  SQL TYPES
+// --------------------------
+// TODO: infer types from here and replaces all types in sqlTypes.ts
+export const SQLIntervalSchema = z
+  .string()
+  .regex(/^\d+ (second|minute|hour|day)$/);
+export const SearchConditionSchema = z.string();
+export const SearchConditionLanguageSchema = z
+  .enum(['sql', 'lucene'])
+  .optional();
+export const AggregateFunctionSchema = z.enum([
+  'avg',
+  'count',
+  'count_distinct',
+  'max',
+  'min',
+  'quantile',
+  'sum',
+]);
+export const AggregateFunctionWithCombinatorsSchema = z
+  .string()
+  .regex(/^(\w+)If(State|Merge)$/);
+export const RootValueExpressionSchema = z
+  .object({
+    aggFn: z.union([
+      AggregateFunctionSchema,
+      AggregateFunctionWithCombinatorsSchema,
+    ]),
+    aggCondition: SearchConditionSchema,
+    aggConditionLanguage: SearchConditionLanguageSchema,
+    valueExpression: z.string(),
+  })
+  .or(
+    z.object({
+      aggFn: z.literal('quantile'),
+      level: z.number(),
+      aggCondition: SearchConditionSchema,
+      aggConditionLanguage: SearchConditionLanguageSchema,
+      valueExpression: z.string(),
+    }),
+  )
+  .or(
+    z.object({
+      aggFn: z.string().optional(),
+      aggCondition: z.string().optional(),
+      aggConditionLanguage: SearchConditionLanguageSchema,
+      valueExpression: z.string(),
+    }),
+  );
+export const DerivedColumnSchema = z.union([
+  RootValueExpressionSchema,
+  z.object({
+    alias: z.string().optional(),
+  }),
+]);
+export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+export const SortSpecificationSchema = z.union([
+  RootValueExpressionSchema,
+  z.object({
+    ordering: z.enum(['ASC', 'DESC']),
+  }),
+]);
+export const SortSpecificationListSchema = z
+  .array(SortSpecificationSchema)
+  .or(z.string());
+export const LimitSchema = z.object({
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+});
+export const SelectSQLStatementSchema = z.object({
+  select: SelectListSchema,
+  from: z.object({
+    databaseName: z.string(),
+    tableName: z.string(),
+  }),
+  where: SearchConditionSchema,
+  whereLanguage: SearchConditionLanguageSchema,
+  groupBy: SelectListSchema.optional(),
+  having: SearchConditionSchema.optional(),
+  havingLanguage: SearchConditionLanguageSchema.optional(),
+  orderBy: SortSpecificationListSchema.optional(),
+  limit: LimitSchema.optional(),
+});
+
+// --------------------------
 // DASHBOARDS
 // --------------------------
+export const NumberFormatSchema = z.object({
+  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
+  mantissa: z.number().optional(),
+  thousandSeparated: z.boolean().optional(),
+  average: z.boolean().optional(),
+  decimalBytes: z.boolean().optional(),
+  factor: z.number().optional(),
+  currencySymbol: z.string().optional(),
+  unit: z.string().optional(),
+});
 
-// TODO: Define this
-export const SavedChartConfigSchema = z.any();
+export const SqlAstFilterSchema = z.object({
+  type: z.literal('sql_ast'),
+  operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
+  left: z.string(),
+  right: z.string(),
+});
+
+export const FilterSchema = z.union([
+  z.object({
+    type: z.enum(['lucene', 'sql']),
+    condition: z.string(),
+  }),
+  SqlAstFilterSchema,
+]);
+
+export const _ChartConfigSchema = z.object({
+  displayType: z.nativeEnum(DisplayType),
+  numberFormat: NumberFormatSchema,
+  timestampValueExpression: z.string(),
+  implicitColumnExpression: z.string().optional(),
+  granularity: z.string().optional(),
+  markdown: z.string().optional(),
+  filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
+  filters: z.array(FilterSchema),
+  connection: z.string(),
+  fillNulls: z.number().optional(),
+  selectGroupBy: z.boolean().optional(),
+});
+
+export const ChartConfigSchema = z.union([
+  _ChartConfigSchema,
+  SelectSQLStatementSchema,
+]);
+
+export const SavedChartConfigSchema = z.union([
+  z.object({
+    name: z.string(),
+    source: z.string(),
+  }),
+  _ChartConfigSchema.omit({
+    timestampValueExpression: true,
+  }),
+  SelectSQLStatementSchema.omit({
+    from: true,
+    connection: true,
+  }),
+]);
 
 export const TileSchema = z.object({
   id: z.string(),
