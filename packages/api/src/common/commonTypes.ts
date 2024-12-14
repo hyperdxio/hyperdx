@@ -69,19 +69,19 @@ export const RootValueExpressionSchema = z
       valueExpression: z.string(),
     }),
   );
-export const DerivedColumnSchema = z.union([
+export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
     alias: z.string().optional(),
   }),
-]);
+);
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
-export const SortSpecificationSchema = z.union([
+export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
     ordering: z.enum(['ASC', 'DESC']),
   }),
-]);
+);
 export const SortSpecificationListSchema = z
   .array(SortSpecificationSchema)
   .or(z.string());
@@ -147,24 +147,24 @@ export const _ChartConfigSchema = z.object({
   selectGroupBy: z.boolean().optional(),
 });
 
-export const ChartConfigSchema = z.union([
+export const ChartConfigSchema = z.intersection(
   _ChartConfigSchema,
   SelectSQLStatementSchema,
-]);
+);
 
-export const SavedChartConfigSchema = z.union([
+export const SavedChartConfigSchema = z.intersection(
   z.object({
     name: z.string(),
     source: z.string(),
   }),
   _ChartConfigSchema.omit({
+    connection: true,
     timestampValueExpression: true,
   }),
   SelectSQLStatementSchema.omit({
     from: true,
-    connection: true,
   }),
-]);
+);
 
 export const TileSchema = z.object({
   id: z.string(),
@@ -175,14 +175,7 @@ export const TileSchema = z.object({
   config: SavedChartConfigSchema,
 });
 
-export type Tile = {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  config: SavedChartConfig;
-};
+export type Tile = z.infer<typeof TileSchema>;
 
 export const DashboardSchema = z.object({
   id: z.string(),

@@ -4094,7 +4094,7 @@ __metadata:
     typescript: "npm:^4.9.5"
     uuid: "npm:^8.3.2"
     winston: "npm:^3.10.0"
-    zod: "npm:^3.22.3"
+    zod: "npm:^3.24.1"
     zod-express-middleware: "npm:^1.4.0"
   languageName: unknown
   linkType: soft
@@ -27928,13 +27928,6 @@ __metadata:
   peerDependencies:
     zod: ^3.18.0
   checksum: 10c0/aaadb0e65c834aacb12fa088663d52d9f4224b5fe6958f09b039f4ab74145fda381c8a7d470bfddf7ddd9bbb5fdfbb52739cd66958ce6d388c256a44094d1fba
-  languageName: node
-  linkType: hard
-
-"zod@npm:^3.22.3":
-  version: 3.22.3
-  resolution: "zod@npm:3.22.3"
-  checksum: 10c0/cb4b24aed7dec98552eb9042e88cbd645455bf2830e5704174d2da96f554dabad4630e3b4f6623e1b6562b9eaa43535a37b7f2011f29b8d8e9eabe1ddf3b656b
   languageName: node
   linkType: hard
 
