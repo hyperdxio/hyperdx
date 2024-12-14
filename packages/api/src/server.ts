@@ -21,7 +21,7 @@ export default class Server {
     let hasError = false;
     logger.info('Closing all db clients...');
     const [redisCloseResult, mongoCloseResult] = await Promise.allSettled([
-      redisClient.disconnect(),
+      redisClient?.disconnect(),
       mongooseConnection.close(false),
     ]);
 
@@ -71,6 +71,6 @@ export default class Server {
       });
     }
 
-    await Promise.all([connectDB(), redisClient.connect()]);
+    await Promise.all([connectDB(), redisClient?.connect()]);
   }
 }
