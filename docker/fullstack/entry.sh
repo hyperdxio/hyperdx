@@ -1,5 +1,10 @@
 #!/bin/bash
 
+export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
+
+echo "Visit the HyperDX UI at $FRONTEND_URL"
+echo ""
+
 # Use concurrently to run both the API and App servers
 npx concurrently \
   "--kill-others" \
