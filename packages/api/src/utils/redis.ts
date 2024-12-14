@@ -15,7 +15,9 @@ if (client == null) {
 }
 
 client.on('error', (err: any) => {
-  logger.error('Redis error: ', serializeError(err));
+  if (config.REDIS_URL) {
+    logger.error('Redis error: ', serializeError(err));
+  }
 });
 
 // TODO: add tests
