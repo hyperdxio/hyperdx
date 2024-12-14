@@ -4,11 +4,9 @@ import { serializeError } from 'serialize-error';
 import * as config from '@/config';
 import logger from '@/utils/logger';
 
-const client = config.REDIS_URL
-  ? createClient({
-      url: config.REDIS_URL,
-    })
-  : null;
+const client = createClient({
+  url: config.REDIS_URL,
+});
 
 // check if client is initialized
 if (client == null) {
@@ -16,7 +14,7 @@ if (client == null) {
   // IMPLEMENT: use local in-memory cache
 }
 
-client?.on('error', (err: any) => {
+client.on('error', (err: any) => {
   logger.error('Redis error: ', serializeError(err));
 });
 
