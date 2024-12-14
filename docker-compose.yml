@@ -98,23 +98,23 @@ services:
   #     - db
   #     - redis
   app:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT}
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY} # optional
-      HYPERDX_API_PORT: ${HYPERDX_API_PORT} # optional
-      HYPERDX_APP_PORT: ${HYPERDX_APP_PORT} # optional
-      HYPERDX_APP_URL: ${HYPERDX_APP_URL} # optional
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL} # optional
-      MINER_API_URL: 'http://miner:5123' # optional
-      MONGO_URI: 'mongodb://db:27017/hyperdx' # optional
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_API_PORT: ${HYPERDX_API_PORT}
+      HYPERDX_APP_PORT: ${HYPERDX_APP_PORT}
+      HYPERDX_APP_URL: ${HYPERDX_APP_URL}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      MINER_API_URL: 'http://miner:5123'
+      MONGO_URI: 'mongodb://db:27017/hyperdx'
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       REDIS_URL: redis://redis:6379
-      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true} # optional
+      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
     networks:
       - internal
     depends_on:
