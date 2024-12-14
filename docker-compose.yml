@@ -53,7 +53,7 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-otel-collector
+    image: ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
