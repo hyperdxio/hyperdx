@@ -55,6 +55,9 @@ FROM node:${NODE_VERSION}-alpine AS prod
 
 ENV NODE_ENV production
 
+# Install libs used for the start script
+RUN npm install -g concurrently@9.1.0
+
 USER node
 
 # Set up API
@@ -72,4 +75,4 @@ COPY --from=app_builder /app/app/package.json ./package.json
 
 # Set up start script
 COPY --chown=node:node --from=fullstack ./entry.sh /etc/local/entry.sh
-CMD sh /etc/local/entry.sh
+ENTRYPOINT ["sh", "/etc/local/entry.sh"]
