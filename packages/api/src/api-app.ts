@@ -34,7 +34,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
 };
 
 app.set('trust proxy', 1);
-if (config.FRONTEND_URL) {
+if (config.FRONTEND_URL && !config.IS_CI) {
   const feUrl = new URL(config.FRONTEND_URL);
   sess.cookie.domain = feUrl.hostname;
   if (feUrl.protocol === 'https:') {

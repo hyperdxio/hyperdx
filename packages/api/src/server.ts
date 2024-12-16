@@ -2,28 +2,19 @@ import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
 
+import apiServer from './api-app';
 import * as config from './config';
 import { connectDB, mongooseConnection } from './models';
 import logger from './utils/logger';
 import redisClient from './utils/redis';
 
 export default class Server {
-  protected readonly appType = config.APP_TYPE;
-
   protected shouldHandleGracefulShutdown = true;
 
   protected httpServer!: http.Server;
 
   private async createServer() {
-    switch (this.appType) {
-      case 'api':
-        return http.createServer(
-          // eslint-disable-next-line n/no-unsupported-features/es-syntax
-          (await import('./api-app').then(m => m.default)) as any,
-        );
-      default:
-        throw new Error(`Invalid APP_TYPE: ${config.APP_TYPE}`);
-    }
+    return http.createServer(apiServer);
   }
 
   protected async shutdown(signal?: string) {

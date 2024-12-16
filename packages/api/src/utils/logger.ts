@@ -6,7 +6,6 @@ import {
   APP_TYPE,
   HYPERDX_API_KEY,
   HYPERDX_LOG_LEVEL,
-  INGESTOR_API_URL,
   IS_PROD,
 } from '@/config';
 
@@ -30,7 +29,6 @@ const DEFAULT_FORMAT = winston.format.combine(
 const hyperdxTransport = HYPERDX_API_KEY
   ? getWinstonTransport(MAX_LEVEL, {
       bufferSize: APP_TYPE === 'scheduled-task' ? 1 : 100,
-      ...(INGESTOR_API_URL && { baseUrl: INGESTOR_API_URL }),
     })
   : null;
 

@@ -98,18 +98,18 @@ release-local:
 .PHONY: release
 release:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-otel-collector \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-otel-collector \
-		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-otel-collector \
-		-t ${IMAGE_NAME}:${IMAGE_VERSION}-otel-collector \
-		--target prod --push &
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION} \
+		--target prod --push & \
 	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
 		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-app \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-app \
-		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-app \
-		-t ${IMAGE_NAME}:${IMAGE_VERSION}-app \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION} \
 		--target prod --push
