@@ -55,6 +55,9 @@ FROM node:${NODE_VERSION}-alpine AS prod
 
 ENV NODE_ENV production
 
+# Install libs used for the start script
+RUN npm install -g concurrently
+
 USER node
 
 # Set up API
@@ -69,6 +72,7 @@ COPY --chown=node:node --from=app_builder /app/app/public ./public
 COPY --chown=node:node --from=app_builder /app/app/.next ./.next
 COPY --from=app_builder /app/app/node_modules ./node_modules
 COPY --from=app_builder /app/app/package.json ./package.json
+
 
 # Set up start script
 COPY --chown=node:node --from=fullstack ./entry.sh /etc/local/entry.sh
