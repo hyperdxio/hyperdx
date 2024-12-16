@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import { SavedSearchSchema } from '@/common/commonTypes';
 import { SavedSearch } from '@/models/savedSearch';
-import { SavedSearchSchema } from '@/utils/commonTypes';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 

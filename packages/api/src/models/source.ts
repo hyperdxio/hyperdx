@@ -1,6 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 
-import { TSource } from '@/utils/commonTypes';
+import { TSource } from '@/common/commonTypes';
 
 type ObjectId = mongoose.Types.ObjectId;
 

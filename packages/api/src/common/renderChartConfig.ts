@@ -181,7 +181,9 @@ const fastifySQL = ({
         case 'column_ref': {
           // FIXME: handle 'Value' type?
           const _n = node as ColumnRef;
+          // @ts-ignore
           if (typeof _n.column !== 'string') {
+            // @ts-ignore
             colExpr = `${_n.column?.expr.value}['${_n.array_index?.[0]?.index.value}']`;
           }
           break;
@@ -248,7 +250,9 @@ const fastifySQL = ({
             }
           }
           _n.type = 'column_ref';
+          // @ts-ignore
           _n.table = null;
+          // @ts-ignore
           _n.column = { expr: { type: 'default', value: materializedField } };
         }
       }

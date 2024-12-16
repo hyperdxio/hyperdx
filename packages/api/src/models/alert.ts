@@ -25,10 +25,14 @@ export type AlertInterval =
   | '12h'
   | '1d';
 
-export type AlertChannel = {
-  type: 'webhook';
-  webhookId: string;
-};
+export type AlertChannel =
+  | {
+      type: 'webhook';
+      webhookId: string;
+    }
+  | {
+      type: null;
+    };
 
 export enum AlertSource {
   SAVED_SEARCH = 'SAVED_SEARCH',

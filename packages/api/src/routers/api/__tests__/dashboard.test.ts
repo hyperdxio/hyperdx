@@ -1,4 +1,9 @@
-import { getLoggedInAgent, getServer, makeAlert, makeTile } from '@/fixtures';
+import {
+  getLoggedInAgent,
+  getServer,
+  makeAlertInput,
+  makeTile,
+} from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -82,7 +87,7 @@ describe('dashboard router', () => {
         agent
           .post('/alerts')
           .send(
-            makeAlert({
+            makeAlertInput({
               dashboardId: dashboard._id,
               tileId: tile.id,
             }),

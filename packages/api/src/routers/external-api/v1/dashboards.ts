@@ -4,13 +4,13 @@ import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { TileSchema } from '@/common/commonTypes';
 import {
   deleteDashboardAndAlerts,
   updateDashboard,
   updateDashboardAndAlerts,
 } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import { TileSchema } from '@/utils/commonTypes';
 import {
   translateDashboardDocumentToExternalDashboard,
   translateExternalChartToInternalChart,

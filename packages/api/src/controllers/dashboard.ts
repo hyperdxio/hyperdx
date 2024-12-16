@@ -1,10 +1,10 @@
 import { differenceBy, uniq } from 'lodash';
 import { z } from 'zod';
 
+import { DashboardWithoutIdSchema, Tile } from '@/common/commonTypes';
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
-import { DashboardWithoutIdSchema, Tile } from '@/utils/commonTypes';
 import { tagsSchema } from '@/utils/zod';
 
 export async function getDashboards(teamId: ObjectId) {

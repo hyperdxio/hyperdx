@@ -1,23 +1,6 @@
 import { z } from 'zod';
 
 import { DisplayType } from '@/common/DisplayType';
-import type { SavedChartConfig } from '@/common/renderChartConfig';
-
-// --------------------------
-// SAVED SEARCH
-// --------------------------
-export const SavedSearchSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  select: z.string(),
-  where: z.string(),
-  whereLanguage: z.string().optional(),
-  source: z.string(),
-  tags: z.array(z.string()),
-  orderBy: z.string().optional(),
-});
-
-export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
 // --------------------------
 //  SQL TYPES
@@ -105,6 +88,22 @@ export const SelectSQLStatementSchema = z.object({
 });
 
 // --------------------------
+// SAVED SEARCH
+// --------------------------
+export const SavedSearchSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  select: z.string(),
+  where: z.string(),
+  whereLanguage: SearchConditionLanguageSchema,
+  source: z.string(),
+  tags: z.array(z.string()),
+  orderBy: z.string().optional(),
+});
+
+export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+
+// --------------------------
 // DASHBOARDS
 // --------------------------
 export const NumberFormatSchema = z.object({
@@ -153,18 +152,22 @@ export const ChartConfigSchema = z.intersection(
 );
 
 export const SavedChartConfigSchema = z.intersection(
-  z.object({
-    name: z.string(),
-    source: z.string(),
-  }),
-  _ChartConfigSchema.omit({
-    connection: true,
-    timestampValueExpression: true,
-  }),
+  z.intersection(
+    z.object({
+      name: z.string(),
+      source: z.string(),
+    }),
+    _ChartConfigSchema.omit({
+      connection: true,
+      timestampValueExpression: true,
+    }),
+  ),
   SelectSQLStatementSchema.omit({
     from: true,
   }),
 );
+
+export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
 export const TileSchema = z.object({
   id: z.string(),

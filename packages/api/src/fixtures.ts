@@ -15,6 +15,8 @@ import {
 } from '@/utils/logParser';
 import { redisClient } from '@/utils/redis';
 
+import { SavedChartConfig, Tile } from './common/commonTypes';
+import { DisplayType } from './common/DisplayType';
 import * as config from './config';
 import { AlertInput } from './controllers/alerts';
 import { getTeam } from './controllers/team';
@@ -27,7 +29,6 @@ import {
   IAlert,
 } from './models/alert';
 import Server from './server';
-import { Tile } from './utils/commonTypes';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -359,19 +360,16 @@ export const makeTile = (opts?: { id?: string }): Tile => ({
   config: makeChart(),
 });
 
-export const makeChart = (opts?: { id?: string }) => ({
-  id: opts?.id ?? randomMongoId(),
+// TODO: fix types here (INCOMPLETE)
+// @ts-ignore
+export const makeChart = (opts?: { id?: string }): SavedChartConfig => ({
   name: 'Test Chart',
-  x: 1,
-  y: 1,
-  w: 1,
-  h: 1,
-  series: [
-    {
-      type: 'time',
-      table: 'metrics',
-    },
-  ],
+  source: 'test-source',
+  displayType: DisplayType.Line,
+  numberFormat: {
+    output: 'number',
+  },
+  filters: [],
 });
 
 export const makeExternalChart = (opts?: { id?: string }) => ({
@@ -389,7 +387,7 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
   ],
 });
 
-export const makeAlert = ({
+export const makeAlertInput = ({
   dashboardId,
   interval = '15m',
   threshold = 8,

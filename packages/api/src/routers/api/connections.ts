@@ -1,6 +1,7 @@
 import express from 'express';
 import { validateRequest } from 'zod-express-middleware';
 
+import { ConnectionSchema } from '@/common/commonTypes';
 import {
   createConnection,
   deleteConnection,
@@ -9,7 +10,6 @@ import {
   updateConnection,
 } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { ConnectionSchema } from '@/utils/commonTypes';
 
 const router = express.Router();
 

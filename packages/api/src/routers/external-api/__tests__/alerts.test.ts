@@ -1,6 +1,11 @@
 import _ from 'lodash';
 
-import { getLoggedInAgent, getServer, makeAlert, makeChart } from '@/fixtures';
+import {
+  getLoggedInAgent,
+  getServer,
+  makeAlertInput,
+  makeChart,
+} from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -43,7 +48,7 @@ describe.skip('/api/v1/alerts', () => {
           .post('/api/v1/alerts')
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send(
-            makeAlert({
+            makeAlertInput({
               dashboardId: dashboard._id,
               tileId: chart.id,
               ...(i % 2 == 0
@@ -172,7 +177,7 @@ Array [
     const updateAlert = await agent
       .put(`/api/v1/alerts/${remainingAlert.id}`)
       .send(
-        makeAlert({
+        makeAlertInput({
           dashboardId: remainingAlert.dashboardId,
           tileId: remainingAlert.chartId,
           threshold: 1000,

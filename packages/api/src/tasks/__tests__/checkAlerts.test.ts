@@ -2,25 +2,23 @@
 
 import ms from 'ms';
 
+import { createAlert } from '@/controllers/alerts';
+import { createTeam } from '@/controllers/team';
 import {
   buildMetricSeries,
   generateBuildTeamEventFn,
   getServer,
+  makeTile,
   mockLogsPropertyTypeMappingsModel,
   mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
-import { LogType } from '@/utils/logParser';
-
-import * as clickhouse from '../../clickhouse';
-import { createAlert } from '../../controllers/alerts';
-import { createTeam } from '../../controllers/team';
-import AlertHistory from '../../models/alertHistory';
-import Dashboard from '../../models/dashboard';
-import LogView from '../../models/logView';
-import Webhook from '../../models/webhook';
-import * as slack from '../../utils/slack';
-import * as checkAlert from '../checkAlerts';
+import { AlertSource, AlertThresholdType } from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
+import Dashboard from '@/models/dashboard';
+import LogView from '@/models/logView';
+import Webhook from '@/models/webhook';
 import {
+  AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   buildLogSearchLink,
@@ -32,9 +30,23 @@ import {
   renderAlertTemplate,
   roundDownToXMinutes,
   translateExternalActionsToInternal,
-} from '../checkAlerts';
+} from '@/tasks/checkAlerts';
+import { LogType } from '@/utils/logParser';
+import * as slack from '@/utils/slack';
 
-describe.skip('checkAlerts', () => {
+const MOCK_DASHBOARD = {
+  name: 'Test Dashboard',
+  tiles: [makeTile(), makeTile()],
+  tags: ['test'],
+};
+
+const MOCK_SOURCE = {};
+
+const MOCK_SAVED_SEARCH: any = {
+  id: 'fake-saved-search-id',
+};
+
+describe('checkAlerts', () => {
   afterAll(async () => {
     await clickhouse.client.close();
   });
@@ -67,21 +79,16 @@ describe.skip('checkAlerts', () => {
       buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
-        logViewId: '123',
+        savedSearch: MOCK_SAVED_SEARCH,
       }),
-    ).toBe(
-      'http://localhost:9090/search/123?from=1679091183103&to=1679091239103',
-    );
+    ).toMatchInlineSnapshot('');
     expect(
       buildLogSearchLink({
         startTime: new Date('2023-03-17T22:13:03.103Z'),
         endTime: new Date('2023-03-17T22:13:59.103Z'),
-        logViewId: '123',
-        q: '🐱 foo:"bar"',
+        savedSearch: MOCK_SAVED_SEARCH,
       }),
-    ).toBe(
-      'http://localhost:9090/search/123?from=1679091183103&to=1679091239103&q=%F0%9F%90%B1+foo%3A%22bar%22',
-    );
+    ).toMatchInlineSnapshot('');
   });
 
   it('doesExceedThreshold', () => {
@@ -145,50 +152,58 @@ describe.skip('checkAlerts', () => {
   });
 
   describe('Alert Templates', () => {
-    const defaultSearchView: any = {
+    const defaultSearchView: AlertMessageTemplateDefaultView = {
       alert: {
-        threshold_type: 'above',
+        thresholdType: AlertThresholdType.ABOVE,
         threshold: 1,
-        source: 'search',
-        groupBy: 'span_name',
+        source: AlertSource.SAVED_SEARCH,
+        channel: {
+          type: 'webhook',
+          webhookId: 'fake-webhook-id',
+        },
+        interval: '1m',
       },
       savedSearch: {
-        id: 'id-123',
-        query: 'level:error',
+        _id: 'fake-saved-search-id' as any,
+        team: 'team-123' as any,
+        id: 'fake-saved-search-id',
         name: 'My Search',
+        select: 'Body',
+        where: 'Body: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'timestamp',
+        source: 'fake-source-id' as any,
+        tags: ['test'],
       },
-      team: {
-        id: 'team-123',
-        logStreamTableVersion: 1,
-      },
+      attributes: {},
+      granularity: '1m',
       group: 'http',
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       value: 10,
     };
 
-    const defaultChartView: any = {
+    const defaultChartView: AlertMessageTemplateDefaultView = {
       alert: {
-        threshold_type: 'below',
-        threshold: 10,
-        source: 'chart',
-        groupBy: 'span_name',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        source: AlertSource.TILE,
+        channel: {
+          type: 'webhook',
+          webhookId: 'fake-webhook-id',
+        },
+        interval: '1m',
       },
       dashboard: {
         id: 'id-123',
         name: 'My Dashboard',
-        charts: [
-          {
-            name: 'My Chart',
-          },
-        ],
-      },
-      team: {
-        id: 'team-123',
-        logStreamTableVersion: 1,
+        tiles: [makeTile()],
+        team: 'team-123' as any,
+        tags: ['test'],
       },
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
+      attributes: {},
       granularity: '5 minute',
       value: 5,
     };
@@ -209,11 +224,15 @@ describe.skip('checkAlerts', () => {
     });
 
     it('buildAlertMessageTemplateHdxLink', () => {
-      expect(buildAlertMessageTemplateHdxLink(defaultSearchView)).toBe(
-        'http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22',
+      expect(
+        buildAlertMessageTemplateHdxLink(defaultSearchView),
+      ).toMatchInlineSnapshot(
+        `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103"`,
       );
-      expect(buildAlertMessageTemplateHdxLink(defaultChartView)).toBe(
-        'http://localhost:9090/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103',
+      expect(
+        buildAlertMessageTemplateHdxLink(defaultChartView),
+      ).toMatchInlineSnapshot(
+        `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103"`,
       );
     });
 
@@ -222,23 +241,25 @@ describe.skip('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toBe('Alert for "My Search" - 10 lines found');
+      ).toMatchInlineSnapshot(`"Alert for \\"My Search\\" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
-      ).toBe('Alert for "My Chart" in "My Dashboard" - 5 falls below 10');
+      ).toMatchInlineSnapshot(
+        `"Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+      );
     });
 
     it('getDefaultExternalAction', () => {
       expect(
         getDefaultExternalAction({
           channel: {
-            type: 'slack_webhook',
+            type: 'webhook',
             webhookId: '123',
           },
         } as any),
-      ).toBe('@slack_webhook-123');
+      ).toBe('@webhook-123');
       expect(
         getDefaultExternalAction({
           channel: {
@@ -251,20 +272,20 @@ describe.skip('checkAlerts', () => {
     it('translateExternalActionsToInternal', () => {
       // normal
       expect(
-        translateExternalActionsToInternal('@slack_webhook-123'),
+        translateExternalActionsToInternal('@webhook-123'),
       ).toMatchInlineSnapshot(
-        `"{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}"`,
+        `"{{__hdx_notify_channel__ channel=\\"webhook\\" id=\\"123\\"}}"`,
       );
 
       // with multiple breaks
       expect(
         translateExternalActionsToInternal(`
 
-@slack_webhook-123
+@webhook-123
 `),
       ).toMatchInlineSnapshot(`
 "
-{{__hdx_notify_channel__ channel=\\"slack_webhook\\" id=\\"123\\"}}
+{{__hdx_notify_channel__ channel=\\"webhook\\" id=\\"123\\"}}
 "
 `);
 
@@ -306,20 +327,6 @@ describe.skip('checkAlerts', () => {
 
     it('renderAlertTemplate - with existing channel', async () => {
       jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-        data: [
-          {
-            timestamp: '2023-11-16T22:10:00.000Z',
-            severity_text: 'error',
-            body: 'Oh no! Something went wrong!',
-          },
-          {
-            timestamp: '2023-11-16T22:15:00.000Z',
-            severity_text: 'info',
-            body: 'All good!',
-          },
-        ],
-      } as any);
 
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
@@ -330,13 +337,13 @@ describe.skip('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
-        template: 'Custom body @slack_webhook-My_Web', // partial name should work
+        template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
             ...defaultSearchView.alert,
             channel: {
-              type: 'slack_webhook',
+              type: 'webhook',
               webhookId: webhook._id.toString(),
             },
           },
@@ -344,7 +351,6 @@ describe.skip('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
         team: {
           id: team._id.toString(),
-          logStreamTableVersion: team.logStreamTableVersion,
         },
       });
 
@@ -356,20 +362,6 @@ describe.skip('checkAlerts', () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
-      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-        data: [
-          {
-            timestamp: '2023-11-16T22:10:00.000Z',
-            severity_text: 'error',
-            body: 'Oh no! Something went wrong!',
-          },
-          {
-            timestamp: '2023-11-16T22:15:00.000Z',
-            severity_text: 'info',
-            body: 'All good!',
-          },
-        ],
-      } as any);
 
       const team = await createTeam({ name: 'My Team' });
       await new Webhook({
@@ -380,7 +372,7 @@ describe.skip('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
-        template: 'Custom body @slack_webhook-My_Web', // partial name should work
+        template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
@@ -393,7 +385,6 @@ describe.skip('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
         team: {
           id: team._id.toString(),
-          logStreamTableVersion: team.logStreamTableVersion,
         },
       });
 
@@ -406,13 +397,12 @@ describe.skip('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Custom body ',
                   '```',
-                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
-                  'Nov 16 22:15:00Z [info] All good!',
+                  '',
                   '```',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -428,20 +418,6 @@ describe.skip('checkAlerts', () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
-      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-        data: [
-          {
-            timestamp: '2023-11-16T22:10:00.000Z',
-            severity_text: 'error',
-            body: 'Oh no! Something went wrong!',
-          },
-          {
-            timestamp: '2023-11-16T22:15:00.000Z',
-            severity_text: 'info',
-            body: 'All good!',
-          },
-        ],
-      } as any);
 
       const team = await createTeam({ name: 'My Team' });
       await new Webhook({
@@ -452,7 +428,7 @@ describe.skip('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
-        template: 'Custom body @slack_webhook-{{attributes.webhookName}}', // partial name should work
+        template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
@@ -468,7 +444,6 @@ describe.skip('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
         team: {
           id: team._id.toString(),
-          logStreamTableVersion: team.logStreamTableVersion,
         },
       });
 
@@ -481,13 +456,12 @@ describe.skip('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Custom body ',
                   '```',
-                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
-                  'Nov 16 22:15:00Z [info] All good!',
+                  '',
                   '```',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -501,20 +475,6 @@ describe.skip('checkAlerts', () => {
 
     it('renderAlertTemplate - #is_match with single action', async () => {
       jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-        data: [
-          {
-            timestamp: '2023-11-16T22:10:00.000Z',
-            severity_text: 'error',
-            body: 'Oh no! Something went wrong!',
-          },
-          {
-            timestamp: '2023-11-16T22:15:00.000Z',
-            severity_text: 'info',
-            body: 'All good!',
-          },
-        ],
-      } as any);
 
       const team = await createTeam({ name: 'My Team' });
       await new Webhook({
@@ -535,10 +495,10 @@ describe.skip('checkAlerts', () => {
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
   Runbook URL: {{attributes.runbook.url}}
   hi i matched
-  @slack_webhook-My_Web
+  @webhook-My_Web
 {{/is_match}}
 
-@slack_webhook-Another_Webhook
+@webhook-Another_Webhook
 `, // partial name should work
         view: {
           ...defaultSearchView,
@@ -562,14 +522,13 @@ describe.skip('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
         team: {
           id: team._id.toString(),
-          logStreamTableVersion: team.logStreamTableVersion,
         },
       });
 
-      // @slack_webhook should not be called
+      // @webhook should not be called
       await renderAlertTemplate({
         template:
-          '{{#is_match "attributes.host" "web"}} @slack_webhook-My_Web {{/is_match}}', // partial name should work
+          '{{#is_match "attributes.host" "web"}} @webhook-My_Web {{/is_match}}', // partial name should work
         view: {
           ...defaultSearchView,
           alert: {
@@ -585,7 +544,6 @@ describe.skip('checkAlerts', () => {
         title: 'Alert for "My Search" - 10 lines found',
         team: {
           id: team._id.toString(),
-          logStreamTableVersion: team.logStreamTableVersion,
         },
       });
 
@@ -598,7 +556,7 @@ describe.skip('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   '',
@@ -608,8 +566,7 @@ describe.skip('checkAlerts', () => {
                   '',
                   '',
                   '```',
-                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
-                  'Nov 16 22:15:00Z [info] All good!',
+                  '',
                   '```',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -627,7 +584,7 @@ describe.skip('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://localhost:9090/search/id-123?from=1679091183103&to=1679091239103&q=level%3Aerror+span_name%3A%22http%22 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   '',
@@ -637,8 +594,7 @@ describe.skip('checkAlerts', () => {
                   '',
                   '',
                   '```',
-                  'Nov 16 22:10:00Z [error] Oh no! Something went wrong!',
-                  'Nov 16 22:15:00Z [info] All good!',
+                  '',
                   '```',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -651,7 +607,7 @@ describe.skip('checkAlerts', () => {
     });
   });
 
-  describe('processAlert', () => {
+  describe.only('processAlert', () => {
     const server = getServer();
 
     beforeAll(async () => {
@@ -667,7 +623,7 @@ describe.skip('checkAlerts', () => {
       await server.stop();
     });
 
-    it('LOG alert - slack webhook', async () => {
+    it.only('SAVED_SEARCH alert - slack webhook', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -688,16 +644,6 @@ describe.skip('checkAlerts', () => {
           rows: 0,
           data: [],
         } as any);
-      jest.spyOn(clickhouse, 'getLogBatch').mockResolvedValueOnce({
-        rows: 1,
-        data: [
-          {
-            timestamp: '2023-11-16T22:10:00.000Z',
-            severity_text: 'error',
-            body: 'Oh no! Something went wrong!',
-          },
-        ],
-      } as any);
 
       const team = await createTeam({ name: 'My Team' });
       const logView = await new LogView({
@@ -765,7 +711,6 @@ describe.skip('checkAlerts', () => {
         groupBy: alert.groupBy,
         q: logView.query,
         startTime: new Date('2023-11-16T22:05:00.000Z'),
-        tableVersion: team.logStreamTableVersion,
         teamId: logView.team._id.toString(),
         windowSizeInMins: 5,
       });
@@ -1302,7 +1247,6 @@ describe.skip('checkAlerts', () => {
         groupBy: alert.groupBy,
         q: logView.query,
         startTime: new Date('2023-11-16T22:05:00.000Z'),
-        tableVersion: team.logStreamTableVersion,
         teamId: logView.team._id.toString(),
         windowSizeInMins: 5,
       });
