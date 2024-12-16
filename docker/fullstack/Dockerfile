@@ -73,7 +73,6 @@ COPY --chown=node:node --from=app_builder /app/app/.next ./.next
 COPY --from=app_builder /app/app/node_modules ./node_modules
 COPY --from=app_builder /app/app/package.json ./package.json
 
-
 # Set up start script
 COPY --chown=node:node --from=fullstack ./entry.sh /etc/local/entry.sh
 CMD sh /etc/local/entry.sh
