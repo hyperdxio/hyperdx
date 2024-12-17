@@ -36,6 +36,32 @@ Clickhouse cluster (imagine Kibana, for Clickhouse).
 
 ## Spinning Up HyperDX
 
+HyperDX can be deployed in a few different ways depending on your needs. The
+easiest way to get started from scratch is to start the complete stack via
+Docker Compose. Which will start an OpenTelemetry collector, Clickhouse, and
+HyperDX with a MongoDB and Redis instance.
+
+After cloning this repository, simply start the stack with:
+
+```bash
+docker compose up -d
+```
+
+Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.
+MongoDB and Redis instance.
+
+If you already have an existing ClickHouse instance, want to use a single
+container locally, or are looking for production deployment instructions, you
+can view the different deployment options in our [DEPLOY.md](/DEPLOY.md).
+
+> If your server is behind a firewall, you'll need to open/forward port 8080,
+> 8000 and 4318 on your firewall for the UI, API and OTel collector
+> respectively.
+
+> We recommend at least 4GB of RAM and 2 cores for testing.
+
+### Local Mode
+
 > **Note:** HyperDX v2 is currently in beta for local mode.
 
 You can get started by standing up the HyperDX local container, which will run
@@ -161,8 +187,7 @@ deployment simplicity, native SQL support, and improved performance for PB+
 deployments. Currently we've released a subset of features with the goal of
 getting early feedback from the community.
 
-Here's a high-level list of support we're working on delivering as part
-of v2:
+Here's a high-level list of support we're working on delivering as part of v2:
 
 - [x] Log & Trace Search w/ Lucene & SQL
 - [x] Charting & Dashboarding
