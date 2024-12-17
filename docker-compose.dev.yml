@@ -123,6 +123,9 @@ services:
       PORT: ${HYPERDX_API_PORT}
       REDIS_URL: redis://redis:6379
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-false}
+      # Event deltas create large SQL queries so we need to increase
+      # the max header size for proxied SQL requests
+      NODE_OPTIONS: '--max-http-header-size=131072'
     volumes:
       - ./packages/api/src:/app/src
     networks:
@@ -147,6 +150,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-dev-app'
       PORT: ${HYPERDX_APP_PORT}
+      # Event deltas create large SQL queries so we need to increase
+      # the max header size for proxied SQL requests
+      NODE_OPTIONS: '--max-http-header-size=131072'
     volumes:
       - ./packages/app/mdx.d.ts:/app/mdx.d.ts
       - ./packages/app/next-env.d.ts:/app/next-env.d.ts
