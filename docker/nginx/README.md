@@ -10,5 +10,6 @@
 127.0.0.1 mydomain.local
 ```
 7. Comment out ports mapping in the docker-compose.yml file for `app` service (so that the app is not exposed to the host)
-8. Run `docker-compose up -d`
-9. Open https://mydomain.local in the browser
+8. Enable nginx service in the docker-compose.yml file
+9. Run `docker-compose up -d`
+10. Open https://mydomain.local in the browser
