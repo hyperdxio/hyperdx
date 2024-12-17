@@ -4,7 +4,7 @@
 2. Exec `mkcert mydomain.local` and `mkcert -install`
 3. Make sure the pem files are used in the nginx.conf file
 4. Update HYPERDX_APP_URL to https://mydomain.local in the .env file
-5. Update HYPERDX_APP_PORT to 443 (same as the port in the nginx.conf file) in the .env file
+5. Update HYPERDX_APP_PORT to 443 (same as the nginx server port) in the .env file
 6. Add the following to the /etc/hosts file
 ```
 127.0.0.1 mydomain.local
