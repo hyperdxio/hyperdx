@@ -1,7 +1,7 @@
 # Setup SSL nginx reverse proxy
 
 1. Install mkcert [mkcert](https://github.com/FiloSottile/mkcert)
-2. Exec `mkcert mydomain.local`
+2. Exec `mkcert mydomain.local` and `mkcert -install`
 3. Make sure the pem files are used in the nginx.conf file
 4. Update HYPERDX_APP_URL to https://mydomain.local in the .env file
 5. Update HYPERDX_APP_PORT to 443 (same as the port in the nginx.conf file) in the .env file
