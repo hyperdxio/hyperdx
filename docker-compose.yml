@@ -1,5 +1,19 @@
 name: hdx-oss
 services:
+  # ONLY USED FOR DEMO SSL SETUP
+  # nginx:
+  #   image: nginx:1.27.3
+  #   volumes:
+  #     - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./docker/nginx/ssl:/etc/nginx/ssl
+  #     - .volumes/nginx_logs:/var/log/nginx
+  #   ports:
+  #     - 80:80
+  #     - 443:443
+  #   networks:
+  #     - internal
+  #   depends_on:
+  #     - app
   # go-parser:
   #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-go-parser
   #   environment:
