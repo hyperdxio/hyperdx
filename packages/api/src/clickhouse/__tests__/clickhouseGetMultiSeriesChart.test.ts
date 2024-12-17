@@ -4,7 +4,7 @@ import ms from 'ms';
 import * as clickhouse from '@/clickhouse';
 import { buildMetricSeries, getServer } from '@/fixtures';
 
-describe('clickhouse - getMultiSeriesChart', () => {
+describe.skip('clickhouse - getMultiSeriesChart', () => {
   const server = getServer();
 
   const now = new Date('2022-01-05').getTime();

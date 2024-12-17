@@ -35,6 +35,9 @@ mongoose.connection.on('reconnectFailed', () => {
 });
 
 export const connectDB = async () => {
+  if (config.MONGO_URI == null) {
+    throw new Error('MONGO_URI is not set');
+  }
   await mongoose.connect(config.MONGO_URI, {
     heartbeatFrequencyMS: 10000, // retry failed heartbeats
     maxPoolSize: 100, // 5 nodes -> max 1000 connections
