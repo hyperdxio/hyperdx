@@ -51,35 +51,10 @@ const getClickhouseTableSize = async () => {
   return result.data;
 };
 
-const healthChecks = async () => {
-  const ping = async (url: string) => {
-    try {
-      const res = await fetch(url);
-      return res.status === 200;
-    } catch (err) {
-      return false;
-    }
-  };
-
-  const otelCollectorUrl = new URL(config.OTEL_EXPORTER_OTLP_ENDPOINT ?? '');
-
-  const [pingOtelCollector, pingCH] = await Promise.all([
-    otelCollectorUrl.hostname && otelCollectorUrl.protocol
-      ? ping(`${otelCollectorUrl.protocol}//${otelCollectorUrl.hostname}:13133`)
-      : Promise.resolve(null),
-    ping(`${config.CLICKHOUSE_HOST}/ping`),
-  ]);
-
-  return {
-    pingOtelCollector,
-    pingCH,
-  };
-};
-
 export default async () => {
   try {
     const nowInMs = Date.now();
-    const [userCounts, team, chTables, servicesHealth] = await Promise.all([
+    const [userCounts, team, chTables] = await Promise.all([
       User.countDocuments(),
       Team.find(
         {},
@@ -88,7 +63,6 @@ export default async () => {
         },
       ).limit(1),
       getClickhouseTableSize(),
-      healthChecks(),
     ]);
     const clusterId = team[0]?._id;
     logger.info({
@@ -96,7 +70,6 @@ export default async () => {
       clusterId,
       version: config.CODE_VERSION,
       userCounts,
-      servicesHealth,
       os: {
         arch: os.arch(),
         freemem: os.freemem(),

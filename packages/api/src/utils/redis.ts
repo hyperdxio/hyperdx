@@ -8,8 +8,16 @@ const client = createClient({
   url: config.REDIS_URL,
 });
 
+// check if client is initialized
+if (client == null) {
+  logger.warn('Redis client is not initialized');
+  // IMPLEMENT: use local in-memory cache
+}
+
 client.on('error', (err: any) => {
-  logger.error('Redis error: ', serializeError(err));
+  if (config.REDIS_URL) {
+    logger.error('Redis error: ', serializeError(err));
+  }
 });
 
 // TODO: add tests
@@ -22,6 +30,9 @@ class SimpleCache<T> {
   ) {}
 
   async refresh() {
+    if (client == null) {
+      throw new Error('Redis client is not initialized');
+    }
     const dt = Date.now();
     const result = await this.fetcher();
     if (this.shouldRefreshOnResult(result)) {
@@ -38,6 +49,9 @@ class SimpleCache<T> {
   }
 
   async get(): Promise<T> {
+    if (client == null) {
+      throw new Error('Redis client is not initialized');
+    }
     const cached = await client.get(this.key);
     if (cached != null) {
       logger.info({
