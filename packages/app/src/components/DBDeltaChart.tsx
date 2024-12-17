@@ -258,9 +258,9 @@ export default function DBDeltaChart({
   config: ChartConfigWithOptDateRange;
   outlierSqlCondition: string;
 }) {
-  const { data: outlierData } = useQueriedChartConfig({
+  const { data: outlierPartIds } = useQueriedChartConfig({
     ...config,
-    select: '*',
+    select: '_part, _part_offset',
     filters: [
       ...(config.filters ?? []),
       {
@@ -268,21 +268,38 @@ export default function DBDeltaChart({
         condition: `${outlierSqlCondition}`,
       },
     ],
-    // TODO: Introduce sampling granules for large results
-    // filters: [
-    //   ...(config.filters ?? []),
-    //   {
-    //     type: 'sql',
-    //     condition: 'indexHint()',
-    //   },
-    // ],
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });
 
-  const { data: inlierData } = useQueriedChartConfig({
+  const { data: outlierData } = useQueriedChartConfig(
+    {
+      ...config,
+      select: '*',
+      filters: [
+        ...(config.filters ?? []),
+        {
+          type: 'sql',
+          condition: `${outlierSqlCondition}`,
+        },
+        {
+          type: 'sql',
+          condition: `indexHint((_part, _part_offset) IN (${outlierPartIds?.data
+            ?.map((r: any) => `('${r._part}', ${r._part_offset})`)
+            ?.join(',')}))`,
+        },
+      ],
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: 1000 },
+    },
+    {
+      enabled: (outlierPartIds?.data?.length ?? 0) > 0,
+    },
+  );
+
+  const { data: inlierPartIds } = useQueriedChartConfig({
     ...config,
-    select: '*',
+    select: '_part, _part_offset',
     filters: [
       ...(config.filters ?? []),
       {
@@ -290,17 +307,34 @@ export default function DBDeltaChart({
         condition: `NOT (${outlierSqlCondition})`,
       },
     ],
-    // TODO: Introduce sampling granules for large results
-    // filters: [
-    //   ...(config.filters ?? []),
-    //   {
-    //     type: 'sql',
-    //     condition: 'indexHint()',
-    //   },
-    // ],
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });
+
+  const { data: inlierData } = useQueriedChartConfig(
+    {
+      ...config,
+      select: '*',
+      filters: [
+        ...(config.filters ?? []),
+        {
+          type: 'sql',
+          condition: `NOT (${outlierSqlCondition})`,
+        },
+        {
+          type: 'sql',
+          condition: `indexHint((_part, _part_offset) IN (${inlierPartIds?.data
+            ?.map((r: any) => `('${r._part}', ${r._part_offset})`)
+            ?.join(',')}))`,
+        },
+      ],
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: 1000 },
+    },
+    {
+      enabled: (inlierPartIds?.data?.length ?? 0) > 0,
+    },
+  );
 
   // TODO: Is loading state
   const { sortedProperties, outlierValueOccurences, inlierValueOccurences } =

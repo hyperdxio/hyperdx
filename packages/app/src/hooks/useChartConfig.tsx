@@ -16,7 +16,7 @@ import {
 
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: UseQueryOptions<ResponseJSON<any>>,
+  options?: Partial<UseQueryOptions<ResponseJSON<any>>>,
 ) {
   return useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
