@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-app
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+    app: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hdx-oss.selectorLabels" . | nindent 6 }}
+      app: app
+  template:
+    metadata:
+      labels:
+        {{- include "hdx-oss.selectorLabels" . | nindent 8 }}
+        app: app
+    spec:
+      initContainers:
+        - name: wait-for-mongodb
+          image: busybox
+          command: ['sh', '-c', 'until nc -z {{ include "hdx-oss.fullname" . }}-mongodb {{ .Values.mongodb.port }}; do echo waiting for mongodb; sleep 2; done;']
+      containers:
+        - name: app
+          image: "{{ .Values.images.hdx.repository }}:{{ .Values.images.hdx.tag }}"
+          ports:
+            - name: app-port
+              containerPort: {{ .Values.hyperdx.appPort }}
+            - name: api-port
+              containerPort: {{ .Values.hyperdx.apiPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hdx-oss.fullname" . }}-app-config
+          env:
+            - name: HYPERDX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hdx-oss.fullname" . }}-app-secrets
+                  key: api-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-app
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  type: LoadBalancer
+  ports:
+    - port: {{ .Values.hyperdx.appPort }}
+      targetPort: {{ .Values.hyperdx.appPort }}
+      name: app
+  selector:
+    {{- include "hdx-oss.selectorLabels" . | nindent 4 }}
+    app: app 
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-app-ingress
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    {{- if .Values.hyperdx.ingress.tls.enabled }}
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.hyperdx.ingress.proxyBodySize | quote }}
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: {{ .Values.hyperdx.ingress.proxyConnectTimeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ .Values.hyperdx.ingress.proxySendTimeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ .Values.hyperdx.ingress.proxyReadTimeout | quote }}
+spec:
+  ingressClassName: nginx
+  {{- if .Values.hyperdx.ingress.tls.enabled }}
+  tls:
+  - hosts:
+    - {{ .Values.hyperdx.ingress.host | default "localhost" }}
+    secretName: {{ .Values.hyperdx.ingress.tlsSecretName | default "hyperdx-tls" }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.hyperdx.ingress.host | default "localhost" }}
+      http:
+        paths:
+          - path: /(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "hdx-oss.fullname" . }}-app
+                port:
+                  number: {{ .Values.hyperdx.appPort }}

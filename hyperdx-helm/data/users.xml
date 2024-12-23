@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <profiles>
+        <default>
+            <max_memory_usage>10000000000</max_memory_usage>
+            <use_uncompressed_cache>0</use_uncompressed_cache>
+            <load_balancing>in_order</load_balancing>
+            <log_queries>1</log_queries>
+        </default>
+        <readonly>
+            <readonly>2</readonly>
+        </readonly>
+    </profiles>
+
+    <users>
+        <default>
+            <password></password>
+            <profile>default</profile>
+            <networks>
+                <ip>::1</ip>
+                <ip>127.0.0.1</ip>
+            </networks>
+            <quota>default</quota>
+        </default>
+        <api>
+            <password>{{ .Values.clickhouse.config.users.apiUserPassword }}</password>
+            <profile>default</profile>
+            <networks>
+                <host_regexp>.*\.svc\.cluster\.local$</host_regexp>
+            </networks>
+            <quota>default</quota>
+        </api>
+        <app>
+            <password>{{ .Values.clickhouse.config.users.appUserPassword }}</password>
+            <networks>
+                <host_regexp>.*\.svc\.cluster\.local$</host_regexp>
+            </networks>
+            <profile>readonly</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SHOW ON *.*</query>
+                <query>GRANT SELECT ON system.*</query>
+                <query>GRANT SELECT ON default.*</query>
+            </grants>
+        </app>
+        <otelcollector>
+            <password>{{ .Values.clickhouse.config.users.otelUserPassword }}</password>
+            <networks>
+                <host_regexp>.*\.svc\.cluster\.local$</host_regexp>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT,INSERT,SHOW ON default.*</query>
+            </grants>
+        </otelcollector>
+    </users>
+
+    <quotas>
+        <default>
+            <interval>
+                <duration>3600</duration>
+                <queries>0</queries>
+                <errors>0</errors>
+                <result_rows>0</result_rows>
+                <read_rows>0</read_rows>
+                <execution_time>0</execution_time>
+            </interval>
+        </default>
+    </quotas>
+</clickhouse>

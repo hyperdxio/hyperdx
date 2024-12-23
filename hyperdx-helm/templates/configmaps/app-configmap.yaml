@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-app-config
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+data:
+  APP_PORT: {{ .Values.hyperdx.appPort | quote }}
+  API_PORT: {{ .Values.hyperdx.apiPort | quote }}
+  FRONTEND_URL: "{{ .Values.hyperdx.appUrl }}:{{ .Values.hyperdx.appPort }}"
+  HYPERDX_API_PORT: "{{ .Values.hyperdx.apiPort }}"
+  HYPERDX_APP_PORT: "{{ .Values.hyperdx.appPort }}"
+  HYPERDX_APP_URL: "{{ .Values.hyperdx.appUrl }}"
+  HYPERDX_LOG_LEVEL: "{{ .Values.hyperdx.logLevel }}"
+  MINER_API_URL: "http://{{ include "hdx-oss.fullname" . }}-miner:5123"
+  MONGO_URI: "mongodb://{{ include "hdx-oss.fullname" . }}-mongodb:{{ .Values.mongodb.port }}/hyperdx"
+  NEXT_PUBLIC_SERVER_URL: "http://localhost:{{ .Values.hyperdx.apiPort }}"
+  OTEL_SERVICE_NAME: "hdx-oss-api"
+  REDIS_URL: "redis://{{ include "hdx-oss.fullname" . }}-redis:{{ .Values.redis.port }}"
+  USAGE_STATS_ENABLED: "{{ .Values.hyperdx.usageStatsEnabled | default true }}" 

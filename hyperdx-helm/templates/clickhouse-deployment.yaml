@@ -1,0 +1,120 @@
+{{- if .Values.clickhouse.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+    app: clickhouse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hdx-oss.selectorLabels" . | nindent 6 }}
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        {{- include "hdx-oss.selectorLabels" . | nindent 8 }}
+        app: clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.images.clickhouse.repository }}:{{ .Values.images.clickhouse.tag }}"
+          ports:
+            - containerPort: {{ .Values.clickhouse.port }}
+            - containerPort: {{ .Values.clickhouse.nativePort }}
+          env:
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/clickhouse-server/config.xml
+              subPath: config.xml
+            - name: users
+              mountPath: /etc/clickhouse-server/users.xml
+              subPath: users.xml
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: logs
+              mountPath: /var/log/clickhouse-server
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "hdx-oss.fullname" . }}-clickhouse-config
+        - name: users
+          configMap:
+            name: {{ include "hdx-oss.fullname" . }}-clickhouse-users
+        - name: data
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.clickhouse.port }}
+      targetPort: {{ .Values.clickhouse.port }}
+      name: http
+    - port: {{ .Values.clickhouse.nativePort }}
+      targetPort: {{ .Values.clickhouse.nativePort }}
+      name: native
+  selector:
+    {{- include "hdx-oss.selectorLabels" . | nindent 4 }}
+    app: clickhouse 
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse-config
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+data:
+  config.xml: |-
+    {{- tpl (.Files.Get "data/config.xml") . | nindent 4 }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse-users
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+data:
+  users.xml: |-
+    {{- tpl (.Files.Get "data/users.xml") . | nindent 4 }}
+
+{{- if .Values.clickhouse.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse-data
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.clickhouse.persistence.dataSize }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-clickhouse-logs
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.clickhouse.persistence.logSize }}
+{{- end }}
+{{- end }}

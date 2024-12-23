@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-mongodb
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hdx-oss.selectorLabels" . | nindent 6 }}
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        {{- include "hdx-oss.selectorLabels" . | nindent 8 }}
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: "{{ .Values.images.mongodb.repository }}:{{ .Values.images.mongodb.tag }}"
+          ports:
+            - containerPort: {{ .Values.mongodb.port }}
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+      volumes:
+        - name: mongodb-data
+          persistentVolumeClaim:
+            claimName: {{ include "hdx-oss.fullname" . }}-mongodb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-mongodb
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.mongodb.port }}
+      targetPort: {{ .Values.mongodb.port }}
+  selector:
+    {{- include "hdx-oss.selectorLabels" . | nindent 4 }}
+    app: mongodb 

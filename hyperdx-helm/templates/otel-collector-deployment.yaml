@@ -1,0 +1,66 @@
+{{- if .Values.otel.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-otel-collector
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "hdx-oss.selectorLabels" . | nindent 6 }}
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        {{- include "hdx-oss.selectorLabels" . | nindent 8 }}
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.images.otelCollector.repository }}:{{ .Values.images.otelCollector.tag }}"
+          ports:
+            - containerPort: {{ .Values.otel.port }}
+            - containerPort: {{ .Values.otel.nativePort }}
+            - containerPort: {{ .Values.otel.grpcPort }}
+            - containerPort: {{ .Values.otel.httpPort }}
+            - containerPort: {{ .Values.otel.healthPort }}
+          env:
+            - name: CLICKHOUSE_SERVER_ENDPOINT
+              value: "{{ include "hdx-oss.fullname" . }}-clickhouse:{{ .Values.clickhouse.nativePort }}"
+            - name: HYPERDX_LOG_LEVEL
+              value: {{ .Values.hyperdx.logLevel }}
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.config.users.otelUser }}
+            - name: CLICKHOUSE_PASSWORD
+              value: {{ .Values.clickhouse.config.users.otelUserPassword }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-otel-collector
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.otel.port }}
+      targetPort: {{ .Values.otel.port }}
+      name: health
+    - port: {{ .Values.otel.nativePort }}
+      targetPort: {{ .Values.otel.nativePort }}
+      name: fluentd
+    - port: {{ .Values.otel.grpcPort }}
+      targetPort: {{ .Values.otel.grpcPort }}
+      name: otlp-grpc
+    - port: {{ .Values.otel.httpPort }}
+      targetPort: {{ .Values.otel.httpPort }}
+      name: otlp-http
+    - port: {{ .Values.otel.healthPort }}
+      targetPort: {{ .Values.otel.healthPort }}
+      name: metrics
+  selector:
+    {{- include "hdx-oss.selectorLabels" . | nindent 4 }}
+    app: otel-collector 
+{{- end }}

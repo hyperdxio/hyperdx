@@ -1,0 +1,73 @@
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+hyperdx:
+  apiKey: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  apiPort: 8000
+  appPort: 3000
+  appUrl: "http://localhost"
+  logLevel: "info"
+  usageStatsEnabled: true
+  ingress:
+    host: "localhost"  # Production domain
+    proxyBodySize: "100m"
+    proxyConnectTimeout: "60"
+    proxySendTimeout: "60"
+    proxyReadTimeout: "60"
+    tls:
+      enabled: false
+      secretName: "hyperdx-tls"
+
+mongodb:
+  port: 27017
+
+redis:
+  port: 6379
+
+clickhouse:
+  port: 8123
+  nativePort: 9000
+  enabled: true
+  persistence:
+    enabled: true
+    dataSize: 10Gi
+    logSize: 5Gi
+  config:
+    users:
+      appUserPassword: "hyperdx"
+      apiUserPassword: "hyperdx"
+      otelUserPassword: "otelcollectorpass"
+
+otel:
+  port: 13133
+  nativePort: 24225
+  grpcPort: 4317
+  httpPort: 4318
+  healthPort: 8888
+  enabled: true
+
+images:
+  hdx:
+    repository: hyperdx/hyperdx
+    tag: 2-beta
+  redis:
+    repository: redis
+    tag: 7.0.11-alpine
+  mongodb:
+    repository: mongo
+    tag: 5.0.14-focal
+  otelCollector:
+    repository: hyperdx/hyperdx-otel-collector
+    tag: 2-beta
+  clickhouse:
+    repository: clickhouse/clickhouse-server
+    tag: head-alpine
+
+persistence:
+  redis:
+    enabled: true
+    size: 10Gi
+  mongodb:
+    enabled: true
+    size: 10Gi

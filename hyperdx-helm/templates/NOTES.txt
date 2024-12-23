@@ -1,0 +1,12 @@
+HyperDX has been installed.
+
+Note: By default, this chart also installs clickhouse and the otel-collector. However, for production, 
+it is recommended that you use the clickhouse and otel-collector operators instead.
+
+To disable clickhouse and otel-collector, set the following values:
+helm install myrelease hyperdx-helm --set clickhouse.enabled=false --set clickhouse.persistence.enabled=false --set otel.enabled=false
+
+Application URL: {{ include "hdx-oss.fullname" . }}-app:{{ .Values.hyperdx.appPort }}
+
+To verify the deployment status, run:
+  kubectl get pods -l "app.kubernetes.io/name={{ include "hdx-oss.name" . }}" 

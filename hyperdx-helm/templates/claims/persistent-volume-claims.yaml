@@ -1,0 +1,30 @@
+{{- if .Values.persistence.redis.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-redis
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.redis.size }}
+---
+{{- end }}
+{{- if .Values.persistence.mongodb.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "hdx-oss.fullname" . }}-mongodb
+  labels:
+    {{- include "hdx-oss.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.mongodb.size }}
+---
+{{- end }}
