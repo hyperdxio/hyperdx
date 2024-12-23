@@ -31,17 +31,23 @@ export const TABLES = [
   { value: 'metrics' as const, label: 'Metrics' },
 ];
 
-export const AGG_FNS = [
-  { value: 'count' as const, label: 'Count of Events' },
-  { value: 'sum' as const, label: 'Sum' },
-  { value: 'p99' as const, label: '99th Percentile' },
-  { value: 'p95' as const, label: '95th Percentile' },
-  { value: 'p90' as const, label: '90th Percentile' },
-  { value: 'p50' as const, label: 'Median' },
-  { value: 'avg' as const, label: 'Average' },
-  { value: 'max' as const, label: 'Maximum' },
-  { value: 'min' as const, label: 'Minimum' },
-  { value: 'count_distinct' as const, label: 'Count Distinct' },
+export const AGG_FNS: {
+  value: AggFn;
+  label: string;
+}[] = [
+  { value: 'avg', label: 'Average' },
+  { value: 'count', label: 'Count of Events' },
+  { value: 'count_distinct', label: 'Count Distinct' },
+  { value: 'count_per_hour', label: 'Count of Events per Hour' },
+  { value: 'count_per_min', label: 'Count of Events per Minute' },
+  { value: 'count_per_sec', label: 'Count of Events per Second' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'p50', label: 'Median' },
+  { value: 'p90', label: '90th Percentile' },
+  { value: 'p95', label: '95th Percentile' },
+  { value: 'p99', label: '99th Percentile' },
+  { value: 'sum', label: 'Sum' },
 ];
 
 export const getMetricAggFns = (
