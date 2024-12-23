@@ -55,6 +55,7 @@ import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { DisplayType } from '@/DisplayType';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
 import {
   ChartConfig,
@@ -147,6 +148,33 @@ function SearchTotalCount({
       ) : (
         'Results'
       )}
+    </Text>
+  );
+}
+
+function SearchNumRows({
+  config,
+  enabled,
+}: {
+  config: ChartConfigWithDateRange;
+  enabled: boolean;
+}) {
+  const { data, isLoading, error } = useExplainQuery(config, {
+    enabled,
+  });
+
+  if (!enabled) {
+    return null;
+  }
+
+  const numRows = data?.[0]?.rows;
+  return (
+    <Text size="xs" c="gray.4" mb={4}>
+      {isLoading
+        ? 'Scanned Rows ...'
+        : error || !numRows
+          ? ''
+          : `Scanned Rows: ${numRows}`}
     </Text>
   );
 }
@@ -1006,26 +1034,40 @@ function DBSearchPage() {
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {analysisMode === 'results' && (
-                  <Box style={{ height: 120, minHeight: 120 }} p="xs" mb="md">
+                  <Box
+                    style={{ height: 140, minHeight: 140 }}
+                    p="xs"
+                    pb="md"
+                    mb="md"
+                  >
                     {chartConfig && (
                       <>
-                        <SearchTotalCount
-                          config={{
-                            ...chartConfig,
-                            select: [
-                              {
-                                aggFn: 'count',
-                                aggCondition: '',
-                                valueExpression: '',
-                              },
-                            ],
-                            orderBy: undefined,
-                            granularity: 'auto',
-                            dateRange: searchedTimeRange,
-                            displayType: DisplayType.StackedBar,
-                          }}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                        />
+                        <Group justify="space-between" mb={4}>
+                          <SearchTotalCount
+                            config={{
+                              ...chartConfig,
+                              select: [
+                                {
+                                  aggFn: 'count',
+                                  aggCondition: '',
+                                  valueExpression: '',
+                                },
+                              ],
+                              orderBy: undefined,
+                              granularity: 'auto',
+                              dateRange: searchedTimeRange,
+                              displayType: DisplayType.StackedBar,
+                            }}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          />
+                          <SearchNumRows
+                            config={{
+                              ...chartConfig,
+                              dateRange: searchedTimeRange,
+                            }}
+                            enabled={isReady}
+                          />
+                        </Group>
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
