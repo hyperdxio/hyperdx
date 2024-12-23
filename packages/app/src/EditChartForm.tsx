@@ -549,7 +549,6 @@ export const EditTableChartForm = ({
         : null,
     [_editedChart, dateRange],
   );
-
   const previewConfig = useDebounce(
     withDashboardFilter(chartConfig, dashboardQuery),
     500,
@@ -1295,7 +1294,6 @@ export const EditLineChartForm = ({
         : null,
     [_editedChart, alertEnabled, editedAlert?.interval, dateRange, granularity],
   );
-
   const chartConfigWithDashboardFilter = useMemo(() => {
     return withDashboardFilter(chartConfig, dashboardQuery);
   }, [chartConfig, dashboardQuery]);
