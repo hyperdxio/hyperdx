@@ -737,6 +737,7 @@ export function ChartSeriesFormCompact({
   const metricAggFns = getMetricAggFns(
     legacyMetricNameToNameAndDataType(field)?.dataType,
   );
+  const isAggFnCountDistinct = aggFn === 'count_distinct';
 
   return (
     <div>
@@ -771,9 +772,7 @@ export function ChartSeriesFormCompact({
             />
           )}
         </div>
-        {table === 'logs' &&
-        !isCountAggFn(aggFn) &&
-        aggFn != 'count_distinct' ? (
+        {table === 'logs' && !isCountAggFn(aggFn) && !isAggFnCountDistinct ? (
           <div className="flex-grow-1">
             <FieldSelect
               className="w-auto text-nowrap"
@@ -784,7 +783,7 @@ export function ChartSeriesFormCompact({
             />
           </div>
         ) : null}
-        {table === 'logs' && aggFn == 'count_distinct' ? (
+        {table === 'logs' && isAggFnCountDistinct ? (
           <div className="flex-grow-1">
             <FieldSelect
               className="w-auto text-nowrap"
