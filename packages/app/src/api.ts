@@ -5,6 +5,7 @@ import ky from 'ky-universal';
 import type { UseQueryOptions } from 'react-query';
 import { useInfiniteQuery, useMutation, useQuery } from 'react-query';
 
+import { isCountAggFn } from './ChartUtils';
 import { SERVER_URL } from './config';
 import type {
   AlertChannel,
@@ -73,7 +74,7 @@ const getEnrichedSeries = (series: ChartSeries[]) =>
         if (s.table === 'metrics' && !s.field) {
           return false;
         }
-        if (s.table === 'logs' && !s.field && s.aggFn !== 'count') {
+        if (s.table === 'logs' && !s.field && !isCountAggFn(s.aggFn)) {
           return false;
         }
       }
