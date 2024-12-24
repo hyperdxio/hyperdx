@@ -43,7 +43,7 @@ export interface IAlert {
   _id: ObjectId;
   channel: AlertChannel;
   interval: AlertInterval;
-  source: AlertSource;
+  source?: AlertSource;
   state: AlertState;
   team: ObjectId;
   threshold: number;
