@@ -1,5 +1,19 @@
 name: hdx-oss
 services:
+  # ONLY USED FOR DEMO SSL SETUP
+  # nginx:
+  #   image: nginx:1.27.3
+  #   volumes:
+  #     - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./docker/nginx/ssl:/etc/nginx/ssl
+  #     - .volumes/nginx_logs:/var/log/nginx
+  #   ports:
+  #     - 80:80
+  #     - 443:443
+  #   networks:
+  #     - internal
+  #   depends_on:
+  #     - app
   # go-parser:
   #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-go-parser
   #   environment:
@@ -53,7 +67,7 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-otel-collector
+    image: ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -75,10 +89,7 @@ services:
   #   command: './build/tasks/index.js check-alerts'
   #   environment:
   #     APP_TYPE: 'scheduled-task'
-  #     CLICKHOUSE_HOST: http://ch-server:8123
   #     CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     CLICKHOUSE_PASSWORD: worker
-  #     CLICKHOUSE_USER: worker
   #     EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
   #     FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
   #     HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
@@ -101,32 +112,20 @@ services:
   #     - db
   #     - redis
   app:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
     environment:
-      APP_TYPE: 'api'
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      CLICKHOUSE_PASSWORD: api
-      CLICKHOUSE_USER: api
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
       FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT}
-      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-      HDX_NODE_BETA_MODE: 1
-      HDX_NODE_CONSOLE_CAPTURE: 1
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_API_PORT: ${HYPERDX_API_PORT}
       HYPERDX_APP_PORT: ${HYPERDX_APP_PORT}
       HYPERDX_APP_URL: ${HYPERDX_APP_URL}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NEXT_PUBLIC_CLICKHOUSE_HOST: http://ch-server:8123
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       REDIS_URL: redis://redis:6379
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}

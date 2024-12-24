@@ -11,7 +11,6 @@ export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}"
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Internal Services
-export CLICKHOUSE_HOST="http://ch-server:8123"
 export CLICKHOUSE_SERVER_ENDPOINT="ch-server:9000"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export REDIS_URI="redis://redis:6379"
@@ -52,7 +51,6 @@ done
 otelcol-contrib --config /etc/otelcol-contrib/config.yaml &
 
 # Api
-# APP_TYPE=api \
 # CLICKHOUSE_USER=api \
 # CLICKHOUSE_PASSWORD=api \
 # PORT=8000 \

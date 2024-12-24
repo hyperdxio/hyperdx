@@ -33,6 +33,9 @@ export const connectDB = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
+  if (config.MONGO_URI == null) {
+    throw new Error('MONGO_URI is not set');
+  }
   await mongoose.connect(config.MONGO_URI);
 };
 
