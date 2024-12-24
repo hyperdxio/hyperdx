@@ -30,12 +30,8 @@ class MetadataCache {
       return value;
     }
 
-    // Request a lock
-    let newValue!: T;
-    await navigator.locks.request(`MedataCache.${key}`, async lock => {
-      newValue = await query();
-      this.cache.set(key, newValue);
-    });
+    const newValue = await query();
+    this.cache.set(key, newValue);
 
     return newValue;
   }
