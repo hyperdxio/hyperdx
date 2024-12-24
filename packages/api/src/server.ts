@@ -2,28 +2,19 @@ import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
 
-import * as config from './config';
-import { connectDB, mongooseConnection } from './models';
-import logger from './utils/logger';
-import redisClient from './utils/redis';
+import app from '@/api-app';
+import * as config from '@/config';
+import { connectDB, mongooseConnection } from '@/models';
+import logger from '@/utils/logger';
+import redisClient from '@/utils/redis';
 
 export default class Server {
-  protected readonly appType = config.APP_TYPE;
-
   protected shouldHandleGracefulShutdown = true;
 
   protected httpServer!: http.Server;
 
-  private async createServer() {
-    switch (this.appType) {
-      case 'api':
-        return http.createServer(
-          // eslint-disable-next-line n/no-unsupported-features/es-syntax
-          (await import('./api-app').then(m => m.default)) as any,
-        );
-      default:
-        throw new Error(`Invalid APP_TYPE: ${config.APP_TYPE}`);
-    }
+  private createServer() {
+    return http.createServer(app);
   }
 
   protected async shutdown(signal?: string) {
@@ -54,7 +45,7 @@ export default class Server {
   }
 
   async start() {
-    this.httpServer = await this.createServer();
+    this.httpServer = this.createServer();
     this.httpServer.keepAliveTimeout = 61000; // Ensure all inactive connections are terminated by the ALB, by setting this a few seconds higher than the ALB idle timeout
     this.httpServer.headersTimeout = 62000; // Ensure the headersTimeout is set higher than the keepAliveTimeout due to this nodejs regression bug: https://github.com/nodejs/node/issues/27363
 

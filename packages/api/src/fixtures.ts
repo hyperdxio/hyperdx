@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import request from 'supertest';
-import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import {
@@ -22,12 +21,7 @@ import { AlertInput } from './controllers/alerts';
 import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
-import {
-  AlertInterval,
-  AlertSource,
-  AlertThresholdType,
-  IAlert,
-} from './models/alert';
+import { AlertInterval, AlertSource, AlertThresholdType } from './models/alert';
 import Server from './server';
 
 const MOCK_USER = {
@@ -109,18 +103,7 @@ class MockServer extends Server {
   }
 }
 
-class MockAPIServer extends MockServer {
-  protected readonly appType = 'api';
-}
-
-export const getServer = (appType: 'api' = 'api') => {
-  switch (appType) {
-    case 'api':
-      return new MockAPIServer();
-    default:
-      throw new Error(`Invalid app type: ${appType}`);
-  }
-};
+export const getServer = () => new MockServer();
 
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
