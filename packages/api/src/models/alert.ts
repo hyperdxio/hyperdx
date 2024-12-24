@@ -35,8 +35,8 @@ export type AlertChannel =
     };
 
 export enum AlertSource {
-  SAVED_SEARCH = 'SAVED_SEARCH',
-  TILE = 'TILE',
+  SAVED_SEARCH = 'saved_search',
+  TILE = 'tile',
 }
 
 export interface IAlert {
