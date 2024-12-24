@@ -4,17 +4,17 @@ import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
-  makeChart,
+  makeChartConfig,
 } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
   charts: [
-    makeChart({ id: 'aaaaaaa' }),
-    makeChart({ id: 'bbbbbbb' }),
-    makeChart({ id: 'ccccccc' }),
-    makeChart({ id: 'ddddddd' }),
-    makeChart({ id: 'eeeeeee' }),
+    makeChartConfig({ id: 'aaaaaaa' }),
+    makeChartConfig({ id: 'bbbbbbb' }),
+    makeChartConfig({ id: 'ccccccc' }),
+    makeChartConfig({ id: 'ddddddd' }),
+    makeChartConfig({ id: 'eeeeeee' }),
   ],
   query: 'test query',
 };

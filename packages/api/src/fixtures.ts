@@ -340,21 +340,32 @@ export const makeTile = (opts?: { id?: string }): Tile => ({
   y: 1,
   w: 1,
   h: 1,
-  config: makeChart(),
+  config: makeChartConfig(),
 });
 
-// TODO: fix types here (INCOMPLETE)
-// @ts-ignore
-export const makeChart = (opts?: { id?: string }): SavedChartConfig => ({
+export const makeChartConfig = (opts?: { id?: string }): SavedChartConfig => ({
   name: 'Test Chart',
   source: 'test-source',
   displayType: DisplayType.Line,
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  granularity: 'auto',
+  implicitColumnExpression: 'Body',
   numberFormat: {
     output: 'number',
   },
   filters: [],
 });
 
+// TODO: DEPRECATED
 export const makeExternalChart = (opts?: { id?: string }) => ({
   name: 'Test Chart',
   x: 1,
