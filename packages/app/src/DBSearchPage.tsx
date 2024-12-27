@@ -738,6 +738,10 @@ function DBSearchPage() {
     ],
   );
 
+  const handleTableError = useCallback(() => {
+    setIsLive(false);
+  }, [setIsLive]);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       <OnboardingModal />
@@ -1125,6 +1129,7 @@ function DBSearchPage() {
                       isLive={isLive ?? true}
                       queryKeyPrefix={QUERY_KEY_PREFIX}
                       onScroll={onTableScroll}
+                      onError={handleTableError}
                     />
                   )}
               </div>

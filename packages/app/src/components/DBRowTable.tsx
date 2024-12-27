@@ -723,6 +723,7 @@ function getSelectLength(select: SelectList): number {
 
 export function DBSqlRowTable({
   config,
+  onError,
   onRowExpandClick,
   highlightedLineId,
   enabled = true,
@@ -737,6 +738,7 @@ export function DBSqlRowTable({
   enabled?: boolean;
   isLive?: boolean;
   onScroll?: (scrollTop: number) => void;
+  onError?: () => void;
 }) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -829,6 +831,12 @@ export function DBSqlRowTable({
     },
     [onRowExpandClick, getRowWhere],
   );
+
+  useEffect(() => {
+    if (isError && onError) {
+      onError();
+    }
+  }, [isError, onError]);
 
   return (
     <RawLogTable
