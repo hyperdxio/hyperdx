@@ -67,7 +67,7 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}
+    image: ${IMAGE_NAME_HDX}/${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
@@ -112,7 +112,7 @@ services:
   #     - db
   #     - redis
   app:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
+    image: ${IMAGE_NAME_HDX}/${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
