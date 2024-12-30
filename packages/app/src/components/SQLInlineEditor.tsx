@@ -17,6 +17,77 @@ import { Field } from '@/metadata';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
+const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
+  // used with WHERE
+  'AND',
+  'OR',
+  'NOT',
+  'IN',
+  'LIKE',
+  'ILIKE',
+  'BETWEEN',
+  'ASC',
+  'DESC',
+  // regular functions - arithmetic
+  'intDiv',
+  'intDivOrZero',
+  'isNaN',
+  'moduloOrZero',
+  'abs',
+  // regular functions - array
+  'empty',
+  'notEmpty',
+  'length',
+  'arrayConcat',
+  'has',
+  'hasAll',
+  'hasAny',
+  'indexOf',
+  'arrayCount',
+  'countEqual',
+  'arrayUnion',
+  'arrayIntersect',
+  'arrayMap',
+  'arrayFilter',
+  'arraySort',
+  'flatten',
+  'arrayCompact',
+  'arrayMin',
+  'arrayMax',
+  'arraySum',
+  'arrayAvg',
+  // regular functions - conditional
+  'if',
+  'multiIf',
+  // regular functions - rounding
+  'floor',
+  'ceiling',
+  'truncate',
+  'round',
+  // regular functions - dates and times
+  'timestamp',
+  'toTimeZone',
+  'toYear',
+  'toMonth',
+  'toWeek',
+  'toDayOfYear',
+  'toDayOfMonth',
+  'toDayOfWeek',
+  'toUnixTimestamp',
+  'toTime',
+  // regular functions - string
+  'lower',
+  'upper',
+  'substring',
+  'trim',
+  // regular functions - dictionaries
+  'dictGet',
+  'dictGetOrDefault',
+  'dictGetOrNull',
+];
+
+const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
+
 type SQLInlineEditorProps = {
   database?: string | undefined;
   table?: string | undefined;
@@ -101,9 +172,7 @@ export default function SQLInlineEditor({
             dialect: SQLDialect.define({
               keywords:
                 keywords.join(' ') +
-                (disableKeywordAutocomplete
-                  ? ''
-                  : ' AND OR NOT IN LIKE ILIKE BETWEEN ASC DESC'),
+                (disableKeywordAutocomplete ? '' : AUTOCOMPLETE_LIST_STRING),
               // identifierQuotes: '`',
             }),
           }),
