@@ -15,8 +15,13 @@ import Checkbox from './Checkbox';
 import FieldMultiSelect from './FieldMultiSelect';
 import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
-import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
-import { NumberFormat } from './types';
+import {
+  AggFn,
+  ChartSeries,
+  MetricsDataType,
+  NumberFormat,
+  SourceTable,
+} from './types';
 import { legacyMetricNameToNameAndDataType } from './utils';
 
 export const SORT_ORDER = [
@@ -49,6 +54,9 @@ export const AGG_FNS: {
   { value: 'p99', label: '99th Percentile' },
   { value: 'sum', label: 'Sum' },
 ];
+
+export const isCountAggFn = (aggFn: AggFn) =>
+  aggFn.startsWith('count_per') || aggFn === 'count';
 
 export const getMetricAggFns = (
   dataType: MetricsDataType,
@@ -581,261 +589,6 @@ export function FieldSelect({
   );
 }
 
-export function ChartSeriesForm({
-  aggFn,
-  field,
-  groupBy,
-  setAggFn,
-  setField,
-  setFieldAndAggFn,
-  setTableAndAggFn,
-  setGroupBy,
-  setSortOrder,
-  setWhere,
-  sortOrder,
-  table,
-  where,
-  numberFormat,
-  setNumberFormat,
-}: {
-  aggFn: AggFn;
-  field: string | undefined;
-  groupBy: string | undefined;
-  setAggFn: (fn: AggFn) => void;
-  setField: (field: string | undefined) => void;
-  setFieldAndAggFn: (field: string | undefined, fn: AggFn) => void;
-  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
-  setGroupBy: (groupBy: string | undefined) => void;
-  setSortOrder?: (sortOrder: SortOrder) => void;
-  setWhere: (where: string) => void;
-  sortOrder?: string;
-  table: string;
-  where: string;
-  numberFormat?: NumberFormat;
-  setNumberFormat?: (format?: NumberFormat) => void;
-}) {
-  const labelWidth = 350;
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const isRate = useMemo(() => {
-    return aggFn.includes('_rate');
-  }, [aggFn]);
-  const _setAggFn = (fn: AggFn, _isRate?: boolean) => {
-    if (_isRate ?? isRate) {
-      if (fn.includes('_rate')) {
-        setAggFn(fn);
-      } else {
-        setAggFn(`${fn}_rate` as AggFn);
-      }
-    } else {
-      if (fn.includes('_rate')) {
-        setAggFn(fn.replace('_rate', '') as AggFn);
-      } else {
-        setAggFn(fn);
-      }
-    }
-  };
-  const metricAggFns = getMetricAggFns(
-    legacyMetricNameToNameAndDataType(field)?.dataType,
-  );
-
-  return (
-    <div>
-      <div className="d-flex align-items-center">
-        <div style={{ width: labelWidth }}>
-          <Select
-            options={TABLES}
-            className="ds-select"
-            value={TABLES.find(v => v.value === table)}
-            onChange={opt => {
-              const val = opt?.value ?? 'logs';
-              if (val === 'logs') {
-                setTableAndAggFn('logs', 'count');
-              } else if (val === 'metrics') {
-                // TODO: This should set rate if metric field is a sum
-                // or we should just reset the field if changing tables
-                setTableAndAggFn('metrics', 'max');
-              }
-            }}
-            classNamePrefix="ds-react-select"
-          />
-        </div>
-        <div className="ms-3" style={{ width: labelWidth }}>
-          {table === 'logs' ? (
-            <Select
-              options={AGG_FNS}
-              className="ds-select"
-              value={AGG_FNS.find(v => v.value === aggFn)}
-              onChange={opt => _setAggFn(opt?.value ?? 'count')}
-              classNamePrefix="ds-react-select"
-            />
-          ) : (
-            <Select
-              options={metricAggFns}
-              className="ds-select"
-              value={metricAggFns.find(
-                v => v.value === aggFn.replace('_rate', ''),
-              )}
-              onChange={opt => _setAggFn(opt?.value ?? 'sum')}
-              classNamePrefix="ds-react-select"
-            />
-          )}
-        </div>
-        {table === 'logs' && aggFn != 'count' && aggFn != 'count_distinct' ? (
-          <div className="ms-3 flex-grow-1">
-            <FieldSelect
-              value={field}
-              setValue={setField}
-              types={['number']}
-              autoFocus={!field}
-            />
-          </div>
-        ) : null}
-        {table === 'logs' && aggFn != 'count' && aggFn == 'count_distinct' ? (
-          <div className="ms-3 flex-grow-1">
-            <FieldSelect
-              value={field}
-              setValue={setField}
-              types={['string', 'number', 'bool']}
-              autoFocus={!field}
-            />
-          </div>
-        ) : null}
-        {table === 'metrics' ? (
-          <div className="d-flex align-items-center align-middle flex-grow-1 ms-3">
-            <MetricSelect
-              metricName={field}
-              setMetricName={setField}
-              isRate={isRate}
-              setAggFn={setAggFn}
-              setFieldAndAggFn={setFieldAndAggFn}
-              aggFn={aggFn}
-            />
-          </div>
-        ) : null}
-      </div>
-      {table === 'logs' ? (
-        <>
-          <div className="d-flex mt-3 align-items-center">
-            <div
-              style={{ width: labelWidth }}
-              className="text-muted fw-500 ps-2"
-            >
-              Where
-            </div>
-            <div className="ms-3 flex-grow-1">
-              <SearchInput
-                inputRef={searchInputRef}
-                placeholder={'Filter results by a search query'}
-                value={where}
-                onChange={v => setWhere(v)}
-                onSearch={() => {}}
-              />
-            </div>
-          </div>
-          <div className="d-flex mt-3 align-items-center">
-            <div
-              style={{ width: labelWidth }}
-              className="text-muted fw-500 ps-2"
-            >
-              Group By
-            </div>
-            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
-              <FieldSelect
-                value={groupBy}
-                setValue={setGroupBy}
-                types={['number', 'bool', 'string']}
-              />
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="d-flex mt-3 align-items-center">
-            <div
-              style={{ width: labelWidth }}
-              className="text-muted fw-500 ps-2"
-            >
-              Where
-            </div>
-            <div className="ms-3 flex-grow-1">
-              <MetricTagFilterInput
-                placeholder={
-                  field
-                    ? 'Filter metric by tag...'
-                    : 'Select a metric above to start filtering by tag...'
-                }
-                inputRef={searchInputRef}
-                value={where}
-                onChange={v => setWhere(v)}
-                metricName={field}
-              />
-            </div>
-          </div>
-          <div className="d-flex mt-3 align-items-center">
-            <div
-              style={{ width: labelWidth }}
-              className="text-muted fw-500 ps-2"
-            >
-              Group By
-            </div>
-            <div className="ms-3 flex-grow-1" style={{ minWidth: 300 }}>
-              <MetricTagSelect
-                value={groupBy}
-                setValue={setGroupBy}
-                metricNames={field != null ? [field] : []}
-              />
-            </div>
-          </div>
-        </>
-      )}
-      {
-        // TODO: support metrics
-        sortOrder != null && setSortOrder != null && table === 'logs' && (
-          <div className="d-flex mt-3 align-items-center">
-            <div
-              style={{ width: labelWidth }}
-              className="text-muted fw-500 ps-2"
-            >
-              Sort Order
-            </div>
-            <div className="ms-3 flex-grow-1">
-              <Select
-                options={SORT_ORDER}
-                className="ds-select"
-                value={SORT_ORDER.find(v => v.value === sortOrder)}
-                onChange={opt => setSortOrder(opt?.value ?? 'desc')}
-                classNamePrefix="ds-react-select"
-              />
-            </div>
-          </div>
-        )
-      }
-      {setNumberFormat && (
-        <div className="ms-2 mt-2 mb-3">
-          <Divider
-            label={
-              <>
-                <i className="bi bi-gear me-1" />
-                Chart Settings
-              </>
-            }
-            c="dark.2"
-            mb={8}
-          />
-          <Group>
-            <div className="fs-8 text-slate-300">Number Format</div>
-            <NumberFormatInput
-              value={numberFormat}
-              onChange={setNumberFormat}
-            />
-          </Group>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function TableSelect({
   table,
   setTableAndAggFn,
@@ -984,6 +737,7 @@ export function ChartSeriesFormCompact({
   const metricAggFns = getMetricAggFns(
     legacyMetricNameToNameAndDataType(field)?.dataType,
   );
+  const isAggFnCountDistinct = aggFn === 'count_distinct';
 
   return (
     <div>
@@ -1018,7 +772,7 @@ export function ChartSeriesFormCompact({
             />
           )}
         </div>
-        {table === 'logs' && aggFn != 'count' && aggFn != 'count_distinct' ? (
+        {table === 'logs' && !isCountAggFn(aggFn) && !isAggFnCountDistinct ? (
           <div className="flex-grow-1">
             <FieldSelect
               className="w-auto text-nowrap"
@@ -1029,7 +783,7 @@ export function ChartSeriesFormCompact({
             />
           </div>
         ) : null}
-        {table === 'logs' && aggFn != 'count' && aggFn == 'count_distinct' ? (
+        {table === 'logs' && isAggFnCountDistinct ? (
           <div className="flex-grow-1">
             <FieldSelect
               className="w-auto text-nowrap"
