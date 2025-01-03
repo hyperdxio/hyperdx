@@ -1,55 +1,35 @@
 // Derived from SQL grammar spec
 // See: https://ronsavage.github.io/SQL/sql-2003-2.bnf.html#query%20specification
 
-export type SQLInterval =
-  | `${number} second`
-  | `${number} minute`
-  | `${number} hour`
-  | `${number} day`;
+import { z } from 'zod';
 
-export type SearchCondition = string;
-export type SearchConditionLanguage = 'sql' | 'lucene' | undefined;
-export type AggregateFunction =
-  | 'avg'
-  | 'count'
-  | 'count_distinct'
-  | 'max'
-  | 'min'
-  | 'quantile'
-  | 'sum';
-export type AggregateFunctionWithCombinators =
-  | `${AggregateFunction}If`
-  | `${AggregateFunction}IfState`
-  | `${AggregateFunction}IfMerge`
-  | `${AggregateFunction}State`
-  | `${AggregateFunction}Merge`;
-type RootValueExpression =
-  | {
-      aggFn: AggregateFunction | AggregateFunctionWithCombinators;
-      aggCondition: SearchCondition;
-      aggConditionLanguage?: SearchConditionLanguage;
-      valueExpression: string;
-    }
-  | {
-      aggFn: 'quantile';
-      level: number;
-      aggCondition: SearchCondition;
-      aggConditionLanguage?: SearchConditionLanguage;
-      valueExpression: string;
-    }
-  | {
-      aggFn?: undefined;
-      aggCondition?: undefined;
-      aggConditionLanguage?: undefined;
-      valueExpression: string; // always wrapped by aggFn, ex: col + 5, can contain aggregation functions ex. sum(col) + 5 with undefined aggregation
-    };
+import {
+  AggregateFunctionSchema,
+  AggregateFunctionWithCombinatorsSchema,
+  DerivedColumnSchema,
+  SearchConditionLanguageSchema,
+  SearchConditionSchema,
+  SelectListSchema,
+  SortSpecificationListSchema,
+  SQLIntervalSchema,
+} from '@/common/commonTypes';
 
-export type DerivedColumn = RootValueExpression & { alias?: string }; // AS myColName
+export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
 
-export type SelectList = DerivedColumn[] | string; // Serialized Select List
+export type SearchCondition = z.infer<typeof SearchConditionSchema>;
+export type SearchConditionLanguage = z.infer<
+  typeof SearchConditionLanguageSchema
+>;
+export type AggregateFunction = z.infer<typeof AggregateFunctionSchema>;
+export type AggregateFunctionWithCombinators = z.infer<
+  typeof AggregateFunctionWithCombinatorsSchema
+>;
 
-type SortSpecification = RootValueExpression & { ordering: 'ASC' | 'DESC' };
-export type SortSpecificationList = SortSpecification[] | string;
+export type DerivedColumn = z.infer<typeof DerivedColumnSchema>;
+
+export type SelectList = z.infer<typeof SelectListSchema>;
+
+export type SortSpecificationList = z.infer<typeof SortSpecificationListSchema>;
 
 type Limit = { limit?: number; offset?: number };
 
