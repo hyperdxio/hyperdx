@@ -4,12 +4,14 @@ import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 import { IS_DEV } from '@/config';
 
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
+const MAX_DURATION_SECONDS = 180;
 
 export const config = {
   api: {
     externalResolver: true,
     bodyParser: true,
   },
+  maxDuration: MAX_DURATION_SECONDS,
 };
 
 export default (req: NextApiRequest, res: NextApiResponse) => {
