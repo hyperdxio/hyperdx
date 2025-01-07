@@ -1,7 +1,7 @@
 import {
   getLoggedInAgent,
   getServer,
-  makeAlert,
+  makeAlertInput,
   makeTile,
   randomMongoId,
 } from '@/fixtures';
@@ -39,13 +39,13 @@ describe('alerts router', () => {
     const alert = await agent
       .post('/alerts')
       .send(
-        makeAlert({
+        makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
         }),
       )
       .expect(200);
-    expect(alert.body.data.dashboardId).toBe(dashboard.body.id);
+    expect(alert.body.data.dashboard).toBe(dashboard.body.id);
     expect(alert.body.data.tileId).toBe(dashboard.body.tiles[0].id);
   });
 
@@ -58,7 +58,7 @@ describe('alerts router', () => {
     const alert = await agent
       .post('/alerts')
       .send(
-        makeAlert({
+        makeAlertInput({
           dashboardId: resp.body.id,
           tileId: MOCK_TILES[0].id,
         }),
@@ -78,7 +78,7 @@ describe('alerts router', () => {
     const alert = await agent
       .post('/alerts')
       .send(
-        makeAlert({
+        makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: MOCK_TILES[0].id,
         }),
@@ -88,6 +88,7 @@ describe('alerts router', () => {
       .put(`/alerts/${alert.body.data._id}`)
       .send({
         ...alert.body.data,
+        dashboardId: dashboard.body.id, // because alert.body.data stores 'dashboard' instead of 'dashboardId'
         threshold: 10,
       })
       .expect(200);
@@ -109,7 +110,7 @@ describe('alerts router', () => {
         agent
           .post('/alerts')
           .send(
-            makeAlert({
+            makeAlertInput({
               dashboardId: dashboard._id,
               tileId: tile.id,
             }),

@@ -1,4 +1,3 @@
-// @ts-nocheck TODO: Fix When Restoring Alerts
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
@@ -12,61 +11,65 @@ import ms from 'ms';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
-import { z } from 'zod';
 
-import * as clickhouse from '@/clickhouse';
+import { Tile } from '@/common/commonTypes';
+import { DisplayType } from '@/common/DisplayType';
+import {
+  ChartConfigWithOptDateRange,
+  FIXED_TIME_BUCKET_EXPR_ALIAS,
+} from '@/common/renderChartConfig';
+import { renderChartConfig } from '@/common/renderChartConfig';
 import * as config from '@/config';
+import { AlertInput } from '@/controllers/alerts';
 import { ObjectId } from '@/models';
-import Alert, { AlertDocument, AlertState } from '@/models/alert';
+import Alert, {
+  AlertDocument,
+  AlertSource,
+  AlertState,
+  AlertThresholdType,
+  IAlert,
+} from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import LogView from '@/models/logView';
+import { ISavedSearch } from '@/models/savedSearch';
+import { ISource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import { convertMsToGranularityString, truncateString } from '@/utils/common';
-import { translateDashboardDocumentToExternalDashboard } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
-import {
-  externalAlertSchema,
-  translateAlertDocumentToExternalAlert,
-} from '@/utils/zod';
-
-type EnhancedDashboard = Omit<IDashboard, 'team'> & { team: ITeam };
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
-const getLogViewEnhanced = async (logViewId: ObjectId) => {
-  const logView = await LogView.findById(logViewId).populate<{
-    team: ITeam;
-  }>('team');
-  if (!logView) {
-    throw new Error(`LogView ${logViewId} not found `);
-  }
-  return logView;
+type EnhancedSavedSearch = Omit<ISavedSearch, 'source'> & {
+  source: ISource;
 };
+
+const getAlerts = () =>
+  Alert.find({}).populate<{
+    team: ITeam;
+    savedSearch?: EnhancedSavedSearch;
+    dashboard?: IDashboard;
+  }>(['team', 'savedSearch', 'savedSearch.source', 'dashboard']);
+
+type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
 export const buildLogSearchLink = ({
   endTime,
-  logViewId,
-  q,
+  savedSearch,
   startTime,
 }: {
   endTime: Date;
-  logViewId: string;
-  q?: string;
+  savedSearch: EnhancedSavedSearch;
   startTime: Date;
 }) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${logViewId}`);
+  const url = new URL(`${config.FRONTEND_URL}/search/${savedSearch.id}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
   });
-  if (q) {
-    queryParams.append('q', q);
-  }
   url.search = queryParams.toString();
   return url.toString();
 };
@@ -143,22 +146,14 @@ export const expandToNestedObject = (
 // ----------------- Alert Message Template -------------------
 // ------------------------------------------------------------
 // should match the external alert schema
-type AlertMessageTemplateDefaultView = {
-  // FIXME: do we want to include groupBy in the external alert schema?
-  alert: z.infer<typeof externalAlertSchema> & { groupBy?: string };
+export type AlertMessageTemplateDefaultView = {
+  alert: AlertInput;
   attributes: ReturnType<typeof expandToNestedObject>;
-  dashboard: ReturnType<
-    typeof translateDashboardDocumentToExternalDashboard
-  > | null;
+  dashboard?: IDashboard | null;
   endTime: Date;
   granularity: string;
   group?: string;
-  // TODO: use a translation function ?
-  savedSearch: {
-    id: string;
-    name: string;
-    query: string;
-  } | null;
+  savedSearch?: EnhancedSavedSearch | null;
   startTime: Date;
   value: number;
 };
@@ -180,7 +175,7 @@ export const notifyChannel = async ({
   };
 }) => {
   switch (channel) {
-    case 'slack_webhook': {
+    case 'webhook': {
       const webhook = await Webhook.findOne({
         team: team.id,
         ...(mongoose.isValidObjectId(id)
@@ -312,26 +307,21 @@ export const buildAlertMessageTemplateHdxLink = ({
   dashboard,
   endTime,
   granularity,
-  group,
   savedSearch,
   startTime,
 }: AlertMessageTemplateDefaultView) => {
-  if (alert.source === 'search') {
+  if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error(`Source is ${alert.source} but savedSearch is null`);
     }
-    const searchQuery = alert.groupBy
-      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
-      : savedSearch.query;
     return buildLogSearchLink({
       endTime,
-      logViewId: savedSearch.id,
-      q: searchQuery,
+      savedSearch,
       startTime,
     });
-  } else if (alert.source === 'chart') {
+  } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
-      throw new Error('Source is CHART but dashboard is null');
+      throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     return buildChartLink({
       dashboardId: dashboard.id,
@@ -352,31 +342,31 @@ export const buildAlertMessageTemplateTitle = ({
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = Handlebars.create();
-  if (alert.source === 'search') {
+  if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
     return template
       ? handlebars.compile(template)(view)
       : `Alert for "${savedSearch.name}" - ${value} lines found`;
-  } else if (alert.source === 'chart') {
+  } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
-      throw new Error('Source is CHART but dashboard is null');
+      throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
-    const chart = dashboard.charts[0];
+    const tile = dashboard.tiles[0];
     return template
       ? handlebars.compile(template)(view)
-      : `Alert for "${chart.name}" in "${dashboard.name}" - ${value} ${
+      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
           doesExceedThreshold(
-            alert.threshold_type === 'above',
+            alert.thresholdType === AlertThresholdType.ABOVE,
             alert.threshold,
             value,
           )
-            ? alert.threshold_type === 'above'
+            ? alert.thresholdType === AlertThresholdType.ABOVE
               ? 'exceeds'
               : 'falls below'
-            : alert.threshold_type === 'above'
+            : alert.thresholdType === AlertThresholdType.ABOVE
               ? 'falls below'
               : 'exceeds'
         } ${alert.threshold}`;
@@ -388,10 +378,7 @@ export const buildAlertMessageTemplateTitle = ({
 export const getDefaultExternalAction = (
   alert: AlertMessageTemplateDefaultView['alert'],
 ) => {
-  if (
-    alert.channel.type === 'slack_webhook' &&
-    alert.channel.webhookId != null
-  ) {
+  if (alert.channel.type === 'webhook' && alert.channel.webhookId != null) {
     return `@${alert.channel.type}-${alert.channel.webhookId}`;
   }
   return null;
@@ -421,7 +408,6 @@ export const renderAlertTemplate = async ({
   view: AlertMessageTemplateDefaultView;
   team: {
     id: string;
-    logStreamTableVersion?: ITeam['logStreamTableVersion'];
   };
 }) => {
   const { alert, dashboard, endTime, group, savedSearch, startTime, value } =
@@ -461,7 +447,7 @@ export const renderAlertTemplate = async ({
       NOTIFY_FN_NAME,
       async (options: { hash: Record<string, string> }) => {
         const { channel, id } = options.hash;
-        if (channel !== 'slack_webhook') {
+        if (channel !== 'webhook') {
           throw new Error(`Unsupported channel type: ${channel}`);
         }
         // render id template
@@ -487,24 +473,23 @@ export const renderAlertTemplate = async ({
 
   // TODO: support advanced routing with template engine
   // users should be able to use '@' syntax to trigger alerts
-  if (alert.source === 'search') {
+  if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
-      throw new Error('Source is LOG but logView is null');
+      throw new Error(`Source is ${alert.source} but savedSearch is null`);
     }
-    const searchQuery = alert.groupBy
-      ? `${savedSearch.query} ${alert.groupBy}:"${group}"`
-      : savedSearch.query;
     // TODO: show group + total count for group-by alerts
-    const results = await clickhouse.getLogBatch({
-      endTime: endTime.getTime(),
-      limit: 5,
-      offset: 0,
-      order: clickhouse.SortOrder.Desc,
-      q: searchQuery,
-      startTime: startTime.getTime(),
-      tableVersion: team.logStreamTableVersion,
-      teamId: team.id,
-    });
+    const results: any = { data: [] };
+    // IMPLEMENT ME: fetching sample logs using renderChartConfig
+    // await clickhouse.getLogBatch({
+    //   endTime: endTime.getTime(),
+    //   limit: 5,
+    //   offset: 0,
+    //   order: clickhouse.SortOrder.Desc,
+    //   q: searchQuery,
+    //   startTime: startTime.getTime(),
+    //   tableVersion: team.logStreamTableVersion,
+    //   teamId: team.id,
+    // });
     const truncatedResults = truncateString(
       results.data
         .map(row => {
@@ -522,27 +507,29 @@ export const renderAlertTemplate = async ({
     );
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} lines found, expected ${
-      alert.threshold_type === 'above' ? 'less than' : 'greater than'
+      alert.thresholdType === AlertThresholdType.ABOVE
+        ? 'less than'
+        : 'greater than'
     } ${alert.threshold} lines
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
 \`\`\``;
-  } else if (alert.source === 'chart') {
+  } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
-      throw new Error('Source is CHART but dashboard is null');
+      throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} ${
       doesExceedThreshold(
-        alert.threshold_type === 'above',
+        alert.thresholdType === AlertThresholdType.ABOVE,
         alert.threshold,
         value,
       )
-        ? alert.threshold_type === 'above'
+        ? alert.thresholdType === AlertThresholdType.ABOVE
           ? 'exceeds'
           : 'falls below'
-        : alert.threshold_type === 'above'
+        : alert.thresholdType === AlertThresholdType.ABOVE
           ? 'falls below'
           : 'exceeds'
     } ${alert.threshold}
@@ -563,25 +550,21 @@ ${targetTemplate}`;
 const fireChannelEvent = async ({
   alert,
   attributes,
-  dashboard,
   endTime,
   group,
-  logView,
   startTime,
   totalCount,
   windowSizeInMins,
 }: {
-  alert: AlertDocument;
+  alert: EnhancedAlert;
   attributes: Record<string, string>; // TODO: support other types than string
-  dashboard: EnhancedDashboard | null;
   endTime: Date;
   group?: string;
-  logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
 }) => {
-  const team = logView?.team ?? dashboard?.team;
+  const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
@@ -598,30 +581,25 @@ const fireChannelEvent = async ({
   const attributesNested = expandToNestedObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
-      ...translateAlertDocumentToExternalAlert(alert),
+      channel: alert.channel,
+      dashboardId: alert.dashboard?.id,
       groupBy: alert.groupBy,
+      interval: alert.interval,
+      message: alert.message,
+      name: alert.name,
+      savedSearchId: alert.savedSearch?.id,
+      silenced: alert.silenced,
+      source: alert.source,
+      threshold: alert.threshold,
+      thresholdType: alert.thresholdType,
+      tileId: alert.tileId,
     },
     attributes: attributesNested,
-    dashboard: dashboard
-      ? translateDashboardDocumentToExternalDashboard({
-          _id: dashboard._id,
-          name: dashboard.name,
-          query: dashboard.query,
-          team: team._id,
-          charts: dashboard.charts,
-          tags: dashboard.tags,
-        })
-      : null,
+    dashboard: alert.dashboard,
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    savedSearch: logView
-      ? {
-          id: logView._id.toString(),
-          name: logView.name,
-          query: logView.query,
-        }
-      : null,
+    savedSearch: alert.savedSearch,
     startTime,
     value: totalCount,
   };
@@ -635,7 +613,6 @@ const fireChannelEvent = async ({
     view: templateView,
     team: {
       id: team._id.toString(),
-      logStreamTableVersion: team.logStreamTableVersion,
     },
   });
 };
@@ -644,7 +621,7 @@ export const roundDownTo = (roundTo: number) => (x: Date) =>
   new Date(Math.floor(x.getTime() / roundTo) * roundTo);
 export const roundDownToXMinutes = (x: number) => roundDownTo(1000 * 60 * x);
 
-export const processAlert = async (now: Date, alert: AlertDocument) => {
+export const processAlert = async (now: Date, alert: EnhancedAlert) => {
   try {
     const previous: IAlertHistory | undefined = (
       await AlertHistory.find({ alert: alert._id })
@@ -674,114 +651,115 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
     const checkEndTime = nowInMinsRoundDown;
 
     // Logs Source
-    let checksData:
-      | Awaited<ReturnType<typeof clickhouse.checkAlert>>
-      | Awaited<ReturnType<typeof clickhouse.getMultiSeriesChartLegacyFormat>>
-      | null = null;
-    let logView: Awaited<ReturnType<typeof getLogViewEnhanced>> | null = null;
-    let targetDashboard: EnhancedDashboard | null = null;
-    if (alert.source === 'LOG' && alert.logView) {
-      logView = await getLogViewEnhanced(alert.logView);
-      // TODO: use getLogsChart instead so we can deprecate checkAlert
-      checksData = await clickhouse.checkAlert({
-        endTime: checkEndTime,
-        groupBy: alert.groupBy,
-        q: logView.query,
-        startTime: checkStartTime,
-        tableVersion: logView.team.logStreamTableVersion,
-        teamId: logView.team._id.toString(),
-        windowSizeInMins,
-      });
+    const checksData: {
+      data: {
+        __hdx_time_bucket: string;
+        [key: string]: any;
+      }[];
+      rows: number;
+    } | null = {
+      data: [],
+      rows: 0,
+    };
+    let chartConfig: ChartConfigWithOptDateRange;
+    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+      chartConfig = {
+        select: alert.savedSearch.select,
+        connection: alert.savedSearch.source.connection.toString(),
+        where: alert.savedSearch.where,
+        from: alert.savedSearch.source.from,
+        orderBy: alert.savedSearch.orderBy,
+        dateRange: [checkStartTime, checkEndTime],
+        whereLanguage: alert.savedSearch.whereLanguage,
+        granularity: `${windowSizeInMins} minute`,
+      };
       logger.info({
-        message: 'Received alert metric [LOG source]',
+        message: `Received alert metric [${alert.source} source]`,
         alert,
-        logView,
+        savedSearch: alert.savedSearch,
         checksData,
         checkStartTime,
         checkEndTime,
       });
     }
     // Chart Source
-    else if (alert.source === 'CHART' && alert.dashboardId && alert.chartId) {
-      const dashboard = await Dashboard.findOne(
-        {
-          _id: alert.dashboardId,
-          'charts.id': alert.chartId,
-        },
-        {
-          name: 1,
-          charts: {
-            $elemMatch: {
-              id: alert.chartId,
-            },
-          },
-        },
-      ).populate<{
-        team: ITeam;
-      }>('team');
+    else if (
+      alert.source === AlertSource.TILE &&
+      alert.dashboard &&
+      alert.tileId
+    ) {
+      // filter tiles
+      alert.dashboard.tiles = alert.dashboard.tiles.filter(
+        tile => tile.id === alert.tileId,
+      );
 
       if (
-        dashboard &&
-        Array.isArray(dashboard.charts) &&
-        dashboard.charts.length === 1
+        alert.dashboard &&
+        Array.isArray(alert.dashboard.tiles) &&
+        alert.dashboard.tiles.length === 1
       ) {
-        const chart = dashboard.charts[0];
         // Doesn't work for metric alerts yet
         const MAX_NUM_GROUPS = 20;
         // TODO: assuming that the chart has only 1 series for now
-        const firstSeries = chart.series[0];
-        if (firstSeries.type === 'time' && firstSeries.table === 'logs') {
-          targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
-          const endTimeMs = fns.getTime(checkEndTime);
-
-          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-            series: chart.series,
-            endTime: endTimeMs,
-            granularity: `${windowSizeInMins} minute`,
-            maxNumGroups: MAX_NUM_GROUPS,
-            startTime: startTimeMs,
-            tableVersion: dashboard.team.logStreamTableVersion,
-            teamId: dashboard.team._id.toString(),
-            seriesReturnType: chart.seriesReturnType,
+        const firstTile = alert.dashboard.tiles[0];
+        if (firstTile.config.displayType === DisplayType.Line) {
+          // fetch source data
+          const _source = await Source.findOne({
+            _id: firstTile.config.source,
           });
-        } else if (
-          firstSeries.type === 'time' &&
-          firstSeries.table === 'metrics' &&
-          firstSeries.field
-        ) {
-          targetDashboard = dashboard;
-          const startTimeMs = fns.getTime(checkStartTime);
-          const endTimeMs = fns.getTime(checkEndTime);
-          checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-            series: chart.series.map(series => {
-              if ('field' in series && series.field != null) {
-                const [metricName, rawMetricDataType] =
-                  series.field.split(' - ');
-                const metricDataType = z
-                  .nativeEnum(clickhouse.MetricsDataType)
-                  .parse(rawMetricDataType);
-                return {
-                  ...series,
-                  metricDataType,
-                  field: metricName,
-                };
-              }
-              return series;
-            }),
-            endTime: endTimeMs,
+          if (!_source) {
+            throw new Error('Source not found');
+          }
+          // TODO: FIXED TYPE
+          // @ts-ignore
+          chartConfig = {
+            ...firstTile.config,
+            connection: _source.connection.toString(),
+            from: _source.from,
+            dateRange: [checkStartTime, checkEndTime],
             granularity: `${windowSizeInMins} minute`,
-            maxNumGroups: MAX_NUM_GROUPS,
-            startTime: startTimeMs,
-            tableVersion: dashboard.team.logStreamTableVersion,
-            teamId: dashboard.team._id.toString(),
-            seriesReturnType: chart.seriesReturnType,
-          });
+          };
         }
+        // else if (
+        // firstTile.type === 'time' &&
+        // firstTile.table === 'metrics' &&
+        // firstTile.field
+        // ) {
+        // targetDashboard = dashboard;
+        // const startTimeMs = fns.getTime(checkStartTime);
+        // const endTimeMs = fns.getTime(checkEndTime);
+        // *****************************************************
+        // IMPLEMENT ME: implement query using renderChartConfig
+        // *****************************************************
+        // checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
+        //   series: chart.series.map(series => {
+        //     if ('field' in series && series.field != null) {
+        //       const [metricName, rawMetricDataType] =
+        //         series.field.split(' - ');
+        //       const metricDataType = z
+        //         .nativeEnum(clickhouse.MetricsDataType)
+        //         .parse(rawMetricDataType);
+        //       return {
+        //         ...series,
+        //         metricDataType,
+        //         field: metricName,
+        //       };
+        //     }
+        //     return series;
+        //   }),
+        //   endTime: endTimeMs,
+        //   granularity: `${windowSizeInMins} minute`,
+        //   maxNumGroups: MAX_NUM_GROUPS,
+        //   startTime: startTimeMs,
+        //   tableVersion: dashboard.team.logStreamTableVersion,
+        //   teamId: dashboard.team._id.toString(),
+        //   seriesReturnType: chart.seriesReturnType,
+        // });
+        // }
       }
 
       logger.info({
-        message: 'Received alert metric [CHART source]',
+        message: `Received alert metric [${alert.source} source]`,
         alert,
         checksData,
         checkStartTime,
@@ -814,10 +792,10 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
         const totalCount = isString(checkData.data)
           ? parseInt(checkData.data)
           : checkData.data;
-        const bucketStart = new Date(checkData.ts_bucket * 1000);
+        const bucketStart = new Date(checkData[FIXED_TIME_BUCKET_EXPR_ALIAS]);
         if (
           doesExceedThreshold(
-            alert.type === 'presence',
+            alert.thresholdType === AlertThresholdType.ABOVE,
             alert.threshold,
             totalCount,
           )
@@ -834,12 +812,10 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
             await fireChannelEvent({
               alert,
               attributes: checkData.attributes,
-              dashboard: targetDashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: Array.isArray(checkData.group)
                 ? checkData.group.join(', ')
                 : checkData.group,
-              logView,
               startTime: bucketStart,
               totalCount,
               windowSizeInMins,
@@ -876,7 +852,7 @@ export const processAlert = async (now: Date, alert: AlertDocument) => {
 
 export default async () => {
   const now = new Date();
-  const alerts = await Alert.find({});
+  const alerts = await getAlerts();
   logger.info(`Going to process ${alerts.length} alerts`);
   await Promise.all(alerts.map(alert => processAlert(now, alert)));
 };

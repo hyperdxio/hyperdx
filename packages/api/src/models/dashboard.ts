@@ -1,7 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 import { z } from 'zod';
 
-import { DashboardSchema } from '@/utils/commonTypes';
+import { DashboardSchema } from '@/common/commonTypes';
 
 import type { ObjectId } from '.';
 
