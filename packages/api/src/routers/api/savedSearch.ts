@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { SavedSearchSchema } from '@/common/commonTypes';
 import {
   createSavedSearch,
   deleteSavedSearch,
@@ -11,7 +12,6 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { SavedSearchSchema } from '@/utils/commonTypes';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();

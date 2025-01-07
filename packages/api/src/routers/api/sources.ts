@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { SourceSchema } from '@/common/commonTypes';
 import {
   createSource,
   deleteSource,
@@ -9,7 +10,6 @@ import {
   updateSource,
 } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { SourceSchema } from '@/utils/commonTypes';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();

@@ -1,4 +1,4 @@
-import express, { NextFunction, Request, Response } from 'express';
+import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -9,44 +9,11 @@ import {
   getAlertById,
   getAlertsEnhanced,
   updateAlert,
-  validateGroupByProperty,
 } from '@/controllers/alerts';
-import { getTeam } from '@/controllers/team';
 import AlertHistory from '@/models/alertHistory';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
-
-// Validate groupBy property
-const validateGroupBy = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  const { groupBy, source } = req.body || {};
-  if (source === 'LOG' && groupBy) {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
-    // Validate groupBy property
-    const groupByValid = await validateGroupByProperty({
-      groupBy,
-      logStreamTableVersion: team.logStreamTableVersion,
-      teamId: teamId.toString(),
-    });
-    if (!groupByValid) {
-      return res.status(400).json({
-        error: 'Invalid groupBy property',
-      });
-    }
-  }
-  next();
-};
 
 router.get('/', async (req, res, next) => {
   try {
@@ -82,17 +49,12 @@ router.get('/', async (req, res, next) => {
               }
             : undefined,
           channel: _.pick(alert.channel, ['type']),
-          ...(alert.dashboardId && {
+          ...(alert.dashboard && {
             dashboard: {
-              charts: alert.dashboardId.tiles
-                .filter(chart => chart.id === alert.tileId)
-                .map(chart => _.pick(chart, ['id', 'name'])),
-              ..._.pick(alert.dashboardId, [
-                '_id',
-                'name',
-                'updatedAt',
-                'tags',
-              ]),
+              tiles: alert.dashboard.tiles
+                .filter(tile => tile.id === alert.tileId)
+                .map(tile => _.pick(tile, ['id', 'name'])),
+              ..._.pick(alert.dashboard, ['_id', 'name', 'updatedAt', 'tags']),
             },
           }),
           ...(alert.savedSearch && {
@@ -108,8 +70,8 @@ router.get('/', async (req, res, next) => {
             '_id',
             'interval',
             'threshold',
+            'thresholdType',
             'state',
-            'type',
             'source',
             'tileId',
             'createdAt',
@@ -129,7 +91,6 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   validateRequest({ body: alertSchema }),
-  validateGroupBy,
   async (req, res, next) => {
     const teamId = req.user?.team;
     if (teamId == null) {
@@ -154,7 +115,6 @@ router.put(
       id: objectIdSchema,
     }),
   }),
-  validateGroupBy,
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;

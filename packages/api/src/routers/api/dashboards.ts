@@ -5,6 +5,10 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
+  DashboardSchema,
+  DashboardWithoutIdSchema,
+} from '@/common/commonTypes';
+import {
   createDashboard,
   deleteDashboardAndAlerts,
   getDashboard,
@@ -13,8 +17,6 @@ import {
 } from '@/controllers/dashboard';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import Alert from '@/models/alert';
-import Dashboard from '@/models/dashboard';
-import { DashboardSchema, DashboardWithoutIdSchema } from '@/utils/commonTypes';
 import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -28,9 +30,9 @@ router.get('/', async (req, res, next) => {
 
     const alertsByDashboard = groupBy(
       await Alert.find({
-        dashboardId: { $in: dashboards.map(d => d._id) },
+        dashboard: { $in: dashboards.map(d => d._id) },
       }),
-      'dashboardId',
+      'dashboard',
     );
 
     res.json(

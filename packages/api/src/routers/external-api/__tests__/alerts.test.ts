@@ -3,18 +3,18 @@ import _ from 'lodash';
 import {
   getLoggedInAgent,
   getServer,
-  makeChart,
-  makeExternalAlert,
+  makeAlertInput,
+  makeChartConfig,
 } from '@/fixtures';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
   charts: [
-    makeChart({ id: 'aaaaaaa' }),
-    makeChart({ id: 'bbbbbbb' }),
-    makeChart({ id: 'ccccccc' }),
-    makeChart({ id: 'ddddddd' }),
-    makeChart({ id: 'eeeeeee' }),
+    makeChartConfig({ id: 'aaaaaaa' }),
+    makeChartConfig({ id: 'bbbbbbb' }),
+    makeChartConfig({ id: 'ccccccc' }),
+    makeChartConfig({ id: 'ddddddd' }),
+    makeChartConfig({ id: 'eeeeeee' }),
   ],
   query: 'test query',
 };
@@ -48,9 +48,9 @@ describe.skip('/api/v1/alerts', () => {
           .post('/api/v1/alerts')
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send(
-            makeExternalAlert({
+            makeAlertInput({
               dashboardId: dashboard._id,
-              chartId: chart.id,
+              tileId: chart.id,
               ...(i % 2 == 0
                 ? {
                     name: 'test {{hello}}',
@@ -177,9 +177,9 @@ Array [
     const updateAlert = await agent
       .put(`/api/v1/alerts/${remainingAlert.id}`)
       .send(
-        makeExternalAlert({
+        makeAlertInput({
           dashboardId: remainingAlert.dashboardId,
-          chartId: remainingAlert.chartId,
+          tileId: remainingAlert.chartId,
           threshold: 1000,
           interval: '1h',
         }),

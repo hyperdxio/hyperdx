@@ -2,19 +2,19 @@ import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
 
-import apiServer from './api-app';
-import * as config from './config';
-import { connectDB, mongooseConnection } from './models';
-import logger from './utils/logger';
-import redisClient from './utils/redis';
+import app from '@/api-app';
+import * as config from '@/config';
+import { connectDB, mongooseConnection } from '@/models';
+import logger from '@/utils/logger';
+import redisClient from '@/utils/redis';
 
 export default class Server {
   protected shouldHandleGracefulShutdown = true;
 
   protected httpServer!: http.Server;
 
-  private async createServer() {
-    return http.createServer(apiServer);
+  private createServer() {
+    return http.createServer(app);
   }
 
   protected async shutdown(signal?: string) {
@@ -45,7 +45,7 @@ export default class Server {
   }
 
   async start() {
-    this.httpServer = await this.createServer();
+    this.httpServer = this.createServer();
     this.httpServer.keepAliveTimeout = 61000; // Ensure all inactive connections are terminated by the ALB, by setting this a few seconds higher than the ALB idle timeout
     this.httpServer.headersTimeout = 62000; // Ensure the headersTimeout is set higher than the keepAliveTimeout due to this nodejs regression bug: https://github.com/nodejs/node/issues/27363
 

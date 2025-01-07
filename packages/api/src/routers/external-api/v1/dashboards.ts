@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { TileSchema } from '@/common/commonTypes';
 import {
   deleteDashboardAndAlerts,
   updateDashboard,
@@ -130,8 +131,7 @@ router.put(
     }),
     body: z.object({
       name: z.string().max(1024),
-      charts: z.array(externalChartSchemaWithId),
-      query: z.string().max(2048),
+      tiles: z.array(TileSchema),
       tags: tagsSchema,
     }),
   }),
@@ -146,16 +146,11 @@ router.put(
         return res.sendStatus(400);
       }
 
-      const { name, charts, query, tags } = req.body ?? {};
-
-      const internalCharts = charts.map(chart => {
-        return translateExternalChartToInternalChart(chart);
-      });
+      const { name, tiles, tags } = req.body ?? {};
 
       const updatedDashboard = await updateDashboard(dashboardId, teamId, {
         name,
-        charts: internalCharts,
-        query,
+        tiles,
         tags,
       });
 
