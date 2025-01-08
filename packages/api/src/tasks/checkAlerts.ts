@@ -12,7 +12,7 @@ import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 
-import { Tile } from '@/common/commonTypes';
+import * as clickhouse from '@/common/clickhouse';
 import { DisplayType } from '@/common/DisplayType';
 import {
   ChartConfigWithOptDateRange,
@@ -21,16 +21,13 @@ import {
 import { renderChartConfig } from '@/common/renderChartConfig';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { ObjectId } from '@/models';
 import Alert, {
-  AlertDocument,
   AlertSource,
   AlertState,
   AlertThresholdType,
-  IAlert,
 } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
@@ -52,7 +49,7 @@ const getAlerts = () =>
     team: ITeam;
     savedSearch?: EnhancedSavedSearch;
     dashboard?: IDashboard;
-  }>(['team', 'savedSearch', 'savedSearch.source', 'dashboard']);
+  }>(['team', 'savedSearch', 'dashboard']);
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
@@ -650,37 +647,21 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins);
     const checkEndTime = nowInMinsRoundDown;
 
+    let chartConfig: ChartConfigWithOptDateRange | undefined;
+    let connectionId: string | undefined;
     // Logs Source
-    const checksData: {
-      data: {
-        __hdx_time_bucket: string;
-        [key: string]: any;
-      }[];
-      rows: number;
-    } | null = {
-      data: [],
-      rows: 0,
-    };
-    let chartConfig: ChartConfigWithOptDateRange;
     if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+      connectionId = alert.savedSearch.source.connection.toString();
       chartConfig = {
-        select: alert.savedSearch.select,
-        connection: alert.savedSearch.source.connection.toString(),
-        where: alert.savedSearch.where,
-        from: alert.savedSearch.source.from,
-        orderBy: alert.savedSearch.orderBy,
+        connection: connectionId,
         dateRange: [checkStartTime, checkEndTime],
-        whereLanguage: alert.savedSearch.whereLanguage,
+        from: alert.savedSearch.source.from,
         granularity: `${windowSizeInMins} minute`,
+        orderBy: alert.savedSearch.orderBy,
+        select: alert.savedSearch.select,
+        where: alert.savedSearch.where,
+        whereLanguage: alert.savedSearch.whereLanguage,
       };
-      logger.info({
-        message: `Received alert metric [${alert.source} source]`,
-        alert,
-        savedSearch: alert.savedSearch,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
     }
     // Chart Source
     else if (
@@ -708,63 +689,24 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             _id: firstTile.config.source,
           });
           if (!_source) {
-            throw new Error('Source not found');
+            logger.error({
+              message: 'Source not found',
+              dashboardId: alert.dashboard.id,
+              tile: firstTile,
+            });
+            return;
           }
-          // TODO: FIXED TYPE
-          // @ts-ignore
+          connectionId = _source.connection.toString();
           chartConfig = {
-            ...firstTile.config,
-            connection: _source.connection.toString(),
-            from: _source.from,
+            connection: connectionId,
             dateRange: [checkStartTime, checkEndTime],
+            from: _source.from,
             granularity: `${windowSizeInMins} minute`,
+            select: firstTile.config.select,
+            where: firstTile.config.where,
           };
         }
-        // else if (
-        // firstTile.type === 'time' &&
-        // firstTile.table === 'metrics' &&
-        // firstTile.field
-        // ) {
-        // targetDashboard = dashboard;
-        // const startTimeMs = fns.getTime(checkStartTime);
-        // const endTimeMs = fns.getTime(checkEndTime);
-        // *****************************************************
-        // IMPLEMENT ME: implement query using renderChartConfig
-        // *****************************************************
-        // checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-        //   series: chart.series.map(series => {
-        //     if ('field' in series && series.field != null) {
-        //       const [metricName, rawMetricDataType] =
-        //         series.field.split(' - ');
-        //       const metricDataType = z
-        //         .nativeEnum(clickhouse.MetricsDataType)
-        //         .parse(rawMetricDataType);
-        //       return {
-        //         ...series,
-        //         metricDataType,
-        //         field: metricName,
-        //       };
-        //     }
-        //     return series;
-        //   }),
-        //   endTime: endTimeMs,
-        //   granularity: `${windowSizeInMins} minute`,
-        //   maxNumGroups: MAX_NUM_GROUPS,
-        //   startTime: startTimeMs,
-        //   tableVersion: dashboard.team.logStreamTableVersion,
-        //   teamId: dashboard.team._id.toString(),
-        //   seriesReturnType: chart.seriesReturnType,
-        // });
-        // }
       }
-
-      logger.info({
-        message: `Received alert metric [${alert.source} source]`,
-        alert,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
     } else {
       logger.error({
         message: `Unsupported alert source: ${alert.source}`,
@@ -772,6 +714,38 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       });
       return;
     }
+
+    // Fetch data
+    if (chartConfig == null || connectionId == null) {
+      logger.error({
+        message: 'Failed to build chart config',
+        chartConfig,
+        connectionId,
+        alert,
+      });
+      return;
+    }
+    const query = await renderChartConfig(chartConfig);
+    const checksData = await clickhouse
+      .sendQuery<'JSON'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'JSON',
+        connectionId,
+      })
+      .then(res =>
+        res.json<{
+          [FIXED_TIME_BUCKET_EXPR_ALIAS]: string;
+          [key: string]: any;
+        }>(),
+      );
+    logger.info({
+      message: `Received alert metric [${alert.source} source]`,
+      alert,
+      checksData,
+      checkStartTime,
+      checkEndTime,
+    });
 
     // TODO: support INSUFFICIENT_DATA state
     let alertState = AlertState.OK;
