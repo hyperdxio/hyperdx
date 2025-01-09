@@ -13,6 +13,7 @@ import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 
 import * as clickhouse from '@/common/clickhouse';
+import { convertCHDataTypeToJSType } from '@/common/clickhouse';
 import { DisplayType } from '@/common/DisplayType';
 import {
   ChartConfigWithOptDateRange,
@@ -97,10 +98,11 @@ export const buildChartLink = ({
 };
 
 export const doesExceedThreshold = (
-  isThresholdTypeAbove: boolean,
+  thresholdType: AlertThresholdType,
   threshold: number,
   value: number,
 ) => {
+  const isThresholdTypeAbove = thresholdType === AlertThresholdType.ABOVE;
   if (isThresholdTypeAbove && value >= threshold) {
     return true;
   } else if (!isThresholdTypeAbove && value < threshold) {
@@ -355,11 +357,7 @@ export const buildAlertMessageTemplateTitle = ({
     return template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
-          doesExceedThreshold(
-            alert.thresholdType === AlertThresholdType.ABOVE,
-            alert.threshold,
-            value,
-          )
+          doesExceedThreshold(alert.thresholdType, alert.threshold, value)
             ? alert.thresholdType === AlertThresholdType.ABOVE
               ? 'exceeds'
               : 'falls below'
@@ -518,11 +516,7 @@ ${truncatedResults}
     }
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} ${
-      doesExceedThreshold(
-        alert.thresholdType === AlertThresholdType.ABOVE,
-        alert.threshold,
-        value,
-      )
+      doesExceedThreshold(alert.thresholdType, alert.threshold, value)
         ? alert.thresholdType === AlertThresholdType.ABOVE
           ? 'exceeds'
           : 'falls below'
@@ -661,6 +655,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         select: alert.savedSearch.select,
         where: alert.savedSearch.where,
         whereLanguage: alert.savedSearch.whereLanguage,
+        timestampValueExpression:
+          alert.savedSearch.source.timestampValueExpression,
       };
     }
     // Chart Source
@@ -704,6 +700,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             granularity: `${windowSizeInMins} minute`,
             select: firstTile.config.select,
             where: firstTile.config.where,
+            timestampValueExpression: _source.timestampValueExpression,
           };
         }
       }
@@ -725,6 +722,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       });
       return;
     }
+
     const query = await renderChartConfig(chartConfig);
     const checksData = await clickhouse
       .sendQuery<'JSON'>({
@@ -733,12 +731,9 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         format: 'JSON',
         connectionId,
       })
-      .then(res =>
-        res.json<{
-          [FIXED_TIME_BUCKET_EXPR_ALIAS]: string;
-          [key: string]: any;
-        }>(),
-      );
+      // FIXME: type res.json
+      .then(res => res.json<Record<string, string>>());
+
     logger.info({
       message: `Received alert metric [${alert.source} source]`,
       alert,
@@ -756,42 +751,71 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     }).save();
 
     if (checksData?.rows && checksData?.rows > 0) {
+      // attach JS type
+      const meta =
+        checksData.meta?.map(m => ({
+          ...m,
+          jsType: convertCHDataTypeToJSType(m.type),
+        })) ?? [];
+
+      const timestampColumnName = meta.find(
+        m => m.jsType === clickhouse.JSDataType.Date,
+      )?.name;
+      const valueColumnNames = meta
+        .filter(m => m.jsType === clickhouse.JSDataType.Number)
+        .map(m => m.name);
+
+      if (timestampColumnName == null) {
+        logger.error({
+          message: 'Failed to find timestamp column',
+          meta,
+          alert,
+        });
+        return;
+      }
+      if (valueColumnNames.length === 0) {
+        logger.error({
+          message: 'Failed to find value column',
+          meta,
+          alert,
+        });
+        return;
+      }
+
       for (const checkData of checksData.data) {
-        // TODO: we might want to fix the null value from the upstream
-        // this happens when the ratio is 0/0
-        if (checkData.data == null) {
-          continue;
+        let _value: number | null = null;
+        for (const [k, v] of Object.entries(checkData)) {
+          if (valueColumnNames.includes(k)) {
+            _value = isString(v) ? parseInt(v) : v;
+            break;
+          }
         }
 
-        const totalCount = isString(checkData.data)
-          ? parseInt(checkData.data)
-          : checkData.data;
-        const bucketStart = new Date(checkData[FIXED_TIME_BUCKET_EXPR_ALIAS]);
-        if (
-          doesExceedThreshold(
-            alert.thresholdType === AlertThresholdType.ABOVE,
-            alert.threshold,
-            totalCount,
-          )
-        ) {
+        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
+        // this happens when the ratio is 0/0
+        if (_value == null) {
+          continue;
+        }
+        const bucketStart = new Date(checkData[timestampColumnName]);
+        if (doesExceedThreshold(alert.thresholdType, alert.threshold, _value)) {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
             alert,
-            totalCount,
+            totalCount: _value,
             checkData,
           });
 
           try {
             await fireChannelEvent({
               alert,
-              attributes: checkData.attributes,
+              attributes: {}, // FIXME: support attributes (logs + resources ?)
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: Array.isArray(checkData.group)
                 ? checkData.group.join(', ')
                 : checkData.group,
               startTime: bucketStart,
-              totalCount,
+              totalCount: _value,
               windowSizeInMins,
             });
           } catch (e) {
@@ -804,7 +828,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
           history.counts += 1;
         }
-        history.lastValues.push({ count: totalCount, startTime: bucketStart });
+        history.lastValues.push({ count: _value, startTime: bucketStart });
       }
 
       history.state = alertState;

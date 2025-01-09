@@ -376,7 +376,7 @@ export const sendQuery = async <T extends DataFormat>({
       abort_signal,
       clickhouse_settings,
       query_id: queryId,
-    });
+    }) as unknown as ReturnType<typeof client.query<T>>;
   }
 
   const IS_LOCAL_MODE = false;
