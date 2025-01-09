@@ -847,7 +847,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     // console.error(e);
     logger.error({
       message: 'Failed to process alert',
-      alert,
+      alertId: alert.id,
       error: serializeError(e),
     });
   }

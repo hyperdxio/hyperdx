@@ -7,8 +7,7 @@ import {
 
 import { SQLInterval } from '@/common/sqlTypes';
 import { hashCode } from '@/common/utils';
-import { isNode, timeBucketByGranularity } from '@/common/utils';
-import * as config from '@/config';
+import { timeBucketByGranularity } from '@/common/utils';
 
 export const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
@@ -235,7 +234,7 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
-const client = {
+export const client = {
   async query<T extends DataFormat>({
     query,
     format = 'JSON',
@@ -365,17 +364,6 @@ export const sendQuery = async <T extends DataFormat>({
   connectionId: string;
   queryId?: string;
 }) => {
-  if (isNode) {
-    const _clickhouse = await import('@/clickhouse');
-    return _clickhouse.client.query({
-      query,
-      query_params,
-      abort_signal,
-      clickhouse_settings,
-      query_id: queryId,
-    }) as unknown as ReturnType<typeof client.query<T>>;
-  }
-
   const IS_LOCAL_MODE = false;
 
   // TODO: decide what to do here
