@@ -4,7 +4,7 @@ import * as clickhouse from '@/common/clickhouse';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import { bulkInsertLogs, getServer, makeTile } from '@/fixtures';
+import { bulkInsertLogs, getServer, makeTile, selectAllLogs } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
@@ -209,7 +209,7 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    beforeEach(async () => {
+    afterEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
     });
@@ -609,7 +609,7 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
-    beforeEach(async () => {
+    afterEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
     });

@@ -75,6 +75,18 @@ const connectV2CI = async () => {
       wait_end_of_query: 1,
     },
   });
+
+  // HACK: to warm up the db (the data doesn't populate at the 1st run)
+  // Insert a few logs and clear out
+  await bulkInsertLogs([
+    {
+      ServiceName: 'api',
+      Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+      SeverityText: 'error',
+      Body: 'Oh no! Something went wrong!',
+    },
+  ]);
+  await clearClickhouseTables();
 };
 
 export const connectDB = async () => {
@@ -214,6 +226,18 @@ export const clearClickhouseTables = async () => {
   });
 };
 
+export const selectAllLogs = async () => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  return clickhouse.client
+    .query({
+      query: `SELECT * FROM ${DEFAULT_LOGS_TABLE}`,
+      format: 'JSONEachRow',
+    })
+    .then(res => res.json());
+};
+
 export const bulkInsertLogs = async (
   events: {
     Body: string;
@@ -232,6 +256,7 @@ export const bulkInsertLogs = async (
     clickhouse_settings: {
       // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
       date_time_input_format: 'best_effort',
+      wait_end_of_query: 1,
     },
   });
 };
