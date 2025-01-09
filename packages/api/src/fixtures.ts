@@ -27,7 +27,7 @@ const MOCK_USER = {
 const DEFAULT_LOGS_TABLE = 'default.otel_logs';
 const DEFAULT_TRACES_TABLE = 'default.otel_traces';
 
-const connectV2CI = async () => {
+const connectClickhouse = async () => {
   // health check
   await clickhouse.healthCheck();
 
@@ -125,7 +125,7 @@ export const initCiEnvs = async () => {
   }
 
   // Populate fake persistent data here...
-  await connectV2CI();
+  await connectClickhouse();
 };
 
 class MockServer extends Server {
