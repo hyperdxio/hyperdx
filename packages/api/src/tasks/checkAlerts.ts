@@ -655,6 +655,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         select: alert.savedSearch.select,
         where: alert.savedSearch.where,
         whereLanguage: alert.savedSearch.whereLanguage,
+        groupBy: alert.groupBy,
         timestampValueExpression:
           alert.savedSearch.source.timestampValueExpression,
       };
@@ -700,6 +701,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             granularity: `${windowSizeInMins} minute`,
             select: firstTile.config.select,
             where: firstTile.config.where,
+            groupBy: firstTile.config.groupBy,
             timestampValueExpression: _source.timestampValueExpression,
           };
         }
@@ -761,9 +763,11 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       const timestampColumnName = meta.find(
         m => m.jsType === clickhouse.JSDataType.Date,
       )?.name;
-      const valueColumnNames = meta
-        .filter(m => m.jsType === clickhouse.JSDataType.Number)
-        .map(m => m.name);
+      const valueColumnNames = new Set(
+        meta
+          .filter(m => m.jsType === clickhouse.JSDataType.Number)
+          .map(m => m.name),
+      );
 
       if (timestampColumnName == null) {
         logger.error({
@@ -773,7 +777,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         });
         return;
       }
-      if (valueColumnNames.length === 0) {
+      if (valueColumnNames.size === 0) {
         logger.error({
           message: 'Failed to find value column',
           meta,
@@ -784,8 +788,9 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
       for (const checkData of checksData.data) {
         let _value: number | null = null;
+        // TODO: other keys should be attributes ? (for alert message template)
         for (const [k, v] of Object.entries(checkData)) {
-          if (valueColumnNames.includes(k)) {
+          if (valueColumnNames.has(k)) {
             _value = isString(v) ? parseInt(v) : v;
             break;
           }

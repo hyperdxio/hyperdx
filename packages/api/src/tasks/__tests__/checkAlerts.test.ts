@@ -4,19 +4,14 @@ import * as clickhouse from '@/common/clickhouse';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import {
-  buildMetricSeries,
-  generateBuildTeamEventFn,
-  getServer,
-  makeTile,
-} from '@/fixtures';
+import { bulkInsertLogs, getServer, makeTile } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
-import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
+import * as checkAlert from '@/tasks/checkAlerts';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
@@ -31,7 +26,6 @@ import {
   roundDownToXMinutes,
   translateExternalActionsToInternal,
 } from '@/tasks/checkAlerts';
-import { LogType } from '@/utils/logParser';
 import * as slack from '@/utils/slack';
 
 const MOCK_DASHBOARD = {
@@ -93,10 +87,10 @@ describe('checkAlerts', () => {
   });
 
   it('doesExceedThreshold', () => {
-    expect(doesExceedThreshold(true, 10, 11)).toBe(true);
-    expect(doesExceedThreshold(true, 10, 10)).toBe(true);
-    expect(doesExceedThreshold(false, 10, 9)).toBe(true);
-    expect(doesExceedThreshold(false, 10, 10)).toBe(false);
+    expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 11)).toBe(true);
+    expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 10)).toBe(true);
+    expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 9)).toBe(true);
+    expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 10)).toBe(false);
   });
 
   it('expandToNestedObject', () => {
@@ -608,7 +602,7 @@ describe('checkAlerts', () => {
     });
   });
 
-  describe.only('processAlert', () => {
+  describe('processAlert', () => {
     const server = getServer();
 
     beforeAll(async () => {
@@ -729,45 +723,37 @@ describe('checkAlerts', () => {
     //   );
     // });
 
-    it.only('TILE alert - slack webhook', async () => {
+    it('TILE alert - slack webhook', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
 
-      // jest.spyOn(clickhouse, 'sendQuery').mockResolvedValueOnce({
-      //   json: jest.fn().mockResolvedValue({
-      //     data: [
-      //       {
-      //         "countIf(ilike(ServiceName, '%api%'))": '62',
-      //         __hdx_time_bucket: '2025-01-07T02:59:30Z',
-      //       },
-      //       {
-      //         "countIf(ilike(ServiceName, '%api%'))": '67',
-      //         __hdx_time_bucket: '2025-01-07T02:59:45Z',
-      //       },
-      //       {
-      //         "countIf(ilike(ServiceName, '%api%'))": '73',
-      //         __hdx_time_bucket: '2025-01-07T03:00:00Z',
-      //       },
-      //       {
-      //         "countIf(ilike(ServiceName, '%api%'))": '1457',
-      //         __hdx_time_bucket: '2025-01-07T03:00:15Z',
-      //       },
-      //       {
-      //         "countIf(ilike(ServiceName, '%api%'))": '705',
-      //         __hdx_time_bucket: '2025-01-07T03:00:30Z',
-      //       },
-      //     ],
-      //     rows: 5,
-      //   }),
-      // } as any);
-
       const team = await createTeam({ name: 'My Team' });
 
-      const teamId = team._id.toString();
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
       const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
 
       const webhook = await new Webhook({
         team: team._id,
@@ -830,7 +816,7 @@ describe('checkAlerts', () => {
         },
         interval: '5m',
         thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1000,
+        threshold: 1,
         dashboardId: dashboard.id,
         tileId: '17quud',
       });
@@ -842,20 +828,18 @@ describe('checkAlerts', () => {
 
       // should fetch 5m of logs
       await processAlert(now, enhancedAlert);
-      // expect(alert.state).toBe('ALERT');
-
-      return;
+      expect(enhancedAlert.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
       await processAlert(later, enhancedAlert);
       // alert should still be in alert state
-      expect(alert.state).toBe('ALERT');
+      expect(enhancedAlert.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
       await processAlert(nextWindow, enhancedAlert);
       // alert should be in ok state
-      expect(alert.state).toBe('OK');
+      expect(enhancedAlert.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
@@ -869,8 +853,7 @@ describe('checkAlerts', () => {
       expect(history1.state).toBe('ALERT');
       expect(history1.counts).toBe(1);
       expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
-      expect(history1.lastValues.length).toBe(2);
-      expect(history1.lastValues.length).toBeGreaterThan(0);
+      expect(history1.lastValues.length).toBe(1);
       expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
 
       expect(history2.state).toBe('OK');
@@ -882,14 +865,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10',
+          text: 'Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://localhost:9090/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10>*`,
-                  'Group: "HyperDX"',
-                  '102 exceeds 10',
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
+                  '',
+                  '3 exceeds 1',
                   '',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -899,6 +882,161 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('TILE alert - generic webhook', async () => {
+      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+
+      const fetchMock = jest.fn().mockResolvedValue({});
+      global.fetch = fetchMock;
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'generic',
+        url: 'https://webhook.site/123',
+        name: 'Generic Webhook',
+        description: 'generic webhook description',
+        body: JSON.stringify({
+          text: '{{link}} | {{title}}',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }).save();
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: '17quud',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Logs Count',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'ServiceName:api',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              granularity: 'auto',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+      const alert = await createAlert(team._id, {
+        source: AlertSource.TILE,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId: dashboard.id,
+        tileId: '17quud',
+      });
+
+      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+        'team',
+        'dashboard',
+      ]);
+
+      // should fetch 5m of logs
+      await processAlert(now, enhancedAlert);
+      expect(enhancedAlert.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlert(later, enhancedAlert);
+      // alert should still be in alert state
+      expect(enhancedAlert.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlert(nextWindow, enhancedAlert);
+      // alert should be in ok state
+      expect(enhancedAlert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+
+      expect(alertHistories.length).toBe(2);
+      const [history1, history2] = alertHistories;
+      expect(history1.state).toBe('ALERT');
+      expect(history1.counts).toBe(1);
+      expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
+      expect(history1.lastValues.length).toBe(1);
+      expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
+
+      expect(history2.state).toBe('OK');
+      expect(history2.counts).toBe(0);
+      expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // check if generic webhook was triggered, injected, and parsed, and sent correctly
+      expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1`,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
     });
 
     // it('LOG alert - generic webhook', async () => {
@@ -1020,163 +1158,6 @@ describe('checkAlerts', () => {
     //     headers: {
     //       'Content-Type': 'application/json',
     //       'X-HyperDX-Signature': 'XXXXX-XXXXX',
-    //     },
-    //   });
-    // });
-
-    // it('CHART alert (logs table series) - generic webhook', async () => {
-    //   jest.spyOn(checkAlert, 'handleSendGenericWebhook');
-    //   mockLogsPropertyTypeMappingsModel({
-    //     runId: 'string',
-    //   });
-
-    //   const fetchMock = jest.fn().mockResolvedValue({});
-    //   global.fetch = fetchMock;
-
-    //   const team = await createTeam({ name: 'My Team' });
-
-    //   const runId = Math.random().toString(); // dedupe watch mode runs
-    //   const teamId = team._id.toString();
-    //   const now = new Date('2023-11-16T22:12:00.000Z');
-    //   // Send events in the last alert window 22:05 - 22:10
-    //   const eventMs = now.getTime() - ms('5m');
-
-    //   const buildEvent = generateBuildTeamEventFn(teamId, {
-    //     runId,
-    //     span_name: 'HyperDX',
-    //     type: LogType.Span,
-    //     level: 'error',
-    //   });
-
-    //   await clickhouse.bulkInsertLogStream([
-    //     buildEvent({
-    //       timestamp: eventMs,
-    //       end_timestamp: eventMs + 100,
-    //     }),
-    //     buildEvent({
-    //       timestamp: eventMs + 5,
-    //       end_timestamp: eventMs + 7,
-    //     }),
-    //   ]);
-
-    //   const webhook = await new Webhook({
-    //     team: team._id,
-    //     service: 'generic',
-    //     url: 'https://webhook.site/123',
-    //     name: 'Generic Webhook',
-    //     description: 'generic webhook description',
-    //     body: JSON.stringify({
-    //       text: '{{link}} | {{title}}',
-    //     }),
-    //     headers: { 'Content-Type': 'application/json' },
-    //   }).save();
-    //   const dashboard = await new Dashboard({
-    //     name: 'My Dashboard',
-    //     team: team._id,
-    //     charts: [
-    //       {
-    //         id: '198hki',
-    //         name: 'Max Duration',
-    //         x: 0,
-    //         y: 0,
-    //         w: 6,
-    //         h: 3,
-    //         series: [
-    //           {
-    //             table: 'logs',
-    //             type: 'time',
-    //             aggFn: 'sum',
-    //             field: 'duration',
-    //             where: `level:error runId:${runId}`,
-    //             groupBy: ['span_name'],
-    //           },
-    //           {
-    //             table: 'logs',
-    //             type: 'time',
-    //             aggFn: 'min',
-    //             field: 'duration',
-    //             where: `level:error runId:${runId}`,
-    //             groupBy: ['span_name'],
-    //           },
-    //         ],
-    //         seriesReturnType: 'column',
-    //       },
-    //       {
-    //         id: 'obil1',
-    //         name: 'Min Duratioin',
-    //         x: 6,
-    //         y: 0,
-    //         w: 6,
-    //         h: 3,
-    //         series: [
-    //           {
-    //             table: 'logs',
-    //             type: 'time',
-    //             aggFn: 'min',
-    //             field: 'duration',
-    //             where: '',
-    //             groupBy: [],
-    //           },
-    //         ],
-    //       },
-    //     ],
-    //   }).save();
-    //   const alert = await createAlert(team._id, {
-    //     source: 'CHART',
-    //     channel: {
-    //       type: 'webhook',
-    //       webhookId: webhook._id.toString(),
-    //     },
-    //     interval: '5m',
-    //     type: 'presence',
-    //     threshold: 10,
-    //     dashboardId: dashboard._id.toString(),
-    //     chartId: '198hki',
-    //   });
-
-    //   // should fetch 5m of logs
-    //   await processAlert(now, alert);
-    //   expect(alert.state).toBe('ALERT');
-
-    //   // skip since time diff is less than 1 window size
-    //   const later = new Date('2023-11-16T22:14:00.000Z');
-    //   await processAlert(later, alert);
-    //   // alert should still be in alert state
-    //   expect(alert.state).toBe('ALERT');
-
-    //   const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-    //   await processAlert(nextWindow, alert);
-    //   // alert should be in ok state
-    //   expect(alert.state).toBe('OK');
-
-    //   // check alert history
-    //   const alertHistories = await AlertHistory.find({
-    //     alert: alert._id,
-    //   }).sort({
-    //     createdAt: 1,
-    //   });
-
-    //   expect(alertHistories.length).toBe(2);
-    //   const [history1, history2] = alertHistories;
-    //   expect(history1.state).toBe('ALERT');
-    //   expect(history1.counts).toBe(1);
-    //   expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
-    //   expect(history1.lastValues.length).toBe(2);
-    //   expect(history1.lastValues.length).toBeGreaterThan(0);
-    //   expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
-
-    //   expect(history2.state).toBe('OK');
-    //   expect(history2.counts).toBe(0);
-    //   expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
-
-    //   // check if generic webhook was triggered, injected, and parsed, and sent correctly
-    //   expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
-    //     method: 'POST',
-    //     body: JSON.stringify({
-    //       text: `http://localhost:9090/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Max Duration" in "My Dashboard" - 102 exceeds 10`,
-    //     }),
-    //     headers: {
-    //       'Content-Type': 'application/json',
     //     },
     //   });
     // });
