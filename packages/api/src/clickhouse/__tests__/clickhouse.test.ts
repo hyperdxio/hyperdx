@@ -5,8 +5,6 @@ import {
   buildMetricSeries,
   generateBuildTeamEventFn,
   getServer,
-  mockLogsPropertyTypeMappingsModel,
-  mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
 import { LogPlatform, LogType } from '@/utils/logParser';
 

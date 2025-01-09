@@ -5,11 +5,13 @@ import {
   ResponseJSON,
 } from '@clickhouse/client-common';
 
+import { client as internalClickhouseClient } from '@/clickhouse';
 import { SQLInterval } from '@/common/sqlTypes';
-import { timeBucketByGranularity } from '@/common/utils';
 import { hashCode } from '@/common/utils';
+import { timeBucketByGranularity } from '@/common/utils';
+import * as config from '@/config';
 
-export const CLICKHOUSE_HOST = '/api/clickhouse-proxy';
+export const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
 export enum JSDataType {
   Array = 'array',
@@ -355,6 +357,7 @@ export const sendQuery = async <T extends DataFormat>({
   clickhouse_settings,
   connectionId,
   queryId,
+  useNativeClient,
 }: {
   query: string;
   format?: string;
@@ -363,7 +366,19 @@ export const sendQuery = async <T extends DataFormat>({
   clickhouse_settings?: Record<string, any>;
   connectionId: string;
   queryId?: string;
+  useNativeClient?: boolean;
 }) => {
+  // TODO: switch to internal client in CI for now
+  if (useNativeClient || config.IS_CI) {
+    return internalClickhouseClient.query({
+      query,
+      query_params,
+      abort_signal,
+      clickhouse_settings,
+      query_id: queryId,
+    });
+  }
+
   const IS_LOCAL_MODE = false;
 
   // TODO: decide what to do here
@@ -386,7 +401,7 @@ export const sendQuery = async <T extends DataFormat>({
     clickhouse_settings,
     queryId,
     connectionId: IS_LOCAL_MODE ? undefined : connectionId,
-    host: IS_LOCAL_MODE ? host : CLICKHOUSE_HOST,
+    host: IS_LOCAL_MODE ? host : PROXY_CLICKHOUSE_HOST,
     username: IS_LOCAL_MODE ? username : undefined,
     password: IS_LOCAL_MODE ? password : undefined,
     includeCredentials: !IS_LOCAL_MODE,

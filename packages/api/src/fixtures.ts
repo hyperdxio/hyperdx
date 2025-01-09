@@ -24,7 +24,8 @@ const MOCK_USER = {
   password: 'TacoCat!2#4X',
 };
 
-const DEFAULT_TABLE = 'default.otel_logs';
+const DEFAULT_LOGS_TABLE = 'default.otel_logs';
+const DEFAULT_TRACES_TABLE = 'default.otel_traces';
 
 const connectV2CI = async () => {
   // health check
@@ -32,7 +33,7 @@ const connectV2CI = async () => {
 
   await clickhouse.client.command({
     query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_TABLE}
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_LOGS_TABLE}
       (
         Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         TimestampTime DateTime DEFAULT toDateTime(Timestamp),
@@ -188,31 +189,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
   };
 };
 
-type BaseEvent = {
-  level?: string;
-  source?: string;
-  timestamp?: number; // ms timestamp
-  platform?: LogPlatform;
-  type?: LogType;
-  end_timestamp?: number; //ms timestamp
-  span_name?: string;
-} & {
-  [key: string]: number | string | boolean;
-};
-
-export function generateBuildTeamEventFn(
-  teamId: string,
-  commonAttributes: Partial<BaseEvent>,
-) {
-  return (attributes: Partial<BaseEvent>) => {
-    return buildEvent({
-      ...commonAttributes,
-      ...attributes,
-      team_id: teamId,
-    });
-  };
-}
-
 // ------------------------------------------------
 // ------------------ Redis -----------------------
 // ------------------------------------------------
@@ -231,82 +207,34 @@ export const clearClickhouseTables = async () => {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
   await clickhouse.client.command({
-    query: `TRUNCATE TABLE ${DEFAULT_TABLE}`,
+    query: `TRUNCATE TABLE ${DEFAULT_LOGS_TABLE}`,
     clickhouse_settings: {
       wait_end_of_query: 1,
     },
   });
 };
 
-function buildEvent({
-  level,
-  source = 'test',
-  timestamp,
-  platform = LogPlatform.NodeJS,
-  type = LogType.Log,
-  end_timestamp = 0,
-  span_name,
-  team_id,
-  service = 'test-service',
-  ...properties
-}: {
-  level?: string;
-  source?: string;
-  timestamp?: number; // ms timestamp
-  team_id: string;
-  platform?: LogPlatform;
-  type?: LogType;
-  end_timestamp?: number; //ms timestamp
-  span_name?: string;
-  service?: string;
-} & {
-  [key: string]: number | string | boolean;
-}): LogStreamModel {
-  const ts = timestamp ?? Date.now();
-
-  const boolNames: string[] = [];
-  const boolValues: number[] = [];
-  const numberNames: string[] = [];
-  const numberValues: number[] = [];
-  const stringNames: string[] = [];
-  const stringValues: string[] = [];
-
-  Object.entries(properties).forEach(([key, value]) => {
-    if (typeof value === 'boolean') {
-      boolNames.push(key);
-      boolValues.push(value ? 1 : 0);
-    } else if (typeof value === 'number') {
-      numberNames.push(key);
-      numberValues.push(value);
-    } else if (typeof value === 'string') {
-      stringNames.push(key);
-      stringValues.push(value);
-    }
+export const bulkInsertLogs = async (
+  events: {
+    Body: string;
+    ServiceName: string;
+    SeverityText: string;
+    Timestamp: Date;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await clickhouse.client.insert({
+    table: DEFAULT_LOGS_TABLE,
+    values: events,
+    format: 'JSONEachRow',
+    clickhouse_settings: {
+      // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
+      date_time_input_format: 'best_effort',
+    },
   });
-
-  return {
-    // TODO: Fix Timestamp Types
-    // @ts-ignore
-    timestamp: `${ts}000000`,
-    // @ts-ignore
-    observed_timestamp: `${ts}000000`,
-    _source: source,
-    _platform: platform,
-    _service: service,
-    severity_text: level,
-    // @ts-ignore
-    end_timestamp: `${end_timestamp}000000`,
-    team_id,
-    type,
-    span_name,
-    'bool.names': boolNames,
-    'bool.values': boolValues,
-    'number.names': numberNames,
-    'number.values': numberValues,
-    'string.names': stringNames,
-    'string.values': stringValues,
-  };
-}
+};
 
 export function buildMetricSeries({
   tags,
