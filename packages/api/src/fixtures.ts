@@ -223,7 +223,6 @@ export const mockClientQuery = () => {
   jest
     .spyOn(commonClickhouse.client, 'query')
     .mockImplementation(async (args: any) => {
-      console.log('args', args);
       const nodeClient = createClient({
         host: config.CLICKHOUSE_HOST,
         username: config.CLICKHOUSE_USER,

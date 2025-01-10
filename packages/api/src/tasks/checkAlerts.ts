@@ -643,24 +643,36 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     let connectionId: string | undefined;
-    // Logs Source
+    // SAVED_SEARCH Source
     if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      connectionId = alert.savedSearch.source.connection.toString();
+      const source = await Source.findById(alert.savedSearch.source);
+      if (source == null) {
+        logger.error({
+          message: 'Source not found',
+          savedSearch: alert.savedSearch,
+        });
+        return;
+      }
+      connectionId = source.connection.toString();
       chartConfig = {
         connection: connectionId,
         dateRange: [checkStartTime, checkEndTime],
-        from: alert.savedSearch.source.from,
+        from: source.from,
         granularity: `${windowSizeInMins} minute`,
-        orderBy: alert.savedSearch.orderBy,
-        select: alert.savedSearch.select,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            valueExpression: '',
+          },
+        ],
         where: alert.savedSearch.where,
         whereLanguage: alert.savedSearch.whereLanguage,
         groupBy: alert.groupBy,
-        timestampValueExpression:
-          alert.savedSearch.source.timestampValueExpression,
+        timestampValueExpression: source.timestampValueExpression,
       };
     }
-    // Chart Source
+    // TILE Source
     else if (
       alert.source === AlertSource.TILE &&
       alert.dashboard &&
@@ -787,13 +799,13 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
       for (const checkData of checksData.data) {
         let _value: number | null = null;
-        const groups: string[] = [];
+        const extraFields: string[] = [];
         // TODO: other keys should be attributes ? (for alert message template)
         for (const [k, v] of Object.entries(checkData)) {
           if (valueColumnNames.has(k)) {
             _value = isString(v) ? parseInt(v) : v;
-          } else {
-            groups.push(`${k}:${v}`);
+          } else if (k !== timestampColumnName) {
+            extraFields.push(`${k}:${v}`);
           }
         }
 
@@ -817,7 +829,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
               alert,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: groups.join(', '),
+              group: extraFields.join(', '),
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
