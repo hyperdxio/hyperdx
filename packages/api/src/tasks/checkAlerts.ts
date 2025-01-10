@@ -733,7 +733,6 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         format: 'JSON',
         connectionId,
       })
-      // FIXME: type res.json
       .then(res => res.json<Record<string, string>>());
 
     logger.info({
