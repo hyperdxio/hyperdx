@@ -23,6 +23,7 @@ import TabBar from '@/TabBar';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
+import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBTracePanel from './DBTracePanel';
 
 import 'react-modern-drawer/dist/index.css';
@@ -69,6 +70,7 @@ export default function DBRowSidePanel({
   });
 
   enum Tab {
+    Overview = 'overview',
     Parsed = 'parsed',
     Debug = 'debug',
     Trace = 'trace',
@@ -78,7 +80,7 @@ export default function DBRowSidePanel({
 
   const [queryTab, setQueryTab] = useQueryState(
     'tab',
-    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Parsed),
+    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
   );
 
   const [panelWidth, setPanelWidth] = useState(
@@ -217,6 +219,10 @@ export default function DBRowSidePanel({
                 className="fs-8 mt-2"
                 items={[
                   {
+                    text: 'Overview',
+                    value: Tab.Overview,
+                  },
+                  {
                     text: 'Column Values',
                     value: Tab.Parsed,
                   },
@@ -228,6 +234,20 @@ export default function DBRowSidePanel({
                 activeItem={displayedTab}
                 onClick={(v: any) => setTab(v)}
               />
+              {displayedTab === Tab.Overview && (
+                <ErrorBoundary
+                  onError={err => {
+                    console.error(err);
+                  }}
+                  fallbackRender={() => (
+                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                      An error occurred while rendering this event.
+                    </div>
+                  )}
+                >
+                  <RowOverviewPanel source={source} rowId={rowId} />
+                </ErrorBoundary>
+              )}
               {displayedTab === Tab.Trace && (
                 <ErrorBoundary
                   onError={err => {

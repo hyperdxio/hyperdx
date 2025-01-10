@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Accordion } from '@mantine/core';
 
 import { TSource } from '@/commonTypes';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -69,7 +70,7 @@ export function useRowData({
   );
 }
 
-export function RowDataPanel({
+export function RowOverviewPanel({
   source,
   rowId,
 }: {
@@ -86,9 +87,20 @@ export function RowDataPanel({
     return firstRow;
   }, [data]);
 
+  const resourceAttributes = useMemo(() => {
+    return firstRow['ResourceAttributes'] || {};
+  }, [firstRow]);
+
   return (
     <div>
-      <DBRowJsonViewer data={firstRow} />
+      <Accordion defaultValue={['resourceAttributes']} multiple>
+        <Accordion.Item value="resourceAttributes">
+          <Accordion.Control>Resource Attributes</Accordion.Control>
+          <Accordion.Panel>
+            <DBRowJsonViewer data={resourceAttributes} />
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
     </div>
   );
 }
