@@ -787,11 +787,13 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
       for (const checkData of checksData.data) {
         let _value: number | null = null;
+        const groups: string[] = [];
         // TODO: other keys should be attributes ? (for alert message template)
         for (const [k, v] of Object.entries(checkData)) {
           if (valueColumnNames.has(k)) {
             _value = isString(v) ? parseInt(v) : v;
-            break;
+          } else {
+            groups.push(`${k}:${v}`);
           }
         }
 
@@ -815,9 +817,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
               alert,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: Array.isArray(checkData.group)
-                ? checkData.group.join(', ')
-                : checkData.group,
+              group: groups.join(', '),
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
