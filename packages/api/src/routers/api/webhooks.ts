@@ -58,7 +58,7 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
-      if (await Webhook.findOne({ team: teamId, service, url })) {
+      if (await Webhook.findOne({ team: teamId, service, name })) {
         return res.status(400).json({
           message: 'Webhook already exists',
         });
