@@ -99,6 +99,23 @@ describe('checkAlerts', () => {
     expect(expandToNestedObject({ 'foo.bar.baz': 'qux' })).toEqual({
       foo: { bar: { baz: 'qux' } },
     });
+    // inconsistent top level keys
+    expect(
+      expandToNestedObject({
+        foo: 'bar',
+        'foo.bar': 'baz',
+      }),
+    ).toEqual({
+      foo: 'bar',
+    });
+    expect(
+      expandToNestedObject({
+        'foo.bar': 'baz',
+        foo: 'bar',
+      }),
+    ).toEqual({
+      foo: 'bar',
+    });
     // mix
     expect(
       expandToNestedObject({

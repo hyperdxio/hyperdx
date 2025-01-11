@@ -126,11 +126,16 @@ export const expandToNestedObject = (
           break;
         }
         const nestedKey = keys[i];
-        if (i === keys.length - 1) {
-          nestedObj[nestedKey] = obj[key];
-        } else {
-          nestedObj[nestedKey] = nestedObj[nestedKey] || {};
-          nestedObj = nestedObj[nestedKey];
+        try {
+          if (i === keys.length - 1) {
+            nestedObj[nestedKey] = obj[key];
+          } else {
+            nestedObj[nestedKey] = nestedObj[nestedKey] || {};
+            nestedObj = nestedObj[nestedKey];
+          }
+        } catch (e) {
+          // ignore error
+          // handle the duplicate inconsistent top level keys. ex: 'foo' and 'foo.bar'
         }
       }
     }
