@@ -134,8 +134,8 @@ export const expandToNestedObject = (
             nestedObj = nestedObj[nestedKey];
           }
         } catch (e) {
-          // ignore error
-          // handle the duplicate inconsistent top level keys. ex: 'foo' and 'foo.bar'
+          // skip the duplicate inconsistent top level keys case. ex: 'foo' and 'foo.bar'
+          logger.warn('expandToNestedObject', e);
         }
       }
     }
