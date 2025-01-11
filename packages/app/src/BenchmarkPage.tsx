@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import {
   parseAsInteger,
   parseAsJson,
@@ -10,7 +11,7 @@ import {
   Button,
   Code,
   Grid,
-  Group,
+  Loader,
   Stack,
   Table,
   Text,
@@ -30,14 +31,17 @@ function useBenchmarkQueryIds({
   connections,
   iterations = 3,
 }: {
-  queries: string[];
-  connections: string[];
+  queries: readonly string[];
+  connections: readonly string[];
   iterations?: number;
 }) {
+  const enabled = queries.length > 0 && connections.length > 0;
+
   return useQuery({
+    enabled,
     queryKey: ['benchmark', queries, connections],
     queryFn: async () => {
-      const shuffledQueries = queries.sort(() => Math.random() - 0.5);
+      const shuffledQueries = queries.slice().sort(() => Math.random() - 0.5);
       const queryIds: Record<number, string[]> = {};
 
       for (let i = 0; i < iterations; i++) {
@@ -132,7 +136,7 @@ function useIndexes(
   });
 }
 
-export default function BenchmarkPage() {
+function BenchmarkPage() {
   const [queries, setQueries] = useQueryState<string[]>(
     'queries',
     parseAsJson(),
@@ -154,6 +158,14 @@ export default function BenchmarkPage() {
   });
 
   const onSubmit = (data: any) => {
+    if (
+      !data.queries[0] ||
+      !data.queries[1] ||
+      !data.connections[0] ||
+      !data.connections[1]
+    ) {
+      return;
+    }
     setQueries(data.queries);
     setConnections(data.connections);
     setIterations(data.iterations);
@@ -204,7 +216,7 @@ export default function BenchmarkPage() {
   }, [queryIds]);
 
   return (
-    <div>
+    <div className="p-4">
       <Title order={1} fw={400} mb="md">
         Clickhouse Query Benchmark
       </Title>
@@ -236,7 +248,7 @@ export default function BenchmarkPage() {
               </Stack>
             </Grid.Col>
           </Grid>
-          <Button variant="outline" type="submit">
+          <Button variant="outline" type="submit" loading={isQueryIdsLoading}>
             Run Benchmark
           </Button>
           {isQueryIdsLoading && (
@@ -270,7 +282,7 @@ export default function BenchmarkPage() {
                   )}
                 </Table.Tbody>
               </Table>
-              <Code block>
+              <Code block style={{ maxHeight: 350, overflow: 'auto' }}>
                 {JSON.stringify(indexes?.[0] ?? {}, null, 2)
                   .replace(/\},/g, '')
                   .replace(/[[\]{}]/g, '')
@@ -293,7 +305,7 @@ export default function BenchmarkPage() {
                   )}
                 </Table.Tbody>
               </Table>
-              <Code block>
+              <Code block style={{ maxHeight: 350, overflow: 'auto' }}>
                 {JSON.stringify(indexes?.[1] ?? {}, null, 2)
                   .replace(/\},/g, '')
                   .replace(/[[\]{}]/g, '')
@@ -433,3 +445,7 @@ export default function BenchmarkPage() {
     </div>
   );
 }
+
+const BenchmarkPageDynamic = dynamic(async () => BenchmarkPage, { ssr: false });
+
+export default BenchmarkPageDynamic;
