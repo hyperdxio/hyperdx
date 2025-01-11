@@ -56,7 +56,11 @@ services:
     # ports:
     #   - 9000:9000
     environment:
+      CLICKHOUSE_HOST: http://ch-server:8123
+      CLICKHOUSE_PASSWORD: api
+      CLICKHOUSE_USER: api
       EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
+      FRONTEND_URL: 'http://app:8080'
       MONGO_URI: 'mongodb://db:29999/hyperdx-test'
       NODE_ENV: ci
       PORT: 9000

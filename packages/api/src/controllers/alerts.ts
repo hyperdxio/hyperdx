@@ -1,16 +1,13 @@
-import { getHours, getMinutes } from 'date-fns';
 import { sign, verify } from 'jsonwebtoken';
 import ms from 'ms';
 import { z } from 'zod';
 
-import * as clickhouse from '@/clickhouse';
-import { SQLSerializer } from '@/clickhouse/searchQueryParser';
 import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
   AlertInterval,
   AlertSource,
-  AlertType,
+  AlertThresholdType,
   IAlert,
 } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -20,10 +17,10 @@ import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
-  source: AlertSource;
+  source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;
-  type: AlertType;
+  thresholdType: AlertThresholdType;
   threshold: number;
 
   // Message template
@@ -46,60 +43,13 @@ export type AlertInput = {
   };
 };
 
-const getCron = (interval: AlertInterval) => {
-  const now = new Date();
-  const nowMins = getMinutes(now);
-  const nowHours = getHours(now);
-
-  switch (interval) {
-    case '1m':
-      return '* * * * *';
-    case '5m':
-      return '*/5 * * * *';
-    case '15m':
-      return '*/15 * * * *';
-    case '30m':
-      return '*/30 * * * *';
-    case '1h':
-      return `${nowMins} * * * *`;
-    case '6h':
-      return `${nowMins} */6 * * *`;
-    case '12h':
-      return `${nowMins} */12 * * *`;
-    case '1d':
-      return `${nowMins} ${nowHours} * * *`;
-  }
-};
-
-export const validateGroupByProperty = async ({
-  groupBy,
-  logStreamTableVersion,
-  teamId,
-}: {
-  groupBy: string;
-  logStreamTableVersion: number | undefined;
-  teamId: string;
-}): Promise<boolean> => {
-  const nowInMs = Date.now();
-  const propertyTypeMappingsModel =
-    await clickhouse.buildLogsPropertyTypeMappingsModel(
-      logStreamTableVersion,
-      teamId,
-      nowInMs - ms('1d'),
-      nowInMs,
-    );
-  const serializer = new SQLSerializer(propertyTypeMappingsModel);
-  const { found } = await serializer.getColumnForField(groupBy);
-  return !!found;
-};
-
-const makeAlert = (alert: AlertInput) => {
+const makeAlert = (alert: AlertInput): Partial<IAlert> => {
   return {
     channel: alert.channel,
     interval: alert.interval,
     source: alert.source,
     threshold: alert.threshold,
-    type: alert.type,
+    thresholdType: alert.thresholdType,
 
     // Message template
     // If they're undefined/null, set it to null so we clear out the field
@@ -109,13 +59,11 @@ const makeAlert = (alert: AlertInput) => {
     message: alert.message == null ? null : alert.message,
 
     // Log alerts
-    savedSearch: alert.savedSearchId,
+    savedSearch: alert.savedSearchId as unknown as ObjectId,
     groupBy: alert.groupBy,
     // Chart alerts
-    dashboardId: alert.dashboardId,
+    dashboard: alert.dashboardId as unknown as ObjectId,
     tileId: alert.tileId,
-    cron: getCron(alert.interval),
-    timezone: 'UTC', // TODO: support different timezone
   };
 };
 
@@ -123,13 +71,13 @@ export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof alertSchema>,
 ) => {
-  if (alertInput.source === 'CHART') {
+  if (alertInput.source === AlertSource.TILE) {
     if ((await Dashboard.findById(alertInput.dashboardId)) == null) {
       throw new Error('Dashboard ID not found');
     }
   }
 
-  if (alertInput.source === 'LOG') {
+  if (alertInput.source === AlertSource.SAVED_SEARCH) {
     if ((await SavedSearch.findById(alertInput.savedSearchId)) == null) {
       throw new Error('Saved Search ID not found');
     }
@@ -177,11 +125,11 @@ export const getAlertById = async (
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
     savedSearch: ISavedSearch;
-    dashboardId: IDashboard;
+    dashboard: IDashboard;
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
-  }>(['savedSearch', 'dashboardId', 'silenced.by']);
+  }>(['savedSearch', 'dashboard', 'silenced.by']);
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

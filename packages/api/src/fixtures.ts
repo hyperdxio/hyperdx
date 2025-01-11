@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import request from 'supertest';
-import { z } from 'zod';
 
 import * as clickhouse from '@/clickhouse';
 import {
@@ -15,13 +14,15 @@ import {
 } from '@/utils/logParser';
 import { redisClient } from '@/utils/redis';
 
+import { SavedChartConfig, Tile } from './common/commonTypes';
+import { DisplayType } from './common/DisplayType';
 import * as config from './config';
+import { AlertInput } from './controllers/alerts';
 import { getTeam } from './controllers/team';
 import { findUserByEmail } from './controllers/user';
 import { mongooseConnection } from './models';
+import { AlertInterval, AlertSource, AlertThresholdType } from './models/alert';
 import Server from './server';
-import { Tile } from './utils/commonTypes';
-import { externalAlertSchema } from './utils/zod';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -77,8 +78,12 @@ class MockServer extends Server {
     if (!config.IS_CI) {
       throw new Error('ONLY execute this in CI env 😈 !!!');
     }
-    await super.start();
-    await initCiEnvs();
+    try {
+      await super.start();
+      await initCiEnvs();
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   stop() {
@@ -101,18 +106,7 @@ class MockServer extends Server {
   }
 }
 
-class MockAPIServer extends MockServer {
-  protected readonly appType = 'api';
-}
-
-export const getServer = (appType: 'api' = 'api') => {
-  switch (appType) {
-    case 'api':
-      return new MockAPIServer();
-    default:
-      throw new Error(`Invalid app type: ${appType}`);
-  }
-};
+export const getServer = () => new MockServer();
 
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
@@ -349,24 +343,32 @@ export const makeTile = (opts?: { id?: string }): Tile => ({
   y: 1,
   w: 1,
   h: 1,
-  config: makeChart(),
+  config: makeChartConfig(),
 });
 
-export const makeChart = (opts?: { id?: string }) => ({
-  id: opts?.id ?? randomMongoId(),
+export const makeChartConfig = (opts?: { id?: string }): SavedChartConfig => ({
   name: 'Test Chart',
-  x: 1,
-  y: 1,
-  w: 1,
-  h: 1,
-  series: [
+  source: 'test-source',
+  displayType: DisplayType.Line,
+  select: [
     {
-      type: 'time',
-      table: 'metrics',
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
     },
   ],
+  where: '',
+  whereLanguage: 'lucene',
+  granularity: 'auto',
+  implicitColumnExpression: 'Body',
+  numberFormat: {
+    output: 'number',
+  },
+  filters: [],
 });
 
+// TODO: DEPRECATED
 export const makeExternalChart = (opts?: { id?: string }) => ({
   name: 'Test Chart',
   x: 1,
@@ -382,50 +384,25 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
   ],
 });
 
-export const makeAlert = ({
+export const makeAlertInput = ({
   dashboardId,
+  interval = '15m',
+  threshold = 8,
   tileId,
 }: {
   dashboardId: string;
+  interval?: AlertInterval;
+  threshold?: number;
   tileId: string;
-}) => ({
+}): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
     webhookId: 'test-webhook-id',
   },
-  interval: '15m',
-  threshold: 8,
-  type: 'presence',
-  source: 'CHART',
-  dashboardId,
-  tileId,
-});
-
-export const makeExternalAlert = ({
-  dashboardId,
-  chartId,
-  threshold = 8,
-  interval = '15m',
-  name,
-  message,
-}: {
-  dashboardId: string;
-  chartId: string;
-  threshold?: number;
-  interval?: '15m' | '1m' | '5m' | '30m' | '1h' | '6h' | '12h' | '1d';
-  name?: string;
-  message?: string;
-}): z.infer<typeof externalAlertSchema> => ({
-  channel: {
-    type: 'slack_webhook',
-    webhookId: '65ad876b6b08426ab4ba7830',
-  },
   interval,
   threshold,
-  threshold_type: 'above',
-  source: 'chart',
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.TILE,
   dashboardId,
-  chartId,
-  name,
-  message,
+  tileId,
 });

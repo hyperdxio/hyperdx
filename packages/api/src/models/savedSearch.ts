@@ -2,12 +2,12 @@ import mongoose, { Schema } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 
-import { SavedSearchSchema } from '@/utils/commonTypes';
+import { SavedSearchSchema } from '@/common/commonTypes';
 
 type ObjectId = mongoose.Types.ObjectId;
 
 export interface ISavedSearch
-  extends Omit<z.infer<typeof SavedSearchSchema>, 'source' | 'id'> {
+  extends Omit<z.infer<typeof SavedSearchSchema>, 'source'> {
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;

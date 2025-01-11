@@ -3,7 +3,7 @@ import _ from 'lodash';
 import {
   getLoggedInAgent,
   getServer,
-  makeExternalAlert,
+  makeAlertInput,
   makeExternalChart,
 } from '@/fixtures';
 
@@ -229,9 +229,9 @@ Object {
           .post('/api/v1/alerts')
           .set('Authorization', `Bearer ${user?.accessKey}`)
           .send(
-            makeExternalAlert({
+            makeAlertInput({
               dashboardId: dashboard.id,
-              chartId: chart.id,
+              tileId: chart.id,
             }),
           )
           .expect(200),
