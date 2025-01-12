@@ -1,5 +1,12 @@
 # @hyperdx/api
 
+## 1.10.1
+
+### Patch Changes
+
+- e1d8409: fix: expandToNestedObject method bug (inconsistent top-level keys)
+- 9daccff: fix: should check team + service + name uniq constraint instead (adding webhook)
+
 ## 1.10.0
 
 ### Minor Changes
