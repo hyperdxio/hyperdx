@@ -741,7 +741,7 @@ describe('checkAlerts', () => {
 
       const now = new Date('2023-11-16T22:12:00.000Z');
 
-      // shoud fetch 5m of logs
+      // should fetch 5m of logs
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
@@ -1153,7 +1153,7 @@ describe('checkAlerts', () => {
         chartId: '198hki',
       });
 
-      // shoud fetch 5m of metrics
+      // should fetch 5m of metrics
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
@@ -1278,7 +1278,7 @@ describe('checkAlerts', () => {
 
       const now = new Date('2023-11-16T22:12:00.000Z');
 
-      // shoud fetch 5m of logs
+      // should fetch 5m of logs
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
@@ -1675,7 +1675,7 @@ describe('checkAlerts', () => {
         chartId: '198hki',
       });
 
-      // shoud fetch 5m of metrics
+      // should fetch 5m of metrics
       await processAlert(now, alert);
       expect(alert.state).toBe('ALERT');
 
