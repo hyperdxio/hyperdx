@@ -563,7 +563,7 @@ const fireChannelEvent = async ({
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info({
       message: 'Skipped firing alert due to silence',
-      alert,
+      alertId: alert.id,
       silenced: alert.silenced,
     });
     return;
@@ -632,7 +632,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         nowInMinsRoundDown,
         previous,
         now,
-        alert,
+        alertId: alert.id,
       });
       return;
     }
@@ -721,7 +721,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     } else {
       logger.error({
         message: `Unsupported alert source: ${alert.source}`,
-        alert,
+        alertId: alert.id,
       });
       return;
     }
@@ -732,7 +732,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         message: 'Failed to build chart config',
         chartConfig,
         connectionId,
-        alert,
+        alertId: alert.id,
       });
       return;
     }
@@ -749,7 +749,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
     logger.info({
       message: `Received alert metric [${alert.source} source]`,
-      alert,
+      alertId: alert.id,
       checksData,
       checkStartTime,
       checkEndTime,
@@ -784,7 +784,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         logger.error({
           message: 'Failed to find timestamp column',
           meta,
-          alert,
+          alertId: alert.id,
         });
         return;
       }
@@ -792,7 +792,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         logger.error({
           message: 'Failed to find value column',
           meta,
-          alert,
+          alertId: alert.id,
         });
         return;
       }
@@ -819,7 +819,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
-            alert,
+            alertId: alert.id,
             totalCount: _value,
             checkData,
           });
@@ -837,7 +837,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           } catch (e) {
             logger.error({
               message: 'Failed to fire channel event',
-              alert,
+              alertId: alert.id,
               error: serializeError(e),
             });
           }
