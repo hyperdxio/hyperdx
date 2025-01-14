@@ -4237,6 +4237,41 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hyperdx/common-utils@workspace:packages/common-utils":
+  version: 0.0.0-use.local
+  resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
+  dependencies:
+    "@clickhouse/client-common": "npm:^1.9.1"
+    "@hyperdx/lucene": "npm:^3.1.1"
+    "@types/hyperdx__lucene": "npm:@types/lucene@*"
+    "@types/jest": "npm:^28.1.1"
+    "@types/lodash": "npm:^4.14.198"
+    "@types/object-hash": "npm:^2.2.1"
+    "@types/semver": "npm:^7.3.12"
+    "@types/sqlstring": "npm:^2.3.0"
+    "@types/supertest": "npm:^2.0.12"
+    "@types/uuid": "npm:^8.3.4"
+    date-fns: "npm:^2.28.0"
+    date-fns-tz: "npm:^2.0.0"
+    jest: "npm:^28.1.1"
+    lodash: "npm:^4.17.21"
+    node-sql-parser: "npm:^5.3.5"
+    nodemon: "npm:^2.0.20"
+    object-hash: "npm:^3.0.0"
+    rimraf: "npm:^4.4.1"
+    semver: "npm:^7.5.2"
+    sqlstring: "npm:^2.3.3"
+    supertest: "npm:^6.3.1"
+    ts-jest: "npm:^28.0.5"
+    ts-node: "npm:^10.8.1"
+    tsc-alias: "npm:^1.8.8"
+    tsconfig-paths: "npm:^4.2.0"
+    typescript: "npm:^4.9.5"
+    uuid: "npm:^8.3.2"
+    zod: "npm:^3.24.1"
+  languageName: unknown
+  linkType: soft
+
 "@hyperdx/instrumentation-exception@npm:^0.1.0":
   version: 0.1.0
   resolution: "@hyperdx/instrumentation-exception@npm:0.1.0"
