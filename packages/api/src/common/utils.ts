@@ -3,6 +3,14 @@ import { add } from 'date-fns';
 
 import type { SQLInterval } from '@/common/sqlTypes';
 
+export const isBrowser: boolean =
+  typeof window !== 'undefined' && typeof window.document !== 'undefined';
+
+export const isNode: boolean =
+  typeof process !== 'undefined' &&
+  process.versions != null &&
+  process.versions.node != null;
+
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {

@@ -1,11 +1,18 @@
+import { createClient } from '@clickhouse/client';
 import mongoose from 'mongoose';
 import request from 'supertest';
 
 import * as clickhouse from '@/clickhouse';
-import {
-  LogsPropertyTypeMappingsModel,
-  MetricsPropertyTypeMappingsModel,
-} from '@/clickhouse/propertyTypeMappingsModel';
+import * as commonClickhouse from '@/common/clickhouse';
+import { SavedChartConfig, Tile } from '@/common/commonTypes';
+import { DisplayType } from '@/common/DisplayType';
+import * as config from '@/config';
+import { AlertInput } from '@/controllers/alerts';
+import { getTeam } from '@/controllers/team';
+import { findUserByEmail } from '@/controllers/user';
+import { mongooseConnection } from '@/models';
+import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
+import Server from '@/server';
 import {
   LogPlatform,
   LogStreamModel,
@@ -14,19 +21,74 @@ import {
 } from '@/utils/logParser';
 import { redisClient } from '@/utils/redis';
 
-import { SavedChartConfig, Tile } from './common/commonTypes';
-import { DisplayType } from './common/DisplayType';
-import * as config from './config';
-import { AlertInput } from './controllers/alerts';
-import { getTeam } from './controllers/team';
-import { findUserByEmail } from './controllers/user';
-import { mongooseConnection } from './models';
-import { AlertInterval, AlertSource, AlertThresholdType } from './models/alert';
-import Server from './server';
-
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
   password: 'TacoCat!2#4X',
+};
+
+const DEFAULT_LOGS_TABLE = 'default.otel_logs';
+const DEFAULT_TRACES_TABLE = 'default.otel_traces';
+
+const connectClickhouse = async () => {
+  // health check
+  await clickhouse.healthCheck();
+
+  await clickhouse.client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_LOGS_TABLE}
+      (
+        Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        TimestampTime DateTime DEFAULT toDateTime(Timestamp),
+        TraceId String CODEC(ZSTD(1)),
+        SpanId String CODEC(ZSTD(1)),
+        TraceFlags UInt8,
+        SeverityText LowCardinality(String) CODEC(ZSTD(1)),
+        SeverityNumber UInt8,
+        ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+        Body String CODEC(ZSTD(1)),
+        ResourceSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
+        ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        ScopeSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
+        ScopeName String CODEC(ZSTD(1)),
+        ScopeVersion LowCardinality(String) CODEC(ZSTD(1)),
+        ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
+      )
+      ENGINE = MergeTree
+      PARTITION BY toDate(TimestampTime)
+      PRIMARY KEY (ServiceName, TimestampTime)
+      ORDER BY (ServiceName, TimestampTime, Timestamp)
+      TTL TimestampTime + toIntervalDay(3)
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+    `,
+    // Recommended for cluster usage to avoid situations
+    // where a query processing error occurred after the response code
+    // and HTTP headers were sent to the client.
+    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
+
+  // HACK: to warm up the db (the data doesn't populate at the 1st run)
+  // Insert a few logs and clear out
+  await bulkInsertLogs([
+    {
+      ServiceName: 'api',
+      Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+      SeverityText: 'error',
+      Body: 'Oh no! Something went wrong!',
+    },
+  ]);
+  await clearClickhouseTables();
 };
 
 export const connectDB = async () => {
@@ -65,6 +127,7 @@ export const initCiEnvs = async () => {
   }
 
   // Populate fake persistent data here...
+  await connectClickhouse();
 };
 
 class MockServer extends Server {
@@ -102,7 +165,11 @@ class MockServer extends Server {
   }
 
   clearDBs() {
-    return Promise.all([clearDBCollections(), clearRedis()]);
+    return Promise.all([
+      clearClickhouseTables(),
+      clearDBCollections(),
+      clearRedis(),
+    ]);
   }
 }
 
@@ -136,31 +203,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
   };
 };
 
-type BaseEvent = {
-  level?: string;
-  source?: string;
-  timestamp?: number; // ms timestamp
-  platform?: LogPlatform;
-  type?: LogType;
-  end_timestamp?: number; //ms timestamp
-  span_name?: string;
-} & {
-  [key: string]: number | string | boolean;
-};
-
-export function generateBuildTeamEventFn(
-  teamId: string,
-  commonAttributes: Partial<BaseEvent>,
-) {
-  return (attributes: Partial<BaseEvent>) => {
-    return buildEvent({
-      ...commonAttributes,
-      ...attributes,
-      team_id: teamId,
-    });
-  };
-}
-
 // ------------------------------------------------
 // ------------------ Redis -----------------------
 // ------------------------------------------------
@@ -174,93 +216,70 @@ export const clearRedis = async () => {
 // ------------------------------------------------
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
+export const mockClientQuery = () => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  jest
+    .spyOn(commonClickhouse.client, 'query')
+    .mockImplementation(async (args: any) => {
+      const nodeClient = createClient({
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      return nodeClient.query(args) as unknown as ReturnType<
+        typeof commonClickhouse.client.query
+      >;
+    });
+};
+
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  const promises: any[] = [];
-  for (const table of Object.values(clickhouse.TableName)) {
-    promises.push(
-      clickhouse.client.command({
-        query: `TRUNCATE TABLE default.${table}`,
-        clickhouse_settings: {
-          wait_end_of_query: 1,
-        },
-      }),
-    );
-  }
-  await Promise.all(promises);
+  await clickhouse.client.command({
+    query: `TRUNCATE TABLE ${DEFAULT_LOGS_TABLE}`,
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
 };
 
-function buildEvent({
-  level,
-  source = 'test',
-  timestamp,
-  platform = LogPlatform.NodeJS,
-  type = LogType.Log,
-  end_timestamp = 0,
-  span_name,
-  team_id,
-  service = 'test-service',
-  ...properties
-}: {
-  level?: string;
-  source?: string;
-  timestamp?: number; // ms timestamp
-  team_id: string;
-  platform?: LogPlatform;
-  type?: LogType;
-  end_timestamp?: number; //ms timestamp
-  span_name?: string;
-  service?: string;
-} & {
-  [key: string]: number | string | boolean;
-}): LogStreamModel {
-  const ts = timestamp ?? Date.now();
+export const selectAllLogs = async () => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  return clickhouse.client
+    .query({
+      query: `SELECT * FROM ${DEFAULT_LOGS_TABLE}`,
+      format: 'JSONEachRow',
+    })
+    .then(res => res.json());
+};
 
-  const boolNames: string[] = [];
-  const boolValues: number[] = [];
-  const numberNames: string[] = [];
-  const numberValues: number[] = [];
-  const stringNames: string[] = [];
-  const stringValues: string[] = [];
-
-  Object.entries(properties).forEach(([key, value]) => {
-    if (typeof value === 'boolean') {
-      boolNames.push(key);
-      boolValues.push(value ? 1 : 0);
-    } else if (typeof value === 'number') {
-      numberNames.push(key);
-      numberValues.push(value);
-    } else if (typeof value === 'string') {
-      stringNames.push(key);
-      stringValues.push(value);
-    }
+export const bulkInsertLogs = async (
+  events: {
+    Body: string;
+    ServiceName: string;
+    SeverityText: string;
+    Timestamp: Date;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await clickhouse.client.insert({
+    table: DEFAULT_LOGS_TABLE,
+    values: events,
+    format: 'JSONEachRow',
+    clickhouse_settings: {
+      // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
+      date_time_input_format: 'best_effort',
+      wait_end_of_query: 1,
+    },
   });
-
-  return {
-    // TODO: Fix Timestamp Types
-    // @ts-ignore
-    timestamp: `${ts}000000`,
-    // @ts-ignore
-    observed_timestamp: `${ts}000000`,
-    _source: source,
-    _platform: platform,
-    _service: service,
-    severity_text: level,
-    // @ts-ignore
-    end_timestamp: `${end_timestamp}000000`,
-    team_id,
-    type,
-    span_name,
-    'bool.names': boolNames,
-    'bool.values': boolValues,
-    'number.names': numberNames,
-    'number.values': numberValues,
-    'string.names': stringNames,
-    'string.values': stringValues,
-  };
-}
+};
 
 export function buildMetricSeries({
   tags,
@@ -293,45 +312,6 @@ export function buildMetricSeries({
     unit,
     team_id,
   }));
-}
-
-export function mockLogsPropertyTypeMappingsModel(propertyMap: {
-  [property: string]: 'bool' | 'number' | 'string';
-}) {
-  const propertyTypesMappingsModel = new LogsPropertyTypeMappingsModel(
-    1,
-    'fake team id',
-    () => Promise.resolve({}),
-  );
-  jest
-    .spyOn(propertyTypesMappingsModel, 'get')
-    .mockImplementation((property: string) => {
-      // eslint-disable-next-line security/detect-object-injection
-      return propertyMap[property];
-    });
-
-  jest
-    .spyOn(clickhouse, 'buildLogsPropertyTypeMappingsModel')
-    .mockImplementation(() => Promise.resolve(propertyTypesMappingsModel));
-
-  return propertyTypesMappingsModel;
-}
-
-export function mockSpyMetricPropertyTypeMappingsModel(propertyMap: {
-  [property: string]: 'bool' | 'number' | 'string';
-}) {
-  const model = new MetricsPropertyTypeMappingsModel(1, 'fake');
-
-  jest.spyOn(model, 'get').mockImplementation((property: string) => {
-    // eslint-disable-next-line security/detect-object-injection
-    return propertyMap[property];
-  });
-
-  jest
-    .spyOn(clickhouse, 'buildMetricsPropertyTypeMappingsModel')
-    .mockImplementation(() => Promise.resolve(model));
-
-  return model;
 }
 
 export const randomMongoId = () =>

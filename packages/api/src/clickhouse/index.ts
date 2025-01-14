@@ -164,8 +164,9 @@ export class CHLogger implements _CHLogger {
 
 // TODO: TO BE DEPRECATED
 export const client = createClient({
-  host: 'http://localhost:8123',
-  username: 'default',
+  host: config.CLICKHOUSE_HOST,
+  username: config.CLICKHOUSE_USER,
+  password: config.CLICKHOUSE_PASSWORD,
   request_timeout: ms('1m'),
   compression: {
     request: false,

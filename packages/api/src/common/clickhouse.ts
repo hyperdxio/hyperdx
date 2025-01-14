@@ -6,10 +6,10 @@ import {
 } from '@clickhouse/client-common';
 
 import { SQLInterval } from '@/common/sqlTypes';
-import { timeBucketByGranularity } from '@/common/utils';
 import { hashCode } from '@/common/utils';
+import { timeBucketByGranularity } from '@/common/utils';
 
-export const CLICKHOUSE_HOST = '/api/clickhouse-proxy';
+export const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
 export enum JSDataType {
   Array = 'array',
@@ -234,7 +234,7 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
-const client = {
+export const client = {
   async query<T extends DataFormat>({
     query,
     format = 'JSON',
@@ -386,7 +386,7 @@ export const sendQuery = async <T extends DataFormat>({
     clickhouse_settings,
     queryId,
     connectionId: IS_LOCAL_MODE ? undefined : connectionId,
-    host: IS_LOCAL_MODE ? host : CLICKHOUSE_HOST,
+    host: IS_LOCAL_MODE ? host : PROXY_CLICKHOUSE_HOST,
     username: IS_LOCAL_MODE ? username : undefined,
     password: IS_LOCAL_MODE ? password : undefined,
     includeCredentials: !IS_LOCAL_MODE,

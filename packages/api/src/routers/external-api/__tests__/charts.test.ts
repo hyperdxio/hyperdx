@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import _ from 'lodash';
 import ms from 'ms';
 
