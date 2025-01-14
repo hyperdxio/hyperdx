@@ -30,3 +30,8 @@ export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 // Only for single container local deployments, disable authentication
 export const IS_LOCAL_APP_MODE =
   env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
+
+// FOR CI ONLY
+export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
+export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
+export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;

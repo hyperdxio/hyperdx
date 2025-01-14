@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import _ from 'lodash';
 import ms from 'ms';
 
@@ -5,8 +7,6 @@ import {
   buildMetricSeries,
   generateBuildTeamEventFn,
   getServer,
-  mockLogsPropertyTypeMappingsModel,
-  mockSpyMetricPropertyTypeMappingsModel,
 } from '@/fixtures';
 import { LogPlatform, LogType } from '@/utils/logParser';
 

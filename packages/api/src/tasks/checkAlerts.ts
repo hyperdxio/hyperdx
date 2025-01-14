@@ -12,7 +12,8 @@ import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 
-import { Tile } from '@/common/commonTypes';
+import * as clickhouse from '@/common/clickhouse';
+import { convertCHDataTypeToJSType } from '@/common/clickhouse';
 import { DisplayType } from '@/common/DisplayType';
 import {
   ChartConfigWithOptDateRange,
@@ -21,16 +22,13 @@ import {
 import { renderChartConfig } from '@/common/renderChartConfig';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { ObjectId } from '@/models';
 import Alert, {
-  AlertDocument,
   AlertSource,
   AlertState,
   AlertThresholdType,
-  IAlert,
 } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
@@ -52,7 +50,7 @@ const getAlerts = () =>
     team: ITeam;
     savedSearch?: EnhancedSavedSearch;
     dashboard?: IDashboard;
-  }>(['team', 'savedSearch', 'savedSearch.source', 'dashboard']);
+  }>(['team', 'savedSearch', 'dashboard']);
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
@@ -100,10 +98,11 @@ export const buildChartLink = ({
 };
 
 export const doesExceedThreshold = (
-  isThresholdTypeAbove: boolean,
+  thresholdType: AlertThresholdType,
   threshold: number,
   value: number,
 ) => {
+  const isThresholdTypeAbove = thresholdType === AlertThresholdType.ABOVE;
   if (isThresholdTypeAbove && value >= threshold) {
     return true;
   } else if (!isThresholdTypeAbove && value < threshold) {
@@ -358,11 +357,7 @@ export const buildAlertMessageTemplateTitle = ({
     return template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
-          doesExceedThreshold(
-            alert.thresholdType === AlertThresholdType.ABOVE,
-            alert.threshold,
-            value,
-          )
+          doesExceedThreshold(alert.thresholdType, alert.threshold, value)
             ? alert.thresholdType === AlertThresholdType.ABOVE
               ? 'exceeds'
               : 'falls below'
@@ -521,11 +516,7 @@ ${truncatedResults}
     }
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} ${
-      doesExceedThreshold(
-        alert.thresholdType === AlertThresholdType.ABOVE,
-        alert.threshold,
-        value,
-      )
+      doesExceedThreshold(alert.thresholdType, alert.threshold, value)
         ? alert.thresholdType === AlertThresholdType.ABOVE
           ? 'exceeds'
           : 'falls below'
@@ -572,7 +563,7 @@ const fireChannelEvent = async ({
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info({
       message: 'Skipped firing alert due to silence',
-      alert,
+      alertId: alert.id,
       silenced: alert.silenced,
     });
     return;
@@ -641,7 +632,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         nowInMinsRoundDown,
         previous,
         now,
-        alert,
+        alertId: alert.id,
       });
       return;
     }
@@ -650,39 +641,38 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins);
     const checkEndTime = nowInMinsRoundDown;
 
-    // Logs Source
-    const checksData: {
-      data: {
-        __hdx_time_bucket: string;
-        [key: string]: any;
-      }[];
-      rows: number;
-    } | null = {
-      data: [],
-      rows: 0,
-    };
-    let chartConfig: ChartConfigWithOptDateRange;
+    let chartConfig: ChartConfigWithOptDateRange | undefined;
+    let connectionId: string | undefined;
+    // SAVED_SEARCH Source
     if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+      const source = await Source.findById(alert.savedSearch.source);
+      if (source == null) {
+        logger.error({
+          message: 'Source not found',
+          savedSearch: alert.savedSearch,
+        });
+        return;
+      }
+      connectionId = source.connection.toString();
       chartConfig = {
-        select: alert.savedSearch.select,
-        connection: alert.savedSearch.source.connection.toString(),
-        where: alert.savedSearch.where,
-        from: alert.savedSearch.source.from,
-        orderBy: alert.savedSearch.orderBy,
+        connection: connectionId,
         dateRange: [checkStartTime, checkEndTime],
-        whereLanguage: alert.savedSearch.whereLanguage,
+        from: source.from,
         granularity: `${windowSizeInMins} minute`,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            valueExpression: '',
+          },
+        ],
+        where: alert.savedSearch.where,
+        whereLanguage: alert.savedSearch.whereLanguage,
+        groupBy: alert.groupBy,
+        timestampValueExpression: source.timestampValueExpression,
       };
-      logger.info({
-        message: `Received alert metric [${alert.source} source]`,
-        alert,
-        savedSearch: alert.savedSearch,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
     }
-    // Chart Source
+    // TILE Source
     else if (
       alert.source === AlertSource.TILE &&
       alert.dashboard &&
@@ -708,70 +698,62 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             _id: firstTile.config.source,
           });
           if (!_source) {
-            throw new Error('Source not found');
+            logger.error({
+              message: 'Source not found',
+              dashboardId: alert.dashboard.id,
+              tile: firstTile,
+            });
+            return;
           }
-          // TODO: FIXED TYPE
-          // @ts-ignore
+          connectionId = _source.connection.toString();
           chartConfig = {
-            ...firstTile.config,
-            connection: _source.connection.toString(),
-            from: _source.from,
+            connection: connectionId,
             dateRange: [checkStartTime, checkEndTime],
+            from: _source.from,
             granularity: `${windowSizeInMins} minute`,
+            select: firstTile.config.select,
+            where: firstTile.config.where,
+            groupBy: firstTile.config.groupBy,
+            timestampValueExpression: _source.timestampValueExpression,
           };
         }
-        // else if (
-        // firstTile.type === 'time' &&
-        // firstTile.table === 'metrics' &&
-        // firstTile.field
-        // ) {
-        // targetDashboard = dashboard;
-        // const startTimeMs = fns.getTime(checkStartTime);
-        // const endTimeMs = fns.getTime(checkEndTime);
-        // *****************************************************
-        // IMPLEMENT ME: implement query using renderChartConfig
-        // *****************************************************
-        // checksData = await clickhouse.getMultiSeriesChartLegacyFormat({
-        //   series: chart.series.map(series => {
-        //     if ('field' in series && series.field != null) {
-        //       const [metricName, rawMetricDataType] =
-        //         series.field.split(' - ');
-        //       const metricDataType = z
-        //         .nativeEnum(clickhouse.MetricsDataType)
-        //         .parse(rawMetricDataType);
-        //       return {
-        //         ...series,
-        //         metricDataType,
-        //         field: metricName,
-        //       };
-        //     }
-        //     return series;
-        //   }),
-        //   endTime: endTimeMs,
-        //   granularity: `${windowSizeInMins} minute`,
-        //   maxNumGroups: MAX_NUM_GROUPS,
-        //   startTime: startTimeMs,
-        //   tableVersion: dashboard.team.logStreamTableVersion,
-        //   teamId: dashboard.team._id.toString(),
-        //   seriesReturnType: chart.seriesReturnType,
-        // });
-        // }
       }
-
-      logger.info({
-        message: `Received alert metric [${alert.source} source]`,
-        alert,
-        checksData,
-        checkStartTime,
-        checkEndTime,
-      });
     } else {
       logger.error({
         message: `Unsupported alert source: ${alert.source}`,
-        alert,
+        alertId: alert.id,
       });
       return;
     }
+
+    // Fetch data
+    if (chartConfig == null || connectionId == null) {
+      logger.error({
+        message: 'Failed to build chart config',
+        chartConfig,
+        connectionId,
+        alertId: alert.id,
+      });
+      return;
+    }
+
+    const query = await renderChartConfig(chartConfig);
+    const checksData = await clickhouse
+      .sendQuery<'JSON'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'JSON',
+        connectionId,
+      })
+      .then(res => res.json<Record<string, string>>());
+
+    logger.info({
+      message: `Received alert metric [${alert.source} source]`,
+      alertId: alert.id,
+      checksData,
+      checkStartTime,
+      checkEndTime,
+    });
 
     // TODO: support INSUFFICIENT_DATA state
     let alertState = AlertState.OK;
@@ -782,55 +764,87 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     }).save();
 
     if (checksData?.rows && checksData?.rows > 0) {
+      // attach JS type
+      const meta =
+        checksData.meta?.map(m => ({
+          ...m,
+          jsType: convertCHDataTypeToJSType(m.type),
+        })) ?? [];
+
+      const timestampColumnName = meta.find(
+        m => m.jsType === clickhouse.JSDataType.Date,
+      )?.name;
+      const valueColumnNames = new Set(
+        meta
+          .filter(m => m.jsType === clickhouse.JSDataType.Number)
+          .map(m => m.name),
+      );
+
+      if (timestampColumnName == null) {
+        logger.error({
+          message: 'Failed to find timestamp column',
+          meta,
+          alertId: alert.id,
+        });
+        return;
+      }
+      if (valueColumnNames.size === 0) {
+        logger.error({
+          message: 'Failed to find value column',
+          meta,
+          alertId: alert.id,
+        });
+        return;
+      }
+
       for (const checkData of checksData.data) {
-        // TODO: we might want to fix the null value from the upstream
-        // this happens when the ratio is 0/0
-        if (checkData.data == null) {
-          continue;
+        let _value: number | null = null;
+        const extraFields: string[] = [];
+        // TODO: other keys should be attributes ? (for alert message template)
+        for (const [k, v] of Object.entries(checkData)) {
+          if (valueColumnNames.has(k)) {
+            _value = isString(v) ? parseInt(v) : v;
+          } else if (k !== timestampColumnName) {
+            extraFields.push(`${k}:${v}`);
+          }
         }
 
-        const totalCount = isString(checkData.data)
-          ? parseInt(checkData.data)
-          : checkData.data;
-        const bucketStart = new Date(checkData[FIXED_TIME_BUCKET_EXPR_ALIAS]);
-        if (
-          doesExceedThreshold(
-            alert.thresholdType === AlertThresholdType.ABOVE,
-            alert.threshold,
-            totalCount,
-          )
-        ) {
+        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
+        // this happens when the ratio is 0/0
+        if (_value == null) {
+          continue;
+        }
+        const bucketStart = new Date(checkData[timestampColumnName]);
+        if (doesExceedThreshold(alert.thresholdType, alert.threshold, _value)) {
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
-            alert,
-            totalCount,
+            alertId: alert.id,
+            totalCount: _value,
             checkData,
           });
 
           try {
             await fireChannelEvent({
               alert,
-              attributes: checkData.attributes,
+              attributes: {}, // FIXME: support attributes (logs + resources ?)
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: Array.isArray(checkData.group)
-                ? checkData.group.join(', ')
-                : checkData.group,
+              group: extraFields.join(', '),
               startTime: bucketStart,
-              totalCount,
+              totalCount: _value,
               windowSizeInMins,
             });
           } catch (e) {
             logger.error({
               message: 'Failed to fire channel event',
-              alert,
+              alertId: alert.id,
               error: serializeError(e),
             });
           }
 
           history.counts += 1;
         }
-        history.lastValues.push({ count: totalCount, startTime: bucketStart });
+        history.lastValues.push({ count: _value, startTime: bucketStart });
       }
 
       history.state = alertState;
@@ -844,7 +858,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
     // console.error(e);
     logger.error({
       message: 'Failed to process alert',
-      alert,
+      alertId: alert.id,
       error: serializeError(e),
     });
   }
