@@ -1,3 +1,5 @@
+// @ts-ignore
+
 export = {
   mongodb: {
     // TODO Change (or review) the url to your MongoDB:
