@@ -7,6 +7,8 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
+import { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -22,7 +24,6 @@ import {
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { TSource } from '@/commonTypes';
 import { ChartBox } from '@/components/ChartBox';
 import DBHistogramChart from '@/components/DBHistogramChart';
 import DBListBarChart from '@/components/DBListBarChart';
@@ -36,10 +37,8 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
-import { DisplayType } from '@/DisplayType';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { withAppNav } from '@/layout';
-import { Filter } from '@/renderChartConfig';
 import SearchInputV2 from '@/SearchInputV2';
 import { getExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';

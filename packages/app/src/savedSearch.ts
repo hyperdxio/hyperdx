@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SavedSearch } from '@hyperdx/common-utils/dist/types';
 import {
   useMutation,
   useQuery,
@@ -7,7 +8,6 @@ import {
 } from '@tanstack/react-query';
 
 import { hdxServer } from './api';
-import { SavedSearch } from './commonTypes';
 import { IS_LOCAL_MODE } from './config';
 
 export function useSavedSearches() {

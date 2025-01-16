@@ -1,11 +1,11 @@
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
-import { ClickHouseQueryError } from '@/clickhouse';
-import { TSource } from '@/commonTypes';
 import { ChartBox } from '@/components/ChartBox';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { Filter } from '@/renderChartConfig';
 import { getExpressions } from '@/serviceDashboard';
 
 import { SQLPreview } from './ChartSQLPreview';
