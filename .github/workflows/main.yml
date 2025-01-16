@@ -50,7 +50,6 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version-file: '.nvmrc'
-          cache: 'yarn'
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v2
       - name: Build images

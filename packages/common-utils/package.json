@@ -50,7 +50,7 @@
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
-    "ci:int": "jest --runInBand --ci --forceExit --coverage",
-    "dev:int": "jest --watchAll --runInBand --detectOpenHandles"
+    "ci:unit": "jest --runInBand --ci --forceExit --coverage",
+    "dev:unit": "jest --watchAll --runInBand --detectOpenHandles"
   }
 }
