@@ -5,6 +5,7 @@
       "@/*": ["./*"]
     },
     "allowSyntheticDefaultImports": true,
+    "declaration": true,
     "downlevelIteration": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -24,5 +25,5 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["src", "migrations"]
+  "include": ["src"]
 }
