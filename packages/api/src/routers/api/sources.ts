@@ -1,8 +1,8 @@
+import { SourceSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { SourceSchema } from '@/common/commonTypes';
 import {
   createSource,
   deleteSource,

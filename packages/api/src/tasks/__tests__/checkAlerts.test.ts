@@ -1,6 +1,5 @@
 import ms from 'ms';
 
-import * as clickhouse from '@/common/clickhouse';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';

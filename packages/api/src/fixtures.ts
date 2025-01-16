@@ -1,11 +1,14 @@
 import { createClient } from '@clickhouse/client';
+import * as commonClickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  DisplayType,
+  SavedChartConfig,
+  Tile,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request from 'supertest';
 
 import * as clickhouse from '@/clickhouse';
-import * as commonClickhouse from '@/common/clickhouse';
-import { SavedChartConfig, Tile } from '@/common/commonTypes';
-import { DisplayType } from '@/common/DisplayType';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
