@@ -1,7 +1,10 @@
+import {
+  DashboardWithoutIdSchema,
+  Tile,
+} from '@hyperdx/common-utils/dist/types';
 import { differenceBy, uniq } from 'lodash';
 import { z } from 'zod';
 
-import { DashboardWithoutIdSchema, Tile } from '@/common/commonTypes';
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';

@@ -4199,6 +4199,7 @@ __metadata:
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
     "@clickhouse/client-common": "npm:^1.9.1"
+    "@hyperdx/common-utils": "workspace:^"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4412,7 +4413,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@workspace:^, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:

@@ -1,7 +1,7 @@
+import { ConnectionSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { validateRequest } from 'zod-express-middleware';
 
-import { ConnectionSchema } from '@/common/commonTypes';
 import {
   createConnection,
   deleteConnection,

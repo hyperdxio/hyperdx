@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { DisplayType } from '@/common/DisplayType';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 // --------------------------
 //  SQL TYPES
