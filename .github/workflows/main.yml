@@ -18,8 +18,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version-file: '.nvmrc'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
       - name: Run lint + type check
@@ -34,8 +35,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version-file: '.nvmrc'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
       - name: Run unit tests
         run: make ci-unit
   integration:
@@ -48,6 +50,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version-file: '.nvmrc'
+          cache: 'yarn'
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v2
       - name: Build images
