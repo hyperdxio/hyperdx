@@ -14,8 +14,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version-file: '.nvmrc'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
