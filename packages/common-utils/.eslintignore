@@ -1,5 +1,7 @@
 keys
 node_modules
 archive
+dist
 migrations
 migrate-mongo-config.ts
+tsup.config.ts
