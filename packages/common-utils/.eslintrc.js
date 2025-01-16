@@ -1,6 +1,5 @@
 module.exports = {
   root: true,
-  ignorePatterns: ['migrate-mongo-config.ts'],
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint', 'prettier', 'simple-import-sort'],
   parserOptions: {
@@ -28,7 +27,7 @@ module.exports = {
     'n/no-unpublished-import': [
       'error',
       {
-        allowModules: ['mongodb', 'supertest'],
+        allowModules: ['supertest'],
       },
     ],
     'n/no-unsupported-features/es-syntax': [
