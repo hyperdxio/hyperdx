@@ -4,7 +4,6 @@
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithOptDateRange,
-  FIXED_TIME_BUCKET_EXPR_ALIAS,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
