@@ -3,6 +3,7 @@ import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Button,
@@ -15,7 +16,6 @@ import {
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
-import { TSource } from '@/commonTypes';
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getEventBody, getFirstTimestampValueExpression } from '@/source';

@@ -1,17 +1,15 @@
+import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  Field,
+  metadata,
+  TableMetadata,
+} from '@hyperdx/common-utils/dist/metadata';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   keepPreviousData,
   useQuery,
   UseQueryOptions,
 } from '@tanstack/react-query';
-
-import {
-  ColumnMeta,
-  ColumnMetaType,
-  filterColumnMetaByType,
-  JSDataType,
-} from '@/clickhouse';
-import { Field, metadata, TableMetadata } from '@/metadata';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 
 export function useColumns(
   {

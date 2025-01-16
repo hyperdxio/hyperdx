@@ -11,11 +11,6 @@ import CodeMirror, {
   ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
 
-import { useAllFields } from '@/hooks/useMetadata';
-import { Field } from '@/metadata';
-
-import InputLanguageSwitch from './InputLanguageSwitch';
-
 type SQLInlineEditorProps = {
   value: string;
   onChange: (value: string) => void;
