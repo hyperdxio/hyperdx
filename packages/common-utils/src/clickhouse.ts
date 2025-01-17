@@ -2,6 +2,7 @@ import type {
   BaseResultSet,
   DataFormat,
   ResponseJSON,
+  ResultStream,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 
@@ -260,7 +261,7 @@ export const client = {
     includeCorsHeader: boolean;
     connectionId?: string;
     queryId?: string;
-  }): Promise<Pick<BaseResultSet<any, T>, 'json' | 'text'>> {
+  }): Promise<Pick<BaseResultSet<any, T>, 'json' | 'text' | 'stream'>> {
     const searchParams = new URLSearchParams([
       ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
       ...(connectionId ? [['hyperdx_connection_id', connectionId]] : []),
@@ -316,8 +317,15 @@ export const client = {
     }
 
     return {
-      text: async () => res.text(),
-      json: async () => res.json(),
+      json: async () => {
+        return res.json();
+      },
+      text: async () => {
+        return res.text();
+      },
+      stream: () => {
+        return res.body as ResultStream<T, any>;
+      },
     };
   },
 };
