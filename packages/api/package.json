@@ -90,7 +90,7 @@
     "build": "rimraf ./build && tsc && tsc-alias",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "ci:lint": "yarn lint",
+    "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "jest --runInBand --ci --forceExit --coverage",
     "dev:int": "jest --watchAll --runInBand --detectOpenHandles",
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
