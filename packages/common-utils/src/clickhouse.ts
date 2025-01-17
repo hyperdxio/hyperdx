@@ -1,9 +1,10 @@
-import {
+import type {
   BaseResultSet,
   DataFormat,
-  isSuccessfulResponse,
   ResponseJSON,
+  ResultStream,
 } from '@clickhouse/client-common';
+import { isSuccessfulResponse } from '@clickhouse/client-common';
 
 import { SQLInterval } from '@/types';
 import { hashCode, timeBucketByGranularity } from '@/utils';
@@ -260,7 +261,7 @@ export const client = {
     includeCorsHeader: boolean;
     connectionId?: string;
     queryId?: string;
-  }): Promise<BaseResultSet<any, T>> {
+  }): Promise<Pick<BaseResultSet<any, T>, 'json' | 'text' | 'stream'>> {
     const searchParams = new URLSearchParams([
       ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
       ...(connectionId ? [['hyperdx_connection_id', connectionId]] : []),
@@ -315,8 +316,17 @@ export const client = {
       throw new Error('Unexpected empty response from ClickHouse');
     }
 
-    // @ts-ignore
-    return new BaseResultSet(res.body, format, '');
+    return {
+      json: async () => {
+        return res.json();
+      },
+      text: async () => {
+        return res.text();
+      },
+      stream: () => {
+        return res.body as ResultStream<T, any>;
+      },
+    };
   },
 };
 

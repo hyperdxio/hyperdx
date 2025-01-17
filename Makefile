@@ -27,6 +27,10 @@ dev-down:
 dev-lint:
 	npx nx run-many -t lint:fix
 
+.PHONY: ci-build
+ci-build:
+	npx nx run-many -t ci:build
+
 .PHONY: ci-lint
 ci-lint:
 	npx nx run-many -t ci:lint
@@ -43,12 +47,6 @@ dev-int:
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
-	# @echo "\n\n"
-	# @echo "Checking otel-collector...\n"
-	# curl -v http://localhost:23133
-	# @echo "\n\n"
-	# @echo "Checking ingestor...\n"
-	# curl -v http://localhost:28686/health
 
 .PHONY: dev-unit
 dev-unit:

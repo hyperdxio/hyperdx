@@ -1,18 +1,18 @@
 import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-
 import {
   ClickHouseQueryError,
   parameterizedQueryToSql,
   sendQuery,
-} from '@/clickhouse';
-import { IS_MTVIEWS_ENABLED } from '@/config';
-import { buildMTViewSelectQuery } from '@/hdxMTViews';
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithOptDateRange,
   renderChartConfig,
-} from '@/renderChartConfig';
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+
+import { IS_MTVIEWS_ENABLED } from '@/config';
+import { buildMTViewSelectQuery } from '@/hdxMTViews';
 
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,

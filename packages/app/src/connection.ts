@@ -1,8 +1,8 @@
 import store from 'store2';
+import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { testLocalConnection } from '@/clickhouse';
 import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 

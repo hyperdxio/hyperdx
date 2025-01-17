@@ -7,6 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   BoxComponentProps,
@@ -22,7 +23,6 @@ import {
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { TimePicker } from '@/components/TimePicker';
-import { DisplayType } from '@/DisplayType';
 import { withAppNav } from '@/layout';
 
 import { ChartBox } from './components/ChartBox';

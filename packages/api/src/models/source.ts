@@ -1,6 +1,5 @@
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
-
-import { TSource } from '@/common/commonTypes';
 
 type ObjectId = mongoose.Types.ObjectId;
 

@@ -10,11 +10,11 @@ import {
   YAxis,
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/types';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Text } from '@mantine/core';
 
-import { ClickHouseQueryError } from '@/clickhouse';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 import { omit } from '@/utils';
 import { generateSearchUrl } from '@/utils';
 

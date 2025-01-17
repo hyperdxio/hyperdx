@@ -1,10 +1,10 @@
 import { format } from 'sql-formatter';
 import { sql } from '@codemirror/lang-sql';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Paper } from '@mantine/core';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 
 function tryFormat(data?: string) {
   try {
