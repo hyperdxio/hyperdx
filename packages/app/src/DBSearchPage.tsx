@@ -742,6 +742,20 @@ function DBSearchPage() {
     setIsLive(false);
   }, [setIsLive]);
 
+  // When source changes, make sure select and orderby fields are set to default
+  const defaultOrderBy = useMemo(
+    () =>
+      `${getFirstTimestampValueExpression(
+        inputSourceObj?.timestampValueExpression ?? '',
+      )} DESC`,
+    [inputSourceObj?.timestampValueExpression],
+  );
+
+  useEffect(() => {
+    setValue('select', inputSourceObj?.defaultTableSelectExpression ?? '');
+    setValue('orderBy', defaultOrderBy);
+  }, [inputSource, inputSourceObj, defaultOrderBy]);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       <OnboardingModal />
@@ -797,9 +811,7 @@ function DBSearchPage() {
               table={tableName}
               control={control}
               name="orderBy"
-              defaultValue={`${getFirstTimestampValueExpression(
-                inputSourceObj?.timestampValueExpression ?? '',
-              )} DESC`}
+              defaultValue={defaultOrderBy}
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
