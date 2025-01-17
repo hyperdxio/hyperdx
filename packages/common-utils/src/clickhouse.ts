@@ -260,7 +260,7 @@ export const client = {
     includeCorsHeader: boolean;
     connectionId?: string;
     queryId?: string;
-  }): Promise<BaseResultSet<any, T>> {
+  }): Promise<Pick<BaseResultSet<any, T>, 'json' | 'text'>> {
     const searchParams = new URLSearchParams([
       ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
       ...(connectionId ? [['hyperdx_connection_id', connectionId]] : []),
@@ -315,8 +315,10 @@ export const client = {
       throw new Error('Unexpected empty response from ClickHouse');
     }
 
-    // @ts-ignore
-    return new BaseResultSet(res.body, format, '');
+    return {
+      text: async () => res.text(),
+      json: async () => res.json(),
+    };
   },
 };
 
