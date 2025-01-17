@@ -4,6 +4,7 @@ import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
@@ -26,7 +27,6 @@ import {
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 import { SelectList } from '@/sqlTypes';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';

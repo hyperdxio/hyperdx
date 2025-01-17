@@ -3,22 +3,22 @@ import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 import {
+  ChartConfigWithDateRange,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType, SQLInterval } from '@hyperdx/common-utils/dist/types';
+import {
   Divider,
   Group,
   SegmentedControl,
   Select as MSelect,
 } from '@mantine/core';
 
-import type { SQLInterval } from '@/sqlTypes';
-
 import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
-import { DisplayType } from './DisplayType';
 import FieldMultiSelect from './FieldMultiSelect';
 import MetricTagFilterInput from './MetricTagFilterInput';
-import { SavedChartConfig } from './renderChartConfig';
-import { ChartConfigWithDateRange } from './renderChartConfig';
 import SearchInput from './SearchInput';
 import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';

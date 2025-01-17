@@ -1,8 +1,8 @@
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
 import { ClickHouseQueryError } from '@/clickhouse';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 import { formatNumber, omit } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';

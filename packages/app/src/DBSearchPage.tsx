@@ -20,6 +20,12 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
   Box,
   Button,
@@ -53,15 +59,9 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
-import { DisplayType } from '@/DisplayType';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
-import {
-  ChartConfig,
-  ChartConfigWithDateRange,
-  Filter,
-} from '@/renderChartConfig';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,

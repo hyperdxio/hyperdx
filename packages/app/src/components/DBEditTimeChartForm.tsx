@@ -7,6 +7,11 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
+import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
+  ChartConfigWithDateRange,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   Accordion,
   Box,
@@ -30,11 +35,6 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { DisplayType } from '@/DisplayType';
 import { GranularityPickerControlled } from '@/GranularityPicker';
-import type { Filter } from '@/renderChartConfig';
-import {
-  ChartConfigWithDateRange,
-  SavedChartConfig,
-} from '@/renderChartConfig';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
