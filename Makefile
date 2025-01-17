@@ -27,6 +27,10 @@ dev-down:
 dev-lint:
 	npx nx run-many -t lint:fix
 
+.PHONY: ci-build
+ci-build:
+	npx nx run-many -t ci:build
+
 .PHONY: ci-lint
 ci-lint:
 	npx nx run-many -t ci:lint
