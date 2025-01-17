@@ -1,7 +1,6 @@
 import React from 'react';
 import produce from 'immer';
-
-import { Filter } from './renderChartConfig';
+import { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
 
 export type FilterState = {
   [key: string]: Set<string>;

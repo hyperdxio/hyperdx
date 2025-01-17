@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Text } from '@mantine/core';
 
-import { ClickHouseQueryError } from '@/clickhouse';
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { omit } from '@/utils';

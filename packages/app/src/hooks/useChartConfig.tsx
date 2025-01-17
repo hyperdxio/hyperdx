@@ -1,16 +1,16 @@
 import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
+  ClickHouseQueryError,
+  parameterizedQueryToSql,
+  sendQuery,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
   ChartConfigWithOptDateRange,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import {
-  ClickHouseQueryError,
-  parameterizedQueryToSql,
-  sendQuery,
-} from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 

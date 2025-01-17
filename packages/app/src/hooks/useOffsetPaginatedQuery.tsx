@@ -2,6 +2,11 @@ import { useMemo } from 'react';
 import ms from 'ms';
 import { ResponseJSON, Row } from '@clickhouse/client-web';
 import {
+  ClickHouseQueryError,
+  ColumnMetaType,
+  sendQuery,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
   ChartConfigWithDateRange,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
@@ -12,7 +17,6 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { ClickHouseQueryError, ColumnMetaType, sendQuery } from '@/clickhouse';
 import { omit } from '@/utils';
 
 function queryKeyFn(prefix: string, config: ChartConfigWithDateRange) {
@@ -60,7 +64,7 @@ const queryFn: QueryFunction<
     connectionId: config.connection,
   });
 
-  const stream = resultSet.stream<unknown[]>();
+  const stream = resultSet.stream();
 
   const reader = stream.getReader();
 

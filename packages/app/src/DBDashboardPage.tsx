@@ -22,6 +22,12 @@ import {
   Filter,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
+  DisplayType,
+  SearchCondition,
+  SearchConditionLanguage,
+  SQLInterval,
+} from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
   Badge,
   Box,
@@ -58,7 +64,6 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
-import { DisplayType } from '@/DisplayType';
 
 import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
@@ -77,11 +82,6 @@ import {
   useSource,
   useSources,
 } from './source';
-import {
-  SearchCondition,
-  SearchConditionLanguage,
-  SQLInterval,
-} from './sqlTypes';
 import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';

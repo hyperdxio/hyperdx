@@ -1,7 +1,7 @@
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
-import { ClickHouseQueryError } from '@/clickhouse';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { formatNumber, omit } from '@/utils';
 

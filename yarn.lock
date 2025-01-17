@@ -3133,10 +3133,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:^1.9.1":
-  version: 1.9.1
-  resolution: "@clickhouse/client-common@npm:1.9.1"
-  checksum: 10c0/d4df33c16e8ead60c8d656418c81f4cacd16f63c26d462bb265fa4892c0e0f40c5ddf447724befea36ffed569dae685049a9fb6f6210e3362bcbe632e15dfc70
+"@clickhouse/client-common@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client-common@npm:1.10.1"
+  checksum: 10c0/11638657ab9f5b7ffe8d1625215ec6be5377fe2ff9d7010228dfbdcc4edb9613b59c77d169c7ede4c16b38090942815d262b9e6d8425bce045d7014d32db56cb
   languageName: node
   linkType: hard
 
@@ -4198,7 +4198,7 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
-    "@hyperdx/common-utils": "npm:^0.0.1"
+    "@hyperdx/common-utils": "npm:^0.0.3"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4285,7 +4285,7 @@ __metadata:
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/common-utils": "npm:^0.0.1"
+    "@hyperdx/common-utils": "npm:^0.0.3"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4410,11 +4410,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@npm:^0.0.1, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.0.3, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client-common": "npm:^1.9.1"
+    "@clickhouse/client-common": "npm:^1.10.1"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^28.1.1"
