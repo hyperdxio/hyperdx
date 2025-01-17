@@ -47,6 +47,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "ci:build": "tsup",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
