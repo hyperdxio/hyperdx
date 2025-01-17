@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import api from '@/api';
 import AutocompleteInput from '@/AutocompleteInput';
-import { genEnglishExplanation } from '@/queryParser';
 
 export default function SearchInput({
   inputRef,

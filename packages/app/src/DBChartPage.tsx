@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
+import { SavedChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box } from '@mantine/core';
 
 import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
@@ -9,7 +10,6 @@ import { DisplayType } from '@/DisplayType';
 import { withAppNav } from '@/layout';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
-import { SavedChartConfig } from './renderChartConfig';
 import { useSources } from './source';
 
 // Autocomplete can focus on column/map keys

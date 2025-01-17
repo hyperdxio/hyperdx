@@ -1,5 +1,9 @@
 import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
+import {
+  ChartConfigWithOptDateRange,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import {
@@ -9,10 +13,6 @@ import {
 } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
-import {
-  ChartConfigWithOptDateRange,
-  renderChartConfig,
-} from '@/renderChartConfig';
 
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,

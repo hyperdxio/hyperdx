@@ -18,6 +18,10 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  ChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
   ActionIcon,
   Badge,
   Box,
@@ -55,7 +59,6 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { DisplayType } from '@/DisplayType';
-import { ChartConfigWithDateRange, Filter } from '@/renderChartConfig';
 
 import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';

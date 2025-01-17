@@ -2,6 +2,10 @@ import { useMemo } from 'react';
 import ms from 'ms';
 import { ResponseJSON, Row } from '@clickhouse/client-web';
 import {
+  ChartConfigWithDateRange,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
   QueryClient,
   QueryFunction,
   useInfiniteQuery,
@@ -9,10 +13,6 @@ import {
 } from '@tanstack/react-query';
 
 import { ClickHouseQueryError, ColumnMetaType, sendQuery } from '@/clickhouse';
-import {
-  ChartConfigWithDateRange,
-  renderChartConfig,
-} from '@/renderChartConfig';
 import { omit } from '@/utils';
 
 function queryKeyFn(prefix: string, config: ChartConfigWithDateRange) {

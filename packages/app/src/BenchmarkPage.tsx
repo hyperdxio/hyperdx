@@ -7,6 +7,8 @@ import {
   useQueryState,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { sendQuery } from '@hyperdx/common-utils/dist/clickhouse';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Code,
@@ -23,8 +25,6 @@ import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
 import { DBTimeChart } from './components/DBTimeChart';
 import { SQLEditorControlled } from './components/SQLEditor';
-import { sendQuery } from './clickhouse';
-import { DisplayType } from './DisplayType';
 
 function useBenchmarkQueryIds({
   queries,

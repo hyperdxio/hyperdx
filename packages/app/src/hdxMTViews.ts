@@ -1,13 +1,13 @@
 import objectHash from 'object-hash';
-
-import { ChSql, chSql, parameterizedQueryToSql } from '@/clickhouse';
 import {
   ChartConfigWithOptDateRange,
   FIXED_TIME_BUCKET_EXPR_ALIAS,
   isNonEmptyWhereExpr,
   isUsingGroupBy,
   renderChartConfig,
-} from '@/renderChartConfig';
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+
+import { ChSql, chSql, parameterizedQueryToSql } from '@/clickhouse';
 import { AggregateFunction, DerivedColumn, SQLInterval } from '@/sqlTypes';
 
 const HDX_DATABASE = 'hyperdx'; // all materialized views should sit in this database

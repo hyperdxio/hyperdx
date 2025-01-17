@@ -1,10 +1,10 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-
-import { sendQuery } from '@/clickhouse';
 import {
   ChartConfigWithDateRange,
   renderChartConfig,
-} from '@/renderChartConfig';
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+
+import { sendQuery } from '@/clickhouse';
 
 export function useExplainQuery(
   config: ChartConfigWithDateRange,
