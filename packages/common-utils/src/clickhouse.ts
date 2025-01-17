@@ -1,9 +1,9 @@
-import {
+import type {
   BaseResultSet,
   DataFormat,
-  isSuccessfulResponse,
   ResponseJSON,
 } from '@clickhouse/client-common';
+import { isSuccessfulResponse } from '@clickhouse/client-common';
 
 import { SQLInterval } from '@/types';
 import { hashCode, timeBucketByGranularity } from '@/utils';

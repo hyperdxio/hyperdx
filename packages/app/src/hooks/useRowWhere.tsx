@@ -1,12 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';
-
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   JSDataType,
-} from '@/clickhouse';
+} from '@hyperdx/common-utils/dist/clickhouse';
 
 const MAX_STRING_LENGTH = 512;
 

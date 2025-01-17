@@ -7,11 +7,12 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
-import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
+  Filter,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType, SelectList } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
   Box,
@@ -33,14 +34,12 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { DisplayType } from '@/DisplayType';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
-import { SelectList } from '../sqlTypes';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';

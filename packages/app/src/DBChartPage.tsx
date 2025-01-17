@@ -6,7 +6,6 @@ import { Box } from '@mantine/core';
 
 import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
-import { DisplayType } from '@/DisplayType';
 import { withAppNav } from '@/layout';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 

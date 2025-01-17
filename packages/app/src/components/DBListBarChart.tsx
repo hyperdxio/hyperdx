@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 import { FloatingPosition } from '@mantine/core/lib/components/Floating';
 
-import { ClickHouseQueryError } from '@/clickhouse';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import type { NumberFormat } from '@/types';
 import { omit } from '@/utils';
