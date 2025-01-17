@@ -4353,7 +4353,6 @@ __metadata:
     next-seo: "npm:^4.28.1"
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
-    node-sql-parser: "npm:^5.3.2"
     numbro: "npm:^2.4.0"
     nuqs: "npm:^1.17.0"
     object-hash: "npm:^3.0.0"
@@ -21528,16 +21527,6 @@ __metadata:
     long-timeout: "npm:0.1.1"
     sorted-array-functions: "npm:^1.3.0"
   checksum: 10c0/6ec51b34b9e676740ac25298e4ced5ee46053379f0d3aad533e51d7e083bc24ced045df1772a95bf9d9cfdb81299340bbf551549a7c5eb6e4d2dc6468c85c70e
-  languageName: node
-  linkType: hard
-
-"node-sql-parser@npm:^5.3.2":
-  version: 5.3.2
-  resolution: "node-sql-parser@npm:5.3.2"
-  dependencies:
-    "@types/pegjs": "npm:^0.10.0"
-    big-integer: "npm:^1.6.48"
-  checksum: 10c0/4c28bbb156aab433387fbda8e2f5ab5dc76d231b77b9d58cd55e9f5b63d16dc2cd96002d242c6fd602c10f89baea1a33ef1cd2047b8e4a1b15008476f2c2c969
   languageName: node
   linkType: hard
 
