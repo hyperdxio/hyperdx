@@ -87,7 +87,7 @@ export function RowDataPanel({
   }, [data]);
 
   return (
-    <div>
+    <div className="flex-grow-1 bg-body overflow-auto">
       <DBRowJsonViewer data={firstRow} />
     </div>
   );

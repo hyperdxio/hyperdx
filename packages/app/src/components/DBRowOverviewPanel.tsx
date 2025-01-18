@@ -96,7 +96,7 @@ export function RowOverviewPanel({
   }, [firstRow, source.eventAttributesExpression]);
 
   return (
-    <div>
+    <div className="flex-grow-1 bg-body overflow-auto">
       <Accordion
         defaultValue={['resourceAttributes', 'eventAttributes']}
         multiple
