@@ -37,8 +37,9 @@ import {
   Paper,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { useDebouncedCallback } from '@mantine/hooks';
+import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useIsFetching } from '@tanstack/react-query';
 
 import { useTimeChartSettings } from '@/ChartUtils';
@@ -78,6 +79,8 @@ import {
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
+
+import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 
 type SearchConfig = {
   select?: string | null;
@@ -756,8 +759,18 @@ function DBSearchPage() {
     setValue('orderBy', defaultOrderBy);
   }, [inputSource, inputSourceObj, defaultOrderBy]);
 
+  const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
+    useDisclosure();
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
+      {isAlertModalOpen && (
+        <DBSearchPageAlertModal
+          id={savedSearch?.id ?? ''}
+          open={isAlertModalOpen}
+          onClose={closeAlertModal}
+        />
+      )}
       <OnboardingModal />
       <form
         onSubmit={e => {
@@ -828,6 +841,25 @@ function DBSearchPage() {
               >
                 Save
               </Button>
+              <Tooltip
+                label={
+                  savedSearchId
+                    ? 'Manage or create alerts for this search'
+                    : 'Save this view to create alerts'
+                }
+                color="dark"
+              >
+                <Button
+                  variant="outline"
+                  color="dark.2"
+                  px="xs"
+                  size="xs"
+                  onClick={openAlertModal}
+                  disabled={!savedSearchId}
+                >
+                  Alerts
+                </Button>
+              </Tooltip>
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {

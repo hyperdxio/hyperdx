@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select, SelectProps } from '@mantine/core';
 
-export default function SelectControlled(
-  props: SelectProps &
-    UseControllerProps<any> & {
-      onCreate?: () => void;
-    },
-) {
+export type SelectControlledProps = SelectProps &
+  UseControllerProps<any> & {
+    onCreate?: () => void;
+  };
+
+export default function SelectControlled(props: SelectControlledProps) {
   const { field, fieldState } = useController(props);
 
   // This is needed as mantine does not clear the select
