@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { atom, useAtomValue, useSetAtom } from 'jotai';
-import Button from 'react-bootstrap/Button';
-import Modal from 'react-bootstrap/Modal';
+import { Button, Group, Modal, Text } from '@mantine/core';
 
 type ConfirmAtom = {
   message: string;
@@ -45,19 +44,29 @@ export const useConfirmModal = () => {
     setConfirm(null);
   }, [confirm, setConfirm]);
 
-  return confirm ? (
-    <Modal show onHide={handleClose}>
-      <Modal.Body className="bg-hdx-dark">
-        {confirm.message}
-        <div className="mt-3 d-flex justify-content-end gap-2">
-          <Button variant="secondary" onClick={handleClose} size="sm">
-            Cancel
-          </Button>
-          <Button variant="success" onClick={confirm.onConfirm} size="sm">
-            {confirm.confirmLabel || 'OK'}
-          </Button>
-        </div>
-      </Modal.Body>
+  return (
+    <Modal
+      opened={!!confirm}
+      onClose={handleClose}
+      centered
+      withCloseButton={false}
+    >
+      <Text size="sm" opacity={0.7}>
+        {confirm?.message}
+      </Text>
+      <Group justify="flex-end" mt="md" gap="xs">
+        <Button size="xs" variant="outline" onClick={handleClose} color="Gray">
+          Cancel
+        </Button>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={confirm?.onConfirm}
+          color="red"
+        >
+          {confirm?.confirmLabel || 'Confirm'}
+        </Button>
+      </Group>
     </Modal>
-  ) : null;
+  );
 };
