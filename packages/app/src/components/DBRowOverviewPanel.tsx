@@ -88,16 +88,32 @@ export function RowOverviewPanel({
   }, [data]);
 
   const resourceAttributes = useMemo(() => {
-    return firstRow['ResourceAttributes'] || {};
-  }, [firstRow]);
+    return firstRow[source.resourceAttributesExpression!] || {};
+  }, [firstRow, source.resourceAttributesExpression]);
+
+  const eventAttributes = useMemo(() => {
+    return firstRow[source.eventAttributesExpression!] || {};
+  }, [firstRow, source.eventAttributesExpression]);
 
   return (
     <div>
-      <Accordion defaultValue={['resourceAttributes']} multiple>
+      <Accordion
+        defaultValue={['resourceAttributes', 'eventAttributes']}
+        multiple
+      >
         <Accordion.Item value="resourceAttributes">
           <Accordion.Control>Resource Attributes</Accordion.Control>
           <Accordion.Panel>
             <DBRowJsonViewer data={resourceAttributes} />
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        <Accordion.Item value="eventAttributes">
+          <Accordion.Control>
+            {source.kind === 'log' ? 'Span' : 'Trace'} Attributes
+          </Accordion.Control>
+          <Accordion.Panel>
+            <DBRowJsonViewer data={eventAttributes} />
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
