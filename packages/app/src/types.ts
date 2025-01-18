@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { DashboardSchema, SavedSearchSchema } from './commonTypes';
+import { AlertSchema, DashboardSchema, SavedSearchSchema } from './commonTypes';
 
 export type Team = {
   allowedAuthMethods: any[];
@@ -53,19 +53,6 @@ export type LogView = z.infer<typeof SavedSearchSchema>;
 
 export type ServerDashboard = z.infer<typeof DashboardSchema>;
 
-// {
-//   _id: string;
-//   createdAt: string;
-//   updatedAt: string;
-//   name: string;
-//   charts: Chart[];
-//   alerts?: Alert[];
-//   query?: string;
-//   tags: string[];
-// };
-
-export type AlertType = 'presence' | 'absence';
-
 export type AlertInterval =
   | '1m'
   | '5m'
@@ -78,54 +65,18 @@ export type AlertInterval =
 
 export type AlertChannelType = 'webhook';
 
-export type AlertSource = 'LOG' | 'CHART';
+export type Alert = z.infer<typeof AlertSchema>;
 
-export type AlertChannel = {
-  channelId?: string;
-  recipients?: string[];
-  severity?: 'critical' | 'error' | 'warning' | 'info';
-  type: AlertChannelType;
-  webhookId?: string;
-};
-
-export enum AlertState {
-  ALERT = 'ALERT',
-  DISABLED = 'DISABLED',
-  INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
-  OK = 'OK',
-}
-
-export type Alert = {
-  _id?: string;
-  channel: AlertChannel;
-  cron?: string;
-  interval: AlertInterval;
-  state?: AlertState;
-  threshold: number;
-  timezone?: string;
-  type: AlertType;
-  source: AlertSource;
-  silenced?: {
-    by?: string;
-    at: string;
-    until: string;
-  };
-  // Log alerts
-  logView?: string;
-  message?: string;
-  groupBy?: string;
-
-  // Chart alerts
-  dashboardId?: string;
-  chartId?: string;
-};
-
-export type AlertHistory = {
-  counts: number;
-  createdAt: Date;
-  lastValues: { startTime: Date; count: number }[];
-  state: AlertState;
-};
+// {
+//   _id: string;
+//   createdAt: string;
+//   updatedAt: string;
+//   name: string;
+//   charts: Chart[];
+//   alerts?: Alert[];
+//   query?: string;
+//   tags: string[];
+// };
 
 export type Session = {
   errorCount: string;

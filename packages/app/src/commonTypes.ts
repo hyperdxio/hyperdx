@@ -1,5 +1,32 @@
 import { z } from 'zod';
 
+// -------------------------
+// ALERTS
+// -------------------------
+
+export const AlertSchema = z.object({
+  id: z.string().optional(),
+  source: z.union([z.literal('saved_search'), z.literal('tile')]).optional(),
+  savedSearchId: z.string().optional(),
+  groupBy: z.string().optional(),
+  interval: z.union([
+    z.literal('1m'),
+    z.literal('5m'),
+    z.literal('15m'),
+    z.literal('30m'),
+    z.literal('1h'),
+    z.literal('6h'),
+    z.literal('12h'),
+    z.literal('1d'),
+  ]),
+  threshold: z.number().int().min(1),
+  thresholdType: z.union([z.literal('above'), z.literal('below')]),
+  channel: z.object({
+    type: z.literal('webhook'),
+    webhookId: z.string().nonempty("Webhook ID can't be empty"),
+  }),
+});
+
 // --------------------------
 // SAVED SEARCH
 // --------------------------
@@ -13,6 +40,7 @@ export const SavedSearchSchema = z.object({
   source: z.string(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
+  alerts: z.array(AlertSchema).optional(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
