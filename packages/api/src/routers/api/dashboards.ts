@@ -3,21 +3,20 @@ import {
   DashboardWithoutIdSchema,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import { differenceBy, groupBy, uniq } from 'lodash';
+import { groupBy } from 'lodash';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
   createDashboard,
-  deleteDashboardAndAlerts,
+  deleteDashboard,
   getDashboard,
   getDashboards,
-  updateDashboardAndAlerts,
+  updateDashboard,
 } from '@/controllers/dashboard';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import Alert from '@/models/alert';
-import { chartSchema, objectIdSchema, tagsSchema } from '@/utils/zod';
+import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
 const router = express.Router();
@@ -28,19 +27,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await getDashboards(teamId);
 
-    const alertsByDashboard = groupBy(
-      await Alert.find({
-        dashboard: { $in: dashboards.map(d => d._id) },
-      }),
-      'dashboard',
-    );
-
-    res.json(
-      dashboards.map(d => ({
-        ...d.toJSON(),
-        alerts: alertsByDashboard[d._id.toString()],
-      })),
-    );
+    return res.json(dashboards);
   } catch (e) {
     next(e);
   }
@@ -87,13 +74,10 @@ router.patch(
 
       const updates = _.omitBy(req.body, _.isNil);
 
-      const updatedDashboard = await updateDashboardAndAlerts(
+      const updatedDashboard = await updateDashboard(
         dashboardId,
         teamId,
-        {
-          ...dashboard.toJSON(),
-          ...updates,
-        },
+        updates,
       );
 
       res.json(updatedDashboard);
@@ -113,7 +97,7 @@ router.delete(
       const { teamId } = getNonNullUserWithTeam(req);
       const { id: dashboardId } = req.params;
 
-      await deleteDashboardAndAlerts(dashboardId, teamId);
+      await deleteDashboard(dashboardId, teamId);
 
       res.sendStatus(204);
     } catch (e) {

@@ -7,7 +7,11 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
+import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
+import z from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  AlertSchemaBase,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -23,12 +27,14 @@ import {
   Flex,
   Group,
   Paper,
+  Stack,
   Tabs,
   Text,
   Textarea,
 } from '@mantine/core';
 
 import { AGG_FNS } from '@/ChartUtils';
+import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import DBTableChart from '@/components/DBTableChart';
@@ -39,6 +45,15 @@ import { GranularityPickerControlled } from '@/GranularityPicker';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
+import { optionsToSelectData } from '@/utils';
+import {
+  ALERT_CHANNEL_OPTIONS,
+  DEFAULT_TILE_ALERT,
+  extendDateRangeToInterval,
+  intervalToGranularity,
+  TILE_ALERT_INTERVAL_OPTIONS,
+  TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+} from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
 
@@ -202,6 +217,13 @@ function ChartSeriesEditor({
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
+const zSavedChartConfig = z
+  .object({
+    // TODO: Chart
+    alert: AlertSchemaBase.optional(),
+  })
+  .passthrough();
+
 export type SavedChartConfigWithSelectArray = Omit<
   SavedChartConfig,
   'select'
@@ -233,6 +255,7 @@ export default function EditTimeChartForm({
   const { control, watch, setValue, handleSubmit, register } =
     useForm<SavedChartConfig>({
       defaultValues: chartConfig,
+      resolver: zodResolver(zSavedChartConfig),
     });
 
   const { fields, append, remove } = useFieldArray({
@@ -243,6 +266,7 @@ export default function EditTimeChartForm({
   const select = watch('select');
   const sourceId = watch('source');
   const whereLanguage = watch('whereLanguage');
+  const alert = watch('alert');
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -265,6 +289,12 @@ export default function EditTimeChartForm({
         return 'number';
       default:
         return 'time';
+    }
+  }, [displayType]);
+
+  useEffect(() => {
+    if (displayType !== DisplayType.Line) {
+      setValue('alert', undefined);
     }
   }, [displayType]);
 
@@ -372,7 +402,6 @@ export default function EditTimeChartForm({
             limit: { limit: 200 },
             select: tableSource?.defaultTableSelectExpression || '',
             groupBy: undefined,
-            granularity: undefined,
             filters: seriesToFilters(queriedConfig.select),
             filtersLogicalOperator: 'OR' as const,
           }
@@ -517,24 +546,42 @@ export default function EditTimeChartForm({
               )}
               <Divider mt="md" mb="sm" />
               <Flex mt={4} align="center" justify="space-between">
-                {displayType !== DisplayType.Number && (
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    onClick={() => {
-                      append({
-                        aggFn: 'count',
-                        aggCondition: '',
-                        aggConditionLanguage: 'lucene',
-                        valueExpression: '',
-                      });
-                    }}
-                  >
-                    <i className="bi bi-plus-circle me-2" />
-                    Add Series
-                  </Button>
-                )}
+                <Group gap={0}>
+                  {displayType !== DisplayType.Number && (
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      color="gray"
+                      onClick={() => {
+                        append({
+                          aggFn: 'count',
+                          aggCondition: '',
+                          aggConditionLanguage: 'lucene',
+                          valueExpression: '',
+                        });
+                      }}
+                    >
+                      <i className="bi bi-plus-circle me-2" />
+                      Add Series
+                    </Button>
+                  )}
+                  {displayType === DisplayType.Line && (
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      color={alert ? 'red' : 'gray'}
+                      onClick={() =>
+                        setValue(
+                          'alert',
+                          alert ? undefined : DEFAULT_TILE_ALERT,
+                        )
+                      }
+                    >
+                      <i className="bi bi-bell-fill me-2" />
+                      {!alert ? 'Add Alert' : 'Remove Alert'}
+                    </Button>
+                  )}
+                </Group>
                 <NumberFormatInputControlled control={control} />
               </Flex>
             </>
@@ -581,6 +628,57 @@ export default function EditTimeChartForm({
             </Flex>
           )}
         </>
+      )}
+
+      {alert && (
+        <Paper my="sm">
+          <Stack gap="xs">
+            <Paper px="md" py="sm" bg="dark.6" radius="xs">
+              <Group gap="xs">
+                <Text size="sm" opacity={0.7}>
+                  Alert when the value
+                </Text>
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
+                  size="xs"
+                  name={`alert.thresholdType`}
+                  control={control}
+                />
+                <NumberInput
+                  min={1}
+                  size="xs"
+                  w={80}
+                  control={control}
+                  name={`alert.threshold`}
+                />
+                over
+                <NativeSelect
+                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                  size="xs"
+                  name={`alert.interval`}
+                  control={control}
+                />
+                <Text size="sm" opacity={0.7}>
+                  window via
+                </Text>
+                <NativeSelect
+                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                  size="xs"
+                  name={`alert.channel.type`}
+                  control={control}
+                />
+              </Group>
+              <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+                Send to
+              </Text>
+              <AlertChannelForm
+                control={control}
+                type={watch('alert.channel.type')}
+                namePrefix="alert."
+              />
+            </Paper>
+          </Stack>
+        </Paper>
       )}
 
       <Flex justify="space-between" mt="sm">
@@ -656,8 +754,26 @@ export default function EditTimeChartForm({
         >
           <DBTimeChart
             sourceId={sourceId}
-            config={queriedConfig}
+            config={{
+              ...queriedConfig,
+              granularity: alert
+                ? intervalToGranularity(alert.interval)
+                : undefined,
+              dateRange: alert
+                ? extendDateRangeToInterval(
+                    queriedConfig.dateRange,
+                    alert.interval,
+                  )
+                : queriedConfig.dateRange,
+            }}
             onTimeRangeSelect={onTimeRangeSelect}
+            referenceLines={
+              alert &&
+              getAlertReferenceLines({
+                threshold: alert.threshold,
+                thresholdType: alert.thresholdType,
+              })
+            }
           />
         </div>
       )}

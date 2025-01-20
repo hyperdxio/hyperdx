@@ -224,26 +224,27 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertSchema = z
-  .object({
-    id: z.string().optional(),
-    interval: AlertIntervalSchema,
-    threshold: z.number().int().min(1),
-    thresholdType: z.nativeEnum(AlertThresholdType),
-    channel: zAlertChannel,
-    state: z.nativeEnum(AlertState).optional(),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-    source: z.nativeEnum(AlertSource),
-    silenced: z
-      .object({
-        by: z.string(),
-        at: z.string(),
-        until: z.string(),
-      })
-      .optional(),
-  })
-  .and(zSavedSearchAlert.or(zTileAlert));
+export const AlertSchemaBase = z.object({
+  id: z.string().optional(),
+  interval: AlertIntervalSchema,
+  threshold: z.number().int().min(1),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  channel: zAlertChannel,
+  state: z.nativeEnum(AlertState).optional(),
+  name: z.string().min(1).max(512).nullish(),
+  message: z.string().min(1).max(4096).nullish(),
+  silenced: z
+    .object({
+      by: z.string(),
+      at: z.string(),
+      until: z.string(),
+    })
+    .optional(),
+});
+
+export const AlertSchema = AlertSchemaBase.and(
+  zSavedSearchAlert.or(zTileAlert),
+);
 
 export type Alert = z.infer<typeof AlertSchema>;
 
@@ -346,6 +347,7 @@ export const SavedChartConfigSchema = z.intersection(
     z.object({
       name: z.string(),
       source: z.string(),
+      alert: AlertSchemaBase.optional(),
     }),
     _ChartConfigSchema.omit({
       connection: true,

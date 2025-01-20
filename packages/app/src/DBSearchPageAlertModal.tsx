@@ -37,6 +37,7 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import api from './api';
+import { optionsToSelectData } from './utils';
 
 const SavedSearchAlertFormSchema = z
   .object({
@@ -50,9 +51,6 @@ const SavedSearchAlertFormSchema = z
 const CHANNEL_ICONS = {
   webhook: <i className="bi bi-slack fs-7 text-slate-400" />,
 };
-
-const optionsToSelectData = (options: Record<string, string>) =>
-  Object.entries(options).map(([value, label]) => ({ value, label }));
 
 const AlertForm = ({
   savedSearch,
