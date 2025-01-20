@@ -36,7 +36,7 @@ export const SavedSearchSchema = z.object({
   name: z.string(),
   select: z.string(),
   where: z.string(),
-  whereLanguage: z.string().optional(),
+  whereLanguage: z.union([z.literal('sql'), z.literal('lucene')]).optional(),
   source: z.string(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),

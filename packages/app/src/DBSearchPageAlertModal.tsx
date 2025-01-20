@@ -4,6 +4,7 @@ import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  Accordion,
   Box,
   Button,
   Group,
@@ -16,8 +17,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
-import { AlertSchema } from '@/commonTypes';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import { AlertSchema, SavedSearch } from '@/commonTypes';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
 import {
@@ -26,7 +26,9 @@ import {
   ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
 
+import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { WebhookChannelForm } from './components/Alerts';
+import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import api from './api';
 
 const CHANNEL_ICONS = {
@@ -40,7 +42,7 @@ const zAlertForm = AlertSchema;
 type AlertForm = z.infer<typeof zAlertForm>;
 
 const AlertForm = ({
-  sourceId,
+  savedSearch,
   defaultValues,
   loading,
   deleteLoading,
@@ -48,7 +50,7 @@ const AlertForm = ({
   onSubmit,
   onClose,
 }: {
-  sourceId?: string;
+  savedSearch?: SavedSearch;
   defaultValues?: null | AlertForm;
   loading?: boolean;
   deleteLoading?: boolean;
@@ -56,13 +58,13 @@ const AlertForm = ({
   onSubmit: (data: AlertForm) => void;
   onClose: () => void;
 }) => {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({ id: savedSearch?.source });
 
   const databaseName = source?.from.databaseName;
   const tableName = source?.from.tableName;
   const connectionId = source?.connection;
 
-  const { control, handleSubmit } = useForm<AlertForm>({
+  const { control, handleSubmit, watch } = useForm<AlertForm>({
     defaultValues: defaultValues || {
       interval: '5m',
       threshold: 1,
@@ -139,6 +141,26 @@ const AlertForm = ({
           <WebhookChannelForm control={control} name={`channel.webhookId`} />
         </Paper>
       </Stack>
+
+      {savedSearch && (
+        <Accordion defaultValue={'chart'} mt="sm" mx={-16} variant="separated">
+          <Accordion.Item value="chart">
+            <Accordion.Control icon={<i className="bi bi-chart"></i>}>
+              <Text size="sm">Sample events chart</Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <AlertPreviewChart
+                savedSearch={savedSearch}
+                interval={watch('interval')}
+                groupBy={watch('groupBy')}
+                threshold={watch('threshold')}
+                thresholdType={watch('thresholdType')}
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      )}
+
       <Group mt="lg" justify="space-between" gap="xs">
         <div>
           {defaultValues && (
@@ -249,7 +271,13 @@ export const DBSearchPageAlertModal = ({
   };
 
   return (
-    <Modal opened={open} onClose={onClose} size="xl" withCloseButton={false}>
+    <Modal
+      opened={open}
+      onClose={onClose}
+      size="xl"
+      withCloseButton={false}
+      zIndex={9999}
+    >
       <Box pos="relative">
         <LoadingOverlay
           visible={isLoading}
@@ -291,7 +319,7 @@ export const DBSearchPageAlertModal = ({
         </Tabs>
 
         <AlertForm
-          sourceId={savedSearch?.source}
+          savedSearch={savedSearch}
           key={activeIndex}
           defaultValues={
             activeIndex === 'stage'
