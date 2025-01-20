@@ -8,6 +8,8 @@ export const AlertSchema = z.object({
   id: z.string().optional(),
   source: z.union([z.literal('saved_search'), z.literal('tile')]).optional(),
   savedSearchId: z.string().optional(),
+  dashboardId: z.string().optional(),
+  tileId: z.string().optional(),
   groupBy: z.string().optional(),
   interval: z.union([
     z.literal('1m'),
@@ -25,7 +27,16 @@ export const AlertSchema = z.object({
     type: z.literal('webhook'),
     webhookId: z.string().nonempty("Webhook ID can't be empty"),
   }),
+  state: z.union([z.literal('OK'), z.literal('ALERT')]).optional(),
+  silenced: z
+    .object({
+      by: z.string(),
+      at: z.string(),
+    })
+    .optional(),
 });
+
+export type Alert = z.infer<typeof AlertSchema>;
 
 // --------------------------
 // SAVED SEARCH

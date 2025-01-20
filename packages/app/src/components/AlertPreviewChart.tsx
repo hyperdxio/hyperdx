@@ -8,6 +8,8 @@ import { useSource } from '@/source';
 import { AlertInterval } from '@/types';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
+import { getAlertReferenceLines } from './Alerts';
+
 export type AlertPreviewChartProps = {
   savedSearch?: SavedSearch;
   interval: AlertInterval;
@@ -34,35 +36,7 @@ export const AlertPreviewChart = ({
       <DBTimeChart
         sourceId={savedSearch.source}
         showDisplaySwitcher={false}
-        referenceLines={
-          <>
-            {threshold != null && thresholdType === 'below' && (
-              <ReferenceArea
-                y1={0}
-                y2={threshold}
-                ifOverflow="extendDomain"
-                strokeWidth={0}
-                fillOpacity={0.15}
-              />
-            )}
-            {threshold != null && thresholdType === 'above' && (
-              <ReferenceArea
-                y1={threshold}
-                ifOverflow="extendDomain"
-                strokeWidth={0}
-                fillOpacity={0.15}
-              />
-            )}
-            {threshold != null && (
-              <ReferenceLine
-                y={threshold}
-                label={<Label value="Alert Threshold" fill={'white'} />}
-                stroke="red"
-                strokeDasharray="3 3"
-              />
-            )}
-          </>
-        }
+        referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
         config={{
           where: savedSearch.where || '',
           whereLanguage: savedSearch.whereLanguage,

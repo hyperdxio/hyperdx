@@ -18,6 +18,8 @@ import {
   SQLInterval,
 } from '@/sqlTypes';
 
+import { Alert } from './commonTypes';
+
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {
   array_index?: {
@@ -64,6 +66,7 @@ export type ChartConfig = {
   connection: string; // Connection ID
   fillNulls?: number | false; // undefined = 0, false = no fill
   selectGroupBy?: boolean; // Add groupBy elements to select statement (default behavior: true)
+  alert?: Alert;
   // TODO: Color support
 } & SelectSQLStatement;
 
