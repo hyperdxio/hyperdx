@@ -30,13 +30,11 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { WebhookChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import api from './api';
+import { optionsToSelectData } from './utils';
 
 const CHANNEL_ICONS = {
   webhook: <i className="bi bi-slack fs-7 text-slate-400" />,
 };
-
-const optionsToSelectData = (options: Record<string, string>) =>
-  Object.entries(options).map(([value, label]) => ({ value, label }));
 
 const zAlertForm = AlertSchema;
 type AlertForm = z.infer<typeof zAlertForm>;

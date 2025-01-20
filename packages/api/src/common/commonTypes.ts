@@ -144,6 +144,7 @@ export const _ChartConfigSchema = z.object({
   connection: z.string(),
   fillNulls: z.number().optional(),
   selectGroupBy: z.boolean().optional(),
+  alert: z.any().optional(), // todo
 });
 
 export const ChartConfigSchema = z.intersection(

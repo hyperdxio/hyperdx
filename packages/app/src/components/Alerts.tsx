@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Select, SelectProps } from 'react-hook-form-mantine';
+import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import { Button, Group } from '@mantine/core';
 
 import api from '@/api';
@@ -38,3 +39,40 @@ export const WebhookChannelForm = <T extends object>(
     </div>
   );
 };
+
+export const getAlertReferenceLines = ({
+  thresholdType,
+  threshold,
+  // TODO: zScore
+}: {
+  thresholdType: 'above' | 'below';
+  threshold: number;
+}) => (
+  <>
+    {threshold != null && thresholdType === 'below' && (
+      <ReferenceArea
+        y1={0}
+        y2={threshold}
+        ifOverflow="extendDomain"
+        strokeWidth={0}
+        fillOpacity={0.15}
+      />
+    )}
+    {threshold != null && thresholdType === 'above' && (
+      <ReferenceArea
+        y1={threshold}
+        ifOverflow="extendDomain"
+        strokeWidth={0}
+        fillOpacity={0.15}
+      />
+    )}
+    {threshold != null && (
+      <ReferenceLine
+        y={threshold}
+        label={<Label value="Alert Threshold" fill={'white'} />}
+        stroke="red"
+        strokeDasharray="3 3"
+      />
+    )}
+  </>
+);

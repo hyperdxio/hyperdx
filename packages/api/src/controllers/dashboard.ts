@@ -1,24 +1,58 @@
-import { differenceBy, uniq } from 'lodash';
+import { differenceBy, groupBy, uniq } from 'lodash';
 import { z } from 'zod';
 
-import { DashboardWithoutIdSchema, Tile } from '@/common/commonTypes';
+import { DashboardWithoutIdSchema } from '@/common/commonTypes';
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
-import { tagsSchema } from '@/utils/zod';
 
 export async function getDashboards(teamId: ObjectId) {
-  const dashboards = await Dashboard.find({
+  const _dashboards = await Dashboard.find({
     team: teamId,
   });
+
+  const alertsByTileId = groupBy(
+    await Alert.find({
+      dashboard: { $in: _dashboards.map(d => d._id) },
+      source: 'tile',
+    }),
+    'tileId',
+  );
+
+  const dashboards = _dashboards
+    .map(d => d.toJSON())
+    .map(d => ({
+      ...d,
+      tiles: d.tiles.map(t => ({
+        ...t,
+        config: { ...t.config, alert: alertsByTileId[t.id]?.[0] },
+      })),
+    }));
+
   return dashboards;
 }
 
 export async function getDashboard(dashboardId: string, teamId: ObjectId) {
-  return Dashboard.findOne({
+  const _dashboard = await Dashboard.findOne({
     _id: dashboardId,
     team: teamId,
   });
+
+  const alertsByTileId = groupBy(
+    await Alert.find({
+      dashboard: dashboardId,
+      source: 'tile',
+    }),
+    'tileId',
+  );
+
+  return {
+    ..._dashboard,
+    tiles: _dashboard?.tiles.map(t => ({
+      ...t,
+      config: { ...t.config, alert: alertsByTileId[t.id]?.[0] },
+    })),
+  };
 }
 
 export async function createDashboard(
@@ -29,13 +63,26 @@ export async function createDashboard(
     ...dashboard,
     team: teamId,
   }).save();
+
+  // Create related alerts
+  for (const tile of dashboard.tiles) {
+    if (!tile.config.alert) {
+      await Alert.findOneAndUpdate(
+        {
+          dashboard: newDashboard._id,
+          tileId: tile.id,
+          source: 'tile',
+        },
+        { ...tile.config.alert },
+        { new: true, upsert: true },
+      );
+    }
+  }
+
   return newDashboard;
 }
 
-export async function deleteDashboardAndAlerts(
-  dashboardId: string,
-  teamId: ObjectId,
-) {
+export async function deleteDashboard(dashboardId: string, teamId: ObjectId) {
   const dashboard = await Dashboard.findOneAndDelete({
     _id: dashboardId,
     team: teamId,
@@ -48,41 +95,10 @@ export async function deleteDashboardAndAlerts(
 export async function updateDashboard(
   dashboardId: string,
   teamId: ObjectId,
-  {
-    name,
-    tiles,
-    tags,
-  }: {
-    name: string;
-    tiles: Tile[];
-    tags: z.infer<typeof tagsSchema>;
-  },
+  updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
 ) {
-  const updatedDashboard = await Dashboard.findOneAndUpdate(
-    {
-      _id: dashboardId,
-      team: teamId,
-    },
-    {
-      name,
-      tiles,
-      tags: tags && uniq(tags),
-    },
-    { new: true },
-  );
+  const oldDashboard = await getDashboard(dashboardId, teamId);
 
-  return updatedDashboard;
-}
-
-export async function updateDashboardAndAlerts(
-  dashboardId: string,
-  teamId: ObjectId,
-  dashboard: z.infer<typeof DashboardWithoutIdSchema>,
-) {
-  const oldDashboard = await Dashboard.findOne({
-    _id: dashboardId,
-    team: teamId,
-  });
   if (oldDashboard == null) {
     throw new Error('Dashboard not found');
   }
@@ -93,8 +109,8 @@ export async function updateDashboardAndAlerts(
       team: teamId,
     },
     {
-      ...dashboard,
-      tags: dashboard.tags && uniq(dashboard.tags),
+      ...updates,
+      tags: updates.tags && uniq(updates.tags),
     },
     { new: true },
   );
@@ -102,18 +118,44 @@ export async function updateDashboardAndAlerts(
     throw new Error('Could not update dashboard');
   }
 
-  // Delete related alerts
-  const deletedTileIds = differenceBy(
-    oldDashboard?.tiles || [],
-    updatedDashboard?.tiles || [],
-    'id',
-  ).map(c => c.id);
+  // Update related alerts
+  // - Delete
+  const newAlertIds = updates.tiles?.map(t => t.config.alert?._id);
+  const deletedAlertIds: string[] = [];
 
-  if (deletedTileIds?.length > 0) {
-    await Alert.deleteMany({
-      dashboard: dashboardId,
-      tileId: { $in: deletedTileIds },
-    });
+  if (oldDashboard.tiles) {
+    for (const tile of oldDashboard.tiles) {
+      if (
+        tile.config.alert?._id &&
+        !newAlertIds?.includes(tile.config.alert._id)
+      ) {
+        deletedAlertIds.push(tile.config.alert._id.toString());
+      }
+    }
+
+    if (deletedAlertIds?.length > 0) {
+      await Alert.deleteMany({
+        dashboard: dashboardId,
+        _id: { $in: deletedAlertIds },
+      });
+    }
+  }
+
+  // - Update / Create
+  if (updates.tiles) {
+    for (const tile of updates.tiles) {
+      if (tile.config.alert) {
+        await Alert.findOneAndUpdate(
+          {
+            dashboard: dashboardId,
+            tileId: tile.id,
+            source: 'tile',
+          },
+          { ...tile.config.alert },
+          { new: true, upsert: true },
+        );
+      }
+    }
   }
 
   return updatedDashboard;

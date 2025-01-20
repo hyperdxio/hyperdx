@@ -191,6 +191,20 @@ const Tile = forwardRef(
       [chart.config.source, setRowId, setRowSource],
     );
 
+    const alert = chart.config.alert;
+    const alertIndicatorColor = useMemo(() => {
+      if (!alert) {
+        return 'transparent';
+      }
+      if (alert.state === 'OK') {
+        return 'green';
+      }
+      if (alert.silenced?.at) {
+        return 'yellow';
+      }
+      return 'red';
+    }, [alert]);
+
     return (
       <div
         className={`p-2 ${className} d-flex flex-column ${
@@ -217,6 +231,28 @@ const Tile = forwardRef(
           </Text>
           {hovered ? (
             <Flex gap="0px">
+              {chart.config.displayType === DisplayType.Line && (
+                <Indicator
+                  size={5}
+                  zIndex={1}
+                  color={alertIndicatorColor}
+                  label={
+                    !alert && <span className="text-slate-400 fs-8">+</span>
+                  }
+                  mr={4}
+                >
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    size="xxs"
+                    onClick={onEditClick}
+                    title="Alerts"
+                  >
+                    <i className="bi bi-bell fs-7"></i>
+                  </Button>
+                </Indicator>
+              )}
+
               <Button
                 variant="subtle"
                 color="gray.4"
