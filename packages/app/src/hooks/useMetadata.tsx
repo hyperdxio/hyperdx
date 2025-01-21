@@ -1,15 +1,13 @@
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  Field,
-  metadata,
-  TableMetadata,
-} from '@hyperdx/common-utils/dist/metadata';
+import { Field, TableMetadata } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   keepPreviousData,
   useQuery,
   UseQueryOptions,
 } from '@tanstack/react-query';
+
+import { getMetadata } from '@/metadata';
 
 export function useColumns(
   {
@@ -26,6 +24,7 @@ export function useColumns(
   return useQuery<ColumnMeta[]>({
     queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
     queryFn: async () => {
+      const metadata = getMetadata();
       return metadata.getColumns({
         databaseName,
         tableName,
@@ -48,6 +47,7 @@ export function useAllFields(
   },
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
+  const metadata = getMetadata();
   return useQuery<Field[]>({
     queryKey: ['useMetadata.useAllFields', { databaseName, tableName }],
     queryFn: async () => {
@@ -73,6 +73,7 @@ export function useTableMetadata(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
+  const metadata = getMetadata();
   return useQuery<TableMetadata>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
@@ -94,6 +95,7 @@ export function useGetKeyValues({
   chartConfig: ChartConfigWithDateRange;
   keys: string[];
 }) {
+  const metadata = getMetadata();
   return useQuery({
     queryKey: ['useMetadata.useGetKeyValues', { chartConfig, keys }],
     queryFn: async () => {

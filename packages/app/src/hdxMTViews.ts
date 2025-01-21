@@ -17,6 +17,8 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
+import { getMetadata } from '@/metadata';
+
 const HDX_DATABASE = 'hyperdx'; // all materialized views should sit in this database
 
 // a hashed select field used as a field name in the materialized view
@@ -114,7 +116,7 @@ export const buildMTViewSelectQuery = async (
     orderBy: undefined,
     limit: undefined,
   };
-  const mtViewSQL = await renderChartConfig(_config);
+  const mtViewSQL = await renderChartConfig(_config, getMetadata());
   const mtViewSQLHash = objectHash.sha1(mtViewSQL);
   const mtViewName = `${chartConfig.from.tableName}_mv_${mtViewSQLHash}`;
   const renderMTViewConfig = {
@@ -146,7 +148,7 @@ export const buildMTViewSelectQuery = async (
     ),
     renderMTViewConfig: async () => {
       try {
-        return await renderChartConfig(renderMTViewConfig);
+        return await renderChartConfig(renderMTViewConfig, getMetadata());
       } catch (e) {
         console.error('Failed to render MTView config', e);
         return null;

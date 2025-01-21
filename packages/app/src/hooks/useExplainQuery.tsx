@@ -1,19 +1,22 @@
-import { sendQuery } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { getClickhouseClient } from '@/clickhouse';
+import { getMetadata } from '@/metadata';
+
 export function useExplainQuery(
   config: ChartConfigWithDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
+  const clickhouseClient = getClickhouseClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['explain', config],
     queryFn: async ({ signal }) => {
-      const query = await renderChartConfig(config);
-      const response = await sendQuery<'JSONEachRow'>({
+      const query = await renderChartConfig(config, getMetadata());
+      const response = await clickhouseClient.query<'JSONEachRow'>({
         query: `EXPLAIN ESTIMATE ${query.sql}`,
         query_params: query.params,
         format: 'JSONEachRow',

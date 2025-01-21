@@ -7,7 +7,6 @@ import {
   useQueryState,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { sendQuery } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -20,6 +19,8 @@ import {
   Title,
 } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+
+import { getClickhouseClient } from '@/clickhouse';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
@@ -36,6 +37,7 @@ function useBenchmarkQueryIds({
   iterations?: number;
 }) {
   const enabled = queries.length > 0 && connections.length > 0;
+  const clickhouseClient = getClickhouseClient();
 
   return useQuery({
     enabled,
@@ -50,17 +52,19 @@ function useBenchmarkQueryIds({
           // ask CH to use ours instead
           const queryId = crypto.randomUUID();
 
-          await sendQuery({
-            query: shuffledQueries[j],
-            connectionId: connections[j],
-            format: 'NULL',
-            clickhouse_settings: {
-              min_bytes_to_use_direct_io: '1',
-              use_query_cache: 0,
-              wait_end_of_query: 1,
-            },
-            queryId,
-          }).then(res => res.text());
+          await clickhouseClient
+            .query({
+              query: shuffledQueries[j],
+              connectionId: connections[j],
+              format: 'NULL',
+              clickhouse_settings: {
+                min_bytes_to_use_direct_io: '1',
+                use_query_cache: 0,
+                wait_end_of_query: 1,
+              },
+              queryId,
+            })
+            .then(res => res.text());
 
           queryIds[j] ??= [];
           queryIds[j].push(queryId);
@@ -90,16 +94,19 @@ function useEstimates(
   },
   options: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'> = {},
 ) {
+  const clickhouseClient = getClickhouseClient();
   return useQuery({
     queryKey: ['estimate', queries, connections],
     queryFn: async () => {
       return Promise.all(
         queries.map((query, i) =>
-          sendQuery({
-            query: `EXPLAIN ESTIMATE ${query}`,
-            format: 'JSON',
-            connectionId: connections[i],
-          }).then(res => res.json()),
+          clickhouseClient
+            .query({
+              query: `EXPLAIN ESTIMATE ${query}`,
+              format: 'JSON',
+              connectionId: connections[i],
+            })
+            .then(res => res.json()),
         ),
       );
     },
@@ -117,16 +124,18 @@ function useIndexes(
   },
   options: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'> = {},
 ) {
+  const clickhouseClient = getClickhouseClient();
   return useQuery({
     queryKey: ['indexes', queries, connections],
     queryFn: async () => {
       return Promise.all(
         queries.map((query, i) =>
-          sendQuery({
-            query: `EXPLAIN indexes=1, json=1, description = 0 ${query}`,
-            format: 'TSVRaw',
-            connectionId: connections[i],
-          })
+          clickhouseClient
+            .query({
+              query: `EXPLAIN indexes=1, json=1, description = 0 ${query}`,
+              format: 'TSVRaw',
+              connectionId: connections[i],
+            })
             .then(res => res.text())
             .then(res => JSON.parse(res)),
         ),

@@ -2,6 +2,7 @@
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithOptDateRange,
   renderChartConfig,
@@ -20,6 +21,7 @@ import { URLSearchParams } from 'url';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
+import { getConnectionById } from '@/controllers/connection';
 import Alert, {
   AlertSource,
   AlertState,
@@ -735,9 +737,28 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       return;
     }
 
-    const query = await renderChartConfig(chartConfig);
-    const checksData = await clickhouse
-      .sendQuery<'JSON'>({
+    const connection = await getConnectionById(
+      alert.team._id.toString(),
+      connectionId,
+      true,
+    );
+
+    if (connection == null) {
+      logger.error({
+        message: 'Connection not found',
+        alertId: alert.id,
+      });
+      return;
+    }
+    const clickhouseClient = new clickhouse.ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+    const metadata = getMetadata(clickhouseClient);
+    const query = await renderChartConfig(chartConfig, metadata);
+    const checksData = await clickhouseClient
+      .query<'JSON'>({
         query: query.sql,
         query_params: query.params,
         format: 'JSON',

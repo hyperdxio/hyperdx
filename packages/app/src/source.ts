@@ -7,7 +7,6 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { metadata } from '@hyperdx/common-utils/dist/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { hashCode } from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
+import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
 
 const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
@@ -200,6 +200,7 @@ export async function inferTableSourceConfig({
 }): Promise<
   Partial<Omit<TSource, 'id' | 'name' | 'from' | 'connection' | 'kind'>>
 > {
+  const metadata = getMetadata();
   const columns = await metadata.getColumns({
     databaseName,
     tableName,

@@ -3,7 +3,6 @@ import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ClickHouseQueryError,
   parameterizedQueryToSql,
-  sendQuery,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithOptDateRange,
@@ -11,13 +10,16 @@ import {
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { getClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
+import { getMetadata } from '@/metadata';
 
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
   options?: Partial<UseQueryOptions<ResponseJSON<any>>>,
 ) {
+  const clickhouseClient = getClickhouseClient();
   return useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
     queryFn: async ({ signal }) => {
@@ -33,10 +35,10 @@ export function useQueriedChartConfig(
         query = await renderMTViewConfig();
       }
       if (query == null) {
-        query = await renderChartConfig(config);
+        query = await renderChartConfig(config, getMetadata());
       }
 
-      const resultSet = await sendQuery<'JSON'>({
+      const resultSet = await clickhouseClient.query<'JSON'>({
         query: query.sql,
         query_params: query.params,
         format: 'JSON',
@@ -59,7 +61,7 @@ export function useRenderedSqlChartConfig(
   return useQuery<string>({
     queryKey: ['renderedSql', config],
     queryFn: async () => {
-      const query = await renderChartConfig(config);
+      const query = await renderChartConfig(config, getMetadata());
 
       return format(parameterizedQueryToSql(query));
     },

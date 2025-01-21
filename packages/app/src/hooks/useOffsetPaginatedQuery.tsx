@@ -4,7 +4,6 @@ import { ResponseJSON, Row } from '@clickhouse/client-web';
 import {
   ClickHouseQueryError,
   ColumnMetaType,
-  sendQuery,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -17,6 +16,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { getClickhouseClient } from '@/clickhouse';
+import { getMetadata } from '@/metadata';
 import { omit } from '@/utils';
 
 function queryKeyFn(prefix: string, config: ChartConfigWithDateRange) {
@@ -48,21 +49,26 @@ const queryFn: QueryFunction<
   const isStreamingIncrementally = !meta.hasPreviousQueries || pageParam > 0;
 
   const config = queryKey[1];
-  const query = await renderChartConfig({
-    ...config,
-    limit: {
-      limit: config.limit?.limit,
-      offset: pageParam,
+  const query = await renderChartConfig(
+    {
+      ...config,
+      limit: {
+        limit: config.limit?.limit,
+        offset: pageParam,
+      },
     },
-  });
+    getMetadata(),
+  );
 
-  const resultSet = await sendQuery<'JSONCompactEachRowWithNamesAndTypes'>({
-    query: query.sql,
-    query_params: query.params,
-    format: 'JSONCompactEachRowWithNamesAndTypes',
-    abort_signal: signal,
-    connectionId: config.connection,
-  });
+  const clickhouseClient = getClickhouseClient();
+  const resultSet =
+    await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
+      query: query.sql,
+      query_params: query.params,
+      format: 'JSONCompactEachRowWithNamesAndTypes',
+      abort_signal: signal,
+      connectionId: config.connection,
+    });
 
   const stream = resultSet.stream();
 
