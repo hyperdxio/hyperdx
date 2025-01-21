@@ -358,99 +358,6 @@ export class ClickhouseClient {
   }
 }
 
-// TODO: TO BE DEPRECATED
-export const client = {
-  async query<T extends DataFormat>({
-    query,
-    format = 'JSON',
-    query_params = {},
-    abort_signal,
-    clickhouse_settings,
-    host,
-    username,
-    password,
-    includeCredentials,
-    includeCorsHeader,
-    connectionId,
-    queryId,
-  }: {
-    query: string;
-    format?: string;
-    abort_signal?: AbortSignal;
-    query_params?: Record<string, any>;
-    clickhouse_settings?: Record<string, any>;
-    host?: string;
-    username?: string;
-    password?: string;
-    includeCredentials: boolean;
-    includeCorsHeader: boolean;
-    connectionId?: string;
-    queryId?: string;
-  }): Promise<Omit<BaseResultSet<any, T>, 'close'>> {
-    const searchParams = new URLSearchParams([
-      ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
-      ...(connectionId ? [['hyperdx_connection_id', connectionId]] : []),
-      ['query', query],
-      ['default_format', format],
-      ['date_time_output_format', 'iso'],
-      ['wait_end_of_query', '0'],
-      ['cancel_http_readonly_queries_on_client_close', '1'],
-      ...(username ? [['user', username]] : []),
-      ...(password ? [['password', password]] : []),
-      ...(queryId ? [['query_id', queryId]] : []),
-      ...Object.entries(query_params).map(([key, value]) => [
-        `param_${key}`,
-        value,
-      ]),
-      ...Object.entries(clickhouse_settings ?? {}).map(([key, value]) => [
-        key,
-        value,
-      ]),
-    ]);
-
-    let debugSql = '';
-    try {
-      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
-      debugSql = query;
-    }
-
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-
-    const res = await fetch(`${host}/?${searchParams.toString()}`, {
-      ...(includeCredentials ? { credentials: 'include' } : {}),
-      signal: abort_signal,
-      method: 'GET',
-    });
-
-    // TODO: Send command to CH to cancel query on abort_signal
-    if (!res.ok) {
-      if (!isSuccessfulResponse(res.status)) {
-        const text = await res.text();
-        throw new ClickHouseQueryError(`${text}`, debugSql);
-      }
-    }
-
-    if (res.body == null) {
-      // TODO: Handle empty responses better?
-      throw new Error('Unexpected empty response from ClickHouse');
-    }
-
-    return {
-      query_id: queryId ?? '', // TODO: generate random query id
-      response_headers: getResponseHeaders(res),
-      json: async () => res.json(),
-      text: async () => res.text(),
-      stream: () => res.body as ResultStream<T, any>,
-    };
-  },
-};
-
 export const testLocalConnection = async ({
   host,
   username,
@@ -461,14 +368,10 @@ export const testLocalConnection = async ({
   password: string;
 }): Promise<boolean> => {
   try {
+    const client = new ClickhouseClient({ host, username, password });
     const result = await client.query({
       query: 'SELECT 1',
       format: 'TabSeparatedRaw',
-      host: host,
-      username: username,
-      password: password,
-      includeCredentials: false,
-      includeCorsHeader: true,
     });
     return result.text().then(text => text.trim() === '1');
   } catch (e) {
