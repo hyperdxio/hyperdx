@@ -12,13 +12,7 @@ import type {
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import type {
-  ChartSeries,
-  LogView,
-  MetricsDataType,
-  ServerDashboard,
-  Session,
-} from './types';
+import type { AlertsPageItem, ChartSeries, MetricsDataType } from './types';
 
 type ServicesResponse = {
   data: Record<
@@ -30,6 +24,10 @@ type ServicesResponse = {
       'k8s.pod.uid'?: string;
     }>
   >;
+};
+
+type AlertsResponse = {
+  data: AlertsPageItem[];
 };
 
 type MultiSeriesChartInput = {
@@ -559,6 +557,12 @@ const api = {
         hdxServer(`dashboards/${id}`, {
           method: 'DELETE',
         }).json(),
+    });
+  },
+  useAlerts() {
+    return useQuery({
+      queryKey: [`alerts`],
+      queryFn: () => hdxServer(`alerts`).json() as Promise<AlertsResponse>,
     });
   },
   useServices() {
