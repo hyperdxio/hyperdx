@@ -1,15 +1,9 @@
 import ms from 'ms';
 
-import * as clickhouse from '@/common/clickhouse';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import {
-  bulkInsertLogs,
-  getServer,
-  makeTile,
-  mockClientQuery,
-} from '@/fixtures';
+import { bulkInsertLogs, getServer, makeTile } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
@@ -625,7 +619,6 @@ describe('checkAlerts', () => {
     });
 
     it('SAVED_SEARCH alert - slack webhook', async () => {
-      mockClientQuery();
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -758,7 +751,6 @@ describe('checkAlerts', () => {
     });
 
     it('TILE alert - slack webhook', async () => {
-      mockClientQuery();
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -920,8 +912,6 @@ describe('checkAlerts', () => {
     });
 
     it('TILE alert - generic webhook', async () => {
-      mockClientQuery();
-
       jest.spyOn(checkAlert, 'handleSendGenericWebhook');
 
       const fetchMock = jest.fn().mockResolvedValue({});

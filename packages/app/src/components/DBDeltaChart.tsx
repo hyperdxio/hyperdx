@@ -10,15 +10,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Box, Flex, Group, Pagination, Text } from '@mantine/core';
-
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import {
   ChartConfigWithOptDateRange,
   Filter,
   inverseSqlAstFilter,
   SqlAstFilter,
-} from '@/renderChartConfig';
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { Box, Flex, Group, Pagination, Text } from '@mantine/core';
+
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { truncateMiddle } from '@/utils';
 
 import styles from '../../styles/HDXLineChart.module.scss';

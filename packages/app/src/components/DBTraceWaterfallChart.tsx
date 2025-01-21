@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
-import { TSource } from '@/commonTypes';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import {

@@ -176,13 +176,13 @@ export const FilterSchema = z.union([
 
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType),
-  numberFormat: NumberFormatSchema,
+  numberFormat: NumberFormatSchema.optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   granularity: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
-  filters: z.array(FilterSchema),
+  filters: z.array(FilterSchema).optional(),
   connection: z.string(),
   fillNulls: z.number().optional(),
   selectGroupBy: z.boolean().optional(),

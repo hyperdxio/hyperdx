@@ -12,10 +12,10 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
-import { TSource } from '@/commonTypes';
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';

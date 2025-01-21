@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   Button,
   Checkbox,
@@ -14,7 +15,6 @@ import {
 } from '@mantine/core';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { mergePath } from '@/utils';
 

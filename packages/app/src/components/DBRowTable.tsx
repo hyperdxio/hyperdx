@@ -4,6 +4,14 @@ import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
+import {
+  ClickHouseQueryError,
+  convertCHDataTypeToJSType,
+  extractColumnReference,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { SelectList } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
@@ -17,17 +25,9 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import {
-  ClickHouseQueryError,
-  convertCHDataTypeToJSType,
-  extractColumnReference,
-  JSDataType,
-} from '@/clickhouse';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
-import { SelectList } from '@/sqlTypes';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';

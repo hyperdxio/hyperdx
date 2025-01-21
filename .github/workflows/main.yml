@@ -13,13 +13,17 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
+      - name: Build dependencies
+        run: make ci-build
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
       - name: Run lint + type check
@@ -29,13 +33,17 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
+      - name: Build dependencies
+        run: make ci-build
       - name: Run unit tests
         run: make ci-unit
   integration:
@@ -43,9 +51,9 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
       - name: Expose GitHub Runtime

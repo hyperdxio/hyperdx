@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import Drawer from 'react-modern-drawer';
+import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { Grid, Group, Text } from '@mantine/core';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
@@ -8,7 +9,6 @@ import { ChartBox } from '@/components/ChartBox';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
-import { Filter } from '@/renderChartConfig';
 import { getExpressions } from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';

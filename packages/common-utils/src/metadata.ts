@@ -1,11 +1,11 @@
 import {
   ChSql,
   chSql,
+  ClickhouseClient,
   ColumnMeta,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
-  sendQuery,
   tableExpr,
 } from '@/clickhouse';
 import {
@@ -72,9 +72,14 @@ export type TableMetadata = {
 };
 
 export class Metadata {
+  private readonly clickhouseClient: ClickhouseClient;
   private cache = new MetadataCache();
 
-  private static async queryTableMetadata({
+  constructor(clickhouseClient: ClickhouseClient) {
+    this.clickhouseClient = clickhouseClient;
+  }
+
+  private async queryTableMetadata({
     database,
     table,
     cache,
@@ -87,11 +92,13 @@ export class Metadata {
   }) {
     return cache.getOrFetch(`${database}.${table}.metadata`, async () => {
       const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
-      const json = await sendQuery<'JSON'>({
-        query: sql.sql,
-        query_params: sql.params,
-        connectionId,
-      }).then(res => res.json<TableMetadata>());
+      const json = await this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query: sql.sql,
+          query_params: sql.params,
+        })
+        .then(res => res.json<TableMetadata>());
       return json.data[0];
     });
   }
@@ -109,11 +116,12 @@ export class Metadata {
       `${databaseName}.${tableName}.columns`,
       async () => {
         const sql = chSql`DESCRIBE ${tableExpr({ database: databaseName, table: tableName })}`;
-        const columns = await sendQuery<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-        })
+        const columns = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+          })
           .then(res => res.json())
           .then(d => d.data);
         return columns as ColumnMeta[];
@@ -234,15 +242,16 @@ export class Metadata {
     return this.cache.getOrFetch<string[]>(
       `${databaseName}.${tableName}.${column}.keys`,
       async () => {
-        const keys = await sendQuery<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: {
-            max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-            read_overflow_mode: 'break',
-          },
-        })
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+              read_overflow_mode: 'break',
+            },
+          })
           .then(res => res.json<Record<string, unknown>>())
           .then(d => {
             let output: string[];
@@ -307,15 +316,16 @@ export class Metadata {
     return this.cache.getOrFetch<string[]>(
       `${databaseName}.${tableName}.${column}.${key}.values`,
       async () => {
-        const values = await sendQuery<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: {
-            max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-            read_overflow_mode: 'break',
-          },
-        })
+        const values = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+              read_overflow_mode: 'break',
+            },
+          })
           .then(res => res.json<Record<string, unknown>>())
           .then(d => d.data.map(row => row.value as string));
         return values;
@@ -383,7 +393,7 @@ export class Metadata {
     tableName: string;
     connectionId: string;
   }) {
-    const tableMetadata = await Metadata.queryTableMetadata({
+    const tableMetadata = await this.queryTableMetadata({
       cache: this.cache,
       database: databaseName,
       table: tableName,
@@ -402,22 +412,27 @@ export class Metadata {
     keys: string[];
     limit?: number;
   }) {
-    const sql = await renderChartConfig({
-      ...chartConfig,
-      select: keys
-        .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-        .join(', '),
-    });
-
-    const json = await sendQuery<'JSON'>({
-      query: sql.sql,
-      query_params: sql.params,
-      connectionId: chartConfig.connection,
-      clickhouse_settings: {
-        max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-        read_overflow_mode: 'break',
+    const sql = await renderChartConfig(
+      {
+        ...chartConfig,
+        select: keys
+          .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+          .join(', '),
       },
-    }).then(res => res.json<any>());
+      this,
+    );
+
+    const json = await this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId: chartConfig.connection,
+        clickhouse_settings: {
+          max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+          read_overflow_mode: 'break',
+        },
+      })
+      .then(res => res.json<any>());
 
     return Object.entries(json.data[0]).map(([key, value]) => ({
       key: keys[parseInt(key.replace('param', ''))],
@@ -432,4 +447,5 @@ export type Field = {
   jsType: JSDataType | null;
 };
 
-export const metadata = new Metadata();
+export const getMetadata = (clickhouseClient: ClickhouseClient) =>
+  new Metadata(clickhouseClient);

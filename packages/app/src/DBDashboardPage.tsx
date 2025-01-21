@@ -18,6 +18,16 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  ChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
+  DisplayType,
+  SearchCondition,
+  SearchConditionLanguage,
+  SQLInterval,
+} from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
   Badge,
   Box,
@@ -54,8 +64,6 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
-import { DisplayType } from '@/DisplayType';
-import { ChartConfigWithDateRange, Filter } from '@/renderChartConfig';
 
 import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
@@ -74,11 +82,6 @@ import {
   useSource,
   useSources,
 } from './source';
-import {
-  SearchCondition,
-  SearchConditionLanguage,
-  SQLInterval,
-} from './sqlTypes';
 import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
