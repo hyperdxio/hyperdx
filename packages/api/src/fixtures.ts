@@ -219,24 +219,6 @@ export const clearRedis = async () => {
 // ------------------------------------------------
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
-export const mockClientQuery = () => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  jest
-    .spyOn(commonClickhouse.client, 'query')
-    .mockImplementation(async (args: any) => {
-      const nodeClient = createClient({
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      return nodeClient.query(args) as unknown as ReturnType<
-        typeof commonClickhouse.client.query
-      >;
-    });
-};
-
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');

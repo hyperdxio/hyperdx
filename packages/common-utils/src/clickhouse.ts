@@ -3,7 +3,6 @@ import type {
   DataFormat,
   ResponseHeaders,
   ResponseJSON,
-  ResultStream,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 
@@ -276,19 +275,6 @@ export class ClickhouseClient {
     connectionId?: string;
     queryId?: string;
   }): Promise<BaseResultSet<any, T>> {
-    let _ResultSet: any;
-    if (isBrowser) {
-      const { ResultSet } = await import('@clickhouse/client-web');
-      _ResultSet = ResultSet;
-    } else if (isNode) {
-      const { ResultSet } = await import('@clickhouse/client');
-      _ResultSet = ResultSet;
-    } else {
-      throw new Error(
-        'ClickhouseClient is only supported in the browser or node environment',
-      );
-    }
-
     const isLocalMode = this.username != null && this.password != null;
     const includeCredentials = !isLocalMode;
     const includeCorsHeader = isLocalMode;
@@ -329,32 +315,58 @@ export class ClickhouseClient {
     // eslint-disable-next-line no-console
     console.log('--------------------------------------------------------');
 
-    // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
-    const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
-      ...(includeCredentials ? { credentials: 'include' } : {}),
-      signal: abort_signal,
-      method: 'GET',
-    });
+    if (isBrowser) {
+      const { ResultSet } = await import('@clickhouse/client-web');
+      // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
+      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
+        ...(includeCredentials ? { credentials: 'include' } : {}),
+        signal: abort_signal,
+        method: 'GET',
+      });
 
-    // TODO: Send command to CH to cancel query on abort_signal
-    if (!response.ok) {
-      if (!isSuccessfulResponse(response.status)) {
-        const text = await response.text();
-        throw new ClickHouseQueryError(`${text}`, debugSql);
+      // TODO: Send command to CH to cancel query on abort_signal
+      if (!response.ok) {
+        if (!isSuccessfulResponse(response.status)) {
+          const text = await response.text();
+          throw new ClickHouseQueryError(`${text}`, debugSql);
+        }
       }
-    }
 
-    if (response.body == null) {
-      // TODO: Handle empty responses better?
-      throw new Error('Unexpected empty response from ClickHouse');
-    }
+      if (response.body == null) {
+        // TODO: Handle empty responses better?
+        throw new Error('Unexpected empty response from ClickHouse');
+      }
+      return new ResultSet<T>(
+        response.body,
+        format as T,
+        queryId ?? '',
+        getResponseHeaders(response),
+      );
+    } else if (isNode) {
+      const { createClient } = await import('@clickhouse/client');
+      const _client = createClient({
+        host: this.host,
+        username: this.username,
+        password: this.password,
+        clickhouse_settings: {
+          date_time_output_format: 'iso',
+          wait_end_of_query: 0,
+          cancel_http_readonly_queries_on_client_close: 1,
+        },
+      });
 
-    return new _ResultSet(
-      response.body,
-      format,
-      queryId ?? '',
-      getResponseHeaders(response),
-    );
+      return _client.query({
+        query,
+        query_params,
+        format: format as T,
+        clickhouse_settings,
+        query_id: queryId,
+      }) as unknown as BaseResultSet<any, T>;
+    } else {
+      throw new Error(
+        'ClickhouseClient is only supported in the browser or node environment',
+      );
+    }
   }
 }
 
