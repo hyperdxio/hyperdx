@@ -1,6 +1,8 @@
 import { z } from 'zod';
-
-import { DashboardSchema, SavedSearchSchema } from './commonTypes';
+import {
+  DashboardSchema,
+  SavedSearchSchema,
+} from '@hyperdx/common-utils/dist/types';
 
 export type Team = {
   allowedAuthMethods: any[];

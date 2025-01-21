@@ -1,10 +1,10 @@
+import { TileSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { TileSchema } from '@/common/commonTypes';
 import {
   deleteDashboardAndAlerts,
   updateDashboard,

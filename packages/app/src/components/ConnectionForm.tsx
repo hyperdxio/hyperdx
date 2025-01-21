@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
 import { Box, Button, Flex, Group, Stack, Text } from '@mantine/core';
 
 import api from '@/api';
-import { testLocalConnection } from '@/clickhouse';
 import { InputControlled } from '@/components/InputControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import {

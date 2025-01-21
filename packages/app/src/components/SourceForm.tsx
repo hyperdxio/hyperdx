@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -25,11 +26,8 @@ import {
 import { useDebouncedCallback } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
-import { JSDataType } from '@/clickhouse';
-import { TSource } from '@/commonTypes';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useConnections } from '@/connection';
-import { Field } from '@/metadata';
 import {
   inferTableSourceConfig,
   useCreateSource,

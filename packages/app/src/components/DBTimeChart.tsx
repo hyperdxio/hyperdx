@@ -2,6 +2,12 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
+import {
+  ClickHouseQueryError,
+  formatResponseForTimeChart,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -11,11 +17,8 @@ import {
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
-import { ClickHouseQueryError, formatResponseForTimeChart } from '@/clickhouse';
-import { DisplayType } from '@/DisplayType';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 
 import { SQLPreview } from './ChartSQLPreview';
 
