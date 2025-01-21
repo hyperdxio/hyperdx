@@ -316,6 +316,7 @@ export class ClickhouseClient {
     console.log('--------------------------------------------------------');
 
     if (isBrowser) {
+      // TODO: check if we can use the client-web directly
       const { ResultSet } = await import('@clickhouse/client-web');
       // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
       const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
@@ -355,10 +356,12 @@ export class ClickhouseClient {
         },
       });
 
+      // TODO: Custom error handling
       return _client.query({
         query,
         query_params,
         format: format as T,
+        abort_signal,
         clickhouse_settings,
         query_id: queryId,
       }) as unknown as BaseResultSet<any, T>;
