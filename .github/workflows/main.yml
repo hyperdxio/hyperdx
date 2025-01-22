@@ -56,11 +56,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+      - name: Install root dependencies
+        run: yarn install
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v2
-      - name: Build images
+      - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
           docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+      - name: Build dependencies
+        run: make ci-build
       - name: Run integration tests
         run: make ci-int
