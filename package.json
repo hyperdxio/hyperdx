@@ -11,6 +11,7 @@
     "@nx/workspace": "16.8.1",
     "@typescript-eslint/eslint-plugin": "^8.7.0",
     "@typescript-eslint/parser": "^8.7.0",
+    "dotenv": "^16.4.7",
     "eslint": "^8.57.0",
     "eslint-config-next": "13",
     "eslint-config-prettier": "^9.1.0",
