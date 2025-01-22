@@ -202,6 +202,13 @@ export const AlertSchema = z
 
 export type Alert = z.infer<typeof AlertSchema>;
 
+export type AlertHistory = {
+  counts: number;
+  createdAt: string;
+  lastValues: { startTime: string; count: number }[];
+  state: AlertState;
+};
+
 // --------------------------
 // SAVED SEARCH
 // --------------------------
