@@ -71,7 +71,6 @@ services:
     environment:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
@@ -97,7 +96,6 @@ services:
   #     HDX_NODE_CONSOLE_CAPTURE: 1
   #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
   #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     INGESTOR_API_URL: 'http://ingestor:8002'
   #     MINER_API_URL: 'http://miner:5123'
   #     MONGO_URI: 'mongodb://db:27017/hyperdx'
   #     NODE_ENV: development
