@@ -17,7 +17,7 @@ export const FRONTEND_URL = (env.FRONTEND_URL ||
   DEFAULT_FRONTEND_URL) as string;
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
 export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
-export const IS_CI = NODE_ENV === 'ci';
+export const IS_CI = NODE_ENV === 'test';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';
 export const MINER_API_URL = env.MINER_API_URL as string;
