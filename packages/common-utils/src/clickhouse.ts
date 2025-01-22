@@ -346,7 +346,7 @@ export class ClickhouseClient {
     } else if (isNode) {
       const { createClient } = await import('@clickhouse/client');
       const _client = createClient({
-        host: this.host,
+        url: this.host,
         username: this.username,
         password: this.password,
         clickhouse_settings: {
