@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal, Spinner } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import { SubmitHandler, useForm } from 'react-hook-form';
 import {
   Badge,
   Box,
@@ -18,6 +19,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
@@ -28,6 +30,7 @@ import api from './api';
 import { useConnections } from './connection';
 import { withAppNav } from './layout';
 import { useSources } from './source';
+import { useConfirm } from './useConfirm';
 
 import styles from '../styles/TeamPage.module.scss';
 
@@ -643,6 +646,219 @@ function TeamMembersSection() {
   );
 }
 
+type WebhookForm = {
+  name: string;
+  url: string;
+  description?: string;
+};
+
+function CreateWebhookForm({
+  service,
+  onClose,
+  onSuccess,
+}: {
+  service: 'slack' | 'generic';
+  onClose: VoidFunction;
+  onSuccess: VoidFunction;
+}) {
+  const saveWebhook = api.useSaveWebhook();
+
+  const form = useForm<WebhookForm>({
+    defaultValues: {},
+  });
+
+  const onSubmit: SubmitHandler<WebhookForm> = async values => {
+    try {
+      await saveWebhook.mutateAsync({
+        service,
+        name: values.name,
+        url: values.url,
+        description: values.description || '',
+      });
+      notifications.show({
+        color: 'green',
+        message: `Webhook created successfully`,
+      });
+      onSuccess();
+      onClose();
+    } catch (e) {
+      console.error(e);
+      const message =
+        (e instanceof HTTPError ? (await e.response.json())?.message : null) ||
+        'Something went wrong. Please contact HyperDX team.';
+      notifications.show({
+        message,
+        color: 'red',
+        autoClose: 5000,
+      });
+    }
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <Stack mt="sm">
+        <Text>Create Webhook</Text>
+        <TextInput
+          label="Webhook Name"
+          placeholder="Post to #dev-alerts"
+          required
+          error={form.formState.errors.name?.message}
+          {...form.register('name', { required: true })}
+        />
+        <TextInput
+          label="Webhook URL"
+          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          type="url"
+          required
+          error={form.formState.errors.url?.message}
+          {...form.register('url', { required: true })}
+        />
+        <TextInput
+          label="Webhook Description (optional)"
+          placeholder="To be used for dev alerts"
+          error={form.formState.errors.description?.message}
+          {...form.register('description')}
+        />
+        <Group justify="space-between">
+          <Button
+            variant="outline"
+            type="submit"
+            loading={saveWebhook.isPending}
+          >
+            Add Webhook
+          </Button>
+          <Button variant="outline" color="gray" onClick={onClose} type="reset">
+            Cancel
+          </Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+}
+
+function DeleteWebhookButton({
+  webhookId,
+  webhookName,
+  onSuccess,
+}: {
+  webhookId: string;
+  webhookName: string;
+  onSuccess: VoidFunction;
+}) {
+  const confirm = useConfirm();
+  const deleteWebhook = api.useDeleteWebhook();
+
+  const handleDelete = async () => {
+    if (
+      await confirm(
+        `Are you sure you want to delete ${webhookName} webhook?`,
+        'Delete',
+      )
+    ) {
+      try {
+        await deleteWebhook.mutateAsync({ id: webhookId });
+        notifications.show({
+          color: 'green',
+          message: 'Webhook deleted successfully',
+        });
+        onSuccess();
+      } catch (e) {
+        console.error(e);
+        const message =
+          (e instanceof HTTPError
+            ? (await e.response.json())?.message
+            : null) || 'Something went wrong. Please contact HyperDX team.';
+        notifications.show({
+          message,
+          color: 'red',
+          autoClose: 5000,
+        });
+      }
+    }
+  };
+
+  return (
+    <Button
+      color="red"
+      size="compact-xs"
+      variant="outline"
+      onClick={handleDelete}
+      loading={deleteWebhook.isPending}
+    >
+      Delete
+    </Button>
+  );
+}
+
+function IntegrationsSection() {
+  const { data: slackWebhooksData, refetch: refetchSlackWebhooks } =
+    api.useWebhooks(['slack']);
+
+  const slackWebhooks = useMemo(() => {
+    return Array.isArray(slackWebhooksData?.data)
+      ? slackWebhooksData?.data
+      : [];
+  }, [slackWebhooksData]);
+
+  const [
+    isAddSlackModalOpen,
+    { open: openSlackModal, close: closeSlackModal },
+  ] = useDisclosure();
+
+  return (
+    <Box>
+      <Text size="md" c="gray.4">
+        Integrations
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Text mb="xs">Slack Webhooks</Text>
+
+        <Stack>
+          {slackWebhooks.map((webhook: any) => (
+            <Fragment key={webhook._id}>
+              <Group justify="space-between">
+                <Stack gap={0}>
+                  <Text size="sm">{webhook.name}</Text>
+                  <Text size="xs" opacity={0.7}>
+                    {webhook.url}
+                  </Text>
+                  {webhook.description && (
+                    <Text size="xxs" opacity={0.7}>
+                      {webhook.description}
+                    </Text>
+                  )}
+                </Stack>
+                <DeleteWebhookButton
+                  webhookId={webhook._id}
+                  webhookName={webhook.name}
+                  onSuccess={refetchSlackWebhooks}
+                />
+              </Group>
+              <Divider />
+            </Fragment>
+          ))}
+        </Stack>
+
+        {!isAddSlackModalOpen ? (
+          <Button variant="outline" color="gray.4" onClick={openSlackModal}>
+            Add Slack Webhook
+          </Button>
+        ) : (
+          <CreateWebhookForm
+            service="slack"
+            onClose={closeSlackModal}
+            onSuccess={() => {
+              refetchSlackWebhooks();
+              closeSlackModal();
+            }}
+          />
+        )}
+      </Card>
+    </Box>
+  );
+}
+
 export default function TeamPage() {
   const { data: team, isLoading } = api.useTeam();
   const hasAllowedAuthMethods =
@@ -667,6 +883,7 @@ export default function TeamPage() {
             <Stack my={20} gap="xl">
               <SourcesSection />
               <ConnectionsSection />
+              <IntegrationsSection />
 
               {hasAllowedAuthMethods && (
                 <>
