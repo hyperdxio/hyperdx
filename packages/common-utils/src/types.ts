@@ -129,6 +129,79 @@ export type SelectSQLStatement = {
   limit?: Limit;
 };
 
+// -------------------------
+// ALERTS
+// -------------------------
+export enum AlertThresholdType {
+  ABOVE = 'above',
+  BELOW = 'below',
+}
+
+export enum AlertState {
+  ALERT = 'ALERT',
+  DISABLED = 'DISABLED',
+  INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
+  OK = 'OK',
+}
+
+export enum AlertSource {
+  SAVED_SEARCH = 'saved_search',
+  TILE = 'tile',
+}
+
+export const AlertIntervalSchema = z.union([
+  z.literal('1m'),
+  z.literal('5m'),
+  z.literal('15m'),
+  z.literal('30m'),
+  z.literal('1h'),
+  z.literal('6h'),
+  z.literal('12h'),
+  z.literal('1d'),
+]);
+
+export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
+
+export const zAlertChannel = z.object({
+  type: z.literal('webhook'),
+  webhookId: z.string().nonempty("Webhook ID can't be empty"),
+});
+
+export const zSavedSearchAlert = z.object({
+  source: z.literal(AlertSource.SAVED_SEARCH),
+  groupBy: z.string().optional(),
+  savedSearchId: z.string().min(1),
+});
+
+export const zTileAlert = z.object({
+  source: z.literal(AlertSource.TILE),
+  tileId: z.string().min(1),
+  dashboardId: z.string().min(1),
+});
+
+export const AlertSchema = z
+  .object({
+    id: z.string().optional(),
+    interval: AlertIntervalSchema,
+    threshold: z.number().int().min(1),
+    thresholdType: z.nativeEnum(AlertThresholdType),
+    channel: zAlertChannel,
+    state: z.nativeEnum(AlertState).optional(),
+    name: z.string().min(1).max(512).nullish(),
+    message: z.string().min(1).max(4096).nullish(),
+    source: z.nativeEnum(AlertSource),
+    silenced: z
+      .object({
+        by: z.string(),
+        at: z.string(),
+        until: z.string(),
+      })
+      .optional(),
+  })
+  .and(zSavedSearchAlert.or(zTileAlert));
+
+export type Alert = z.infer<typeof AlertSchema>;
+
 // --------------------------
 // SAVED SEARCH
 // --------------------------
