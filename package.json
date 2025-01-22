@@ -27,6 +27,7 @@
     "prepare": "husky install",
     "app:lint": "nx run @hyperdx/app:ci:lint",
     "lint": "npx nx run-many -t ci:lint",
+    "version": "npx changeset version --ignore @hyperdx/api --ignore @hyperdx/app",
     "release": "npx nx run-many --target=build --projects=@hyperdx/common-utils && yarn changeset publish",
     "dev": "docker compose -f docker-compose.dev.yml up"
   },
