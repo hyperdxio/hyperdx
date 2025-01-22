@@ -2,7 +2,7 @@ import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { Metadata, metadata } from '@/metadata';
+import { Metadata } from '@/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
@@ -751,6 +751,7 @@ function renderLimit(
 
 export async function renderChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
+  metadata: Metadata,
 ): Promise<ChSql> {
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);

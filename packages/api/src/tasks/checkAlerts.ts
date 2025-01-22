@@ -1,6 +1,13 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
+import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
+import {
+  ChartConfigWithOptDateRange,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
@@ -12,16 +19,9 @@ import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { URLSearchParams } from 'url';
 
-import * as clickhouse from '@/common/clickhouse';
-import { convertCHDataTypeToJSType } from '@/common/clickhouse';
-import { DisplayType } from '@/common/DisplayType';
-import {
-  ChartConfigWithOptDateRange,
-  FIXED_TIME_BUCKET_EXPR_ALIAS,
-} from '@/common/renderChartConfig';
-import { renderChartConfig } from '@/common/renderChartConfig';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
+import { getConnectionById } from '@/controllers/connection';
 import Alert, {
   AlertSource,
   AlertState,
@@ -737,9 +737,28 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       return;
     }
 
-    const query = await renderChartConfig(chartConfig);
-    const checksData = await clickhouse
-      .sendQuery<'JSON'>({
+    const connection = await getConnectionById(
+      alert.team._id.toString(),
+      connectionId,
+      true,
+    );
+
+    if (connection == null) {
+      logger.error({
+        message: 'Connection not found',
+        alertId: alert.id,
+      });
+      return;
+    }
+    const clickhouseClient = new clickhouse.ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+    const metadata = getMetadata(clickhouseClient);
+    const query = await renderChartConfig(chartConfig, metadata);
+    const checksData = await clickhouseClient
+      .query<'JSON'>({
         query: query.sql,
         query_params: query.params,
         format: 'JSON',
@@ -768,7 +787,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       const meta =
         checksData.meta?.map(m => ({
           ...m,
-          jsType: convertCHDataTypeToJSType(m.type),
+          jsType: clickhouse.convertCHDataTypeToJSType(m.type),
         })) ?? [];
 
       const timestampColumnName = meta.find(

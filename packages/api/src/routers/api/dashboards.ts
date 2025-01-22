@@ -1,13 +1,13 @@
+import {
+  DashboardSchema,
+  DashboardWithoutIdSchema,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { differenceBy, groupBy, uniq } from 'lodash';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import {
-  DashboardSchema,
-  DashboardWithoutIdSchema,
-} from '@/common/commonTypes';
 import {
   createDashboard,
   deleteDashboardAndAlerts,

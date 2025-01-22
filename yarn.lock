@@ -3126,6 +3126,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@clickhouse/client-common@npm:1.10.1, @clickhouse/client-common@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client-common@npm:1.10.1"
+  checksum: 10c0/11638657ab9f5b7ffe8d1625215ec6be5377fe2ff9d7010228dfbdcc4edb9613b59c77d169c7ede4c16b38090942815d262b9e6d8425bce045d7014d32db56cb
+  languageName: node
+  linkType: hard
+
 "@clickhouse/client-common@npm:1.7.0":
   version: 1.7.0
   resolution: "@clickhouse/client-common@npm:1.7.0"
@@ -3133,10 +3140,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:^1.9.1":
-  version: 1.9.1
-  resolution: "@clickhouse/client-common@npm:1.9.1"
-  checksum: 10c0/d4df33c16e8ead60c8d656418c81f4cacd16f63c26d462bb265fa4892c0e0f40c5ddf447724befea36ffed569dae685049a9fb6f6210e3362bcbe632e15dfc70
+"@clickhouse/client-web@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client-web@npm:1.10.1"
+  dependencies:
+    "@clickhouse/client-common": "npm:1.10.1"
+  checksum: 10c0/4b4041171331670c8ca89727d425152a8d2057460ef2b3ac9c765479a0dc99080b4ff10c8100ebbcc1e3083de3719d7aefd5b74a28866a5e1a9c9702779c9b92
   languageName: node
   linkType: hard
 
@@ -3155,6 +3164,15 @@ __metadata:
   dependencies:
     "@clickhouse/client-common": "npm:0.2.10"
   checksum: 10c0/415e75572f36eff333582d55b638c5f29a99561b0092fb2d8246b08c9e5e0cd95d6df61b2e754936672980e5c47b1cb594272c069c5080f4c3c79ddcda58e15b
+  languageName: node
+  linkType: hard
+
+"@clickhouse/client@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client@npm:1.10.1"
+  dependencies:
+    "@clickhouse/client-common": "npm:1.10.1"
+  checksum: 10c0/a0c1c7541be7ba2691b584cd905282bab622411f165b504e61a2cf22e075fc6afcd3105b29ddc939a46b47a6e641f95161d2323b7cf831ae2a4cf920945dbd60
   languageName: node
   linkType: hard
 
@@ -4198,7 +4216,7 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
-    "@clickhouse/client-common": "npm:^1.9.1"
+    "@hyperdx/common-utils": "npm:^0.0.9"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4246,7 +4264,6 @@ __metadata:
     mongoose: "npm:^6.12.0"
     ms: "npm:^2.1.3"
     node-schedule: "npm:^2.1.1"
-    node-sql-parser: "npm:^5.3.5"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
     on-headers: "npm:^1.0.2"
@@ -4286,7 +4303,7 @@ __metadata:
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/lucene": "npm:^3.1.1"
+    "@hyperdx/common-utils": "npm:^0.0.9"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4314,7 +4331,6 @@ __metadata:
     "@testing-library/react": "npm:^14.2.1"
     "@testing-library/user-event": "npm:^14.5.2"
     "@types/crypto-js": "npm:^4"
-    "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/intercom-web": "npm:^2.8.18"
     "@types/jest": "npm:^28.1.6"
     "@types/lodash": "npm:^4.14.186"
@@ -4355,7 +4371,6 @@ __metadata:
     next-seo: "npm:^4.28.1"
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
-    node-sql-parser: "npm:^5.3.2"
     numbro: "npm:^2.4.0"
     nuqs: "npm:^1.17.0"
     object-hash: "npm:^3.0.0"
@@ -4412,11 +4427,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.0.9, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client-common": "npm:^1.9.1"
+    "@clickhouse/client": "npm:^1.10.1"
+    "@clickhouse/client-common": "npm:^1.10.1"
+    "@clickhouse/client-web": "npm:^1.10.1"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^28.1.1"
@@ -4436,6 +4453,7 @@ __metadata:
     rimraf: "npm:^4.4.1"
     semver: "npm:^7.5.2"
     sqlstring: "npm:^2.3.3"
+    store2: "npm:^2.14.4"
     supertest: "npm:^6.3.1"
     ts-jest: "npm:^28.0.5"
     ts-node: "npm:^10.8.1"
@@ -21533,16 +21551,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-sql-parser@npm:^5.3.2":
-  version: 5.3.2
-  resolution: "node-sql-parser@npm:5.3.2"
-  dependencies:
-    "@types/pegjs": "npm:^0.10.0"
-    big-integer: "npm:^1.6.48"
-  checksum: 10c0/4c28bbb156aab433387fbda8e2f5ab5dc76d231b77b9d58cd55e9f5b63d16dc2cd96002d242c6fd602c10f89baea1a33ef1cd2047b8e4a1b15008476f2c2c969
-  languageName: node
-  linkType: hard
-
 "node-sql-parser@npm:^5.3.5":
   version: 5.3.5
   resolution: "node-sql-parser@npm:5.3.5"
@@ -25763,6 +25771,13 @@ __metadata:
   version: 2.14.3
   resolution: "store2@npm:2.14.3"
   checksum: 10c0/22e1096e6d69590672ca0b7f891d82b060837ef4c3e5df0d4563e6cbed14c52ddf2589fa94b79f4311b6ec41d95d6142e5d01d194539e0175c3fb4090cca8244
+  languageName: node
+  linkType: hard
+
+"store2@npm:^2.14.4":
+  version: 2.14.4
+  resolution: "store2@npm:2.14.4"
+  checksum: 10c0/3453c9c8c153c760e6290395a7bc23669df5dc8a6e8a49f9b3187dbb9f86d14b58705aa4f17fad6b536d4b04fe3e66ea5bde12c1352abd52c6b303bbf5757ab6
   languageName: node
   linkType: hard
 

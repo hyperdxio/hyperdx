@@ -1,6 +1,6 @@
+import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { SavedSearchSchema } from '@/common/commonTypes';
 import { SavedSearch } from '@/models/savedSearch';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;

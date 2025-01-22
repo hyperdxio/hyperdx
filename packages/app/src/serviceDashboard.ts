@@ -1,4 +1,4 @@
-import { TSource } from '@/commonTypes';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 
 function getDefaults() {
   const spanAttributeField = 'SpanAttributes';

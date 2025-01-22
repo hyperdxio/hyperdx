@@ -1,9 +1,9 @@
+import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { SavedSearchSchema } from '@/common/commonTypes';
 import {
   createSavedSearch,
   deleteSavedSearch,

@@ -1,8 +1,7 @@
+import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-
-import { SavedSearchSchema } from '@/common/commonTypes';
 
 type ObjectId = mongoose.Types.ObjectId;
 
