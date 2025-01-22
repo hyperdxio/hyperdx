@@ -42,7 +42,7 @@ dev-int-build:
 .PHONY: dev-int
 dev-int:
 	docker compose -p int -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/api:dev:int
+	npx nx run @hyperdx/api:dev:int $(FILE)
 	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
