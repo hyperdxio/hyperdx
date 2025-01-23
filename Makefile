@@ -17,7 +17,7 @@ dev-build:
 
 .PHONY: dev-up
 dev-up:
-	docker compose -f docker-compose.dev.yml up -d
+	npm run dev
 
 .PHONY: dev-down
 dev-down:
