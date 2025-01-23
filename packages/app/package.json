@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "npx dotenv -e .env.development -- next dev",
-    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true next dev -p 8080",
+    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint --quiet . --ext .ts,.tsx",
