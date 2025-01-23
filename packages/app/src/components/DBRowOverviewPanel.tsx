@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { Accordion } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getEventBody, getFirstTimestampValueExpression } from '@/source';
@@ -69,7 +70,7 @@ export function useRowData({
   );
 }
 
-export function RowDataPanel({
+export function RowOverviewPanel({
   source,
   rowId,
 }: {
@@ -86,9 +87,36 @@ export function RowDataPanel({
     return firstRow;
   }, [data]);
 
+  const resourceAttributes = useMemo(() => {
+    return firstRow[source.resourceAttributesExpression!] || {};
+  }, [firstRow, source.resourceAttributesExpression]);
+
+  const eventAttributes = useMemo(() => {
+    return firstRow[source.eventAttributesExpression!] || {};
+  }, [firstRow, source.eventAttributesExpression]);
+
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
-      <DBRowJsonViewer data={firstRow} />
+      <Accordion
+        defaultValue={['resourceAttributes', 'eventAttributes']}
+        multiple
+      >
+        <Accordion.Item value="resourceAttributes">
+          <Accordion.Control>Resource Attributes</Accordion.Control>
+          <Accordion.Panel>
+            <DBRowJsonViewer data={resourceAttributes} />
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        <Accordion.Item value="eventAttributes">
+          <Accordion.Control>
+            {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+          </Accordion.Control>
+          <Accordion.Panel>
+            <DBRowJsonViewer data={eventAttributes} />
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
     </div>
   );
 }
