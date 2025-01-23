@@ -7,7 +7,7 @@
     "node": ">=18.12.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "npx dotenv -e .env.development -- next dev",
     "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true next dev -p 8080",
     "build": "next build",
     "start": "next start",

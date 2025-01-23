@@ -25,9 +25,9 @@ export default (req: NextApiRequest, res: NextApiResponse) => {
     on: {
       proxyReq: fixRequestBody,
     },
-    ...(IS_DEV && {
-      logger: console,
-    }),
+    // ...(IS_DEV && {
+    //   logger: console,
+    // }),
   });
   return proxy(req, res, error => {
     if (error) {

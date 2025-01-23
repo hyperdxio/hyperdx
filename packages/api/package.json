@@ -85,8 +85,8 @@
   },
   "scripts": {
     "start": "node ./build/index.js",
-    "dev": "nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
-    "dev:task": "ts-node -r tsconfig-paths/register ./src/tasks/index.ts",
+    "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
+    "dev:task": "DOTENV_CONFIG_PATH=.env.development ts-node -r tsconfig-paths/register -r dotenv-expand/config ./src/tasks/index.ts",
     "build": "rimraf ./build && tsc && tsc-alias",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
