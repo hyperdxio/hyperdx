@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion } from '@mantine/core';
 
-import { TSource } from '@/commonTypes';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getEventBody, getFirstTimestampValueExpression } from '@/source';
 
@@ -110,7 +110,7 @@ export function RowOverviewPanel({
 
         <Accordion.Item value="eventAttributes">
           <Accordion.Control>
-            {source.kind === 'log' ? 'Span' : 'Trace'} Attributes
+            {source.kind === 'log' ? 'Log' : 'Span'} Attributes
           </Accordion.Control>
           <Accordion.Panel>
             <DBRowJsonViewer data={eventAttributes} />
