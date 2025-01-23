@@ -302,16 +302,16 @@ export const FilterSchema = z.union([
 export type Filter = z.infer<typeof FilterSchema>;
 
 export const _ChartConfigSchema = z.object({
-  displayType: z.nativeEnum(DisplayType),
+  displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
-  granularity: z.string().optional(),
+  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
-  fillNulls: z.number().optional(),
+  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
 });
 

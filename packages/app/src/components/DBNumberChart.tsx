@@ -1,5 +1,5 @@
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';

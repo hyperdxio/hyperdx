@@ -4,7 +4,7 @@ import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
 import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Divider, Paper, Text } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';

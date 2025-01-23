@@ -4,9 +4,10 @@ import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
 import {
   ChartConfigWithDateRange,
+  DisplayType,
   SavedChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType, SQLInterval } from '@hyperdx/common-utils/dist/types';
+  SQLInterval,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Divider,
   Group,

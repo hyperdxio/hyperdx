@@ -9,10 +9,11 @@ import {
 } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
+  DisplayType,
   Filter,
   SavedChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType, SelectList } from '@hyperdx/common-utils/dist/types';
+  SelectList,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
   Box,
