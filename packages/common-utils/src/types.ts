@@ -130,6 +130,47 @@ export type SelectSQLStatement = {
 };
 
 // -------------------------
+// EXCEPTIONS
+// -------------------------
+export type StacktraceFrame = {
+  filename: string;
+  function: string;
+  module?: string;
+  lineno: number;
+  colno: number;
+  in_app: boolean;
+  context_line?: string;
+  pre_context?: string[];
+  post_context?: string[];
+};
+
+export type StacktraceBreadcrumbCategory =
+  | 'ui.click'
+  | 'fetch'
+  | 'xhr'
+  | 'console'
+  | 'navigation'
+  | string;
+
+export type StacktraceBreadcrumb = {
+  type?: string;
+  level?: string;
+  event_id?: string;
+  category?: StacktraceBreadcrumbCategory;
+  message?: string;
+  data?: { [key: string]: any };
+  timestamp: number;
+};
+
+// -------------------------
+// WEBHOOKS
+// -------------------------
+export enum WebhookService {
+  Slack = 'slack',
+  Generic = 'generic',
+}
+
+// -------------------------
 // ALERTS
 // -------------------------
 export enum AlertThresholdType {
@@ -239,12 +280,16 @@ export const NumberFormatSchema = z.object({
   unit: z.string().optional(),
 });
 
+export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+
 export const SqlAstFilterSchema = z.object({
   type: z.literal('sql_ast'),
   operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
   left: z.string(),
   right: z.string(),
 });
+
+export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
 
 export const FilterSchema = z.union([
   z.object({
@@ -253,6 +298,8 @@ export const FilterSchema = z.union([
   }),
   SqlAstFilterSchema,
 ]);
+
+export type Filter = z.infer<typeof FilterSchema>;
 
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType),
@@ -272,6 +319,22 @@ export const ChartConfigSchema = z.intersection(
   _ChartConfigSchema,
   SelectSQLStatementSchema,
 );
+
+export type ChartConfig = z.infer<typeof ChartConfigSchema>;
+
+export type DateRange = {
+  dateRange: [Date, Date];
+  dateRangeStartInclusive?: boolean; // default true
+};
+
+export type ChartConfigWithDateRange = ChartConfig & DateRange;
+// For non-time-based searches (ex. grab 1 row)
+export type ChartConfigWithOptDateRange = Omit<
+  ChartConfig,
+  'timestampValueExpression'
+> & {
+  timestampValueExpression?: string;
+} & Partial<DateRange>;
 
 export const SavedChartConfigSchema = z.intersection(
   z.intersection(

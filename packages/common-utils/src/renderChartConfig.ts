@@ -7,12 +7,13 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
-  DisplayType,
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
-  SelectSQLStatement,
   SortSpecificationList,
+  SqlAstFilter,
   SQLInterval,
 } from '@/types';
 import {
@@ -26,68 +27,6 @@ type ColumnRef = SQLParser.ColumnRef & {
     index: { type: string; value: string };
   }[];
 };
-
-export type NumberFormat = {
-  output?: 'currency' | 'percent' | 'byte' | 'time' | 'number';
-  mantissa?: number;
-  thousandSeparated?: boolean;
-  average?: boolean;
-  decimalBytes?: boolean;
-  factor?: number;
-  currencySymbol?: string;
-  unit?: string;
-};
-
-export type SqlAstFilter = {
-  type: 'sql_ast';
-  operator: '=' | '<' | '>' | '!=' | '<=' | '>=';
-  // SQL Expressions
-  left: string;
-  right: string;
-};
-
-export type Filter =
-  | {
-      type: 'lucene' | 'sql';
-      condition: SearchCondition;
-    }
-  | SqlAstFilter;
-
-// Used to actually query the data in a given chart
-export type ChartConfig = {
-  displayType?: DisplayType;
-  numberFormat?: NumberFormat;
-  timestampValueExpression: string;
-  implicitColumnExpression?: string; // Where lucene will search if given bare terms
-  granularity?: SQLInterval | 'auto';
-  markdown?: string; // Markdown Content
-  filtersLogicalOperator?: 'AND' | 'OR'; // Default AND
-  filters?: Filter[]; // Additional filters to where clause
-  connection: string; // Connection ID
-  fillNulls?: number | false; // undefined = 0, false = no fill
-  selectGroupBy?: boolean; // Add groupBy elements to select statement (default behavior: true)
-  // TODO: Color support
-} & SelectSQLStatement;
-
-// Saved configuration, has a variable source ID that we pull at query time
-export type SavedChartConfig = {
-  name: string;
-  source: string;
-} & Omit<ChartConfig, 'timestampValueExpression' | 'from' | 'connection'>;
-
-type DateRange = {
-  dateRange: [Date, Date];
-  dateRangeStartInclusive?: boolean; // default true
-};
-
-export type ChartConfigWithDateRange = ChartConfig & DateRange;
-// For non-time-based searches (ex. grab 1 row)
-export type ChartConfigWithOptDateRange = Omit<
-  ChartConfig,
-  'timestampValueExpression'
-> & {
-  timestampValueExpression?: string;
-} & Partial<DateRange>;
 
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
