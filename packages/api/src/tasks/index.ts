@@ -1,5 +1,5 @@
+import { CronJob } from 'cron';
 import minimist from 'minimist';
-import schedule from 'node-schedule';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
@@ -11,10 +11,7 @@ import redisClient from '@/utils/redis';
 import checkAlerts from './checkAlerts';
 import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
-const main = async () => {
-  const argv = minimist(process.argv.slice(2));
-  const taskName = argv._[0];
-
+const main = async (taskName: string) => {
   // connect dbs + redis
   await Promise.all([connectDB(), redisClient.connect()]);
 
@@ -57,10 +54,24 @@ const main = async () => {
   await Promise.all([redisClient.disconnect(), mongooseConnection.close()]);
 };
 
+// Entry point
+const argv = minimist(process.argv.slice(2));
+const taskName = argv._[0];
+// WARNING: the cron job will be enabled only in development mode
 if (IS_DEV) {
-  schedule.scheduleJob('*/1 * * * *', main);
+  // run cron job every 15 seconds
+  const job = CronJob.from({
+    cronTime: '*/15 * * * * *',
+    waitForCompletion: true,
+    onTick: async () => main(taskName),
+    errorHandler: err => {
+      console.error(err);
+    },
+    start: true,
+    timeZone: 'UTC',
+  });
 } else {
-  main()
+  main(taskName)
     .then(() => {
       process.exit(0);
     })
