@@ -17,7 +17,7 @@ dev-build:
 
 .PHONY: dev-up
 dev-up:
-	docker compose -f docker-compose.dev.yml up -d
+	npm run dev
 
 .PHONY: dev-down
 dev-down:
@@ -26,6 +26,10 @@ dev-down:
 .PHONY: dev-lint
 dev-lint:
 	npx nx run-many -t lint:fix
+
+.PHONY: ci-build
+ci-build:
+	npx nx run-many -t ci:build
 
 .PHONY: ci-lint
 ci-lint:
@@ -37,18 +41,15 @@ dev-int-build:
 
 .PHONY: dev-int
 dev-int:
-	docker compose -p int -f ./docker-compose.ci.yml run --rm api dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.yml up -d
+	npx nx run @hyperdx/api:dev:int $(FILE)
 	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
 ci-int:
-	docker compose -p int -f ./docker-compose.ci.yml run --rm api ci:int
-	# @echo "\n\n"
-	# @echo "Checking otel-collector...\n"
-	# curl -v http://localhost:23133
-	# @echo "\n\n"
-	# @echo "Checking ingestor...\n"
-	# curl -v http://localhost:28686/health
+	docker compose -p int -f ./docker-compose.ci.yml up -d
+	npx nx run @hyperdx/api:ci:int
+	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: dev-unit
 dev-unit:

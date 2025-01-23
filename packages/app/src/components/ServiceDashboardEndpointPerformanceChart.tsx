@@ -1,7 +1,7 @@
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Group, Text } from '@mantine/core';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
-import { TSource } from '@/commonTypes';
 import { ChartBox } from '@/components/ChartBox';
 import DBListBarChart from '@/components/DBListBarChart';
 import { getExpressions } from '@/serviceDashboard';

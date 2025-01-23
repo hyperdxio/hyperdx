@@ -13,13 +13,17 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
+      - name: Build dependencies
+        run: make ci-build
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
       - name: Run lint + type check
@@ -29,13 +33,17 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
       - name: Install root dependencies
-        uses: bahmutov/npm-install@v1
+        run: yarn install
+      - name: Build dependencies
+        run: make ci-build
       - name: Run unit tests
         run: make ci-unit
   integration:
@@ -43,16 +51,22 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+      - name: Install root dependencies
+        run: yarn install
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v2
-      - name: Build images
+      - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
           docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+      - name: Build dependencies
+        run: make ci-build
       - name: Run integration tests
         run: make ci-int

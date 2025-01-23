@@ -55,7 +55,6 @@ services:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -85,7 +84,6 @@ services:
   #     HDX_NODE_CONSOLE_CAPTURE: 1
   #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
   #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     INGESTOR_API_URL: 'http://ingestor:8002'
   #     MINER_API_URL: 'http://miner:5123'
   #     MONGO_URI: 'mongodb://db:27017/hyperdx'
   #     NODE_ENV: development
@@ -101,70 +99,6 @@ services:
   #     - ch-server
   #     - db
   #     - redis
-  api:
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: dev
-    ports:
-      - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
-    environment:
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: 'http://localhost:${HYPERDX_APP_PORT}' # need to be localhost (CORS)
-      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-      HDX_NODE_BETA_MODE: 1
-      HDX_NODE_CONSOLE_CAPTURE: 1
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      MINER_API_URL: 'http://miner:5123'
-      MONGO_URI: 'mongodb://db:27017/hyperdx'
-      NODE_ENV: development
-      OTEL_SERVICE_NAME: 'hdx-oss-dev-api'
-      PORT: ${HYPERDX_API_PORT}
-      REDIS_URL: redis://redis:6379
-      USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-false}
-      # Event deltas create large SQL queries so we need to increase
-      # the max header size for proxied SQL requests
-      NODE_OPTIONS: '--max-http-header-size=131072'
-    volumes:
-      - ./packages/api/src:/app/src
-    networks:
-      - internal
-    depends_on:
-      - ch-server
-      - db
-      - redis
-  app:
-    build:
-      context: .
-      dockerfile: ./packages/app/Dockerfile
-      target: dev
-    ports:
-      - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}
-    environment:
-      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-      NEXT_PUBLIC_HDX_COLLECTOR_URL: 'http://localhost:4318'
-      NEXT_PUBLIC_HDX_SERVICE_NAME: 'hdx-oss-dev-app'
-      NEXT_PUBLIC_SERVER_URL: 'http://api:${HYPERDX_API_PORT}'
-      NODE_ENV: development
-      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-      OTEL_SERVICE_NAME: 'hdx-oss-dev-app'
-      PORT: ${HYPERDX_APP_PORT}
-      # Event deltas create large SQL queries so we need to increase
-      # the max header size for proxied SQL requests
-      NODE_OPTIONS: '--max-http-header-size=131072'
-    volumes:
-      - ./packages/app/mdx.d.ts:/app/mdx.d.ts
-      - ./packages/app/next-env.d.ts:/app/next-env.d.ts
-      - ./packages/app/next.config.js:/app/next.config.js
-      - ./packages/app/pages:/app/pages
-      - ./packages/app/public:/app/public
-      - ./packages/app/src:/app/src
-      - ./packages/app/styles:/app/styles
-    networks:
-      - internal
-    depends_on:
-      - api
   ch-server:
     image: clickhouse/clickhouse-server:head-alpine
     ports:

@@ -28,6 +28,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -38,7 +39,6 @@ import {
   seriesColumns,
   seriesToUrlSearchQueryParam,
 } from '@/ChartUtils';
-import { DisplayType } from '@/DisplayType';
 import type { ChartSeries, NumberFormat } from '@/types';
 import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
 

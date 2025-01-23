@@ -3,6 +3,9 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
+import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Divider, Paper, Text } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 
@@ -10,10 +13,7 @@ import {
   convertDateRangeToGranularityString,
   timeBucketByGranularity,
 } from '@/ChartUtils';
-import { inferTimestampColumn } from '@/clickhouse';
-import { DisplayType } from '@/DisplayType';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { ChartConfigWithDateRange } from '@/renderChartConfig';
 import { Chart, NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';

@@ -3126,6 +3126,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@clickhouse/client-common@npm:1.10.1, @clickhouse/client-common@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client-common@npm:1.10.1"
+  checksum: 10c0/11638657ab9f5b7ffe8d1625215ec6be5377fe2ff9d7010228dfbdcc4edb9613b59c77d169c7ede4c16b38090942815d262b9e6d8425bce045d7014d32db56cb
+  languageName: node
+  linkType: hard
+
 "@clickhouse/client-common@npm:1.7.0":
   version: 1.7.0
   resolution: "@clickhouse/client-common@npm:1.7.0"
@@ -3133,10 +3140,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:^1.9.1":
-  version: 1.9.1
-  resolution: "@clickhouse/client-common@npm:1.9.1"
-  checksum: 10c0/d4df33c16e8ead60c8d656418c81f4cacd16f63c26d462bb265fa4892c0e0f40c5ddf447724befea36ffed569dae685049a9fb6f6210e3362bcbe632e15dfc70
+"@clickhouse/client-web@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client-web@npm:1.10.1"
+  dependencies:
+    "@clickhouse/client-common": "npm:1.10.1"
+  checksum: 10c0/4b4041171331670c8ca89727d425152a8d2057460ef2b3ac9c765479a0dc99080b4ff10c8100ebbcc1e3083de3719d7aefd5b74a28866a5e1a9c9702779c9b92
   languageName: node
   linkType: hard
 
@@ -3155,6 +3164,15 @@ __metadata:
   dependencies:
     "@clickhouse/client-common": "npm:0.2.10"
   checksum: 10c0/415e75572f36eff333582d55b638c5f29a99561b0092fb2d8246b08c9e5e0cd95d6df61b2e754936672980e5c47b1cb594272c069c5080f4c3c79ddcda58e15b
+  languageName: node
+  linkType: hard
+
+"@clickhouse/client@npm:^1.10.1":
+  version: 1.10.1
+  resolution: "@clickhouse/client@npm:1.10.1"
+  dependencies:
+    "@clickhouse/client-common": "npm:1.10.1"
+  checksum: 10c0/a0c1c7541be7ba2691b584cd905282bab622411f165b504e61a2cf22e075fc6afcd3105b29ddc939a46b47a6e641f95161d2323b7cf831ae2a4cf920945dbd60
   languageName: node
   linkType: hard
 
@@ -4198,7 +4216,7 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
-    "@clickhouse/client-common": "npm:^1.9.1"
+    "@hyperdx/common-utils": "npm:^0.0.10"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4227,6 +4245,7 @@ __metadata:
     compression: "npm:^1.7.4"
     connect-mongo: "npm:^4.6.0"
     cors: "npm:^2.8.5"
+    cron: "npm:^3.5.0"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     express: "npm:^4.19.2"
@@ -4245,8 +4264,6 @@ __metadata:
     mongodb: "npm:^6.3.0"
     mongoose: "npm:^6.12.0"
     ms: "npm:^2.1.3"
-    node-schedule: "npm:^2.1.1"
-    node-sql-parser: "npm:^5.3.5"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
     on-headers: "npm:^1.0.2"
@@ -4286,7 +4303,7 @@ __metadata:
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/lucene": "npm:^3.1.1"
+    "@hyperdx/common-utils": "npm:^0.0.10"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4314,7 +4331,6 @@ __metadata:
     "@testing-library/react": "npm:^14.2.1"
     "@testing-library/user-event": "npm:^14.5.2"
     "@types/crypto-js": "npm:^4"
-    "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/intercom-web": "npm:^2.8.18"
     "@types/jest": "npm:^28.1.6"
     "@types/lodash": "npm:^4.14.186"
@@ -4355,7 +4371,6 @@ __metadata:
     next-seo: "npm:^4.28.1"
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
-    node-sql-parser: "npm:^5.3.2"
     numbro: "npm:^2.4.0"
     nuqs: "npm:^1.17.0"
     object-hash: "npm:^3.0.0"
@@ -4412,11 +4427,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.0.10, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client-common": "npm:^1.9.1"
+    "@clickhouse/client": "npm:^1.10.1"
+    "@clickhouse/client-common": "npm:^1.10.1"
+    "@clickhouse/client-web": "npm:^1.10.1"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^28.1.1"
@@ -4436,6 +4453,7 @@ __metadata:
     rimraf: "npm:^4.4.1"
     semver: "npm:^7.5.2"
     sqlstring: "npm:^2.3.3"
+    store2: "npm:^2.14.4"
     supertest: "npm:^6.3.1"
     ts-jest: "npm:^28.0.5"
     ts-node: "npm:^10.8.1"
@@ -9834,6 +9852,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/luxon@npm:~3.4.0":
+  version: 3.4.2
+  resolution: "@types/luxon@npm:3.4.2"
+  checksum: 10c0/d835467de3daf7e17ba78b50bb5a14efd94272439ca067990d71332a54b311544459c69623eddd243b511b28d70194c9591a9ee8cf9c038962c965f991affd7e
+  languageName: node
+  linkType: hard
+
 "@types/mdast@npm:^3.0.0":
   version: 3.0.10
   resolution: "@types/mdast@npm:3.0.10"
@@ -13086,6 +13111,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"concurrently@npm:^9.1.2":
+  version: 9.1.2
+  resolution: "concurrently@npm:9.1.2"
+  dependencies:
+    chalk: "npm:^4.1.2"
+    lodash: "npm:^4.17.21"
+    rxjs: "npm:^7.8.1"
+    shell-quote: "npm:^1.8.1"
+    supports-color: "npm:^8.1.1"
+    tree-kill: "npm:^1.2.2"
+    yargs: "npm:^17.7.2"
+  bin:
+    conc: dist/bin/concurrently.js
+    concurrently: dist/bin/concurrently.js
+  checksum: 10c0/88e00269366aa885ca2b97fd53b04e7af2b0f31774d991bfc0e88c0de61cdebdf115ddacc9c897fbd1f1b90369014637fa77045a171d072a75693332b36dcc70
+  languageName: node
+  linkType: hard
+
 "connect-mongo@npm:^4.6.0":
   version: 4.6.0
   resolution: "connect-mongo@npm:4.6.0"
@@ -13307,12 +13350,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cron-parser@npm:^4.2.0":
-  version: 4.9.0
-  resolution: "cron-parser@npm:4.9.0"
+"cron@npm:^3.5.0":
+  version: 3.5.0
+  resolution: "cron@npm:3.5.0"
   dependencies:
-    luxon: "npm:^3.2.1"
-  checksum: 10c0/348622bdcd1a15695b61fc33af8a60133e5913a85cf99f6344367579e7002896514ba3b0a9d6bb569b02667d6b06836722bf2295fcd101b3de378f71d37bed0b
+    "@types/luxon": "npm:~3.4.0"
+    luxon: "npm:~3.5.0"
+  checksum: 10c0/ca5fbfb0d54a77ff4a293ad7bd0e67872915985d739fa4b72ecfaae72db1918f542469a1a6638af4c5a280753443ba308dd04382fe8dcc07d29bd7922856ea94
   languageName: node
   linkType: hard
 
@@ -13335,6 +13379,17 @@ __metadata:
     shebang-command: "npm:^2.0.0"
     which: "npm:^2.0.1"
   checksum: 10c0/5738c312387081c98d69c98e105b6327b069197f864a60593245d64c8089c8a0a744e16349281210d56835bb9274130d825a78b2ad6853ca13cfbeffc0c31750
+  languageName: node
+  linkType: hard
+
+"cross-spawn@npm:^7.0.6":
+  version: 7.0.6
+  resolution: "cross-spawn@npm:7.0.6"
+  dependencies:
+    path-key: "npm:^3.1.0"
+    shebang-command: "npm:^2.0.0"
+    which: "npm:^2.0.1"
+  checksum: 10c0/053ea8b2135caff68a9e81470e845613e374e7309a47731e81639de3eaeb90c3d01af0e0b44d2ab9d50b43467223b88567dfeb3262db942dc063b9976718ffc1
   languageName: node
   linkType: hard
 
@@ -14170,6 +14225,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dotenv-cli@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "dotenv-cli@npm:8.0.0"
+  dependencies:
+    cross-spawn: "npm:^7.0.6"
+    dotenv: "npm:^16.3.0"
+    dotenv-expand: "npm:^10.0.0"
+    minimist: "npm:^1.2.6"
+  bin:
+    dotenv: cli.js
+  checksum: 10c0/000469632758b7b44aaaa80cbbbd7f0c94dc170ec02e51aa8d8280341a0108fb7407954c23054257b77235b064033efdb8745836633eb6fd1586924953cf0528
+  languageName: node
+  linkType: hard
+
 "dotenv-expand@npm:^10.0.0, dotenv-expand@npm:~10.0.0":
   version: 10.0.0
   resolution: "dotenv-expand@npm:10.0.0"
@@ -14177,10 +14246,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dotenv-expand@npm:^12.0.1":
+  version: 12.0.1
+  resolution: "dotenv-expand@npm:12.0.1"
+  dependencies:
+    dotenv: "npm:^16.4.5"
+  checksum: 10c0/51996bfa670073d7a441b8fbed26ac991026fba2c05e9a937a898ce7d2a2e7166f7b6ec4eb8879e576defb5d1ad399ed1300db8f803d6977577fea55b4d82dac
+  languageName: node
+  linkType: hard
+
 "dotenv@npm:^16.0.0":
   version: 16.4.5
   resolution: "dotenv@npm:16.4.5"
   checksum: 10c0/48d92870076832af0418b13acd6e5a5a3e83bb00df690d9812e94b24aff62b88ade955ac99a05501305b8dc8f1b0ee7638b18493deb6fe93d680e5220936292f
+  languageName: node
+  linkType: hard
+
+"dotenv@npm:^16.3.0, dotenv@npm:^16.4.5, dotenv@npm:^16.4.7":
+  version: 16.4.7
+  resolution: "dotenv@npm:16.4.7"
+  checksum: 10c0/be9f597e36a8daf834452daa1f4cc30e5375a5968f98f46d89b16b983c567398a330580c88395069a77473943c06b877d1ca25b4afafcdd6d4adb549e8293462
   languageName: node
   linkType: hard
 
@@ -17325,6 +17410,10 @@ __metadata:
     "@nx/workspace": "npm:16.8.1"
     "@typescript-eslint/eslint-plugin": "npm:^8.7.0"
     "@typescript-eslint/parser": "npm:^8.7.0"
+    concurrently: "npm:^9.1.2"
+    dotenv: "npm:^16.4.7"
+    dotenv-cli: "npm:^8.0.0"
+    dotenv-expand: "npm:^12.0.1"
     eslint: "npm:^8.57.0"
     eslint-config-next: "npm:13"
     eslint-config-prettier: "npm:^9.1.0"
@@ -19558,13 +19647,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"long-timeout@npm:0.1.1":
-  version: 0.1.1
-  resolution: "long-timeout@npm:0.1.1"
-  checksum: 10c0/a62240cc8f449d7a00081e817ae543fb1ded4d9fc05492e9fa8d6868cb33b2c9d5d71176a6f8be4473df7ba4b208460b3073b0e05069c3ec286122f3e4b5747f
-  languageName: node
-  linkType: hard
-
 "long@npm:^4.0.0":
   version: 4.0.0
   resolution: "long@npm:4.0.0"
@@ -19664,10 +19746,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"luxon@npm:^3.2.1":
-  version: 3.4.3
-  resolution: "luxon@npm:3.4.3"
-  checksum: 10c0/65ad727684d367af9c8fcbde05ad7989ef2436a4496b62d993059baaa641e90a5fa74e98f34ee2ff29f7af7f2b27238ca78b87834f9068624e4133d786f87bc7
+"luxon@npm:~3.5.0":
+  version: 3.5.0
+  resolution: "luxon@npm:3.5.0"
+  checksum: 10c0/335789bba95077db831ef99894edadeb23023b3eb2137a1b56acd0d290082b691cf793143d69e30bc069ec95f0b49f36419f48e951c68014f19ffe12045e3494
   languageName: node
   linkType: hard
 
@@ -21519,27 +21601,6 @@ __metadata:
   version: 2.0.10
   resolution: "node-releases@npm:2.0.10"
   checksum: 10c0/90947653e8e3d85bda4bcbf28d019693ccfb5d5947838ca64e91208b51d7bfc13ba930b8216389a4faffbad8145b2c616bf1f7a09c97a1a9ac57fd6ef6d01c5c
-  languageName: node
-  linkType: hard
-
-"node-schedule@npm:^2.1.1":
-  version: 2.1.1
-  resolution: "node-schedule@npm:2.1.1"
-  dependencies:
-    cron-parser: "npm:^4.2.0"
-    long-timeout: "npm:0.1.1"
-    sorted-array-functions: "npm:^1.3.0"
-  checksum: 10c0/6ec51b34b9e676740ac25298e4ced5ee46053379f0d3aad533e51d7e083bc24ced045df1772a95bf9d9cfdb81299340bbf551549a7c5eb6e4d2dc6468c85c70e
-  languageName: node
-  linkType: hard
-
-"node-sql-parser@npm:^5.3.2":
-  version: 5.3.2
-  resolution: "node-sql-parser@npm:5.3.2"
-  dependencies:
-    "@types/pegjs": "npm:^0.10.0"
-    big-integer: "npm:^1.6.48"
-  checksum: 10c0/4c28bbb156aab433387fbda8e2f5ab5dc76d231b77b9d58cd55e9f5b63d16dc2cd96002d242c6fd602c10f89baea1a33ef1cd2047b8e4a1b15008476f2c2c969
   languageName: node
   linkType: hard
 
@@ -24840,6 +24901,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"rxjs@npm:^7.8.1":
+  version: 7.8.1
+  resolution: "rxjs@npm:7.8.1"
+  dependencies:
+    tslib: "npm:^2.1.0"
+  checksum: 10c0/3c49c1ecd66170b175c9cacf5cef67f8914dcbc7cd0162855538d365c83fea631167cacb644b3ce533b2ea0e9a4d0b12175186985f89d75abe73dbd8f7f06f68
+  languageName: node
+  linkType: hard
+
 "sade@npm:^1.7.3":
   version: 1.8.1
   resolution: "sade@npm:1.8.1"
@@ -25345,6 +25415,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"shell-quote@npm:^1.8.1":
+  version: 1.8.2
+  resolution: "shell-quote@npm:1.8.2"
+  checksum: 10c0/85fdd44f2ad76e723d34eb72c753f04d847ab64e9f1f10677e3f518d0e5b0752a176fd805297b30bb8c3a1556ebe6e77d2288dbd7b7b0110c7e941e9e9c20ce1
+  languageName: node
+  linkType: hard
+
 "shiki@npm:0.10.1":
   version: 0.10.1
   resolution: "shiki@npm:0.10.1"
@@ -25536,13 +25613,6 @@ __metadata:
     ip-address: "npm:^9.0.5"
     smart-buffer: "npm:^4.2.0"
   checksum: 10c0/d54a52bf9325165770b674a67241143a3d8b4e4c8884560c4e0e078aace2a728dffc7f70150660f51b85797c4e1a3b82f9b7aa25e0a0ceae1a243365da5c51a7
-  languageName: node
-  linkType: hard
-
-"sorted-array-functions@npm:^1.3.0":
-  version: 1.3.0
-  resolution: "sorted-array-functions@npm:1.3.0"
-  checksum: 10c0/d94e3401a2bc1689dc913f56939621c892a3ff1288e984e85689a6c6e46b0ec16f65edc8b47d46b0f09d06857f67ca245553b462da597619102b9fad270476d9
   languageName: node
   linkType: hard
 
@@ -25763,6 +25833,13 @@ __metadata:
   version: 2.14.3
   resolution: "store2@npm:2.14.3"
   checksum: 10c0/22e1096e6d69590672ca0b7f891d82b060837ef4c3e5df0d4563e6cbed14c52ddf2589fa94b79f4311b6ec41d95d6142e5d01d194539e0175c3fb4090cca8244
+  languageName: node
+  linkType: hard
+
+"store2@npm:^2.14.4":
+  version: 2.14.4
+  resolution: "store2@npm:2.14.4"
+  checksum: 10c0/3453c9c8c153c760e6290395a7bc23669df5dc8a6e8a49f9b3187dbb9f86d14b58705aa4f17fad6b536d4b04fe3e66ea5bde12c1352abd52c6b303bbf5757ab6
   languageName: node
   linkType: hard
 
@@ -26362,7 +26439,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"supports-color@npm:^8.0.0":
+"supports-color@npm:^8.0.0, supports-color@npm:^8.1.1":
   version: 8.1.1
   resolution: "supports-color@npm:8.1.1"
   dependencies:

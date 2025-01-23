@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 
-import { TSource } from '@/commonTypes';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getEventBody, getFirstTimestampValueExpression } from '@/source';
 

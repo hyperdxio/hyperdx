@@ -8,7 +8,6 @@ services:
       CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      INGESTOR_API_URL: 'http://ingestor:8002'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
@@ -30,50 +29,24 @@ services:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
     restart: on-failure
-    # ports:
-    #   - 8123:8123 # http api
+    ports:
+      - 8123:8123 # http api
     #   - 9000:9000 # native
     networks:
       - internal
   db:
     image: mongo:5.0.14-focal
     command: --port 29999
-    # ports:
-    #   - 29999:29999
+    ports:
+      - 29999:29999
     networks:
       - internal
   redis:
     image: redis:7.0.11-alpine
-    # ports:
-    #   - 6379:6379
+    ports:
+      - 6379:6379
     networks:
       - internal
-  api:
-    build:
-      context: .
-      dockerfile: ./packages/api/Dockerfile
-      target: dev
-    # ports:
-    #   - 9000:9000
-    environment:
-      CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_PASSWORD: api
-      CLICKHOUSE_USER: api
-      EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-      FRONTEND_URL: 'http://app:8080'
-      MONGO_URI: 'mongodb://db:29999/hyperdx-test'
-      NODE_ENV: ci
-      PORT: 9000
-      REDIS_URL: redis://redis:6379
-    volumes:
-      - ./packages/api/src:/app/src
-    networks:
-      - internal
-    depends_on:
-      - ch-server
-      - db
-      - otel-collector
-      - redis
 networks:
   internal:
     name: 'hyperdx-ci-internal-network'

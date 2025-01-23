@@ -132,9 +132,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             <QueryClientProvider client={queryClient}>
               <ThemeWrapper fontFamily={userPreferences.font}>
                 {getLayout(<Component {...pageProps} />)}
+                {confirmModal}
               </ThemeWrapper>
               <ReactQueryDevtools initialIsOpen={true} />
-              {confirmModal}
               {background}
             </QueryClientProvider>
           </QueryParamProvider>

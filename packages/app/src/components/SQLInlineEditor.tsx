@@ -3,6 +3,7 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -13,7 +14,6 @@ import CodeMirror, {
 } from '@uiw/react-codemirror';
 
 import { useAllFields } from '@/hooks/useMetadata';
-import { Field } from '@/metadata';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 

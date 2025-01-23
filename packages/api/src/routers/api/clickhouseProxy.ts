@@ -108,9 +108,9 @@ router.get(
             console.error(err);
           },
         },
-        ...(config.IS_DEV && {
-          logger: console,
-        }),
+        // ...(config.IS_DEV && {
+        //   logger: console,
+        // }),
       })(req, res, next);
     } catch (e) {
       next(e);

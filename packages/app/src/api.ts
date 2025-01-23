@@ -663,8 +663,8 @@ const api = {
         url: string;
         name: string;
         description: string;
-        queryParams?: string;
-        headers: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
         body?: string;
       }
     >({
@@ -681,8 +681,8 @@ const api = {
         url: string;
         name: string;
         description: string;
-        queryParams?: string;
-        headers: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
         body?: string;
       }) =>
         hdxServer(`webhooks`, {
@@ -692,8 +692,8 @@ const api = {
             service,
             url,
             description,
-            queryParams,
-            headers,
+            queryParams: queryParams || {},
+            headers: headers || {},
             body,
           },
         }).json(),

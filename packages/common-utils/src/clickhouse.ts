@@ -1,14 +1,13 @@
-import {
+import type {
   BaseResultSet,
   DataFormat,
-  isSuccessfulResponse,
+  ResponseHeaders,
   ResponseJSON,
 } from '@clickhouse/client-common';
+import { isSuccessfulResponse } from '@clickhouse/client-common';
 
 import { SQLInterval } from '@/types';
-import { hashCode, timeBucketByGranularity } from '@/utils';
-
-export const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
+import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
 
 export enum JSDataType {
   Array = 'array',
@@ -18,6 +17,14 @@ export enum JSDataType {
   String = 'string',
   Bool = 'bool',
 }
+
+export const getResponseHeaders = (response: Response): ResponseHeaders => {
+  const headers: ResponseHeaders = {};
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return headers;
+};
 
 export const convertCHDataTypeToJSType = (
   dataType: string,
@@ -233,18 +240,30 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
-export const client = {
+export type ClickhouseClientOptions = {
+  host: string;
+  username?: string;
+  password?: string;
+};
+
+export class ClickhouseClient {
+  private readonly host: string;
+  private readonly username?: string;
+  private readonly password?: string;
+
+  constructor({ host, username, password }: ClickhouseClientOptions) {
+    this.host = host;
+    this.username = username;
+    this.password = password;
+  }
+
+  // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L151
   async query<T extends DataFormat>({
     query,
     format = 'JSON',
     query_params = {},
     abort_signal,
     clickhouse_settings,
-    host,
-    username,
-    password,
-    includeCredentials,
-    includeCorsHeader,
     connectionId,
     queryId,
   }: {
@@ -253,24 +272,24 @@ export const client = {
     abort_signal?: AbortSignal;
     query_params?: Record<string, any>;
     clickhouse_settings?: Record<string, any>;
-    host?: string;
-    username?: string;
-    password?: string;
-    includeCredentials: boolean;
-    includeCorsHeader: boolean;
     connectionId?: string;
     queryId?: string;
   }): Promise<BaseResultSet<any, T>> {
+    const isLocalMode = this.username != null && this.password != null;
+    const includeCredentials = !isLocalMode;
+    const includeCorsHeader = isLocalMode;
+    const _connectionId = isLocalMode ? undefined : connectionId;
+
     const searchParams = new URLSearchParams([
       ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
-      ...(connectionId ? [['hyperdx_connection_id', connectionId]] : []),
+      ...(_connectionId ? [['hyperdx_connection_id', _connectionId]] : []),
       ['query', query],
       ['default_format', format],
       ['date_time_output_format', 'iso'],
       ['wait_end_of_query', '0'],
       ['cancel_http_readonly_queries_on_client_close', '1'],
-      ...(username ? [['user', username]] : []),
-      ...(password ? [['password', password]] : []),
+      ...(this.username ? [['user', this.username]] : []),
+      ...(this.password ? [['password', this.password]] : []),
       ...(queryId ? [['query_id', queryId]] : []),
       ...Object.entries(query_params).map(([key, value]) => [
         `param_${key}`,
@@ -296,29 +315,63 @@ export const client = {
     // eslint-disable-next-line no-console
     console.log('--------------------------------------------------------');
 
-    const res = await fetch(`${host}/?${searchParams.toString()}`, {
-      ...(includeCredentials ? { credentials: 'include' } : {}),
-      signal: abort_signal,
-      method: 'GET',
-    });
+    if (isBrowser) {
+      // TODO: check if we can use the client-web directly
+      const { ResultSet } = await import('@clickhouse/client-web');
+      // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
+      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
+        ...(includeCredentials ? { credentials: 'include' } : {}),
+        signal: abort_signal,
+        method: 'GET',
+      });
 
-    // TODO: Send command to CH to cancel query on abort_signal
-    if (!res.ok) {
-      if (!isSuccessfulResponse(res.status)) {
-        const text = await res.text();
-        throw new ClickHouseQueryError(`${text}`, debugSql);
+      // TODO: Send command to CH to cancel query on abort_signal
+      if (!response.ok) {
+        if (!isSuccessfulResponse(response.status)) {
+          const text = await response.text();
+          throw new ClickHouseQueryError(`${text}`, debugSql);
+        }
       }
-    }
 
-    if (res.body == null) {
-      // TODO: Handle empty responses better?
-      throw new Error('Unexpected empty response from ClickHouse');
-    }
+      if (response.body == null) {
+        // TODO: Handle empty responses better?
+        throw new Error('Unexpected empty response from ClickHouse');
+      }
+      return new ResultSet<T>(
+        response.body,
+        format as T,
+        queryId ?? '',
+        getResponseHeaders(response),
+      );
+    } else if (isNode) {
+      const { createClient } = await import('@clickhouse/client');
+      const _client = createClient({
+        url: this.host,
+        username: this.username,
+        password: this.password,
+        clickhouse_settings: {
+          date_time_output_format: 'iso',
+          wait_end_of_query: 0,
+          cancel_http_readonly_queries_on_client_close: 1,
+        },
+      });
 
-    // @ts-ignore
-    return new BaseResultSet(res.body, format, '');
-  },
-};
+      // TODO: Custom error handling
+      return _client.query({
+        query,
+        query_params,
+        format: format as T,
+        abort_signal,
+        clickhouse_settings,
+        query_id: queryId,
+      }) as unknown as BaseResultSet<any, T>;
+    } else {
+      throw new Error(
+        'ClickhouseClient is only supported in the browser or node environment',
+      );
+    }
+  }
+}
 
 export const testLocalConnection = async ({
   host,
@@ -330,67 +383,16 @@ export const testLocalConnection = async ({
   password: string;
 }): Promise<boolean> => {
   try {
+    const client = new ClickhouseClient({ host, username, password });
     const result = await client.query({
       query: 'SELECT 1',
       format: 'TabSeparatedRaw',
-      host: host,
-      username: username,
-      password: password,
-      includeCredentials: false,
-      includeCorsHeader: true,
     });
     return result.text().then(text => text.trim() === '1');
   } catch (e) {
     console.warn('Failed to test local connection', e);
     return false;
   }
-};
-
-export const sendQuery = async <T extends DataFormat>({
-  query,
-  format = 'JSON',
-  query_params = {},
-  abort_signal,
-  clickhouse_settings,
-  connectionId,
-  queryId,
-}: {
-  query: string;
-  format?: string;
-  query_params?: Record<string, any>;
-  abort_signal?: AbortSignal;
-  clickhouse_settings?: Record<string, any>;
-  connectionId: string;
-  queryId?: string;
-}) => {
-  const IS_LOCAL_MODE = false;
-
-  // TODO: decide what to do here
-  let host, username, password;
-  if (IS_LOCAL_MODE) {
-    const localConnections: any = [];
-    if (localConnections.length === 0) {
-      throw new Error('No local connection found');
-    }
-    host = localConnections[0].host;
-    username = localConnections[0].username;
-    password = localConnections[0].password;
-  }
-
-  return client.query<T>({
-    query,
-    format,
-    query_params,
-    abort_signal,
-    clickhouse_settings,
-    queryId,
-    connectionId: IS_LOCAL_MODE ? undefined : connectionId,
-    host: IS_LOCAL_MODE ? host : PROXY_CLICKHOUSE_HOST,
-    username: IS_LOCAL_MODE ? username : undefined,
-    password: IS_LOCAL_MODE ? password : undefined,
-    includeCredentials: !IS_LOCAL_MODE,
-    includeCorsHeader: IS_LOCAL_MODE,
-  });
 };
 
 export const tableExpr = ({
