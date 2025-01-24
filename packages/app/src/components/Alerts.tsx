@@ -74,4 +74,6 @@ export const AlertChannelForm = ({
   if (type === 'webhook') {
     return <WebhookChannelForm control={control} name={`channel.webhookId`} />;
   }
+
+  return null;
 };

@@ -59,6 +59,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import { IS_DEV } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -764,7 +765,7 @@ function DBSearchPage() {
 
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
-      {isAlertModalOpen && (
+      {IS_DEV && isAlertModalOpen && (
         <DBSearchPageAlertModal
           id={savedSearch?.id ?? ''}
           open={isAlertModalOpen}
@@ -841,25 +842,27 @@ function DBSearchPage() {
               >
                 Save
               </Button>
-              <Tooltip
-                label={
-                  savedSearchId
-                    ? 'Manage or create alerts for this search'
-                    : 'Save this view to create alerts'
-                }
-                color="dark"
-              >
-                <Button
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
-                  size="xs"
-                  onClick={openAlertModal}
-                  disabled={!savedSearchId}
+              {IS_DEV && (
+                <Tooltip
+                  label={
+                    savedSearchId
+                      ? 'Manage or create alerts for this search'
+                      : 'Save this view to create alerts'
+                  }
+                  color="dark"
                 >
-                  Alerts
-                </Button>
-              </Tooltip>
+                  <Button
+                    variant="outline"
+                    color="dark.2"
+                    px="xs"
+                    size="xs"
+                    onClick={openAlertModal}
+                    disabled={!savedSearchId}
+                  >
+                    Alerts
+                  </Button>
+                </Tooltip>
+              )}
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {

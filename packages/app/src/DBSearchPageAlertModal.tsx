@@ -35,12 +35,14 @@ import {
 import { AlertChannelForm } from './components/Alerts';
 import api from './api';
 
-const SavedSearchAlertFormSchema = z.object({
-  interval: AlertIntervalSchema,
-  threshold: z.number().int().min(1),
-  thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: zAlertChannel,
-});
+const SavedSearchAlertFormSchema = z
+  .object({
+    interval: AlertIntervalSchema,
+    threshold: z.number().int().min(1),
+    thresholdType: z.nativeEnum(AlertThresholdType),
+    channel: zAlertChannel,
+  })
+  .passthrough();
 
 const CHANNEL_ICONS = {
   webhook: <i className="bi bi-slack fs-7 text-slate-400" />,
@@ -72,7 +74,7 @@ const AlertForm = ({
   const tableName = source?.from.tableName;
   const connectionId = source?.connection;
 
-  const { control, handleSubmit, watch, formState } = useForm<Alert>({
+  const { control, handleSubmit, watch } = useForm<Alert>({
     defaultValues: defaultValues || {
       interval: '5m',
       threshold: 1,
