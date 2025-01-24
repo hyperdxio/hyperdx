@@ -28,8 +28,8 @@ import Alert, {
   AlertThresholdType,
 } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import { IDashboard } from '@/models/dashboard';
-import { ISavedSearch } from '@/models/savedSearch';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
@@ -41,16 +41,10 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
-type EnhancedSavedSearch = Omit<ISavedSearch, 'source'> & {
-  source: ISource;
-};
-
 const getAlerts = () =>
   Alert.find({}).populate<{
     team: ITeam;
-    savedSearch?: EnhancedSavedSearch;
-    dashboard?: IDashboard;
-  }>(['team', 'savedSearch', 'dashboard']);
+  }>(['team']);
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
@@ -60,7 +54,7 @@ export const buildLogSearchLink = ({
   startTime,
 }: {
   endTime: Date;
-  savedSearch: EnhancedSavedSearch;
+  savedSearch: ISavedSearch;
   startTime: Date;
 }) => {
   const url = new URL(`${config.FRONTEND_URL}/search/${savedSearch.id}`);
@@ -152,7 +146,7 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
-  savedSearch?: EnhancedSavedSearch | null;
+  savedSearch?: ISavedSearch | null;
   startTime: Date;
   value: number;
 };
@@ -541,16 +535,20 @@ ${targetTemplate}`;
 const fireChannelEvent = async ({
   alert,
   attributes,
+  dashboard,
   endTime,
   group,
+  savedSearch,
   startTime,
   totalCount,
   windowSizeInMins,
 }: {
   alert: EnhancedAlert;
   attributes: Record<string, string>; // TODO: support other types than string
+  dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
+  savedSearch?: ISavedSearch | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
@@ -573,12 +571,12 @@ const fireChannelEvent = async ({
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       channel: alert.channel,
-      dashboardId: alert.dashboard?.id,
+      dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
       message: alert.message,
       name: alert.name,
-      savedSearchId: alert.savedSearch?.id,
+      savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
       threshold: alert.threshold,
@@ -586,11 +584,11 @@ const fireChannelEvent = async ({
       tileId: alert.tileId,
     },
     attributes: attributesNested,
-    dashboard: alert.dashboard,
+    dashboard,
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    savedSearch: alert.savedSearch,
+    savedSearch,
     startTime,
     value: totalCount,
   };
@@ -643,12 +641,23 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     let connectionId: string | undefined;
+    let savedSearch: ISavedSearch | undefined | null;
+    let dashboard: IDashboard | undefined | null;
     // SAVED_SEARCH Source
     if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      const source = await Source.findById(alert.savedSearch.source);
+      savedSearch = await SavedSearch.findById(alert.savedSearch);
+      if (savedSearch == null) {
+        logger.error({
+          message: 'SavedSearch not found',
+          alertId: alert.id,
+        });
+        return;
+      }
+      const source = await Source.findById(savedSearch.source);
       if (source == null) {
         logger.error({
           message: 'Source not found',
+          alertId: alert.id,
           savedSearch: alert.savedSearch,
         });
         return;
@@ -666,8 +675,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             valueExpression: '',
           },
         ],
-        where: alert.savedSearch.where,
-        whereLanguage: alert.savedSearch.whereLanguage,
+        where: savedSearch.where,
+        whereLanguage: savedSearch.whereLanguage,
         groupBy: alert.groupBy,
         timestampValueExpression: source.timestampValueExpression,
       };
@@ -678,29 +687,32 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       alert.dashboard &&
       alert.tileId
     ) {
+      dashboard = await Dashboard.findById(alert.dashboard);
+      if (dashboard == null) {
+        logger.error({
+          message: 'Dashboard not found',
+          alertId: alert.id,
+          dashboardId: alert.dashboard,
+        });
+        return;
+      }
       // filter tiles
-      alert.dashboard.tiles = alert.dashboard.tiles.filter(
+      dashboard.tiles = dashboard.tiles.filter(
         tile => tile.id === alert.tileId,
       );
 
-      if (
-        alert.dashboard &&
-        Array.isArray(alert.dashboard.tiles) &&
-        alert.dashboard.tiles.length === 1
-      ) {
+      if (dashboard.tiles.length === 1) {
         // Doesn't work for metric alerts yet
         const MAX_NUM_GROUPS = 20;
         // TODO: assuming that the chart has only 1 series for now
-        const firstTile = alert.dashboard.tiles[0];
+        const firstTile = dashboard.tiles[0];
         if (firstTile.config.displayType === DisplayType.Line) {
           // fetch source data
-          const _source = await Source.findOne({
-            _id: firstTile.config.source,
-          });
+          const _source = await Source.findById(firstTile.config.source);
           if (!_source) {
             logger.error({
               message: 'Source not found',
-              dashboardId: alert.dashboard.id,
+              dashboardId: alert.dashboard,
               tile: firstTile,
             });
             return;
@@ -848,8 +860,10 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             await fireChannelEvent({
               alert,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
+              dashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: extraFields.join(', '),
+              savedSearch,
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
