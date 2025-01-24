@@ -30,11 +30,9 @@ export function DBTimeChart({
   config,
   sourceId,
   onSettled,
-  alertThreshold,
-  alertThresholdType,
+  referenceLines,
   showDisplaySwitcher = true,
   setDisplayType,
-  logReferenceTimestamp,
   queryKeyPrefix,
   enabled = true,
   onTimeRangeSelect,
@@ -43,11 +41,9 @@ export function DBTimeChart({
   config: ChartConfigWithDateRange;
   sourceId?: string;
   onSettled?: () => void;
-  alertThreshold?: number;
-  alertThresholdType?: 'above' | 'below';
   showDisplaySwitcher?: boolean;
   setDisplayType?: (type: DisplayType) => void;
-  logReferenceTimestamp?: number;
+  referenceLines?: React.ReactNode;
   queryKeyPrefix?: string;
   enabled?: boolean;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
@@ -294,6 +290,7 @@ export function DBTimeChart({
           onTimeRangeSelect={onTimeRangeSelect}
           showLegend={showLegend}
           numberFormat={config.numberFormat}
+          referenceLines={referenceLines}
         />
       </div>
     </div>
