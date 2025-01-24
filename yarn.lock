@@ -4386,6 +4386,7 @@ __metadata:
     react-error-boundary: "npm:^3.1.4"
     react-grid-layout: "npm:^1.3.4"
     react-hook-form: "npm:^7.43.8"
+    react-hook-form-mantine: "npm:^3.1.3"
     react-hotkeys-hook: "npm:^4.3.7"
     react-json-tree: "npm:^0.17.0"
     react-markdown: "npm:^8.0.4"
@@ -23731,6 +23732,19 @@ __metadata:
     react: ">= 16.3.0"
     react-dom: ">= 16.3.0"
   checksum: 10c0/2c4a9ca1284cf6a618070aeccf8ffb8d2d91798452f7606395a4524bda27fad82ba9c818cb3e420d617fec8aed93c0caaae060c714d21a929c6f5c75727697b7
+  languageName: node
+  linkType: hard
+
+"react-hook-form-mantine@npm:^3.1.3":
+  version: 3.1.3
+  resolution: "react-hook-form-mantine@npm:3.1.3"
+  peerDependencies:
+    "@mantine/core": ^7.0.0
+    "@mantine/dates": ^7.0.0
+    react: ^18.2.0
+    react-dom: ^18.2.0
+    react-hook-form: ^7.43
+  checksum: 10c0/a440f94195a5380759b85e3e685c516aff46b305c15ac9b356b87b7582e393123c9acdd747a7cf3ed6cc179fea18dcd2583838db2781d631c9f8c6b084192302
   languageName: node
   linkType: hard
 

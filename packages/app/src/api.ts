@@ -2,6 +2,7 @@ import React from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
+import type { Alert } from '@hyperdx/common-utils/dist/types';
 import type {
   InfiniteData,
   QueryKey,
@@ -12,33 +13,12 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import type {
-  AlertChannel,
-  AlertInterval,
-  AlertSource,
-  AlertType,
   ChartSeries,
   LogView,
   MetricsDataType,
   ServerDashboard,
   Session,
 } from './types';
-
-type ApiAlertInput = {
-  channel: AlertChannel;
-  interval: AlertInterval;
-  threshold: number;
-  type: AlertType;
-  source: AlertSource;
-  groupBy?: string;
-  logViewId?: string;
-  dashboardId?: string;
-  chartId?: string;
-};
-
-type ApiAlertAckInput = {
-  alertId: string;
-  mutedUntil: Date;
-};
 
 type ServicesResponse = {
   data: Record<
@@ -69,6 +49,8 @@ type MultiSeriesChartResponse = {
     [dataKey: `series_${number}.data`]: number;
   }[];
 };
+
+type ApiAlertInput = Alert;
 
 const getEnrichedSeries = (series: ChartSeries[]) =>
   series
@@ -491,6 +473,32 @@ const api = {
           ] as Array<Array<string | number | boolean>>,
         }).json(),
       ...options,
+    });
+  },
+  useCreateAlert() {
+    return useMutation<any, Error, ApiAlertInput>({
+      mutationFn: async alert =>
+        server('alerts', {
+          method: 'POST',
+          json: alert,
+        }).json(),
+    });
+  },
+  useUpdateAlert() {
+    return useMutation<any, Error, { id: string } & ApiAlertInput>({
+      mutationFn: async alert =>
+        server(`alerts/${alert.id}`, {
+          method: 'PUT',
+          json: alert,
+        }).json(),
+    });
+  },
+  useDeleteAlert() {
+    return useMutation<any, Error, string>({
+      mutationFn: async (alertId: string) =>
+        server(`alerts/${alertId}`, {
+          method: 'DELETE',
+        }),
     });
   },
   useDashboards(options?: UseQueryOptions<any, Error>) {
