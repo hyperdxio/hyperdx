@@ -37,8 +37,9 @@ import {
   Paper,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { useDebouncedCallback } from '@mantine/hooks';
+import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useIsFetching } from '@tanstack/react-query';
 
 import { useTimeChartSettings } from '@/ChartUtils';
@@ -58,6 +59,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import { IS_DEV } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -78,6 +80,8 @@ import {
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
+
+import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 
 type SearchConfig = {
   select?: string | null;
@@ -756,8 +760,18 @@ function DBSearchPage() {
     setValue('orderBy', defaultOrderBy);
   }, [inputSource, inputSourceObj, defaultOrderBy]);
 
+  const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
+    useDisclosure();
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
+      {IS_DEV && isAlertModalOpen && (
+        <DBSearchPageAlertModal
+          id={savedSearch?.id ?? ''}
+          open={isAlertModalOpen}
+          onClose={closeAlertModal}
+        />
+      )}
       <OnboardingModal />
       <form
         onSubmit={e => {
@@ -828,6 +842,27 @@ function DBSearchPage() {
               >
                 Save
               </Button>
+              {IS_DEV && (
+                <Tooltip
+                  label={
+                    savedSearchId
+                      ? 'Manage or create alerts for this search'
+                      : 'Save this view to create alerts'
+                  }
+                  color="dark"
+                >
+                  <Button
+                    variant="outline"
+                    color="dark.2"
+                    px="xs"
+                    size="xs"
+                    onClick={openAlertModal}
+                    disabled={!savedSearchId}
+                  >
+                    Alerts
+                  </Button>
+                </Tooltip>
+              )}
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {

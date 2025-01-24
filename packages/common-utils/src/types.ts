@@ -203,8 +203,12 @@ export const AlertIntervalSchema = z.union([
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
 
+export const zAlertChannelType = z.literal('webhook');
+
+export type AlertChannelType = z.infer<typeof zAlertChannelType>;
+
 export const zAlertChannel = z.object({
-  type: z.literal('webhook'),
+  type: zAlertChannelType,
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
 });
 
@@ -262,6 +266,7 @@ export const SavedSearchSchema = z.object({
   source: z.string(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
+  alerts: z.array(AlertSchema).optional(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
