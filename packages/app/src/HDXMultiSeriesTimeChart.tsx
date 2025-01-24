@@ -237,8 +237,7 @@ export const MemoChart = memo(function MemoChart({
   groupKeys,
   lineNames,
   lineColors,
-  alertThreshold,
-  alertThresholdType,
+  referenceLines,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
   numberFormat,
@@ -254,8 +253,7 @@ export const MemoChart = memo(function MemoChart({
   groupKeys: string[];
   lineNames: string[];
   lineColors: Array<string | undefined>;
-  alertThreshold?: number;
-  alertThresholdType?: 'above' | 'below';
+  referenceLines?: React.ReactNode;
   displayType?: DisplayType;
   numberFormat?: NumberFormat;
   logReferenceTimestamp?: number;
@@ -501,31 +499,7 @@ export const MemoChart = memo(function MemoChart({
           }}
           allowEscapeViewBox={{ y: true }}
         />
-        {alertThreshold != null && alertThresholdType === 'below' && (
-          <ReferenceArea
-            y1={0}
-            y2={alertThreshold}
-            ifOverflow="extendDomain"
-            strokeWidth={0}
-            fillOpacity={0.05}
-          />
-        )}
-        {alertThreshold != null && alertThresholdType === 'above' && (
-          <ReferenceArea
-            y1={alertThreshold}
-            ifOverflow="extendDomain"
-            strokeWidth={0}
-            fillOpacity={0.05}
-          />
-        )}
-        {alertThreshold != null && (
-          <ReferenceLine
-            y={alertThreshold}
-            label={<Label value="Alert Threshold" fill={'white'} />}
-            stroke="red"
-            strokeDasharray="3 3"
-          />
-        )}
+        {referenceLines}
         {highlightStart && highlightEnd ? (
           <ReferenceArea
             // yAxisId="1"
@@ -569,8 +543,7 @@ const HDXMultiSeriesTimeChart = memo(
       displayType: displayTypeProp = DisplayType.Line,
     },
     onSettled,
-    alertThreshold,
-    alertThresholdType,
+    referenceLines,
     showDisplaySwitcher = true,
     setDisplayType,
     logReferenceTimestamp,
@@ -583,8 +556,7 @@ const HDXMultiSeriesTimeChart = memo(
       displayType?: DisplayType;
     };
     onSettled?: () => void;
-    alertThreshold?: number;
-    alertThresholdType?: 'above' | 'below';
+    referenceLines?: React.ReactNode;
     showDisplaySwitcher?: boolean;
     setDisplayType?: (type: DisplayType) => void;
     logReferenceTimestamp?: number;
@@ -858,11 +830,10 @@ const HDXMultiSeriesTimeChart = memo(
             isClickActive={activeClickPayload}
             setIsClickActive={setActiveClickPayload}
             dateRange={dateRange}
-            alertThreshold={alertThreshold}
-            alertThresholdType={alertThresholdType}
             displayType={displayType}
             numberFormat={numberFormat}
             logReferenceTimestamp={logReferenceTimestamp}
+            referenceLines={referenceLines}
           />
         </div>
       </div>

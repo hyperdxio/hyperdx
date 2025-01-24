@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { Control } from 'react-hook-form';
 import { Select, SelectProps } from 'react-hook-form-mantine';
+import { Label, ReferenceArea, ReferenceLine } from 'recharts';
 import type { Alert, AlertChannelType } from '@hyperdx/common-utils/dist/types';
 import { Button, ComboboxData, Group } from '@mantine/core';
 
@@ -77,3 +78,49 @@ export const AlertChannelForm = ({
 
   return null;
 };
+
+export const getAlertReferenceLines = ({
+  thresholdType,
+  threshold,
+  // TODO: zScore
+}: {
+  thresholdType: 'above' | 'below';
+  threshold: number;
+}) => (
+  <>
+    {threshold != null && thresholdType === 'below' && (
+      <ReferenceArea
+        y1={0}
+        y2={threshold}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />
+    )}
+    {threshold != null && thresholdType === 'above' && (
+      <ReferenceArea
+        y1={threshold}
+        ifOverflow="extendDomain"
+        fill="red"
+        strokeWidth={0}
+        fillOpacity={0.05}
+      />
+    )}
+    {threshold != null && (
+      <ReferenceLine
+        y={threshold}
+        label={
+          <Label
+            value="Alert Threshold"
+            fill={'white'}
+            fontSize={11}
+            opacity={0.7}
+          />
+        }
+        stroke="red"
+        strokeDasharray="3 3"
+      />
+    )}
+  </>
+);
