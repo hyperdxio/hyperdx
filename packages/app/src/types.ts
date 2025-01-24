@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import {
   DashboardSchema,
+  NumberFormat as _NumberFormat,
   SavedSearchSchema,
 } from '@hyperdx/common-utils/dist/types';
+
+export type NumberFormat = _NumberFormat;
 
 export type Team = {
   allowedAuthMethods: any[];
@@ -174,17 +177,6 @@ export type StacktraceBreadcrumb = {
   message?: string;
   data?: { [key: string]: any };
   timestamp: number;
-};
-
-export type NumberFormat = {
-  output?: 'currency' | 'percent' | 'byte' | 'time' | 'number';
-  mantissa?: number;
-  thousandSeparated?: boolean;
-  average?: boolean;
-  decimalBytes?: boolean;
-  factor?: number;
-  currencySymbol?: string;
-  unit?: string;
 };
 
 export type AggFn =

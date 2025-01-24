@@ -1,6 +1,6 @@
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field, TableMetadata } from '@hyperdx/common-utils/dist/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,

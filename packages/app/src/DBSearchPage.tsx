@@ -22,9 +22,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
+  DisplayType,
   Filter,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+} from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,

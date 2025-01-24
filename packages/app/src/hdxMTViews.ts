@@ -5,7 +5,6 @@ import {
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
-  ChartConfigWithOptDateRange,
   FIXED_TIME_BUCKET_EXPR_ALIAS,
   isNonEmptyWhereExpr,
   isUsingGroupBy,
@@ -13,6 +12,7 @@ import {
 } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   AggregateFunction,
+  ChartConfigWithOptDateRange,
   DerivedColumn,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';

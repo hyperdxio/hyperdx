@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Checkbox,

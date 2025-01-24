@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import Drawer from 'react-modern-drawer';
-import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
+import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { Grid, Group, Text } from '@mantine/core';
 
 import {

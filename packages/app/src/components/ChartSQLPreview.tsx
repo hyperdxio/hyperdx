@@ -1,6 +1,6 @@
 import { format } from 'sql-formatter';
 import { sql } from '@codemirror/lang-sql';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 import CodeMirror from '@uiw/react-codemirror';
 

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';

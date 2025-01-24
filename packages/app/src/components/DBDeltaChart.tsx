@@ -10,12 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import {
-  ChartConfigWithOptDateRange,
-  Filter,
-  inverseSqlAstFilter,
-  SqlAstFilter,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex, Group, Pagination, Text } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';

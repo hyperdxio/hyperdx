@@ -1,6 +1,5 @@
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type { Filter, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';

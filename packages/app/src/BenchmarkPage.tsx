@@ -366,7 +366,7 @@ function BenchmarkPage() {
                         },
                         granularity: '1 second' as const,
                         where: '',
-                        fillNulls: false as const,
+                        fillNulls: false,
                       }}
                       showDisplaySwitcher={false}
                     />

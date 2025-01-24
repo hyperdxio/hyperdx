@@ -3,11 +3,11 @@
 // --------------------------------------------------------
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithOptDateRange,
-  renderChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
@@ -708,6 +708,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           connectionId = _source.connection.toString();
           chartConfig = {
             connection: connectionId,
+            displayType: firstTile.config.displayType,
             dateRange: [checkStartTime, checkEndTime],
             from: _source.from,
             granularity: `${windowSizeInMins} minute`,

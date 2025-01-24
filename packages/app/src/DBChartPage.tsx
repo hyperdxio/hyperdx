@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
