@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.0.12
+
+### Patch Changes
+
+- 418c293: feat: extract AlertChannelType to its own schema
+
 ## 0.0.11
 
 ### Patch Changes
