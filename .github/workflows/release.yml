@@ -25,5 +25,6 @@ jobs:
           publish: yarn release
           version: yarn run version
         env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
