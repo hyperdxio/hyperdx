@@ -27,7 +27,7 @@
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.0.10",
+    "@hyperdx/common-utils": "^0.0.11",
     "@hyperdx/node-opentelemetry": "^0.8.1",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
