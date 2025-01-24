@@ -1,7 +1,5 @@
-import {
-  ChartConfigWithDateRange,
-  renderChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';

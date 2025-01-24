@@ -8,10 +8,8 @@ import {
   JSDataType,
   tableExpr,
 } from '@/clickhouse';
-import {
-  ChartConfigWithDateRange,
-  renderChartConfig,
-} from '@/renderChartConfig';
+import { renderChartConfig } from '@/renderChartConfig';
+import type { ChartConfigWithDateRange } from '@/types';
 
 const DEFAULT_SAMPLE_SIZE = 1e6;
 

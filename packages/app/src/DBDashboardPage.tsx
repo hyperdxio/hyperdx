@@ -19,10 +19,8 @@ import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   ChartConfigWithDateRange,
-  Filter,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
-import {
   DisplayType,
+  Filter,
   SearchCondition,
   SearchConditionLanguage,
   SQLInterval,

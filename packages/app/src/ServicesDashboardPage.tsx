@@ -7,8 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
-import type { Filter } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType, TSource } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, Filter, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,

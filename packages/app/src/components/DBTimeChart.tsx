@@ -6,8 +6,10 @@ import {
   ClickHouseQueryError,
   formatResponseForTimeChart,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 

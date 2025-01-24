@@ -5,10 +5,8 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  ChartConfigWithDateRange,
-  renderChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,

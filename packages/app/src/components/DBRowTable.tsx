@@ -10,8 +10,10 @@ import {
   extractColumnReference,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { SelectList } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  SelectList,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
