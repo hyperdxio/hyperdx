@@ -73,7 +73,7 @@ describe('checkAlerts', () => {
         savedSearch: MOCK_SAVED_SEARCH,
       }),
     ).toMatchInlineSnapshot(
-      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103"`,
+      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
     );
     expect(
       buildLogSearchLink({
@@ -82,7 +82,7 @@ describe('checkAlerts', () => {
         savedSearch: MOCK_SAVED_SEARCH,
       }),
     ).toMatchInlineSnapshot(
-      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103"`,
+      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
     );
   });
 
@@ -158,6 +158,18 @@ describe('checkAlerts', () => {
         },
         interval: '1m',
       },
+      source: {
+        id: 'fake-source-id' as any,
+        kind: 'log',
+        team: 'team-123' as any,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: 'connection-123' as any,
+        name: 'Logs',
+      },
       savedSearch: {
         _id: 'fake-saved-search-id' as any,
         team: 'team-123' as any,
@@ -222,7 +234,7 @@ describe('checkAlerts', () => {
       expect(
         buildAlertMessageTemplateHdxLink(defaultSearchView),
       ).toMatchInlineSnapshot(
-        `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103"`,
+        `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
       );
       expect(
         buildAlertMessageTemplateHdxLink(defaultChartView),
@@ -332,6 +344,8 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        clickhouseClient: {} as any,
+        metadata: {} as any,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -367,6 +381,8 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        clickhouseClient: {} as any,
+        metadata: {} as any,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -392,7 +408,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Custom body ',
@@ -423,6 +439,8 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        clickhouseClient: {} as any,
+        metadata: {} as any,
         template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
         view: {
           ...defaultSearchView,
@@ -451,7 +469,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Custom body ',
@@ -486,6 +504,8 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        clickhouseClient: {} as any,
+        metadata: {} as any,
         template: `
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
   Runbook URL: {{attributes.runbook.url}}
@@ -522,6 +542,8 @@ describe('checkAlerts', () => {
 
       // @webhook should not be called
       await renderAlertTemplate({
+        clickhouseClient: {} as any,
+        metadata: {} as any,
         template:
           '{{#is_match "attributes.host" "web"}} @webhook-My_Web {{/is_match}}', // partial name should work
         view: {
@@ -551,7 +573,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   '',
@@ -579,7 +601,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103 | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   '',

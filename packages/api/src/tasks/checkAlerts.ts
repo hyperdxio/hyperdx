@@ -9,7 +9,6 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import { escapeRegExp, isString } from 'lodash';
@@ -28,7 +27,6 @@ import Alert, {
   AlertThresholdType,
 } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
@@ -503,21 +501,31 @@ export const renderAlertTemplate = async ({
       },
     };
 
-    const query = await renderChartConfig(chartConfig, metadata);
-    const raw = await clickhouseClient
-      .query<'CSV'>({
-        query: query.sql,
-        query_params: query.params,
-        format: 'CSV',
-      })
-      .then(res => res.text());
+    let truncatedResults = '';
+    try {
+      const query = await renderChartConfig(chartConfig, metadata);
+      const raw = await clickhouseClient
+        .query<'CSV'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'CSV',
+        })
+        .then(res => res.text());
 
-    const lines = raw.split('\n');
+      const lines = raw.split('\n');
 
-    const truncatedResults = truncateString(
-      lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
-      2500,
-    );
+      truncatedResults = truncateString(
+        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
+        2500,
+      );
+    } catch (e) {
+      logger.error({
+        message: 'Failed to fetch sample logs',
+        savedSearchId: savedSearch.id,
+        chartConfig,
+        error: serializeError(e),
+      });
+    }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} lines found, expected ${
