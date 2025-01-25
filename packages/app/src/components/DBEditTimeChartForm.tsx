@@ -232,6 +232,7 @@ export type SavedChartConfigWithSelectArray = Omit<
 };
 
 export default function EditTimeChartForm({
+  dashboardId,
   chartConfig,
   displayedTimeInputValue,
   dateRange,
@@ -242,6 +243,7 @@ export default function EditTimeChartForm({
   onTimeRangeSelect,
   onClose,
 }: {
+  dashboardId?: string;
   chartConfig: SavedChartConfig;
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
@@ -565,7 +567,7 @@ export default function EditTimeChartForm({
                       Add Series
                     </Button>
                   )}
-                  {displayType === DisplayType.Line && (
+                  {displayType === DisplayType.Line && dashboardId && (
                     <Button
                       variant="subtle"
                       size="sm"

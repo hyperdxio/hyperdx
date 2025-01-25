@@ -1,4 +1,5 @@
 import { sign, verify } from 'jsonwebtoken';
+import { groupBy } from 'lodash';
 import ms from 'ms';
 import { z } from 'zod';
 
@@ -119,6 +120,53 @@ export const getAlertById = async (
   return Alert.findOne({
     _id: alertId,
     team: teamId,
+  });
+};
+
+export const getDashboardAlerts = async (
+  dashboardIds: string[] | null,
+  teamId: ObjectId,
+) => {
+  const alerts = await Alert.find({
+    ...(dashboardIds !== null && {
+      dashboard: { $in: dashboardIds },
+    }),
+    source: 'tile',
+    team: teamId,
+  });
+  return groupBy(alerts, 'tileId');
+};
+
+export const createOrUpdateDashboardAlerts = async (
+  dashboardId: ObjectId | string,
+  teamId: ObjectId,
+  alertsByTile: Record<string, AlertInput>,
+) => {
+  return await Promise.all(
+    Object.entries(alertsByTile).map(async ([tileId, alert]) => {
+      return Alert.findOneAndUpdate(
+        {
+          dashboard: dashboardId,
+          tileId,
+          source: AlertSource.TILE,
+          team: teamId,
+        },
+        alert,
+        { new: true, upsert: true },
+      );
+    }),
+  );
+};
+
+export const deleteDashboardAlerts = async (
+  dashboardId: ObjectId | string,
+  teamId: ObjectId,
+  alertIds?: string[],
+) => {
+  return Alert.deleteMany({
+    dashboard: dashboardId,
+    team: teamId,
+    ...(alertIds && { _id: { $in: alertIds } }),
   });
 };
 

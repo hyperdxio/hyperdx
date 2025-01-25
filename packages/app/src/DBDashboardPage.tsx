@@ -355,11 +355,13 @@ const Tile = forwardRef(
 );
 
 const EditTileModal = ({
+  dashboardId,
   chart,
   onClose,
   onSave,
   dateRange,
 }: {
+  dashboardId?: string;
   chart: Tile | undefined;
   onClose: () => void;
   dateRange: [Date, Date];
@@ -376,6 +378,7 @@ const EditTileModal = ({
     >
       {chart != null && (
         <EditTimeChartForm
+          dashboardId={dashboardId}
           chartConfig={chart.config}
           setChartConfig={config => {}}
           dateRange={dateRange}
@@ -471,7 +474,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const confirm = useConfirm();
 
   const router = useRouter();
-  const { dashboardId } = router.query;
+  const dashboardId = router.query.dashboardId as string | undefined;
 
   const {
     dashboard,
@@ -708,6 +711,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Head>
       <OnboardingModal />
       <EditTileModal
+        dashboardId={dashboardId}
         chart={editedTile}
         onClose={() => setEditedTile(undefined)}
         dateRange={searchedTimeRange}
