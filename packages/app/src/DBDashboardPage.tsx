@@ -46,7 +46,6 @@ import {
   Transition,
 } from '@mantine/core';
 import { useHover, usePrevious } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -680,7 +679,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           if (dashboard == null) {
             return;
           }
-
           setDashboard(
             produce(dashboard, draft => {
               const chartIndex = draft.tiles.findIndex(
@@ -693,9 +691,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 draft.tiles[chartIndex] = newChart;
               }
             }),
+            () => {
+              setEditedTile(undefined);
+            },
           );
-
-          setEditedTile(undefined);
         }}
       />
       {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
