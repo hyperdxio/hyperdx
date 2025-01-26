@@ -123,14 +123,20 @@ export const getAlertById = async (
   });
 };
 
-export const getDashboardAlerts = async (
-  dashboardIds: string[] | null,
+export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
+  const alerts = await Alert.find({
+    source: 'tile',
+    team: teamId,
+  });
+  return groupBy(alerts, 'tileId');
+};
+
+export const getDashboardAlertsByTile = async (
   teamId: ObjectId,
+  dashboardId: ObjectId | string,
 ) => {
   const alerts = await Alert.find({
-    ...(dashboardIds !== null && {
-      dashboard: { $in: dashboardIds },
-    }),
+    dashboard: dashboardId,
     source: 'tile',
     team: teamId,
   });

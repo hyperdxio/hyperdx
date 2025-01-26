@@ -224,7 +224,7 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertSchemaBase = z.object({
+export const AlertBaseSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
   threshold: z.number().int().min(1),
@@ -242,7 +242,7 @@ export const AlertSchemaBase = z.object({
     .optional(),
 });
 
-export const AlertSchema = AlertSchemaBase.and(
+export const AlertSchema = AlertBaseSchema.and(
   zSavedSearchAlert.or(zTileAlert),
 );
 
@@ -347,7 +347,7 @@ export const SavedChartConfigSchema = z.intersection(
     z.object({
       name: z.string(),
       source: z.string(),
-      alert: AlertSchemaBase.optional(),
+      alert: AlertBaseSchema.optional(),
     }),
     _ChartConfigSchema.omit({
       connection: true,

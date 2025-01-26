@@ -1,5 +1,5 @@
 ---
-"@hyperdx/common-utils": patch
+'@hyperdx/common-utils': patch
 ---
 
-refactor: Extract base alert schema into AlertSchemaBase schema
+refactor: Extract alert configuration schema into AlertBaseSchema

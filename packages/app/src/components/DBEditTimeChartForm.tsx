@@ -11,7 +11,7 @@ import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  AlertSchemaBase,
+  AlertBaseSchema,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -221,7 +221,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: AlertSchemaBase.optional(),
+    alert: AlertBaseSchema.optional(),
   })
   .passthrough();
 

@@ -8,7 +8,8 @@ import { z } from 'zod';
 import {
   createOrUpdateDashboardAlerts,
   deleteDashboardAlerts,
-  getDashboardAlerts,
+  getDashboardAlertsByTile,
+  getTeamDashboardAlertsByTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
@@ -25,7 +26,7 @@ function pickAlertsByTile(tiles: Tile[]) {
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
     Dashboard.find({ team: teamId }),
-    getDashboardAlerts(null, teamId),
+    getTeamDashboardAlertsByTile(teamId),
   ]);
 
   const dashboards = _dashboards
@@ -44,7 +45,7 @@ export async function getDashboards(teamId: ObjectId) {
 export async function getDashboard(dashboardId: string, teamId: ObjectId) {
   const [_dashboard, alerts] = await Promise.all([
     Dashboard.findOne({ _id: dashboardId, team: teamId }),
-    getDashboardAlerts([dashboardId], teamId),
+    getDashboardAlertsByTile(teamId, dashboardId),
   ]);
 
   return {

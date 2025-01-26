@@ -8,9 +8,9 @@ import _ from 'lodash';
 import { z } from 'zod';
 import {
   Alert,
+  AlertBaseSchema,
   AlertChannelType,
   AlertInterval,
-  AlertSchemaBase,
   AlertSource,
   AlertThresholdType,
 } from '@hyperdx/common-utils/dist/types';
@@ -111,7 +111,7 @@ export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
 };
 
-export const DEFAULT_TILE_ALERT: z.infer<typeof AlertSchemaBase> = {
+export const DEFAULT_TILE_ALERT: z.infer<typeof AlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',

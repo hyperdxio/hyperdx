@@ -98,8 +98,8 @@ describe('dashboard router', () => {
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data).toMatchObject([
       {
-        tileId: dashboard.body.tiles[0].id,
         ...omit(MOCK_ALERT, 'channel.webhookId'),
+        tileId: dashboard.body.tiles[0].id,
       },
     ]);
   });
@@ -122,8 +122,8 @@ describe('dashboard router', () => {
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data).toMatchObject([
       {
-        tileId: updatedDashboard.body.tiles[MOCK_DASHBOARD.tiles.length].id,
         ...omit(MOCK_ALERT, 'channel.webhookId'),
+        tileId: updatedDashboard.body.tiles[MOCK_DASHBOARD.tiles.length].id,
       },
     ]);
   });
@@ -186,8 +186,8 @@ describe('dashboard router', () => {
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data).toMatchObject([
       {
-        tileId: dashboard.body.tiles[0].id,
         ...omit(updatedAlert, 'channel.webhookId'),
+        tileId: dashboard.body.tiles[0].id,
       },
     ]);
   });
