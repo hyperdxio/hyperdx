@@ -302,16 +302,22 @@ export function buildMetricSeries({
 export const randomMongoId = () =>
   Math.floor(Math.random() * 1000000000000).toString();
 
-export const makeTile = (opts?: { id?: string }): Tile => ({
+export const makeTile = (opts?: {
+  id?: string;
+  alert?: SavedChartConfig['alert'];
+}): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
   y: 1,
   w: 1,
   h: 1,
-  config: makeChartConfig(),
+  config: makeChartConfig(opts),
 });
 
-export const makeChartConfig = (opts?: { id?: string }): SavedChartConfig => ({
+export const makeChartConfig = (opts?: {
+  id?: string;
+  alert?: SavedChartConfig['alert'];
+}): SavedChartConfig => ({
   name: 'Test Chart',
   source: 'test-source',
   displayType: DisplayType.Line,
@@ -331,6 +337,7 @@ export const makeChartConfig = (opts?: { id?: string }): SavedChartConfig => ({
     output: 'number',
   },
   filters: [],
+  alert: opts?.alert,
 });
 
 // TODO: DEPRECATED

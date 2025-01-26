@@ -41,6 +41,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
+import { IS_DEV } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
@@ -567,22 +568,24 @@ export default function EditTimeChartForm({
                       Add Series
                     </Button>
                   )}
-                  {displayType === DisplayType.Line && dashboardId && (
-                    <Button
-                      variant="subtle"
-                      size="sm"
-                      color={alert ? 'red' : 'gray'}
-                      onClick={() =>
-                        setValue(
-                          'alert',
-                          alert ? undefined : DEFAULT_TILE_ALERT,
-                        )
-                      }
-                    >
-                      <i className="bi bi-bell-fill me-2" />
-                      {!alert ? 'Add Alert' : 'Remove Alert'}
-                    </Button>
-                  )}
+                  {displayType === DisplayType.Line &&
+                    dashboardId &&
+                    IS_DEV && (
+                      <Button
+                        variant="subtle"
+                        size="sm"
+                        color={alert ? 'red' : 'gray'}
+                        onClick={() =>
+                          setValue(
+                            'alert',
+                            alert ? undefined : DEFAULT_TILE_ALERT,
+                          )
+                        }
+                      >
+                        <i className="bi bi-bell-fill me-2" />
+                        {!alert ? 'Add Alert' : 'Remove Alert'}
+                      </Button>
+                    )}
                 </Group>
                 <NumberFormatInputControlled control={control} />
               </Flex>

@@ -1,3 +1,6 @@
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import { omit } from 'lodash';
+
 import {
   getLoggedInAgent,
   getServer,
@@ -9,6 +12,13 @@ const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
   tiles: [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()],
   tags: ['test'],
+};
+
+const MOCK_ALERT = {
+  channel: { type: 'webhook' as const, webhookId: 'abcde' },
+  interval: '12h' as const,
+  threshold: 1,
+  thresholdType: AlertThresholdType.ABOVE,
 };
 
 describe('dashboard router', () => {
@@ -74,6 +84,114 @@ describe('dashboard router', () => {
     expect(dashboards.body.length).toBe(0);
   });
 
+  it('alerts are created when creating dashboard', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    const alerts = await agent.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toMatchObject([
+      {
+        tileId: dashboard.body.tiles[0].id,
+        ...omit(MOCK_ALERT, 'channel.webhookId'),
+      },
+    ]);
+  });
+
+  it('alerts are created when updating dashboard (adding alert to tile)', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const updatedDashboard = await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [...dashboard.body.tiles, makeTile({ alert: MOCK_ALERT })],
+      })
+      .expect(200);
+
+    const alerts = await agent.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toMatchObject([
+      {
+        tileId: updatedDashboard.body.tiles[MOCK_DASHBOARD.tiles.length].id,
+        ...omit(MOCK_ALERT, 'channel.webhookId'),
+      },
+    ]);
+  });
+
+  it('alerts are deleted when updating dashboard (deleting tile alert settings)', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: dashboard.body.tiles.slice(1),
+      })
+      .expect(200);
+
+    const alerts = await agent.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toEqual([]);
+  });
+
+  it('alerts are updated when updating dashboard (updating tile alert settings)', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    const updatedAlert = {
+      ...MOCK_ALERT,
+      threshold: 2,
+    };
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: updatedAlert,
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const alerts = await agent.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toMatchObject([
+      {
+        tileId: dashboard.body.tiles[0].id,
+        ...omit(updatedAlert, 'channel.webhookId'),
+      },
+    ]);
+  });
+
   it('deletes attached alerts when deleting tiles', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -96,34 +214,40 @@ describe('dashboard router', () => {
       ),
     );
 
-    const dashboards = await agent.get(`/dashboards`).expect(200);
-
     // Make sure all alerts are attached to the dashboard charts
     const allTiles = dashboard.tiles.map(tile => tile.id).sort();
-    const tilesWithAlerts = dashboards.body[0].alerts
+    const alertsPreDelete = await agent.get(`/alerts`).expect(200);
+    const alertsPreDeleteTiles = alertsPreDelete.body.data
       .map(alert => alert.tileId)
       .sort();
-    expect(allTiles).toEqual(tilesWithAlerts);
+    expect(allTiles).toEqual(alertsPreDeleteTiles);
 
     // Delete the first chart
+    const dashboardPreDelete = await agent
+      .get('/dashboards')
+      .expect(200)
+      .then(res => res.body[0]);
     await agent
       .patch(`/dashboards/${dashboard._id}`)
       .send({
-        ...dashboard,
-        tiles: dashboard.tiles.slice(1),
+        ...dashboardPreDelete,
+        tiles: dashboardPreDelete.tiles.slice(1),
       })
       .expect(200);
 
-    const dashboardPostDelete = (await agent.get(`/dashboards`).expect(200))
-      .body[0];
+    const dashboardPostDelete = await agent
+      .get('/dashboards')
+      .expect(200)
+      .then(res => res.body[0]);
 
     // Make sure all alerts are attached to the dashboard charts
     const allTilesPostDelete = dashboardPostDelete.tiles
       .map(tile => tile.id)
       .sort();
-    const tilesWithAlertsPostDelete = dashboardPostDelete.alerts
+    const alertsPostDelete = await agent.get(`/alerts`).expect(200);
+    const alertsPostDeleteTiles = alertsPostDelete.body.data
       .map(alert => alert.tileId)
       .sort();
-    expect(allTilesPostDelete).toEqual(tilesWithAlertsPostDelete);
+    expect(allTilesPostDelete).toEqual(alertsPostDeleteTiles);
   });
 });

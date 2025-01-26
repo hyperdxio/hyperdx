@@ -142,9 +142,9 @@ export const createOrUpdateDashboardAlerts = async (
   teamId: ObjectId,
   alertsByTile: Record<string, AlertInput>,
 ) => {
-  return await Promise.all(
+  return Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
-      return Alert.findOneAndUpdate(
+      return await Alert.findOneAndUpdate(
         {
           dashboard: dashboardId,
           tileId,
