@@ -29,7 +29,7 @@
   },
   "scripts": {
     "prepare": "husky install",
-    "app:dev": "npx concurrently -k -n 'API,APP,ALERTS-TASK' -c 'green.bold,blue.bold,yellow.bold' 'nx run @hyperdx/api:dev' 'nx run @hyperdx/app:dev' 'nx run @hyperdx/api:dev-task check-alerts'",
+    "app:dev": "npx concurrently -k -n 'API,APP,ALERTS-TASK,COMMON-UTILS' -c 'green.bold,blue.bold,yellow.bold,magenta' 'nx run @hyperdx/api:dev' 'nx run @hyperdx/app:dev' 'nx run @hyperdx/api:dev-task check-alerts' 'nx run @hyperdx/common-utils:dev'",
     "app:lint": "nx run @hyperdx/app:ci:lint",
     "predev": "docker compose -f docker-compose.dev.yml up -d",
     "dev": "yarn app:dev",
