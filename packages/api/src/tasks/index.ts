@@ -11,6 +11,9 @@ import redisClient from '@/utils/redis';
 import checkAlerts from './checkAlerts';
 import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
+const shutdown = async () =>
+  Promise.all([redisClient.disconnect(), mongooseConnection.close()]);
+
 const main = async (taskName: string) => {
   // connect dbs + redis
   await Promise.all([connectDB(), redisClient.connect()]);
@@ -50,8 +53,7 @@ const main = async (taskName: string) => {
     `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
   );
 
-  // close redis + db connections
-  await Promise.all([redisClient.disconnect(), mongooseConnection.close()]);
+  await shutdown();
 };
 
 // Entry point
@@ -64,8 +66,9 @@ if (IS_DEV) {
     cronTime: '*/15 * * * * *',
     waitForCompletion: true,
     onTick: async () => main(taskName),
-    errorHandler: err => {
+    errorHandler: async err => {
       console.error(err);
+      await shutdown();
     },
     start: true,
     timeZone: 'UTC',
