@@ -2,14 +2,13 @@
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
-import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
+import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import * as fnsTz from 'date-fns-tz';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import { escapeRegExp, isString } from 'lodash';
@@ -28,8 +27,8 @@ import Alert, {
   AlertThresholdType,
 } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import { IDashboard } from '@/models/dashboard';
-import { ISavedSearch } from '@/models/savedSearch';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
@@ -41,16 +40,10 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
-type EnhancedSavedSearch = Omit<ISavedSearch, 'source'> & {
-  source: ISource;
-};
-
 const getAlerts = () =>
   Alert.find({}).populate<{
     team: ITeam;
-    savedSearch?: EnhancedSavedSearch;
-    dashboard?: IDashboard;
-  }>(['team', 'savedSearch', 'dashboard']);
+  }>(['team']);
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
@@ -60,13 +53,15 @@ export const buildLogSearchLink = ({
   startTime,
 }: {
   endTime: Date;
-  savedSearch: EnhancedSavedSearch;
+  savedSearch: ISavedSearch;
   startTime: Date;
 }) => {
   const url = new URL(`${config.FRONTEND_URL}/search/${savedSearch.id}`);
   const queryParams = new URLSearchParams({
     from: startTime.getTime().toString(),
     to: endTime.getTime().toString(),
+    isLive: 'false',
+    // do we need to fill more params here?
   });
   url.search = queryParams.toString();
   return url.toString();
@@ -152,7 +147,8 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
-  savedSearch?: EnhancedSavedSearch | null;
+  savedSearch?: ISavedSearch | null;
+  source?: ISource | null;
   startTime: Date;
   value: number;
 };
@@ -393,11 +389,15 @@ export const translateExternalActionsToInternal = (template: string) => {
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
+  clickhouseClient,
+  metadata,
   template,
   title,
   view,
   team,
 }: {
+  clickhouseClient: clickhouse.ClickhouseClient;
+  metadata: Metadata;
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
@@ -405,8 +405,16 @@ export const renderAlertTemplate = async ({
     id: string;
   };
 }) => {
-  const { alert, dashboard, endTime, group, savedSearch, startTime, value } =
-    view;
+  const {
+    alert,
+    dashboard,
+    endTime,
+    group,
+    savedSearch,
+    source,
+    startTime,
+    value,
+  } = view;
 
   const defaultExternalAction = getDefaultExternalAction(alert);
   const targetTemplate =
@@ -472,34 +480,53 @@ export const renderAlertTemplate = async ({
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source} but savedSearch is null`);
     }
+    if (source == null) {
+      throw new Error(`Source ID is ${alert.source} but source is null`);
+    }
     // TODO: show group + total count for group-by alerts
-    const results: any = { data: [] };
-    // IMPLEMENT ME: fetching sample logs using renderChartConfig
-    // await clickhouse.getLogBatch({
-    //   endTime: endTime.getTime(),
-    //   limit: 5,
-    //   offset: 0,
-    //   order: clickhouse.SortOrder.Desc,
-    //   q: searchQuery,
-    //   startTime: startTime.getTime(),
-    //   tableVersion: team.logStreamTableVersion,
-    //   teamId: team.id,
-    // });
-    const truncatedResults = truncateString(
-      results.data
-        .map(row => {
-          return `${fnsTz.formatInTimeZone(
-            new Date(row.timestamp),
-            'Etc/UTC',
-            'MMM d HH:mm:ss',
-          )}Z [${row.severity_text}] ${truncateString(
-            row.body,
-            MAX_MESSAGE_LENGTH,
-          )}`;
+    // fetch sample logs
+    const chartConfig: ChartConfigWithOptDateRange = {
+      connection: '', // no need for the connection id since clickhouse client is already initialized
+      displayType: DisplayType.Search,
+      dateRange: [startTime, endTime],
+      from: source.from,
+      select: savedSearch.select ?? source.defaultTableSelectExpression,
+      where: savedSearch.where,
+      whereLanguage: savedSearch.whereLanguage,
+      timestampValueExpression: source.timestampValueExpression,
+      orderBy: savedSearch.orderBy,
+      limit: {
+        limit: 5,
+        offset: 0,
+      },
+    };
+
+    let truncatedResults = '';
+    try {
+      const query = await renderChartConfig(chartConfig, metadata);
+      const raw = await clickhouseClient
+        .query<'CSV'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'CSV',
         })
-        .join('\n'),
-      2500,
-    );
+        .then(res => res.text());
+
+      const lines = raw.split('\n');
+
+      truncatedResults = truncateString(
+        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
+        2500,
+      );
+    } catch (e) {
+      logger.error({
+        message: 'Failed to fetch sample logs',
+        savedSearchId: savedSearch.id,
+        chartConfig,
+        error: serializeError(e),
+      });
+    }
+
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
 ${value} lines found, expected ${
       alert.thresholdType === AlertThresholdType.ABOVE
@@ -541,16 +568,26 @@ ${targetTemplate}`;
 const fireChannelEvent = async ({
   alert,
   attributes,
+  clickhouseClient,
+  dashboard,
   endTime,
   group,
+  metadata,
+  savedSearch,
+  source,
   startTime,
   totalCount,
   windowSizeInMins,
 }: {
   alert: EnhancedAlert;
   attributes: Record<string, string>; // TODO: support other types than string
+  clickhouseClient: clickhouse.ClickhouseClient;
+  dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
+  metadata: Metadata;
+  savedSearch?: ISavedSearch | null;
+  source?: ISource | null;
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
@@ -573,12 +610,12 @@ const fireChannelEvent = async ({
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       channel: alert.channel,
-      dashboardId: alert.dashboard?.id,
+      dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
       message: alert.message,
       name: alert.name,
-      savedSearchId: alert.savedSearch?.id,
+      savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
       threshold: alert.threshold,
@@ -586,16 +623,19 @@ const fireChannelEvent = async ({
       tileId: alert.tileId,
     },
     attributes: attributesNested,
-    dashboard: alert.dashboard,
+    dashboard,
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    savedSearch: alert.savedSearch,
+    savedSearch,
+    source,
     startTime,
     value: totalCount,
   };
 
   await renderAlertTemplate({
+    clickhouseClient,
+    metadata,
     title: buildAlertMessageTemplateTitle({
       template: alert.name,
       view: templateView,
@@ -643,12 +683,24 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     let connectionId: string | undefined;
+    let savedSearch: ISavedSearch | undefined | null;
+    let dashboard: IDashboard | undefined | null;
+    let source: ISource | undefined | null;
     // SAVED_SEARCH Source
     if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      const source = await Source.findById(alert.savedSearch.source);
+      savedSearch = await SavedSearch.findById(alert.savedSearch);
+      if (savedSearch == null) {
+        logger.error({
+          message: 'SavedSearch not found',
+          alertId: alert.id,
+        });
+        return;
+      }
+      source = await Source.findById(savedSearch.source);
       if (source == null) {
         logger.error({
           message: 'Source not found',
+          alertId: alert.id,
           savedSearch: alert.savedSearch,
         });
         return;
@@ -656,6 +708,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       connectionId = source.connection.toString();
       chartConfig = {
         connection: connectionId,
+        displayType: DisplayType.Line,
         dateRange: [checkStartTime, checkEndTime],
         from: source.from,
         granularity: `${windowSizeInMins} minute`,
@@ -666,8 +719,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             valueExpression: '',
           },
         ],
-        where: alert.savedSearch.where,
-        whereLanguage: alert.savedSearch.whereLanguage,
+        where: savedSearch.where,
+        whereLanguage: savedSearch.whereLanguage,
         groupBy: alert.groupBy,
         timestampValueExpression: source.timestampValueExpression,
       };
@@ -678,44 +731,47 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       alert.dashboard &&
       alert.tileId
     ) {
+      dashboard = await Dashboard.findById(alert.dashboard);
+      if (dashboard == null) {
+        logger.error({
+          message: 'Dashboard not found',
+          alertId: alert.id,
+          dashboardId: alert.dashboard,
+        });
+        return;
+      }
       // filter tiles
-      alert.dashboard.tiles = alert.dashboard.tiles.filter(
+      dashboard.tiles = dashboard.tiles.filter(
         tile => tile.id === alert.tileId,
       );
 
-      if (
-        alert.dashboard &&
-        Array.isArray(alert.dashboard.tiles) &&
-        alert.dashboard.tiles.length === 1
-      ) {
+      if (dashboard.tiles.length === 1) {
         // Doesn't work for metric alerts yet
         const MAX_NUM_GROUPS = 20;
         // TODO: assuming that the chart has only 1 series for now
-        const firstTile = alert.dashboard.tiles[0];
+        const firstTile = dashboard.tiles[0];
         if (firstTile.config.displayType === DisplayType.Line) {
           // fetch source data
-          const _source = await Source.findOne({
-            _id: firstTile.config.source,
-          });
-          if (!_source) {
+          source = await Source.findById(firstTile.config.source);
+          if (!source) {
             logger.error({
               message: 'Source not found',
-              dashboardId: alert.dashboard.id,
+              dashboardId: alert.dashboard,
               tile: firstTile,
             });
             return;
           }
-          connectionId = _source.connection.toString();
+          connectionId = source.connection.toString();
           chartConfig = {
             connection: connectionId,
             displayType: firstTile.config.displayType,
             dateRange: [checkStartTime, checkEndTime],
-            from: _source.from,
+            from: source.from,
             granularity: `${windowSizeInMins} minute`,
             select: firstTile.config.select,
             where: firstTile.config.where,
             groupBy: firstTile.config.groupBy,
-            timestampValueExpression: _source.timestampValueExpression,
+            timestampValueExpression: source.timestampValueExpression,
           };
         }
       }
@@ -763,7 +819,6 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         query: query.sql,
         query_params: query.params,
         format: 'JSON',
-        connectionId,
       })
       .then(res => res.json<Record<string, string>>());
 
@@ -848,8 +903,13 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             await fireChannelEvent({
               alert,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
+              clickhouseClient,
+              dashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: extraFields.join(', '),
+              metadata,
+              savedSearch,
+              source,
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
