@@ -125,7 +125,7 @@ export const getAlertById = async (
 
 export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
   const alerts = await Alert.find({
-    source: 'tile',
+    source: AlertSource.TILE,
     team: teamId,
   });
   return groupBy(alerts, 'tileId');
@@ -137,7 +137,7 @@ export const getDashboardAlertsByTile = async (
 ) => {
   const alerts = await Alert.find({
     dashboard: dashboardId,
-    source: 'tile',
+    source: AlertSource.TILE,
     team: teamId,
   });
   return groupBy(alerts, 'tileId');

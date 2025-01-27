@@ -120,7 +120,7 @@ export async function updateDashboard(
 
   if (oldDashboard.tiles) {
     for (const tile of oldDashboard.tiles) {
-      const alertId = tile.config.alert?.id?.toString();
+      const alertId = tile.config.alert?.id;
       if (alertId && !newAlertIds.has(alertId)) {
         deletedAlertIds.push(alertId);
       }
