@@ -1,23 +1,63 @@
 import * as chrono from 'chrono-node';
 
-export function parseTimeRangeInput(str: string): [Date | null, Date | null] {
-  const parsedTimeResult = chrono.parse(str);
-  const start =
-    parsedTimeResult.length === 1
-      ? parsedTimeResult[0].start?.date()
-      : parsedTimeResult.length > 1
-        ? parsedTimeResult[1].start?.date()
-        : null;
-  const end =
-    parsedTimeResult.length === 1 && parsedTimeResult[0].end != null
-      ? parsedTimeResult[0].end.date()
-      : parsedTimeResult.length > 1 && parsedTimeResult[1].end != null
-        ? parsedTimeResult[1].end.date()
-        : start != null && start instanceof Date
-          ? new Date()
-          : null;
+function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
+  if (!parsed) {
+    return null;
+  }
 
-  return [start, end];
+  if (parsed.isCertain('year')) {
+    return parsed.date();
+  }
+
+  const now = new Date();
+  if (
+    !(
+      parsed.isCertain('hour') ||
+      parsed.isCertain('minute') ||
+      parsed.isCertain('second') ||
+      parsed.isCertain('millisecond')
+    )
+  ) {
+    // If all of the time components have been inferred, set the time components of now
+    // to match the parsed time components. This ensures that the comparison later on uses
+    // the same point in time when only worrying about dates.
+    now.setHours(parsed.get('hour') || 0);
+    now.setMinutes(parsed.get('minute') || 0);
+    now.setSeconds(parsed.get('second') || 0);
+    now.setMilliseconds(parsed.get('millisecond') || 0);
+  }
+
+  const parsedDate = parsed.date();
+  if (parsedDate > now) {
+    parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+  }
+  return parsedDate;
+}
+
+export function parseTimeRangeInput(
+  str: string,
+  isUTC: boolean = false,
+): [Date | null, Date | null] {
+  const parsedTimeResults = chrono.parse(str, isUTC ? { timezone: 0 } : {});
+  if (parsedTimeResults.length === 0) {
+    return [null, null];
+  }
+
+  const parsedTimeResult =
+    parsedTimeResults.length === 1
+      ? parsedTimeResults[0]
+      : parsedTimeResults[1];
+  const start = normalizeParsedDate(parsedTimeResult.start);
+  const end = normalizeParsedDate(parsedTimeResult.end) || new Date();
+  if (end && start && end < start) {
+    // For date range strings that omit years, the chrono parser will infer the year
+    // using the current year. This can cause the start date to be in the future, and
+    // returned as the end date instead of the start date. After normalizing the dates,
+    // we then need to swap the order to maintain a range from older to newer.
+    return [end, start];
+  } else {
+    return [start, end];
+  }
 }
 
 export const LIVE_TAIL_TIME_QUERY = 'Live Tail';
@@ -72,5 +112,6 @@ export const dateParser = (input?: string) => {
   if (!input) {
     return null;
   }
-  return chrono.casual.parseDate(input);
+  const parsed = chrono.casual.parse(input)[0];
+  return normalizeParsedDate(parsed?.start);
 };

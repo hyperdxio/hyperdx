@@ -4348,7 +4348,7 @@ __metadata:
     "@uiw/codemirror-themes": "npm:^4.23.3"
     "@uiw/react-codemirror": "npm:^4.23.3"
     bootstrap: "npm:^5.1.3"
-    chrono-node: "npm:^2.5.0"
+    chrono-node: "npm:^2.7.8"
     classnames: "npm:^2.3.1"
     crypto-js: "npm:^4.2.0"
     date-fns: "npm:^2.28.0"
@@ -12642,12 +12642,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chrono-node@npm:^2.5.0":
-  version: 2.5.0
-  resolution: "chrono-node@npm:2.5.0"
+"chrono-node@npm:^2.7.8":
+  version: 2.7.8
+  resolution: "chrono-node@npm:2.7.8"
   dependencies:
     dayjs: "npm:^1.10.0"
-  checksum: 10c0/1569fa2353b12f38aa81b8cea3498dac7cb19ecde075221c60aaa1743a4133cd0fd2b874033d0da44308e4e8fe07d5e6daf1fb338cf531dad3e3c20355db8e53
+  checksum: 10c0/734af27b9cfa6aff34e41c2ec3f532a015ecb078241ab9c6a25e7503a3297109cd3503d1b74813ce453c850bdb45bf525c5b5961f35f307da2952d1ff49109ea
   languageName: node
   linkType: hard
 
