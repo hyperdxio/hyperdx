@@ -118,7 +118,11 @@ export function useDashboard({
   }, [isLocalDashboard, localDashboard, defaultDashboard, remoteDashboard]);
 
   const setDashboard = useCallback(
-    (newDashboard: Dashboard, onSuccess?: VoidFunction) => {
+    (
+      newDashboard: Dashboard,
+      onSuccess?: VoidFunction,
+      onError?: VoidFunction,
+    ) => {
       if (isLocalDashboard) {
         setLocalDashboard(newDashboard);
         onSuccess?.();
@@ -134,6 +138,7 @@ export function useDashboard({
               message: e.message.slice(0, 100),
               autoClose: 5000,
             });
+            onError?.();
           },
         });
       }

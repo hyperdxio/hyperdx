@@ -322,11 +322,13 @@ const EditTileModal = ({
   chart,
   onClose,
   onSave,
+  isSaving,
   dateRange,
 }: {
   chart: Tile | undefined;
   onClose: () => void;
   dateRange: [Date, Date];
+  isSaving?: boolean;
   onSave: (chart: Tile) => void;
 }) => {
   return (
@@ -343,6 +345,7 @@ const EditTileModal = ({
           chartConfig={chart.config}
           setChartConfig={config => {}}
           dateRange={dateRange}
+          isSaving={isSaving}
           onSave={config => {
             onSave({
               ...chart,
@@ -665,6 +668,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     );
   }, [createDashboard, router]);
 
+  const [isSaving, setIsSaving] = useState(false);
+
   return (
     <Box p="sm">
       <Head>
@@ -673,12 +678,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       <OnboardingModal />
       <EditTileModal
         chart={editedTile}
-        onClose={() => setEditedTile(undefined)}
+        onClose={() => {
+          if (!isSaving) {
+            setEditedTile(undefined);
+          }
+        }}
         dateRange={searchedTimeRange}
+        isSaving={isSaving}
         onSave={newChart => {
           if (dashboard == null) {
             return;
           }
+          setIsSaving(true);
           setDashboard(
             produce(dashboard, draft => {
               const chartIndex = draft.tiles.findIndex(
@@ -693,6 +704,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             }),
             () => {
               setEditedTile(undefined);
+              setIsSaving(false);
+            },
+            () => {
+              setIsSaving(false);
             },
           );
         }}

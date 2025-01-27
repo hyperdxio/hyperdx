@@ -35,6 +35,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
+import { useUpdateDashboard } from '@/dashboard';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
@@ -213,6 +214,7 @@ export default function EditTimeChartForm({
   chartConfig,
   displayedTimeInputValue,
   dateRange,
+  isSaving,
   onTimeRangeSearch,
   setChartConfig,
   setDisplayedTimeInputValue,
@@ -223,6 +225,7 @@ export default function EditTimeChartForm({
   chartConfig: SavedChartConfig;
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
+  isSaving?: boolean;
   onTimeRangeSearch?: (value: string) => void;
   setChartConfig: (chartConfig: SavedChartConfig) => void;
   setDisplayedTimeInputValue?: (value: string) => void;
@@ -587,6 +590,7 @@ export default function EditTimeChartForm({
         <Flex gap="sm">
           {onSave != null && (
             <Button
+              loading={isSaving}
               variant="outline"
               onClick={() => {
                 handleSubmit(v => {
@@ -598,7 +602,12 @@ export default function EditTimeChartForm({
             </Button>
           )}
           {onClose != null && (
-            <Button variant="subtle" color="dark.2" onClick={onClose}>
+            <Button
+              variant="subtle"
+              color="dark.2"
+              onClick={onClose}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
           )}
