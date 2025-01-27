@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
@@ -117,7 +118,11 @@ export function useDashboard({
   }, [isLocalDashboard, localDashboard, defaultDashboard, remoteDashboard]);
 
   const setDashboard = useCallback(
-    (newDashboard: Dashboard, onSuccess?: VoidFunction) => {
+    (
+      newDashboard: Dashboard,
+      onSuccess?: VoidFunction,
+      onError?: VoidFunction,
+    ) => {
       if (isLocalDashboard) {
         setLocalDashboard(newDashboard);
         onSuccess?.();
@@ -125,6 +130,15 @@ export function useDashboard({
         return updateDashboard.mutate(newDashboard, {
           onSuccess: () => {
             onSuccess?.();
+          },
+          onError: e => {
+            notifications.show({
+              color: 'red',
+              title: 'Unable to save dashboard',
+              message: e.message.slice(0, 100),
+              autoClose: 5000,
+            });
+            onError?.();
           },
         });
       }
