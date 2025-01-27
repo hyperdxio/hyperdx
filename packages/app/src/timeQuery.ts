@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react';
 import { useRouter } from 'next/router';
-import * as chrono from 'chrono-node';
 import {
   format,
   formatDuration,
@@ -27,6 +26,7 @@ import {
   withDefault,
 } from 'use-query-params';
 
+import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
 import { usePrevious } from './utils';
 
@@ -62,31 +62,7 @@ export function parseTimeQuery(
     const end = startOfSecond(new Date());
     return [sub(end, { minutes: 15 }), end];
   }
-
-  const parsedTimeResult = chrono.parse(
-    timeQuery,
-    isUTC
-      ? {
-          timezone: 0, // 0 minute offset, UTC
-        }
-      : {},
-  );
-  const start =
-    parsedTimeResult.length === 1
-      ? parsedTimeResult[0].start?.date()
-      : parsedTimeResult.length > 1
-        ? parsedTimeResult[1].start?.date()
-        : null;
-  const end =
-    parsedTimeResult.length === 1 && parsedTimeResult[0].end != null
-      ? parsedTimeResult[0].end.date()
-      : parsedTimeResult.length > 1 && parsedTimeResult[1].end != null
-        ? parsedTimeResult[1].end.date()
-        : start != null && start instanceof Date
-          ? new Date()
-          : null;
-
-  return [start, end];
+  return parseTimeRangeInput(timeQuery, isUTC);
 }
 
 export function parseValidTimeRange(
