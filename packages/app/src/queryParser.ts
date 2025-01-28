@@ -28,6 +28,23 @@ export function parse(query: string): lucene.AST {
 
 const IMPLICIT_FIELD = '<implicit>';
 
+const CLICK_HOUSE_JSON_NUMBER_TYPES = [
+  'Int8',
+  'Int16',
+  'Int32',
+  'Int64',
+  'Int128',
+  'Int256',
+  'UInt8',
+  'UInt16',
+  'UInt32',
+  'UInt64',
+  'UInt128',
+  'UInt256',
+  'Float32',
+  'Float64'
+];
+
 interface Serializer {
   operator(op: lucene.Operator): string;
   eq(field: string, term: string, isNegatedField: boolean): Promise<string>;
@@ -164,7 +181,8 @@ export abstract class SQLSerializer implements Serializer {
 
   abstract getColumnForField(field: string): Promise<{
     column?: string;
-    propertyType?: 'string' | 'number' | 'bool';
+    columnJSON?: {string: string, number: string};
+    propertyType?: 'string' | 'number' | 'bool' | 'json';
     found: boolean;
   }>;
 
@@ -191,7 +209,7 @@ export abstract class SQLSerializer implements Serializer {
 
   // Only for exact string matches
   async eq(field: string, term: string, isNegatedField: boolean) {
-    const { column, found, propertyType } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -207,6 +225,11 @@ export abstract class SQLSerializer implements Serializer {
         `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
         [term],
       );
+    } else if (propertyType === 'json') {
+      return SqlString.format(
+        `(${columnJSON?.string} ${isNegatedField ? '!' : ''}= ?)`,
+        [term]
+      );
     }
     return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
       term,
@@ -214,42 +237,56 @@ export abstract class SQLSerializer implements Serializer {
   }
 
   async isNotNull(field: string, isNegatedField: boolean) {
-    const { found, column } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-
+    if (propertyType === 'json') {
+      return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1`;
+    }
     return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1`;
   }
 
   async gte(field: string, term: string) {
-    const { column, found } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (propertyType === 'json') {
+      return SqlString.format(`(${columnJSON?.number} >= ?)`, [term]);
     }
     return SqlString.format(`(${column} >= ?)`, [term]);
   }
 
   async lte(field: string, term: string) {
-    const { column, found } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (propertyType === 'json') {
+      return SqlString.format(`(${columnJSON?.number} <= ?)`, [term]);
     }
     return SqlString.format(`(${column} <= ?)`, [term]);
   }
 
   async lt(field: string, term: string) {
-    const { column, found } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (propertyType === 'json') {
+      return SqlString.format(`(${columnJSON?.number} < ?)`, [term]);
     }
     return SqlString.format(`(${column} < ?)`, [term]);
   }
 
   async gt(field: string, term: string) {
-    const { column, found } = await this.getColumnForField(field);
+    const { column, columnJSON, found, propertyType } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (propertyType === 'json') {
+      return SqlString.format(`(${columnJSON?.number} > ?)`, [term]);
     }
     return SqlString.format(`(${column} > ?)`, [term]);
   }
@@ -281,7 +318,7 @@ export abstract class SQLSerializer implements Serializer {
     suffixWildcard: boolean,
   ) {
     const isImplicitField = field === IMPLICIT_FIELD;
-    const { column, propertyType, found } = await this.getColumnForField(field);
+    const { column, columnJSON, propertyType, found } = await this.getColumnForField(field);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -298,6 +335,12 @@ export abstract class SQLSerializer implements Serializer {
       return SqlString.format(
         `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
         [column, term],
+      );
+    } else if (propertyType === 'json') {
+      const shoudUseTokenBf = isImplicitField;
+      return SqlString.format(
+        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}? ?)`,
+        [SqlString.raw(shoudUseTokenBf ? 'LIKE' : 'ILIKE'), `%${term}%`],
       );
     }
 
@@ -445,6 +488,25 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ]),
           columnType: valueType ?? 'Unknown',
         };
+      } else if (prefixMatch.type.startsWith('JSON')) {
+        // ignore original column expression at here
+        // need to know the term to decide which expression to read
+        // TODO: add real columnExpression when CH update JSON data type
+        return {
+          found: true,
+          columnExpression: '',
+          columnExpressionJSON: {
+            string: SqlString.format(
+              `toString(??)`,
+              [field],
+            ),
+            number: SqlString.format(
+              `dynamicType(??) in (?) and ??`,
+              [field, CLICK_HOUSE_JSON_NUMBER_TYPES, field],
+            )
+          },
+          columnType: 'JSON',
+        };
       } else if (prefixMatch.type === 'String') {
         // TODO: Support non-strings
         const nestedPaths = fieldPostfix.split('.');
@@ -485,6 +547,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     return {
       column: expression.columnExpression,
+      columnJSON: expression?.columnExpressionJSON,
       propertyType:
         convertCHTypeToPrimitiveJSType(expression.columnType) ?? undefined,
       found: expression.found,

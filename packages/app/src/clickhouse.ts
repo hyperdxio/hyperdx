@@ -17,6 +17,8 @@ export enum JSDataType {
   Number = 'number',
   String = 'string',
   Bool = 'bool',
+  JSON = 'json',
+  Dynamic = 'dynamic' // json type will store anything as Dynamic type by default
 }
 
 export const convertCHDataTypeToJSType = (
@@ -51,6 +53,10 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.Bool;
   } else if (dataType.startsWith('LowCardinality')) {
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
+  } else if (dataType.startsWith('JSON')) {
+    return JSDataType.JSON;
+  } else if (dataType.startsWith('Dynamic')) {
+    return JSDataType.Dynamic;
   }
 
   return null;
@@ -61,6 +67,11 @@ export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
 
   if (jsType === JSDataType.Map || jsType === JSDataType.Array) {
     throw new Error('Map type is not a primitive type');
+  } else if (jsType === JSDataType.JSON) {
+    // throw new Error('JSON type is not a primitive type');
+  } else if (jsType === JSDataType.Dynamic) {
+    console.log('need double check');
+    // throw new Error('Dynamic type is not a primitive type');
   } else if (jsType === JSDataType.Date) {
     return JSDataType.Number;
   }
