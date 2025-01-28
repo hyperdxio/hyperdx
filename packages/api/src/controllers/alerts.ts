@@ -1,4 +1,5 @@
 import { sign, verify } from 'jsonwebtoken';
+import { groupBy } from 'lodash';
 import ms from 'ms';
 import { z } from 'zod';
 
@@ -119,6 +120,59 @@ export const getAlertById = async (
   return Alert.findOne({
     _id: alertId,
     team: teamId,
+  });
+};
+
+export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
+  const alerts = await Alert.find({
+    source: AlertSource.TILE,
+    team: teamId,
+  });
+  return groupBy(alerts, 'tileId');
+};
+
+export const getDashboardAlertsByTile = async (
+  teamId: ObjectId,
+  dashboardId: ObjectId | string,
+) => {
+  const alerts = await Alert.find({
+    dashboard: dashboardId,
+    source: AlertSource.TILE,
+    team: teamId,
+  });
+  return groupBy(alerts, 'tileId');
+};
+
+export const createOrUpdateDashboardAlerts = async (
+  dashboardId: ObjectId | string,
+  teamId: ObjectId,
+  alertsByTile: Record<string, AlertInput>,
+) => {
+  return Promise.all(
+    Object.entries(alertsByTile).map(async ([tileId, alert]) => {
+      return await Alert.findOneAndUpdate(
+        {
+          dashboard: dashboardId,
+          tileId,
+          source: AlertSource.TILE,
+          team: teamId,
+        },
+        alert,
+        { new: true, upsert: true },
+      );
+    }),
+  );
+};
+
+export const deleteDashboardAlerts = async (
+  dashboardId: ObjectId | string,
+  teamId: ObjectId,
+  alertIds?: string[],
+) => {
+  return Alert.deleteMany({
+    dashboard: dashboardId,
+    team: teamId,
+    ...(alertIds && { _id: { $in: alertIds } }),
   });
 };
 

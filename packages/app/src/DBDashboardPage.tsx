@@ -17,6 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -191,6 +192,20 @@ const Tile = forwardRef(
       [chart.config.source, setRowId, setRowSource],
     );
 
+    const alert = chart.config.alert;
+    const alertIndicatorColor = useMemo(() => {
+      if (!alert) {
+        return 'transparent';
+      }
+      if (alert.state === AlertState.OK) {
+        return 'green';
+      }
+      if (alert.silenced?.at) {
+        return 'yellow';
+      }
+      return 'red';
+    }, [alert]);
+
     return (
       <div
         className={`p-2 ${className} d-flex flex-column ${
@@ -217,6 +232,28 @@ const Tile = forwardRef(
           </Text>
           {hovered ? (
             <Flex gap="0px">
+              {chart.config.displayType === DisplayType.Line && (
+                <Indicator
+                  size={5}
+                  zIndex={1}
+                  color={alertIndicatorColor}
+                  label={
+                    !alert && <span className="text-slate-400 fs-8">+</span>
+                  }
+                  mr={4}
+                >
+                  <Button
+                    variant="subtle"
+                    color="gray.4"
+                    size="xxs"
+                    onClick={onEditClick}
+                    title="Alerts"
+                  >
+                    <i className="bi bi-bell fs-7"></i>
+                  </Button>
+                </Indicator>
+              )}
+
               <Button
                 variant="subtle"
                 color="gray.4"
@@ -319,12 +356,14 @@ const Tile = forwardRef(
 );
 
 const EditTileModal = ({
+  dashboardId,
   chart,
   onClose,
   onSave,
   isSaving,
   dateRange,
 }: {
+  dashboardId?: string;
   chart: Tile | undefined;
   onClose: () => void;
   dateRange: [Date, Date];
@@ -342,6 +381,7 @@ const EditTileModal = ({
     >
       {chart != null && (
         <EditTimeChartForm
+          dashboardId={dashboardId}
           chartConfig={chart.config}
           setChartConfig={config => {}}
           dateRange={dateRange}
@@ -438,7 +478,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const confirm = useConfirm();
 
   const router = useRouter();
-  const { dashboardId } = router.query;
+  const dashboardId = router.query.dashboardId as string | undefined;
 
   const {
     dashboard,
@@ -677,6 +717,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Head>
       <OnboardingModal />
       <EditTileModal
+        dashboardId={dashboardId}
         chart={editedTile}
         onClose={() => {
           if (!isSaving) {
