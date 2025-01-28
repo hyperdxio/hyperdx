@@ -42,6 +42,7 @@ export default function useRowWhere({
           const chType = cm?.type;
           const jsType = cm?.jsType;
           const valueExpr = cm?.valueExpr;
+          const columJsonSplit = column ? column.split('.') : [];
 
           if (jsType == null || chType == null) {
             throw new Error(
@@ -66,6 +67,52 @@ export default function useRowWhere({
                 value,
                 chType,
               ]);
+            case JSDataType.JSON:
+              // Handle case for whole json object, ex: json
+              return SqlString.format(`lower(hex(MD5(toString(?))))=?`, [
+                SqlString.raw(valueExpr),
+                MD5(value).toString(),
+              ]);
+            case JSDataType.Dynamic:
+              // Handle case for json element, ex: json.c
+
+              // Currently we can't distinguish null or 'null'
+              if (value === 'null') {
+                return SqlString.format(`isNull(??)`, SqlString.raw(column));
+              }
+              if (
+                value.length > 1000 ||
+                column.length > 1000 ||
+                columJsonSplit.length >= 8
+              ) {
+                throw new Error(
+                  'Search value/object key too large, or nested too many level',
+                );
+              }
+              if (columJsonSplit.length >= 2) {
+                // case for json.a, really bad implementation
+                // reason doing this because at CH
+                // {json: {a: [1,2,3]}}
+                // json -> '{"a": ["1","2","3"]}}', json.a -> [1,2,3]
+                // update this once there is new version
+                let jsonExtractTemplate = `simpleJSONExtractRaw(toString(?), ?)`;
+                for (let i = 2; i < columJsonSplit.length; i++) {
+                  jsonExtractTemplate =
+                    'simpleJSONExtractRaw(' + jsonExtractTemplate + ', ?)';
+                }
+                jsonExtractTemplate += ' = ?';
+                return SqlString.format(jsonExtractTemplate, [
+                  SqlString.raw(columJsonSplit[0]),
+                  ...columJsonSplit.slice(1),
+                  value,
+                ]);
+              } else {
+                // case for regular dynamic object
+                return SqlString.format(`?=?`, [
+                  SqlString.raw(valueExpr),
+                  value,
+                ]);
+              }
             default:
               // Handle the case when string is too long
               if (value.length > MAX_STRING_LENGTH) {

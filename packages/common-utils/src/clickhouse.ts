@@ -16,6 +16,8 @@ export enum JSDataType {
   Number = 'number',
   String = 'string',
   Bool = 'bool',
+  JSON = 'json',
+  Dynamic = 'dynamic', // json type will store anything as Dynamic type by default
 }
 
 export const getResponseHeaders = (response: Response): ResponseHeaders => {
@@ -56,6 +58,10 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.String;
   } else if (dataType === 'Bool') {
     return JSDataType.Bool;
+  } else if (dataType.startsWith('JSON')) {
+    return JSDataType.JSON;
+  } else if (dataType.startsWith('Dynamic')) {
+    return JSDataType.Dynamic;
   } else if (dataType.startsWith('LowCardinality')) {
     return convertCHDataTypeToJSType(dataType.slice(15, -1));
   }

@@ -693,7 +693,8 @@ function mergeSelectWithPrimaryAndPartitionKey(
     .split(',')
     .map(k => extractColumnReference(k.trim()))
     .filter((k): k is string => k != null && k.length > 0);
-  const primaryKeyArr = primaryKeys.split(',').map(k => k.trim());
+  const primaryKeyArr =
+    primaryKeys.length > 0 ? primaryKeys.split(',').map(k => k.trim()) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
     const selectSplit = select
@@ -811,7 +812,12 @@ export function DBSqlRowTable({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return columnType === JSDataType.Map || columnType === JSDataType.Array;
+      return (
+        columnType === JSDataType.Map ||
+        columnType === JSDataType.Array ||
+        columnType === JSDataType.JSON ||
+        columnType === JSDataType.Dynamic
+      );
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {

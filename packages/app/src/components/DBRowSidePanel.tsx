@@ -158,7 +158,9 @@ export default function DBRowSidePanel({
   }
 
   const mainContentColumn = getEventBody(source);
-  const mainContent: string | undefined = normalizedRow?.['__hdx_body'];
+  const mainContent: string | undefined = normalizedRow?.['__hdx_body']
+    ? JSON.stringify(normalizedRow['__hdx_body'])
+    : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 
