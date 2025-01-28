@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  Alert,
+  AlertHistory,
   DashboardSchema,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
@@ -43,6 +45,12 @@ export type LogStreamModel = KeyValuePairs & {
   span_id?: string;
   timestamp: string;
   trace_id?: string;
+};
+
+export type AlertsPageItem = Alert & {
+  history: AlertHistory[];
+  dashboard?: ServerDashboard;
+  savedSearch?: LogView;
 };
 
 // TODO: Migrate

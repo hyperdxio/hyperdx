@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { ObjectId } from '.';
 
 export interface IDashboard extends z.infer<typeof DashboardSchema> {
+  _id: ObjectId;
   team: ObjectId;
 }
 

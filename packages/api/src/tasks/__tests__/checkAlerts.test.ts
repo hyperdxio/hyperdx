@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import ms from 'ms';
 
 import * as config from '@/config';
@@ -202,6 +203,7 @@ describe('checkAlerts', () => {
         interval: '1m',
       },
       dashboard: {
+        _id: new mongoose.Types.ObjectId(),
         id: 'id-123',
         name: 'My Dashboard',
         tiles: [makeTile()],

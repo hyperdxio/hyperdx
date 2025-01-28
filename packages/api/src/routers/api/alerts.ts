@@ -50,14 +50,16 @@ router.get('/', async (req, res, next) => {
             : undefined,
           channel: _.pick(alert.channel, ['type']),
           ...(alert.dashboard && {
+            dashboardId: alert.dashboard._id,
             dashboard: {
               tiles: alert.dashboard.tiles
                 .filter(tile => tile.id === alert.tileId)
-                .map(tile => _.pick(tile, ['id', 'name'])),
+                .map(tile => _.pick(tile, ['id', 'config.name'])),
               ..._.pick(alert.dashboard, ['_id', 'name', 'updatedAt', 'tags']),
             },
           }),
           ...(alert.savedSearch && {
+            savedSearchId: alert.savedSearch._id,
             savedSearch: _.pick(alert.savedSearch, [
               '_id',
               'createdAt',
