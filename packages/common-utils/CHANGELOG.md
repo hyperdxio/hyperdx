@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.0.13
+
+### Patch Changes
+
+- b79433e: refactor: Extract alert configuration schema into AlertBaseSchema
+
 ## 0.0.12
 
 ### Patch Changes
