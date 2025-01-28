@@ -5,11 +5,7 @@ import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import {
-  deleteDashboardAndAlerts,
-  updateDashboard,
-  updateDashboardAndAlerts,
-} from '@/controllers/dashboard';
+import { deleteDashboard, updateDashboard } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   translateDashboardDocumentToExternalDashboard,
@@ -182,7 +178,7 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      await deleteDashboardAndAlerts(dashboardId, teamId);
+      await deleteDashboard(dashboardId, teamId);
 
       res.json({});
     } catch (e) {

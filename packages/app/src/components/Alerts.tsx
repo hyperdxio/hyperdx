@@ -68,12 +68,19 @@ const WebhookChannelForm = <T extends object>(
 export const AlertChannelForm = ({
   control,
   type,
+  namePrefix = '',
 }: {
-  control: Control<Alert>;
+  control: Control<any>; // TODO: properly type this
   type: AlertChannelType;
+  namePrefix?: string;
 }) => {
   if (type === 'webhook') {
-    return <WebhookChannelForm control={control} name={`channel.webhookId`} />;
+    return (
+      <WebhookChannelForm
+        control={control}
+        name={`${namePrefix}channel.webhookId`}
+      />
+    );
   }
 
   return null;

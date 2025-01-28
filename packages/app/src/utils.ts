@@ -585,3 +585,6 @@ export const parseJSON = <T = any>(json: string) => {
   const [error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
+
+export const optionsToSelectData = (options: Record<string, string>) =>
+  Object.entries(options).map(([value, label]) => ({ value, label }));
