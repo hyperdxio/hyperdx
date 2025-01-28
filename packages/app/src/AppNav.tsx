@@ -3,7 +3,6 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
-import { Button as RButton } from 'react-bootstrap';
 import {
   NumberParam,
   StringParam,
@@ -41,7 +40,7 @@ import {
   AppNavUserMenu,
 } from './AppNav.components';
 import AuthLoadingBlocker from './AuthLoadingBlocker';
-import { IS_LOCAL_MODE } from './config';
+import { IS_DEV, IS_LOCAL_MODE } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
@@ -809,6 +808,24 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   </span>
                 </Link>
               </div>
+              {IS_DEV && (
+                <div className="px-3 my-3">
+                  <Link
+                    href="/alerts"
+                    className={cx(
+                      'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+                      {
+                        'fw-bold text-success': pathname.includes('/alerts'),
+                      },
+                    )}
+                  >
+                    <span>
+                      <i className="bi bi-bell pe-1 text-slate-300" />{' '}
+                      {!isCollapsed && <span>Alerts</span>}
+                    </span>
+                  </Link>
+                </div>
+              )}
               {/* <div className="px-3 my-3">
                 <Link
                   href="/sessions"
