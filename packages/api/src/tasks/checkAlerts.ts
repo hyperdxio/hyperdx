@@ -493,6 +493,7 @@ export const renderAlertTemplate = async ({
       select: savedSearch.select ?? source.defaultTableSelectExpression,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
+      implicitColumnExpression: source.implicitColumnExpression,
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {
@@ -722,6 +723,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         where: savedSearch.where,
         whereLanguage: savedSearch.whereLanguage,
         groupBy: alert.groupBy,
+        implicitColumnExpression: source.implicitColumnExpression,
         timestampValueExpression: source.timestampValueExpression,
       };
     }
@@ -771,6 +773,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             select: firstTile.config.select,
             where: firstTile.config.where,
             groupBy: firstTile.config.groupBy,
+            implicitColumnExpression: source.implicitColumnExpression,
             timestampValueExpression: source.timestampValueExpression,
           };
         }
