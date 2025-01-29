@@ -24,6 +24,7 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
@@ -209,6 +210,8 @@ export const DBSearchPageAlertModal = ({
   onClose: () => void;
   open: boolean;
 }) => {
+  const queryClient = useQueryClient();
+
   const createAlert = api.useCreateAlert();
   const updateAlert = api.useUpdateAlert();
   const deleteAlert = api.useDeleteAlert();
@@ -261,6 +264,7 @@ export const DBSearchPageAlertModal = ({
         autoClose: 5000,
       });
     }
+    queryClient.invalidateQueries({ queryKey: ['saved-search'] });
     onClose();
   };
 
@@ -279,6 +283,7 @@ export const DBSearchPageAlertModal = ({
         autoClose: 5000,
       });
     }
+    queryClient.invalidateQueries({ queryKey: ['saved-search'] });
     onClose();
   };
 

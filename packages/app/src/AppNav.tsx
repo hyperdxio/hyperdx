@@ -11,6 +11,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
+import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Badge,
@@ -45,7 +46,7 @@ import Icon from './Icon';
 import Logo from './Logo';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
 import { KubernetesFlatIcon } from './SVGIcons';
-import type { LogView, ServerDashboard } from './types';
+import type { SavedSearch, ServerDashboard } from './types';
 import { UserPreferencesModal } from './UserPreferencesModal';
 import { useLocalStorage, useWindowSize } from './utils';
 
@@ -489,9 +490,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const dashboardsResultsRef = useRef<HTMLDivElement>(null);
 
   const renderLogViewLink = useCallback(
-    (lv: LogView) => (
+    (savedSearch: SavedSearch) => (
       <Link
-        href={`/search/${lv.id}?${new URLSearchParams(
+        href={`/search/${savedSearch.id}?${new URLSearchParams(
           timeRangeQuery.from != -1 && timeRangeQuery.to != -1
             ? {
                 from: timeRangeQuery.from.toString(),
@@ -500,19 +501,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               }
             : {},
         ).toString()}`}
-        key={lv.id}
+        key={savedSearch.id}
         tabIndex={0}
         className={cx(
           styles.listLink,
-          lv.id === query.savedSearchId && styles.listLinkActive,
+          savedSearch.id === query.savedSearchId && styles.listLinkActive,
         )}
-        title={lv.name}
+        title={savedSearch.name}
         draggable
-        data-savedsearchid={lv.id}
+        data-savedsearchid={savedSearch.id}
       >
-        <div className="d-inline-block text-truncate">{lv.name}</div>
-        {/* {Array.isArray(lv.alerts) && lv.alerts.length > 0 ? (
-          lv.alerts.some(a => a.state === 'ALERT') ? (
+        <div className="d-inline-block text-truncate">{savedSearch.name}</div>
+        {Array.isArray(savedSearch.alerts) && savedSearch.alerts.length > 0 ? (
+          savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
             <i
               className="bi bi-bell float-end text-danger"
               title="Has Alerts and is in ALERT state"
@@ -523,7 +524,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               title="Has Alerts and is in OK state"
             ></i>
           )
-        ) : null} */}
+        ) : null}
       </Link>
     ),
     [
