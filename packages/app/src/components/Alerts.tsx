@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Control } from 'react-hook-form';
 import { Select, SelectProps } from 'react-hook-form-mantine';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
-import type { Alert, AlertChannelType } from '@hyperdx/common-utils/dist/types';
+import type {  AlertChannelType } from '@hyperdx/common-utils/dist/types';
 import { Button, ComboboxData, Group } from '@mantine/core';
 
 import api from '@/api';
