@@ -158,9 +158,11 @@ export default function DBRowSidePanel({
   }
 
   const mainContentColumn = getEventBody(source);
-  const mainContent: string | undefined = normalizedRow?.['__hdx_body']
-    ? JSON.stringify(normalizedRow['__hdx_body'])
-    : undefined;
+  let mainContentTypeCheck = normalizedRow?.['__hdx_body'] ? normalizedRow['__hdx_body'] : undefined;
+  if (mainContentTypeCheck !== undefined && typeof mainContentTypeCheck !== 'string') {
+    mainContentTypeCheck = JSON.stringify(mainContentTypeCheck);
+  }
+  const mainContent: string | undefined = mainContentTypeCheck
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 

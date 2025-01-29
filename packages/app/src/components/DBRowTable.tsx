@@ -693,8 +693,7 @@ function mergeSelectWithPrimaryAndPartitionKey(
     .split(',')
     .map(k => extractColumnReference(k.trim()))
     .filter((k): k is string => k != null && k.length > 0);
-  const primaryKeyArr =
-    primaryKeys.length > 0 ? primaryKeys.split(',').map(k => k.trim()) : [];
+  const primaryKeyArr = primaryKeys.trim() !== "" ? primaryKeys.split(',').map(k => k.trim()) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
     const selectSplit = select
