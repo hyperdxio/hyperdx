@@ -40,6 +40,7 @@ export const AlertPreviewChart = ({
           whereLanguage: savedSearch.whereLanguage,
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
+          implicitColumnExpression: source.implicitColumnExpression,
           groupBy,
           select: [
             {
