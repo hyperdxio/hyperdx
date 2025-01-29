@@ -50,11 +50,10 @@ export type LogStreamModel = KeyValuePairs & {
 export type AlertsPageItem = Alert & {
   history: AlertHistory[];
   dashboard?: ServerDashboard;
-  savedSearch?: LogView;
+  savedSearch?: SavedSearch;
 };
 
-// TODO: Migrate
-export type LogView = z.infer<typeof SavedSearchSchema>;
+export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
 export type ServerDashboard = z.infer<typeof DashboardSchema>;
 
