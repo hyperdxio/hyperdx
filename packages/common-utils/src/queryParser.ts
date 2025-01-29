@@ -1,7 +1,7 @@
 import lucene from '@hyperdx/lucene';
 import SqlString from 'sqlstring';
 
-import { convertCHTypeToPrimitiveJSType } from '@/clickhouse';
+import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 
 function encodeSpecialTokens(query: string): string {
@@ -182,7 +182,12 @@ export abstract class SQLSerializer implements Serializer {
   abstract getColumnForField(field: string): Promise<{
     column?: string;
     columnJSON?: { string: string; number: string };
-    propertyType?: 'string' | 'number' | 'bool' | 'json' | 'dynamic';
+    propertyType?:
+      | JSDataType.String
+      | JSDataType.Number
+      | JSDataType.Bool
+      | JSDataType.JSON
+      | JSDataType.Dynamic;
     found: boolean;
   }>;
 
@@ -214,19 +219,19 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'bool') {
+    if (propertyType === JSDataType.Bool) {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
         column,
         normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
-    } else if (propertyType === 'number') {
+    } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
         `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
         [term],
       );
-    } else if (propertyType === 'json') {
+    } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
         `(${columnJSON?.string} ${isNegatedField ? '!' : ''}= ?)`,
         [term],
@@ -243,7 +248,7 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'json') {
+    if (propertyType === JSDataType.JSON) {
       return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1`;
     }
     return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1`;
@@ -255,7 +260,7 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'json') {
+    if (propertyType === JSDataType.JSON) {
       return SqlString.format(`(${columnJSON?.number} >= ?)`, [term]);
     }
     return SqlString.format(`(${column} >= ?)`, [term]);
@@ -267,7 +272,7 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'json') {
+    if (propertyType === JSDataType.JSON) {
       return SqlString.format(`(${columnJSON?.number} <= ?)`, [term]);
     }
     return SqlString.format(`(${column} <= ?)`, [term]);
@@ -279,7 +284,7 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'json') {
+    if (propertyType === JSDataType.JSON) {
       return SqlString.format(`(${columnJSON?.number} < ?)`, [term]);
     }
     return SqlString.format(`(${column} < ?)`, [term]);
@@ -291,7 +296,7 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    if (propertyType === 'json') {
+    if (propertyType === JSDataType.JSON) {
       return SqlString.format(`(${columnJSON?.number} > ?)`, [term]);
     }
     return SqlString.format(`(${column} > ?)`, [term]);
@@ -331,23 +336,23 @@ export abstract class SQLSerializer implements Serializer {
     }
     // If it's a string field, we will always try to match with ilike
 
-    if (propertyType === 'bool') {
+    if (propertyType === JSDataType.Bool) {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
       return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
         column,
         normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
       ]);
-    } else if (propertyType === 'number') {
+    } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
         `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
         [column, term],
       );
-    } else if (propertyType === 'json') {
+    } else if (propertyType === JSDataType.JSON) {
       const shoudUseTokenBf = isImplicitField;
       return SqlString.format(
-        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}? ?)`,
-        [SqlString.raw(shoudUseTokenBf ? 'LIKE' : 'ILIKE'), `%${term}%`],
+        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
+        [`%${term}%`],
       );
     }
 
@@ -546,7 +551,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       return {
         column: this.implicitColumnExpression,
         columnJSON: undefined,
-        propertyType: 'string' as const,
+        propertyType: JSDataType.String as const,
         found: true,
       };
     }
