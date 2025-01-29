@@ -349,7 +349,6 @@ export abstract class SQLSerializer implements Serializer {
         [column, term],
       );
     } else if (propertyType === JSDataType.JSON) {
-      const shoudUseTokenBf = isImplicitField;
       return SqlString.format(
         `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
         [`%${term}%`],
