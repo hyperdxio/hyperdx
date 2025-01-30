@@ -6,7 +6,7 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -550,7 +550,7 @@ export function TableSourceForm({
   const { watch, control, setValue, handleSubmit, resetField, formState } =
     useForm<TSource>({
       defaultValues: {
-        kind: 'log',
+        kind: SourceKind.Log,
         name: defaultName,
         connection: connections?.[0]?.id,
         from: {
@@ -608,7 +608,7 @@ export function TableSourceForm({
     resetField('connection', { defaultValue: connections?.[0]?.id });
   }, [connections, resetField]);
 
-  const kind = watch('kind');
+  const kind: SourceKind = watch('kind');
 
   const createSource = useCreateSource();
   const updateSource = useUpdateSource();
@@ -724,31 +724,32 @@ export function TableSourceForm({
             render={({ field: { onChange, value } }) => (
               <Radio.Group
                 value={value}
-                onChange={v => onChange(v as 'log' | 'trace')}
+                onChange={v => onChange(v)}
                 withAsterisk
               >
                 <Group>
-                  <Radio value="log" label="Log" />
-                  <Radio value="trace" label="Trace" />
+                  <Radio value={SourceKind.Log} label="Log" />
+                  <Radio value={SourceKind.Trace} label="Trace" />
+                  <Radio value={SourceKind.Session} label="Session" />
                 </Group>
               </Radio.Group>
             )}
           />
         </FormRow>
       </Stack>
-      {kind === 'log' ? (
-        <LogTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      ) : (
+      {kind === SourceKind.Trace ? (
         <TraceTableModelForm
           // @ts-ignore
           control={control}
           // @ts-ignore
           watch={watch}
           // @ts-ignore
+          setValue={setValue}
+        />
+      ) : (
+        <LogTableModelForm
+          control={control}
+          watch={watch}
           setValue={setValue}
         />
       )}
