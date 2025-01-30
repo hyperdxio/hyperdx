@@ -825,7 +825,14 @@ export function DBSqlRowTable({
     return rows.map(row => {
       const newRow = { ...row };
       objectTypeColumns.forEach(c => {
-        newRow[c] = JSON.stringify(row[c]);
+        if (columnMap.get(c)._type === JSDataType.JSON) {
+          // special rule for json
+          // for json {SomePath: /c}, CH will return {SomePath: \/c}
+          // add this to make sure md5 get correct result
+          newRow[c] = JSON.stringify(row[c]).replace(/\//g, '\\/');
+        } else {
+          newRow[c] = JSON.stringify(row[c]);
+        }
       });
       return newRow;
     });
