@@ -100,7 +100,7 @@ COPY --from=local ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 # RUN mkdir -p /data/db
 
 # Set up Otel Collector
-COPY --from=otel-collector ./config.local.yaml /etc/otelcol-contrib/config.yaml
+COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 
 # Set up API (NOT USED YET)
 # WORKDIR /app/api
