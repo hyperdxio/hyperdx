@@ -29,11 +29,29 @@ processors:
     # 25% of limit up to 2G
     spike_limit_mib: 512
     check_interval: 5s
+connectors:
+  routing/logs:
+    default_pipelines: [logs/out-default]
+    error_mode: ignore
+    table:
+      - statement: route() where IsMatch(attributes["rum.sessionId"], ".*")
+        pipelines: [logs/out-rrweb]
 exporters:
   debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
+  clickhouse/rrweb:
+    endpoint: tcp://${env:CLICKHOUSE_SERVER_ENDPOINT}?dial_timeout=10s&compress=lz4
+    database: default
+    ttl: 72h
+    logs_table_name: rrweb
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
   clickhouse:
     endpoint: tcp://${env:CLICKHOUSE_SERVER_ENDPOINT}?dial_timeout=10s&compress=lz4
     database: default
@@ -66,7 +84,14 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [debug, clickhouse]
-    logs:
+    logs/in:
       receivers: [otlp, fluentforward]
+      exporters: [routing/logs, debug]
+    logs/out-default:
+      receivers: [routing/logs]
       processors: [memory_limiter, batch]
-      exporters: [debug, clickhouse]
+      exporters: [clickhouse]
+    logs/out-rrweb:
+      receivers: [routing/logs]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouse/rrweb]
