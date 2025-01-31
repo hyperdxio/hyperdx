@@ -34,7 +34,8 @@ connectors:
     default_pipelines: [logs/out-default]
     error_mode: ignore
     table:
-      - statement: route() where IsMatch(attributes["rum.sessionId"], ".*")
+      - context: log
+        statement: route() where IsMatch(attributes["rr-web.event"], ".*")
         pipelines: [logs/out-rrweb]
 exporters:
   debug:
