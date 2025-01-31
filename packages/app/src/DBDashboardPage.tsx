@@ -493,7 +493,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const { data: sources } = useSources();
 
-  const [highlightedChartId] = useQueryState('highlightedChartId');
+  const [highlightedTileId] = useQueryState('highlightedTileId');
 
   const [granularity, setGranularity] = useQueryState(
     'granularity',
@@ -603,7 +603,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               },
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
-            isHighlighed={highlightedChartId === chart.id}
+            isHighlighed={highlightedTileId === chart.id}
             onUpdateChart={newChart => {
               if (!dashboard) {
                 return;
@@ -664,7 +664,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       // isRefreshEnabled,
       // granularityOverride,
       // granularityQuery,
-      highlightedChartId,
+      highlightedTileId,
       confirm,
       setDashboard,
       granularity,

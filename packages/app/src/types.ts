@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  Alert,
+  AlertHistory,
   DashboardSchema,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
@@ -45,8 +47,13 @@ export type LogStreamModel = KeyValuePairs & {
   trace_id?: string;
 };
 
-// TODO: Migrate
-export type LogView = z.infer<typeof SavedSearchSchema>;
+export type AlertsPageItem = Alert & {
+  history: AlertHistory[];
+  dashboard?: ServerDashboard;
+  savedSearch?: SavedSearch;
+};
+
+export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 
 export type ServerDashboard = z.infer<typeof DashboardSchema>;
 
