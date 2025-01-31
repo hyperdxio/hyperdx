@@ -66,6 +66,32 @@ export default function useRowWhere({
                 value,
                 chType,
               ]);
+            case JSDataType.JSON:
+              // Handle case for whole json object, ex: json
+              return SqlString.format(`lower(hex(MD5(toString(?))))=?`, [
+                SqlString.raw(valueExpr),
+                MD5(value).toString(),
+              ]);
+            case JSDataType.Dynamic:
+              // Handle case for json element, ex: json.c
+
+              // Currently we can't distinguish null or 'null'
+              if (value === 'null') {
+                return SqlString.format(`isNull(??)`, SqlString.raw(column));
+              }
+              if (value.length > 1000 || column.length > 1000) {
+                throw new Error('Search value/object key too large.');
+              }
+              // TODO: update when JSON type have new version
+              // will not work for array/object dyanmic data
+              return SqlString.format(`toString(?)=?`, [
+                SqlString.raw(valueExpr),
+                // data other than array/object will alwayas return with dobule quote(because of CH)
+                // remove dobule qoute to search correctly
+                value[0] === '"' && value[value.length - 1] === '"'
+                  ? value.slice(1, -1)
+                  : value,
+              ]);
             default:
               // Handle the case when string is too long
               if (value.length > MAX_STRING_LENGTH) {
