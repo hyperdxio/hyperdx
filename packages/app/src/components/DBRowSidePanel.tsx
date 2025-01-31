@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { add } from 'date-fns';
+import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -158,7 +159,11 @@ export default function DBRowSidePanel({
   }
 
   const mainContentColumn = getEventBody(source);
-  const mainContent: string | undefined = normalizedRow?.['__hdx_body'];
+  const mainContent = isString(normalizedRow?.['__hdx_body'])
+    ? normalizedRow['__hdx_body']
+    : normalizedRow?.['__hdx_body'] !== undefined
+      ? JSON.stringify(normalizedRow['__hdx_body'])
+      : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
 
