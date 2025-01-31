@@ -20,7 +20,6 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  ChartConfig,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -37,7 +36,6 @@ import {
   Paper,
   Stack,
   Text,
-  Tooltip,
 } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { useIsFetching } from '@tanstack/react-query';
@@ -82,15 +80,8 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
+import { SearchConfig } from './types';
 
-type SearchConfig = {
-  select?: string | null;
-  source?: string | null;
-  where?: ChartConfig['where'] | null;
-  whereLanguage?: ChartConfig['whereLanguage'] | null;
-  filters?: Filter[] | null;
-  orderBy?: string | null;
-};
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -767,7 +758,8 @@ function DBSearchPage() {
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {IS_DEV && isAlertModalOpen && (
         <DBSearchPageAlertModal
-          id={savedSearch?.id ?? ''}
+          id={savedSearch?.id}
+          searchedConfig={searchedConfig}
           open={isAlertModalOpen}
           onClose={closeAlertModal}
         />
@@ -843,25 +835,15 @@ function DBSearchPage() {
                 Save
               </Button>
               {IS_DEV && (
-                <Tooltip
-                  label={
-                    savedSearchId
-                      ? 'Manage or create alerts for this search'
-                      : 'Save this view to create alerts'
-                  }
-                  color="dark"
+                <Button
+                  variant="outline"
+                  color="dark.2"
+                  px="xs"
+                  size="xs"
+                  onClick={openAlertModal}
                 >
-                  <Button
-                    variant="outline"
-                    color="dark.2"
-                    px="xs"
-                    size="xs"
-                    onClick={openAlertModal}
-                    disabled={!savedSearchId}
-                  >
-                    Alerts
-                  </Button>
-                </Tooltip>
+                  Alerts
+                </Button>
               )}
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
