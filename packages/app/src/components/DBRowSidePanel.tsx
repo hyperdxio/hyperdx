@@ -8,12 +8,12 @@ import {
   useState,
 } from 'react';
 import { add } from 'date-fns';
+import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { isString } from 'lodash';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
@@ -159,10 +159,9 @@ export default function DBRowSidePanel({
   }
 
   const mainContentColumn = getEventBody(source);
-  const mainContent =
-    isString(normalizedRow?.['__hdx_body'])
-      ? normalizedRow['__hdx_body']
-      : normalizedRow?.['__hdx_body'] !== undefined
+  const mainContent = isString(normalizedRow?.['__hdx_body'])
+    ? normalizedRow['__hdx_body']
+    : normalizedRow?.['__hdx_body'] !== undefined
       ? JSON.stringify(normalizedRow['__hdx_body'])
       : undefined;
   const severityText: string | undefined =
