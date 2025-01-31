@@ -693,7 +693,8 @@ function mergeSelectWithPrimaryAndPartitionKey(
     .split(',')
     .map(k => extractColumnReference(k.trim()))
     .filter((k): k is string => k != null && k.length > 0);
-  const primaryKeyArr = primaryKeys.split(',').map(k => k.trim());
+  const primaryKeyArr =
+    primaryKeys.trim() !== '' ? primaryKeys.split(',').map(k => k.trim()) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
     const selectSplit = select
@@ -811,7 +812,12 @@ export function DBSqlRowTable({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return columnType === JSDataType.Map || columnType === JSDataType.Array;
+      return (
+        columnType === JSDataType.Map ||
+        columnType === JSDataType.Array ||
+        columnType === JSDataType.JSON ||
+        columnType === JSDataType.Dynamic
+      );
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {
@@ -819,7 +825,14 @@ export function DBSqlRowTable({
     return rows.map(row => {
       const newRow = { ...row };
       objectTypeColumns.forEach(c => {
-        newRow[c] = JSON.stringify(row[c]);
+        if (columnMap.get(c)?._type === JSDataType.JSON) {
+          // special rule for json
+          // for json {SomePath: /c}, CH will return {SomePath: \/c}
+          // add this to make sure md5 get correct result
+          newRow[c] = JSON.stringify(row[c]).replace(/\//g, '\\/');
+        } else {
+          newRow[c] = JSON.stringify(row[c]);
+        }
       });
       return newRow;
     });
