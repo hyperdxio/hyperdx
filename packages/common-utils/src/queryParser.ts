@@ -182,12 +182,7 @@ export abstract class SQLSerializer implements Serializer {
   abstract getColumnForField(field: string): Promise<{
     column?: string;
     columnJSON?: { string: string; number: string };
-    propertyType?:
-      | JSDataType.String
-      | JSDataType.Number
-      | JSDataType.Bool
-      | JSDataType.JSON
-      | JSDataType.Dynamic;
+    propertyType?: JSDataType;
     found: boolean;
   }>;
 
@@ -550,7 +545,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       return {
         column: this.implicitColumnExpression,
         columnJSON: undefined,
-        propertyType: JSDataType.String as const,
+        propertyType: JSDataType.String,
         found: true,
       };
     }

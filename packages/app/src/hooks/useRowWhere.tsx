@@ -86,8 +86,8 @@ export default function useRowWhere({
               // will not work for array/object dyanmic data
               return SqlString.format(`toString(?)=?`, [
                 SqlString.raw(valueExpr),
-                // data other than array/object will alwayas return with dobule quote
-                // remove dobule qoute to seach correctly
+                // data other than array/object will alwayas return with dobule quote(because of CH)
+                // remove dobule qoute to search correctly
                 value[0] === '"' && value[value.length - 1] === '"'
                   ? value.slice(1, -1)
                   : value,
