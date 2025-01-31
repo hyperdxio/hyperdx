@@ -77,25 +77,25 @@ describe('parseTimeRangeInput', () => {
       new Date('2025-01-15T12:00:00'),
     ]);
   });
-});
 
-it('parses a range with specific times correctly', () => {
-  expect(parseTimeRangeInput('Jan 31 12:00:00 - Jan 14 13:05:29')).toEqual([
-    new Date('2024-01-31T12:00:00'),
-    new Date('2025-01-14T13:05:29'),
-  ]);
-});
+  it('parses a range with specific times correctly', () => {
+    expect(parseTimeRangeInput('Jan 31 12:00:00 - Jan 14 13:05:29')).toEqual([
+      new Date('2024-01-31T12:00:00'),
+      new Date('2025-01-14T13:05:29'),
+    ]);
+  });
 
-it('parses single date correctly', () => {
-  expect(parseTimeRangeInput('2024-01-13')).toEqual([
-    new Date('2024-01-13T12:00:00'),
-    new Date(),
-  ]);
-});
+  it('parses single date correctly', () => {
+    expect(parseTimeRangeInput('2024-01-13')).toEqual([
+      new Date('2024-01-13T12:00:00'),
+      new Date(),
+    ]);
+  });
 
-it('parses explicit date range correctly', () => {
-  expect(parseTimeRangeInput('2024-01-15 to 2024-01-16')).toEqual([
-    new Date('2024-01-15T12:00:00'),
-    new Date('2024-01-16T12:00:00'),
-  ]);
+  it('parses explicit date range correctly', () => {
+    expect(parseTimeRangeInput('2024-01-15 to 2024-01-16')).toEqual([
+      new Date('2024-01-15T12:00:00'),
+      new Date('2024-01-16T12:00:00'),
+    ]);
+  });
 });
