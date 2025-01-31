@@ -14,7 +14,7 @@
 
 ARG NODE_VERSION=18.20.3
 ARG CLICKHOUSE_VERSION=24
-ARG OTEL_COLLECTOR_VERSION=0.113.0
+ARG OTEL_COLLECTOR_VERSION=0.117.0
 # Get Node base image to copy over Node binaries
 FROM node:${NODE_VERSION}-alpine AS node
 
@@ -100,7 +100,7 @@ COPY --from=local ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 # RUN mkdir -p /data/db
 
 # Set up Otel Collector
-COPY --from=otel-collector ./config.local.yaml /etc/otelcol-contrib/config.yaml
+COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 
 # Set up API (NOT USED YET)
 # WORKDIR /app/api
