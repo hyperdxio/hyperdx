@@ -75,7 +75,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             maskAllInputs: true,
             maskAllText: true,
             service: _jsonData.serviceName,
-            disableReplay: true,
             // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
           });
