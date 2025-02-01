@@ -387,7 +387,7 @@ export default function EditTimeChartForm({
     queriedConfig?.from?.tableName &&
     queriedConfig?.timestampValueExpression;
 
-  const previewConfig = useMemo(
+  const sampleEventsConfig = useMemo(
     () =>
       tableSource != null && queriedConfig != null && queryReady
         ? {
@@ -406,9 +406,10 @@ export default function EditTimeChartForm({
             from: tableSource.from,
             limit: { limit: 200 },
             select: tableSource?.defaultTableSelectExpression || '',
-            groupBy: undefined,
             filters: seriesToFilters(queriedConfig.select),
             filtersLogicalOperator: 'OR' as const,
+            groupBy: undefined,
+            granularity: undefined,
           }
         : null,
     [queriedConfig, tableSource, dateRange, queryReady],
@@ -771,7 +772,7 @@ export default function EditTimeChartForm({
               ...queriedConfig,
               granularity: alert
                 ? intervalToGranularity(alert.interval)
-                : undefined,
+                : queriedConfig.granularity,
               dateRange: alert
                 ? extendDateRangeToInterval(
                     queriedConfig.dateRange,
@@ -849,13 +850,13 @@ export default function EditTimeChartForm({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {previewConfig != null && (
+                {sampleEventsConfig != null && (
                   <div
                     className="flex-grow-1 d-flex flex-column"
                     style={{ height: 400 }}
                   >
                     <DBSqlRowTable
-                      config={previewConfig}
+                      config={sampleEventsConfig}
                       highlightedLineId={undefined}
                       enabled
                       isLive={false}
