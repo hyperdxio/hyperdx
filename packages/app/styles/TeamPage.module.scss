@@ -1,21 +1,5 @@
 @import './variables';
 
-.header {
-  align-items: center;
-  background-color: $body-bg;
-  border-bottom: 1px solid $slate-950;
-  color: $slate-200;
-  display: flex;
-  font-weight: 500;
-  height: 60px;
-  justify-content: space-between;
-  line-height: 1;
-  padding: 0 32px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .sectionHeader {
   border-bottom: 1px solid $slate-950;
   margin-top: 20px;

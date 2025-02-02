@@ -26,6 +26,7 @@ import { ConnectionForm } from '@/components/ConnectionForm';
 import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
+import { PageHeader } from './components/PageHeader';
 import api from './api';
 import { useConnections } from './connection';
 import { withAppNav } from './layout';
@@ -869,9 +870,9 @@ export default function TeamPage() {
       <Head>
         <title>My Team - HyperDX</title>
       </Head>
-      <div className={styles.header}>
+      <PageHeader>
         <div>{team?.name || 'My team'}</div>
-      </div>
+      </PageHeader>
       <div>
         <Container>
           {isLoading && (
