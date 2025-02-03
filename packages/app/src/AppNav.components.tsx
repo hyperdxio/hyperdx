@@ -1,6 +1,8 @@
 import React from 'react';
 import Link from 'next/link';
+import cx from 'classnames';
 import {
+  ActionIcon,
   Avatar,
   Button,
   Group,
@@ -18,6 +20,14 @@ import { useSources } from '@/source';
 import { IS_LOCAL_MODE } from './config';
 
 import styles from '../styles/AppNav.module.scss';
+
+export const AppNavContext = React.createContext<{
+  isCollapsed: boolean;
+  pathname: string;
+}>({
+  isCollapsed: false,
+  pathname: '/',
+});
 
 export const AppNavCloudBanner = () => {
   return (
@@ -40,7 +50,6 @@ export const AppNavCloudBanner = () => {
 };
 
 type AppNavUserMenuProps = {
-  isCollapsed?: boolean;
   userName?: string;
   teamName?: string;
   logoutUrl?: string | null;
@@ -48,12 +57,13 @@ type AppNavUserMenuProps = {
 };
 
 export const AppNavUserMenu = ({
-  isCollapsed,
   userName = 'User',
   teamName,
   logoutUrl,
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
+  const { isCollapsed } = React.useContext(AppNavContext);
+
   const initials = userName
     .split(' ')
     .map(name => name[0].toUpperCase())
@@ -152,13 +162,9 @@ const useIsTeamHasNoData = () => {
   return Array.isArray(sources) && sources?.length > 0 ? false : true;
 };
 
-export const AppNavHelpMenu = ({
-  isCollapsed,
-  version,
-}: {
-  isCollapsed: boolean;
-  version?: string;
-}) => {
+export const AppNavHelpMenu = ({ version }: { version?: string }) => {
+  const { isCollapsed } = React.useContext(AppNavContext);
+
   const [
     installModalOpen,
     { close: closeInstallModal, open: openInstallModal },
@@ -232,5 +238,55 @@ export const AppNavHelpMenu = ({
         onHide={closeInstallModal}
       />
     </>
+  );
+};
+
+export const AppNavLink = ({
+  className,
+  label,
+  iconName,
+  href,
+  isExpanded,
+  onToggle,
+}: {
+  className?: string;
+  label: React.ReactNode;
+  iconName: string;
+  href: string;
+  isExpanded?: boolean;
+  onToggle?: () => void;
+}) => {
+  const { pathname, isCollapsed } = React.useContext(AppNavContext);
+
+  return (
+    <Group justify="space-between" px="md" py="xs">
+      <Link
+        href={href}
+        className={cx(
+          className,
+          'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
+          { 'fw-bold text-success': pathname?.includes(href) },
+        )}
+      >
+        <span>
+          <i className={`bi ${iconName} pe-1 text-slate-300`} />{' '}
+          {!isCollapsed && <span>{label}</span>}
+        </span>
+      </Link>
+      {!isCollapsed && onToggle && (
+        <ActionIcon
+          variant="subtle"
+          color="dark.2"
+          size="sm"
+          onClick={onToggle}
+        >
+          <i
+            className={`fs-8 bi bi-chevron-${
+              isExpanded ? 'up' : 'down'
+            } text-muted-hover`}
+          />
+        </ActionIcon>
+      )}
+    </Group>
   );
 };
