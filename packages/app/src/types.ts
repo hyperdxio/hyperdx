@@ -2,7 +2,9 @@ import { z } from 'zod';
 import {
   Alert,
   AlertHistory,
+  ChartConfig,
   DashboardSchema,
+  Filter,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
 } from '@hyperdx/common-utils/dist/types';
@@ -54,6 +56,15 @@ export type AlertsPageItem = Alert & {
 };
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+
+export type SearchConfig = {
+  select?: string | null;
+  source?: string | null;
+  where?: ChartConfig['where'] | null;
+  whereLanguage?: ChartConfig['whereLanguage'] | null;
+  filters?: Filter[] | null;
+  orderBy?: string | null;
+};
 
 export type ServerDashboard = z.infer<typeof DashboardSchema>;
 
