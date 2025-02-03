@@ -2,6 +2,7 @@ import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { z } from 'zod';
 
+import { deleteSavedSearchAlerts } from '@/controllers/alerts';
 import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
 
@@ -50,6 +51,12 @@ export function updateSavedSearch(
   );
 }
 
-export function deleteSavedSearch(teamId: string, savedSearchId: string) {
-  return SavedSearch.findOneAndDelete({ _id: savedSearchId, team: teamId });
+export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
+  const savedSearch = await SavedSearch.findOneAndDelete({
+    _id: savedSearchId,
+    team: teamId,
+  });
+  if (savedSearch) {
+    await deleteSavedSearchAlerts(savedSearchId, teamId);
+  }
 }
