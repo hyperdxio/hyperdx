@@ -1,4 +1,5 @@
 import React from 'react';
+import router from 'next/router';
 import { useForm } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
@@ -11,6 +12,7 @@ import {
   SavedSearch,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
+import { TextInput } from '@mantine/core';
 import {
   Accordion,
   Box,
@@ -26,6 +28,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
 import {
@@ -38,6 +41,7 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import api from './api';
+import { SearchConfig } from './types';
 import { optionsToSelectData } from './utils';
 
 const SavedSearchAlertFormSchema = z
@@ -193,7 +197,11 @@ const AlertForm = ({
             Cancel
           </Button>
           <Button variant="light" type="submit" loading={loading}>
-            {defaultValues ? 'Save Alert' : 'Create Alert'}
+            {defaultValues
+              ? 'Save Alert'
+              : savedSearch
+                ? 'Create Alert'
+                : 'Save search'}
           </Button>
         </Group>
       </Group>
@@ -203,20 +211,25 @@ const AlertForm = ({
 
 export const DBSearchPageAlertModal = ({
   id,
+  searchedConfig,
   onClose,
   open,
 }: {
-  id: string;
+  id?: string;
+  searchedConfig?: SearchConfig;
   onClose: () => void;
   open: boolean;
 }) => {
   const queryClient = useQueryClient();
-
   const createAlert = api.useCreateAlert();
   const updateAlert = api.useUpdateAlert();
   const deleteAlert = api.useDeleteAlert();
+  const createSavedSearch = useCreateSavedSearch();
 
-  const { data: savedSearch, isLoading } = useSavedSearch({ id });
+  const { data: savedSearch, isLoading } = useSavedSearch(
+    { id: id || '' },
+    { enabled: !!id },
+  );
 
   const [activeIndex, setActiveIndex] = React.useState<'stage' | `${number}`>(
     'stage',
@@ -232,31 +245,61 @@ export const DBSearchPageAlertModal = ({
     }
   };
 
+  const [name, setName] = React.useState<string>('');
+
   const onSubmit = async (data: Alert) => {
     try {
-      // Create new alert
-      if (activeIndex === 'stage') {
+      // Create new search along with alert
+      if (!id && searchedConfig) {
+        if (!name) {
+          notifications.show({
+            color: 'red',
+            message: 'Please provide a name for the saved search.',
+            autoClose: 5000,
+          });
+          return;
+        }
+        const result = await createSavedSearch.mutateAsync({
+          name,
+          select: searchedConfig.select ?? '',
+          where: searchedConfig.where ?? '',
+          whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+          source: searchedConfig.source ?? '',
+          orderBy: searchedConfig.orderBy ?? '',
+          tags: [],
+        });
         await createAlert.mutate({
           ...data,
           source: AlertSource.SAVED_SEARCH,
-          savedSearchId: id,
+          savedSearchId: result.id,
         });
-      } else if (data.id) {
-        // Update existing alert
-        await updateAlert.mutate({
-          ...data,
-          id: data.id,
-          source: AlertSource.SAVED_SEARCH,
-          savedSearchId: id,
+        router.push(`/search/${result.id}`);
+        onClose();
+      } else if (id) {
+        // Create new alert
+        if (activeIndex === 'stage') {
+          await createAlert.mutate({
+            ...data,
+            source: AlertSource.SAVED_SEARCH,
+            savedSearchId: id,
+          });
+        } else if (data.id) {
+          // Update existing alert
+          await updateAlert.mutate({
+            ...data,
+            id: data.id,
+            source: AlertSource.SAVED_SEARCH,
+            savedSearchId: id,
+          });
+        } else {
+          return;
+        }
+        notifications.show({
+          color: 'green',
+          message: `Alert ${activeIndex === 'stage' ? 'created' : 'updated'}!`,
+          autoClose: 5000,
         });
-      } else {
-        return;
       }
-      notifications.show({
-        color: 'green',
-        message: `Alert ${activeIndex === 'stage' ? 'created' : 'updated'}!`,
-        autoClose: 5000,
-      });
     } catch (error) {
       notifications.show({
         color: 'red',
@@ -306,9 +349,20 @@ export const DBSearchPageAlertModal = ({
           loaderProps={{ type: 'dots' }}
         />
         <Stack gap={0} mb="md">
-          <Text c="dark.1" size="sm">
-            Alerts for <strong>{savedSearch?.name}</strong>
-          </Text>
+          <Group>
+            <Text c="dark.1" size="sm">
+              Alerts for <strong>{savedSearch?.name}</strong>
+            </Text>
+            {!id && (
+              <TextInput
+                size="xs"
+                placeholder="Saved search name"
+                value={name}
+                onChange={e => setName(e.currentTarget.value)}
+                required
+              />
+            )}
+          </Group>
           <Text c="dark.2" size="xxs">
             {savedSearch?.where}
           </Text>
