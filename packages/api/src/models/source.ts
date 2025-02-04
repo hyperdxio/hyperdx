@@ -47,6 +47,7 @@ export const Source = mongoose.model<ISource>(
       traceIdExpression: String,
       spanIdExpression: String,
       traceSourceId: String,
+      sessionSourceId: String,
 
       durationExpression: String,
       durationPrecision: Number,

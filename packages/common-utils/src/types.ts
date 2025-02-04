@@ -427,6 +427,9 @@ export const SourceSchema = z.object({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
 
+  // Sessions
+  sessionSourceId: z.string().optional(),
+
   // Traces
   durationExpression: z.string().optional(),
   durationPrecision: z.number().min(0).max(9).optional(),
