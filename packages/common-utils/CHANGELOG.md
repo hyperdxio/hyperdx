@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.0.14
+
+### Patch Changes
+
+- 621bd55: feat: add session source and SourceKind enum
+
 ## 0.0.13
 
 ### Patch Changes
