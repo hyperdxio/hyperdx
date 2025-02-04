@@ -27,6 +27,7 @@ import { useDebouncedCallback } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
@@ -736,7 +737,9 @@ export function TableSourceForm({
                 <Group>
                   <Radio value={SourceKind.Log} label="Log" />
                   <Radio value={SourceKind.Trace} label="Trace" />
-                  <Radio value={SourceKind.Session} label="Session" />
+                  {IS_SESSIONS_ENABLED && (
+                    <Radio value={SourceKind.Session} label="Session" />
+                  )}
                 </Group>
               </Radio.Group>
             )}

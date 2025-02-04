@@ -27,3 +27,5 @@ export const IS_LOCAL_MODE = //true;
 
 // Features in development
 export const IS_MTVIEWS_ENABLED = false;
+
+export const IS_SESSIONS_ENABLED = false || IS_DEV;
