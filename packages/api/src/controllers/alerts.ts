@@ -176,6 +176,16 @@ export const deleteDashboardAlerts = async (
   });
 };
 
+export const deleteSavedSearchAlerts = async (
+  savedSearchId: string,
+  teamId: string,
+) => {
+  return Alert.deleteMany({
+    savedSearch: savedSearchId,
+    team: teamId,
+  });
+};
+
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
     savedSearch: ISavedSearch;

@@ -378,3 +378,23 @@ export const makeAlertInput = ({
   dashboardId,
   tileId,
 });
+
+export const makeSavedSearchAlertInput = ({
+  savedSearchId,
+  interval = '15m',
+  threshold = 8,
+}: {
+  savedSearchId: string;
+  interval?: AlertInterval;
+  threshold?: number;
+}): Partial<AlertInput> => ({
+  channel: {
+    type: 'webhook',
+    webhookId: 'test-webhook-id',
+  },
+  interval,
+  threshold,
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.SAVED_SEARCH,
+  savedSearchId,
+});
