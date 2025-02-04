@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -100,7 +101,7 @@ export default function OnboardingModal({
                 });
                 const traceSource = await createSourceMutation.mutateAsync({
                   source: {
-                    kind: 'trace',
+                    kind: SourceKind.Trace,
                     name: 'Demo Traces',
                     connection: 'local',
                     from: {
@@ -128,7 +129,7 @@ export default function OnboardingModal({
                 });
                 await createSourceMutation.mutateAsync({
                   source: {
-                    kind: 'log',
+                    kind: SourceKind.Log,
                     name: 'Demo Logs',
                     connection: 'local',
                     from: {

@@ -161,7 +161,7 @@ describe('checkAlerts', () => {
       },
       source: {
         id: 'fake-source-id' as any,
-        kind: 'log',
+        kind: 'log' as any,
         team: 'team-123' as any,
         from: {
           databaseName: 'default',

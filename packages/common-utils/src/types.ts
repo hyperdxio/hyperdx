@@ -392,6 +392,11 @@ export const ConnectionSchema = z.object({
 // --------------------------
 // TABLE SOURCES
 // --------------------------
+export enum SourceKind {
+  Log = 'log',
+  Trace = 'trace',
+  Session = 'session',
+}
 export const SourceSchema = z.object({
   from: z.object({
     databaseName: z.string(),
@@ -401,7 +406,7 @@ export const SourceSchema = z.object({
   connection: z.string(),
 
   // Common
-  kind: z.enum(['log', 'trace']),
+  kind: z.nativeEnum(SourceKind),
   id: z.string(),
   name: z.string(),
   displayedTimestampValueExpression: z.string().optional(),
@@ -421,6 +426,9 @@ export const SourceSchema = z.object({
   // Traces & Logs
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
+
+  // Sessions
+  sessionSourceId: z.string().optional(),
 
   // Traces
   durationExpression: z.string().optional(),
