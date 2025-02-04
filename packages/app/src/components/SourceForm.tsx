@@ -17,6 +17,7 @@ import {
   Menu,
   Radio,
   SegmentedControl,
+  Select,
   Slider,
   Stack,
   Switch,
@@ -43,6 +44,8 @@ import { DatabaseSelectControlled } from './DatabaseSelect';
 import { DBTableSelectControlled } from './DBTableSelect';
 import { InputControlled } from './InputControlled';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
+
+const DEFAULT_DATABASE = 'default';
 
 function FormRow({
   label,
@@ -112,7 +115,6 @@ export function LogTableModelForm({
   watch: UseFormWatch<TSource>;
   setValue: UseFormSetValue<TSource>;
 }) {
-  const DEFAULT_DATABASE = 'default';
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -319,7 +321,6 @@ export function TraceTableModelForm({
   watch: UseFormWatch<TSource>;
   setValue: UseFormSetValue<TSource>;
 }) {
-  const DEFAULT_DATABASE = 'default';
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -536,6 +537,242 @@ export function TraceTableModelForm({
   );
 }
 
+export function MetricTableModelForm({
+  control,
+  watch,
+  setValue,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+}) {
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const tableName = watch(`from.tableName`);
+  const connectionId = watch(`connection`);
+
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+
+  return (
+    <>
+      <Stack gap="sm">
+        <FormRow label={'Server Connection'}>
+          <ConnectionSelectControlled control={control} name={`connection`} />
+        </FormRow>
+        <FormRow label={'Database'}>
+          <DatabaseSelectControlled
+            connectionId={connectionId}
+            control={control}
+            name={`from.databaseName`}
+          />
+        </FormRow>
+        <Divider />
+        <FormRow label={'Metric Type'}>
+          <Select
+            data={[{ value: 'gauge', label: 'Gauge' }]}
+            defaultValue="gauge"
+            placeholder="Select metric type"
+            allowDeselect={false}
+          />
+        </FormRow>
+        <FormRow label={'Table'}>
+          <DBTableSelectControlled
+            connectionId={connectionId}
+            database={databaseName}
+            control={control}
+            name={`from.tableName`}
+            rules={{ required: 'Table is required' }}
+          />
+        </FormRow>
+        <FormRow label={'Timestamp Column'}>
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="timestampValueExpression"
+            placeholder="TimeUnix"
+            disableKeywordAutocomplete
+          />
+        </FormRow>
+        <FormRow
+          label={'Default Select'}
+          helpText="Default columns selected in search results (this can be customized per search later)"
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="defaultTableSelectExpression"
+            placeholder="TimeUnix, MetricName, Value, ServiceName, Attributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow
+          label={'Metric Name Column'}
+          helpText="Column containing the name of the metric being measured"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="metricNameExpression"
+            placeholder="MetricName"
+          />
+        </FormRow>
+        <FormRow label={'Gauge Value Column'}>
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="valueExpression"
+            placeholder="Value"
+          />
+        </FormRow>
+        <Box>
+          {!showOptionalFields && (
+            <Anchor
+              underline="always"
+              onClick={() => setShowOptionalFields(true)}
+              size="xs"
+              c="gray.4"
+            >
+              <Text me="sm" span>
+                <i className="bi bi-gear" />
+              </Text>
+              Configure Optional Fields
+            </Anchor>
+          )}
+          {showOptionalFields && (
+            <Button
+              onClick={() => setShowOptionalFields(false)}
+              size="xs"
+              variant="subtle"
+              color="gray.4"
+            >
+              Hide Optional Fields
+            </Button>
+          )}
+        </Box>
+      </Stack>
+      <Stack
+        gap="sm"
+        style={{
+          display: showOptionalFields ? 'flex' : 'none',
+        }}
+      >
+        <Divider />
+        <FormRow
+          label={'Service Name Column'}
+          helpText="Column containing the service name associated with the metric"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="serviceNameExpression"
+            placeholder="ServiceName"
+          />
+        </FormRow>
+        <FormRow
+          label={'Resource Attributes Column'}
+          helpText="Column containing resource attributes/tags associated with the metric"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="resourceAttributesExpression"
+            placeholder="ResourceAttributes"
+          />
+        </FormRow>
+        <FormRow
+          label={'Metric Unit Column'}
+          helpText="Column containing the unit of measurement for the metric"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="metricUnitExpression"
+            placeholder="MetricUnit"
+          />
+        </FormRow>
+        <FormRow
+          label={'Metric Flag Column'}
+          helpText="Column containing flags or markers associated with the metric"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="flagsExpression"
+            placeholder="Flags"
+          />
+        </FormRow>
+        <FormRow
+          label={'Event Attributes Expression'}
+          helpText="Column containing additional attributes/dimensions for the metric"
+        >
+          <SQLInlineEditorControlled
+            connectionId={connectionId}
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="eventAttributesExpression"
+            placeholder="Attributes"
+          />
+        </FormRow>
+      </Stack>
+    </>
+  );
+}
+
+function TableModelForm({
+  control,
+  watch,
+  setValue,
+  kind,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+  kind: SourceKind;
+}) {
+  switch (kind) {
+    case SourceKind.Log:
+    case SourceKind.Session:
+      return (
+        <LogTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Trace:
+      return (
+        <TraceTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Metric:
+      return (
+        <MetricTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+  }
+}
+
 export function TableSourceForm({
   sourceId,
   onSave,
@@ -737,6 +974,7 @@ export function TableSourceForm({
                 <Group>
                   <Radio value={SourceKind.Log} label="Log" />
                   <Radio value={SourceKind.Trace} label="Trace" />
+                  <Radio value={SourceKind.Metric} label="Metric" />
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
                   )}
@@ -746,22 +984,12 @@ export function TableSourceForm({
           />
         </FormRow>
       </Stack>
-      {kind === SourceKind.Trace ? (
-        <TraceTableModelForm
-          // @ts-ignore
-          control={control}
-          // @ts-ignore
-          watch={watch}
-          // @ts-ignore
-          setValue={setValue}
-        />
-      ) : (
-        <LogTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      )}
+      <TableModelForm
+        control={control}
+        watch={watch}
+        setValue={setValue}
+        kind={kind}
+      />
     </div>
   );
 }
