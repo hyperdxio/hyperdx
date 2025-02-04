@@ -67,7 +67,8 @@ services:
     networks:
       - internal
     depends_on:
-      - ch-server
+      ch-server:
+        condition: service_healthy
   # task-check-alerts:
   #   build:
   #     context: .
@@ -115,5 +116,11 @@ services:
     restart: on-failure
     networks:
       - internal
+    healthcheck:
+      # "clickhouse", "client", "-u ${CLICKHOUSE_USER}", "--password ${CLICKHOUSE_PASSWORD}", "-q 'SELECT 1'"
+      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
+      interval: 3s
+      timeout: 3s
+      retries: 3
 networks:
   internal:
