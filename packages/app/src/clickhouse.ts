@@ -171,7 +171,7 @@ export function useSessions(
         ),
       ]);
 
-      const finalQuery = chSql`
+      const sessionsCTE = chSql`
         WITH _${SESSIONS_CTE_NAME} AS (${sessionsQuery}),
         ${SESSIONS_CTE_NAME} AS (
           SELECT * 
@@ -179,7 +179,13 @@ export function useSessions(
           HAVING interactionCount > 0 OR recordingCount > 0
           ORDER BY maxTimestamp DESC
           LIMIT 500
-        ),
+        )
+      `;
+
+      const finalQuery =
+        where && where.length > 0
+          ? chSql`
+        ${sessionsCTE},
         sessionIdsWithRecordings AS (${sessionIdsWithRecordingsQuery}),
         sessionIdsWithUserActivity AS (${sessionIdsWithUserActivityQuery})
         SELECT *
@@ -189,7 +195,12 @@ export function useSessions(
         ) OR ${SESSIONS_CTE_NAME}.sessionId IN (
           SELECT sessionIdsWithUserActivity.sessionId FROM sessionIdsWithUserActivity
         )
-      `;
+      `
+          : chSql`
+        ${sessionsCTE}
+        SELECT *
+        FROM ${SESSIONS_CTE_NAME}
+        `;
 
       const json = await clickhouseClient
         .query({
