@@ -5,8 +5,8 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
 import { ActionIcon, CopyButton, HoverCard } from '@mantine/core';
 
-import { useSearchEventStream } from './search_DEPRECATED';
-import { useDebugMode } from './utils';
+import { useRRWebEventStream } from '@/clickhouse';
+import { useDebugMode } from '@/utils';
 
 import styles from '../styles/SessionSubpanelV2.module.scss';
 
@@ -121,15 +121,12 @@ export default function DOMPlayer({
 
   let currentRrwebEvent = '';
 
-  const { isFetching: isSearchResultsFetching, abort } = useSearchEventStream(
+  const { isFetching: isSearchResultsFetching, abort } = useRRWebEventStream(
     {
-      apiUrlPath: `/api/sessions/${sessionId}/rrweb`,
+      sessionId,
       sourceId,
-      q: '',
       startDate: dateRange?.[0] ?? new Date(),
       endDate: dateRange?.[1] ?? new Date(),
-      extraFields: [],
-      order: 'asc', // hardcoded at the api side. doesn't matter here
       limit: 1000000, // large enough to get all events
       onEvent: (event: { b: string; ck: number; tcks: number; t: number }) => {
         try {
