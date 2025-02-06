@@ -39,6 +39,20 @@ export const getClickhouseClient = () => {
   });
 };
 
+export type Session = {
+  errorCount: string;
+  interactionCount: string;
+  maxTimestamp: string;
+  minTimestamp: string;
+  recordingCount: string;
+  sessionCount: string;
+  sessionId: string;
+  teamId: string;
+  teamName: string;
+  userEmail: string;
+  userName: string;
+};
+
 // TODO: support where filtering
 export function useSessions(
   {
@@ -48,8 +62,8 @@ export function useSessions(
     where,
     whereLanguage,
   }: {
-    traceSource: TSource;
-    sessionSource: TSource;
+    traceSource?: TSource;
+    sessionSource?: TSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;
     whereLanguage?: SearchConditionLanguage;
@@ -59,16 +73,19 @@ export function useSessions(
   const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName', 'userEmail', 'userName'];
   const SESSIONS_CTE_NAME = 'sessions';
   const clickhouseClient = getClickhouseClient();
-  return useQuery<ResponseJSON<ColumnMeta>, Error>({
+  return useQuery<ResponseJSON<Session>, Error>({
     queryKey: [
       'sessions',
-      traceSource.id,
-      sessionSource.id,
+      traceSource?.id,
+      sessionSource?.id,
       dateRange,
       where,
       whereLanguage,
     ],
     queryFn: async () => {
+      if (!traceSource || !sessionSource) {
+        return [];
+      }
       // TODO: we
       const [
         sessionsQuery,

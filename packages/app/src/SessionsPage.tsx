@@ -15,7 +15,6 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   DateRange,
   SearchCondition,
@@ -42,11 +41,11 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
-import api from './api';
-import { useSessions } from './clickhouse';
+import { Session, useSessions } from './clickhouse';
 import { withAppNav } from './layout';
 import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
+import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';
@@ -109,28 +108,14 @@ function SessionCard({
 }
 
 function SessionCardList({
-  config: { dateRange, sessionSource, traceSource, where, whereLanguage },
+  sessions,
+  isSessionLoading,
   onClick,
 }: {
-  config: {
-    where?: SearchCondition;
-    whereLanguage: SearchConditionLanguage;
-    dateRange: DateRange['dateRange'];
-    sessionSource: TSource;
-    traceSource: TSource;
-  };
-  onClick: (sessionId: string, dateRange: [Date, Date]) => void;
+  sessions: Session[];
+  isSessionLoading?: boolean;
+  onClick: (session: Session) => void;
 }) {
-  const { data: tableData, isLoading: isTableDataLoading } = useSessions({
-    dateRange,
-    sessionSource,
-    traceSource,
-    where,
-    whereLanguage,
-  });
-
-  const sessions = tableData?.data ?? [];
-
   const parentRef = useRef<HTMLDivElement>(null);
 
   // The virtualizer
@@ -143,7 +128,7 @@ function SessionCardList({
 
   return (
     <>
-      {isTableDataLoading === true && (
+      {isSessionLoading === true && (
         <div className="text-center mt-8">
           <div
             className="spinner-border me-2"
@@ -153,7 +138,7 @@ function SessionCardList({
           Searching sessions...
         </div>
       )}
-      {!isTableDataLoading && sessions.length === 0 && (
+      {!isSessionLoading && sessions.length === 0 && (
         <div className="text-center align-items-center justify-content-center my-3">
           No results found.
           <div className="text-muted mt-3">
@@ -228,10 +213,7 @@ function SessionCardList({
                     maxTime={new Date(maxTimestamp)}
                     minTime={new Date(minTimestamp)}
                     onClick={() => {
-                      onClick(sessionId, [
-                        sub(new Date(minTimestamp), { hours: 4 }),
-                        sub(new Date(maxTimestamp), { hours: -4 }),
-                      ]);
+                      onClick(row);
                     }}
                   />
                 </div>
@@ -252,21 +234,7 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 export default function SessionsPage() {
-  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
-    {
-      sid: withDefault(StringParam, undefined),
-      sfrom: withDefault(NumberParam, undefined),
-      sto: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
-  );
-
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
-
-  const { data: sources } = useSources();
 
   const { control, watch, setValue, handleSubmit } = useForm({
     values: {
@@ -317,11 +285,114 @@ export default function SessionsPage() {
     }
   }, [sourceId]);
 
+  // FIXME: fix the url
+  const generateSearchUrl = useCallback(
+    (newQuery?: string, newTimeRange?: [Date, Date]) => {
+      const qparams = new URLSearchParams({
+        q: '',
+      });
+      return `/search?${qparams.toString()}`;
+    },
+    [],
+  );
+
+  // FIXME: fix the url
+  const generateChartUrl = useCallback(
+    ({ aggFn, field, where, groupBy }: any) => {
+      return `/chart?series=${encodeURIComponent(
+        JSON.stringify({
+          type: 'time',
+          aggFn,
+          field,
+          where,
+          groupBy,
+        }),
+      )}`;
+    },
+    [],
+  );
+
+  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
+    {
+      sid: withDefault(StringParam, undefined),
+      sfrom: withDefault(NumberParam, undefined),
+      sto: withDefault(NumberParam, undefined),
+    },
+    {
+      updateType: 'pushIn',
+      enableBatching: true,
+    },
+  );
+
+  const selectedSession = useMemo(() => {
+    if (selectedSessionQuery.sid == null) {
+      return undefined;
+    }
+    return {
+      id: selectedSessionQuery.sid,
+      dateRange: [
+        new Date(selectedSessionQuery.sfrom ?? 0),
+        new Date(selectedSessionQuery.sto ?? 0),
+      ] as [Date, Date],
+    };
+  }, [selectedSessionQuery]);
+  const setSelectedSession = useCallback(
+    (session: Session | undefined) => {
+      if (session == null) {
+        setSelectedSessionQuery({
+          sid: undefined,
+          sfrom: undefined,
+          sto: undefined,
+        });
+      } else {
+        setSelectedSessionQuery({
+          sid: session.sessionId,
+          sfrom: new Date(session.maxTimestamp).getTime(),
+          sto: new Date(session.minTimestamp).getTime(),
+        });
+      }
+    },
+    [setSelectedSessionQuery],
+  );
+
+  const { data: tableData, isLoading: isSessionsLoading } = useSessions({
+    dateRange: searchedTimeRange,
+    sessionSource: sessionSource,
+    traceSource: traceTrace,
+    // TODO: if selectedSession is not null, we should filter by that session id
+    where: where as SearchCondition,
+    whereLanguage: whereLanguage as SearchConditionLanguage,
+  });
+
+  const sessions = tableData?.data ?? [];
+
   return (
     <div className="SessionsPage">
       <Head>
         <title>Client Sessions - HyperDX</title>
       </Head>
+      {selectedSession != null &&
+        traceTrace != null &&
+        sessionSource != null && (
+          <SessionSidePanel
+            key={`session-page-session-side-panel-${selectedSession.id}`}
+            sessionId={selectedSession.id}
+            dateRange={selectedSession.dateRange}
+            session={sessions.find(s => s.sessionId === selectedSession.id)}
+            onClose={() => {
+              setSelectedSession(undefined);
+            }}
+            generateSearchUrl={generateSearchUrl}
+            generateChartUrl={({ aggFn, field, groupBy }) =>
+              generateChartUrl({
+                aggFn,
+                field,
+                groupBy,
+                where: `rum_session_id:"${selectedSession.id}"`,
+              })
+            }
+          />
+        )}
       <Box p="sm">
         <form
           onSubmit={e => {
@@ -393,16 +464,11 @@ export default function SessionsPage() {
         ) : (
           <div style={{ minHeight: 0 }} className="mt-4">
             <SessionCardList
-              onClick={(sessionId, dateRange) => {
-                // setSelectedSession({ id: sessionId, dateRange });
+              onClick={session => {
+                setSelectedSession(session);
               }}
-              config={{
-                dateRange: searchedTimeRange,
-                sessionSource: sessionSource,
-                traceSource: traceTrace,
-                where: where as SearchCondition,
-                whereLanguage: whereLanguage as SearchConditionLanguage,
-              }}
+              sessions={sessions}
+              isSessionLoading={isSessionsLoading}
             />
           </div>
         )}
