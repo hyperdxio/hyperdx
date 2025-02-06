@@ -4,6 +4,11 @@ import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
 import {
+  ChartConfigWithOptDateRange,
+  DateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
   ActionIcon,
   Button,
   Divider,
@@ -24,6 +29,7 @@ import styles from '../styles/SessionSubpanelV2.module.scss';
 const MemoPlaybar = memo(Playbar);
 
 export default function SessionSubpanel({
+  traceSource,
   onPropertyAddClick,
   generateChartUrl,
   generateSearchUrl,
@@ -33,6 +39,7 @@ export default function SessionSubpanel({
   end,
   initialTs,
 }: {
+  traceSource: TSource;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
     aggFn: string;
@@ -197,28 +204,173 @@ export default function SessionSubpanel({
     end.getTime() - 4 * 60 * 60 * 1000,
   );
   const playbackRange = useMemo(() => {
-    return [new Date(playerStartTs), new Date(playerEndTs)] as [Date, Date];
+    return [
+      new Date(playerStartTs),
+      new Date(playerEndTs),
+    ] as DateRange['dateRange'];
   }, [playerStartTs, playerEndTs]);
 
-  const playBarEventsConfig = useMemo(
+  const commonSelect = [
+    // body
+    // component
+    // duration
+    // end_timestamp
+    // error.message
+    // exception.group_id
+    // http.method
+    // http.status_code
+    // http.url
+    // id
+    // location.href
+    // otel.library.name
+    // parent_span_id
+    // severity_text
+    // sort_key
+    // span_id
+    // span_name
+    // timestamp
+    // trace_id
+    // type
+    // _host
+    // _platform
+    // _service
+    {
+      valueExpression: `${traceSource.statusCodeExpression}`,
+      alias: 'body',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['component']`,
+      alias: 'component',
+    },
+    {
+      valueExpression: `toFloat64OrZero(toString(${traceSource.durationExpression})) * pow(10, 3) / pow(10, toInt8OrZero(toString(${traceSource.durationPrecision})))`,
+      alias: 'durationInMs',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['error.message']`,
+      alias: 'error.message',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['http.method']`,
+      alias: 'http.method',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['http.status_code']`,
+      alias: 'http.status_code',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
+      alias: 'http.url',
+    },
+    {
+      valueExpression: `${traceSource.resourceAttributesExpression}['rum.sessionId']`,
+      alias: 'id',
+    },
+    {
+      valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
+      alias: 'location.href',
+    },
+    {
+      valueExpression: 'ScopeName', // FIXME: add mapping
+      alias: 'otel.library.name',
+    },
+    {
+      valueExpression: `${traceSource.parentSpanIdExpression}`,
+      alias: 'parent_span_id',
+    },
+    {
+      valueExpression: `${traceSource.statusCodeExpression}`,
+      alias: 'severity_text',
+    },
+    {
+      valueExpression: `${traceSource.spanIdExpression}`,
+      alias: 'span_id',
+    },
+    {
+      valueExpression: `${traceSource.spanNameExpression}`,
+      alias: 'span_name',
+    },
+    {
+      valueExpression: `${traceSource.timestampValueExpression}`,
+      alias: 'timestamp',
+    },
+    {
+      valueExpression: `${traceSource.traceIdExpression}`,
+      alias: 'trace_id',
+    },
+    {
+      valueExpression: `CAST('span', 'String')`,
+      alias: 'type',
+    },
+  ];
+
+  const filteredEventsWhere = `
+    ${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+    AND (
+      ${traceSource.eventAttributesExpression}.http.status_code:>299 
+      OR ${traceSource.eventAttributesExpression}.component:"error" 
+      OR ${traceSource.spanNameExpression}:"routeChange" 
+      OR ${traceSource.spanNameExpression}:"documentLoad" 
+      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
+      OR ScopeName:"custom-action" 
+    ) ${searchedQuery}`;
+
+  const allEventsWhere = `
+    ${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+    AND (
+      ${traceSource.eventAttributesExpression}.http.status_code:* 
+      OR ${traceSource.eventAttributesExpression}.component:"console" 
+      OR ${traceSource.eventAttributesExpression}.component:"error" 
+      OR ${traceSource.spanNameExpression}:"routeChange" 
+      OR ${traceSource.spanNameExpression}:"documentLoad" 
+      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
+      OR ScopeName:"custom-action" 
+    ) ${searchedQuery}`;
+
+  const playBarEventsConfig = useMemo<ChartConfigWithOptDateRange>(
     () => ({
-      where: `rum_session_id:"${rumSessionId}" (http.status_code:>299 OR component:"error" OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action" OR exception.group_id:*) ${searchedQuery}`,
-      dateRange: [start, end] as [Date, Date],
+      select: commonSelect,
+      from: traceSource.from,
+      dateRange: [start, end],
+      // TODO: support SQL ? (should be consistent with searchQuery)
+      whereLanguage: 'lucene',
+      where: filteredEventsWhere,
+      timestampValueExpression: traceSource.timestampValueExpression,
+      implicitColumnExpression: traceSource.implicitColumnExpression,
+      connection: traceSource.connection,
+      limit: {
+        limit: 4000,
+        offset: 0,
+      },
     }),
     [rumSessionId, start, end, searchedQuery],
   );
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
 
-  const sessionEventListConfig = useMemo(
+  const sessionEventListConfig = useMemo<ChartConfigWithOptDateRange>(
     () => ({
-      where: `rum_session_id:"${rumSessionId}" ((http.status_code:>${
-        tab === 'events' ? '-1' : '299'
-      }${
-        tab === 'events' ? ' AND http.status_code:*' : ''
-      }) OR component:"error" ${
-        tab === 'events' ? 'OR component:"console"' : ''
-      } OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action" OR exception.group_id:*) ${searchedQuery}`,
-      dateRange: [start, end] as [Date, Date],
+      select: commonSelect,
+      from: traceSource.from,
+      dateRange: [start, end],
+      // TODO: support SQL ? (should be consistent with searchQuery)
+      whereLanguage: 'lucene',
+      where: tab === 'events' ? allEventsWhere : filteredEventsWhere,
+      timestampValueExpression: traceSource.timestampValueExpression,
+      implicitColumnExpression: traceSource.implicitColumnExpression,
+      connection: traceSource.connection,
+      limit: {
+        limit: 4000,
+        offset: 0,
+      },
+      // whereLanguage: 'lucene',
+      // where: `rum_session_id:"${rumSessionId}" ((http.status_code:>${
+      //   tab === 'events' ? '-1' : '299'
+      // }${
+      //   tab === 'events' ? ' AND http.status_code:*' : ''
+      // }) OR component:"error" ${
+      //   tab === 'events' ? 'OR component:"console"' : ''
+      // } OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action" OR exception.group_id:*) ${searchedQuery}`,
+      // dateRange: [start, end] as DateRange['dateRange'],
     }),
     [rumSessionId, start, end, tab, searchedQuery],
   );
@@ -318,7 +470,7 @@ export default function SessionSubpanel({
 
         <SessionEventList
           eventsFollowPlayerPosition={eventsFollowPlayerPosition}
-          config={sessionEventListConfig}
+          queriedConfig={sessionEventListConfig}
           onClick={useCallback(
             (id: any, sortKey: any) => {
               setDrawerOpen(true);
@@ -371,7 +523,7 @@ export default function SessionSubpanel({
             focus={focus}
             setFocus={setFocus}
             playbackRange={playbackRange}
-            eventsConfig={playBarEventsConfig}
+            queriedConfig={playBarEventsConfig}
           />
         </div>
         <div className={styles.playerToolbar}>

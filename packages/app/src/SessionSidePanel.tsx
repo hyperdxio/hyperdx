@@ -19,6 +19,7 @@ import { ZIndexContext } from './zIndex';
 import 'react-modern-drawer/dist/index.css';
 
 export default function SessionSidePanel({
+  traceSource,
   sessionId,
   session,
   dateRange,
@@ -28,6 +29,7 @@ export default function SessionSidePanel({
   generateChartUrl,
   zIndex = 100,
 }: {
+  traceSource: TSource;
   sessionId: string;
   session?: clickhouse.Session;
   dateRange: DateRange['dateRange'];
@@ -133,6 +135,7 @@ export default function SessionSidePanel({
           </div>
           {sessionId != null ? (
             <SessionSubpanel
+              traceSource={traceSource}
               start={dateRange[0]}
               end={dateRange[1]}
               rumSessionId={sessionId}

@@ -1,10 +1,11 @@
 import * as React from 'react';
 import cx from 'classnames';
+import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledCallback, useThrottledValue } from '@mantine/hooks';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import { useSessionEvents } from './sessionUtils';
+import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
 
@@ -83,7 +84,7 @@ const EventRow = React.forwardRef(
 );
 
 export const SessionEventList = ({
-  config: { where, dateRange },
+  queriedConfig,
   onClick,
   onTimeClick,
   focus,
@@ -91,10 +92,7 @@ export const SessionEventList = ({
   showRelativeTime,
   eventsFollowPlayerPosition,
 }: {
-  config: {
-    where: string;
-    dateRange: [Date, Date];
-  };
+  queriedConfig: ChartConfigWithOptDateRange;
   // highlightedResultId: string | undefined;
   focus: { ts: number; setBy: string } | undefined;
   minTs: number;
@@ -103,17 +101,24 @@ export const SessionEventList = ({
   onTimeClick: (ts: number) => void;
   eventsFollowPlayerPosition: boolean;
 }) => {
-  const { events, isFetching: isSessionEventsFetching } = useSessionEvents({
-    config: { where, dateRange },
-  });
+  const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
+    useQueriedChartConfig(queriedConfig, {
+      placeholderData: (prev: any) => prev,
+      queryKey: ['SessionEventList', queriedConfig],
+    });
 
   const formatTime = useFormatTime();
 
+  const events = data?.data ?? [];
+
   const rows = React.useMemo(() => {
     return (
-      events?.map((event, i) => {
-        const { startOffset, endOffset } = event;
-        const tookMs = endOffset - startOffset;
+      events.map((event, i) => {
+        const { timestamp, durationInMs } = event;
+
+        // TODO: we should just use timestamp and durationInMs instead of startOffset and endOffset
+        const startOffset = new Date(timestamp).getTime();
+        const endOffset = new Date(startOffset).getTime() + durationInMs;
 
         const isHighlighted = false;
 
@@ -222,7 +227,7 @@ export const SessionEventList = ({
     }
   }, [currentEventIndex, eventsFollowPlayerPosition, rowVirtualizer]);
 
-  if (isSessionEventsFetching) {
+  if (isLoading) {
     return (
       <Stack p="sm" gap="xs">
         <Skeleton height={36} />

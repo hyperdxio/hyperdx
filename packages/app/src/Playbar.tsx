@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
+import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 import type { PlaybarMarker } from './PlaybarSlider';
 import { PlaybarSlider } from './PlaybarSlider';
-import { useSessionEvents } from './sessionUtils';
 import { getShortUrl } from './utils';
 
 export default function Playbar({
@@ -12,17 +14,14 @@ export default function Playbar({
   setFocus,
   playbackRange,
   focus,
-  eventsConfig,
+  queriedConfig,
 }: {
   playerState: 'playing' | 'paused';
   setPlayerState: (playerState: 'playing' | 'paused') => void;
   focus: { ts: number; setBy: string } | undefined;
   setFocus: (focus: { ts: number; setBy: string }) => void;
   playbackRange: [Date, Date];
-  eventsConfig: {
-    where: string;
-    dateRange: [Date, Date];
-  };
+  queriedConfig: ChartConfigWithOptDateRange;
 }) {
   // might be outdated? state update or something? that's why the max slider val can be wrong?
   const minTs = playbackRange[0].getTime();
@@ -30,12 +29,32 @@ export default function Playbar({
   const maxSliderVal = Math.ceil(playbackRange[1].getTime() / 1000) * 1000;
   const minSliderVal = Math.floor(playbackRange[0].getTime() / 1000) * 1000;
 
-  const { events } = useSessionEvents({ config: eventsConfig });
+  const { data, isLoading, isError, error } = useQueriedChartConfig(
+    queriedConfig,
+    {
+      placeholderData: (prev: any) => prev,
+      queryKey: ['PlayBar', queriedConfig],
+    },
+  );
+  const events: any[] = data?.data ?? [];
 
   const markers = useMemo<PlaybarMarker[]>(() => {
     return uniqBy(
       events
-        ?.filter(
+        .map(event => {
+          const { timestamp, durationInMs } = event;
+
+          // TODO: we should just use timestamp and durationInMs instead of startOffset and endOffset
+          const startOffset = new Date(timestamp).getTime();
+          const endOffset = new Date(startOffset).getTime() + durationInMs;
+
+          return {
+            ...event,
+            startOffset,
+            endOffset,
+          };
+        })
+        .filter(
           ({ startOffset }) => startOffset >= minTs && startOffset <= maxTs,
         )
         .map(event => {

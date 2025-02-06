@@ -347,8 +347,8 @@ export default function SessionsPage() {
       } else {
         setSelectedSessionQuery({
           sid: session.sessionId,
-          sfrom: new Date(session.maxTimestamp).getTime(),
-          sto: new Date(session.minTimestamp).getTime(),
+          sfrom: new Date(session.minTimestamp).getTime(),
+          sto: new Date(session.maxTimestamp).getTime(),
         });
       }
     },
@@ -376,6 +376,7 @@ export default function SessionsPage() {
         sessionSource != null && (
           <SessionSidePanel
             key={`session-page-session-side-panel-${selectedSession.id}`}
+            traceSource={traceTrace}
             sessionId={selectedSession.id}
             dateRange={selectedSession.dateRange}
             session={sessions.find(s => s.sessionId === selectedSession.id)}
