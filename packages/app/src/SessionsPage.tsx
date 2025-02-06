@@ -377,6 +377,7 @@ export default function SessionsPage() {
           <SessionSidePanel
             key={`session-page-session-side-panel-${selectedSession.id}`}
             traceSource={traceTrace}
+            sessionSource={sessionSource}
             sessionId={selectedSession.id}
             dateRange={selectedSession.dateRange}
             session={sessions.find(s => s.sessionId === selectedSession.id)}

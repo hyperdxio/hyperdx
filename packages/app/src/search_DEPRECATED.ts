@@ -4,8 +4,6 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 import { usePrevious } from './utils';
 
-const API_SERVER_URL = 'http://localhost:8000';
-
 class RetriableError extends Error {}
 class FatalError extends Error {}
 class TimeoutError extends Error {}
@@ -14,6 +12,7 @@ const EventStreamContentType = 'text/event-stream';
 function useSearchEventStream(
   {
     apiUrlPath,
+    sourceId,
     q,
     startDate,
     endDate,
@@ -25,6 +24,7 @@ function useSearchEventStream(
     resultsKey,
   }: {
     apiUrlPath: string;
+    sourceId: string;
     q: string;
     startDate: Date;
     endDate: Date;
@@ -71,6 +71,7 @@ function useSearchEventStream(
       const endTime = endDate.getTime().toString();
 
       const searchParams = new URLSearchParams([
+        ['sourceId', sourceId],
         ['endTime', endTime],
         ['q', q],
         ['startTime', startTime],
@@ -88,7 +89,7 @@ function useSearchEventStream(
       lastFetchStatusRef.current = 'fetching';
 
       const fetchPromise = fetchEventSource(
-        `${API_SERVER_URL}${apiUrlPath}?${searchParams.toString()}`,
+        `${apiUrlPath}?${searchParams.toString()}`,
         {
           method: 'GET',
           signal: ctrl.signal,

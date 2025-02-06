@@ -30,6 +30,7 @@ const MemoPlaybar = memo(Playbar);
 
 export default function SessionSubpanel({
   traceSource,
+  sessionSource,
   onPropertyAddClick,
   generateChartUrl,
   generateSearchUrl,
@@ -40,6 +41,7 @@ export default function SessionSubpanel({
   initialTs,
 }: {
   traceSource: TSource;
+  sessionSource: TSource;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
     aggFn: string;
@@ -504,6 +506,7 @@ export default function SessionSubpanel({
             [focus, setFocus],
           )}
           config={{
+            sourceId: sessionSource.id,
             sessionId: rumSessionId,
             dateRange: [start, end],
           }}

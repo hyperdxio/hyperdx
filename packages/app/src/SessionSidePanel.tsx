@@ -20,6 +20,7 @@ import 'react-modern-drawer/dist/index.css';
 
 export default function SessionSidePanel({
   traceSource,
+  sessionSource,
   sessionId,
   session,
   dateRange,
@@ -30,6 +31,7 @@ export default function SessionSidePanel({
   zIndex = 100,
 }: {
   traceSource: TSource;
+  sessionSource: TSource;
   sessionId: string;
   session?: clickhouse.Session;
   dateRange: DateRange['dateRange'];
@@ -136,6 +138,7 @@ export default function SessionSidePanel({
           {sessionId != null ? (
             <SessionSubpanel
               traceSource={traceSource}
+              sessionSource={sessionSource}
               start={dateRange[0]}
               end={dateRange[1]}
               rumSessionId={sessionId}

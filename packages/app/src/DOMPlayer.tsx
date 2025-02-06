@@ -71,7 +71,7 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
 });
 
 export default function DOMPlayer({
-  config: { sessionId, dateRange },
+  config: { sourceId, dateRange, sessionId },
   focus,
   setPlayerTime,
   playerState,
@@ -85,6 +85,7 @@ export default function DOMPlayer({
   resizeKey,
 }: {
   config: {
+    sourceId: string;
     sessionId: string;
     dateRange: [Date, Date];
   };
@@ -122,7 +123,8 @@ export default function DOMPlayer({
 
   const { isFetching: isSearchResultsFetching, abort } = useSearchEventStream(
     {
-      apiUrlPath: `/sessions/${sessionId}/rrweb`,
+      apiUrlPath: `/api/sessions/${sessionId}/rrweb`,
+      sourceId,
       q: '',
       startDate: dateRange?.[0] ?? new Date(),
       endDate: dateRange?.[1] ?? new Date(),
