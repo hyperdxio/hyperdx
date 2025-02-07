@@ -761,7 +761,7 @@ const api = {
             username,
             password,
           },
-        }).json() as Promise<{ success: boolean }>,
+        }).json() as Promise<{ success: boolean; error?: string }>,
     });
   },
 };
