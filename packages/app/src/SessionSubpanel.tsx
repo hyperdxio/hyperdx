@@ -265,7 +265,7 @@ export default function SessionSubpanel({
       alias: 'http.url',
     },
     {
-      valueExpression: `${traceSource.resourceAttributesExpression}['rum.sessionId']`,
+      valueExpression: `cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}, ${traceSource.timestampValueExpression})`,
       alias: 'id',
     },
     {
@@ -340,6 +340,7 @@ export default function SessionSubpanel({
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
       connection: traceSource.connection,
+      orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {
         limit: 4000,
         offset: 0,
@@ -360,6 +361,7 @@ export default function SessionSubpanel({
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
       connection: traceSource.connection,
+      orderBy: `${traceSource.timestampValueExpression} ASC`,
       limit: {
         limit: 4000,
         offset: 0,

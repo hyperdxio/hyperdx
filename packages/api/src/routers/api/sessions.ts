@@ -4,58 +4,18 @@ import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
-import { isNumber, parseInt } from 'lodash';
+import { parseInt } from 'lodash';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import * as clickhouse from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
-import { getTeam } from '@/controllers/team';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { Source } from '@/models/source';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
-
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { endTime, q, startTime } = req.query;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-    const startTimeNum = parseInt(startTime as string);
-    const endTimeNum = parseInt(endTime as string);
-    if (!isNumber(startTimeNum) || !isNumber(endTimeNum)) {
-      return res.sendStatus(400);
-    }
-
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
-
-    res.json(
-      await clickhouse.getSessions({
-        endTime: endTimeNum,
-        limit: 500, // fixed limit for now
-        offset: 0, // fixed offset for now
-        q: q as string,
-        startTime: startTimeNum,
-        tableVersion: team.logStreamTableVersion,
-        teamId: teamId.toString(),
-      }),
-    );
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span?.recordException(e as Error);
-    span?.setStatus({ code: SpanStatusCode.ERROR });
-
-    next(e);
-  }
-});
 
 router.get(
   '/:sessionId/rrweb',
@@ -65,10 +25,10 @@ router.get(
     }),
     query: z.object({
       sourceId: objectIdSchema,
-      startTime: z.string(),
-      endTime: z.string(),
-      limit: z.string(),
-      offset: z.string(),
+      startTime: z.string().regex(/^\d+$/, 'Must be an integer string'),
+      endTime: z.string().regex(/^\d+$/, 'Must be an integer string'),
+      limit: z.string().regex(/^\d+$/, 'Must be an integer string'),
+      offset: z.string().regex(/^\d+$/, 'Must be an integer string'),
     }),
   }),
   async (req, res, next) => {
@@ -131,7 +91,10 @@ router.get(
               alias: 'tcks',
             },
           ],
-          // dateRange: [new Date(startTime), new Date(endTime)],
+          dateRange: [
+            new Date(parseInt(startTime)),
+            new Date(parseInt(endTime)),
+          ],
           from: source.from,
           whereLanguage: 'lucene',
           where: `${source.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
