@@ -314,7 +314,8 @@ export function useRRWebEventStream(
     shouldAbortPendingRequest?: boolean;
   },
 ) {
-  const enabled = options?.enabled ?? true;
+  // FIXME: keepPreviousData type
+  // @ts-ignore
   const keepPreviousData = options?.keepPreviousData ?? false;
   const shouldAbortPendingRequest = options?.shouldAbortPendingRequest ?? true;
 
@@ -322,9 +323,7 @@ export function useRRWebEventStream(
     key: '',
     data: [],
   });
-  // Set isFetching to true by default
-  // unless we're not enabled
-  const [isFetching, setIsFetching] = useState<boolean>(enabled);
+  const [isFetching, setIsFetching] = useState<boolean>(true);
   const [hasNextPage, setHasNextPage] = useState<boolean>(true);
 
   const lastAbortController = useRef<AbortController | null>(null);
@@ -484,7 +483,7 @@ export function useRRWebEventStream(
 
   useEffect(() => {
     // Only attempt fetching on new query keys
-    if (prevQueryKey != queryKey && enabled) {
+    if (prevQueryKey != queryKey) {
       if (
         lastFetchStatusRef.current !== 'fetching' ||
         shouldAbortPendingRequest
@@ -512,7 +511,6 @@ export function useRRWebEventStream(
     shouldAbortPendingRequest,
     fetchResults,
     keepPreviousData,
-    enabled,
   ]);
 
   const fetchNextPage = useCallback(

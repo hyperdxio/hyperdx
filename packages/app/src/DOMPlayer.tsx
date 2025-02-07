@@ -194,6 +194,7 @@ export default function DOMPlayer({
     },
     {
       enabled: dateRange != null,
+      // @ts-ignore
       keepPreviousData: true, // TODO: support streaming
       shouldAbortPendingRequest: true,
     },

@@ -149,6 +149,7 @@ function SessionCardList({
             Add new data sources by setting up a HyperDX integration.
           </div>
           <Button
+            component="a"
             variant="outline-success"
             className="fs-7 mt-3"
             target="_blank"
