@@ -1,8 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 
-import { IS_DEV } from '@/config';
-
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
 
 export const config = {

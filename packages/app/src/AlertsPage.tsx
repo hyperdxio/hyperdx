@@ -10,6 +10,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Alert, Badge, Container, Group, Stack, Tooltip } from '@mantine/core';
 
+import { PageHeader } from '@/components/PageHeader';
+
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
@@ -233,7 +235,7 @@ export default function AlertsPage() {
       <Head>
         <title>Alerts - HyperDX</title>
       </Head>
-      <div className={styles.header}>Alerts</div>
+      <PageHeader>Alerts</PageHeader>
       <div className="my-4">
         <Container maw={1500}>
           <Alert

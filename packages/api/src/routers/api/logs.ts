@@ -341,20 +341,8 @@ router.get('/propertyTypeMappings', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const nowInMs = Date.now();
-    const propertyTypeMappingsModel =
-      await clickhouse.buildLogsPropertyTypeMappingsModel(
-        team.logStreamTableVersion,
-        teamId.toString(),
-        nowInMs - ms('1d'),
-        nowInMs,
-      );
-
     res.json({
-      data: [
-        ...propertyTypeMappingsModel.currentPropertyTypeMappings,
-        ...Object.entries(omit(customColumnMapType, ['<implicit>'])),
-      ],
+      data: [],
     });
   } catch (e) {
     const span = opentelemetry.trace.getActiveSpan();
