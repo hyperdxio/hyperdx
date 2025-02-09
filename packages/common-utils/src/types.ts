@@ -396,6 +396,7 @@ export enum SourceKind {
   Log = 'log',
   Trace = 'trace',
   Session = 'session',
+  Metric = 'metric',
 }
 export const SourceSchema = z.object({
   from: z.object({
@@ -440,6 +441,15 @@ export const SourceSchema = z.object({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   logSourceId: z.string().optional(),
+
+  // Common Metric Fields
+  metricDiscriminator: z.enum(['gauge']).optional(),
+  metricNameExpression: z.string().optional(),
+  metricUnitExpression: z.string().optional(),
+  flagsExpression: z.string().optional(),
+
+  // Gauge Metric Field
+  valueExpression: z.string().optional(),
 });
 
 export type TSource = z.infer<typeof SourceSchema>;
