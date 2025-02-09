@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 type ObjectId = mongoose.Types.ObjectId;
@@ -14,7 +14,7 @@ export const Source = mongoose.model<ISource>(
     {
       kind: {
         type: String,
-        enum: ['log', 'trace'],
+        enum: Object.values(SourceKind),
         required: true,
       },
       team: {
@@ -58,6 +58,12 @@ export const Source = mongoose.model<ISource>(
       spanKindExpression: String,
       statusCodeExpression: String,
       statusMessageExpression: String,
+
+      metricDiscriminator: String,
+      metricNameExpression: String,
+      metricUnitExpression: String,
+      flagsExpression: String,
+      valueExpression: String,
     },
     {
       toJSON: { virtuals: true },

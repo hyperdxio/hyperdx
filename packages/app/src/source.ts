@@ -242,6 +242,18 @@ export async function inferTableSourceConfig({
     'StatusMessage',
   ]);
 
+  const isOtelMetricSchema = hasAllColumns(columns, [
+    'TimeUnix',
+    'MetricName',
+    'MetricDescription',
+    'MetricUnit',
+    'Value',
+    'Flags',
+    'ResourceAttributes',
+    'Attributes',
+    'ResourceAttributes',
+  ]);
+
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>
     keys.find(
@@ -295,6 +307,20 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
+        }
+      : {}),
+    ...(isOtelMetricSchema
+      ? {
+          serviceNameExpression: 'ServiceName',
+          timestampValueExpression: 'TimeUnix',
+          defaultTableSelectExpression:
+            'TimeUnix, ServiceName, MetricName, Value, Attributes',
+          metricNameExpression: 'MetricName',
+          metricUnitExpression: 'MetricUnit',
+          flagsExpression: 'Flags',
+          valueExpression: 'Value',
+          eventAttributesExpression: 'Attributes',
+          resourceAttributesExpression: 'ResourceAttributes',
         }
       : {}),
   };
