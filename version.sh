@@ -13,11 +13,14 @@ if [ "$API_LATEST_VERSION" != "$APP_LATEST_VERSION" ]; then
 fi
 
 # update root package.json version
-sed -i '' -e "s/\"version\": \".*\"/\"version\": \"$API_LATEST_VERSION\"/g" ./package.json
+sed -i '' 's/\("version":\s*"\)[^"]*/\"$API_LATEST_VERSION\"/' package.json
 echo "Updated root package.json version to $API_LATEST_VERSION"
 
-# update .env IMAGE_VERSION
-sed -i '' -e "s/IMAGE_VERSION=.*/IMAGE_VERSION=$API_LATEST_VERSION/g" ./.env
-echo "Updated .env IMAGE_VERSION to $API_LATEST_VERSION"
+# update tags in .env 
+sed -i '' -e "s/CHANGESET_TAG=.*/CHANGESET_TAG=$API_LATEST_VERSION/g" ./.env
+echo "Updated .env CHANGESET_TAG to $API_LATEST_VERSION"
+
+sed -i '' -e "s/IMAGE_VERSION_SUB_TAG=.*/IMAGE_VERSION_SUB_TAG=${API_LATEST_VERSION##*-beta}/g" ./.env
+echo "Updated .env IMAGE_VERSION_SUB_TAG to ${API_LATEST_VERSION##*-beta}"
 
 echo "Run 'make release' to publish new version to GHCR"

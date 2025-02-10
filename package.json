@@ -35,7 +35,7 @@
     "dev": "yarn app:dev",
     "postdev": "docker compose -f docker-compose.dev.yml down",
     "lint": "npx nx run-many -t ci:lint",
-    "version": "npx changeset version && yarn",
+    "version": "npx changeset version && yarn && make version",
     "release": "npx nx run-many --target=build --projects=@hyperdx/common-utils && npx changeset publish"
   },
   "lint-staged": {
