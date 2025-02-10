@@ -6,6 +6,5 @@
   "linked": [],
   "access": "restricted",
   "baseBranch": "v2",
-  "updateInternalDependencies": "patch",
-  "ignore": ["@hyperdx/api", "@hyperdx/app"]
+  "updateInternalDependencies": "patch"
 }
