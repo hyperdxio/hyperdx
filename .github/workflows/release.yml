@@ -2,6 +2,8 @@ name: Release
 on:
   push:
     branches: [v2]
+  pull_request:
+    branches: [v2]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   release:
