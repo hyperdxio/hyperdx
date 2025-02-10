@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.1.0
+
+### Minor Changes
+
+- 497fba8: Added support for querying gauge metric table with default detection for OTEL collector schema.
+
 ## 0.0.14
 
 ### Patch Changes
