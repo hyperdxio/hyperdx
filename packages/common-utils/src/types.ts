@@ -73,6 +73,7 @@ export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
+    valueExpression: z.string().optional(),
     ordering: z.enum(['ASC', 'DESC']),
   }),
 );

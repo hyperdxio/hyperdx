@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
@@ -56,7 +57,7 @@ export default function DBTracePanel({
 
   const [traceRowWhere, setTraceRowWhere] = useQueryState(
     'traceRowWhere',
-    parseAsString,
+    parseAsJson<{ id: string; type: string }>(),
   );
 
   const {
@@ -186,13 +187,14 @@ export default function DBTracePanel({
       )}
       <Divider my="sm" />
       {sourceFormModalOpened && <TableSourceForm sourceId={watch('source')} />}
-      {traceSourceData?.kind === 'trace' && (
+      {traceSourceData?.kind === SourceKind.Trace && (
         <DBTraceWaterfallChartContainer
           traceTableModel={traceSourceData}
+          logTableModel={parentSourceData}
           traceId={traceId}
           dateRange={dateRange}
           focusDate={focusDate}
-          highlightedRowWhere={traceRowWhere}
+          highlightedRowWhere={traceRowWhere?.id}
           onClick={setTraceRowWhere}
         />
       )}
@@ -202,7 +204,14 @@ export default function DBTracePanel({
           <Text size="sm" c="dark.2" my="sm">
             Span Details
           </Text>
-          <RowDataPanel source={traceSourceData} rowId={traceRowWhere} />
+          <RowDataPanel
+            source={
+              traceRowWhere?.type === SourceKind.Log && parentSourceData
+                ? parentSourceData
+                : traceSourceData
+            }
+            rowId={traceRowWhere?.id}
+          />
         </>
       )}
       {traceSourceData != null && !traceRowWhere && (

@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import TimestampNano from 'timestamp-nano';
+import {
+  ChartConfigWithDateRange,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -22,153 +27,241 @@ type SpanRow = {
   ParentSpanId: string;
   StatusCode?: string;
   ServiceName?: string;
+  SeverityText?: string;
   HyperDXEventType: 'span';
+  type?: string;
 };
+
+function textColor(condition: { isError: boolean; isWarn: boolean }): string {
+  const { isError, isWarn } = condition;
+  if (isError) return 'text-danger';
+  if (isWarn) return 'text-warning';
+  return '';
+}
+
+function barColor(condition: {
+  isError: boolean;
+  isWarn: boolean;
+  isHighlighted: boolean;
+}) {
+  const { isError, isWarn, isHighlighted } = condition;
+  if (isError) return isHighlighted ? '#FF6E6E' : '#F53749';
+  if (isWarn) return isHighlighted ? '#FFE38A' : '#FFC107';
+  return isHighlighted ? '#A9AFB7' : '#6A7077';
+}
+
+function getTableBody(tableModel: TSource) {
+  if (tableModel?.kind === SourceKind.Trace) {
+    return getSpanEventBody(tableModel) ?? '';
+  } else if (tableModel?.kind === SourceKind.Log) {
+    return tableModel.implicitColumnExpression ?? '';
+  } else {
+    return '';
+  }
+}
+
+function getFetchConfig(source: TSource, traceId: string) {
+  const alias = {
+    Body: getTableBody(source),
+    Timestamp: getDisplayedTimestampValueExpression(source),
+    Duration: source.durationExpression
+      ? getDurationSecondsExpression(source)
+      : '',
+    TraceId: source.traceIdExpression ?? '',
+    SpanId: source.spanIdExpression ?? '',
+    ParentSpanId: source.parentSpanIdExpression ?? '',
+    StatusCode: source.statusCodeExpression ?? '',
+    ServiceName: source.serviceNameExpression ?? '',
+    SeverityText: source.severityTextExpression ?? '',
+  };
+  let selectOption: {
+    valueExpression: string;
+    alias: string;
+  }[] = [];
+
+  if (source.kind === SourceKind.Trace) {
+    selectOption = [
+      {
+        valueExpression: alias.Body,
+        alias: 'Body',
+      },
+      {
+        valueExpression: alias.Timestamp,
+        alias: 'Timestamp',
+      },
+      {
+        // in Seconds, f64 holds ns precision for durations up to ~3 months
+        valueExpression: alias.Duration,
+        alias: 'Duration',
+      },
+      {
+        valueExpression: alias.SpanId,
+        alias: 'SpanId',
+      },
+      {
+        valueExpression: alias.ParentSpanId,
+        alias: 'ParentSpanId',
+      },
+      ...(alias.StatusCode
+        ? [
+            {
+              valueExpression: alias.StatusCode,
+              alias: 'StatusCode',
+            },
+          ]
+        : []),
+      ...(alias.ServiceName
+        ? [
+            {
+              valueExpression: alias.ServiceName,
+              alias: 'ServiceName',
+            },
+          ]
+        : []),
+    ];
+  } else if (source.kind === SourceKind.Log) {
+    selectOption = [
+      {
+        valueExpression: alias.Body,
+        alias: 'Body',
+      },
+      {
+        valueExpression: alias.Timestamp,
+        alias: 'Timestamp',
+      },
+      {
+        valueExpression: alias.SpanId,
+        alias: 'SpanId',
+      },
+      ...(alias.SeverityText
+        ? [
+            {
+              valueExpression: alias.SeverityText,
+              alias: 'SeverityText',
+            },
+          ]
+        : []),
+      ...(alias.ServiceName
+        ? [
+            {
+              valueExpression: alias.ServiceName,
+              alias: 'ServiceName',
+            },
+          ]
+        : []),
+    ];
+  }
+  const config = {
+    select: selectOption,
+    from: source.from,
+    timestampValueExpression: alias.Timestamp,
+    where: `${alias.TraceId} = '${traceId}'`,
+    limit: { limit: 10000 },
+    connection: source.connection,
+  };
+  return { config, alias, type: source.kind };
+}
+
+function useFetchingData({
+  config,
+  dateRangeStartInclusive,
+  dateRange,
+}: {
+  config: {
+    select: {
+      valueExpression: string;
+      alias: string;
+    }[];
+    from: {
+      databaseName: string;
+      tableName: string;
+    };
+    timestampValueExpression: string;
+    where: string;
+    limit: {
+      limit: number;
+    };
+    connection: string;
+  };
+  dateRangeStartInclusive: boolean;
+  dateRange: [Date, Date];
+}) {
+  const query: ChartConfigWithDateRange = useMemo(() => {
+    return {
+      ...config,
+      dateRange,
+      dateRangeStartInclusive,
+      orderBy: [
+        {
+          valueExpression: config.timestampValueExpression,
+          ordering: 'ASC',
+        },
+      ],
+    };
+  }, [config, dateRange]);
+  return useOffsetPaginatedQuery(query);
+}
+
 function useSpansAroundFocus({
-  traceTableModel,
+  tableModel,
   focusDate,
   dateRange,
   traceId,
 }: {
-  traceTableModel: TSource;
+  tableModel: TSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
 }) {
-  // Needed to reverse map alias to valueExpr for useRowWhere
-  const aliasMap = useMemo(
-    () => ({
-      Body: getSpanEventBody(traceTableModel) ?? '',
-      Timestamp: getDisplayedTimestampValueExpression(traceTableModel),
-      Duration: getDurationSecondsExpression(traceTableModel),
-      SpanId: traceTableModel.spanIdExpression ?? '',
-      ParentSpanId: traceTableModel.parentSpanIdExpression ?? '',
-      StatusCode: traceTableModel.statusCodeExpression,
-      ServiceName: traceTableModel.serviceNameExpression,
-    }),
-    [traceTableModel],
-  );
-
-  const config = useMemo(
-    () => ({
-      select: [
-        {
-          valueExpression: aliasMap.Body,
-          alias: 'Body',
-        },
-        {
-          valueExpression: aliasMap.Timestamp,
-          alias: 'Timestamp',
-        },
-        {
-          // in Seconds, f64 holds ns precision for durations up to ~3 months
-          valueExpression: aliasMap.Duration,
-          alias: 'Duration',
-        },
-        {
-          valueExpression: aliasMap.SpanId,
-          alias: 'SpanId',
-        },
-        {
-          valueExpression: aliasMap.ParentSpanId,
-          alias: 'ParentSpanId',
-        },
-        ...(aliasMap.StatusCode
-          ? [
-              {
-                valueExpression: aliasMap.StatusCode,
-                alias: 'StatusCode',
-              },
-            ]
-          : []),
-        ...(aliasMap.ServiceName
-          ? [
-              {
-                valueExpression: aliasMap.ServiceName,
-                alias: 'ServiceName',
-              },
-            ]
-          : []),
-      ],
-      from: traceTableModel.from,
-      timestampValueExpression: traceTableModel.timestampValueExpression,
-      where: `${traceTableModel.traceIdExpression} = '${traceId}'`,
-      limit: { limit: 10000 },
-      connection: traceTableModel.connection,
-    }),
-    [traceTableModel, traceId, aliasMap],
+  let isFetching = false;
+  const { config, alias, type } = useMemo(
+    () => getFetchConfig(tableModel, traceId),
+    [tableModel, traceId],
   );
 
   const { data: beforeSpanData, isFetching: isBeforeSpanFetching } =
-    useOffsetPaginatedQuery(
-      useMemo(
-        () => ({
-          ...config,
-          dateRange: [dateRange[0], focusDate],
-          orderBy: [
-            {
-              valueExpression: traceTableModel.timestampValueExpression,
-              ordering: 'ASC',
-            },
-          ],
-        }),
-        [
-          config,
-          focusDate,
-          dateRange,
-          traceTableModel.timestampValueExpression,
-        ],
-      ),
-    );
-
+    useFetchingData({
+      config,
+      dateRangeStartInclusive: true,
+      dateRange: [dateRange[0], focusDate],
+    });
   const { data: afterSpanData, isFetching: isAfterSpanFetching } =
-    useOffsetPaginatedQuery(
-      useMemo(
-        () => ({
-          ...config,
-          dateRange: [focusDate, dateRange[1]],
-          dateRangeStartInclusive: false,
-          orderBy: [
-            {
-              valueExpression: traceTableModel.timestampValueExpression,
-              ordering: 'ASC',
-            },
-          ],
-        }),
-        [
-          config,
-          focusDate,
-          dateRange,
-          traceTableModel.timestampValueExpression,
-        ],
-      ),
-    );
-
-  const data = useMemo(() => {
-    return {
-      meta: beforeSpanData?.meta ?? afterSpanData?.meta,
-      data: [
-        ...(beforeSpanData?.data ?? []),
-        ...(afterSpanData?.data ?? []),
-      ].map(d => {
-        d.HyperDXEventType = 'span';
-        return d;
-      }) as SpanRow[],
-    }; // TODO: Type useOffsetPaginatedQuery instead
+    useFetchingData({
+      config,
+      dateRangeStartInclusive: false,
+      dateRange: [focusDate, dateRange[1]],
+    });
+  isFetching = isFetching || isBeforeSpanFetching || isAfterSpanFetching;
+  const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
+  const rowWhere = useRowWhere({ meta, aliasMap: alias });
+  const rows = useMemo(() => {
+    // Sometimes meta has not loaded yet
+    // DO NOT REMOVE, useRowWhere will error if no meta
+    if (!meta || meta.length === 0) return [];
+    const concatData = [
+      ...(beforeSpanData?.data ?? []),
+      ...(afterSpanData?.data ?? []),
+    ].map(d => {
+      d.HyperDXEventType = 'span';
+      return d;
+    }) as SpanRow[];
+    return concatData.map((cd: SpanRow) => ({
+      ...cd,
+      id: rowWhere(omit(cd, ['HyperDXEventType'])),
+      type,
+    }));
   }, [afterSpanData, beforeSpanData]);
 
-  const isSearchResultsFetching = isBeforeSpanFetching || isAfterSpanFetching;
-
   return {
-    data,
-    isFetching: isSearchResultsFetching,
-    aliasMap,
+    rows,
+    isFetching,
   };
 }
 
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableModel,
+  logTableModel,
   traceId,
   dateRange,
   focusDate,
@@ -176,79 +269,96 @@ export function DBTraceWaterfallChartContainer({
   highlightedRowWhere,
 }: {
   traceTableModel: TSource;
+  logTableModel?: TSource;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
-  onClick?: (rowWhere: string) => void;
+  onClick?: (rowWhere: { id: string; type: string }) => void;
   highlightedRowWhere?: string | null;
 }) {
-  const { data, isFetching, aliasMap } = useSpansAroundFocus({
-    traceTableModel,
+  const { rows: traceRowsData, isFetching: traceIsFetching } =
+    useSpansAroundFocus({
+      tableModel: traceTableModel,
+      focusDate,
+      dateRange,
+      traceId,
+    });
+  const { rows: logRowsData, isFetching: logIsFetching } = useSpansAroundFocus({
+    // search data if logTableModel exist
+    // search invliad date range if no logTableModel(react hook need execute no matter what)
+    tableModel: logTableModel || traceTableModel,
     focusDate,
-    dateRange,
+    dateRange: logTableModel ? dateRange : [dateRange[1], dateRange[0]],
     traceId,
   });
 
-  const rowWhere = useRowWhere({ meta: data?.meta, aliasMap });
+  const isFetching = traceIsFetching || logIsFetching;
+  const rows = [...traceRowsData, ...logRowsData];
 
-  const rows = useMemo(
-    () =>
-      data?.meta != null && data.meta.length > 0 // Sometimes meta has not loaded yet
-        ? data?.data?.map(row => {
-            return {
-              ...row,
-              id: rowWhere(omit(row, ['HyperDXEventType'])),
-            };
-          })
-        : undefined,
-    [data, rowWhere],
-  );
+  rows.sort((a, b) => {
+    const aDate = TimestampNano.fromString(a.Timestamp);
+    const bDate = TimestampNano.fromString(b.Timestamp);
+    const secDiff = aDate.getTimeT() - bDate.getTimeT();
+    if (secDiff === 0) {
+      return aDate.getNano() - bDate.getNano();
+    } else {
+      return secDiff;
+    }
+  });
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)
   // 2. Spans, but with missing spans inbetween (ex. missing intermediary spans)
   // 3. Spans, with multiple root nodes (ex. somehow disjoint traces fe/be)
 
-  const spanIds = useMemo(() => {
-    return new Set(
-      rows
-        ?.filter(result => result.HyperDXEventType === 'span')
-        .map(result => result.SpanId) ?? [],
-    );
-  }, [rows]);
-
   // Parse out a DAG of spans
-  type Node = SpanRow & { id: string; children: SpanRow[] };
+  type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
   const rootNodes: Node[] = [];
-  const nodes: { [SpanId: string]: any } = {};
+  const parentSpanIdsMap = new Map();
+  const nodesMap = new Map();
+  for (const { ParentSpanId, SpanId } of rows ?? []) {
+    if (ParentSpanId && SpanId) parentSpanIdsMap.set(SpanId, ParentSpanId);
+  }
+  let logSpanCount = -1;
   for (const result of rows ?? []) {
+    const { type, HyperDXEventType, SpanId } = result;
+    // ignore everything without spanId
+    if (!SpanId) continue;
+    if (type === SourceKind.Log) logSpanCount += 1;
+
+    // log have dupelicate span id, tag it with -log-couunt
+    const nodeSpanId =
+      type === SourceKind.Log ? `${SpanId}-log-${logSpanCount}` : SpanId;
+    const nodeParentSpanId =
+      type === SourceKind.Log ? SpanId : parentSpanIdsMap.get(SpanId) || '';
+
     const curNode = {
       ...result,
       children: [],
       // In case we were created already previously, inherit the children built so far
-      ...(result.HyperDXEventType === 'span' ? nodes[result.SpanId] : {}),
+      ...(result.HyperDXEventType === 'span' ? nodesMap.get(nodeSpanId) : {}),
     };
-    if (result.HyperDXEventType === 'span') {
-      nodes[result.SpanId] = curNode;
+    if (!nodesMap.has(nodeSpanId)) {
+      nodesMap.set(nodeSpanId, curNode);
     }
 
-    if (
-      result.HyperDXEventType === 'span' &&
-      // If there's no parent defined, or if the parent doesn't exist, we're a root
-      (result.ParentSpanId === '' || !spanIds.has(result.ParentSpanId))
-    ) {
+    const isRootNode =
+      HyperDXEventType !== 'span' || type === SourceKind.Log
+        ? // not root if type is log or not span
+          false
+        : // become root if does not have parent
+          !nodeParentSpanId
+          ? true
+          : false;
+
+    if (isRootNode) {
       rootNodes.push(curNode);
     } else {
-      // Otherwise, link the parent node to us
-      const ParentSpanId =
-        result.HyperDXEventType === 'span'
-          ? result.ParentSpanId
-          : result.SpanId;
-      const parentNode = nodes[ParentSpanId] ?? {
+      const parentNode = nodesMap.get(nodeParentSpanId) ?? {
         children: [],
       };
       parentNode.children.push(curNode);
-      nodes[ParentSpanId] = parentNode;
+      nodesMap.set(nodeParentSpanId, parentNode);
     }
   }
 
@@ -311,13 +421,14 @@ export function DBTraceWaterfallChartContainer({
   // console.log('f', flattenedNodes, collapsedIds);
 
   const timelineRows = flattenedNodes.map((result, i) => {
-    const tookMs = result.Duration * 1000;
+    const tookMs = (result.Duration || 0) * 1000;
     const startOffset = new Date(result.Timestamp).getTime();
     const start = startOffset - minOffset;
     const end = start + tookMs;
 
     const body = result.Body;
     const serviceName = result.ServiceName;
+    const type = result.type;
 
     const id = result.id;
 
@@ -325,18 +436,21 @@ export function DBTraceWaterfallChartContainer({
 
     // TODO: Legacy schemas will have STATUS_CODE_ERROR
     // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-    const isError = result.StatusCode == 'Error';
+    const isError =
+      result.StatusCode == 'Error' || result.SeverityText === 'error';
+    const isWarn = result.SeverityText === 'warn';
 
     return {
       id,
+      type,
       label: (
         <div
-          className={`${isError && 'text-danger'} ${
+          className={`${textColor({ isError, isWarn })} ${
             isHighlighted && styles.traceTimelineLabelHighlighted
           } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
           role="button"
           onClick={() => {
-            onClick?.(id);
+            onClick?.({ id, type: type ?? '' });
           }}
         >
           <div className="d-flex">
@@ -384,6 +498,12 @@ export function DBTraceWaterfallChartContainer({
               // }}
               role="button"
             >
+              {type === SourceKind.Log ? (
+                <i
+                  className="bi bi-card-text fs-8 me-2 align-middle"
+                  title="Correlated Log Line"
+                />
+              ) : null}
               {serviceName ? `${serviceName} | ` : ''}
               {body}
             </Text>
@@ -403,13 +523,7 @@ export function DBTraceWaterfallChartContainer({
           tooltip: `${body} ${
             tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''
           }`,
-          color: isError
-            ? isHighlighted
-              ? '#FF6E6E'
-              : '#f53749'
-            : isHighlighted
-              ? '#A9AFB7'
-              : '#6a7077',
+          color: barColor({ isError, isWarn, isHighlighted }),
           body: <span style={{ color: '#FFFFFFEE' }}>{body}</span>,
           minWidthPerc: 1,
         },
@@ -441,7 +555,7 @@ export function DBTraceWaterfallChartContainer({
             // onTimeClick(ts + startedAt);
           }}
           onEventClick={event => {
-            onClick?.(event.id);
+            onClick?.({ id: event.id, type: event.type ?? '' });
           }}
           cursors={[]}
           rows={timelineRows}
