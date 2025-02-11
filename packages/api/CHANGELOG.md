@@ -1,5 +1,7 @@
 # @hyperdx/api
 
+## 2.0.0-beta.0
+
 ## 1.9.0
 
 ### Minor Changes
