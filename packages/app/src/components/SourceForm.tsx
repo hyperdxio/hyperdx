@@ -28,7 +28,7 @@ import { useDebouncedCallback } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { IS_SESSIONS_ENABLED } from '@/config';
+import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
@@ -537,6 +537,100 @@ export function TraceTableModelForm({
   );
 }
 
+export function SessionTableModelForm({
+  control,
+  watch,
+  setValue,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+}) {
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const tableName = watch(`from.tableName`);
+  const connectionId = watch(`connection`);
+
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+
+  return (
+    <>
+      <Stack gap="sm">
+        <FormRow label={'Server Connection'}>
+          <ConnectionSelectControlled control={control} name={`connection`} />
+        </FormRow>
+        <FormRow label={'Database'}>
+          <DatabaseSelectControlled
+            control={control}
+            name={`from.databaseName`}
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Table'}>
+          <DBTableSelectControlled
+            database={databaseName}
+            control={control}
+            name={`from.tableName`}
+            connectionId={connectionId}
+            rules={{ required: 'Table is required' }}
+          />
+        </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Log Attributes Expression'}>
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="eventAttributesExpression"
+            placeholder="LogAttributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Resource Attributes Expression'}>
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="resourceAttributesExpression"
+            placeholder="ResourceAttributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow
+          label={'Correlated Trace Source'}
+          helpText="HyperDX Source for traces associated with sessions. Required"
+        >
+          <SourceSelectControlled control={control} name="traceSourceId" />
+        </FormRow>
+        <FormRow
+          label={'Implicit Column Expression'}
+          helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="implicitColumnExpression"
+            placeholder="Body"
+            connectionId={connectionId}
+          />
+        </FormRow>
+      </Stack>
+    </>
+  );
+}
+
 export function MetricTableModelForm({
   control,
   watch,
@@ -746,7 +840,6 @@ function TableModelForm({
 }) {
   switch (kind) {
     case SourceKind.Log:
-    case SourceKind.Session:
       return (
         <LogTableModelForm
           control={control}
@@ -757,6 +850,14 @@ function TableModelForm({
     case SourceKind.Trace:
       return (
         <TraceTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Session:
+      return (
+        <SessionTableModelForm
           control={control}
           watch={watch}
           setValue={setValue}
@@ -974,7 +1075,9 @@ export function TableSourceForm({
                 <Group>
                   <Radio value={SourceKind.Log} label="Log" />
                   <Radio value={SourceKind.Trace} label="Trace" />
-                  <Radio value={SourceKind.Metric} label="Metric" />
+                  {IS_METRICS_ENABLED && (
+                    <Radio value={SourceKind.Metric} label="Metric" />
+                  )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
                   )}

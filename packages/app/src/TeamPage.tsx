@@ -32,6 +32,7 @@ import { useConnections } from './connection';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';
+import { capitalizeFirstLetter } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
 
@@ -193,7 +194,7 @@ function SourcesSection() {
                 <div>
                   <Text>{s.name}</Text>
                   <Text size="xxs" c="dimmed">
-                    {s.kind === 'log' ? 'Logs' : 'Metrics'}
+                    {capitalizeFirstLetter(s.kind)}
                     {s.from && (
                       <>
                         {' '}
