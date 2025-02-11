@@ -84,7 +84,12 @@ release-local:
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--push &
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
+
+.PHONY: release-local-ui
+release-local-ui:
 	docker buildx build . -f ./packages/app/Dockerfile \
 		--build-arg IS_LOCAL_MODE=true \
 		--build-arg PORT=${HYPERDX_APP_PORT} \
@@ -94,16 +99,24 @@ release-local:
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-ui \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}-ui \
-		--push
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
 
-.PHONY: release
-release:
+.PHONY: release-otel-collector
+release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION} \
-		--target prod --push & \
+		--target prod \
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
+
+.PHONY: release-app
+release-app:
 	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
 		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \
@@ -113,4 +126,7 @@ release:
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${IMAGE_NAME}:${IMAGE_VERSION} \
-		--target prod --push
+		--target prod \
+		--push \
+	 	--cache-from=type=gha \
+		--cache-to=type=gha,mode=max

@@ -1,5 +1,16 @@
 # @hyperdx/app
 
+## 2.0.0-beta.0
+
+### Major Changes
+
+- bumps to v2 beta
+
+### Patch Changes
+
+- b3f3151: Allow to create Slack Webhooks from Team Settings page
+- b690db8: Introduce event panel overview tab
+
 ## 1.9.0
 
 ### Minor Changes
