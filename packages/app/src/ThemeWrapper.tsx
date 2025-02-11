@@ -8,6 +8,8 @@ import {
 } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
+import { useConnectionHealth } from '@/hooks/useConnectionHealth';
+
 const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
 }: {
@@ -148,6 +150,9 @@ export const ThemeWrapper = ({
   children: React.ReactNode;
 }) => {
   const theme = React.useMemo(() => makeTheme({ fontFamily }), [fontFamily]);
+
+  // Add connection health monitoring
+  useConnectionHealth();
 
   return (
     <MantineProvider forceColorScheme="dark" theme={theme}>

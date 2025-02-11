@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
 import { Box, Button, Flex, Group, Stack, Text } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
 import { InputControlled } from '@/components/InputControlled';
@@ -15,15 +16,20 @@ import {
 
 import ConfirmDeleteMenu from './ConfirmDeleteMenu';
 
+enum TestConnectionState {
+  Loading = 'loading',
+  Valid = 'valid',
+  Invalid = 'invalid',
+}
+
 function useTestConnection({
   getValues,
 }: {
   getValues: (name: string) => string;
 }) {
   const testConnection = api.useTestConnection();
-  const [testConnectionState, setTestConnectionState] = useState<
-    null | 'loading' | 'valid' | 'invalid'
-  >(null);
+  const [testConnectionState, setTestConnectionState] =
+    useState<TestConnectionState | null>(null);
 
   const handleTestConnection = useCallback(async () => {
     const host = getValues('host');
@@ -34,15 +40,29 @@ function useTestConnection({
       return;
     }
 
-    setTestConnectionState('loading');
+    setTestConnectionState(TestConnectionState.Loading);
 
     if (IS_LOCAL_MODE) {
       try {
         const result = await testLocalConnection({ host, username, password });
-        setTestConnectionState(result ? 'valid' : 'invalid');
+        if (result) {
+          setTestConnectionState(TestConnectionState.Valid);
+        } else {
+          setTestConnectionState(TestConnectionState.Invalid);
+          notifications.show({
+            color: 'red',
+            message: 'Connection test failed',
+            autoClose: 5000,
+          });
+        }
       } catch (e) {
         console.error(e);
-        setTestConnectionState('invalid');
+        setTestConnectionState(TestConnectionState.Invalid);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+          autoClose: 5000,
+        });
       }
     } else {
       try {
@@ -51,10 +71,24 @@ function useTestConnection({
           username,
           password,
         });
-        setTestConnectionState(result.success ? 'valid' : 'invalid');
-      } catch (e) {
-        console.error(e);
-        setTestConnectionState('invalid');
+        if (result.success) {
+          setTestConnectionState(TestConnectionState.Valid);
+        } else {
+          setTestConnectionState(TestConnectionState.Invalid);
+          notifications.show({
+            color: 'red',
+            message: result.error || 'Connection test failed',
+            autoClose: 5000,
+          });
+        }
+      } catch (error: any) {
+        const body = await error.response?.json();
+        setTestConnectionState(TestConnectionState.Invalid);
+        notifications.show({
+          color: 'red',
+          message: body?.error ?? 'Failed to test connection',
+          autoClose: 5000,
+        });
       }
     }
 
@@ -105,7 +139,19 @@ export function ConnectionForm({
         { connection: data },
         {
           onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: 'Connection created successfully',
+            });
             onSave?.();
+          },
+          onError: () => {
+            notifications.show({
+              color: 'red',
+              message:
+                'Error creating connection, please check the host and credentials and try again.',
+              autoClose: 5000,
+            });
           },
         },
       );
@@ -114,7 +160,19 @@ export function ConnectionForm({
         { connection: data, id: connection.id },
         {
           onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: 'Connection updated successfully',
+            });
             onSave?.();
+          },
+          onError: () => {
+            notifications.show({
+              color: 'red',
+              message:
+                'Error updating connection, please check the host and credentials and try again.',
+              autoClose: 5000,
+            });
           },
         },
       );
@@ -207,12 +265,6 @@ export function ConnectionForm({
             </Flex>
           )}
         </Box>
-        {createConnection.isError && (
-          <Text c="red.7" size="sm">
-            Error creating connection, please check the host and credentials and
-            try again.
-          </Text>
-        )}
         <Group justify="space-between">
           <Group gap="xs" justify="flex-start">
             <Button
@@ -229,12 +281,16 @@ export function ConnectionForm({
               variant="subtle"
               type="button"
               onClick={handleTestConnection}
-              loading={testConnectionState === 'loading'}
-              color={testConnectionState === 'invalid' ? 'yellow' : 'teal'}
+              loading={testConnectionState === TestConnectionState.Loading}
+              color={
+                testConnectionState === TestConnectionState.Invalid
+                  ? 'yellow'
+                  : 'teal'
+              }
             >
-              {testConnectionState === 'valid' ? (
+              {testConnectionState === TestConnectionState.Valid ? (
                 <>Connection successful</>
-              ) : testConnectionState === 'invalid' ? (
+              ) : testConnectionState === TestConnectionState.Invalid ? (
                 <>Unable to connect</>
               ) : (
                 'Test Connection'
