@@ -32,6 +32,8 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
+          commit: 'chore(release): bump HyperDX app/package versions'
+          title: 'chore(release): bump HyperDX app/package versions'
           version: yarn run version
           publish: yarn release
         env:
