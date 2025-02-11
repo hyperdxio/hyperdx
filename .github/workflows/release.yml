@@ -6,6 +6,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 jobs:
   publish_common_utils:
     name: Publish @hyperdx/common-utils
