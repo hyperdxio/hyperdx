@@ -1,5 +1,11 @@
 # @hyperdx/app
 
+## 2.0.0-beta.10
+
+### Patch Changes
+
+- 459267a: feat: introduce session table model form
+
 ## 2.0.0-beta.0
 
 ### Major Changes

@@ -1,5 +1,11 @@
 # @hyperdx/api
 
+## 2.0.0-beta.10
+
+### Patch Changes
+
+- adc2a0b: fix: Ensure errors from proxy are shown to the user
+
 ## 2.0.0-beta.0
 
 ## 1.9.0

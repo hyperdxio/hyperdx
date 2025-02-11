@@ -6,5 +6,11 @@
     "@hyperdx/app": "1.9.0",
     "@hyperdx/common-utils": "0.1.0"
   },
-  "changesets": ["famous-poets-rush", "perfect-nails-doubt", "taco-cat-v2"]
+  "changesets": [
+    "dull-radios-wink",
+    "famous-poets-rush",
+    "nervous-timers-dream",
+    "perfect-nails-doubt",
+    "taco-cat-v2"
+  ]
 }
