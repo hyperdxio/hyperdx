@@ -6,7 +6,11 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -32,6 +36,7 @@ import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
+  isValidMetricTable,
   useCreateSource,
   useDeleteSource,
   useSource,
@@ -641,10 +646,39 @@ export function MetricTableModelForm({
   setValue: UseFormSetValue<TSource>;
 }) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
 
-  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  useEffect(() => {
+    setValue('timestampValueExpression', '');
+    const { unsubscribe } = watch(async (value, { name, type }) => {
+      try {
+        if (name && type === 'change') {
+          const [prefix, suffix] = name.split('.');
+          if (prefix === 'metricTables') {
+            const tableName =
+              value?.metricTables?.[suffix as keyof typeof value.metricTables];
+            const metricType = suffix as MetricsDataType;
+            const isValid = await isValidMetricTable({
+              databaseName,
+              tableName,
+              connectionId,
+              metricType,
+            });
+            if (!isValid) {
+              notifications.show({
+                color: 'red',
+                message: `${tableName} is not a valid OTEL ${metricType} schema.`,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [setValue, watch, databaseName, connectionId]);
 
   return (
     <>
@@ -659,169 +693,20 @@ export function MetricTableModelForm({
             name={`from.databaseName`}
           />
         </FormRow>
-        <Divider />
-        <FormRow label={'Metric Type'}>
-          <Select
-            data={[{ value: 'gauge', label: 'Gauge' }]}
-            defaultValue="gauge"
-            placeholder="Select metric type"
-            allowDeselect={false}
-          />
-        </FormRow>
-        <FormRow label={'Table'}>
-          <DBTableSelectControlled
-            connectionId={connectionId}
-            database={databaseName}
-            control={control}
-            name={`from.tableName`}
-            rules={{ required: 'Table is required' }}
-          />
-        </FormRow>
-        <FormRow label={'Timestamp Column'}>
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="timestampValueExpression"
-            placeholder="TimeUnix"
-            disableKeywordAutocomplete
-          />
-        </FormRow>
-        <FormRow
-          label={'Default Select'}
-          helpText="Default columns selected in search results (this can be customized per search later)"
-        >
-          <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="defaultTableSelectExpression"
-            placeholder="TimeUnix, MetricName, Value, ServiceName, Attributes"
-            connectionId={connectionId}
-          />
-        </FormRow>
-        <FormRow
-          label={'Metric Name Column'}
-          helpText="Column containing the name of the metric being measured"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="metricNameExpression"
-            placeholder="MetricName"
-          />
-        </FormRow>
-        <FormRow label={'Gauge Value Column'}>
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="valueExpression"
-            placeholder="Value"
-          />
-        </FormRow>
-        <Box>
-          {!showOptionalFields && (
-            <Anchor
-              underline="always"
-              onClick={() => setShowOptionalFields(true)}
-              size="xs"
-              c="gray.4"
-            >
-              <Text me="sm" span>
-                <i className="bi bi-gear" />
-              </Text>
-              Configure Optional Fields
-            </Anchor>
-          )}
-          {showOptionalFields && (
-            <Button
-              onClick={() => setShowOptionalFields(false)}
-              size="xs"
-              variant="subtle"
-              color="gray.4"
-            >
-              Hide Optional Fields
-            </Button>
-          )}
-        </Box>
-      </Stack>
-      <Stack
-        gap="sm"
-        style={{
-          display: showOptionalFields ? 'flex' : 'none',
-        }}
-      >
-        <Divider />
-        <FormRow
-          label={'Service Name Column'}
-          helpText="Column containing the service name associated with the metric"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="serviceNameExpression"
-            placeholder="ServiceName"
-          />
-        </FormRow>
-        <FormRow
-          label={'Resource Attributes Column'}
-          helpText="Column containing resource attributes/tags associated with the metric"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="resourceAttributesExpression"
-            placeholder="ResourceAttributes"
-          />
-        </FormRow>
-        <FormRow
-          label={'Metric Unit Column'}
-          helpText="Column containing the unit of measurement for the metric"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="metricUnitExpression"
-            placeholder="MetricUnit"
-          />
-        </FormRow>
-        <FormRow
-          label={'Metric Flag Column'}
-          helpText="Column containing flags or markers associated with the metric"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="flagsExpression"
-            placeholder="Flags"
-          />
-        </FormRow>
-        <FormRow
-          label={'Event Attributes Expression'}
-          helpText="Column containing additional attributes/dimensions for the metric"
-        >
-          <SQLInlineEditorControlled
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="eventAttributesExpression"
-            placeholder="Attributes"
-          />
-        </FormRow>
+        {Object.keys(MetricsDataType).map(metricType => (
+          <FormRow
+            key={metricType.toLowerCase()}
+            label={`${metricType} Table`}
+            helpText={`Table containing ${metricType.toLowerCase()} metrics data`}
+          >
+            <DBTableSelectControlled
+              connectionId={connectionId}
+              database={databaseName}
+              control={control}
+              name={`metricTables.${metricType.toLowerCase()}`}
+            />
+          </FormRow>
+        ))}
       </Stack>
     </>
   );
@@ -1076,7 +961,7 @@ export function TableSourceForm({
                   <Radio value={SourceKind.Log} label="Log" />
                   <Radio value={SourceKind.Trace} label="Trace" />
                   {IS_METRICS_ENABLED && (
-                    <Radio value={SourceKind.Metric} label="Metric" />
+                    <Radio value={SourceKind.Metric} label="OTEL Metrics" />
                   )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
