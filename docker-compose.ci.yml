@@ -21,7 +21,7 @@ services:
     depends_on:
       - ch-server
   ch-server:
-    image: clickhouse/clickhouse-server:head-alpine
+    image: clickhouse/clickhouse-server:24-alpine
     environment:
       # default settings
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
