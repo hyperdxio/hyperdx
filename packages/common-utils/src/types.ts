@@ -398,6 +398,13 @@ export enum SourceKind {
   Session = 'session',
   Metric = 'metric',
 }
+
+export enum MetricsDataType {
+  Gauge = 'gauge',
+  Histogram = 'histogram',
+  Sum = 'sum',
+}
+
 export const SourceSchema = z.object({
   from: z.object({
     databaseName: z.string(),
@@ -442,14 +449,14 @@ export const SourceSchema = z.object({
   statusMessageExpression: z.string().optional(),
   logSourceId: z.string().optional(),
 
-  // Common Metric Fields
-  metricDiscriminator: z.enum(['gauge']).optional(),
-  metricNameExpression: z.string().optional(),
-  metricUnitExpression: z.string().optional(),
-  flagsExpression: z.string().optional(),
-
-  // Gauge Metric Field
-  valueExpression: z.string().optional(),
+  // OTEL Metrics
+  metricTables: z
+    .object({
+      [MetricsDataType.Gauge]: z.string(),
+      [MetricsDataType.Histogram]: z.string(),
+      [MetricsDataType.Sum]: z.string(),
+    })
+    .optional(),
 });
 
 export type TSource = z.infer<typeof SourceSchema>;

@@ -1,4 +1,8 @@
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 type ObjectId = mongoose.Types.ObjectId;
@@ -59,11 +63,11 @@ export const Source = mongoose.model<ISource>(
       statusCodeExpression: String,
       statusMessageExpression: String,
 
-      metricDiscriminator: String,
-      metricNameExpression: String,
-      metricUnitExpression: String,
-      flagsExpression: String,
-      valueExpression: String,
+      metricTables: {
+        [MetricsDataType.Gauge]: String,
+        [MetricsDataType.Histogram]: String,
+        [MetricsDataType.Sum]: String,
+      } as any,
     },
     {
       toJSON: { virtuals: true },
