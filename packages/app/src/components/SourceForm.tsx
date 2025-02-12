@@ -649,7 +649,7 @@ export function MetricTableModelForm({
   const connectionId = watch(`connection`);
 
   useEffect(() => {
-    setValue('timestampValueExpression', '');
+    setValue('timestampValueExpression', 'TimeUnix');
     const { unsubscribe } = watch(async (value, { name, type }) => {
       try {
         if (name && type === 'change') {
