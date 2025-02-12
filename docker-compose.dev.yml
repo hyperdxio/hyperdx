@@ -101,7 +101,7 @@ services:
   #     - db
   #     - redis
   ch-server:
-    image: clickhouse/clickhouse-server:head-alpine
+    image: clickhouse/clickhouse-server:24-alpine
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native
