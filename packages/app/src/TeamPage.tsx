@@ -652,6 +652,7 @@ function TeamMembersSection() {
 type WebhookForm = {
   name: string;
   url: string;
+  service: string;
   description?: string;
 };
 
@@ -663,16 +664,17 @@ function CreateWebhookForm({
   onSuccess: VoidFunction;
 }) {
   const saveWebhook = api.useSaveWebhook();
-  const [service, setService] = useState<string>('slack');
 
   const form = useForm<WebhookForm>({
-    defaultValues: {},
+    defaultValues: {
+      service: 'slack',
+    },
   });
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     try {
       await saveWebhook.mutateAsync({
-        service,
+        service: values.service,
         name: values.name,
         url: values.url,
         description: values.description || '',
@@ -701,14 +703,22 @@ function CreateWebhookForm({
       <Stack mt="sm">
         <Text>Create Webhook</Text>
         <Radio.Group
-          name="service"
           label="Service Type"
-          value={service}
-          onChange={setService}
+          required
+          value={form.watch('service')}
+          onChange={value => form.setValue('service', value)}
         >
           <Group mt="xs">
-            <Radio value="slack" label="Slack" />
-            <Radio value="generic" label="Generic" />
+            <Radio
+              value="slack"
+              label="Slack"
+              {...form.register('service', { required: true })}
+            />
+            <Radio
+              value="generic"
+              label="Generic"
+              {...form.register('service', { required: true })}
+            />
           </Group>
         </Radio.Group>
         <TextInput
