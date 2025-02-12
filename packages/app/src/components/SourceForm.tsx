@@ -674,6 +674,10 @@ export function MetricTableModelForm({
         }
       } catch (e) {
         console.error(e);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
       }
     });
 
