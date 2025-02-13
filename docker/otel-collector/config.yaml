@@ -75,7 +75,7 @@ extensions:
     endpoint: :13133
 service:
   telemetry:
-    # TODO: enabled internal metrics
+    # TODO: enable internal metrics
     # metrics:
     #   address: ':8888'
     logs:
