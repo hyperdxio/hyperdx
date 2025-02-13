@@ -504,55 +504,6 @@ export function MetricRateSelect({
   );
 }
 
-export function MetricNameSelect({
-  value,
-  setValue,
-  isLoading,
-  isError,
-}: {
-  value: string | undefined | null;
-  setValue: (value: string | undefined) => void;
-  isLoading?: boolean;
-  isError?: boolean;
-}) {
-  const { data: metricNamesData } = api.useMetricsNames();
-
-  const options = useMemo(() => {
-    return (
-      metricNamesData?.data?.map(entry => ({
-        value: entry.name,
-        label: entry.name,
-      })) ?? []
-    );
-  }, [metricNamesData]);
-
-  return (
-    <MSelect
-      disabled={isLoading || isError}
-      autoFocus={!value}
-      variant="filled"
-      placeholder={
-        isLoading
-          ? 'Loading...'
-          : isError
-            ? 'Unable to load metrics'
-            : 'Select a metric...'
-      }
-      data={options}
-      limit={100}
-      comboboxProps={{
-        position: 'bottom-start',
-        width: 'auto',
-        zIndex: 1111,
-      }}
-      value={value ?? undefined}
-      searchable
-      clearable
-      onChange={value => setValue(value ?? undefined)}
-    />
-  );
-}
-
 export function FieldSelect({
   value,
   setValue,

@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+// Basic Enums
+export enum MetricsDataType {
+  Gauge = 'gauge',
+  Histogram = 'histogram',
+  Sum = 'sum',
+}
+
 // --------------------------
 //  UI
 // --------------------------
@@ -61,6 +68,7 @@ export const RootValueExpressionSchema = z
       aggCondition: z.string().optional(),
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      metricType: z.nativeEnum(MetricsDataType).optional(),
     }),
   );
 export const DerivedColumnSchema = z.intersection(
@@ -397,12 +405,6 @@ export enum SourceKind {
   Trace = 'trace',
   Session = 'session',
   Metric = 'metric',
-}
-
-export enum MetricsDataType {
-  Gauge = 'gauge',
-  Histogram = 'histogram',
-  Sum = 'sum',
 }
 
 export const SourceSchema = z.object({

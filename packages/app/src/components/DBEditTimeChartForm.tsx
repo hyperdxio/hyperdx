@@ -17,6 +17,7 @@ import {
   Filter,
   SavedChartConfig,
   SelectList,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -61,6 +62,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
 import { InputControlled } from './InputControlled';
+import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
 
@@ -111,6 +113,9 @@ function ChartSeriesEditor({
     'lucene',
   );
 
+  const selectedSourceId = watch('source');
+  const { data: tableSource } = useSource({ id: selectedSourceId });
+
   return (
     <>
       <Divider
@@ -146,6 +151,17 @@ function ChartSeriesEditor({
             control={control}
           />
         </div>
+        {tableSource?.kind === SourceKind.Metric && (
+          <MetricNameSelect
+            metricName={watch(`${namePrefix}valueExpression`)}
+            metricType={watch(`${namePrefix}metricType`)}
+            setMetricName={value =>
+              setValue(`${namePrefix}valueExpression`, value)
+            }
+            setMetricType={value => setValue(`${namePrefix}metricType`, value)}
+            metricSource={tableSource}
+          />
+        )}
         {aggFn !== 'count' && (
           <div style={{ minWidth: 220 }}>
             <SQLInlineEditorControlled

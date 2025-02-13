@@ -231,8 +231,18 @@ export default function SQLInlineEditor({
           value={value}
           onChange={onChange}
           theme={'dark'}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={() => {
+            setIsFocused(true);
+            if (ref.current?.view) {
+              startCompletion(ref.current?.view);
+              console.log('startCompletion', ref.current?.view);
+            }
+            console.log('onFocus');
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            console.log('onBlur');
+          }}
           extensions={[
             styleTheme,
             compartmentRef.current.of(
@@ -265,16 +275,31 @@ export default function SQLInlineEditor({
           onCreateEditor={view => {
             updateAutocompleteColumns(view);
           }}
-          onUpdate={update => {
-            // Always open completion window as much as possible
-            if (
-              update.focusChanged &&
-              update.view.hasFocus &&
-              ref.current?.view
-            ) {
-              startCompletion(ref.current?.view);
-            }
-          }}
+          // onUpdate={update => {
+          //   // console.log(
+          //   //   'update',
+          //   //   update,
+          //   //   update.view.hasFocus,
+          //   //   update.focusChanged,
+          //   //   ref.current,
+          //   // );
+          //   // Always open completion window as much as possible
+          //   console.log(
+          //     'update',
+          //     update,
+          //     update.focusChanged,
+          //     update.view.hasFocus,
+          //     ref.current?.view?.hasFocus,
+          //   );
+          //   if (
+          //     update.focusChanged &&
+          //     update.view.hasFocus &&
+          //     ref.current?.view
+          //   ) {
+          //     console.log('startCompletion');
+          //     startCompletion(ref.current?.view);
+          //   }
+          // }}
           basicSetup={{
             lineNumbers: false,
             foldGutter: false,
