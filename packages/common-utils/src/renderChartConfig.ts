@@ -12,6 +12,7 @@ import {
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
+  SelectSQLStatement,
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
@@ -27,6 +28,14 @@ type ColumnRef = SQLParser.ColumnRef & {
     index: { type: string; value: string };
   }[];
 };
+
+function determineTableName(select: SelectSQLStatement): string {
+  if ('metricTables' in select.from) {
+    return select.from.tableName;
+  }
+
+  return '';
+}
 
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
@@ -688,10 +697,61 @@ function renderLimit(
   return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
 }
 
-export async function renderChartConfig(
+function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
+): ChartConfigWithOptDateRange {
+  const metricTables = chartConfig.metricTables;
+  if (!metricTables) {
+    return chartConfig;
+  }
+
+  // assumes all the selects are from a single metric type, for now
+  const { select, from, ...restChartConfig } = chartConfig;
+  if (!select || !Array.isArray(select)) {
+    throw new Error('multi select or string select on metrics not supported');
+  }
+
+  let tableName: string | undefined;
+  const newSelect = select.map(s => {
+    const { metricType, metricName, ...rest } = s;
+    if (metricType === 'gauge' || metricType === 'sum') {
+      if (!tableName) {
+        tableName =
+          metricType === 'gauge' ? metricTables.gauge : metricTables.sum;
+      }
+      return {
+        ...rest,
+        valueExpression: 'Value',
+        aggCondition: `MetricName = '${metricName}'`,
+        aggConditionLanguage: 'sql',
+      };
+    }
+    return s;
+  }) as SelectList;
+
+  if (!tableName) {
+    throw new Error('no table name found');
+  }
+
+  return {
+    ...restChartConfig,
+    select: newSelect,
+    from: { ...from, tableName },
+  };
+}
+
+export async function renderChartConfig(
+  rawChartConfig: ChartConfigWithOptDateRange,
+  metadata: Metadata,
 ): Promise<ChSql> {
+  // metric types require more rewriting since we know more about the schema
+  // but goes through the same generation process
+  const chartConfig =
+    rawChartConfig.from.tableName === 'metrics'
+      ? translateMetricChartConfig(rawChartConfig, metadata)
+      : rawChartConfig;
+
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
