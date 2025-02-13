@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
-import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
+import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Box,
   Button,
   Center,
   Divider,
   Flex,
   Group,
-  Modal,
   Paper,
   Stack,
   Text,
@@ -44,19 +42,40 @@ export default function DBTracePanel({
     },
   });
 
-  const { data: traceSourceData, isLoading: isTraceSourceLoading } = useSource({
-    id: watch('source'),
-  });
+  const { data: childSourceData, isLoading: isChildSourceDataLoading } =
+    useSource({
+      id: watch('source'),
+    });
 
   const { data: parentSourceData, isLoading: isParentSourceDataLoading } =
     useSource({
       id: parentSourceId,
     });
 
+  const logSourceData =
+    childSourceData?.kind === SourceKind.Log
+      ? childSourceData
+      : parentSourceData?.kind === SourceKind.Log
+        ? parentSourceData
+        : null;
+  const traceSourceData =
+    childSourceData?.kind === SourceKind.Trace
+      ? childSourceData
+      : parentSourceData?.kind === SourceKind.Trace
+        ? parentSourceData
+        : null;
+
+  const isTraceSourceLoading =
+    childSourceData?.kind === SourceKind.Trace
+      ? isChildSourceDataLoading
+      : parentSourceData?.kind === SourceKind.Trace
+        ? isParentSourceDataLoading
+        : false;
+
   const { mutate: updateTableSource } = useUpdateSource();
 
-  const [traceRowWhere, setTraceRowWhere] = useQueryState(
-    'traceRowWhere',
+  const [spanRowWhere, setSpanRowWhere] = useQueryState(
+    'spanRowWhere',
     parseAsJson<{ id: string; type: string }>(),
   );
 
@@ -97,9 +116,9 @@ export default function DBTracePanel({
   // otherwise we'll show stale span details
   useEffect(() => {
     return () => {
-      setTraceRowWhere(null);
+      setSpanRowWhere(null);
     };
-  }, [traceId, setTraceRowWhere]);
+  }, [traceId, setSpanRowWhere]);
 
   return (
     <>
@@ -122,7 +141,9 @@ export default function DBTracePanel({
         </Flex>
         <Group gap="sm">
           <Text size="sm" c="gray.4">
-            Trace Source
+            {parentSourceData?.kind === SourceKind.Log
+              ? 'Trace Source'
+              : 'Correlate Log Source'}
           </Text>
           <SourceSelectControlled control={control} name="source" size="xs" />
           <ActionIcon
@@ -189,16 +210,16 @@ export default function DBTracePanel({
       {sourceFormModalOpened && <TableSourceForm sourceId={watch('source')} />}
       {traceSourceData?.kind === SourceKind.Trace && (
         <DBTraceWaterfallChartContainer
-          traceTableModel={traceSourceData}
-          logTableModel={parentSourceData}
+          traceTableSource={traceSourceData}
+          logTableSource={logSourceData}
           traceId={traceId}
           dateRange={dateRange}
           focusDate={focusDate}
-          highlightedRowWhere={traceRowWhere?.id}
-          onClick={setTraceRowWhere}
+          highlightedRowWhere={spanRowWhere?.id}
+          onClick={setSpanRowWhere}
         />
       )}
-      {traceSourceData != null && traceRowWhere != null && (
+      {traceSourceData != null && spanRowWhere != null && (
         <>
           <Divider my="md" />
           <Text size="sm" c="dark.2" my="sm">
@@ -206,15 +227,15 @@ export default function DBTracePanel({
           </Text>
           <RowDataPanel
             source={
-              traceRowWhere?.type === SourceKind.Log && parentSourceData
-                ? parentSourceData
+              spanRowWhere?.type === SourceKind.Log && logSourceData
+                ? logSourceData
                 : traceSourceData
             }
-            rowId={traceRowWhere?.id}
+            rowId={spanRowWhere?.id}
           />
         </>
       )}
-      {traceSourceData != null && !traceRowWhere && (
+      {traceSourceData != null && !spanRowWhere && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
             <Text size="sm" c="gray.4">

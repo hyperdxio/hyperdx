@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
+import _ from 'lodash';
 import TimestampNano from 'timestamp-nano';
 import {
+  ChartConfig,
   ChartConfigWithDateRange,
   SourceKind,
   TSource,
@@ -15,7 +17,6 @@ import {
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
-import { omit } from '@/utils';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -60,7 +61,7 @@ function getTableBody(tableModel: TSource) {
   }
 }
 
-function getFetchConfig(source: TSource, traceId: string) {
+function getConfig(source: TSource, traceId: string) {
   const alias = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
@@ -74,85 +75,67 @@ function getFetchConfig(source: TSource, traceId: string) {
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
   };
-  let selectOption: {
-    valueExpression: string;
-    alias: string;
-  }[] = [];
+  const select = [
+    {
+      valueExpression: alias.Body,
+      alias: 'Body',
+    },
+    {
+      valueExpression: alias.Timestamp,
+      alias: 'Timestamp',
+    },
+    {
+      valueExpression: alias.SpanId,
+      alias: 'SpanId',
+    },
+    ...(alias.ServiceName
+      ? [
+          {
+            valueExpression: alias.ServiceName,
+            alias: 'ServiceName',
+          },
+        ]
+      : []),
+  ];
 
   if (source.kind === SourceKind.Trace) {
-    selectOption = [
-      {
-        valueExpression: alias.Body,
-        alias: 'Body',
-      },
-      {
-        valueExpression: alias.Timestamp,
-        alias: 'Timestamp',
-      },
-      {
-        // in Seconds, f64 holds ns precision for durations up to ~3 months
-        valueExpression: alias.Duration,
-        alias: 'Duration',
-      },
-      {
-        valueExpression: alias.SpanId,
-        alias: 'SpanId',
-      },
-      {
-        valueExpression: alias.ParentSpanId,
-        alias: 'ParentSpanId',
-      },
-      ...(alias.StatusCode
-        ? [
-            {
-              valueExpression: alias.StatusCode,
-              alias: 'StatusCode',
-            },
-          ]
-        : []),
-      ...(alias.ServiceName
-        ? [
-            {
-              valueExpression: alias.ServiceName,
-              alias: 'ServiceName',
-            },
-          ]
-        : []),
-    ];
+    select.push(
+      ...[
+        {
+          // in Seconds, f64 holds ns precision for durations up to ~3 months
+          valueExpression: alias.Duration,
+          alias: 'Duration',
+        },
+        {
+          valueExpression: alias.ParentSpanId,
+          alias: 'ParentSpanId',
+        },
+        ...(alias.StatusCode
+          ? [
+              {
+                valueExpression: alias.StatusCode,
+                alias: 'StatusCode',
+              },
+            ]
+          : []),
+      ],
+    );
   } else if (source.kind === SourceKind.Log) {
-    selectOption = [
-      {
-        valueExpression: alias.Body,
-        alias: 'Body',
-      },
-      {
-        valueExpression: alias.Timestamp,
-        alias: 'Timestamp',
-      },
-      {
-        valueExpression: alias.SpanId,
-        alias: 'SpanId',
-      },
-      ...(alias.SeverityText
-        ? [
-            {
-              valueExpression: alias.SeverityText,
-              alias: 'SeverityText',
-            },
-          ]
-        : []),
-      ...(alias.ServiceName
-        ? [
-            {
-              valueExpression: alias.ServiceName,
-              alias: 'ServiceName',
-            },
-          ]
-        : []),
-    ];
+    select.push(
+      ...[
+        ...(alias.SeverityText
+          ? [
+              {
+                valueExpression: alias.SeverityText,
+                alias: 'SeverityText',
+              },
+            ]
+          : []),
+      ],
+    );
   }
   const config = {
-    select: selectOption,
+    select,
     from: source.from,
     timestampValueExpression: alias.Timestamp,
     where: `${alias.TraceId} = '${traceId}'`,
@@ -162,74 +145,59 @@ function getFetchConfig(source: TSource, traceId: string) {
   return { config, alias, type: source.kind };
 }
 
-function useFetchingData({
+function useEventsData({
   config,
   dateRangeStartInclusive,
   dateRange,
+  enabled,
 }: {
-  config: {
-    select: {
-      valueExpression: string;
-      alias: string;
-    }[];
-    from: {
-      databaseName: string;
-      tableName: string;
-    };
-    timestampValueExpression: string;
-    where: string;
-    limit: {
-      limit: number;
-    };
-    connection: string;
-  };
+  config: ChartConfig;
   dateRangeStartInclusive: boolean;
   dateRange: [Date, Date];
+  enabled: boolean;
 }) {
   const query: ChartConfigWithDateRange = useMemo(() => {
     return {
       ...config,
       dateRange,
       dateRangeStartInclusive,
-      orderBy: [
-        {
-          valueExpression: config.timestampValueExpression,
-          ordering: 'ASC',
-        },
-      ],
     };
   }, [config, dateRange]);
-  return useOffsetPaginatedQuery(query);
+  return useOffsetPaginatedQuery(query, { enabled });
 }
 
-function useSpansAroundFocus({
-  tableModel,
+function useEventsAroundFocus({
+  tableSource,
   focusDate,
   dateRange,
   traceId,
+  enabled,
 }: {
-  tableModel: TSource;
+  tableSource: TSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
+  enabled: boolean;
 }) {
   let isFetching = false;
   const { config, alias, type } = useMemo(
-    () => getFetchConfig(tableModel, traceId),
-    [tableModel, traceId],
+    () => getConfig(tableSource, traceId),
+    [tableSource, traceId],
   );
 
   const { data: beforeSpanData, isFetching: isBeforeSpanFetching } =
-    useFetchingData({
+    useEventsData({
       config,
       dateRangeStartInclusive: true,
       dateRange: [dateRange[0], focusDate],
+      enabled,
     });
   const { data: afterSpanData, isFetching: isAfterSpanFetching } =
-    useFetchingData({
+    useEventsData({
       config,
       dateRangeStartInclusive: false,
       dateRange: [focusDate, dateRange[1]],
+      enabled,
     });
   isFetching = isFetching || isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
@@ -238,16 +206,12 @@ function useSpansAroundFocus({
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
     if (!meta || meta.length === 0) return [];
-    const concatData = [
+    return [
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
-    ].map(d => {
-      d.HyperDXEventType = 'span';
-      return d;
-    }) as SpanRow[];
-    return concatData.map((cd: SpanRow) => ({
+    ].map(cd => ({
       ...cd,
-      id: rowWhere(omit(cd, ['HyperDXEventType'])),
+      id: rowWhere(cd),
       type,
     }));
   }, [afterSpanData, beforeSpanData]);
@@ -260,16 +224,16 @@ function useSpansAroundFocus({
 
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
-  traceTableModel,
-  logTableModel,
+  traceTableSource,
+  logTableSource,
   traceId,
   dateRange,
   focusDate,
   onClick,
   highlightedRowWhere,
 }: {
-  traceTableModel: TSource;
-  logTableModel?: TSource;
+  traceTableSource: TSource;
+  logTableSource: TSource | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
@@ -277,23 +241,27 @@ export function DBTraceWaterfallChartContainer({
   highlightedRowWhere?: string | null;
 }) {
   const { rows: traceRowsData, isFetching: traceIsFetching } =
-    useSpansAroundFocus({
-      tableModel: traceTableModel,
+    useEventsAroundFocus({
+      tableSource: traceTableSource,
       focusDate,
       dateRange,
       traceId,
+      enabled: true,
     });
-  const { rows: logRowsData, isFetching: logIsFetching } = useSpansAroundFocus({
-    // search data if logTableModel exist
-    // search invliad date range if no logTableModel(react hook need execute no matter what)
-    tableModel: logTableModel || traceTableModel,
-    focusDate,
-    dateRange: logTableModel ? dateRange : [dateRange[1], dateRange[0]],
-    traceId,
-  });
+  const { rows: logRowsData, isFetching: logIsFetching } = useEventsAroundFocus(
+    {
+      // search data if logTableModel exist
+      // search invalid date range if no logTableModel(react hook need execute no matter what)
+      tableSource: logTableSource ? logTableSource : traceTableSource,
+      focusDate,
+      dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
+      traceId,
+      enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+    },
+  );
 
   const isFetching = traceIsFetching || logIsFetching;
-  const rows = [...traceRowsData, ...logRowsData];
+  const rows: any[] = [...traceRowsData, ...logRowsData];
 
   rows.sort((a, b) => {
     const aDate = TimestampNano.fromString(a.Timestamp);
@@ -313,43 +281,43 @@ export function DBTraceWaterfallChartContainer({
 
   // Parse out a DAG of spans
   type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
+  const validSpanID = useMemo(() => {
+    return new Set(
+      rows
+        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
+        .map(row => row.SpanId) ?? [],
+    );
+  }, [rows]);
   const rootNodes: Node[] = [];
-  const parentSpanIdsMap = new Map();
   const nodesMap = new Map();
-  for (const { ParentSpanId, SpanId } of rows ?? []) {
-    if (ParentSpanId && SpanId) parentSpanIdsMap.set(SpanId, ParentSpanId);
-  }
+
   let logSpanCount = -1;
   for (const result of rows ?? []) {
-    const { type, HyperDXEventType, SpanId } = result;
+    const { type, SpanId, ParentSpanId } = result;
     // ignore everything without spanId
     if (!SpanId) continue;
     if (type === SourceKind.Log) logSpanCount += 1;
 
-    // log have dupelicate span id, tag it with -log-couunt
+    // log have dupelicate span id, tag it with -log-count
     const nodeSpanId =
       type === SourceKind.Log ? `${SpanId}-log-${logSpanCount}` : SpanId;
     const nodeParentSpanId =
-      type === SourceKind.Log ? SpanId : parentSpanIdsMap.get(SpanId) || '';
+      type === SourceKind.Log ? SpanId : ParentSpanId || '';
 
     const curNode = {
       ...result,
       children: [],
       // In case we were created already previously, inherit the children built so far
-      ...(result.HyperDXEventType === 'span' ? nodesMap.get(nodeSpanId) : {}),
+      ...nodesMap.get(nodeSpanId),
     };
     if (!nodesMap.has(nodeSpanId)) {
       nodesMap.set(nodeSpanId, curNode);
     }
 
+    // root if: is trace event, and (has no parent or parent id is not valiad)
     const isRootNode =
-      HyperDXEventType !== 'span' || type === SourceKind.Log
-        ? // not root if type is log or not span
-          false
-        : // become root if does not have parent
-          !nodeParentSpanId
-          ? true
-          : false;
+      type === SourceKind.Trace &&
+      (!nodeParentSpanId || !validSpanID.has(nodeParentSpanId));
 
     if (isRootNode) {
       rootNodes.push(curNode);
