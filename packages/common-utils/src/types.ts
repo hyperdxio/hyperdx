@@ -20,12 +20,6 @@ export enum DisplayType {
   Markdown = 'markdown',
 }
 
-export enum MetricsDataType {
-  Gauge = 'gauge',
-  Histogram = 'histogram',
-  Sum = 'sum',
-}
-
 export const MetricTableSchema = z.object({
   [MetricsDataType.Gauge]: z.string(),
   [MetricsDataType.Histogram]: z.string(),

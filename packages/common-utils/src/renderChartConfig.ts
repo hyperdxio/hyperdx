@@ -9,6 +9,7 @@ import {
   AggregateFunctionWithCombinators,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DerivedColumn,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
@@ -706,6 +707,8 @@ function translateMetricChartConfig(
     return chartConfig;
   }
 
+  console.log('chartConfig', chartConfig);
+
   // assumes all the selects are from a single metric type, for now
   const { select, from, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
@@ -728,7 +731,7 @@ function translateMetricChartConfig(
       };
     }
     return s;
-  }) as SelectList;
+  }) as [DerivedColumn];
 
   if (!tableName) {
     throw new Error('no table name found');
@@ -738,6 +741,7 @@ function translateMetricChartConfig(
     ...restChartConfig,
     select: newSelect,
     from: { ...from, tableName },
+    // groupBy: 'MetricName, ResourceAttributes', // replace with metric specific fields
   };
 }
 
@@ -748,7 +752,7 @@ export async function renderChartConfig(
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
   const chartConfig =
-    rawChartConfig.from.tableName === 'metrics'
+    rawChartConfig.metricTables != null
       ? translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 

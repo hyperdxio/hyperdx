@@ -85,15 +85,15 @@ export function MetricNameSelect({
   const options = useMemo(() => {
     return [
       ...(gaugeMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}Gauge`,
+        value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
       })) ?? []),
       ...(histogramMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}Histogram`,
+        value: `${metric}${SEPARATOR}histogram`,
         label: `${metric} (Histogram)`,
       })) ?? []),
       ...(sumMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}Sum`,
+        value: `${metric}${SEPARATOR}sum`,
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
@@ -123,7 +123,9 @@ export function MetricNameSelect({
       onChange={value => {
         const [metricName, metricType] = value?.split(SEPARATOR) ?? [];
         setMetricName(metricName ?? '');
-        setMetricType(metricType as MetricsDataType);
+        if (metricType) {
+          setMetricType(metricType.toLowerCase() as MetricsDataType);
+        }
       }}
     />
   );

@@ -15,9 +15,11 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  MetricsDataType,
   SavedChartConfig,
   SelectList,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -66,6 +68,19 @@ import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
 
+const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
+  ((queriedConfig?.select?.length ?? 0) > 0 ||
+    typeof queriedConfig?.select === 'string') &&
+  queriedConfig?.from?.databaseName &&
+  // tableName is emptry for metric sources
+  (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
+  queriedConfig?.timestampValueExpression;
+
+const getMetricTableName = (source: TSource, metricType?: MetricsDataType) =>
+  metricType == null
+    ? source.from.tableName
+    : (source.metricTables?.[metricType.toLowerCase()] as any);
+
 const NumberFormatInputControlled = ({
   control,
 }: {
@@ -92,7 +107,7 @@ function ChartSeriesEditor({
   onSubmit,
   setValue,
   showGroupBy,
-  tableName,
+  tableName: _tableName,
   watch,
 }: {
   control: Control<any>;
@@ -113,8 +128,16 @@ function ChartSeriesEditor({
     'lucene',
   );
 
+  const metricType = watch(`${namePrefix}metricType`);
+
   const selectedSourceId = watch('source');
   const { data: tableSource } = useSource({ id: selectedSourceId });
+
+  // HACK: switch table name based on metric type
+  const tableName =
+    tableSource?.kind === SourceKind.Metric
+      ? getMetricTableName(tableSource, metricType)
+      : _tableName;
 
   return (
     <>
@@ -153,16 +176,18 @@ function ChartSeriesEditor({
         </div>
         {tableSource?.kind === SourceKind.Metric && (
           <MetricNameSelect
-            metricName={watch(`${namePrefix}valueExpression`)}
-            metricType={watch(`${namePrefix}metricType`)}
-            setMetricName={value =>
-              setValue(`${namePrefix}valueExpression`, value)
-            }
+            metricName={watch(`${namePrefix}metricName`)}
+            metricType={metricType}
+            setMetricName={value => {
+              setValue(`${namePrefix}metricName`, value);
+              // HACK: harcoded valueExpression
+              setValue(`${namePrefix}valueExpression`, 'Value');
+            }}
             setMetricType={value => setValue(`${namePrefix}metricType`, value)}
             metricSource={tableSource}
           />
         )}
-        {aggFn !== 'count' && (
+        {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
           <div style={{ minWidth: 220 }}>
             <SQLInlineEditorControlled
               database={databaseName}
@@ -344,7 +369,6 @@ export default function EditTimeChartForm({
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
       setChartConfig(form);
-
       if (tableSource != null) {
         setQueriedConfig({
           ...form,
@@ -353,6 +377,7 @@ export default function EditTimeChartForm({
           dateRange,
           connection: tableSource.connection,
           implicitColumnExpression: tableSource.implicitColumnExpression,
+          metricTables: tableSource.metricTables,
         });
       }
     })();
@@ -396,12 +421,7 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
-  const queryReady =
-    ((queriedConfig?.select?.length ?? 0) > 0 ||
-      typeof queriedConfig?.select === 'string') &&
-    queriedConfig?.from?.databaseName &&
-    queriedConfig?.from?.tableName &&
-    queriedConfig?.timestampValueExpression;
+  const queryReady = isQueryReady(queriedConfig);
 
   const sampleEventsConfig = useMemo(
     () =>
