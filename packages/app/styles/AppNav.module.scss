@@ -136,9 +136,11 @@
   width: 100%;    
   transition: width 0.2s ease;
   interpolate-size: allow-keywords; //alows animation of fit-content
-    
   &:hover {
     width: fit-content;
   }
 }
 
+.wrapper {
+  z-index: 100; //magic number to allow appNavMenuUserInfo to be above the main content when expanded
+}
