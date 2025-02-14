@@ -70,7 +70,7 @@ export const AppNavUserMenu = ({
             p: 2,
             bg: 'transparent',
           })}
-          className={styles.appNavMenu}
+          className={`${styles.appNavMenu} ${!isCollapsed && styles.appNavMenuUserInfo}`}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
             <Avatar size="sm" radius="xl" color="green">
@@ -78,7 +78,7 @@ export const AppNavUserMenu = ({
             </Avatar>
             {!isCollapsed && (
               <>
-                <div style={{ flex: 1 }}>
+                <div style={{ minWidth: 0 }}>
                   <Text size="xs" fw="bold" lh={1.1} c="gray.3" truncate="end">
                     {userName}
                   </Text>
