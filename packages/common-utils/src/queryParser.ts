@@ -5,7 +5,22 @@ import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 
 function encodeSpecialTokens(query: string): string {
-  return query
+  // First handle the new function syntax before other replacements
+  const functionReplacements: [RegExp, string][] = [
+    [/startsWith\("([^"]+)"\)/g, '$1*'],
+    [/endsWith\("([^"]+)"\)/g, '*$1'],
+    [/contains\("([^"]+)"\)/g, '*$1*'],
+    [/matches\("([^"]+)"\)/g, '$1'],
+    [/hasWord\("([^"]+)"\)/g, '"$1"'],
+  ];
+
+  let processedQuery = query;
+  for (const [pattern, replacement] of functionReplacements) {
+    processedQuery = processedQuery.replace(pattern, replacement);
+  }
+
+  // Apply existing token replacements
+  return processedQuery
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
     .replace('http://', 'http_COLON_//')
     .replace('https://', 'https_COLON_//')
@@ -126,12 +141,6 @@ class EnglishSerializer implements Serializer {
     return `${this.translateField(field)} is greater than ${term}`;
   }
 
-  // async fieldSearch(field: string, term: string, isNegatedField: boolean) {
-  //   return `${this.translateField(field)} ${
-  //     isNegatedField ? 'does not contain' : 'contains'
-  //   } ${term}`;
-  // }
-
   async fieldSearch(
     field: string,
     term: string,
@@ -159,7 +168,21 @@ class EnglishSerializer implements Serializer {
       } ${term}`;
     } else {
       return `${this.translateField(field)} ${
-        isNegatedField ? 'does not contain' : 'contains'
+        prefixWildcard && suffixWildcard
+          ? isNegatedField
+            ? 'does not contain'
+            : 'contains'
+          : prefixWildcard
+            ? isNegatedField
+              ? 'does not end with'
+              : 'ends with'
+            : suffixWildcard
+              ? isNegatedField
+                ? 'does not start with'
+                : 'starts with'
+              : isNegatedField
+                ? 'is not'
+                : 'is'
       } ${term}`;
     }
   }
@@ -784,4 +807,54 @@ export async function genEnglishExplanation(query: string): Promise<string> {
   }
 
   return `Message containing ${query}`;
+}
+
+// Add this new function to translate English to search query
+export async function genSearchFromEnglish(englishQuery: string): Promise<string> {
+  const query = englishQuery.toLowerCase();
+  
+  // Helper to clean up terms
+  const cleanTerms = (terms: string) => 
+    terms.split(/\s+/)
+      .filter(term => 
+        // Filter out common words and search-related words that shouldn't be part of the search
+        ![
+          'me', 'the', 'with', 'and', 'or', 'in', 
+          'lines', 'line', 'containing', 'contains',
+          'find', 'show', 'get', 'search', 'for',
+          'log', 'logs', 'having', 'has', 'where'
+        ].includes(term)
+      )
+      .join(' ');
+
+  let searchQuery = '';
+  
+  if (query.includes(' but don\'t include ')) {
+    const [include, exclude] = query.split(' but don\'t include ');
+    const includeTerms = cleanTerms(include);
+    const excludeTerms = cleanTerms(exclude);
+    
+    // Handle multiple include terms
+    const includeQuery = includeTerms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+      
+    // Handle multiple exclude terms
+    const excludeQuery = excludeTerms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+    
+    searchQuery = `(${includeQuery}) NOT (${excludeQuery})`;
+  } else {
+    // Handle regular search with AND terms
+    const terms = cleanTerms(query);
+    searchQuery = terms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+  }
+
+  return searchQuery.trim();
 }

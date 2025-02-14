@@ -100,6 +100,7 @@ app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
+app.use('/aisearch', isUserAuthenticated, routers.aiSearchRouter);
 // ---------------------------------------------------------------------
 
 // TODO: Separate external API routers from internal routers

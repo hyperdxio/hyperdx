@@ -9,6 +9,7 @@ import rootRouter from './root';
 import sessionsRouter from './sessions';
 import teamRouter from './team';
 import webhooksRouter from './webhooks';
+import aiSearchRouter from './aisearch';
 
 export default {
   alertsRouter,
@@ -22,4 +23,5 @@ export default {
   teamRouter,
   webhooksRouter,
   chartRouter,
+  aiSearchRouter,
 };
