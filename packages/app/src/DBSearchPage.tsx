@@ -81,6 +81,7 @@ import { usePrevious } from '@/utils';
 
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
+import AISearchButton from './components/AISearchButton';
 
 const SearchConfigSchema = z.object({
   select: z.string(),
@@ -928,6 +929,17 @@ function DBSearchPage() {
               />
             }
           />
+
+          <AISearchButton 
+            onQueryGenerated={(query) => {
+              setValue('where', query, { shouldDirty: true });
+              onSearch(query);
+              //inputRef.current?.focus();
+              console.log("wherelang", watch('whereLanguage'))
+            }}
+            language={watch('whereLanguage')}
+          />
+          
           <TimePicker
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}

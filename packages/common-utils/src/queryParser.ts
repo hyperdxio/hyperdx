@@ -4,13 +4,41 @@ import SqlString from 'sqlstring';
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 
+interface ExtendedNodeTerm extends lucene.NodeTerm {
+  proximity?: number;
+  boost?: number;
+  similarity?: number;
+  regex?: boolean;
+}
+
 function encodeSpecialTokens(query: string): string {
-  return query
+  console.log('Original query:', query);
+
+  // First handle the new function syntax before other replacements
+  const functionReplacements: [RegExp, string][] = [
+    [/startsWith\("([^"]+)"\)/g, '$1*'],
+    [/endsWith\("([^"]+)"\)/g, '*$1'],
+    [/contains\("([^"]+)"\)/g, '*$1*'],
+    [/matches\("([^"]+)"\)/g, '$1'],
+    [/hasWord\("([^"]+)"\)/g, '"$1"'],
+  ];
+
+  let processedQuery = query;
+  for (const [pattern, replacement] of functionReplacements) {
+    processedQuery = processedQuery.replace(pattern, replacement);
+  }
+
+  // Apply existing token replacements
+  processedQuery = processedQuery
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
     .replace('http://', 'http_COLON_//')
     .replace('https://', 'https_COLON_//')
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
-    .replace(/\\:/g, 'HDX_COLON');
+    .replace(/\\:/g, 'HDX_COLON')
+    .replace(/\*([^*\s]+\s+[^*\s]+)\*/g, 'contains("$1")');
+
+  console.log('Processed query:', processedQuery);
+  return processedQuery;
 }
 function decodeSpecialTokens(query: string): string {
   return query
@@ -64,6 +92,29 @@ interface Serializer {
     field: string,
     start: string,
     end: string,
+    isNegatedField: boolean,
+  ): Promise<string>;
+  proximity(
+    field: string,
+    term: string,
+    distance: number,
+    isNegatedField: boolean,
+  ): Promise<string>;
+  boost(
+    field: string,
+    term: string,
+    boost: number,
+    isNegatedField: boolean,
+  ): Promise<string>;
+  fuzzy(
+    field: string,
+    term: string,
+    similarity: number,
+    isNegatedField: boolean,
+  ): Promise<string>;
+  regex(
+    field: string,
+    pattern: string,
     isNegatedField: boolean,
   ): Promise<string>;
 }
@@ -126,12 +177,6 @@ class EnglishSerializer implements Serializer {
     return `${this.translateField(field)} is greater than ${term}`;
   }
 
-  // async fieldSearch(field: string, term: string, isNegatedField: boolean) {
-  //   return `${this.translateField(field)} ${
-  //     isNegatedField ? 'does not contain' : 'contains'
-  //   } ${term}`;
-  // }
-
   async fieldSearch(
     field: string,
     term: string,
@@ -159,7 +204,21 @@ class EnglishSerializer implements Serializer {
       } ${term}`;
     } else {
       return `${this.translateField(field)} ${
-        isNegatedField ? 'does not contain' : 'contains'
+        prefixWildcard && suffixWildcard
+          ? isNegatedField
+            ? 'does not contain'
+            : 'contains'
+          : prefixWildcard
+            ? isNegatedField
+              ? 'does not end with'
+              : 'ends with'
+            : suffixWildcard
+              ? isNegatedField
+                ? 'does not start with'
+                : 'starts with'
+              : isNegatedField
+                ? 'is not'
+                : 'is'
       } ${term}`;
     }
   }
@@ -173,6 +232,37 @@ class EnglishSerializer implements Serializer {
     return `${field} ${
       isNegatedField ? 'is not' : 'is'
     } between ${start} and ${end}`;
+  }
+
+  async proximity(
+    field: string,
+    term: string,
+    distance: number,
+    isNegatedField: boolean,
+  ) {
+    return `${this.translateField(field)} ${isNegatedField ? 'does not have' : 'has'} "${term}" within ${distance} words`;
+  }
+
+  async boost(
+    field: string,
+    term: string,
+    boost: number,
+    isNegatedField: boolean,
+  ) {
+    return `${this.translateField(field)} ${isNegatedField ? 'is not' : 'is'} "${term}" with boost ${boost}`;
+  }
+
+  async fuzzy(
+    field: string,
+    term: string,
+    similarity: number,
+    isNegatedField: boolean,
+  ) {
+    return `${this.translateField(field)} ${isNegatedField ? 'is not' : 'is'} similar to "${term}" with similarity ${similarity}`;
+  }
+
+  async regex(field: string, pattern: string, isNegatedField: boolean) {
+    return `${this.translateField(field)} ${isNegatedField ? 'does not match' : 'matches'} pattern "${pattern}"`;
   }
 }
 
@@ -329,8 +419,8 @@ export abstract class SQLSerializer implements Serializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    // If it's a string field, we will always try to match with ilike
 
+    // If it's a string field, we will always try to match with ilike
     if (propertyType === JSDataType.Bool) {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
@@ -350,15 +440,23 @@ export abstract class SQLSerializer implements Serializer {
       );
     }
 
-    // // If the query is empty, or is a empty quoted string ex: ""
-    // // we should match all
+    // If the query is empty, or is a empty quoted string ex: ""
+    // we should match all
     if (term.length === 0) {
       return '(1=1)';
     }
 
     if (isImplicitField) {
-      // For the _source column, we'll try to do whole word searches by default
-      // to utilize the token bloom filter unless a prefix/sufix wildcard is specified
+      // For multi-word searches, first try exact substring match
+      if (this.termHasSeperators(term)) {
+        const searchTerm = term.replace(/^\*/, '').replace(/\*$/, '');
+        return SqlString.format(
+          `(${isNegatedField ? 'NOT ' : ''}(lower(??) LIKE lower(?)))`,
+          [column, `%${searchTerm}%`],
+        );
+      }
+
+      // For single words, use existing token-based search
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
           `(lower(??) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
@@ -368,35 +466,16 @@ export abstract class SQLSerializer implements Serializer {
           ],
         );
       } else {
-        // We can't search multiple tokens with `hasToken`, so we need to split up the term into tokens
-        const hasSeperators = this.termHasSeperators(term);
-        if (hasSeperators) {
-          const tokens = this.tokenizeTerm(term);
-          return `(${isNegatedField ? 'NOT (' : ''}${[
-            ...tokens.map(token =>
-              SqlString.format(`hasTokenCaseInsensitive(??, ?)`, [
-                column,
-                token,
-              ]),
-            ),
-            // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(??) LIKE lower(?))`, [
-              column,
-              `%${term}%`,
-            ]),
-          ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-        } else {
-          return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(??, ?))`,
-            [column, term],
-          );
-        }
+        return SqlString.format(
+          `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(??, ?))`,
+          [column, term],
+        );
       }
     } else {
-      const shoudUseTokenBf = isImplicitField;
+      // For named fields, always use ILIKE
       return SqlString.format(
-        `(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`,
-        [SqlString.raw(shoudUseTokenBf ? 'LIKE' : 'ILIKE'), `%${term}%`],
+        `(${column} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
+        [`%${term}%`],
       );
     }
   }
@@ -414,6 +493,89 @@ export abstract class SQLSerializer implements Serializer {
     return SqlString.format(
       `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?)`,
       [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
+    );
+  }
+
+  async proximity(
+    field: string,
+    term: string,
+    distance: number,
+    isNegatedField: boolean,
+  ) {
+    const { column, found } = await this.getColumnForField(field);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+
+    // Split terms and create a window for proximity search
+    const terms = term.split(/\s+/);
+    const conditions = terms.map(t =>
+      SqlString.format(`position(lower(?), lower(??))`, [t, column]),
+    );
+
+    return SqlString.format(
+      `(${isNegatedField ? 'NOT ' : ''}(${conditions.join(' - ')} <= ?))`,
+      [distance * 10], // multiply by average word length for character-based distance
+    );
+  }
+
+  async boost(
+    field: string,
+    term: string,
+    boost: number,
+    isNegatedField: boolean,
+  ) {
+    // In SQL we don't have direct boost equivalent
+    // Fall back to regular search but add a comment for debugging
+    const { column, found } = await this.getColumnForField(field);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+    return SqlString.format(
+      `/* boost: ${boost} */ (${column} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
+      [`%${term}%`],
+    );
+  }
+
+  async fuzzy(
+    field: string,
+    term: string,
+    similarity: number,
+    isNegatedField: boolean,
+  ) {
+    const { column, found } = await this.getColumnForField(field);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+
+    // Use Levenshtein distance for fuzzy matching
+    return SqlString.format(
+      `(${isNegatedField ? 'NOT ' : ''}(length(??) > 0 AND levenshteinDistance(lower(??), lower(?)) <= ?))`,
+      [
+        column,
+        column,
+        term,
+        Math.floor((1 - (similarity || 0.5)) * term.length),
+      ],
+    );
+  }
+
+  async regex(field: string, pattern: string, isNegatedField: boolean) {
+    const { column, found } = await this.getColumnForField(field);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+
+    // Convert Lucene regex to SQL regex
+    const sqlPattern = pattern
+      .replace(/^\^/, '^')
+      .replace(/\$$/, '$')
+      .replace(/\?/g, '.')
+      .replace(/\*/g, '.*');
+
+    return SqlString.format(
+      `(${column} ${isNegatedField ? 'NOT ' : ''}REGEXP ?)`,
+      [sqlPattern],
     );
   }
 }
@@ -572,22 +734,46 @@ async function nodeTerm(
 
   // NodeTerm
   if ((node as lucene.NodeTerm).term != null) {
-    const nodeTerm = node as lucene.NodeTerm;
+    const nodeTerm = node as ExtendedNodeTerm;
     let term = decodeSpecialTokens(nodeTerm.term);
-    // We should only negate the search for negated bare terms (ex. '-5')
-    // This meeans the field is implicit and the prefix is -
-    if (isImplicitField && nodeTerm.prefix === '-') {
-      isNegatedField = true;
-    }
-    // Otherwise, if we have a negated term for a field (ex. 'level:-5')
-    // we should not negate the search, and search for -5
-    if (!isImplicitField && nodeTerm.prefix === '-') {
+
+    // Handle prefix operators
+    if (isImplicitField) {
+      if (nodeTerm.prefix === '-') {
+        isNegatedField = true;
+      } else if (nodeTerm.prefix === '+') {
+        // Required term - handled implicitly by AND
+      }
+    } else if (nodeTerm.prefix === '-') {
       term = nodeTerm.prefix + decodeSpecialTokens(nodeTerm.term);
     }
 
-    // TODO: Decide if this is good behavior
-    // If the term is quoted, we should search for the exact term in a property (ex. foo:"bar")
-    // Implicit field searches should still use substring matching (ex. "foo bar")
+    // Handle proximity search
+    if (nodeTerm.proximity !== undefined) {
+      return serializer.proximity(
+        field,
+        term,
+        nodeTerm.proximity,
+        isNegatedField,
+      );
+    }
+
+    // Handle boost
+    if (nodeTerm.boost !== undefined) {
+      return serializer.boost(field, term, nodeTerm.boost, isNegatedField);
+    }
+
+    // Handle fuzzy search
+    if (nodeTerm.similarity !== undefined) {
+      return serializer.fuzzy(field, term, nodeTerm.similarity, isNegatedField);
+    }
+
+    // Handle regex
+    if (nodeTerm.regex) {
+      return serializer.regex(field, term, isNegatedField);
+    }
+
+    // Existing exact term matching for quoted strings
     if (nodeTerm.quoted && !isImplicitField) {
       return serializer.eq(field, term, isNegatedField);
     }
@@ -784,4 +970,74 @@ export async function genEnglishExplanation(query: string): Promise<string> {
   }
 
   return `Message containing ${query}`;
+}
+
+// Add this new function to translate English to search query
+export async function genSearchFromEnglish(
+  englishQuery: string,
+): Promise<string> {
+  const query = englishQuery.toLowerCase();
+
+  // Helper to clean up terms
+  const cleanTerms = (terms: string) =>
+    terms
+      .split(/\s+/)
+      .filter(
+        term =>
+          // Filter out common words and search-related words that shouldn't be part of the search
+          ![
+            'me',
+            'the',
+            'with',
+            'and',
+            'or',
+            'in',
+            'lines',
+            'line',
+            'containing',
+            'contains',
+            'find',
+            'show',
+            'get',
+            'search',
+            'for',
+            'log',
+            'logs',
+            'having',
+            'has',
+            'where',
+          ].includes(term),
+      )
+      .join(' ');
+
+  let searchQuery = '';
+
+  if (query.includes(" but don't include ")) {
+    const [include, exclude] = query.split(" but don't include ");
+    const includeTerms = cleanTerms(include);
+    const excludeTerms = cleanTerms(exclude);
+
+    // Handle multiple include terms
+    const includeQuery = includeTerms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+
+    // Handle multiple exclude terms
+    const excludeQuery = excludeTerms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+
+    searchQuery = `(${includeQuery}) NOT (${excludeQuery})`;
+  } else {
+    // Handle regular search with AND terms
+    const terms = cleanTerms(query);
+    searchQuery = terms
+      .split(' ')
+      .filter(t => t.length > 0)
+      .join(' AND ');
+  }
+
+  return searchQuery.trim();
 }

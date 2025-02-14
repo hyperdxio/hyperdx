@@ -4121,6 +4121,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@google/generative-ai@npm:^0.21.0":
+  version: 0.21.0
+  resolution: "@google/generative-ai@npm:0.21.0"
+  checksum: 10c0/cff5946c5964f2380e5097d82bd563d79be27a1a5ac604aaaad3f9ba3382992e4f0a371bd255baabfba4e5bdf296d8ce1410cbd65424afa98e64b2590fe49f3b
+  languageName: node
+  linkType: hard
+
 "@grpc/grpc-js@npm:^1.7.1":
   version: 1.8.22
   resolution: "@grpc/grpc-js@npm:1.8.22"
@@ -4216,6 +4223,7 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
+    "@google/generative-ai": "npm:^0.21.0"
     "@hyperdx/common-utils": "npm:^0.1.0"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.1"
