@@ -134,5 +134,11 @@
 
 .appNavMenuUserInfo {
   width: 100%;    
+  transition: width 0.2s ease;
+  interpolate-size: allow-keywords; //alows animation of fit-content
+    
+  &:hover {
+    width: fit-content;
+  }
 }
 
