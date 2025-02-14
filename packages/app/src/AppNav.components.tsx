@@ -61,13 +61,13 @@ export const AppNavUserMenu = ({
     <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>
       <Menu.Target>
         <Paper
-          m="sm"
-          mt={8}
           px={8}
           py={4}
           radius="md"
           {...(isCollapsed && {
-            p: 2,
+            m: 'auto',
+            mb: 'sm',
+            boxShadow: 'none',
             bg: 'transparent',
           })}
           className={`${styles.appNavMenu} ${!isCollapsed && styles.appNavMenuUserInfo}`}
@@ -173,14 +173,12 @@ export const AppNavHelpMenu = ({
   return (
     <>
       <Paper
-        mb={8}
-        ml="sm"
         withBorder
         w={size}
         h={size}
         radius="xl"
         {...(isCollapsed && {
-          ml: 'sm',
+          m: 'auto',
         })}
         className={styles.appNavMenu}
       >

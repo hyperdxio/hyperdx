@@ -1021,6 +1021,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             position: 'absolute',
             bottom: 0,
             pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: isCollapsed ? 4 : 8,
+            padding: isCollapsed ? 0 : 16,
           }}
         >
           <AppNavHelpMenu isCollapsed={isCollapsed} version={version} />
