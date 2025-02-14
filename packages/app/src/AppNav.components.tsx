@@ -79,17 +79,15 @@ export const AppNavUserMenu = ({
             {!isCollapsed && (
               <>
                 <div style={{ flex: 1 }}>
-                  <Text size="xs" fw="bold" lh={1.1} c="gray.3">
+                  <Text size="xs" fw="bold" lh={1.1} c="gray.3" truncate="end">
                     {userName}
                   </Text>
                   <Text
                     size="xs"
                     c="dimmed"
+                    truncate="end"
                     style={{
                       fontSize: 11,
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
                       maxHeight: 16,
                     }}
                   >
