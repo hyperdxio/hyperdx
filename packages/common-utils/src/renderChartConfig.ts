@@ -529,7 +529,7 @@ async function renderWhereExpression({
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
-async function renderWhere(
+export async function renderWhere(
   chartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
 ): Promise<ChSql> {

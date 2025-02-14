@@ -4,8 +4,12 @@ import {
   chSql,
   ClickhouseClient,
   ColumnMeta,
+  parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
+  renderChartConfig,
+  renderWhere,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   DateRange,
   SearchCondition,
@@ -89,7 +93,25 @@ export function useSessions(
       if (!traceSource || !sessionSource) {
         return [];
       }
-      // TODO: we
+
+      let whereClauseSQL = `1=1`;
+
+      if (where) {
+        const whereClauseChSQL = await renderWhere(
+          {
+            select: [],
+            from: traceSource.from,
+            where,
+            whereLanguage,
+            implicitColumnExpression: traceSource.implicitColumnExpression,
+            connection: traceSource.connection,
+          },
+          getMetadata(),
+        );
+
+        whereClauseSQL = parameterizedQueryToSql(whereClauseChSQL);
+      }
+
       const [
         sessionsQuery,
         sessionIdsWithRecordingsQuery,
@@ -144,7 +166,7 @@ export function useSessions(
             ],
             from: traceSource.from,
             dateRange,
-            where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId')`,
+            where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId') AND ${whereClauseSQL}`,
             whereLanguage: 'sql',
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
