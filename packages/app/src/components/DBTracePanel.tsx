@@ -53,16 +53,16 @@ export default function DBTracePanel({
     });
 
   const logSourceData =
-    childSourceData?.kind === SourceKind.Log
-      ? childSourceData
-      : parentSourceData?.kind === SourceKind.Log
-        ? parentSourceData
+    parentSourceData?.kind === SourceKind.Log
+      ? parentSourceData
+      : childSourceData?.kind === SourceKind.Log
+        ? childSourceData
         : null;
   const traceSourceData =
-    childSourceData?.kind === SourceKind.Trace
-      ? childSourceData
-      : parentSourceData?.kind === SourceKind.Trace
-        ? parentSourceData
+    parentSourceData?.kind === SourceKind.Trace
+      ? parentSourceData
+      : childSourceData?.kind === SourceKind.Trace
+        ? childSourceData
         : null;
 
   const isTraceSourceLoading =
