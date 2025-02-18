@@ -79,10 +79,11 @@ export const AppNavUserMenu = ({
             {!isCollapsed && (
               <>
                 <div style={{ flex: 1, minWidth: '0' }}>
-                  <Text size="xs" fw="bold" lh={1.1} c="gray.3" truncate="end">
+                  <Text title={userName} size="xs" fw="bold" lh={1.1} c="gray.3" truncate="end">
                     {userName}
                   </Text>
                   <Text
+                    title={teamName}
                     size="xs"
                     c="dimmed"
                     truncate="end"
