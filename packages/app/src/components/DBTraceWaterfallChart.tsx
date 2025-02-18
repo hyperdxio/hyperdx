@@ -297,8 +297,7 @@ export function DBTraceWaterfallChartContainer({
     if (!SpanId) continue;
 
     // log have duplicate span id, tag it with -log
-    const nodeSpanId =
-      type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
+    const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
     const nodeParentSpanId =
       type === SourceKind.Log ? SpanId : ParentSpanId || '';
 
