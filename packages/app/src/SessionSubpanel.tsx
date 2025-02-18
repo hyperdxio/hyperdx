@@ -17,6 +17,9 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import DBRowSidePanel from '@/components/DBRowSidePanel';
+import { RowSidePanelContext } from '@/components/DBRowSidePanel';
+
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
@@ -56,13 +59,7 @@ export default function SessionSubpanel({
   end: Date;
   initialTs?: number;
 }) {
-  const [selectedLog, setSelectedLog] = useState<
-    | {
-        id: string;
-        sortKey: string;
-      }
-    | undefined
-  >(undefined);
+  const [rowId, setRowId] = useState<string | undefined>(undefined);
 
   // Without portaling the nested drawer close overlay will not render properly
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -80,26 +77,23 @@ export default function SessionSubpanel({
     };
   }, []);
 
-  const portaledPanel = null;
-  // TODO: restore this
-  // containerRef.current != null
-  //   ? ReactDOM.createPortal(
-  //       <LogSidePanel
-  //         key={selectedLog?.id}
-  //         logId={selectedLog?.id}
-  //         sortKey={selectedLog?.sortKey}
-  //         onClose={() => {
-  //           setDrawerOpen(false);
-  //           setSelectedLog(undefined);
-  //         }}
-  //         onPropertyAddClick={onPropertyAddClick}
-  //         generateSearchUrl={generateSearchUrl}
-  //         generateChartUrl={generateChartUrl}
-  //         isNestedPanel
-  //       />,
-  //       containerRef.current,
-  //     )
-  //   : null;
+  const portaledPanel =
+    containerRef.current != null
+      ? ReactDOM.createPortal(
+          traceSource && (
+            <DBRowSidePanel
+              source={traceSource}
+              isNestedPanel
+              rowId={rowId}
+              onClose={() => {
+                setDrawerOpen(false);
+                setRowId(undefined);
+              }}
+            />
+          ),
+          containerRef.current,
+        )
+      : null;
 
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
@@ -350,6 +344,17 @@ export default function SessionSubpanel({
   );
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
 
+  const aliasMap = useMemo(() => {
+    // valueExpression: alias
+    return commonSelect.reduce(
+      (acc, { valueExpression, alias }) => {
+        acc[alias] = valueExpression;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+  }, [commonSelect]);
+
   const sessionEventListConfig = useMemo<ChartConfigWithOptDateRange>(
     () => ({
       select: commonSelect,
@@ -414,7 +419,7 @@ export default function SessionSubpanel({
 
   return (
     <div className={styles.wrapper}>
-      {selectedLog != null && portaledPanel}
+      {rowId != null && portaledPanel}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form
@@ -474,13 +479,14 @@ export default function SessionSubpanel({
 
         <SessionEventList
           eventsFollowPlayerPosition={eventsFollowPlayerPosition}
+          aliasMap={aliasMap}
           queriedConfig={sessionEventListConfig}
           onClick={useCallback(
-            (id: any, sortKey: any) => {
+            (id: string) => {
               setDrawerOpen(true);
-              setSelectedLog({ id, sortKey });
+              setRowId(id);
             },
-            [setDrawerOpen, setSelectedLog],
+            [setDrawerOpen, setRowId],
           )}
           focus={focus}
           onTimeClick={useCallback(
