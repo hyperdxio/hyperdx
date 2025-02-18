@@ -262,21 +262,16 @@ export const handleSendGenericWebhook = async (
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
     ...(webhook.headers?.toJSON() ?? {}),
   };
-
-  // BODY
-
-  let body = '';
-  if (webhook.body) {
-    const handlebars = Handlebars.create();
-    body = handlebars.compile(webhook.body, {
-      noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      link: escapeJsonString(message.hdxLink),
-      title: escapeJsonString(message.title),
-    });
-  }
-
+  // BODY, for v2, currently don't support custom template, use {{title}} | {{body}} | {{link}} as default template
+  let body = '{{title}} | {{body}} | {{link}}';
+  const handlebars = Handlebars.create();
+  body = handlebars.compile(body, {
+    noEscape: true,
+  })({
+    body: escapeJsonString(message.body),
+    link: escapeJsonString(message.hdxLink),
+    title: escapeJsonString(message.title),
+  });
   try {
     // TODO: retries/backoff etc -> switch to request-error-tolerant api client
     const response = await fetch(url, {

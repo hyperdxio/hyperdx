@@ -1081,9 +1081,8 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
-        body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1`,
-        }),
+        // eslint-disable-next-line
+        body: `Alert for \\\"Logs Count\\\" in \\\"My Dashboard\\\" - 3 exceeds 1 | \\n3 exceeds 1\\n | http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000`,
         headers: {
           'Content-Type': 'application/json',
         },
