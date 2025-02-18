@@ -84,8 +84,8 @@ export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
     alias: z.string().optional(),
-    metricType: z.string(),
-    metricName: z.string(),
+    metricType: z.string().optional(),
+    metricName: z.string().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());

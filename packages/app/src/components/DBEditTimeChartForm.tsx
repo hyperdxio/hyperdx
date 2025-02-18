@@ -79,7 +79,8 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
 const getMetricTableName = (source: TSource, metricType?: MetricsDataType) =>
   metricType == null
     ? source.from.tableName
-    : (source.metricTables?.[metricType.toLowerCase()] as any);
+    : // @ts-ignore
+      (source.metricTables?.[metricType.toLowerCase()] as any);
 
 const NumberFormatInputControlled = ({
   control,
@@ -345,6 +346,7 @@ export default function EditTimeChartForm({
   }, [displayType]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
+  const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
 
   // const queriedConfig: ChartConfigWithDateRange | undefined = useMemo(() => {
   //   if (queriedTableSource == null) {
@@ -878,31 +880,33 @@ export default function EditTimeChartForm({
       {showGeneratedSql && (
         <>
           <Divider mt="md" />
-          <Accordion defaultValue="sample">
-            <Accordion.Item value="sample">
-              <Accordion.Control icon={<i className="bi bi-card-list"></i>}>
-                <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Sample Matched Events
-                </Text>
-              </Accordion.Control>
-              <Accordion.Panel>
-                {sampleEventsConfig != null && (
-                  <div
-                    className="flex-grow-1 d-flex flex-column"
-                    style={{ height: 400 }}
-                  >
-                    <DBSqlRowTable
-                      config={sampleEventsConfig}
-                      highlightedLineId={undefined}
-                      enabled
-                      isLive={false}
-                      queryKeyPrefix={'search'}
-                    />
-                  </div>
-                )}
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
+          {showSampleEvents && (
+            <Accordion defaultValue="sample">
+              <Accordion.Item value="sample">
+                <Accordion.Control icon={<i className="bi bi-card-list"></i>}>
+                  <Text size="sm" style={{ alignSelf: 'center' }}>
+                    Sample Matched Events
+                  </Text>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  {sampleEventsConfig != null && (
+                    <div
+                      className="flex-grow-1 d-flex flex-column"
+                      style={{ height: 400 }}
+                    >
+                      <DBSqlRowTable
+                        config={sampleEventsConfig}
+                        highlightedLineId={undefined}
+                        enabled
+                        isLive={false}
+                        queryKeyPrefix={'search'}
+                      />
+                    </div>
+                  )}
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          )}
           <Accordion defaultValue="">
             <Accordion.Item value={'SQL'}>
               <Accordion.Control icon={<i className="bi bi-code-square"></i>}>
