@@ -5,6 +5,8 @@ import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledCallback, useThrottledValue } from '@mantine/hooks';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import useRowWhere from '@/hooks/useRowWhere';
+
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
@@ -13,6 +15,7 @@ import styles from '../styles/SessionSubpanelV2.module.scss';
 
 type SessionEvent = {
   id: string;
+  row: Record<string, string>; // original row object
   sortKey: string;
   isError: boolean;
   isSuccess: boolean;
@@ -85,6 +88,7 @@ const EventRow = React.forwardRef(
 
 export const SessionEventList = ({
   queriedConfig,
+  aliasMap,
   onClick,
   onTimeClick,
   focus,
@@ -93,11 +97,12 @@ export const SessionEventList = ({
   eventsFollowPlayerPosition,
 }: {
   queriedConfig: ChartConfigWithOptDateRange;
+  aliasMap: Record<string, string>;
   // highlightedResultId: string | undefined;
   focus: { ts: number; setBy: string } | undefined;
   minTs: number;
   showRelativeTime: boolean;
-  onClick: (logId: string, sortKey: string) => void;
+  onClick: (rowId: string) => void;
   onTimeClick: (ts: number) => void;
   eventsFollowPlayerPosition: boolean;
 }) => {
@@ -106,10 +111,11 @@ export const SessionEventList = ({
       placeholderData: (prev: any) => prev,
       queryKey: ['SessionEventList', queriedConfig],
     });
-
   const formatTime = useFormatTime();
 
   const events = data?.data ?? [];
+
+  const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
   const rows = React.useMemo(() => {
     return (
@@ -153,6 +159,7 @@ export const SessionEventList = ({
         return {
           id: event.id,
           sortKey: event.sort_key,
+          row: event,
           isError,
           isSuccess,
           eventSource: isNavigation
@@ -268,7 +275,7 @@ export const SessionEventList = ({
                   dataIndex={virtualItem.index}
                   isHighlighted={currentEventIndex === virtualItem.index}
                   ref={rowVirtualizer.measureElement}
-                  onClick={() => onClick(row.id, row.sortKey)}
+                  onClick={() => onClick(getRowWhere(row.row))}
                   onTimeClick={() => onTimeClick(row.timestamp.getTime())}
                 />
               </div>
