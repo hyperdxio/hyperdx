@@ -291,16 +291,14 @@ export function DBTraceWaterfallChartContainer({
   const rootNodes: Node[] = [];
   const nodesMap = new Map();
 
-  let logSpanCount = -1;
   for (const result of rows ?? []) {
     const { type, SpanId, ParentSpanId } = result;
     // ignore everything without spanId
     if (!SpanId) continue;
-    if (type === SourceKind.Log) logSpanCount += 1;
 
-    // log have dupelicate span id, tag it with -log-count
+    // log have duplicate span id, tag it with -log
     const nodeSpanId =
-      type === SourceKind.Log ? `${SpanId}-log-${logSpanCount}` : SpanId;
+      type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
     const nodeParentSpanId =
       type === SourceKind.Log ? SpanId : ParentSpanId || '';
 
@@ -310,11 +308,11 @@ export function DBTraceWaterfallChartContainer({
       // In case we were created already previously, inherit the children built so far
       ...nodesMap.get(nodeSpanId),
     };
-    if (!nodesMap.has(nodeSpanId)) {
+    if (type === SourceKind.Trace && !nodesMap.has(nodeSpanId)) {
       nodesMap.set(nodeSpanId, curNode);
     }
 
-    // root if: is trace event, and (has no parent or parent id is not valiad)
+    // root if: is trace event, and (has no parent or parent id is not valid)
     const isRootNode =
       type === SourceKind.Trace &&
       (!nodeParentSpanId || !validSpanID.has(nodeParentSpanId));

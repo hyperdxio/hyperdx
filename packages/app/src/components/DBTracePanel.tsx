@@ -74,8 +74,8 @@ export default function DBTracePanel({
 
   const { mutate: updateTableSource } = useUpdateSource();
 
-  const [spanRowWhere, setSpanRowWhere] = useQueryState(
-    'spanRowWhere',
+  const [eventRowWhere, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
     parseAsJson<{ id: string; type: string }>(),
   );
 
@@ -116,9 +116,9 @@ export default function DBTracePanel({
   // otherwise we'll show stale span details
   useEffect(() => {
     return () => {
-      setSpanRowWhere(null);
+      setEventRowWhere(null);
     };
-  }, [traceId, setSpanRowWhere]);
+  }, [traceId, setEventRowWhere]);
 
   return (
     <>
@@ -143,7 +143,7 @@ export default function DBTracePanel({
           <Text size="sm" c="gray.4">
             {parentSourceData?.kind === SourceKind.Log
               ? 'Trace Source'
-              : 'Correlate Log Source'}
+              : 'Correlated Log Source'}
           </Text>
           <SourceSelectControlled control={control} name="source" size="xs" />
           <ActionIcon
@@ -215,27 +215,27 @@ export default function DBTracePanel({
           traceId={traceId}
           dateRange={dateRange}
           focusDate={focusDate}
-          highlightedRowWhere={spanRowWhere?.id}
-          onClick={setSpanRowWhere}
+          highlightedRowWhere={eventRowWhere?.id}
+          onClick={setEventRowWhere}
         />
       )}
-      {traceSourceData != null && spanRowWhere != null && (
+      {traceSourceData != null && eventRowWhere != null && (
         <>
           <Divider my="md" />
           <Text size="sm" c="dark.2" my="sm">
-            Span Details
+            Event Details
           </Text>
           <RowDataPanel
             source={
-              spanRowWhere?.type === SourceKind.Log && logSourceData
+              eventRowWhere?.type === SourceKind.Log && logSourceData
                 ? logSourceData
                 : traceSourceData
             }
-            rowId={spanRowWhere?.id}
+            rowId={eventRowWhere?.id}
           />
         </>
       )}
-      {traceSourceData != null && !spanRowWhere && (
+      {traceSourceData != null && !eventRowWhere && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
             <Text size="sm" c="gray.4">
