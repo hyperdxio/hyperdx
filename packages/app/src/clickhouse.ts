@@ -89,7 +89,7 @@ export function useSessions(
       if (!traceSource || !sessionSource) {
         return [];
       }
-      // TODO: we
+
       const [
         sessionsQuery,
         sessionIdsWithRecordingsQuery,
@@ -146,6 +146,15 @@ export function useSessions(
             dateRange,
             where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId')`,
             whereLanguage: 'sql',
+            ...(whereLanguage &&
+              where && {
+                filters: [
+                  {
+                    type: whereLanguage,
+                    condition: where,
+                  },
+                ],
+              }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
             connection: traceSource.connection,
