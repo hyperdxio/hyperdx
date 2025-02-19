@@ -4,7 +4,6 @@ import {
   chSql,
   ClickhouseClient,
   ColumnMeta,
-  parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
