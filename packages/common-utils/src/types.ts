@@ -84,7 +84,7 @@ export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
     alias: z.string().optional(),
-    metricType: z.string().optional(),
+    metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
   }),
 );

@@ -9,7 +9,7 @@ import {
   AggregateFunctionWithCombinators,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
-  DerivedColumn,
+  MetricsDataType,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
@@ -292,18 +292,23 @@ const aggFnExpr = ({
 
 async function renderSelectList(
   selectList: SelectList,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: ChartConfigWithOptDateRateAndCte,
   metadata: Metadata,
 ) {
   if (typeof selectList === 'string') {
     return chSql`${{ UNSAFE_RAW_SQL: selectList }}`;
   }
 
-  const materializedFields = await metadata.getMaterializedColumnsLookupTable({
-    connectionId: chartConfig.connection,
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-  });
+  // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
+  // on a view/table that already perform the computation in select. This optimization is not currently
+  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
+  const materializedFields = chartConfig.with?.length
+    ? undefined
+    : await metadata.getMaterializedColumnsLookupTable({
+        connectionId: chartConfig.connection,
+        databaseName: chartConfig.from.databaseName,
+        tableName: chartConfig.from.tableName,
+      });
 
   return Promise.all(
     selectList.map(async select => {
@@ -314,6 +319,7 @@ async function renderSelectList(
         implicitColumnExpression: chartConfig.implicitColumnExpression,
         metadata,
         connectionId: chartConfig.connection,
+        with: chartConfig.with,
       });
 
       let expr: ChSql;
@@ -336,10 +342,11 @@ async function renderSelectList(
       }
 
       const rawSQL = `SELECT ${expr.sql} FROM \`t\``;
-      // strip 'SELECT * FROM `t` WHERE ' from the sql
-      expr.sql = fastifySQL({ materializedFields, rawSQL })
-        .replace(/^SELECT\s+/i, '') // Remove 'SELECT ' from the start
-        .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
+      if (materializedFields) {
+        expr.sql = fastifySQL({ materializedFields, rawSQL })
+          .replace(/^SELECT\s+/i, '') // Remove 'SELECT ' from the start
+          .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
+      }
 
       return chSql`${expr}${
         select.alias != null
@@ -398,6 +405,7 @@ async function timeFilterExpr({
   tableName,
   metadata,
   connectionId,
+  with: withClauses,
 }: {
   timestampValueExpression: string;
   dateRange: [Date, Date];
@@ -406,6 +414,7 @@ async function timeFilterExpr({
   connectionId: string;
   databaseName: string;
   tableName: string;
+  with?: { name: string; sql: ChSql }[];
 }) {
   const valueExpressions = timestampValueExpression.split(',');
   const startTime = dateRange[0].getTime();
@@ -414,18 +423,20 @@ async function timeFilterExpr({
   const whereExprs = await Promise.all(
     valueExpressions.map(async expr => {
       const col = expr.trim();
-      const columnMeta = await metadata.getColumn({
-        databaseName,
-        tableName,
-        column: col,
-        connectionId,
-      });
+      const columnMeta = withClauses?.length
+        ? null
+        : await metadata.getColumn({
+            databaseName,
+            tableName,
+            column: col,
+            connectionId,
+          });
 
       const unsafeTimestampValueExpression = {
         UNSAFE_RAW_SQL: col,
       };
 
-      if (columnMeta == null) {
+      if (columnMeta == null && !withClauses?.length) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
@@ -456,7 +467,7 @@ async function timeFilterExpr({
 }
 
 async function renderSelect(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: ChartConfigWithOptDateRateAndCte,
   metadata: Metadata,
 ): Promise<ChSql> {
   /**
@@ -490,9 +501,13 @@ function renderFrom({
 }: {
   from: ChartConfigWithDateRange['from'];
 }): ChSql {
-  return chSql`${{ Identifier: from.databaseName }}.${{
-    Identifier: from.tableName,
-  }}`;
+  return concatChSql(
+    '.',
+    chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
+    chSql`${{
+      Identifier: from.tableName,
+    }}`,
+  );
 }
 
 async function renderWhereExpression({
@@ -502,6 +517,7 @@ async function renderWhereExpression({
   from,
   implicitColumnExpression,
   connectionId,
+  with: withClauses,
 }: {
   condition: SearchCondition;
   language: SearchConditionLanguage;
@@ -509,6 +525,7 @@ async function renderWhereExpression({
   from: ChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
   connectionId: string;
+  with?: { name: string; sql: ChSql }[];
 }): Promise<ChSql> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -523,24 +540,32 @@ async function renderWhereExpression({
     _condition = await builder.build();
   }
 
-  const materializedFields = await metadata.getMaterializedColumnsLookupTable({
-    connectionId,
-    databaseName: from.databaseName,
-    tableName: from.tableName,
-  });
+  // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
+  // on a view/table that already perform the computation in select. This optimization is not currently
+  // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
+
+  const materializedFields = withClauses?.length
+    ? undefined
+    : await metadata.getMaterializedColumnsLookupTable({
+        connectionId,
+        databaseName: from.databaseName,
+        tableName: from.tableName,
+      });
 
   const _sqlPrefix = 'SELECT * FROM `t` WHERE ';
   const rawSQL = `${_sqlPrefix}${_condition}`;
   // strip 'SELECT * FROM `t` WHERE ' from the sql
-  _condition = fastifySQL({ materializedFields, rawSQL }).replace(
-    _sqlPrefix,
-    '',
-  );
+  if (materializedFields) {
+    _condition = fastifySQL({ materializedFields, rawSQL }).replace(
+      _sqlPrefix,
+      '',
+    );
+  }
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
 async function renderWhere(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: ChartConfigWithOptDateRateAndCte,
   metadata: Metadata,
 ): Promise<ChSql> {
   let whereSearchCondition: ChSql | [] = [];
@@ -553,6 +578,7 @@ async function renderWhere(
         implicitColumnExpression: chartConfig.implicitColumnExpression,
         metadata,
         connectionId: chartConfig.connection,
+        with: chartConfig.with,
       }),
       '(',
       ')',
@@ -577,6 +603,7 @@ async function renderWhere(
               implicitColumnExpression: chartConfig.implicitColumnExpression,
               metadata,
               connectionId: chartConfig.connection,
+              with: chartConfig.with,
             });
           }
           return null;
@@ -602,6 +629,7 @@ async function renderWhere(
             implicitColumnExpression: chartConfig.implicitColumnExpression,
             metadata,
             connectionId: chartConfig.connection,
+            with: chartConfig.with,
           }),
           '(',
           ')',
@@ -624,6 +652,7 @@ async function renderWhere(
           connectionId: chartConfig.connection,
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
+          with: chartConfig.with,
         })
       : [],
     whereSearchCondition,
@@ -698,16 +727,34 @@ function renderLimit(
   return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
 }
 
+// CTE (Common Table Expressions) isn't exported at this time. It's only used internally
+// for metric SQL generation.
+type ChartConfigWithOptDateRateAndCte = ChartConfigWithOptDateRange & {
+  with?: { name: string; sql: ChSql }[];
+};
+
+function renderWith(
+  chartConfig: ChartConfigWithOptDateRateAndCte,
+  metadata: Metadata,
+): ChSql | undefined {
+  const { with: withClauses } = chartConfig;
+  if (withClauses) {
+    return concatChSql(
+      '',
+      withClauses.map(clause => chSql`WITH ${clause.name} AS (${clause.sql})`),
+    );
+  }
+
+  return undefined;
+}
+
 function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
-  metadata: Metadata,
-): ChartConfigWithOptDateRange {
+): ChartConfigWithOptDateRateAndCte {
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
   }
-
-  console.log('chartConfig', chartConfig);
 
   // assumes all the selects are from a single metric type, for now
   const { select, from, ...restChartConfig } = chartConfig;
@@ -715,34 +762,59 @@ function translateMetricChartConfig(
     throw new Error('multi select or string select on metrics not supported');
   }
 
-  let tableName: string | undefined;
-  const newSelect = select.map(s => {
-    const { metricType, metricName, ...rest } = s;
-    if (metricType === 'gauge' || metricType === 'sum') {
-      if (!tableName) {
-        tableName =
-          metricType === 'gauge' ? metricTables.gauge : metricTables.sum;
-      }
-      return {
-        ...rest,
-        valueExpression: 'Value',
-        aggCondition: `MetricName = '${metricName}'`,
-        aggConditionLanguage: 'sql',
-      };
-    }
-    return s;
-  }) as [DerivedColumn];
-
-  if (!tableName) {
-    throw new Error('no table name found');
+  const { metricType, metricName, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+  if (metricType === MetricsDataType.Gauge && metricName) {
+    return {
+      ...restChartConfig,
+      select: [
+        {
+          ..._select,
+          valueExpression: 'Value',
+          aggCondition: `MetricName = '${metricName}'`,
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      from: {
+        ...from,
+        tableName: metricTables[MetricsDataType.Gauge],
+      },
+    };
+  } else if (metricType === MetricsDataType.Sum && metricName) {
+    return {
+      ...restChartConfig,
+      with: [
+        {
+          name: 'RawSum',
+          sql: chSql`SELECT MetricName,Value,TimeUnix,Attributes,
+               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
+               any(Attributes) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributes,
+               IF(AggregationTemporality = 1,
+                  Value,IF(Value - PrevValue < 0 AND Attributes = PrevAttributes,Value,
+                      IF(Attributes != PrevAttributes, 0, Value - PrevValue))) as Rate
+            FROM (
+                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes, Value, MetricName, TimeUnix, AggregationTemporality
+                FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
+                WHERE MetricName = '${metricName}'
+                ORDER BY Attributes, TimeUnix ASC
+            ) `,
+        },
+      ],
+      select: [
+        {
+          ..._select,
+          valueExpression: 'Rate',
+          aggCondition: `MetricName = '${metricName}'`,
+          aggConditionLanguage: 'sql',
+        },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'RawSum',
+      },
+    };
   }
 
-  return {
-    ...restChartConfig,
-    select: newSelect,
-    from: { ...from, tableName },
-    // groupBy: 'MetricName, ResourceAttributes', // replace with metric specific fields
-  };
+  throw new Error(`no query support for metric type=${metricType}`);
 }
 
 export async function renderChartConfig(
@@ -753,9 +825,10 @@ export async function renderChartConfig(
   // but goes through the same generation process
   const chartConfig =
     rawChartConfig.metricTables != null
-      ? translateMetricChartConfig(rawChartConfig, metadata)
+      ? translateMetricChartConfig(rawChartConfig)
       : rawChartConfig;
 
+  const withClauses = renderWith(chartConfig, metadata);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
@@ -763,7 +836,9 @@ export async function renderChartConfig(
   const orderBy = renderOrderBy(chartConfig);
   const limit = renderLimit(chartConfig);
 
-  return chSql`SELECT ${select} FROM ${from} ${where?.sql ? chSql`WHERE ${where}` : ''} ${
+  return chSql`${
+    withClauses?.sql ? chSql`${withClauses}` : ''
+  }SELECT ${select} FROM ${from} ${where?.sql ? chSql`WHERE ${where}` : ''} ${
     groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''
   } ${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''} ${
     limit?.sql ? chSql`LIMIT ${limit}` : ''

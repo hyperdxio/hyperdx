@@ -1,6 +1,10 @@
 import { parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/metadata';
-import { ChartConfigWithOptDateRange, DisplayType } from '@/types';
+import {
+  ChartConfigWithOptDateRange,
+  DisplayType,
+  MetricsDataType,
+} from '@/types';
 
 import { renderChartConfig } from '../renderChartConfig';
 
@@ -30,119 +34,90 @@ describe('renderChartConfig', () => {
       },
       from: {
         databaseName: 'default',
-        tableName: 'metrics', // trigger for metric logic
+        tableName: '',
       },
       select: [
         {
-          aggFn: 'avg',
-          alias: 'Utilization',
-          valueExpression: '',
-          metricType: 'gauge', // new field; narrow down table search
-          metricName: 'nodejs.event_loop.utilization', // new field; the what
+          aggFn: 'quantile',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          level: 0.95,
+          metricName: 'nodejs.event_loop.utilization',
+          metricType: MetricsDataType.Gauge,
         },
-        // {
-        //   aggFn: 'count',
-        //   alias: 'CPU Utilization',
-        //   valueExpression: '',
-        //   metricType: 'gauge', // new field; narrow down table search
-        //   metricName: 'cpu_utilization', // new field; the what
-        // },
       ],
       where: '',
-      whereLanguage: 'sql',
+      whereLanguage: 'lucene',
       timestampValueExpression: 'TimeUnix',
-      dateRange: [new Date('2024-02-12'), new Date('2024-02-14')],
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
       granularity: '1 minute',
+      limit: { limit: 10 },
     };
 
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
-    console.log(actual);
-
-    // expect(actual).toBe(
-    //   "SELECT countIf(MetricName = 'cpu_utilization') AS `CPU Utilization`,toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` FROM default.otel_metrics_gauge WHERE (TimeUnix >= fromUnixTimestamp64Milli(1704067200000) AND TimeUnix <= fromUnixTimestamp64Milli(1704153600000)) AND (MetricName = 'cpu_utilization') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` ",
-    // );
+    expect(actual).toBe(
+      "SELECT quantileIf(0.95)(toFloat64OrNull(toString(Value)), MetricName = 'nodejs.event_loop.utilization' AND " +
+        'toFloat64OrNull(toString(Value)) IS NOT NULL),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`' +
+        ' FROM default.otel_metrics_gauge WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND' +
+        " (MetricName = 'nodejs.event_loop.utilization') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket` " +
+        'ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket` LIMIT 10',
+    );
   });
 
-  //   it('should generate sql for multiple gauge metrics', async () => {
-  //     const config: ChartConfigWithOptDateRange = {
-  //       displayType: DisplayType.Line,
-  //       connection: 'test-connection',
-  //       // metricTables is added from the Source object via spread operator
-  //       metricTables: {
-  //         gauge: 'otel_metrics_gauge',
-  //         histogram: 'otel_metrics_histogram',
-  //         sum: 'otel_metrics_sum',
-  //       },
-  //       from: {
-  //         databaseName: 'default',
-  //         tableName: 'metrics', // trigger for metric logic
-  //       },
-  //       select: [
-  //         {
-  //           aggFn: 'count',
-  //           alias: 'CPU Utilization',
-  //           valueExpression: '',
-  //           metricType: 'gauge', // new field; narrow down table search
-  //           metricName: 'cpu_utilization', // new field; the what
-  //         },
-  //         {
-  //           aggFn: 'quantile',
-  //           level: 0.99,
-  //           alias: '99th Percentile Heap Usage',
-  //           valueExpression: '',
-  //           metricType: 'gauge',
-  //           metricName: 'heap_usage',
-  //         },
-  //       ],
-  //       where: '',
-  //       whereLanguage: 'sql',
-  //       timestampValueExpression: 'TimeUnix',
-  //       dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
-  //       granularity: '1 hour',
-  //     };
+  it('should generate sql for a single sum metric', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      // metricTables is added from the Source object via spread operator
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'avg',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minutes',
+      limit: { limit: 10 },
+    };
 
-  //     const generatedSql = await renderChartConfig(config, mockMetadata);
-  //     const actual = parameterizedQueryToSql(generatedSql);
-  //     expect(actual).toBe(
-  //       "SELECT countIf(MetricName = 'cpu_utilization') AS `CPU Utilization`,quantileIf(0.99)(toFloat64OrNull(toString(Value)), MetricName = 'heap_usage' AND toFloat64OrNull(toString(Value)) IS NOT NULL) AS `99th Percentile Heap Usage`,toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` FROM default.otel_metrics_gauge WHERE (TimeUnix >= fromUnixTimestamp64Milli(1704067200000) AND TimeUnix <= fromUnixTimestamp64Milli(1704153600000)) AND (MetricName = 'cpu_utilization' OR MetricName = 'heap_usage') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 hour) AS `__hdx_time_bucket` ",
-  //     );
-  //   });
-
-  //   it('should generate sql for a single sum metric', async () => {
-  //     const config: ChartConfigWithOptDateRange = {
-  //       displayType: DisplayType.Line,
-  //       connection: 'test-connection',
-  //       // metricTables is added from the Source object via spread operator
-  //       metricTables: {
-  //         gauge: 'otel_metrics_gauge',
-  //         histogram: 'otel_metrics_histogram',
-  //         sum: 'otel_metrics_sum',
-  //       },
-  //       from: {
-  //         databaseName: 'default',
-  //         tableName: 'metrics', // trigger for metric logic
-  //       },
-  //       select: [
-  //         {
-  //           aggFn: 'count',
-  //           alias: 'Login Failures',
-  //           valueExpression: '',
-  //           metricType: 'sum', // new field; narrow down table search
-  //           metricName: 'login_failures', // new field; the what
-  //         },
-  //       ],
-  //       where: '',
-  //       whereLanguage: 'sql',
-  //       timestampValueExpression: 'TimeUnix',
-  //       dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
-  //       granularity: '5 minutes',
-  //     };
-
-  //     const generatedSql = await renderChartConfig(config, mockMetadata);
-  //     const actual = parameterizedQueryToSql(generatedSql);
-  //     expect(actual).toBe(
-  //       "SELECT countIf(MetricName = 'login_failures') AS `Login Failures`,toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` FROM default.otel_metrics_sum WHERE (TimeUnix >= fromUnixTimestamp64Milli(1704067200000) AND TimeUnix <= fromUnixTimestamp64Milli(1704153600000)) AND (MetricName = 'login_failures') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` ",
-  //     );
-  //   });
+    const generatedSql = await renderChartConfig(config, mockMetadata);
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toBe(
+      'WITH RawSum AS (SELECT MetricName,Value,TimeUnix,Attributes,\n' +
+        '               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,\n' +
+        '               any(Attributes) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributes,\n' +
+        '               IF(AggregationTemporality = 1,\n' +
+        '                  Value,IF(Value - PrevValue < 0 AND Attributes = PrevAttributes,Value,\n' +
+        '                      IF(Attributes != PrevAttributes, 0, Value - PrevValue))) as Rate\n' +
+        '            FROM (\n' +
+        '                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes, Value, MetricName, TimeUnix, AggregationTemporality\n' +
+        '                FROM default.otel_metrics_sum\n' +
+        "                WHERE MetricName = 'db.client.connections.usage'\n" +
+        '                ORDER BY Attributes, TimeUnix ASC\n' +
+        '            ) )SELECT avgIf(\n' +
+        "      toFloat64OrNull(toString(Rate)), MetricName = 'db.client.connections.usage' AND toFloat64OrNull(toString(Rate)) IS NOT NULL\n" +
+        '    ),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` ' +
+        'FROM RawSum WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) ' +
+        "AND (MetricName = 'db.client.connections.usage') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` " +
+        'ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` LIMIT 10',
+    );
+  });
 });
