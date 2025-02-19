@@ -412,9 +412,9 @@ export default function SessionsPage() {
                 control={control}
                 sqlInput={
                   <SQLInlineEditorControlled
-                    connectionId={sessionSource?.connection}
-                    database={sessionSource?.from?.databaseName}
-                    table={sessionSource?.from?.tableName}
+                    connectionId={traceTrace?.connection}
+                    database={traceTrace?.from?.databaseName}
+                    table={traceTrace?.from?.tableName}
                     onSubmit={onSubmit}
                     control={control}
                     name="where"
@@ -431,9 +431,9 @@ export default function SessionsPage() {
                 }
                 luceneInput={
                   <SearchInputV2
-                    connectionId={sessionSource?.connection}
-                    database={sessionSource?.from?.databaseName}
-                    table={sessionSource?.from?.tableName}
+                    connectionId={traceTrace?.connection}
+                    database={traceTrace?.from?.databaseName}
+                    table={traceTrace?.from?.tableName}
                     control={control}
                     name="where"
                     onLanguageChange={lang =>
