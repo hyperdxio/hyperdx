@@ -50,6 +50,7 @@ import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 import { optionsToSelectData } from '@/utils';
+import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import {
   ALERT_CHANNEL_OPTIONS,
   DEFAULT_TILE_ALERT,
@@ -130,7 +131,6 @@ function ChartSeriesEditor({
   );
 
   const metricType = watch(`${namePrefix}metricType`);
-
   const selectedSourceId = watch('source');
   const { data: tableSource } = useSource({ id: selectedSourceId });
 
@@ -140,6 +140,13 @@ function ChartSeriesEditor({
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
 
+  const { data: attributeKeys } = useFetchMetricResourceAttrs(
+    databaseName ?? '',
+    tableName ?? '',
+    metricType,
+    watch(`${namePrefix}metricName`),
+    tableSource ?? ({} as TSource),
+  );
   return (
     <>
       <Divider
@@ -181,7 +188,6 @@ function ChartSeriesEditor({
             metricType={metricType}
             setMetricName={value => {
               setValue(`${namePrefix}metricName`, value);
-              // HACK: harcoded valueExpression
               setValue(`${namePrefix}valueExpression`, 'Value');
             }}
             setMetricType={value => setValue(`${namePrefix}metricType`, value)}
@@ -198,6 +204,7 @@ function ChartSeriesEditor({
               connectionId={connectionId}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              columnSuggestions={attributeKeys}
             />
           </div>
         )}
@@ -213,6 +220,7 @@ function ChartSeriesEditor({
             onLanguageChange={lang =>
               setValue(`${namePrefix}aggConditionLanguage`, lang)
             }
+            columnSuggestions={attributeKeys}
             language="sql"
             onSubmit={onSubmit}
           />
