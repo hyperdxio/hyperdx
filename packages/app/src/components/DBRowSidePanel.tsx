@@ -13,7 +13,7 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
@@ -178,9 +178,9 @@ export default function DBRowSidePanel({
   const traceId = normalizedRow?.['__hdx_trace_id'];
 
   const childSourceId =
-    source.kind === SourceKind.Log
+    source.kind === 'log'
       ? source.traceSourceId
-      : source.kind === SourceKind.Trace
+      : source.kind === 'trace'
         ? source.logSourceId
         : undefined;
 
