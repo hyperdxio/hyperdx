@@ -589,8 +589,8 @@ export const parseJSON = <T = any>(json: string) => {
 export const optionsToSelectData = (options: Record<string, string>) =>
   Object.entries(options).map(([value, label]) => ({ value, label }));
 
- // Helper function to format attribute clause
- export function formatAttributeClause(
+// Helper function to format attribute clause
+export function formatAttributeClause(
   column: string,
   field: string,
   value: string,

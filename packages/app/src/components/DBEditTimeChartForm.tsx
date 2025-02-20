@@ -46,11 +46,11 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_DEV } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
+import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 import { optionsToSelectData } from '@/utils';
-import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import {
   ALERT_CHANNEL_OPTIONS,
   DEFAULT_TILE_ALERT,
@@ -145,7 +145,7 @@ function ChartSeriesEditor({
     tableName ?? '',
     metricType,
     watch(`${namePrefix}metricName`),
-    tableSource ?? ({} as TSource),
+    tableSource,
     aggConditionLanguage === 'sql',
   );
   return (
@@ -205,7 +205,7 @@ function ChartSeriesEditor({
               connectionId={connectionId}
               placeholder="SQL Column"
               onSubmit={onSubmit}
-              columnSuggestions={attributeKeys}
+              additionalSuggestions={attributeKeys}
             />
           </div>
         )}
@@ -221,7 +221,7 @@ function ChartSeriesEditor({
             onLanguageChange={lang =>
               setValue(`${namePrefix}aggConditionLanguage`, lang)
             }
-            columnSuggestions={attributeKeys}
+            additionalSuggestions={attributeKeys}
             language="sql"
             onSubmit={onSubmit}
           />
@@ -238,7 +238,7 @@ function ChartSeriesEditor({
             language="lucene"
             placeholder="Search your events w/ Lucene ex. column:foo"
             onSubmit={onSubmit}
-            columnSuggestions={attributeKeys}
+            additionalSuggestions={attributeKeys}
           />
         )}
         {showGroupBy && (

@@ -103,7 +103,7 @@ type SQLInlineEditorProps = {
   disableKeywordAutocomplete?: boolean;
   connectionId: string | undefined;
   enableHotkey?: boolean;
-  columnSuggestions?: string[];
+  additionalSuggestions?: string[];
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -133,7 +133,7 @@ export default function SQLInlineEditor({
   disableKeywordAutocomplete,
   connectionId,
   enableHotkey,
-  columnSuggestions = [],
+  additionalSuggestions = [],
 }: SQLInlineEditorProps) {
   const { data: fields } = useAllFields(
     {
@@ -165,9 +165,8 @@ export default function SQLInlineEditor({
           }
           return column.path[0];
         }) ?? []),
-        ...columnSuggestions,
+        ...additionalSuggestions,
       ];
-
 
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
@@ -182,7 +181,7 @@ export default function SQLInlineEditor({
         ),
       });
     },
-    [filteredFields, table, columnSuggestions],
+    [filteredFields, table, additionalSuggestions],
   );
 
   useEffect(() => {
@@ -304,7 +303,7 @@ export function SQLInlineEditorControlled({
   placeholder,
   filterField,
   connectionId,
-  columnSuggestions,
+  additionalSuggestions,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
   const { field } = useController(props);
@@ -318,7 +317,7 @@ export function SQLInlineEditorControlled({
       table={table}
       value={field.value || props.defaultValue}
       connectionId={connectionId}
-      columnSuggestions={columnSuggestions}
+      additionalSuggestions={additionalSuggestions}
       {...props}
     />
   );

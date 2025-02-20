@@ -17,7 +17,7 @@ export default function SearchInputV2({
   connectionId,
   enableHotkey,
   onSubmit,
-  columnSuggestions,
+  additionalSuggestions,
   ...props
 }: {
   database?: string;
@@ -30,7 +30,7 @@ export default function SearchInputV2({
   language?: 'sql' | 'lucene';
   enableHotkey?: boolean;
   onSubmit?: () => void;
-  columnSuggestions?: string[];
+  additionalSuggestions?: string[];
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -56,18 +56,14 @@ export default function SearchInputV2({
       label: `${c.path.join('.')} (${c.jsType})`,
     }));
 
-    const suggestionOptions = columnSuggestions?.map(column => ({
-      value: column,
-      label: column,
-    })) ?? [];
+    const suggestionOptions =
+      additionalSuggestions?.map(column => ({
+        value: column,
+        label: column,
+      })) ?? [];
 
-    const mergedOptions = [...baseOptions, ...suggestionOptions];
-    const uniqueOptions = Array.from(
-      new Map(mergedOptions.map(item => [item.value, item])).values()
-    );
-
-    return uniqueOptions;
-  }, [fields, columnSuggestions]);
+    return [...baseOptions, ...suggestionOptions];
+  }, [fields, additionalSuggestions]);
 
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 

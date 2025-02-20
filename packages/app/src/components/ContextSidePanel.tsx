@@ -13,6 +13,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import SearchInputV2 from '@/SearchInputV2';
 import { formatAttributeClause } from '@/utils';
+
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
