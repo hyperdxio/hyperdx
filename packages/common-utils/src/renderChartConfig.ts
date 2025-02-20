@@ -770,14 +770,14 @@ function translateMetricChartConfig(
         {
           ..._select,
           valueExpression: 'Value',
-          aggCondition: `MetricName = '${metricName}'`,
-          aggConditionLanguage: 'sql',
         },
       ],
       from: {
         ...from,
         tableName: metricTables[MetricsDataType.Gauge],
       },
+      where: `MetricName = '${metricName}'`,
+      whereLanguage: 'sql',
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
     return {
@@ -803,14 +803,14 @@ function translateMetricChartConfig(
         {
           ..._select,
           valueExpression: 'Rate',
-          aggCondition: `MetricName = '${metricName}'`,
-          aggConditionLanguage: 'sql',
         },
       ],
       from: {
         databaseName: '',
         tableName: 'RawSum',
       },
+      where: `MetricName = '${metricName}'`,
+      whereLanguage: 'sql',
     };
   }
 

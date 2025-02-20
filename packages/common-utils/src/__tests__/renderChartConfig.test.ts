@@ -58,8 +58,7 @@ describe('renderChartConfig', () => {
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toBe(
-      "SELECT quantileIf(0.95)(toFloat64OrNull(toString(Value)), MetricName = 'nodejs.event_loop.utilization' AND " +
-        'toFloat64OrNull(toString(Value)) IS NOT NULL),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`' +
+      'SELECT quantile(0.95)(toFloat64OrNull(toString(Value))),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`' +
         ' FROM default.otel_metrics_gauge WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND' +
         " (MetricName = 'nodejs.event_loop.utilization') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket` " +
         'ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket` LIMIT 10',
@@ -112,8 +111,8 @@ describe('renderChartConfig', () => {
         '                FROM default.otel_metrics_sum\n' +
         "                WHERE MetricName = 'db.client.connections.usage'\n" +
         '                ORDER BY Attributes, TimeUnix ASC\n' +
-        '            ) )SELECT avgIf(\n' +
-        "      toFloat64OrNull(toString(Rate)), MetricName = 'db.client.connections.usage' AND toFloat64OrNull(toString(Rate)) IS NOT NULL\n" +
+        '            ) )SELECT avg(\n' +
+        '      toFloat64OrNull(toString(Rate))\n' +
         '    ),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` ' +
         'FROM RawSum WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) ' +
         "AND (MetricName = 'db.client.connections.usage') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` " +
