@@ -24,21 +24,21 @@ import { SourceSelectControlled } from './SourceSelect';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 export default function DBTracePanel({
-  sourceId,
+  childSourceId,
   traceId,
   dateRange,
   focusDate,
   parentSourceId,
 }: {
   parentSourceId?: string;
-  sourceId?: string;
+  childSourceId?: string;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
 }) {
   const { control, watch, setValue } = useForm({
     defaultValues: {
-      source: sourceId,
+      source: childSourceId,
     },
   });
 

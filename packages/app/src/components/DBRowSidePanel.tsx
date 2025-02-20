@@ -13,7 +13,7 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
@@ -177,8 +177,12 @@ export default function DBRowSidePanel({
   const focusDate = timestampDate;
   const traceId = normalizedRow?.['__hdx_trace_id'];
 
-  const traceSourceId =
-    source.kind === 'log' ? source.traceSourceId : source.id;
+  const childSourceId =
+    source.kind === SourceKind.Log
+      ? source.traceSourceId
+      : source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined;
 
   return (
     <Drawer
@@ -267,7 +271,7 @@ export default function DBRowSidePanel({
                   <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
                     <DBTracePanel
                       parentSourceId={source.id}
-                      sourceId={traceSourceId}
+                      childSourceId={childSourceId}
                       traceId={traceId}
                       dateRange={rng}
                       focusDate={focusDate}
