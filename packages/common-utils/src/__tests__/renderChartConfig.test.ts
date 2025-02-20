@@ -102,12 +102,13 @@ describe('renderChartConfig', () => {
     expect(actual).toBe(
       'WITH RawSum AS (SELECT MetricName,Value,TimeUnix,Attributes,\n' +
         '               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,\n' +
-        '               any(Attributes) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributes,\n' +
+        '               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,\n' +
         '               IF(AggregationTemporality = 1,\n' +
-        '                  Value,IF(Value - PrevValue < 0 AND Attributes = PrevAttributes,Value,\n' +
-        '                      IF(Attributes != PrevAttributes, 0, Value - PrevValue))) as Rate\n' +
+        '                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,\n' +
+        '                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate\n' +
         '            FROM (\n' +
-        '                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes, Value, MetricName, TimeUnix, AggregationTemporality\n' +
+        '                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes,\n' +
+        '                       cityHash64(Attributes) AS AttributesHash, Value, MetricName, TimeUnix, AggregationTemporality\n' +
         '                FROM default.otel_metrics_sum\n' +
         "                WHERE MetricName = 'db.client.connections.usage'\n" +
         '                ORDER BY Attributes, TimeUnix ASC\n' +

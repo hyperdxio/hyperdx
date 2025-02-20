@@ -787,12 +787,13 @@ function translateMetricChartConfig(
           name: 'RawSum',
           sql: chSql`SELECT MetricName,Value,TimeUnix,Attributes,
                any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
-               any(Attributes) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributes,
+               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
                IF(AggregationTemporality = 1,
-                  Value,IF(Value - PrevValue < 0 AND Attributes = PrevAttributes,Value,
-                      IF(Attributes != PrevAttributes, 0, Value - PrevValue))) as Rate
+                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
+                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate
             FROM (
-                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes, Value, MetricName, TimeUnix, AggregationTemporality
+                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes,
+                       cityHash64(Attributes) AS AttributesHash, Value, MetricName, TimeUnix, AggregationTemporality
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
                 WHERE MetricName = '${metricName}'
                 ORDER BY Attributes, TimeUnix ASC
