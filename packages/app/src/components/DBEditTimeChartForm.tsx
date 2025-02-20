@@ -146,6 +146,7 @@ function ChartSeriesEditor({
     metricType,
     watch(`${namePrefix}metricName`),
     tableSource ?? ({} as TSource),
+    aggConditionLanguage === 'sql',
   );
   return (
     <>
@@ -237,6 +238,7 @@ function ChartSeriesEditor({
             language="lucene"
             placeholder="Search your events w/ Lucene ex. column:foo"
             onSubmit={onSubmit}
+            columnSuggestions={attributeKeys}
           />
         )}
         {showGroupBy && (
