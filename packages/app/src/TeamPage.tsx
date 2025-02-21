@@ -765,10 +765,10 @@ function CreateWebhookForm({
           {...form.register('description')}
         />
         {form.getValues('service') === 'generic' && [
-          <label className=".mantine-TextInput-label" id="1">
+          <label className=".mantine-TextInput-label" key="1">
             Webhook Body (optional)
           </label>,
-          <div className="mb-2" id="2">
+          <div className="mb-2" key="2">
             <CodeMirror
               height="100px"
               extensions={[
@@ -784,7 +784,7 @@ function CreateWebhookForm({
           </div>,
           <Alert
             icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-            id="3"
+            key="3"
             className="mb-4"
             color="gray"
           >
