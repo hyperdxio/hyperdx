@@ -1,5 +1,5 @@
 import { ResponseJSON } from '@clickhouse/client';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
+import { chSql, tableExpr } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
@@ -7,14 +7,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getClickhouseClient } from '@/clickhouse';
 import { formatAttributeClause } from '@/utils';
 
-const METRIC_FETCH_LIMIT = 25;
+const METRIC_FETCH_LIMIT = 10000;
 
 const extractAttributeKeys = (
-  attributesArr: {
-    ScopeAttributes?: object;
-    ResourceAttributes?: object;
-    Attributes?: object;
-  }[],
+  attributesArr: MetricAttributesResponse[],
   isSql: boolean,
 ) => {
   try {
@@ -67,6 +63,12 @@ interface MetricResourceAttrsProps {
   isSql: boolean;
 }
 
+interface MetricAttributesResponse {
+    ScopeAttributes?: Record<string, string>;
+    ResourceAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
+}
+
 export const useFetchMetricResourceAttrs = ({
   databaseName,
   tableName,
@@ -81,23 +83,23 @@ export const useFetchMetricResourceAttrs = ({
       tableSource &&
       tableSource?.kind === SourceKind.Metric,
   );
+
   return useQuery({
-    queryKey: ['metric-attributes', databaseName, tableName, metricType],
+    queryKey: ['metric-attributes', databaseName, tableName, metricType, metricName, isSql],
     queryFn: async ({ signal }) => {
       if (!shouldFetch) {
         return [];
       }
 
       const clickhouseClient = getClickhouseClient();
-
       const sql = chSql`
-        SELECT 
+        SELECT DISTINCT
           ScopeAttributes,
           ResourceAttributes,
           Attributes
-        FROM ${tableName}
-        WHERE MetricName='${metricName}'
-        LIMIT ${METRIC_FETCH_LIMIT.toString()}
+        FROM ${tableExpr({ database: databaseName, table: tableName })}
+        WHERE MetricName=${{ String: metricName }}
+        LIMIT ${{ Int32: METRIC_FETCH_LIMIT}}
       `;
 
       const result = (await clickhouseClient
@@ -108,7 +110,8 @@ export const useFetchMetricResourceAttrs = ({
           abort_signal: signal,
           connectionId: tableSource!.connection,
         })
-        .then(res => res.json())) as ResponseJSON<{ Attributes: object }>;
+        .then(res => res.json())) as ResponseJSON<MetricAttributesResponse>;
+
       if (result?.data) {
         return extractAttributeKeys(result.data, isSql);
       }

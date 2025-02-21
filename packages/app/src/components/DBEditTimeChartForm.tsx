@@ -134,20 +134,20 @@ function ChartSeriesEditor({
   const selectedSourceId = watch('source');
   const { data: tableSource } = useSource({ id: selectedSourceId });
 
-  // HACK: switch table name based on metric type
   const tableName =
     tableSource?.kind === SourceKind.Metric
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
 
-  const { data: attributeKeys } = useFetchMetricResourceAttrs(
-    databaseName ?? '',
-    tableName ?? '',
+  const { data: attributeKeys } = useFetchMetricResourceAttrs({
+    databaseName,
+    tableName,
     metricType,
-    watch(`${namePrefix}metricName`),
+    metricName: watch(`${namePrefix}metricName`),
     tableSource,
-    aggConditionLanguage === 'sql',
-  );
+    isSql: aggConditionLanguage === 'sql',
+  });
+
   return (
     <>
       <Divider
@@ -204,9 +204,7 @@ function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               connectionId={connectionId}
               placeholder="SQL Column"
-              onSubmit={onSubmit}
-              additionalSuggestions={attributeKeys}
-            />
+              onSubmit={onSubmit}            />
           </div>
         )}
         <Text size="sm">Where</Text>
