@@ -334,6 +334,7 @@ type Row = {
   label: React.ReactNode;
   events: TimelineEventT[];
   style?: any;
+  type?: string;
   className?: string;
 };
 
