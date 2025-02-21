@@ -14,6 +14,7 @@ import {
   Flex,
   Group,
   Modal as MModal,
+  Radio,
   Stack,
   Table,
   Text,
@@ -26,11 +27,13 @@ import { ConnectionForm } from '@/components/ConnectionForm';
 import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
+import { PageHeader } from './components/PageHeader';
 import api from './api';
 import { useConnections } from './connection';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';
+import { capitalizeFirstLetter } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
 
@@ -192,7 +195,7 @@ function SourcesSection() {
                 <div>
                   <Text>{s.name}</Text>
                   <Text size="xxs" c="dimmed">
-                    {s.kind === 'log' ? 'Logs' : 'Metrics'}
+                    {capitalizeFirstLetter(s.kind)}
                     {s.from && (
                       <>
                         {' '}
@@ -649,28 +652,29 @@ function TeamMembersSection() {
 type WebhookForm = {
   name: string;
   url: string;
+  service: string;
   description?: string;
 };
 
 function CreateWebhookForm({
-  service,
   onClose,
   onSuccess,
 }: {
-  service: 'slack' | 'generic';
   onClose: VoidFunction;
   onSuccess: VoidFunction;
 }) {
   const saveWebhook = api.useSaveWebhook();
 
   const form = useForm<WebhookForm>({
-    defaultValues: {},
+    defaultValues: {
+      service: 'slack',
+    },
   });
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     try {
       await saveWebhook.mutateAsync({
-        service,
+        service: values.service,
         name: values.name,
         url: values.url,
         description: values.description || '',
@@ -698,6 +702,25 @@ function CreateWebhookForm({
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <Stack mt="sm">
         <Text>Create Webhook</Text>
+        <Radio.Group
+          label="Service Type"
+          required
+          value={form.watch('service')}
+          onChange={value => form.setValue('service', value)}
+        >
+          <Group mt="xs">
+            <Radio
+              value="slack"
+              label="Slack"
+              {...form.register('service', { required: true })}
+            />
+            <Radio
+              value="generic"
+              label="Generic"
+              {...form.register('service', { required: true })}
+            />
+          </Group>
+        </Radio.Group>
         <TextInput
           label="Webhook Name"
           placeholder="Post to #dev-alerts"
@@ -791,18 +814,18 @@ function DeleteWebhookButton({
 }
 
 function IntegrationsSection() {
-  const { data: slackWebhooksData, refetch: refetchSlackWebhooks } =
-    api.useWebhooks(['slack']);
+  const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
+    'slack',
+    'generic',
+  ]);
 
-  const slackWebhooks = useMemo(() => {
-    return Array.isArray(slackWebhooksData?.data)
-      ? slackWebhooksData?.data
-      : [];
-  }, [slackWebhooksData]);
+  const allWebhooks = useMemo(() => {
+    return Array.isArray(webhookData?.data) ? webhookData?.data : [];
+  }, [webhookData]);
 
   const [
-    isAddSlackModalOpen,
-    { open: openSlackModal, close: closeSlackModal },
+    isAddWebhookModalOpen,
+    { open: openWebhookModal, close: closeWebhookModal },
   ] = useDisclosure();
 
   return (
@@ -812,14 +835,16 @@ function IntegrationsSection() {
       </Text>
       <Divider my="md" />
       <Card>
-        <Text mb="xs">Slack Webhooks</Text>
+        <Text mb="xs">Webhooks</Text>
 
         <Stack>
-          {slackWebhooks.map((webhook: any) => (
+          {allWebhooks.map((webhook: any) => (
             <Fragment key={webhook._id}>
               <Group justify="space-between">
                 <Stack gap={0}>
-                  <Text size="sm">{webhook.name}</Text>
+                  <Text size="sm">
+                    {webhook.name} ({webhook.service})
+                  </Text>
                   <Text size="xs" opacity={0.7}>
                     {webhook.url}
                   </Text>
@@ -832,7 +857,7 @@ function IntegrationsSection() {
                 <DeleteWebhookButton
                   webhookId={webhook._id}
                   webhookName={webhook.name}
-                  onSuccess={refetchSlackWebhooks}
+                  onSuccess={refetchWebhooks}
                 />
               </Group>
               <Divider />
@@ -840,17 +865,16 @@ function IntegrationsSection() {
           ))}
         </Stack>
 
-        {!isAddSlackModalOpen ? (
-          <Button variant="outline" color="gray.4" onClick={openSlackModal}>
-            Add Slack Webhook
+        {!isAddWebhookModalOpen ? (
+          <Button variant="outline" color="gray.4" onClick={openWebhookModal}>
+            Add Webhook
           </Button>
         ) : (
           <CreateWebhookForm
-            service="slack"
-            onClose={closeSlackModal}
+            onClose={closeWebhookModal}
             onSuccess={() => {
-              refetchSlackWebhooks();
-              closeSlackModal();
+              refetchWebhooks();
+              closeWebhookModal();
             }}
           />
         )}
@@ -869,9 +893,9 @@ export default function TeamPage() {
       <Head>
         <title>My Team - HyperDX</title>
       </Head>
-      <div className={styles.header}>
+      <PageHeader>
         <div>{team?.name || 'My team'}</div>
-      </div>
+      </PageHeader>
       <div>
         <Container>
           {isLoading && (

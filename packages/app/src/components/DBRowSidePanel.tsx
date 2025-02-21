@@ -14,6 +14,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
@@ -23,6 +24,7 @@ import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import ContextSubpanel from './ContextSidePanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBTracePanel from './DBTracePanel';
@@ -41,6 +43,7 @@ export const RowSidePanelContext = createContext<{
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
   shareUrl?: string;
+  dbSqlRowTableConfig?: ChartConfigWithDateRange;
 }>({});
 
 export default function DBRowSidePanel({
@@ -69,6 +72,8 @@ export default function DBRowSidePanel({
     source,
     rowId,
   });
+
+  const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
 
   enum Tab {
     Overview = 'overview',
@@ -239,6 +244,10 @@ export default function DBRowSidePanel({
                     text: 'Trace',
                     value: Tab.Trace,
                   },
+                  {
+                    text: 'Surrounding Context',
+                    value: Tab.Context,
+                  },
                 ]}
                 activeItem={displayedTab}
                 onClick={(v: any) => setTab(v)}
@@ -291,6 +300,25 @@ export default function DBRowSidePanel({
                   )}
                 >
                   <RowDataPanel source={source} rowId={rowId} />
+                </ErrorBoundary>
+              )}
+              {displayedTab === Tab.Context && (
+                <ErrorBoundary
+                  onError={err => {
+                    console.error(err);
+                  }}
+                  fallbackRender={() => (
+                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                      An error occurred while rendering this event.
+                    </div>
+                  )}
+                >
+                  <ContextSubpanel
+                    source={source}
+                    dbSqlRowTableConfig={dbSqlRowTableConfig}
+                    rowData={normalizedRow}
+                    rowId={rowId}
+                  />
                 </ErrorBoundary>
               )}
               <LogSidePanelKbdShortcuts />

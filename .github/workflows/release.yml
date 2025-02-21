@@ -3,13 +3,24 @@ on:
   push:
     branches: [v2]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
 jobs:
-  release:
-    name: Release
+  publish_common_utils:
+    name: Publish @hyperdx/common-utils
     runs-on: ubuntu-latest
+    outputs:
+      changeset_outputs_hasChangesets:
+        ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Setup node
         uses: actions/setup-node@v4
         with:
@@ -22,19 +33,49 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
+          commit: 'chore(release): bump HyperDX app/package versions'
+          title: 'chore(release): bump HyperDX app/package versions'
           version: yarn run version
+          publish: yarn release
         env:
           YARN_ENABLE_IMMUTABLE_INSTALLS: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-      - name: Creating .npmrc
-        run: |
-          cat << EOF > "$HOME/.npmrc"
-            //registry.npmjs.org/:_authToken=$NPM_TOKEN
-          EOF
-        env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Publish
-        if: steps.changesets.outputs.hasChangesets == 'false'
-        # You can do something when a publish should happen.
-        run: yarn release
+  release:
+    name: Release
+    needs: publish_common_utils
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        release:
+          [
+            'release-app',
+            'release-otel-collector',
+            'release-local',
+            'release-local-ui',
+          ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Load environment variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Publish images
+        if:
+          needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
+          'false'
+        run: make ${{ matrix.release }}

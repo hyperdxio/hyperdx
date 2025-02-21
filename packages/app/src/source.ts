@@ -7,7 +7,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { hashCode } from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -306,4 +306,59 @@ export function getDurationMsExpression(source: TSource) {
 
 export function getDurationSecondsExpression(source: TSource) {
   return `${source.durationExpression}/1e${source.durationPrecision ?? 9}`;
+}
+
+const ReqMetricTableColumns = {
+  [MetricsDataType.Gauge]: [
+    'TimeUnix',
+    'ServiceName',
+    'MetricName',
+    'Value',
+    'Attributes',
+    'ResourceAttributes',
+  ],
+  [MetricsDataType.Histogram]: [
+    'TimeUnix',
+    'ServiceName',
+    'MetricName',
+    'Attributes',
+    'ResourceAttributes',
+    'Count',
+    'Sum',
+    'BucketCounts',
+    'ExplicitBounds',
+  ],
+  [MetricsDataType.Sum]: [
+    'TimeUnix',
+    'ServiceName',
+    'MetricName',
+    'Value',
+    'Attributes',
+    'ResourceAttributes',
+  ],
+};
+
+export async function isValidMetricTable({
+  databaseName,
+  tableName,
+  connectionId,
+  metricType,
+}: {
+  databaseName: string;
+  tableName?: string;
+  connectionId: string;
+  metricType: MetricsDataType;
+}) {
+  if (!tableName) {
+    return false;
+  }
+
+  const metadata = getMetadata();
+  const columns = await metadata.getColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  });
+
+  return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
 }

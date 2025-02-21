@@ -25,6 +25,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { DateRange } from '@hyperdx/common-utils/dist/types';
 
 import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
@@ -406,7 +407,7 @@ export type UseTimeQueryReturnType = {
   isReady: boolean;
   displayedTimeInputValue: string;
   setDisplayedTimeInputValue: Dispatch<SetStateAction<string>>;
-  searchedTimeRange: [Date, Date];
+  searchedTimeRange: DateRange['dateRange'];
   onSearch: (timeQuery: string) => void;
   onTimeRangeSelect: (
     start: Date,

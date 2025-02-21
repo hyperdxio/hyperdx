@@ -28,10 +28,33 @@ router.post(
           'X-ClickHouse-Key': password || '',
         },
         signal: AbortSignal.timeout(2000),
-      }).then(res => res.json());
-      return res.json({ success: result === 1 });
-    } catch (e) {
-      return res.json({ success: false });
+      });
+      // For status codes 204-399
+      if (!result.ok) {
+        const errorText = await result.text();
+        return res.status(result.status).json({
+          success: false,
+          error: errorText || 'Error connecting to ClickHouse server',
+        });
+      }
+      const data = await result.json();
+      return res.json({ success: data === 1 });
+    } catch (e: any) {
+      // fetch returns a 400+ error and throws
+      console.error(e);
+      const errorMessage =
+        e.cause?.code === 'ENOTFOUND'
+          ? `Unable to resolve host: ${e.cause.hostname}`
+          : e.cause?.message ||
+            e.message ||
+            'Error connecting to ClickHouse server';
+
+      return res.status(500).json({
+        success: false,
+        error:
+          errorMessage +
+          ', please check the host and credentials and try again.',
+      });
     }
   },
 );
@@ -105,7 +128,16 @@ router.get(
             }
           },
           error: (err, _req, _res) => {
-            console.error(err);
+            console.error('Proxy error:', err);
+            res.writeHead(500, {
+              'Content-Type': 'application/json',
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: err.message || 'Failed to connect to ClickHouse server',
+              }),
+            );
           },
         },
         // ...(config.IS_DEV && {
@@ -113,7 +145,11 @@ router.get(
         // }),
       })(req, res, next);
     } catch (e) {
-      next(e);
+      console.error('Router error:', e);
+      res.status(500).json({
+        success: false,
+        error: e instanceof Error ? e.message : 'Internal server error',
+      });
     }
   },
 );

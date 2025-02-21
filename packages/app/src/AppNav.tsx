@@ -693,10 +693,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               {IS_DEV && (
                 <AppNavLink label="Alerts" href="/alerts" iconName="bi-bell" />
               )}
+              {IS_DEV && (
+                <AppNavLink
+                  label="Client Sessions"
+                  href="/sessions"
+                  iconName="bi-laptop"
+                />
+              )}
 
               <AppNavLink
-                label="Dashboard"
-                href="/dashboard"
+                label="Dashboards"
+                href="/dashboards"
                 iconName="bi-grid-1x2"
                 isExpanded={isDashboardsExpanded}
                 onToggle={() => setIsDashboardExpanded(!isDashboardsExpanded)}

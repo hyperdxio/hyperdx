@@ -956,6 +956,7 @@ function DBSearchPage() {
           displayedColumns,
           toggleColumn,
           generateSearchUrl,
+          dbSqlRowTableConfig,
         }}
       >
         {searchedSource && (

@@ -1,0 +1,16 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@hyperdx/api": "1.9.0",
+    "@hyperdx/app": "1.9.0",
+    "@hyperdx/common-utils": "0.1.0"
+  },
+  "changesets": [
+    "dull-radios-wink",
+    "famous-poets-rush",
+    "nervous-timers-dream",
+    "perfect-nails-doubt",
+    "taco-cat-v2"
+  ]
+}

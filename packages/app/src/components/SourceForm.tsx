@@ -6,7 +6,11 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -17,6 +21,7 @@ import {
   Menu,
   Radio,
   SegmentedControl,
+  Select,
   Slider,
   Stack,
   Switch,
@@ -27,10 +32,11 @@ import { useDebouncedCallback } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { IS_SESSIONS_ENABLED } from '@/config';
+import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
+  isValidMetricTable,
   useCreateSource,
   useDeleteSource,
   useSource,
@@ -43,6 +49,8 @@ import { DatabaseSelectControlled } from './DatabaseSelect';
 import { DBTableSelectControlled } from './DBTableSelect';
 import { InputControlled } from './InputControlled';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
+
+const DEFAULT_DATABASE = 'default';
 
 function FormRow({
   label,
@@ -112,7 +120,6 @@ export function LogTableModelForm({
   watch: UseFormWatch<TSource>;
   setValue: UseFormSetValue<TSource>;
 }) {
-  const DEFAULT_DATABASE = 'default';
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -319,7 +326,6 @@ export function TraceTableModelForm({
   watch: UseFormWatch<TSource>;
   setValue: UseFormSetValue<TSource>;
 }) {
-  const DEFAULT_DATABASE = 'default';
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -536,6 +542,227 @@ export function TraceTableModelForm({
   );
 }
 
+export function SessionTableModelForm({
+  control,
+  watch,
+  setValue,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+}) {
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const tableName = watch(`from.tableName`);
+  const connectionId = watch(`connection`);
+
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+
+  return (
+    <>
+      <Stack gap="sm">
+        <FormRow label={'Server Connection'}>
+          <ConnectionSelectControlled control={control} name={`connection`} />
+        </FormRow>
+        <FormRow label={'Database'}>
+          <DatabaseSelectControlled
+            control={control}
+            name={`from.databaseName`}
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Table'}>
+          <DBTableSelectControlled
+            database={databaseName}
+            control={control}
+            name={`from.tableName`}
+            connectionId={connectionId}
+            rules={{ required: 'Table is required' }}
+          />
+        </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Log Attributes Expression'}>
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="eventAttributesExpression"
+            placeholder="LogAttributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Resource Attributes Expression'}>
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="resourceAttributesExpression"
+            placeholder="ResourceAttributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow
+          label={'Correlated Trace Source'}
+          helpText="HyperDX Source for traces associated with sessions. Required"
+        >
+          <SourceSelectControlled control={control} name="traceSourceId" />
+        </FormRow>
+        <FormRow
+          label={'Implicit Column Expression'}
+          helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="implicitColumnExpression"
+            placeholder="Body"
+            connectionId={connectionId}
+          />
+        </FormRow>
+      </Stack>
+    </>
+  );
+}
+
+export function MetricTableModelForm({
+  control,
+  watch,
+  setValue,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+}) {
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const connectionId = watch(`connection`);
+
+  useEffect(() => {
+    setValue('timestampValueExpression', 'TimeUnix');
+    const { unsubscribe } = watch(async (value, { name, type }) => {
+      try {
+        if (name && type === 'change') {
+          const [prefix, suffix] = name.split('.');
+          if (prefix === 'metricTables') {
+            const tableName =
+              value?.metricTables?.[suffix as keyof typeof value.metricTables];
+            const metricType = suffix as MetricsDataType;
+            const isValid = await isValidMetricTable({
+              databaseName,
+              tableName,
+              connectionId,
+              metricType,
+            });
+            if (!isValid) {
+              notifications.show({
+                color: 'red',
+                message: `${tableName} is not a valid OTEL ${metricType} schema.`,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [setValue, watch, databaseName, connectionId]);
+
+  return (
+    <>
+      <Stack gap="sm">
+        <FormRow label={'Server Connection'}>
+          <ConnectionSelectControlled control={control} name={`connection`} />
+        </FormRow>
+        <FormRow label={'Database'}>
+          <DatabaseSelectControlled
+            connectionId={connectionId}
+            control={control}
+            name={`from.databaseName`}
+          />
+        </FormRow>
+        {Object.keys(MetricsDataType).map(metricType => (
+          <FormRow
+            key={metricType.toLowerCase()}
+            label={`${metricType} Table`}
+            helpText={`Table containing ${metricType.toLowerCase()} metrics data`}
+          >
+            <DBTableSelectControlled
+              connectionId={connectionId}
+              database={databaseName}
+              control={control}
+              name={`metricTables.${metricType.toLowerCase()}`}
+            />
+          </FormRow>
+        ))}
+      </Stack>
+    </>
+  );
+}
+
+function TableModelForm({
+  control,
+  watch,
+  setValue,
+  kind,
+}: {
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
+  kind: SourceKind;
+}) {
+  switch (kind) {
+    case SourceKind.Log:
+      return (
+        <LogTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Trace:
+      return (
+        <TraceTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Session:
+      return (
+        <SessionTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+    case SourceKind.Metric:
+      return (
+        <MetricTableModelForm
+          control={control}
+          watch={watch}
+          setValue={setValue}
+        />
+      );
+  }
+}
+
 export function TableSourceForm({
   sourceId,
   onSave,
@@ -737,6 +964,9 @@ export function TableSourceForm({
                 <Group>
                   <Radio value={SourceKind.Log} label="Log" />
                   <Radio value={SourceKind.Trace} label="Trace" />
+                  {IS_METRICS_ENABLED && (
+                    <Radio value={SourceKind.Metric} label="OTEL Metrics" />
+                  )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
                   )}
@@ -746,22 +976,12 @@ export function TableSourceForm({
           />
         </FormRow>
       </Stack>
-      {kind === SourceKind.Trace ? (
-        <TraceTableModelForm
-          // @ts-ignore
-          control={control}
-          // @ts-ignore
-          watch={watch}
-          // @ts-ignore
-          setValue={setValue}
-        />
-      ) : (
-        <LogTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      )}
+      <TableModelForm
+        control={control}
+        watch={watch}
+        setValue={setValue}
+        kind={kind}
+      />
     </div>
   );
 }
