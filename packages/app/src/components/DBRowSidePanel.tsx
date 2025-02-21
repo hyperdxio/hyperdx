@@ -182,8 +182,12 @@ export default function DBRowSidePanel({
   const focusDate = timestampDate;
   const traceId = normalizedRow?.['__hdx_trace_id'];
 
-  const traceSourceId =
-    source.kind === 'log' ? source.traceSourceId : source.id;
+  const childSourceId =
+    source.kind === 'log'
+      ? source.traceSourceId
+      : source.kind === 'trace'
+        ? source.logSourceId
+        : undefined;
 
   return (
     <Drawer
@@ -276,7 +280,7 @@ export default function DBRowSidePanel({
                   <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
                     <DBTracePanel
                       parentSourceId={source.id}
-                      sourceId={traceSourceId}
+                      childSourceId={childSourceId}
                       traceId={traceId}
                       dateRange={rng}
                       focusDate={focusDate}
