@@ -264,16 +264,27 @@ export const handleSendGenericWebhook = async (
   };
   // BODY
   let body = '';
-  if (webhook.body) {
-    const handlebars = Handlebars.create();
-    body = handlebars.compile(webhook.body, {
-      noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      link: escapeJsonString(message.hdxLink),
-      title: escapeJsonString(message.title),
+  try {
+    if (webhook.body) {
+      const handlebars = Handlebars.create();
+      body = handlebars.compile(webhook.body, {
+        noEscape: true,
+      })({
+        body: escapeJsonString(message.body),
+        link: escapeJsonString(message.hdxLink),
+        title: escapeJsonString(message.title),
+      });
+    }
+  } catch (e) {
+    logger.error({
+      message: 'Failed to compile generic webhook body',
+      error: serializeError(e),
+    });
+    body = JSON.stringify({
+      text: `${escapeJsonString(message.title)} | ${escapeJsonString(message.body)} | ${escapeJsonString(message.hdxLink)}`,
     });
   }
+
   try {
     // TODO: retries/backoff etc -> switch to request-error-tolerant api client
     const response = await fetch(url, {
