@@ -64,9 +64,9 @@ interface MetricResourceAttrsProps {
 }
 
 interface MetricAttributesResponse {
-    ScopeAttributes?: Record<string, string>;
-    ResourceAttributes?: Record<string, string>;
-    Attributes?: Record<string, string>;
+  ScopeAttributes?: Record<string, string>;
+  ResourceAttributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
 }
 
 export const useFetchMetricResourceAttrs = ({
@@ -85,7 +85,14 @@ export const useFetchMetricResourceAttrs = ({
   );
 
   return useQuery({
-    queryKey: ['metric-attributes', databaseName, tableName, metricType, metricName, isSql],
+    queryKey: [
+      'metric-attributes',
+      databaseName,
+      tableName,
+      metricType,
+      metricName,
+      isSql,
+    ],
     queryFn: async ({ signal }) => {
       if (!shouldFetch) {
         return [];
@@ -99,7 +106,7 @@ export const useFetchMetricResourceAttrs = ({
           Attributes
         FROM ${tableExpr({ database: databaseName, table: tableName })}
         WHERE MetricName=${{ String: metricName }}
-        LIMIT ${{ Int32: METRIC_FETCH_LIMIT}}
+        LIMIT ${{ Int32: METRIC_FETCH_LIMIT }}
       `;
 
       const result = (await clickhouseClient

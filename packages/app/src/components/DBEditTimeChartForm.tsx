@@ -204,7 +204,8 @@ function ChartSeriesEditor({
               name={`${namePrefix}valueExpression`}
               connectionId={connectionId}
               placeholder="SQL Column"
-              onSubmit={onSubmit}            />
+              onSubmit={onSubmit}
+            />
           </div>
         )}
         <Text size="sm">Where</Text>
