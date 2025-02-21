@@ -11,6 +11,7 @@ import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
+import { EditorView, ViewUpdate } from '@codemirror/view';
 import {
   Alert,
   Badge,
@@ -46,13 +47,14 @@ import { capitalizeFirstLetter } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY =
-  '{"text": "{{title}} | {{body}} | {{link}}"}';
+const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
+const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
+  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
 
-const jsonLinterWithEmptyCheck = () => (view: any) => {
-  const text = view.state.doc.text.join('').trim();
+const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
+  const text = editorView.state.doc.toString().trim();
   if (text === '') return [];
-  return jsonParseLinter()(view);
+  return jsonParseLinter()(editorView);
 };
 
 function InviteTeamMemberForm({
@@ -699,7 +701,9 @@ function CreateWebhookForm({
         url,
         description: description || '',
         body:
-          service === 'generic' && !body ? DEFAULT_GENERIC_WEBHOOK_BODY : body,
+          service === 'generic' && !body
+            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
+            : body,
       });
       notifications.show({
         color: 'green',
@@ -775,7 +779,7 @@ function CreateWebhookForm({
                 json(),
                 linter(jsonLinterWithEmptyCheck()),
                 placeholder(
-                  '{\n\t"text": "{{title}} | {{body}} | {{link}}"\n}',
+                  `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
                 ),
               ]}
               theme="dark"
@@ -794,17 +798,12 @@ function CreateWebhookForm({
             </span>
             <br />
             <span>
-              <code>
-                {'{{'}link{'}}'}
-              </code>
-              ,{' '}
-              <code>
-                {'{{'}title{'}}'}
-              </code>
-              ,{' '}
-              <code>
-                {'{{'}body{'}}'}
-              </code>
+              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
+                <span key={index}>
+                  <code>{body}</code>
+                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
+                </span>
+              ))}
             </span>
           </Alert>,
         ]}

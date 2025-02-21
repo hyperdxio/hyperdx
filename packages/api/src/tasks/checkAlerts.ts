@@ -265,16 +265,14 @@ export const handleSendGenericWebhook = async (
   // BODY
   let body = '';
   try {
-    if (webhook.body) {
-      const handlebars = Handlebars.create();
-      body = handlebars.compile(webhook.body, {
-        noEscape: true,
-      })({
-        body: escapeJsonString(message.body),
-        link: escapeJsonString(message.hdxLink),
-        title: escapeJsonString(message.title),
-      });
-    }
+    const handlebars = Handlebars.create();
+    body = handlebars.compile(webhook.body, {
+      noEscape: true,
+    })({
+      body: escapeJsonString(message.body),
+      link: escapeJsonString(message.hdxLink),
+      title: escapeJsonString(message.title),
+    });
   } catch (e) {
     logger.error({
       message: 'Failed to compile generic webhook body',
