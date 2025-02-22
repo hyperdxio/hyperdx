@@ -278,9 +278,7 @@ export const handleSendGenericWebhook = async (
       message: 'Failed to compile generic webhook body',
       error: serializeError(e),
     });
-    body = JSON.stringify({
-      text: `${escapeJsonString(message.title)} | ${escapeJsonString(message.body)} | ${escapeJsonString(message.hdxLink)}`,
-    });
+    return;
   }
 
   try {
