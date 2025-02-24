@@ -348,8 +348,9 @@ export default function SessionsPage() {
       } else {
         setSelectedSessionQuery({
           sid: session.sessionId,
-          sfrom: new Date(session.minTimestamp).getTime(),
-          sto: new Date(session.maxTimestamp).getTime(),
+          // WARNING: adding 4 hours offset to fetch the whole rrweb session
+          sfrom: sub(new Date(session.minTimestamp), { hours: 4 }).getTime(),
+          sto: sub(new Date(session.maxTimestamp), { hours: -4 }).getTime(),
         });
       }
     },
@@ -366,6 +367,7 @@ export default function SessionsPage() {
   });
 
   const sessions = tableData?.data ?? [];
+  const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
     <div className="SessionsPage">
@@ -374,14 +376,15 @@ export default function SessionsPage() {
       </Head>
       {selectedSession != null &&
         traceTrace != null &&
-        sessionSource != null && (
+        sessionSource != null &&
+        targetSession && (
           <SessionSidePanel
             key={`session-page-session-side-panel-${selectedSession.id}`}
             traceSource={traceTrace}
             sessionSource={sessionSource}
             sessionId={selectedSession.id}
             dateRange={selectedSession.dateRange}
-            session={sessions.find(s => s.sessionId === selectedSession.id)}
+            session={targetSession}
             onClose={() => {
               setSelectedSession(undefined);
             }}

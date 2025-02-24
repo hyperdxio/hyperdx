@@ -17,6 +17,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import * as clickhouse from '@/clickhouse';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 
@@ -34,6 +35,7 @@ const MemoPlaybar = memo(Playbar);
 export default function SessionSubpanel({
   traceSource,
   sessionSource,
+  session,
   onPropertyAddClick,
   generateChartUrl,
   generateSearchUrl,
@@ -45,6 +47,7 @@ export default function SessionSubpanel({
 }: {
   traceSource: TSource;
   sessionSource: TSource;
+  session: clickhouse.Session;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl: (config: {
     aggFn: string;
@@ -514,6 +517,7 @@ export default function SessionSubpanel({
             [focus, setFocus],
           )}
           config={{
+            serviceName: session.serviceName,
             sourceId: sessionSource.id,
             sessionId: rumSessionId,
             dateRange: [start, end],
