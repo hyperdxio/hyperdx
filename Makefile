@@ -68,22 +68,22 @@ dev-migrate-db:
 
 .PHONY: build-local
 build-local:
-	docker build ./docker/hostmetrics -t ${IMAGE_NAME}:${LATEST_VERSION}-hostmetrics --target prod &
-	docker build ./docker/ingestor -t ${IMAGE_NAME}:${LATEST_VERSION}-ingestor --target prod &
-	docker build ./docker/otel-collector -t ${IMAGE_NAME}:${LATEST_VERSION}-otel-collector --target prod &
-	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-miner --target prod &
-	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-go-parser &
+	docker build ./docker/hostmetrics -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-hostmetrics --target prod &
+	docker build ./docker/ingestor -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-ingestor --target prod &
+	docker build ./docker/otel-collector -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-otel-collector --target prod &
+	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/miner/Dockerfile -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-miner --target prod &
+	docker build --build-arg CODE_VERSION=${LATEST_VERSION} . -f ./packages/go-parser/Dockerfile -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-go-parser &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg PORT=${HYPERDX_API_PORT} \
-		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-api --target prod &
+		. -f ./packages/api/Dockerfile -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-api --target prod &
 	docker build \
 		--build-arg CODE_VERSION=${LATEST_VERSION} \
 		--build-arg OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--build-arg OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME} \
 		--build-arg PORT=${HYPERDX_APP_PORT} \
 		--build-arg SERVER_URL=${HYPERDX_API_URL}:${HYPERDX_API_PORT} \
-		. -f ./packages/app/Dockerfile -t ${IMAGE_NAME}:${LATEST_VERSION}-app --target prod
+		. -f ./packages/app/Dockerfile -t ${IMAGE_NAME_HDX}:${LATEST_VERSION}-app --target prod
 
 .PHONY: version
 version:
