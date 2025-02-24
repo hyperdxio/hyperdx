@@ -1,4 +1,4 @@
-import { formatDate } from '../utils';
+import { formatAttributeClause, formatDate } from '../utils';
 
 describe('utils', () => {
   it('12h utc', () => {
@@ -41,5 +41,35 @@ describe('utils', () => {
         format: 'withMs',
       }),
     ).toEqual('Jan 1 12:00:00.000');
+  });
+});
+
+describe('formatAttributeClause', () => {
+  it('should format SQL attribute clause correctly', () => {
+    expect(
+      formatAttributeClause('ResourceAttributes', 'service', 'nginx', true),
+    ).toBe("ResourceAttributes['service']='nginx'");
+
+    expect(formatAttributeClause('metadata', 'environment', 'prod', true)).toBe(
+      "metadata['environment']='prod'",
+    );
+
+    expect(formatAttributeClause('data', 'user-id', 'abc-123', true)).toBe(
+      "data['user-id']='abc-123'",
+    );
+  });
+
+  it('should format lucene attribute clause correctly', () => {
+    expect(formatAttributeClause('attrs', 'service', 'nginx', false)).toBe(
+      'attrs.service:"nginx"',
+    );
+
+    expect(
+      formatAttributeClause('metadata', 'environment', 'prod', false),
+    ).toBe('metadata.environment:"prod"');
+
+    expect(formatAttributeClause('data', 'user-id', 'abc-123', false)).toBe(
+      'data.user-id:"abc-123"',
+    );
   });
 });

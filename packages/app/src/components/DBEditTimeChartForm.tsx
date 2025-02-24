@@ -46,6 +46,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_DEV } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
+import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
@@ -130,15 +131,22 @@ function ChartSeriesEditor({
   );
 
   const metricType = watch(`${namePrefix}metricType`);
-
   const selectedSourceId = watch('source');
   const { data: tableSource } = useSource({ id: selectedSourceId });
 
-  // HACK: switch table name based on metric type
   const tableName =
     tableSource?.kind === SourceKind.Metric
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
+
+  const { data: attributeKeys } = useFetchMetricResourceAttrs({
+    databaseName,
+    tableName,
+    metricType,
+    metricName: watch(`${namePrefix}metricName`),
+    tableSource,
+    isSql: aggConditionLanguage === 'sql',
+  });
 
   return (
     <>
@@ -181,7 +189,6 @@ function ChartSeriesEditor({
             metricType={metricType}
             setMetricName={value => {
               setValue(`${namePrefix}metricName`, value);
-              // HACK: harcoded valueExpression
               setValue(`${namePrefix}valueExpression`, 'Value');
             }}
             setMetricType={value => setValue(`${namePrefix}metricType`, value)}
@@ -213,6 +220,7 @@ function ChartSeriesEditor({
             onLanguageChange={lang =>
               setValue(`${namePrefix}aggConditionLanguage`, lang)
             }
+            additionalSuggestions={attributeKeys}
             language="sql"
             onSubmit={onSubmit}
           />
@@ -229,6 +237,7 @@ function ChartSeriesEditor({
             language="lucene"
             placeholder="Search your events w/ Lucene ex. column:foo"
             onSubmit={onSubmit}
+            additionalSuggestions={attributeKeys}
           />
         )}
         {showGroupBy && (
