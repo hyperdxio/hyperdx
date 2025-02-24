@@ -366,6 +366,7 @@ export default function SessionsPage() {
   });
 
   const sessions = tableData?.data ?? [];
+  const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
     <div className="SessionsPage">
@@ -374,14 +375,15 @@ export default function SessionsPage() {
       </Head>
       {selectedSession != null &&
         traceTrace != null &&
-        sessionSource != null && (
+        sessionSource != null &&
+        targetSession && (
           <SessionSidePanel
             key={`session-page-session-side-panel-${selectedSession.id}`}
             traceSource={traceTrace}
             sessionSource={sessionSource}
             sessionId={selectedSession.id}
             dateRange={selectedSession.dateRange}
-            session={sessions.find(s => s.sessionId === selectedSession.id)}
+            session={targetSession}
             onClose={() => {
               setSelectedSession(undefined);
             }}
