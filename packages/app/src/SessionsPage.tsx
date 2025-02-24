@@ -348,8 +348,9 @@ export default function SessionsPage() {
       } else {
         setSelectedSessionQuery({
           sid: session.sessionId,
-          sfrom: new Date(session.minTimestamp).getTime(),
-          sto: new Date(session.maxTimestamp).getTime(),
+          // WARNING: adding 4 hours offset to fetch the whole rrweb session
+          sfrom: sub(new Date(session.minTimestamp), { hours: 4 }).getTime(),
+          sto: sub(new Date(session.maxTimestamp), { hours: -4 }).getTime(),
         });
       }
     },
