@@ -28,6 +28,8 @@ export const PORT = Number.parseInt(env.PORT as string);
 export const REDIS_URL = env.REDIS_URL as string;
 export const SERVER_URL = env.SERVER_URL as string;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
+export const EMAIL = env.EMAIL as string;
+export const PASSWORD = env.PASSWORD as string;
 
 // Only for single container local deployments, disable authentication
 export const IS_LOCAL_APP_MODE =
