@@ -63,10 +63,12 @@ export const getMetricAggFns = (
 ): { value: AggFn; label: string }[] => {
   if (dataType === MetricsDataType.Histogram) {
     return [
+      { value: 'sum', label: 'Sum' },
       { value: 'p99', label: '99th Percentile' },
       { value: 'p95', label: '95th Percentile' },
       { value: 'p90', label: '90th Percentile' },
       { value: 'p50', label: 'Median' },
+      { value: 'count', label: 'Sample Count' },
     ];
   } else if (dataType === MetricsDataType.Summary) {
     return [
@@ -410,6 +412,12 @@ export function MetricSelect({
   // TODO: Dedup with metric rate checkbox
   const { data: metricNamesData, isLoading, isError } = api.useMetricsNames();
 
+  // TODO: depcrcate this (backward compatibility)
+  if (metricName?.endsWith('- Histogram')) {
+    // patch for old histogram metric names
+    metricName = metricName.replace('_bucket', '');
+  }
+
   const aggFnWithMaybeRate = (aggFn: AggFn, isRate: boolean) => {
     if (isRate) {
       if (aggFn.includes('_rate')) {
@@ -438,7 +446,11 @@ export function MetricSelect({
               metric => metric.name === name,
             )?.data_type;
 
-            const newAggFn = aggFnWithMaybeRate(aggFn, metricType === 'Sum');
+            const newAggFn = aggFnWithMaybeRate(
+              aggFn,
+              metricType === MetricsDataType.Sum ||
+                metricType === MetricsDataType.Histogram,
+            );
 
             setFieldAndAggFn(name, newAggFn);
           }}
@@ -473,9 +485,12 @@ export function MetricRateSelect({
       ?.data_type;
   }, [metricNamesData, metricName]);
 
+  const isDisabled = metricType === MetricsDataType.Histogram;
+
   return (
     <>
-      {metricType === 'Sum' ? (
+      {metricType === MetricsDataType.Sum ||
+      metricType === MetricsDataType.Histogram ? (
         <Checkbox
           title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
           id="metric-use-rate"
@@ -483,6 +498,7 @@ export function MetricRateSelect({
           labelClassName="fs-7"
           checked={isRate}
           onChange={() => setIsRate(!isRate)}
+          disabled={isDisabled}
           label="Use Increase"
         />
       ) : null}
