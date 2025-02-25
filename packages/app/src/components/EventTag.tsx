@@ -5,16 +5,25 @@ import { Button, Popover, Stack } from '@mantine/core';
 export default function EventTag({
   displayedKey,
   name,
+  sqlExpression,
   value,
   onPropertyAddClick,
   generateSearchUrl,
 }: {
   displayedKey?: string;
-  name: string;
+  name: string; // lucene property name ex. col.prop
   value: string;
-  onPropertyAddClick?: (key: string, value: string) => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
-}) {
+} & (
+  | {
+      sqlExpression: undefined;
+      onPropertyAddClick: undefined;
+    }
+  | {
+      sqlExpression: string; // sql expression ex. col['prop']
+      onPropertyAddClick: (key: string, value: string) => void;
+    }
+)) {
   const [opened, setOpened] = useState(false);
 
   return (
@@ -46,7 +55,7 @@ export default function EventTag({
               size="xs"
               rightSection={<i className="bi bi-plus-circle" />}
               onClick={() => {
-                onPropertyAddClick(name, value);
+                onPropertyAddClick(sqlExpression, value);
                 setOpened(false);
               }}
             >

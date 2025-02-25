@@ -414,6 +414,8 @@ export type UseTimeQueryReturnType = {
     end: Date,
     displayedTimeInputValue?: string,
   ) => void;
+  from: number | null;
+  to: number | null;
 };
 
 const getRelativeInterval = (start: Date, end: Date): string | undefined => {
@@ -508,6 +510,8 @@ export function useNewTimeQuery({
   ]);
 
   return {
+    from,
+    to,
     isReady,
     displayedTimeInputValue: deprecatedDisplayedTimeInputValue,
     setDisplayedTimeInputValue: () => {},

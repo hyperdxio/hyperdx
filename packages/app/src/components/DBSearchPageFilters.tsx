@@ -43,6 +43,7 @@ export const TextButton = ({
   );
 };
 
+const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
   label,
@@ -61,7 +62,10 @@ export const FilterCheckbox = ({
         <Checkbox
           checked={!!value}
           size={13 as any}
-          onChange={e => onChange?.(e.currentTarget.checked)}
+          onChange={
+            // taken care by the onClick in the group, triggering here will double fire
+            emptyFn
+          }
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -349,7 +353,7 @@ export const DBSearchPageFilters = ({
         scrollbars="y"
         style={{
           display: 'block',
-          'max-width': '100%',
+          maxWidth: '100%',
           overflow: 'hidden',
         }}
       >

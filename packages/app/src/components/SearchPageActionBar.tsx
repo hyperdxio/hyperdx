@@ -10,7 +10,13 @@ export default function SearchPageActionBar({
   return (
     <Menu width={250}>
       <Menu.Target>
-        <Button variant="outline" color="dark.2" px="xs" size="xs">
+        <Button
+          variant="outline"
+          color="dark.2"
+          px="xs"
+          size="xs"
+          style={{ flexShrink: 0 }}
+        >
           <i className="bi bi-three-dots-vertical" />
         </Button>
       </Menu.Target>

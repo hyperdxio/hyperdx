@@ -5,6 +5,7 @@ import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
 import {
   ActionIcon,
+  Box,
   Button,
   Group,
   Input,
@@ -138,10 +139,12 @@ export function DBRowJsonViewer({ data }: { data: any }) {
       return null;
     }
 
-    // Remove internal aliases
-    delete data['__hdx_timestamp'];
-    delete data['__hdx_trace_id'];
-    delete data['__hdx_body'];
+    // remove internal aliases (keys that start with __hdx_)
+    Object.keys(data).forEach(key => {
+      if (key.startsWith('__hdx_')) {
+        delete data[key];
+      }
+    });
 
     return filterObjectRecursively(data, debouncedFilter);
   }, [data, debouncedFilter]);
@@ -183,11 +186,12 @@ export function DBRowJsonViewer({ data }: { data: any }) {
           title: 'Search for this value only',
           onClick: () => {
             router.push(
-              generateSearchUrl(
-                `${mergePath(keyPath)} = ${
+              generateSearchUrl({
+                where: `${mergePath(keyPath)} = ${
                   typeof value === 'string' ? `'${value}'` : value
                 }`,
-              ),
+                whereLanguage: 'sql',
+              }),
             );
           },
         });
@@ -294,8 +298,8 @@ export function DBRowJsonViewer({ data }: { data: any }) {
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
-      <Paper py="xs">
-        <Group mx="xl" gap="xs">
+      <Box py="xs">
+        <Group gap="xs">
           <Input
             size="xs"
             w="100%"
@@ -318,7 +322,7 @@ export function DBRowJsonViewer({ data }: { data: any }) {
           <div className="flex-grow-1" />
           <HyperJsonMenu />
         </Group>
-      </Paper>
+      </Box>
       <Paper bg="transparent" mt="sm">
         {rowData != null ? (
           <HyperJson
