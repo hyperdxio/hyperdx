@@ -4,6 +4,7 @@ import {
   chSql,
   ClickhouseClient,
   ColumnMeta,
+  tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
@@ -48,6 +49,7 @@ export type Session = {
   maxTimestamp: string;
   minTimestamp: string;
   recordingCount: string;
+  serviceName: string;
   sessionCount: string;
   sessionId: string;
   teamId: string;
@@ -89,7 +91,7 @@ export function useSessions(
       if (!traceSource || !sessionSource) {
         return [];
       }
-      // TODO: we
+
       const [
         sessionsQuery,
         sessionIdsWithRecordingsQuery,
@@ -98,6 +100,10 @@ export function useSessions(
         renderChartConfig(
           {
             select: [
+              {
+                valueExpression: `${traceSource.serviceNameExpression}`,
+                alias: 'serviceName',
+              },
               {
                 valueExpression: `${traceSource.resourceAttributesExpression}['rum.sessionId']`,
                 alias: 'sessionId',
@@ -126,7 +132,7 @@ export function useSessions(
               {
                 aggFn: 'count',
                 aggConditionLanguage: 'lucene',
-                aggCondition: `${traceSource.statusCodeExpression}:"Error"`,
+                aggCondition: `${traceSource.statusCodeExpression}:error`,
                 valueExpression: '',
                 alias: 'errorCount',
               },
@@ -146,10 +152,19 @@ export function useSessions(
             dateRange,
             where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId')`,
             whereLanguage: 'sql',
+            ...(whereLanguage &&
+              where && {
+                filters: [
+                  {
+                    type: whereLanguage,
+                    condition: where,
+                  },
+                ],
+              }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
             connection: traceSource.connection,
-            groupBy: 'sessionId',
+            groupBy: 'serviceName, sessionId',
           },
           getMetadata(),
         ),
@@ -196,7 +211,11 @@ export function useSessions(
         ${SESSIONS_CTE_NAME} AS (
           SELECT * 
           FROM _${SESSIONS_CTE_NAME}
-          HAVING interactionCount > 0 OR recordingCount > 0
+          ${
+            // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
+            // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
+            where ? '' : 'HAVING interactionCount > 0 OR recordingCount > 0'
+          }
           ORDER BY maxTimestamp DESC
           LIMIT 500
         )
@@ -292,6 +311,7 @@ const EventStreamContentType = 'text/event-stream';
 
 export function useRRWebEventStream(
   {
+    serviceName,
     sessionId,
     sourceId,
     startDate,
@@ -301,6 +321,7 @@ export function useRRWebEventStream(
     onEnd,
     resultsKey,
   }: {
+    serviceName: string;
     sessionId: string;
     sourceId: string;
     startDate: Date;
@@ -345,11 +366,12 @@ export function useRRWebEventStream(
       const endTime = endDate.getTime().toString();
 
       const searchParams = new URLSearchParams([
-        ['sourceId', sourceId],
         ['endTime', endTime],
-        ['startTime', startTime],
-        ['offset', pageParam.toString()],
         ['limit', (limitOverride ?? limit).toString()],
+        ['offset', pageParam.toString()],
+        ['serviceName', serviceName],
+        ['sourceId', sourceId],
+        ['startTime', startTime],
       ]);
 
       const ctrl = new AbortController();

@@ -24,17 +24,19 @@ router.get(
       sessionId: z.string(),
     }),
     query: z.object({
-      sourceId: objectIdSchema,
-      startTime: z.string().regex(/^\d+$/, 'Must be an integer string'),
       endTime: z.string().regex(/^\d+$/, 'Must be an integer string'),
       limit: z.string().regex(/^\d+$/, 'Must be an integer string'),
       offset: z.string().regex(/^\d+$/, 'Must be an integer string'),
+      serviceName: z.string(),
+      sourceId: objectIdSchema,
+      startTime: z.string().regex(/^\d+$/, 'Must be an integer string'),
     }),
   }),
   async (req, res, next) => {
     try {
       const { sessionId } = req.params;
-      const { endTime, sourceId, limit, offset, startTime } = req.query;
+      const { endTime, limit, offset, serviceName, sourceId, startTime } =
+        req.query;
 
       const { teamId } = getNonNullUserWithTeam(req);
 
@@ -79,7 +81,7 @@ router.get(
               alias: 'b',
             },
             {
-              valueExpression: `JSONExtractRaw(${source.implicitColumnExpression}, CAST('type', 'String'))`,
+              valueExpression: `simpleJSONExtractInt(${source.implicitColumnExpression}, 'type')`,
               alias: 't',
             },
             {
@@ -97,11 +99,11 @@ router.get(
           ],
           from: source.from,
           whereLanguage: 'lucene',
-          where: `${source.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+          where: `ServiceName:"${serviceName}" AND ${source.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
           timestampValueExpression: source.timestampValueExpression,
           implicitColumnExpression: source.implicitColumnExpression,
           connection: connection.id,
-          orderBy: `${source.timestampValueExpression}, ck ASC`,
+          orderBy: `${source.timestampValueExpression} ASC`,
           limit: {
             limit: Math.min(MAX_LIMIT, parseInt(limit)),
             offset: parseInt(offset),

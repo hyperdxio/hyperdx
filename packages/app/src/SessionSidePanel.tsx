@@ -33,7 +33,7 @@ export default function SessionSidePanel({
   traceSource: TSource;
   sessionSource: TSource;
   sessionId: string;
-  session?: clickhouse.Session;
+  session: clickhouse.Session;
   dateRange: DateRange['dateRange'];
   onClose: () => void;
   onPropertyAddClick?: (name: string, value: string) => void;
@@ -139,6 +139,7 @@ export default function SessionSidePanel({
             <SessionSubpanel
               traceSource={traceSource}
               sessionSource={sessionSource}
+              session={session}
               start={dateRange[0]}
               end={dateRange[1]}
               rumSessionId={sessionId}
