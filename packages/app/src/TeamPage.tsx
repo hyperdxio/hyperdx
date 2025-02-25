@@ -1,10 +1,20 @@
 import { Fragment, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
-import { Button as BSButton, Modal as BSModal, Spinner } from 'react-bootstrap';
+import {
+  Button as BSButton,
+  Form,
+  Modal as BSModal,
+  Spinner,
+} from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import { json, jsonParseLinter } from '@codemirror/lang-json';
+import { linter } from '@codemirror/lint';
+import { EditorView, ViewUpdate } from '@codemirror/view';
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Badge,
   Box,
   Button,
@@ -22,6 +32,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { TableSourceForm } from '@/components/SourceForm';
@@ -36,6 +47,16 @@ import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
 import styles from '../styles/TeamPage.module.scss';
+
+const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
+const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
+  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+
+const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
+  const text = editorView.state.doc.toString().trim();
+  if (text === '') return [];
+  return jsonParseLinter()(editorView);
+};
 
 function InviteTeamMemberForm({
   isSubmitting,
@@ -655,6 +676,7 @@ type WebhookForm = {
   url: string;
   service: string;
   description?: string;
+  body?: string;
 };
 
 function CreateWebhookForm({
@@ -668,17 +690,22 @@ function CreateWebhookForm({
 
   const form = useForm<WebhookForm>({
     defaultValues: {
-      service: 'slack',
+      service: WebhookService.Slack,
     },
   });
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
+    const { service, name, url, description, body } = values;
     try {
       await saveWebhook.mutateAsync({
-        service: values.service,
-        name: values.name,
-        url: values.url,
-        description: values.description || '',
+        service,
+        name,
+        url,
+        description: description || '',
+        body:
+          service === WebhookService.Generic && !body
+            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
+            : body,
       });
       notifications.show({
         color: 'green',
@@ -711,12 +738,12 @@ function CreateWebhookForm({
         >
           <Group mt="xs">
             <Radio
-              value="slack"
+              value={WebhookService.Slack}
               label="Slack"
               {...form.register('service', { required: true })}
             />
             <Radio
-              value="generic"
+              value={WebhookService.Generic}
               label="Generic"
               {...form.register('service', { required: true })}
             />
@@ -743,6 +770,45 @@ function CreateWebhookForm({
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
+        {form.getValues('service') === WebhookService.Generic && [
+          <label className=".mantine-TextInput-label" key="1">
+            Webhook Body (optional)
+          </label>,
+          <div className="mb-2" key="2">
+            <CodeMirror
+              height="100px"
+              extensions={[
+                json(),
+                linter(jsonLinterWithEmptyCheck()),
+                placeholder(
+                  `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
+                ),
+              ]}
+              theme="dark"
+              onChange={value => form.setValue('body', value)}
+            />
+          </div>,
+          <Alert
+            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            key="3"
+            className="mb-4"
+            color="gray"
+          >
+            <span>
+              Currently the body supports the following message template
+              variables:
+            </span>
+            <br />
+            <span>
+              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
+                <span key={index}>
+                  <code>{body}</code>
+                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
+                </span>
+              ))}
+            </span>
+          </Alert>,
+        ]}
         <Group justify="space-between">
           <Button
             variant="outline"
@@ -816,8 +882,8 @@ function DeleteWebhookButton({
 
 function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
-    'slack',
-    'generic',
+    WebhookService.Slack,
+    WebhookService.Generic,
   ]);
 
   const allWebhooks = useMemo(() => {
