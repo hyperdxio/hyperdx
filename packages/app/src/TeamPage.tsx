@@ -12,6 +12,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView, ViewUpdate } from '@codemirror/view';
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Badge,
@@ -688,7 +689,7 @@ function CreateWebhookForm({
 
   const form = useForm<WebhookForm>({
     defaultValues: {
-      service: 'slack',
+      service: WebhookService.Slack,
     },
   });
 
@@ -701,7 +702,7 @@ function CreateWebhookForm({
         url,
         description: description || '',
         body:
-          service === 'generic' && !body
+          service === WebhookService.Generic && !body
             ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
             : body,
       });
@@ -736,12 +737,12 @@ function CreateWebhookForm({
         >
           <Group mt="xs">
             <Radio
-              value="slack"
+              value={WebhookService.Slack}
               label="Slack"
               {...form.register('service', { required: true })}
             />
             <Radio
-              value="generic"
+              value={WebhookService.Generic}
               label="Generic"
               {...form.register('service', { required: true })}
             />
@@ -768,7 +769,7 @@ function CreateWebhookForm({
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
-        {form.getValues('service') === 'generic' && [
+        {form.getValues('service') === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
             Webhook Body (optional)
           </label>,
@@ -880,8 +881,8 @@ function DeleteWebhookButton({
 
 function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
-    'slack',
-    'generic',
+    WebhookService.Slack,
+    WebhookService.Generic,
   ]);
 
   const allWebhooks = useMemo(() => {
