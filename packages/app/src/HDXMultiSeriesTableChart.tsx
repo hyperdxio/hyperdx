@@ -23,6 +23,25 @@ import { UNDEFINED_WIDTH } from './tableUtils';
 import type { ChartSeries, NumberFormat } from './types';
 import { formatNumber } from './utils';
 
+export const generateCsvData = (
+  data: any[],
+  columns: {
+    dataKey: string;
+    displayName: string;
+    sortOrder?: 'asc' | 'desc';
+    numberFormat?: NumberFormat;
+    columnWidthPercent?: number;
+  }[],
+  groupColumnName?: string,
+) => {
+  return data.map(row => ({
+    ...(groupColumnName != null ? { [groupColumnName]: row.group } : {}),
+    ...Object.fromEntries(
+      columns.map(({ displayName, dataKey }) => [displayName, row[dataKey]]),
+    ),
+  }));
+};
+
 export const Table = ({
   data,
   groupColumnName,
@@ -163,16 +182,7 @@ export const Table = ({
   );
 
   const csvData = useMemo(() => {
-    return data.map(row => {
-      const csvRow: { [key: string]: string } = {
-        // @ts-ignore
-        [groupColumnName]: row.group,
-      };
-      columns.forEach(({ displayName, dataKey }) => {
-        csvRow[displayName] = row[dataKey];
-      });
-      return csvRow;
-    });
+    return generateCsvData(data, columns, groupColumnName);
   }, [data, columns, groupColumnName]);
 
   return (
