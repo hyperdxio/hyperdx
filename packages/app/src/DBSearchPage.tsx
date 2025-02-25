@@ -514,8 +514,6 @@ function DBSearchPage() {
     }
   }, [analysisMode, setIsLive]);
 
-  console.log('sc', searchedConfig);
-
   const {
     control,
     watch,
@@ -758,12 +756,6 @@ function DBSearchPage() {
   // If the source changes, reset the form to default values
   const prevInputSource = usePrevious(inputSource);
   useEffect(() => {
-    console.log(
-      prevInputSource !== inputSource,
-      'prevInputSource',
-      prevInputSource,
-      inputSource,
-    );
     if (prevInputSource !== inputSource) {
       resetField('select', {
         defaultValue: inputSourceObj?.defaultTableSelectExpression ?? '',

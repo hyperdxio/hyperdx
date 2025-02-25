@@ -70,7 +70,7 @@ export function MetricNameSelect({
   metricSource,
 }: {
   metricType: MetricsDataType;
-  metricName: string;
+  metricName: string | undefined | null;
   setMetricType: (metricType: MetricsDataType) => void;
   setMetricName: (metricName: string) => void;
   isLoading?: boolean;
@@ -121,10 +121,10 @@ export function MetricNameSelect({
       searchable
       clearable
       onChange={value => {
-        const [metricName, metricType] = value?.split(SEPARATOR) ?? [];
-        setMetricName(metricName ?? '');
-        if (metricType) {
-          setMetricType(metricType.toLowerCase() as MetricsDataType);
+        const [_metricName, _metricType] = value?.split(SEPARATOR) ?? [];
+        setMetricName(_metricName ?? '');
+        if (_metricType) {
+          setMetricType(_metricType.toLowerCase() as MetricsDataType);
         }
       }}
     />

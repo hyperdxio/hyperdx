@@ -235,15 +235,9 @@ export default function SQLInlineEditor({
           theme={'dark'}
           onFocus={() => {
             setIsFocused(true);
-            if (ref.current?.view) {
-              startCompletion(ref.current?.view);
-              console.log('startCompletion', ref.current?.view);
-            }
-            console.log('onFocus');
           }}
           onBlur={() => {
             setIsFocused(false);
-            console.log('onBlur');
           }}
           extensions={[
             styleTheme,
