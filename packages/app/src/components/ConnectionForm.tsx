@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
-import { Box, Button, Flex, Group, Stack, Text } from '@mantine/core';
+import { Box, Button, Flex, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
@@ -276,26 +276,32 @@ export function ConnectionForm({
             >
               {isNew ? 'Create' : 'Save'}
             </Button>
-            <Button
-              disabled={!formState.isValid}
-              variant="subtle"
-              type="button"
-              onClick={handleTestConnection}
-              loading={testConnectionState === TestConnectionState.Loading}
-              color={
-                testConnectionState === TestConnectionState.Invalid
-                  ? 'yellow'
-                  : 'teal'
-              }
+            <Tooltip
+              label="🔒 Password re-entry required for security"
+              position="right"
+              disabled={isNew}
             >
-              {testConnectionState === TestConnectionState.Valid ? (
-                <>Connection successful</>
-              ) : testConnectionState === TestConnectionState.Invalid ? (
-                <>Unable to connect</>
-              ) : (
-                'Test Connection'
-              )}
-            </Button>
+              <Button
+                disabled={!formState.isValid}
+                variant="subtle"
+                type="button"
+                onClick={handleTestConnection}
+                loading={testConnectionState === TestConnectionState.Loading}
+                color={
+                  testConnectionState === TestConnectionState.Invalid
+                    ? 'yellow'
+                    : 'teal'
+                }
+              >
+                {testConnectionState === TestConnectionState.Valid ? (
+                  <>Connection successful</>
+                ) : testConnectionState === TestConnectionState.Invalid ? (
+                  <>Unable to connect</>
+                ) : (
+                  'Test Connection'
+                )}
+              </Button>
+            </Tooltip>
           </Group>
           {!isNew && showDeleteButton !== false && (
             <ConfirmDeleteMenu
