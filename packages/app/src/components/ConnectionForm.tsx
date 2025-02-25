@@ -280,6 +280,7 @@ export function ConnectionForm({
               label="🔒 Password re-entry required for security"
               position="right"
               disabled={isNew}
+              withArrow
             >
               <Button
                 disabled={!formState.isValid}
