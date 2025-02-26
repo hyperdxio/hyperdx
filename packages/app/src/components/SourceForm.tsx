@@ -52,6 +52,12 @@ import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
 
+// TODO: maybe otel clickhouse export migrate the schema?
+const OTEL_CLICKHOUSE_EXPRESSIONS = {
+  timestampValueExpression: 'TimeUnix',
+  resourceAttributesExpression: 'ResourceAttributes',
+};
+
 function FormRow({
   label,
   children,
@@ -649,7 +655,9 @@ export function MetricTableModelForm({
   const connectionId = watch(`connection`);
 
   useEffect(() => {
-    setValue('timestampValueExpression', 'TimeUnix');
+    for (const [_key, _value] of Object.entries(OTEL_CLICKHOUSE_EXPRESSIONS)) {
+      setValue(_key as any, _value);
+    }
     const { unsubscribe } = watch(async (value, { name, type }) => {
       try {
         if (name && type === 'change') {

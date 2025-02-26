@@ -103,6 +103,7 @@ type SQLInlineEditorProps = {
   disableKeywordAutocomplete?: boolean;
   connectionId: string | undefined;
   enableHotkey?: boolean;
+  additionalSuggestions?: string[];
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -132,6 +133,7 @@ export default function SQLInlineEditor({
   disableKeywordAutocomplete,
   connectionId,
   enableHotkey,
+  additionalSuggestions = [],
 }: SQLInlineEditorProps) {
   const { data: fields } = useAllFields(
     {
@@ -156,30 +158,30 @@ export default function SQLInlineEditor({
 
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
-      const keywords =
-        filteredFields?.map(column => {
+      const keywords = [
+        ...(filteredFields?.map(column => {
           if (column.path.length > 1) {
             return `${column.path[0]}['${column.path[1]}']`;
           }
           return column.path[0];
-        }) ?? [];
+        }) ?? []),
+        ...additionalSuggestions,
+      ];
 
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
           sql({
             defaultTable: table ?? '',
-            // schema, // FIXME: maybe we want to use schema. need to figure out the identifier issue
             dialect: SQLDialect.define({
               keywords:
                 keywords.join(' ') +
                 (disableKeywordAutocomplete ? '' : AUTOCOMPLETE_LIST_STRING),
-              // identifierQuotes: '`',
             }),
           }),
         ),
       });
     },
-    [filteredFields, table],
+    [filteredFields, table, additionalSuggestions],
   );
 
   useEffect(() => {
@@ -231,8 +233,12 @@ export default function SQLInlineEditor({
           value={value}
           onChange={onChange}
           theme={'dark'}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={() => {
+            setIsFocused(true);
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+          }}
           extensions={[
             styleTheme,
             compartmentRef.current.of(
@@ -265,16 +271,6 @@ export default function SQLInlineEditor({
           onCreateEditor={view => {
             updateAutocompleteColumns(view);
           }}
-          onUpdate={update => {
-            // Always open completion window as much as possible
-            if (
-              update.focusChanged &&
-              update.view.hasFocus &&
-              ref.current?.view
-            ) {
-              startCompletion(ref.current?.view);
-            }
-          }}
           basicSetup={{
             lineNumbers: false,
             foldGutter: false,
@@ -301,6 +297,7 @@ export function SQLInlineEditorControlled({
   placeholder,
   filterField,
   connectionId,
+  additionalSuggestions,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
   const { field } = useController(props);
@@ -314,6 +311,7 @@ export function SQLInlineEditorControlled({
       table={table}
       value={field.value || props.defaultValue}
       connectionId={connectionId}
+      additionalSuggestions={additionalSuggestions}
       {...props}
     />
   );

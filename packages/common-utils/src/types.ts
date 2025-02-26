@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+// Basic Enums
+export enum MetricsDataType {
+  Gauge = 'gauge',
+  Histogram = 'histogram',
+  Sum = 'sum',
+}
+
 // --------------------------
 //  UI
 // --------------------------
@@ -12,6 +19,14 @@ export enum DisplayType {
   Heatmap = 'heatmap',
   Markdown = 'markdown',
 }
+
+export const MetricTableSchema = z.object({
+  [MetricsDataType.Gauge]: z.string(),
+  [MetricsDataType.Histogram]: z.string(),
+  [MetricsDataType.Sum]: z.string(),
+});
+
+export type MetricTable = z.infer<typeof MetricTableSchema>;
 
 // --------------------------
 //  SQL TYPES
@@ -36,6 +51,7 @@ export const AggregateFunctionSchema = z.enum([
 export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
+
 export const RootValueExpressionSchema = z
   .object({
     aggFn: z.union([
@@ -61,12 +77,15 @@ export const RootValueExpressionSchema = z
       aggCondition: z.string().optional(),
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      metricType: z.nativeEnum(MetricsDataType).optional(),
     }),
   );
 export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
     alias: z.string().optional(),
+    metricType: z.nativeEnum(MetricsDataType).optional(),
+    metricName: z.string().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -319,6 +338,7 @@ export const _ChartConfigSchema = z.object({
   connection: z.string(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export const ChartConfigSchema = z.intersection(
@@ -399,12 +419,6 @@ export enum SourceKind {
   Metric = 'metric',
 }
 
-export enum MetricsDataType {
-  Gauge = 'gauge',
-  Histogram = 'histogram',
-  Sum = 'sum',
-}
-
 export const SourceSchema = z.object({
   from: z.object({
     databaseName: z.string(),
@@ -450,13 +464,7 @@ export const SourceSchema = z.object({
   logSourceId: z.string().optional(),
 
   // OTEL Metrics
-  metricTables: z
-    .object({
-      [MetricsDataType.Gauge]: z.string(),
-      [MetricsDataType.Histogram]: z.string(),
-      [MetricsDataType.Sum]: z.string(),
-    })
-    .optional(),
+  metricTables: MetricTableSchema.optional(),
 });
 
 export type TSource = z.infer<typeof SourceSchema>;

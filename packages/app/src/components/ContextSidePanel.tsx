@@ -12,6 +12,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import SearchInputV2 from '@/SearchInputV2';
+import { formatAttributeClause } from '@/utils';
 
 import { DBSqlRowTable } from './DBRowTable';
 
@@ -118,17 +119,6 @@ export default function ContextSubpanel({
     return isSql ? `${original} AND ${addition}` : `${original} ${addition}`;
   }
 
-  // Helper function to format resource attribute clause
-  function formatResourceAttributeClause(
-    field: string,
-    value: string,
-    isSql: boolean,
-  ): string {
-    return isSql
-      ? `ResourceAttributes['${field}'] = '${value}'`
-      : `ResourceAttributes.${field}:"${value}"`;
-  }
-
   // Main function to generate WHERE clause based on context
   function getWhereClause(contextBy: ContextBy): string {
     const isSql = originalLanguage === 'sql';
@@ -142,7 +132,8 @@ export default function ContextSubpanel({
       return combineWhereClauses(originalWhere, debouncedWhere.trim(), isSql);
     }
 
-    const attributeClause = formatResourceAttributeClause(
+    const attributeClause = formatAttributeClause(
+      'ResourceAttributes',
       mapping.field,
       mapping.value,
       isSql,

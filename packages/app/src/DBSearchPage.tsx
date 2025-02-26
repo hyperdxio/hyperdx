@@ -223,6 +223,12 @@ function SaveSearchModal({
           {
             id: savedSearchId,
             name,
+            select: searchedConfig.select ?? '',
+            where: searchedConfig.where ?? '',
+            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            source: searchedConfig.source ?? '',
+            orderBy: searchedConfig.orderBy ?? '',
+            tags: [],
           },
           {
             onSuccess: () => {
@@ -517,6 +523,7 @@ function DBSearchPage() {
     getValues,
     formState,
     setError,
+    resetField,
   } = useForm<z.infer<typeof SearchConfigSchema>>({
     values: {
       select: searchedConfig.select || '',
@@ -746,10 +753,25 @@ function DBSearchPage() {
     [inputSourceObj?.timestampValueExpression],
   );
 
+  // If the source changes, reset the form to default values
+  const prevInputSource = usePrevious(inputSource);
   useEffect(() => {
-    setValue('select', inputSourceObj?.defaultTableSelectExpression ?? '');
-    setValue('orderBy', defaultOrderBy);
-  }, [inputSource, inputSourceObj, defaultOrderBy]);
+    if (prevInputSource !== inputSource) {
+      resetField('select', {
+        defaultValue: inputSourceObj?.defaultTableSelectExpression ?? '',
+      });
+      resetField('orderBy', {
+        defaultValue: defaultOrderBy,
+      });
+    }
+  }, [
+    resetField,
+    inputSource,
+    inputSourceObj,
+    defaultOrderBy,
+    reset,
+    prevInputSource,
+  ]);
 
   const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
     useDisclosure();
@@ -825,15 +847,17 @@ function DBSearchPage() {
           </Box>
           {!IS_LOCAL_MODE && (
             <>
-              <Button
-                variant="outline"
-                color="dark.2"
-                px="xs"
-                size="xs"
-                onClick={onSaveSearch}
-              >
-                Save
-              </Button>
+              {!savedSearchId && (
+                <Button
+                  variant="outline"
+                  color="dark.2"
+                  px="xs"
+                  size="xs"
+                  onClick={onSaveSearch}
+                >
+                  Save
+                </Button>
+              )}
               {IS_DEV && (
                 <Button
                   variant="outline"
