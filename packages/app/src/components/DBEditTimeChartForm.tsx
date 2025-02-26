@@ -135,7 +135,7 @@ function ChartSeriesEditor({
 
   const { data: attributeKeys } = useFetchMetricResourceAttrs({
     databaseName,
-    tableName,
+    tableName: tableName || '',
     metricType,
     metricName: watch(`${namePrefix}metricName`),
     tableSource,
