@@ -1,0 +1,22 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`renderChartConfig Query Events simple select + group by query logs 1`] = `
+Array [
+  Object {
+    "ServiceName": "app",
+    "count": "1",
+  },
+  Object {
+    "ServiceName": "api",
+    "count": "1",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Events simple select + where query logs 1`] = `
+Array [
+  Object {
+    "Body": "Oh no! Something went wrong!",
+  },
+]
+`;
