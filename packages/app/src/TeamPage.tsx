@@ -158,6 +158,7 @@ function ConnectionsSection() {
                     setEditedConnectionId(null);
                   }}
                   showCancelButton={false}
+                  showDeleteButton
                 />
               )}
               <Divider my="md" />
