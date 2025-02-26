@@ -162,8 +162,7 @@ describe('renderChartConfig', () => {
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toBe(
-      'WITH HistRate AS (SELECT Attributes, BucketCounts, ExplicitBounds, MetricName, TimeUnix, AggregationTemporality, CountLength, AttributesHash,\n' +
-        '            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,\n' +
+      'WITH HistRate AS (SELECT *, any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,\n' +
         '            any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,\n' +
         '            any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,\n' +
         '            IF(AggregationTemporality = 1,\n' +
@@ -172,23 +171,13 @@ describe('renderChartConfig', () => {
         '                  arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),\n' +
         '                  BucketCounts)) as BucketRates\n' +
         '          FROM (\n' +
-        '            SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes,\n' +
-        '                   cityHash64(Attributes) AS AttributesHash,\n' +
-        '                   BucketCounts,\n' +
-        '                   length(BucketCounts) as CountLength,\n' +
-        '                   ExplicitBounds,\n' +
-        '                   MetricName,\n' +
-        '                   TimeUnix,\n' +
-        '                   AggregationTemporality\n' +
+        '            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,\n' +
+        '                   length(BucketCounts) as CountLength\n' +
         '            FROM default.otel_metrics_histogram)\n' +
         "            WHERE MetricName = 'http.server.duration'\n " +
         '           ORDER BY Attributes, TimeUnix ASC\n' +
         '          ),RawHist AS (\n' +
-        '            SELECT TimeUnix,\n' +
-        '                   MetricName,\n' +
-        '                   BucketRates,\n' +
-        '                   ExplicitBounds,\n' +
-        '                   toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,\n' +
+        '            SELECT *, toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,\n' +
         '                   arrayCumSum(BucketRates) as CumRates,\n' +
         '                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx, -- b\n' +
         '                   IF(BucketLowIdx = length(BucketRates),\n' +

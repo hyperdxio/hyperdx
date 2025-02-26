@@ -863,8 +863,7 @@ function translateMetricChartConfig(
       with: [
         {
           name: 'HistRate',
-          sql: chSql`SELECT Attributes, BucketCounts, ExplicitBounds, MetricName, TimeUnix, AggregationTemporality, CountLength, AttributesHash,
-            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
+          sql: chSql`SELECT *, any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
             any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
             any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
             IF(AggregationTemporality = 1,
@@ -873,14 +872,8 @@ function translateMetricChartConfig(
                   arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
                   BucketCounts)) as BucketRates
           FROM (
-            SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes,
-                   cityHash64(Attributes) AS AttributesHash,
-                   BucketCounts,
-                   length(BucketCounts) as CountLength,
-                   ExplicitBounds,
-                   MetricName,
-                   TimeUnix,
-                   AggregationTemporality
+            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                   length(BucketCounts) as CountLength
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
             WHERE MetricName = '${metricName}'
             ORDER BY Attributes, TimeUnix ASC
@@ -889,11 +882,7 @@ function translateMetricChartConfig(
         {
           name: 'RawHist',
           sql: chSql`
-            SELECT TimeUnix,
-                   MetricName,
-                   BucketRates,
-                   ExplicitBounds,
-                   toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
+            SELECT *, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
                    arrayCumSum(BucketRates) as CumRates,
                    arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx, -- b
                    IF(BucketLowIdx = length(BucketRates),
