@@ -1,4 +1,11 @@
-import { formatAttributeClause, formatDate } from '../utils';
+import { TSource } from '@hyperdx/common-utils/dist/types';
+
+import { MetricsDataType } from '../types';
+import {
+  formatAttributeClause,
+  formatDate,
+  getMetricTableName,
+} from '../utils';
 
 describe('utils', () => {
   it('12h utc', () => {
@@ -71,5 +78,80 @@ describe('formatAttributeClause', () => {
     expect(formatAttributeClause('data', 'user-id', 'abc-123', false)).toBe(
       'data.user-id:"abc-123"',
     );
+  });
+});
+
+describe('getMetricTableName', () => {
+  // Base source object with required properties
+  const createBaseSource = () => ({
+    from: {
+      tableName: 'default_table',
+      databaseName: 'test_db',
+    },
+    id: 'test-id',
+    name: 'test-source',
+    timestampValueExpression: 'timestamp',
+    connection: 'test-connection',
+    kind: 'logs' as const,
+  });
+
+  // Source with metric tables
+  const createSourceWithMetrics = () => ({
+    ...createBaseSource(),
+    metricTables: {
+      gauge: 'gauge_table',
+      counter: 'counter_table',
+    },
+  });
+
+  it('returns the default table name when metricType is null', () => {
+    const source = createSourceWithMetrics() as unknown as TSource;
+
+    expect(getMetricTableName(source)).toBe('default_table');
+    expect(getMetricTableName(source, undefined)).toBe('default_table');
+  });
+
+  it('returns the specific metric table when metricType is provided', () => {
+    const source = createSourceWithMetrics() as unknown as TSource;
+
+    expect(getMetricTableName(source, 'gauge' as MetricsDataType)).toBe(
+      'gauge_table',
+    );
+    expect(getMetricTableName(source, 'counter' as MetricsDataType)).toBe(
+      'counter_table',
+    );
+  });
+
+  it('handles case insensitivity for metric types', () => {
+    const source = createSourceWithMetrics() as unknown as TSource;
+
+    expect(getMetricTableName(source, 'GAUGE' as MetricsDataType)).toBe(
+      'gauge_table',
+    );
+    expect(getMetricTableName(source, 'Counter' as MetricsDataType)).toBe(
+      'counter_table',
+    );
+  });
+
+  it('returns undefined when the requested metric type does not exist', () => {
+    const source = {
+      ...createBaseSource(),
+      metricTables: {
+        gauge: 'gauge_table',
+      },
+    } as unknown as TSource;
+
+    expect(
+      getMetricTableName(source, 'histogram' as MetricsDataType),
+    ).toBeUndefined();
+  });
+
+  it('handles sources without metricTables property', () => {
+    const source = createBaseSource() as unknown as TSource;
+
+    expect(getMetricTableName(source)).toBe('default_table');
+    expect(
+      getMetricTableName(source, 'gauge' as MetricsDataType),
+    ).toBeUndefined();
   });
 });
