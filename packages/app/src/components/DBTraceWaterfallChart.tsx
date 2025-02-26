@@ -9,10 +9,10 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
+import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import {
-  getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
   getSpanEventBody,
 } from '@/source';
@@ -61,10 +61,45 @@ function getTableBody(tableModel: TSource) {
   }
 }
 
-function getConfig(source: TSource, traceId: string) {
+function useSortKey(source: TSource): string {
+  let rowSortTimestamp = source.timestampValueExpression;
+  const { data: sourceCols } = useColumns({
+    connectionId: source.connection,
+    ...source.from,
+  });
+  const defaultSelections = new Set(
+    source.defaultTableSelectExpression?.split(',').map(col => {
+      return col.trim();
+    }),
+  );
+  for (const col of sourceCols ?? []) {
+    if (defaultSelections.has(col.name) && col.type.startsWith('DateTime')) {
+      rowSortTimestamp = col.name;
+      break;
+    }
+  }
+  return source.kind === SourceKind.Trace
+    ? source.timestampValueExpression
+    : rowSortTimestamp;
+}
+
+function getConfig({
+  source,
+  traceId,
+  sortKey,
+}: {
+  source: TSource;
+  traceId: string;
+  sortKey: string;
+}) {
   const alias = {
     Body: getTableBody(source),
-    Timestamp: getDisplayedTimestampValueExpression(source),
+    // reason using sortKey instead of getDisplayedTimestampValueExpression(source)
+    // We need to merge two tables(log, trace) and sort with timestamp
+    // but log and trace have different timestamp column precision(with nano second or not)
+    // so we pick the first default select col has date type as sortKey
+    // if it does not select any date type, using timestamp column as default
+    Timestamp: sortKey,
     Duration: source.durationExpression
       ? getDurationSecondsExpression(source)
       : '',
@@ -81,7 +116,7 @@ function getConfig(source: TSource, traceId: string) {
       alias: 'Body',
     },
     {
-      valueExpression: alias.Timestamp,
+      valueExpression: sortKey,
       alias: 'Timestamp',
     },
     {
@@ -180,9 +215,10 @@ function useEventsAroundFocus({
   enabled: boolean;
 }) {
   let isFetching = false;
+  const sortKey = useSortKey(tableSource);
   const { config, alias, type } = useMemo(
-    () => getConfig(tableSource, traceId),
-    [tableSource, traceId],
+    () => getConfig({ source: tableSource, traceId, sortKey }),
+    [tableSource, traceId, sortKey],
   );
 
   const { data: beforeSpanData, isFetching: isBeforeSpanFetching } =
