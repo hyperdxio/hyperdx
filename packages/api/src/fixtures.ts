@@ -228,18 +228,6 @@ const connectClickhouse = async () => {
       wait_end_of_query: 1,
     },
   });
-
-  // HACK: to warm up the db (the data doesn't populate at the 1st run)
-  // Insert a few logs and clear out
-  await bulkInsertLogs([
-    {
-      ServiceName: 'api',
-      Timestamp: new Date('2023-11-16T22:10:00.000Z'),
-      SeverityText: 'error',
-      Body: 'Oh no! Something went wrong!',
-    },
-  ]);
-  await clearClickhouseTables();
 };
 
 export const connectDB = async () => {
