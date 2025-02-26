@@ -17,6 +17,7 @@ export default function SearchInputV2({
   connectionId,
   enableHotkey,
   onSubmit,
+  additionalSuggestions,
   ...props
 }: {
   database?: string;
@@ -29,6 +30,7 @@ export default function SearchInputV2({
   language?: 'sql' | 'lucene';
   enableHotkey?: boolean;
   onSubmit?: () => void;
+  additionalSuggestions?: string[];
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -49,11 +51,19 @@ export default function SearchInputV2({
 
   const autoCompleteOptions = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
-    return _columns.map(c => ({
+    const baseOptions = _columns.map(c => ({
       value: c.path.join('.'),
       label: `${c.path.join('.')} (${c.jsType})`,
     }));
-  }, [fields]);
+
+    const suggestionOptions =
+      additionalSuggestions?.map(column => ({
+        value: column,
+        label: column,
+      })) ?? [];
+
+    return [...baseOptions, ...suggestionOptions];
+  }, [fields, additionalSuggestions]);
 
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 

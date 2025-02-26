@@ -61,6 +61,7 @@ export function DBTimeChart({
     granularity,
     limit: { limit: 100000 },
   };
+
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
