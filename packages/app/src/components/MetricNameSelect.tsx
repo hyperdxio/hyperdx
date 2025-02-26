@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { Control, UseControllerProps } from 'react-hook-form';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
+
+const MAX_METRIC_NAME_OPTIONS = 3000;
 
 const dateRange = [new Date(Date.now() - 1000 * 60 * 60 * 24), new Date()] as [
   Date,
@@ -43,14 +44,17 @@ function useMetricNames(metricSource: TSource) {
   const { data: gaugeMetrics } = useGetKeyValues({
     chartConfig: gaugeConfig,
     keys: ['MetricName'],
+    limit: MAX_METRIC_NAME_OPTIONS,
   });
   const { data: histogramMetrics } = useGetKeyValues({
     chartConfig: histogramConfig,
     keys: ['MetricName'],
+    limit: MAX_METRIC_NAME_OPTIONS,
   });
   const { data: sumMetrics } = useGetKeyValues({
     chartConfig: sumConfig,
     keys: ['MetricName'],
+    limit: MAX_METRIC_NAME_OPTIONS,
   });
 
   return {

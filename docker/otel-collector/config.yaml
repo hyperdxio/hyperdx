@@ -1,4 +1,14 @@
 receivers:
+  # Troubleshooting
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otelcol'
+          scrape_interval: 30s
+          static_configs:
+            - targets:
+                - '0.0.0.0:8888'
+                - ${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}
   # Data sources: logs
   fluentforward:
     endpoint: '0.0.0.0:24225'
@@ -75,9 +85,8 @@ extensions:
     endpoint: :13133
 service:
   telemetry:
-    # TODO: enable internal metrics
-    # metrics:
-    #   address: ':8888'
+    metrics:
+      address: ':8888'
     logs:
       level: ${HYPERDX_LOG_LEVEL}
   extensions: [health_check]
@@ -87,7 +96,7 @@ service:
       processors: [memory_limiter, batch]
       exporters: [clickhouse]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus]
       processors: [memory_limiter, batch]
       exporters: [clickhouse]
     logs/in:
