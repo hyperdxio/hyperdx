@@ -15,8 +15,11 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  MetricsDataType,
   SavedChartConfig,
   SelectList,
+  SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -43,6 +46,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_DEV } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
+import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
@@ -61,8 +65,23 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
 import { InputControlled } from './InputControlled';
+import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
+
+const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
+  ((queriedConfig?.select?.length ?? 0) > 0 ||
+    typeof queriedConfig?.select === 'string') &&
+  queriedConfig?.from?.databaseName &&
+  // tableName is emptry for metric sources
+  (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
+  queriedConfig?.timestampValueExpression;
+
+const getMetricTableName = (source: TSource, metricType?: MetricsDataType) =>
+  metricType == null
+    ? source.from.tableName
+    : // @ts-ignore
+      (source.metricTables?.[metricType.toLowerCase()] as any);
 
 const NumberFormatInputControlled = ({
   control,
@@ -90,7 +109,7 @@ function ChartSeriesEditor({
   onSubmit,
   setValue,
   showGroupBy,
-  tableName,
+  tableName: _tableName,
   watch,
 }: {
   control: Control<any>;
@@ -110,6 +129,24 @@ function ChartSeriesEditor({
     `${namePrefix}aggConditionLanguage`,
     'lucene',
   );
+
+  const metricType = watch(`${namePrefix}metricType`);
+  const selectedSourceId = watch('source');
+  const { data: tableSource } = useSource({ id: selectedSourceId });
+
+  const tableName =
+    tableSource?.kind === SourceKind.Metric
+      ? getMetricTableName(tableSource, metricType)
+      : _tableName;
+
+  const { data: attributeKeys } = useFetchMetricResourceAttrs({
+    databaseName,
+    tableName,
+    metricType,
+    metricName: watch(`${namePrefix}metricName`),
+    tableSource,
+    isSql: aggConditionLanguage === 'sql',
+  });
 
   return (
     <>
@@ -146,7 +183,19 @@ function ChartSeriesEditor({
             control={control}
           />
         </div>
-        {aggFn !== 'count' && (
+        {tableSource?.kind === SourceKind.Metric && (
+          <MetricNameSelect
+            metricName={watch(`${namePrefix}metricName`)}
+            metricType={metricType}
+            setMetricName={value => {
+              setValue(`${namePrefix}metricName`, value);
+              setValue(`${namePrefix}valueExpression`, 'Value');
+            }}
+            setMetricType={value => setValue(`${namePrefix}metricType`, value)}
+            metricSource={tableSource}
+          />
+        )}
+        {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
           <div style={{ minWidth: 220 }}>
             <SQLInlineEditorControlled
               database={databaseName}
@@ -171,6 +220,7 @@ function ChartSeriesEditor({
             onLanguageChange={lang =>
               setValue(`${namePrefix}aggConditionLanguage`, lang)
             }
+            additionalSuggestions={attributeKeys}
             language="sql"
             onSubmit={onSubmit}
           />
@@ -187,6 +237,7 @@ function ChartSeriesEditor({
             language="lucene"
             placeholder="Search your events w/ Lucene ex. column:foo"
             onSubmit={onSubmit}
+            additionalSuggestions={attributeKeys}
           />
         )}
         {showGroupBy && (
@@ -304,6 +355,7 @@ export default function EditTimeChartForm({
   }, [displayType]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
+  const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
 
   // const queriedConfig: ChartConfigWithDateRange | undefined = useMemo(() => {
   //   if (queriedTableSource == null) {
@@ -328,7 +380,6 @@ export default function EditTimeChartForm({
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
       setChartConfig(form);
-
       if (tableSource != null) {
         setQueriedConfig({
           ...form,
@@ -337,6 +388,7 @@ export default function EditTimeChartForm({
           dateRange,
           connection: tableSource.connection,
           implicitColumnExpression: tableSource.implicitColumnExpression,
+          metricTables: tableSource.metricTables,
         });
       }
     })();
@@ -380,12 +432,7 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
-  const queryReady =
-    ((queriedConfig?.select?.length ?? 0) > 0 ||
-      typeof queriedConfig?.select === 'string') &&
-    queriedConfig?.from?.databaseName &&
-    queriedConfig?.from?.tableName &&
-    queriedConfig?.timestampValueExpression;
+  const queryReady = isQueryReady(queriedConfig);
 
   const sampleEventsConfig = useMemo(
     () =>
@@ -842,31 +889,33 @@ export default function EditTimeChartForm({
       {showGeneratedSql && (
         <>
           <Divider mt="md" />
-          <Accordion defaultValue="sample">
-            <Accordion.Item value="sample">
-              <Accordion.Control icon={<i className="bi bi-card-list"></i>}>
-                <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Sample Matched Events
-                </Text>
-              </Accordion.Control>
-              <Accordion.Panel>
-                {sampleEventsConfig != null && (
-                  <div
-                    className="flex-grow-1 d-flex flex-column"
-                    style={{ height: 400 }}
-                  >
-                    <DBSqlRowTable
-                      config={sampleEventsConfig}
-                      highlightedLineId={undefined}
-                      enabled
-                      isLive={false}
-                      queryKeyPrefix={'search'}
-                    />
-                  </div>
-                )}
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
+          {showSampleEvents && (
+            <Accordion defaultValue="sample">
+              <Accordion.Item value="sample">
+                <Accordion.Control icon={<i className="bi bi-card-list"></i>}>
+                  <Text size="sm" style={{ alignSelf: 'center' }}>
+                    Sample Matched Events
+                  </Text>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  {sampleEventsConfig != null && (
+                    <div
+                      className="flex-grow-1 d-flex flex-column"
+                      style={{ height: 400 }}
+                    >
+                      <DBSqlRowTable
+                        config={sampleEventsConfig}
+                        highlightedLineId={undefined}
+                        enabled
+                        isLive={false}
+                        queryKeyPrefix={'search'}
+                      />
+                    </div>
+                  )}
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          )}
           <Accordion defaultValue="">
             <Accordion.Item value={'SQL'}>
               <Accordion.Control icon={<i className="bi bi-code-square"></i>}>
