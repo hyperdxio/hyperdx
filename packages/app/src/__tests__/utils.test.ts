@@ -85,14 +85,14 @@ describe('getMetricTableName', () => {
   // Base source object with required properties
   const createBaseSource = () => ({
     from: {
-      tableName: 'default_table',
+      tableName: '',
       databaseName: 'test_db',
     },
     id: 'test-id',
     name: 'test-source',
     timestampValueExpression: 'timestamp',
     connection: 'test-connection',
-    kind: 'logs' as const,
+    kind: 'metric' as const,
   });
 
   // Source with metric tables
@@ -107,8 +107,8 @@ describe('getMetricTableName', () => {
   it('returns the default table name when metricType is null', () => {
     const source = createSourceWithMetrics() as unknown as TSource;
 
-    expect(getMetricTableName(source)).toBe('default_table');
-    expect(getMetricTableName(source, undefined)).toBe('default_table');
+    expect(getMetricTableName(source)).toBe('');
+    expect(getMetricTableName(source, undefined)).toBe('');
   });
 
   it('returns the specific metric table when metricType is provided', () => {
@@ -149,7 +149,7 @@ describe('getMetricTableName', () => {
   it('handles sources without metricTables property', () => {
     const source = createBaseSource() as unknown as TSource;
 
-    expect(getMetricTableName(source)).toBe('default_table');
+    expect(getMetricTableName(source)).toBe('');
     expect(
       getMetricTableName(source, 'gauge' as MetricsDataType),
     ).toBeUndefined();
