@@ -884,7 +884,7 @@ function translateMetricChartConfig(
           sql: chSql`
             SELECT *, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
                    arrayCumSum(BucketRates) as CumRates,
-                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx, -- b
+                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
                    IF(BucketLowIdx = length(BucketRates),
                       ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value
                       IF(BucketLowIdx > 1, -- indexes are 1-based

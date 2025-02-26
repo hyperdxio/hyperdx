@@ -179,7 +179,7 @@ describe('renderChartConfig', () => {
         '          ),RawHist AS (\n' +
         '            SELECT *, toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,\n' +
         '                   arrayCumSum(BucketRates) as CumRates,\n' +
-        '                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx, -- b\n' +
+        '                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,\n' +
         '                   IF(BucketLowIdx = length(BucketRates),\n' +
         '                      ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value\n' +
         '                      IF(BucketLowIdx > 1, -- indexes are 1-based\n' +
