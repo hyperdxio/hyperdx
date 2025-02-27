@@ -100,11 +100,6 @@ const connectClickhouse = async () => {
           TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
           Value Float64 CODEC(ZSTD(1)),
           Flags UInt32 CODEC(ZSTD(1)),
-          Exemplars.FilteredAttributes Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
-          Exemplars.TimeUnix Array(DateTime64(9)) CODEC(ZSTD(1)),
-          Exemplars.Value Array(Float64) CODEC(ZSTD(1)),
-          Exemplars.SpanId Array(String) CODEC(ZSTD(1)),
-          Exemplars.TraceId Array(String) CODEC(ZSTD(1)),
           INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
           INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
           INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
@@ -147,11 +142,6 @@ const connectClickhouse = async () => {
           TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
           Value Float64 CODEC(ZSTD(1)),
           Flags UInt32 CODEC(ZSTD(1)),
-          Exemplars.FilteredAttributes Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
-          Exemplars.TimeUnix Array(DateTime64(9)) CODEC(ZSTD(1)),
-          Exemplars.Value Array(Float64) CODEC(ZSTD(1)),
-          Exemplars.SpanId Array(String) CODEC(ZSTD(1)),
-          Exemplars.TraceId Array(String) CODEC(ZSTD(1)),
           AggregationTemporality Int32 CODEC(ZSTD(1)),
           IsMonotonic Bool CODEC(Delta(1), ZSTD(1)),
           INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
@@ -198,11 +188,6 @@ const connectClickhouse = async () => {
           Sum Float64 CODEC(ZSTD(1)),
           BucketCounts Array(UInt64) CODEC(ZSTD(1)),
           ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
-          Exemplars.FilteredAttributes Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
-          Exemplars.TimeUnix Array(DateTime64(9)) CODEC(ZSTD(1)),
-          Exemplars.Value Array(Float64) CODEC(ZSTD(1)),
-          Exemplars.SpanId Array(String) CODEC(ZSTD(1)),
-          Exemplars.TraceId Array(String) CODEC(ZSTD(1)),
           Flags UInt32 CODEC(ZSTD(1)),
           Min Float64 CODEC(ZSTD(1)),
           Max Float64 CODEC(ZSTD(1)),
@@ -217,7 +202,7 @@ const connectClickhouse = async () => {
       ENGINE = MergeTree
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
-      TTL toDateTime(TimeUnix) + toIntervalDay(15)
+      TTL toDateTime(TimeUnix) + toIntervalDay(3)
       SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
     `,
     // Recommended for cluster usage to avoid situations
@@ -422,6 +407,25 @@ export const bulkInsertMetricsGauge = async (
   }
   await _bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
+    metrics,
+  );
+};
+
+export const bulkInsertMetricsSum = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    TimeUnix: Date;
+    Value: number;
+    AggregationTemporality: number;
+    IsMonotonic: boolean;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await _bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
     metrics,
   );
 };

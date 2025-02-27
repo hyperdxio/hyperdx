@@ -20,3 +20,16 @@ Array [
   },
 ]
 `;
+
+exports[`renderChartConfig Query Metrics handles counter resets correctly for sum metrics 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 15,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 52,
+  },
+]
+`;
