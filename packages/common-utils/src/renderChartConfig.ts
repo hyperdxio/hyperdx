@@ -937,7 +937,7 @@ export async function renderChartConfig(
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
     chSql`SELECT ${select}`,
     chSql`FROM ${from}`,
-    chSql`WHERE ${where}`,
+    chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
     chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
