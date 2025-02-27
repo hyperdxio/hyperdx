@@ -83,7 +83,7 @@ import {
 import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
-import { hashCode, omit } from './utils';
+import { getMetricTableName, hashCode, omit } from './utils';
 import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -166,16 +166,24 @@ const Tile = forwardRef(
 
     useEffect(() => {
       if (source != null) {
-        setQueriedConfig({
-          ...chart.config,
-          connection: source.connection,
-          dateRange,
-          granularity,
-          timestampValueExpression: source.timestampValueExpression,
-          from: source.from,
-          implicitColumnExpression: source.implicitColumnExpression,
-          filters,
-        });
+        // TODO: will need to update this when we allow for multiple metrics per chart
+        const metricType = (chart.config.select as Array<any>)[0].metricType;
+        const tableName = getMetricTableName(source, metricType);
+        if (source.connection) {
+          setQueriedConfig({
+            ...chart.config,
+            connection: source.connection,
+            dateRange,
+            granularity,
+            timestampValueExpression: source.timestampValueExpression,
+            from: {
+              databaseName: source.from?.databaseName || 'default',
+              tableName: tableName || '',
+            },
+            implicitColumnExpression: source.implicitColumnExpression,
+            filters,
+          });
+        }
       }
     }, [source, chart, dateRange, granularity, filters]);
 
