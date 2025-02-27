@@ -145,7 +145,7 @@ function getConfig(source: TSource, traceId: string) {
   return { config, alias, type: source.kind };
 }
 
-function useEventsData({
+export function useEventsData({
   config,
   dateRangeStartInclusive,
   dateRange,

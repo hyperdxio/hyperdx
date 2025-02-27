@@ -50,7 +50,7 @@ import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
-import { optionsToSelectData } from '@/utils';
+import { getMetricTableName, optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
   DEFAULT_TILE_ALERT,
@@ -76,12 +76,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   // tableName is emptry for metric sources
   (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
   queriedConfig?.timestampValueExpression;
-
-const getMetricTableName = (source: TSource, metricType?: MetricsDataType) =>
-  metricType == null
-    ? source.from.tableName
-    : // @ts-ignore
-      (source.metricTables?.[metricType.toLowerCase()] as any);
 
 const NumberFormatInputControlled = ({
   control,
@@ -141,7 +135,7 @@ function ChartSeriesEditor({
 
   const { data: attributeKeys } = useFetchMetricResourceAttrs({
     databaseName,
-    tableName,
+    tableName: tableName || '',
     metricType,
     metricName: watch(`${namePrefix}metricName`),
     tableSource,
