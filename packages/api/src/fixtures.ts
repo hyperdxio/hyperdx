@@ -352,14 +352,18 @@ export const clearClickhouseTables = async () => {
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
   ];
 
+  const promises: any = [];
   for (const table of tables) {
-    await clickhouse.client.command({
-      query: `TRUNCATE TABLE ${table}`,
-      clickhouse_settings: {
-        wait_end_of_query: 1,
-      },
-    });
+    promises.push(
+      clickhouse.client.command({
+        query: `TRUNCATE TABLE ${table}`,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      }),
+    );
   }
+  await Promise.all(promises);
 };
 
 export const selectAllLogs = async () => {
