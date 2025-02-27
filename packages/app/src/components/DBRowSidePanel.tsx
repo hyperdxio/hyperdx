@@ -27,6 +27,7 @@ import { useZIndex, ZIndexContext } from '@/zIndex';
 import ContextSubpanel from './ContextSidePanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
 
 import 'react-modern-drawer/dist/index.css';
@@ -189,6 +190,16 @@ export default function DBRowSidePanel({
         ? source.logSourceId
         : undefined;
 
+  const traceSourceId =
+    source.kind === 'trace' ? source.id : source.traceSourceId;
+
+  const { rumSessionId, rumServiceName } = useSessionId({
+    sourceId: traceSourceId,
+    traceId,
+    dateRange: rng,
+    enabled: rowId != null,
+  });
+
   return (
     <Drawer
       customIdSuffix={`log-side-panel-${rowId}`}
@@ -248,6 +259,14 @@ export default function DBRowSidePanel({
                     text: 'Surrounding Context',
                     value: Tab.Context,
                   },
+                  ...(rumSessionId != null
+                    ? [
+                        {
+                          text: 'Session Replay',
+                          value: Tab.Replay,
+                        },
+                      ]
+                    : []),
                 ]}
                 activeItem={displayedTab}
                 onClick={(v: any) => setTab(v)}
@@ -319,6 +338,29 @@ export default function DBRowSidePanel({
                     rowData={normalizedRow}
                     rowId={rowId}
                   />
+                </ErrorBoundary>
+              )}
+              {displayedTab === Tab.Replay && (
+                <ErrorBoundary
+                  onError={err => {
+                    console.error(err);
+                  }}
+                  fallbackRender={() => (
+                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                      An error occurred while rendering this event.
+                    </div>
+                  )}
+                >
+                  <div className="overflow-hidden flex-grow-1">
+                    <DBSessionPanel
+                      dateRange={rng}
+                      focusDate={focusDate}
+                      setSubDrawerOpen={setSubDrawerOpen}
+                      traceSourceId={traceSourceId}
+                      serviceName={rumServiceName}
+                      rumSessionId={rumSessionId}
+                    />
+                  </div>
                 </ErrorBoundary>
               )}
               <LogSidePanelKbdShortcuts />

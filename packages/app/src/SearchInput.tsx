@@ -18,7 +18,7 @@ export default function SearchInput({
   onChange: (value: string) => void;
   onSearch: (searchQuery: string) => void;
   placeholder?: string;
-  size?: 'sm' | 'lg';
+  size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
 }) {
   const { data: propertyTypeMappingsResult } = api.usePropertyTypeMappings();

@@ -47,9 +47,9 @@ export default function SessionSubpanel({
 }: {
   traceSource: TSource;
   sessionSource: TSource;
-  session: clickhouse.Session;
-  generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
-  generateChartUrl: (config: {
+  session: { serviceName: string };
+  generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
+  generateChartUrl?: (config: {
     aggFn: string;
     field: string;
     groupBy: string[];
@@ -438,6 +438,7 @@ export default function SessionSubpanel({
               onChange={value => setInputQuery(value)}
               onSearch={() => {}}
               placeholder="Filter events"
+              size="xs"
             />
 
             <button
