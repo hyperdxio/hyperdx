@@ -12,10 +12,7 @@ import { Text } from '@mantine/core';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
-import {
-  getDurationSecondsExpression,
-  getSpanEventBody,
-} from '@/source';
+import { getDurationSecondsExpression, getSpanEventBody } from '@/source';
 import TimelineChart from '@/TimelineChart';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
