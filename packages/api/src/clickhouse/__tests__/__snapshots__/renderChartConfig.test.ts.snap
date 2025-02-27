@@ -33,3 +33,24 @@ Array [
   },
 ]
 `;
+
+exports[`renderChartConfig Query Metrics single sum rate 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 19,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 79,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 5813,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:15:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 78754,
+  },
+]
+`;

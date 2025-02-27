@@ -209,6 +209,7 @@ describe('renderChartConfig', () => {
         Value: point.value,
         TimeUnix: new Date(point.timestamp),
       }));
+      // Rate: 8, 1, 8, 25
       const sumPointsA = [
         { value: 0, timestamp: now - ms('1m') }, // 0
         { value: 1, timestamp: now },
@@ -230,6 +231,8 @@ describe('renderChartConfig', () => {
         IsMonotonic: true,
         AggregationTemporality: 2, // Cumulative
       }));
+      // Rate: 11, 78, 5805, 78729
+      // Sum: 12, 79, 5813, 78754
       const sumPointsB = [
         { value: 3, timestamp: now - ms('1m') }, // 3
         { value: 3, timestamp: now },
@@ -318,18 +321,93 @@ describe('renderChartConfig', () => {
         AggregationTemporality: 2, // Cumulative
       }));
 
-      await bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]);
-      await bulkInsertMetricsSum([
-        ...sumPointsA,
-        ...sumPointsB,
-        ...sumPointsC,
-        ...sumPointsD,
-        ...sumPointsE,
+      await Promise.all([
+        bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]),
+        bulkInsertMetricsSum([
+          ...sumPointsA,
+          ...sumPointsB,
+          ...sumPointsC,
+          ...sumPointsD,
+          ...sumPointsE,
+        ]),
       ]);
     });
 
     it.skip('gauge (last value)', async () => {
       // IMPLEMENT ME (last_value aggregation)
+    });
+
+    // FIXME: gauge avg doesn't work as expected (it should pull the average of the last value)
+    // in this case
+    // (6.25 + 4) / 2, (80 + 4) / 2
+    it('single avg gauge', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+
+      const resp = await clickhouseClient
+        .query<'JSON'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'JSON',
+        })
+        .then(res => res.json<any>());
+    });
+
+    it('single sum rate', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: 'test.users',
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('20m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const resp = await clickhouseClient
+        .query<'JSON'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'JSON',
+        })
+        .then(res => res.json<any>());
+      expect(resp.data).toMatchSnapshot();
     });
 
     it('handles counter resets correctly for sum metrics', async () => {

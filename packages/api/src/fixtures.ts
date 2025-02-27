@@ -344,12 +344,22 @@ export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await clickhouse.client.command({
-    query: `TRUNCATE TABLE ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+  const tables = [
+    `${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
+    // `${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
+  ];
+
+  for (const table of tables) {
+    await clickhouse.client.command({
+      query: `TRUNCATE TABLE ${table}`,
+      clickhouse_settings: {
+        wait_end_of_query: 1,
+      },
+    });
+  }
 };
 
 export const selectAllLogs = async () => {
