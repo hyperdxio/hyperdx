@@ -100,19 +100,18 @@ describe('renderChartConfig', () => {
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toBe(
-      'WITH RawSum AS (SELECT MetricName,Value,TimeUnix,Attributes,ResourceAttributes,ScopeAttributes,\n' +
+      'WITH RawSum AS (SELECT *,\n' +
         '               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,\n' +
         '               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,\n' +
         '               IF(AggregationTemporality = 1,\n' +
         '                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,\n' +
         '                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate\n' +
         '            FROM (\n' +
-        '                SELECT mapConcat(ScopeAttributes, ResourceAttributes, Attributes) AS Attributes,\n' +
-        '                       ScopeAttributes, ResourceAttributes,\n' +
-        '                       cityHash64(Attributes) AS AttributesHash, Value, MetricName, TimeUnix, AggregationTemporality\n' +
+        '                SELECT *, \n' +
+        '                       cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash\n' +
         '                FROM default.otel_metrics_sum\n' +
         "                WHERE MetricName = 'db.client.connections.usage'\n" +
-        '                ORDER BY Attributes, TimeUnix ASC\n' +
+        '                ORDER BY AttributesHash, TimeUnix ASC\n' +
         '            ) )SELECT avg(\n' +
         '      toFloat64OrNull(toString(Rate))\n' +
         '    ),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minutes) AS `__hdx_time_bucket` ' +
