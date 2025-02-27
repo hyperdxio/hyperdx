@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
-import { getDisplayedTimestampValueExpression } from '@/source';
 
 import { useEventsData } from './DBTraceWaterfallChart';
 
@@ -19,6 +17,7 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
+  // trace source
   const { data: source } = useSource({ id: sourceId });
 
   const config = useMemo(() => {
@@ -28,7 +27,7 @@ export const useSessionId = ({
     return {
       select: [
         {
-          valueExpression: getDisplayedTimestampValueExpression(source),
+          valueExpression: `${source.timestampValueExpression}`,
           alias: 'Timestamp',
         },
         {
@@ -45,7 +44,7 @@ export const useSessionId = ({
         },
       ],
       from: source.from,
-      timestampValueExpression: getDisplayedTimestampValueExpression(source),
+      timestampValueExpression: source.timestampValueExpression,
       limit: { limit: 10000 },
       connection: source.connection,
       where: `${source.traceIdExpression} = '${traceId}'`,
