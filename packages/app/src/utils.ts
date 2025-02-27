@@ -4,6 +4,7 @@ import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
@@ -599,4 +600,21 @@ export function formatAttributeClause(
   return isSql
     ? `${column}['${field}']='${value}'`
     : `${column}.${field}:"${value}"`;
+}
+
+/**
+ * Gets the appropriate table name for a source based on metric type
+ * @param source The data source
+ * @param metricType Optional metric type to determine which table to use
+ * @returns The table name to use for the given source and metric type
+ */
+export function getMetricTableName(
+  source: TSource,
+  metricType?: MetricsDataType,
+): string | undefined {
+  return metricType == null
+    ? source.from.tableName
+    : source.metricTables?.[
+        metricType.toLowerCase() as keyof typeof source.metricTables
+      ];
 }
