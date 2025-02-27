@@ -91,9 +91,11 @@ export function useTableMetadata(
 export function useGetKeyValues({
   chartConfig,
   keys,
+  limit,
 }: {
   chartConfig: ChartConfigWithDateRange;
   keys: string[];
+  limit?: number;
 }) {
   const metadata = getMetadata();
   return useQuery({
@@ -102,6 +104,7 @@ export function useGetKeyValues({
       return metadata.getKeyValues({
         chartConfig,
         keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+        limit,
       });
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min

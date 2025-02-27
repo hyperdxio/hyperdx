@@ -29,6 +29,16 @@
     <timezone>UTC</timezone>
     <mlock_executable>false</mlock_executable>
 
+    <!-- Prometheus exporter -->
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+        <errors>true</errors>
+    </prometheus>
+
     <!-- Query log. Used only for queries with setting log_queries = 1. -->
     <query_log>
         <database>system</database>
