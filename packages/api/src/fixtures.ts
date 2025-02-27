@@ -1,5 +1,3 @@
-import { createClient } from '@clickhouse/client';
-import * as commonClickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import {
   DisplayType,
   SavedChartConfig,
@@ -16,12 +14,7 @@ import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
 import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
 import Server from '@/server';
-import {
-  LogPlatform,
-  LogStreamModel,
-  LogType,
-  MetricModel,
-} from '@/utils/logParser';
+import { MetricModel } from '@/utils/logParser';
 import { redisClient } from '@/utils/redis';
 
 const MOCK_USER = {
@@ -29,8 +22,14 @@ const MOCK_USER = {
   password: 'TacoCat!2#4X',
 };
 
-const DEFAULT_LOGS_TABLE = 'default.otel_logs';
-const DEFAULT_TRACES_TABLE = 'default.otel_traces';
+export const DEFAULT_DATABASE = 'default';
+export const DEFAULT_LOGS_TABLE = 'otel_logs';
+export const DEFAULT_TRACES_TABLE = 'otel_traces';
+export const DEFAULT_METRICS_TABLE = {
+  GAUGE: 'otel_metrics_gauge',
+  SUM: 'otel_metrics_sum',
+  HISTOGRAM: 'otel_metrics_histogram',
+};
 
 const connectClickhouse = async () => {
   // health check
@@ -38,7 +37,7 @@ const connectClickhouse = async () => {
 
   await clickhouse.client.command({
     query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_LOGS_TABLE}
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}
       (
         Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         TimestampTime DateTime DEFAULT toDateTime(Timestamp),
@@ -81,17 +80,139 @@ const connectClickhouse = async () => {
     },
   });
 
-  // HACK: to warm up the db (the data doesn't populate at the 1st run)
-  // Insert a few logs and clear out
-  await bulkInsertLogs([
-    {
-      ServiceName: 'api',
-      Timestamp: new Date('2023-11-16T22:10:00.000Z'),
-      SeverityText: 'error',
-      Body: 'Oh no! Something went wrong!',
+  await clickhouse.client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}
+        (
+          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ResourceSchemaUrl String CODEC(ZSTD(1)),
+          ScopeName String CODEC(ZSTD(1)),
+          ScopeVersion String CODEC(ZSTD(1)),
+          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+          ScopeSchemaUrl String CODEC(ZSTD(1)),
+          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+          MetricName String CODEC(ZSTD(1)),
+          MetricDescription String CODEC(ZSTD(1)),
+          MetricUnit String CODEC(ZSTD(1)),
+          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          Value Float64 CODEC(ZSTD(1)),
+          Flags UInt32 CODEC(ZSTD(1)),
+          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = MergeTree
+      PARTITION BY toDate(TimeUnix)
+      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+      TTL toDateTime(TimeUnix) + toIntervalDay(3)
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+    `,
+    // Recommended for cluster usage to avoid situations
+    // where a query processing error occurred after the response code
+    // and HTTP headers were sent to the client.
+    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
+    clickhouse_settings: {
+      wait_end_of_query: 1,
     },
-  ]);
-  await clearClickhouseTables();
+  });
+
+  await clickhouse.client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}
+      (
+          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ResourceSchemaUrl String CODEC(ZSTD(1)),
+          ScopeName String CODEC(ZSTD(1)),
+          ScopeVersion String CODEC(ZSTD(1)),
+          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+          ScopeSchemaUrl String CODEC(ZSTD(1)),
+          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+          MetricName String CODEC(ZSTD(1)),
+          MetricDescription String CODEC(ZSTD(1)),
+          MetricUnit String CODEC(ZSTD(1)),
+          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          Value Float64 CODEC(ZSTD(1)),
+          Flags UInt32 CODEC(ZSTD(1)),
+          AggregationTemporality Int32 CODEC(ZSTD(1)),
+          IsMonotonic Bool CODEC(Delta(1), ZSTD(1)),
+          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = MergeTree
+      PARTITION BY toDate(TimeUnix)
+      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+      TTL toDateTime(TimeUnix) + toIntervalDay(15)
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+    `,
+    // Recommended for cluster usage to avoid situations
+    // where a query processing error occurred after the response code
+    // and HTTP headers were sent to the client.
+    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
+
+  await clickhouse.client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}
+      (
+          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ResourceSchemaUrl String CODEC(ZSTD(1)),
+          ScopeName String CODEC(ZSTD(1)),
+          ScopeVersion String CODEC(ZSTD(1)),
+          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
+          ScopeSchemaUrl String CODEC(ZSTD(1)),
+          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+          MetricName String CODEC(ZSTD(1)),
+          MetricDescription String CODEC(ZSTD(1)),
+          MetricUnit String CODEC(ZSTD(1)),
+          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+          Count UInt64 CODEC(Delta(8), ZSTD(1)),
+          Sum Float64 CODEC(ZSTD(1)),
+          BucketCounts Array(UInt64) CODEC(ZSTD(1)),
+          ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
+          Flags UInt32 CODEC(ZSTD(1)),
+          Min Float64 CODEC(ZSTD(1)),
+          Max Float64 CODEC(ZSTD(1)),
+          AggregationTemporality Int32 CODEC(ZSTD(1)),
+          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
+      )
+      ENGINE = MergeTree
+      PARTITION BY toDate(TimeUnix)
+      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+      TTL toDateTime(TimeUnix) + toIntervalDay(3)
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+    `,
+    // Recommended for cluster usage to avoid situations
+    // where a query processing error occurred after the response code
+    // and HTTP headers were sent to the client.
+    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
 };
 
 export const connectDB = async () => {
@@ -223,12 +344,26 @@ export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await clickhouse.client.command({
-    query: `TRUNCATE TABLE ${DEFAULT_LOGS_TABLE}`,
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+  const tables = [
+    `${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
+    // `${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
+  ];
+
+  const promises: any = [];
+  for (const table of tables) {
+    promises.push(
+      clickhouse.client.command({
+        query: `TRUNCATE TABLE ${table}`,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      }),
+    );
+  }
+  await Promise.all(promises);
 };
 
 export const selectAllLogs = async () => {
@@ -237,10 +372,26 @@ export const selectAllLogs = async () => {
   }
   return clickhouse.client
     .query({
-      query: `SELECT * FROM ${DEFAULT_LOGS_TABLE}`,
+      query: `SELECT * FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
       format: 'JSONEachRow',
     })
     .then(res => res.json());
+};
+
+const _bulkInsertData = async (table: string, data: Record<string, any>[]) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await clickhouse.client.insert({
+    table,
+    values: data,
+    format: 'JSONEachRow',
+    clickhouse_settings: {
+      // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
+      date_time_input_format: 'best_effort',
+      wait_end_of_query: 1,
+    },
+  });
 };
 
 export const bulkInsertLogs = async (
@@ -254,18 +405,46 @@ export const bulkInsertLogs = async (
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await clickhouse.client.insert({
-    table: DEFAULT_LOGS_TABLE,
-    values: events,
-    format: 'JSONEachRow',
-    clickhouse_settings: {
-      // Allows to insert serialized JS Dates (such as '2023-12-06T10:54:48.000Z')
-      date_time_input_format: 'best_effort',
-      wait_end_of_query: 1,
-    },
-  });
+  await _bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
+export const bulkInsertMetricsGauge = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    TimeUnix: Date;
+    Value: number;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await _bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
+    metrics,
+  );
+};
+
+export const bulkInsertMetricsSum = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    TimeUnix: Date;
+    Value: number;
+    AggregationTemporality: number;
+    IsMonotonic: boolean;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await _bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
+    metrics,
+  );
+};
+
+// TODO: DEPRECATED
 export function buildMetricSeries({
   tags,
   name,
