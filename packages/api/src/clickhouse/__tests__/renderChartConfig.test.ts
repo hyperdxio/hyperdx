@@ -1,6 +1,6 @@
 // TODO: we might want to move this test file to common-utils package
 
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { ChSql, ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import _ from 'lodash';
@@ -27,6 +27,21 @@ describe('renderChartConfig', () => {
   const now = new Date('2022-01-05').getTime();
   let team, connection, logSource, metricSource, metadata;
   let clickhouseClient: ClickhouseClient;
+
+  const queryData = async (chsql: ChSql) => {
+    try {
+      const res = await clickhouseClient.query<'JSON'>({
+        query: chsql.sql,
+        query_params: chsql.params,
+        format: 'JSON',
+      });
+      const json = await res.json();
+      return json.data;
+    } catch (err) {
+      console.error('[ClickhouseClient] Error:', err);
+      throw err;
+    }
+  };
 
   beforeAll(async () => {
     await server.start();
@@ -157,15 +172,7 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
-
-      const resp = await clickhouseClient
-        .query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-        })
-        .then(res => res.json<any>());
-      expect(resp.data).toMatchSnapshot();
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
     // TODO: add more tests (including events chart, using filters, etc)
@@ -365,14 +372,6 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
-
-      const resp = await clickhouseClient
-        .query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-        })
-        .then(res => res.json<any>());
     });
 
     it('single sum rate', async () => {
@@ -400,14 +399,7 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
-      const resp = await clickhouseClient
-        .query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-        })
-        .then(res => res.json<any>());
-      expect(resp.data).toMatchSnapshot();
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
     it('handles counter resets correctly for sum metrics', async () => {
@@ -435,18 +427,14 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
-
-      const resp = await clickhouseClient
-        .query<'JSON'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSON',
-        })
-        .then(res => res.json<any>());
-      expect(resp.data).toMatchSnapshot();
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
-    // FIXME: check why the data is not correct
+    // FIXME: here are the expected values
+    // [0, 1, 8, 8, 15, 15, 23, 25, 25, 67]
+    // [0, 2, 9, 9, 24, 34, 44, 66, 66, 158]
+    // min -> [15, 52]
+    // max -> [24, 134]
     it.skip('calculates min_rate/max_rate correctly for sum metrics', async () => {
       const minQuery = await renderChartConfig(
         {
