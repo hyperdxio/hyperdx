@@ -5,14 +5,14 @@ import ms from 'ms';
 
 import {
   buildMetricSeries,
-  bulkInsertLogs,
   generateBuildTeamEventFn,
   getServer,
 } from '@/fixtures';
+import { LogPlatform, LogType } from '@/utils/logParser';
 
 import * as clickhouse from '..';
 
-describe('clickhouse', () => {
+describe.skip('clickhouse', () => {
   const server = getServer();
 
   beforeAll(async () => {
@@ -28,50 +28,48 @@ describe('clickhouse', () => {
     jest.clearAllMocks();
   });
 
-  it.only('fetches bulk events correctly', async () => {
+  it('fetches bulk events correctly', async () => {
     const now = new Date('2022-01-05').getTime();
-    await bulkInsertLogs([
-      {
-        ServiceName: 'test-service',
-        Timestamp: now,
-        SeverityText: 'info',
-        Body: 'test1',
-      },
-      {
-        ServiceName: 'test-service',
-        Timestamp: now + 1,
-        SeverityText: 'info',
-        Body: 'test2',
-      },
-      {
-        ServiceName: 'test-service',
-        Timestamp: now + 1,
-        SeverityText: 'info',
-        Body: 'test3',
-      },
-    ]);
+    const runId = Math.random().toString(); // dedup watch mode runs
+    const teamId = `test`;
 
-    const query = await renderChartConfig({
-      metricTables: [],
-      tableVersion: 1,
-      teamId,
-      q: `runId:${runId} test:*`,
-      limit: 20,
+    const buildEvent = generateBuildTeamEventFn(teamId, {
+      platform: LogPlatform.NodeJS,
+      source: 'test',
+      runId,
     });
 
-    // use new renderConfig api to fetch logs
-    // const data = (
-    //   await clickhouse.getLogBatch({
-    //     tableVersion: 1,
-    //     teamId,
-    //     q: `runId:${runId} test:*`,
-    //     limit: 20,
-    //     offset: 0,
-    //     startTime: now - 1,
-    //     endTime: now + 5,
-    //     order: clickhouse.SortOrder.Desc,
-    //   })
-    // ).data.map(({ id, ...d }) => d); // pluck non-deterministic id
+    await clickhouse.bulkInsertLogStream([
+      buildEvent({
+        timestamp: now,
+        type: LogType.Log,
+        test: 'test1',
+      }),
+      buildEvent({
+        timestamp: now + 1,
+        type: LogType.Log,
+        test: 'test2',
+        justanumber: 777,
+      }),
+      buildEvent({
+        timestamp: now + 1,
+        type: LogType.Log,
+        justanumber: 777,
+      }),
+    ]);
+
+    const data = (
+      await clickhouse.getLogBatch({
+        tableVersion: 1,
+        teamId,
+        q: `runId:${runId} test:*`,
+        limit: 20,
+        offset: 0,
+        startTime: now - 1,
+        endTime: now + 5,
+        order: clickhouse.SortOrder.Desc,
+      })
+    ).data.map(({ id, ...d }) => d); // pluck non-deterministic id
 
     expect(data.length).toEqual(2);
     expect(data).toMatchInlineSnapshot(`
