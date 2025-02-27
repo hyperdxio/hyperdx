@@ -1,0 +1,56 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`renderChartConfig Query Events simple select + group by query logs 1`] = `
+Array [
+  Object {
+    "ServiceName": "app",
+    "count": "1",
+  },
+  Object {
+    "ServiceName": "api",
+    "count": "1",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Events simple select + where query logs 1`] = `
+Array [
+  Object {
+    "Body": "Oh no! Something went wrong!",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics handles counter resets correctly for sum metrics 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 15,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 52,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single sum rate 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 19,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 79,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 5813,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:15:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 78754,
+  },
+]
+`;
