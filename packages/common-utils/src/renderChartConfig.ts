@@ -292,7 +292,7 @@ const aggFnExpr = ({
 
 async function renderSelectList(
   selectList: SelectList,
-  chartConfig: ChartConfigWithOptDateRateAndCte,
+  chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ) {
   if (typeof selectList === 'string') {
@@ -467,7 +467,7 @@ async function timeFilterExpr({
 }
 
 async function renderSelect(
-  chartConfig: ChartConfigWithOptDateRateAndCte,
+  chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
   /**
@@ -565,7 +565,7 @@ async function renderWhereExpression({
 }
 
 async function renderWhere(
-  chartConfig: ChartConfigWithOptDateRateAndCte,
+  chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
   let whereSearchCondition: ChSql | [] = [];
@@ -729,20 +729,56 @@ function renderLimit(
 
 // CTE (Common Table Expressions) isn't exported at this time. It's only used internally
 // for metric SQL generation.
-type ChartConfigWithOptDateRateAndCte = ChartConfigWithOptDateRange & {
+type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   with?: { name: string; sql: ChSql }[];
 };
 
 function renderWith(
-  chartConfig: ChartConfigWithOptDateRateAndCte,
+  chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): ChSql | undefined {
   const { with: withClauses } = chartConfig;
   if (withClauses) {
     return concatChSql(
-      '',
-      withClauses.map(clause => chSql`WITH ${clause.name} AS (${clause.sql})`),
+      ',',
+      withClauses.map(clause => chSql`${clause.name} AS (${clause.sql})`),
     );
+  }
+
+  return undefined;
+}
+
+function intervalToSeconds(interval: SQLInterval): number {
+  // Parse interval string like "15 second" into number of seconds
+  const [amount, unit] = interval.split(' ');
+  const value = parseInt(amount, 10);
+  switch (unit) {
+    case 'second':
+      return value;
+    case 'minute':
+      return value * 60;
+    case 'hour':
+      return value * 60 * 60;
+    case 'day':
+      return value * 24 * 60 * 60;
+    default:
+      throw new Error(`Invalid interval unit ${unit} in interval ${interval}`);
+  }
+}
+
+function renderFill(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+): ChSql | undefined {
+  const { granularity, dateRange } = chartConfig;
+  if (dateRange && granularity && granularity !== 'auto') {
+    const [start, end] = dateRange;
+    const step = intervalToSeconds(granularity);
+
+    return concatChSql(' ', [
+      chSql`FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: start.getTime() }}), INTERVAL ${granularity}))
+      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: end.getTime() }}), INTERVAL ${granularity}))
+      STEP ${{ Int32: step }}`,
+    ]);
   }
 
   return undefined;
@@ -750,7 +786,7 @@ function renderWith(
 
 function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRateAndCte {
+): ChartConfigWithOptDateRangeEx {
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
@@ -810,8 +846,67 @@ function translateMetricChartConfig(
         databaseName: '',
         tableName: 'RawSum',
       },
-      where: `MetricName = '${metricName}'`,
-      whereLanguage: 'sql',
+    };
+  } else if (metricType === MetricsDataType.Histogram && metricName) {
+    // histograms are only valid for quantile selections
+    const { aggFn, level, ..._selectRest } = _select as {
+      aggFn: string;
+      level?: number;
+    };
+
+    if (aggFn !== 'quantile' || level == null) {
+      throw new Error('quantile must be specified for histogram metrics');
+    }
+
+    return {
+      ...restChartConfig,
+      with: [
+        {
+          name: 'HistRate',
+          sql: chSql`SELECT *, any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
+            any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
+            any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
+            IF(AggregationTemporality = 1,
+               BucketCounts,
+               IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
+                  arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
+                  BucketCounts)) as BucketRates
+          FROM (
+            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                   length(BucketCounts) as CountLength
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
+            WHERE MetricName = '${metricName}'
+            ORDER BY Attributes, TimeUnix ASC
+          `,
+        },
+        {
+          name: 'RawHist',
+          sql: chSql`
+            SELECT *, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
+                   arrayCumSum(BucketRates) as CumRates,
+                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
+                   IF(BucketLowIdx = length(BucketRates),
+                      ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value
+                      IF(BucketLowIdx > 1, -- indexes are 1-based
+                         ExplicitBounds[BucketLowIdx] + (ExplicitBounds[BucketLowIdx + 1] - ExplicitBounds[BucketLowIdx]) *
+                         intDivOrZero(
+                             Rank - CumRates[BucketLowIdx - 1],
+                             CumRates[BucketLowIdx] - CumRates[BucketLowIdx - 1]),
+                    arrayElement(ExplicitBounds, BucketLowIdx + 1) * intDivOrZero(Rank, CumRates[BucketLowIdx]))) as Rate
+            FROM HistRate`,
+        },
+      ],
+      select: [
+        {
+          ..._selectRest,
+          aggFn: 'sum',
+          valueExpression: 'Rate',
+        },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'RawHist',
+      },
     };
   }
 
@@ -835,15 +930,19 @@ export async function renderChartConfig(
   const where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
+  const fill = renderFill(chartConfig);
   const limit = renderLimit(chartConfig);
 
-  return chSql`${
-    withClauses?.sql ? chSql`${withClauses}` : ''
-  }SELECT ${select} FROM ${from} ${where?.sql ? chSql`WHERE ${where}` : ''} ${
-    groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''
-  } ${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''} ${
-    limit?.sql ? chSql`LIMIT ${limit}` : ''
-  }`;
+  return concatChSql(' ', [
+    chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
+    chSql`SELECT ${select}`,
+    chSql`FROM ${from}`,
+    chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
+    chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
+    chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
+    chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
+    chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
+  ]);
 }
 
 // EditForm -> translateToQueriedChartConfig -> QueriedChartConfig

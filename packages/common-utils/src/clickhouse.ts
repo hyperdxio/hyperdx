@@ -186,7 +186,11 @@ export const concatChSql = (sep: string, ...args: (ChSql | ChSql[])[]) => {
         }
 
         acc.sql +=
-          (acc.sql.length > 0 ? sep : '') + arg.map(a => a.sql).join(sep);
+          (acc.sql.length > 0 ? sep : '') +
+          arg
+            .map(a => a.sql)
+            .filter(Boolean) // skip empty string expressions
+            .join(sep);
         acc.params = arg.reduce((acc, a) => {
           Object.assign(acc, a.params);
           return acc;
