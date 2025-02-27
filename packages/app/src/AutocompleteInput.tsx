@@ -28,7 +28,7 @@ export default function AutocompleteInput({
   onChange: (value: string) => void;
   onSubmit?: () => void;
   placeholder?: string;
-  size?: 'sm' | 'lg';
+  size?: 'xs' | 'sm' | 'lg';
   autocompleteOptions?: { value: string; label: string }[];
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
