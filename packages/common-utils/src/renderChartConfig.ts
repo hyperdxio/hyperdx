@@ -826,30 +826,33 @@ function translateMetricChartConfig(
 
       console.log('aggCondition', aggCondition);
       if (metricType === MetricsDataType.Gauge && metricName) {
-        // For Gauge metrics, create a more efficient CTE that directly computes the aggregation
-        // Special handling for count to preserve original values
-        const valueExpr =
-          _select.aggFn === 'count'
-            ? chSql`Value`
-            : _select.aggFn
-              ? chSql`${_select.aggFn}(Value)`
-              : chSql`Value`;
-
-        unionSelects.push(chSql`SELECT 
-          ${valueExpr} as Value,
-          '${metricLabel}' as MetricLabel,
-          TimeUnix
-          FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
-          WHERE MetricName = '${metricName}'
-          ${aggCondition ? chSql`AND ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
-          GROUP BY ${_select.aggFn === 'count' || !_select.aggFn ? chSql`Value, ` : chSql``}TimeUnix, MetricLabel`);
+        // For Gauge metrics, directly select the value without additional aggregation
+        // when using count or no aggregation
+        if (_select.aggFn === 'count') {
+          unionSelects.push(chSql`SELECT 
+            toFloat64(count(*)) as Value,
+            '${metricLabel}' as MetricLabel,
+            TimeUnix
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+            WHERE MetricName = '${metricName}'
+            ${aggCondition ? chSql`AND ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
+            GROUP BY TimeUnix, MetricLabel`);
+        } else {
+          unionSelects.push(chSql`SELECT 
+            toFloat64(${_select.aggFn ? chSql`${_select.aggFn}(Value)` : chSql`Value`}) as Value,
+            '${metricLabel}' as MetricLabel,
+            TimeUnix
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+            WHERE MetricName = '${metricName}'
+            ${aggCondition ? chSql`AND ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
+            GROUP BY TimeUnix, MetricLabel`);
+        }
       } else if (metricType === MetricsDataType.Sum && metricName) {
         // For Sum metrics, we still need the intermediate CTE for rate calculation
         const cteName = `${cteBaseName}RawSum`;
         withClauses.push({
           name: cteName,
           sql: chSql`SELECT *,
-               '${metricLabel}' as MetricLabel,
                any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
                any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
                IF(AggregationTemporality = 1,
@@ -865,11 +868,11 @@ function translateMetricChartConfig(
         });
 
         unionSelects.push(chSql`SELECT 
-          ${_select.aggFn ? chSql`${_select.aggFn}(Rate)` : chSql`Rate`} as Value,
-          MetricLabel,
+          toFloat64(${_select.aggFn ? chSql`${_select.aggFn}(Rate)` : chSql`Rate`}) as Value,
+          '${metricLabel}' as MetricLabel,
           TimeUnix
           FROM ${cteName}
-          ${'aggCondition' in _select && typeof _select.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _select.aggCondition }}` : chSql``}
+          ${aggCondition ? chSql`WHERE ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
           GROUP BY TimeUnix, MetricLabel`);
       } else if (metricType === MetricsDataType.Histogram && metricName) {
         // For Histogram metrics, create the histogram calculation CTEs
@@ -887,7 +890,7 @@ function translateMetricChartConfig(
 
         withClauses.push({
           name: histRateCte,
-          sql: chSql`SELECT *, '${metricLabel}' as MetricLabel,
+          sql: chSql`SELECT *, 
             any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
             any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
             any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
@@ -895,7 +898,7 @@ function translateMetricChartConfig(
                BucketCounts,
                IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
                   arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
-                  BucketCounts)) as BucketRates
+                    BucketCounts)) as BucketRates
           FROM (
             SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                    length(BucketCounts) as CountLength
@@ -908,7 +911,7 @@ function translateMetricChartConfig(
         withClauses.push({
           name: rawHistCte,
           sql: chSql`
-            SELECT *, MetricLabel, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
+            SELECT *, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
                    arrayCumSum(BucketRates) as CumRates,
                    arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
                    IF(BucketLowIdx = length(BucketRates),
@@ -923,11 +926,11 @@ function translateMetricChartConfig(
         });
 
         unionSelects.push(chSql`SELECT 
-          sum(Rate) as Value,
-          MetricLabel,
+          toFloat64(sum(Rate)) as Value,
+          '${metricLabel}' as MetricLabel,
           TimeUnix
           FROM ${rawHistCte}
-          ${'aggCondition' in _selectRest && typeof _selectRest.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _selectRest.aggCondition }}` : chSql``}
+          ${aggCondition ? chSql`WHERE ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
           GROUP BY TimeUnix, MetricLabel`);
       } else {
         throw new Error(`no query support for metric type=${metricType}`);
@@ -946,6 +949,7 @@ function translateMetricChartConfig(
       with: withClauses,
       select: [
         {
+          // Use the Value column directly without any aggregation
           valueExpression: 'Value',
           alias: 'Value',
         },
@@ -962,12 +966,11 @@ function translateMetricChartConfig(
       // Add a filter to exclude empty metric labels
       where: "MetricLabel != ''",
       whereLanguage: 'sql',
-      // Include user's custom groupBy expressions and ensure all necessary columns are included
+      // Group by all columns to satisfy ClickHouse's requirements
       groupBy: [
-        { valueExpression: 'Value' },
         { valueExpression: 'TimeUnix' },
         { valueExpression: 'MetricLabel' },
-        ...(chartConfig.groupBy?.length ? (chartConfig.groupBy as any) : []),
+        { valueExpression: 'Value' },
       ],
       // Ensure selectGroupBy is false to prevent duplicate columns in the SELECT clause
       selectGroupBy: false,
