@@ -797,8 +797,163 @@ function translateMetricChartConfig(
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
+  console.log('select', select);
 
-  const { metricType, metricName, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+  // Handle multiple metrics by creating a UNION ALL query
+  if (select.length > 1) {
+    // Create a WITH clause for each metric
+    const withClauses: { name: string; sql: ChSql }[] = [];
+    const unionSelects: ChSql[] = [];
+
+    select.forEach((selectItem, index) => {
+      const { metricType, metricName, ..._select } = selectItem;
+      const cteBaseName = `Metric${index}`;
+      const aggCondition =
+        'aggCondition' in _select && typeof _select.aggCondition === 'string'
+          ? _select.aggCondition
+          : '';
+      console.log('aggCondition', aggCondition);
+      if (metricType === MetricsDataType.Gauge && metricName) {
+        // For Gauge metrics, create a simple CTE
+        const cteName = `${cteBaseName}Raw`;
+        withClauses.push({
+          name: cteName,
+          sql: chSql`SELECT *, '${metricName}' as MetricNameAlias 
+                     FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+                     WHERE MetricName = '${metricName}'`,
+        });
+
+        unionSelects.push(chSql`SELECT 
+          ${_select.aggFn ? chSql`${_select.aggFn}(Value)` : chSql`Value`} as Value,
+          MetricNameAlias,
+          TimeUnix
+          FROM ${cteName}
+          ${aggCondition ? chSql`WHERE ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
+          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+      } else if (metricType === MetricsDataType.Sum && metricName) {
+        // For Sum metrics, create the Rate calculation CTE
+        const cteName = `${cteBaseName}RawSum`;
+        withClauses.push({
+          name: cteName,
+          sql: chSql`SELECT *,
+               '${metricName}' as MetricNameAlias,
+               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
+               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
+               IF(AggregationTemporality = 1,
+                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
+                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate
+            FROM (
+                SELECT *, 
+                       cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+                FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
+                WHERE MetricName = '${metricName}'
+                ORDER BY AttributesHash, TimeUnix ASC
+            )`,
+        });
+
+        unionSelects.push(chSql`SELECT 
+          ${_select.aggFn ? chSql`${_select.aggFn}(Rate)` : chSql`Rate`} as Value,
+          MetricNameAlias,
+          TimeUnix
+          FROM ${cteName}
+          ${'aggCondition' in _select && typeof _select.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _select.aggCondition }}` : chSql``}
+          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+      } else if (metricType === MetricsDataType.Histogram && metricName) {
+        // For Histogram metrics, create the histogram calculation CTEs
+        const { aggFn, level, ..._selectRest } = _select as {
+          aggFn: string;
+          level?: number;
+        };
+
+        if (aggFn !== 'quantile' || level == null) {
+          throw new Error('quantile must be specified for histogram metrics');
+        }
+
+        const histRateCte = `${cteBaseName}HistRate`;
+        const rawHistCte = `${cteBaseName}RawHist`;
+
+        withClauses.push({
+          name: histRateCte,
+          sql: chSql`SELECT *, '${metricName}' as MetricNameAlias,
+            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
+            any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
+            any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
+            IF(AggregationTemporality = 1,
+               BucketCounts,
+               IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
+                  arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
+                  BucketCounts)) as BucketRates
+          FROM (
+            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                   length(BucketCounts) as CountLength
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
+            WHERE MetricName = '${metricName}'
+            ORDER BY Attributes, TimeUnix ASC
+          `,
+        });
+
+        withClauses.push({
+          name: rawHistCte,
+          sql: chSql`
+            SELECT *, MetricNameAlias, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
+                   arrayCumSum(BucketRates) as CumRates,
+                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
+                   IF(BucketLowIdx = length(BucketRates),
+                      ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value
+                      IF(BucketLowIdx > 1, -- indexes are 1-based
+                         ExplicitBounds[BucketLowIdx] + (ExplicitBounds[BucketLowIdx + 1] - ExplicitBounds[BucketLowIdx]) *
+                         intDivOrZero(
+                             Rank - CumRates[BucketLowIdx - 1],
+                             CumRates[BucketLowIdx] - CumRates[BucketLowIdx - 1]),
+                    arrayElement(ExplicitBounds, BucketLowIdx + 1) * intDivOrZero(Rank, CumRates[BucketLowIdx]))) as Rate
+            FROM ${histRateCte}`,
+        });
+
+        unionSelects.push(chSql`SELECT 
+          sum(Rate) as Value,
+          MetricNameAlias,
+          TimeUnix
+          FROM ${rawHistCte}
+          ${'aggCondition' in _selectRest && typeof _selectRest.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _selectRest.aggCondition }}` : chSql``}
+          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+      } else {
+        throw new Error(`no query support for metric type=${metricType}`);
+      }
+    });
+
+    // Create a final CTE that UNIONs all the metrics
+    withClauses.push({
+      name: 'CombinedMetrics',
+      sql: concatChSql(' UNION ALL ', unionSelects),
+    });
+
+    // Return the chart config with the WITH clauses and selecting from the combined CTE
+    return {
+      ...restChartConfig,
+      with: withClauses,
+      select: [
+        {
+          valueExpression: 'Value',
+          alias: 'Value',
+        },
+        {
+          valueExpression: 'MetricNameAlias',
+          alias: 'MetricName',
+        },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'CombinedMetrics',
+      },
+      // Add TimeUnix to groupBy if it's not already there
+      groupBy: chartConfig.groupBy?.length
+        ? [...(chartConfig.groupBy as any), { valueExpression: 'TimeUnix' }]
+        : [{ valueExpression: 'TimeUnix' }],
+    };
+  }
+
+  // Original single-metric logic
+  const { metricType, metricName, ..._select } = select[0];
   if (metricType === MetricsDataType.Gauge && metricName) {
     return {
       ...restChartConfig,
