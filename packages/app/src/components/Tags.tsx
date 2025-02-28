@@ -37,16 +37,16 @@ export const Tags = React.memo(
     const tags = React.useMemo(() => {
       // Use a case-insensitive Set by creating a Map with lowercase keys
       const tagMap = new Map();
-      
+
       // Combine values and prefetched data
       [...values, ...(prefetchedOptionsData?.data || [])].forEach(tag => {
         // Use lowercase version as key to ensure case insensitivity
         tagMap.set(tag.toLowerCase(), tag);
       });
-      
+
       // Convert back to array and sort
-      return Array.from(tagMap.values()).sort((a, b) => 
-        a.toLowerCase().localeCompare(b.toLowerCase())
+      return Array.from(tagMap.values()).sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
       );
     }, [prefetchedOptionsData, values]);
 
@@ -68,9 +68,9 @@ export const Tags = React.memo(
             // Check if tag already exists (case insensitive)
             const newTag = event.currentTarget.value;
             const tagExists = values.some(
-              tag => tag.toLowerCase() === newTag.toLowerCase()
+              tag => tag.toLowerCase() === newTag.toLowerCase(),
             );
-            
+
             if (!tagExists) {
               onChange([...values, newTag]);
               setQ('');
