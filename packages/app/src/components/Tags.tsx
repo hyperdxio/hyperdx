@@ -11,9 +11,9 @@ import {
   Stack,
 } from '@mantine/core';
 
-import api from './api';
+import api from '@/api';
 
-import styles from '../styles/Tags.module.scss';
+import styles from './Tags.module.scss';
 
 export const Tags = React.memo(
   ({
@@ -35,15 +35,25 @@ export const Tags = React.memo(
     } = api.useTags();
 
     const tags = React.useMemo(() => {
-      return Array.from(
-        new Set([...values, ...(prefetchedOptionsData?.data || [])]),
-      ).sort();
+      // Use a case-insensitive Set by creating a Map with lowercase keys
+      const tagMap = new Map();
+
+      // Combine values and prefetched data
+      [...values, ...(prefetchedOptionsData?.data || [])].forEach(tag => {
+        // Use lowercase version as key to ensure case insensitivity
+        tagMap.set(tag.toLowerCase(), tag);
+      });
+
+      // Convert back to array and sort
+      return Array.from(tagMap.values()).sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
+      );
     }, [prefetchedOptionsData, values]);
 
     const [q, setQ] = React.useState('');
 
     const filtered = React.useMemo(
-      () => tags.filter(tag => tag.includes(q)),
+      () => tags.filter(tag => tag.toLowerCase().includes(q.toLowerCase())),
       [tags, q],
     );
 
@@ -55,8 +65,16 @@ export const Tags = React.memo(
       (event: React.KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'Enter') {
           if (allowCreate && q.length > 0) {
-            onChange([...values, event.currentTarget.value]);
-            setQ('');
+            // Check if tag already exists (case insensitive)
+            const newTag = event.currentTarget.value;
+            const tagExists = values.some(
+              tag => tag.toLowerCase() === newTag.toLowerCase(),
+            );
+
+            if (!tagExists) {
+              onChange([...values, newTag]);
+              setQ('');
+            }
           }
         }
       },
@@ -133,7 +151,7 @@ export const Tags = React.memo(
                     justify="space-between"
                     className={styles.tagWrapper}
                   >
-                    <Checkbox label={tag} value={tag} size="xs" />
+                    <Checkbox label={tag.toUpperCase()} value={tag} size="xs" />
                     {tags.length >= 2 && (
                       <Button
                         variant="filled"
