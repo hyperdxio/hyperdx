@@ -829,7 +829,7 @@ function translateMetricChartConfig(
           TimeUnix
           FROM ${cteName}
           ${aggCondition ? chSql`WHERE ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
-          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+          ${_select.aggFn ? chSql`GROUP BY MetricNameAlias, TimeUnix` : chSql``}`);
       } else if (metricType === MetricsDataType.Sum && metricName) {
         // For Sum metrics, create the Rate calculation CTE
         const cteName = `${cteBaseName}RawSum`;
@@ -857,7 +857,7 @@ function translateMetricChartConfig(
           TimeUnix
           FROM ${cteName}
           ${'aggCondition' in _select && typeof _select.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _select.aggCondition }}` : chSql``}
-          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+          ${_select.aggFn ? chSql`GROUP BY MetricNameAlias, TimeUnix` : chSql``}`);
       } else if (metricType === MetricsDataType.Histogram && metricName) {
         // For Histogram metrics, create the histogram calculation CTEs
         const { aggFn, level, ..._selectRest } = _select as {
@@ -915,7 +915,7 @@ function translateMetricChartConfig(
           TimeUnix
           FROM ${rawHistCte}
           ${'aggCondition' in _selectRest && typeof _selectRest.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _selectRest.aggCondition }}` : chSql``}
-          ${chartConfig.groupBy?.length ? chSql`GROUP BY TimeUnix, MetricNameAlias` : chSql``}`);
+          GROUP BY MetricNameAlias, TimeUnix`);
       } else {
         throw new Error(`no query support for metric type=${metricType}`);
       }
