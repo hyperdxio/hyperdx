@@ -17,11 +17,18 @@ import { useDisclosure } from '@mantine/hooks';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { useSource, useUpdateSource } from '@/source';
+import TabBar from '@/TabBar';
 
 import { RowDataPanel } from './DBRowDataPanel';
+import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { TableSourceForm } from './SourceForm';
 import { SourceSelectControlled } from './SourceSelect';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
+
+enum Tab {
+  Overview = 'overview',
+  Parsed = 'parsed',
+}
 
 export default function DBTracePanel({
   childSourceId,
@@ -120,6 +127,7 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
+  const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
     <>
       <Flex align="center" justify="space-between" mb="sm">
@@ -225,14 +233,41 @@ export default function DBTracePanel({
           <Text size="sm" c="dark.2" my="sm">
             Event Details
           </Text>
-          <RowDataPanel
-            source={
-              eventRowWhere?.type === SourceKind.Log && logSourceData
-                ? logSourceData
-                : traceSourceData
-            }
-            rowId={eventRowWhere?.id}
+          <TabBar
+            className="fs-8 mt-2"
+            items={[
+              {
+                text: 'Overview',
+                value: Tab.Overview,
+              },
+              {
+                text: 'Column Values',
+                value: Tab.Parsed,
+              },
+            ]}
+            activeItem={displayedTab}
+            onClick={(v: any) => setDisplayedTab(v)}
           />
+          {displayedTab === Tab.Overview && (
+            <RowOverviewPanel
+              source={
+                eventRowWhere?.type === SourceKind.Log && logSourceData
+                  ? logSourceData
+                  : traceSourceData
+              }
+              rowId={eventRowWhere?.id}
+            />
+          )}
+          {displayedTab === Tab.Parsed && (
+            <RowDataPanel
+              source={
+                eventRowWhere?.type === SourceKind.Log && logSourceData
+                  ? logSourceData
+                  : traceSourceData
+              }
+              rowId={eventRowWhere?.id}
+            />
+          )}
         </>
       )}
       {traceSourceData != null && !eventRowWhere && (
