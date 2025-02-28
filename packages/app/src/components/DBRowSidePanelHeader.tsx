@@ -131,16 +131,34 @@ export default function DBRowSidePanelHeader({
         </Paper>
       )}
       <Flex mt="sm">
-        {Object.entries(tags).map(([key, value]) => (
-          <EventTag
-            onPropertyAddClick={onPropertyAddClick}
-            generateSearchUrl={_generateSearchUrl}
-            displayedKey={key}
-            name={key}
-            value={value}
-            key={key}
-          />
-        ))}
+        {Object.entries(tags).map(([sqlKey, value]) => {
+          // Convert SQL syntax to Lucene syntax
+          // SQL: column['property.foo'] -> Lucene: column.property.foo
+          // or SQL: column -> Lucene: column
+          const luceneKey = sqlKey.replace(/\['([^']+)'\]/g, '.$1');
+
+          return onPropertyAddClick ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              sqlExpression={sqlKey} // Original SQL syntax for property add
+              generateSearchUrl={_generateSearchUrl}
+              displayedKey={luceneKey} // Show friendly Lucene format
+              name={luceneKey} // Use Lucene syntax for search
+              value={value}
+              key={sqlKey}
+            />
+          ) : (
+            <EventTag
+              onPropertyAddClick={undefined}
+              sqlExpression={undefined}
+              generateSearchUrl={_generateSearchUrl}
+              displayedKey={luceneKey}
+              name={luceneKey}
+              value={value}
+              key={sqlKey}
+            />
+          );
+        })}
       </Flex>
     </>
   );
