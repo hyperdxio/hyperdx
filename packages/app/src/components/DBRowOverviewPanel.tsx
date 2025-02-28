@@ -9,6 +9,7 @@ import { RowSidePanelContext } from './DBRowSidePanel';
 import EventTag from './EventTag';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 
+const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
@@ -28,8 +29,8 @@ export function RowOverviewPanel({
     return firstRow;
   }, [data]);
 
-  const resourceAttributes = firstRow?.__hdx_resource_attributes;
-  const eventAttributes = firstRow?.__hdx_event_attributes;
+  const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
+  const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
@@ -63,7 +64,7 @@ export function RowOverviewPanel({
         defaultValue={['network', 'resourceAttributes', 'eventAttributes']}
         multiple
       >
-        {eventAttributes && (
+        {isHttpRequest && (
           <Accordion.Item value="network">
             <Accordion.Control>
               <Text size="sm" c="gray.2" ps="md">
@@ -94,26 +95,30 @@ export function RowOverviewPanel({
             </Box>
           </Accordion.Panel>
         </Accordion.Item>
-        <Divider my="md" />
-        <Box px="md">
-          <Text size="sm" c="gray.2">
-            Resource Attributes
-          </Text>
-        </Box>
-        <Flex mt="md" wrap="wrap" gap="2px" mx="md" mb="lg">
-          {Object.entries(resourceAttributes).map(([key, value]) => (
-            <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              generateSearchUrl={_generateSearchUrl}
-              displayedKey={key}
-              // TODO: Escape properly
-              sqlExpression={`${source.resourceAttributesExpression}['${key}']`}
-              name={`${source.resourceAttributesExpression}.${key}`}
-              value={value as string}
-              key={key}
-            />
-          ))}
-        </Flex>
+
+        <Accordion.Item value="resourceAttributes">
+          <Accordion.Control>
+            <Text size="sm" c="gray.2" ps="md">
+              Resource Attributes
+            </Text>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+              {Object.entries(resourceAttributes).map(([key, value]) => (
+                <EventTag
+                  onPropertyAddClick={onPropertyAddClick!}
+                  generateSearchUrl={_generateSearchUrl}
+                  displayedKey={key}
+                  // TODO: Escape properly
+                  sqlExpression={`${source.resourceAttributesExpression}['${key}']`}
+                  name={`${source.resourceAttributesExpression}.${key}`}
+                  value={value as string}
+                  key={key}
+                />
+              ))}
+            </Flex>
+          </Accordion.Panel>
+        </Accordion.Item>
       </Accordion>
     </div>
   );
