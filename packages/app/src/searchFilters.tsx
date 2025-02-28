@@ -120,12 +120,6 @@ export const useSearchPageFilterState = ({
             values.add(value);
           }
         });
-        console.log('setFilterValue', {
-          property,
-          value,
-          only,
-          newFilters,
-        });
         updateFilterQuery(newFilters);
         return newFilters;
       });

@@ -536,7 +536,6 @@ function DBSearchPage() {
   useEffect(() => {
     if (_isLive == null && isReady) {
       if (from == null && to == null) {
-        console.log('isReady', isReady);
         setIsLive(true);
       } else {
         setIsLive(false);
@@ -606,7 +605,6 @@ function DBSearchPage() {
 
   useEffect(() => {
     const { unsubscribe } = watch((data, { name, type }) => {
-      console.log('watch', data, name, type);
       // If the user changes the source dropdown, reset the select and orderby fields
       // to match the new source selected
       if (name === 'source' && type === 'change') {
@@ -614,7 +612,6 @@ function DBSearchPage() {
           s => s.id === data.source,
         );
         if (newInputSourceObj != null) {
-          console.log('setting', newInputSourceObj);
           setValue(
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
