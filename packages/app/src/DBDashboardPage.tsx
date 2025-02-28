@@ -183,6 +183,7 @@ const Tile = forwardRef(
             },
             implicitColumnExpression: source.implicitColumnExpression,
             filters,
+            metricTables: source.metricTables,
           });
         }
       }
