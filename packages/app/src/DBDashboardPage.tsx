@@ -47,6 +47,7 @@ import {
   Transition,
 } from '@mantine/core';
 import { useHover, usePrevious } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -65,6 +66,7 @@ import {
 
 import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
+import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -80,7 +82,6 @@ import {
   useSource,
   useSources,
 } from './source';
-import { Tags } from './Tags';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
 import { getMetricTableName, hashCode, omit } from './utils';
@@ -700,6 +701,33 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setRowSource(null);
   }, [setRowId, setRowSource]);
 
+  const handleUpdateTags = useCallback(
+    (newTags: string[]) => {
+      if (dashboard?.id) {
+        setDashboard(
+          {
+            ...dashboard,
+            tags: newTags,
+          },
+          () => {
+            notifications.show({
+              color: 'green',
+              message: 'Tags updated successfully',
+            });
+          },
+          () => {
+            notifications.show({
+              color: 'red',
+              message:
+                'An error occurred. Please contact support for more details.',
+            });
+          },
+        );
+      }
+    },
+    [dashboard, setDashboard],
+  );
+
   const createDashboard = useCreateDashboard();
   const onCreateDashboard = useCallback(() => {
     createDashboard.mutate(
@@ -791,30 +819,51 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             }
           }}
         />
-        {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-          <Menu width={250}>
-            <Menu.Target>
-              <Button variant="outline" color="dark.2" px="xs" size="xs">
-                <i className="bi bi-three-dots-vertical" />
-              </Button>
-            </Menu.Target>
-
-            <Menu.Dropdown>
-              <Menu.Item
-                leftSection={<i className="bi bi-trash-fill" />}
-                onClick={() =>
-                  deleteDashboard.mutate(dashboard?.id ?? '', {
-                    onSuccess: () => {
-                      router.push('/dashboards');
-                    },
-                  })
-                }
+        <Group gap="xs">
+          {!isLocalDashboard && dashboard?.id && (
+            <Tags
+              allowCreate
+              values={dashboard?.tags || []}
+              onChange={handleUpdateTags}
+            >
+              <Button
+                variant="outline"
+                color="dark.2"
+                px="xs"
+                size="xs"
+                style={{ flexShrink: 0 }}
               >
-                Delete Dashboard
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
+                <i className="bi bi-tags-fill me-2"></i>
+                {dashboard?.tags?.length || 0}{' '}
+                {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
+              </Button>
+            </Tags>
+          )}
+          {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
+            <Menu width={250}>
+              <Menu.Target>
+                <Button variant="outline" color="dark.2" px="xs" size="xs">
+                  <i className="bi bi-three-dots-vertical" />
+                </Button>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<i className="bi bi-trash-fill" />}
+                  onClick={() =>
+                    deleteDashboard.mutate(dashboard?.id ?? '', {
+                      onSuccess: () => {
+                        router.push('/dashboards');
+                      },
+                    })
+                  }
+                >
+                  Delete Dashboard
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
+        </Group>
         {/* <Button variant="outline" color="gray.4" size="sm">
           Save
         </Button> */}

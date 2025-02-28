@@ -32,12 +32,14 @@ import {
   Center,
   Flex,
   Group,
+  Indicator,
   Modal,
   Paper,
   Stack,
   Text,
 } from '@mantine/core';
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 
 import { useTimeChartSettings } from '@/ChartUtils';
@@ -55,6 +57,7 @@ import SearchPageActionBar from '@/components/SearchPageActionBar';
 import { TableSourceForm } from '@/components/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_DEV } from '@/config';
@@ -207,6 +210,15 @@ function SaveSearchModal({
       keepErrors: true,
     },
   });
+
+  const [tags, setTags] = useState<string[]>(savedSearch?.tags || []);
+
+  // Update tags when savedSearch changes
+  useEffect(() => {
+    if (savedSearch?.tags) {
+      setTags(savedSearch.tags);
+    }
+  }, [savedSearch]);
   const createSavedSearch = useCreateSavedSearch();
   const updateSavedSearch = useUpdateSavedSearch();
 
@@ -228,7 +240,7 @@ function SaveSearchModal({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
-            tags: [],
+            tags: tags,
           },
           {
             onSuccess: () => {
@@ -245,7 +257,7 @@ function SaveSearchModal({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
-            tags: [],
+            tags: tags,
           },
           {
             onSuccess: savedSearch => {
@@ -313,6 +325,42 @@ function SaveSearchModal({
               Name
             </Text>
             <InputControlled control={control} name="name" />
+          </Box>
+          <Box mb="sm">
+            <Text c="gray.4" size="xs" mb="xs">
+              Tags
+            </Text>
+            <Group gap="xs" align="center" mb="xs">
+              {tags.map(tag => (
+                <Button
+                  key={tag}
+                  variant="light"
+                  color="gray"
+                  size="xs"
+                  rightSection={
+                    <ActionIcon
+                      variant="transparent"
+                      color="gray"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setTags(tags.filter(t => t !== tag));
+                      }}
+                      size="xs"
+                    >
+                      <i className="bi bi-x" />
+                    </ActionIcon>
+                  }
+                >
+                  {tag.toUpperCase()}
+                </Button>
+              ))}
+              <Tags allowCreate values={tags} onChange={setTags}>
+                <Button variant="outline" color="gray" size="xs">
+                  <i className="bi bi-plus me-1"></i>
+                  Add Tag
+                </Button>
+              </Tags>
+            </Group>
           </Box>
           <Button variant="outline" color="green" type="submit">
             {isUpdate ? 'Update' : 'Save'}
@@ -698,6 +746,41 @@ function DBSearchPage() {
     }
   }, [savedSearch, updateSavedSearch, onSubmit, handleSubmit]);
 
+  const handleUpdateTags = useCallback(
+    (newTags: string[]) => {
+      if (savedSearch?.id) {
+        updateSavedSearch.mutate(
+          {
+            id: savedSearch.id,
+            name: savedSearch.name,
+            select: searchedConfig.select ?? '',
+            where: searchedConfig.where ?? '',
+            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            source: searchedConfig.source ?? '',
+            orderBy: searchedConfig.orderBy ?? '',
+            tags: newTags,
+          },
+          {
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: 'Tags updated successfully',
+              });
+            },
+            onError: () => {
+              notifications.show({
+                color: 'red',
+                message:
+                  'An error occurred. Please contact support for more details.',
+              });
+            },
+          },
+        );
+      }
+    },
+    [savedSearch, searchedConfig, updateSavedSearch],
+  );
+
   const [newSourceModalOpened, setNewSourceModalOpened] = useState(false);
 
   const QUERY_KEY_PREFIX = 'search';
@@ -925,6 +1008,24 @@ function DBSearchPage() {
                 >
                   Alerts
                 </Button>
+              )}
+              {!!savedSearch && (
+                <Tags
+                  allowCreate
+                  values={savedSearch.tags || []}
+                  onChange={handleUpdateTags}
+                >
+                  <Button
+                    variant="outline"
+                    color="dark.2"
+                    px="xs"
+                    size="xs"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <i className="bi bi-tags-fill me-1"></i>
+                    {savedSearch.tags?.length || 0}
+                  </Button>
+                </Tags>
               )}
               <SearchPageActionBar
                 onClickDeleteSavedSearch={() => {
