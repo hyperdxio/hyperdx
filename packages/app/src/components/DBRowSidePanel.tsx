@@ -22,6 +22,7 @@ import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
+import { SearchConfig } from '@/types';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ContextSubpanel from './ContextSidePanel';
@@ -35,7 +36,13 @@ import styles from '@/../styles/LogSidePanel.module.scss';
 
 export const RowSidePanelContext = createContext<{
   onPropertyAddClick?: (keyPath: string, value: string) => void;
-  generateSearchUrl?: (query?: string) => string;
+  generateSearchUrl?: ({
+    where,
+    whereLanguage,
+  }: {
+    where: SearchConfig['where'];
+    whereLanguage: SearchConfig['whereLanguage'];
+  }) => string;
   generateChartUrl?: (config: {
     aggFn: string;
     field: string;
@@ -90,14 +97,14 @@ export default function DBRowSidePanel({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
   );
 
-  const [panelWidth, setPanelWidth] = useState(
-    Math.round(window.innerWidth * 0.8),
-  );
+  const [panelWidthPerc, setPanelWidthPerc] = useState(80);
   const handleResize = useCallback((e: MouseEvent) => {
     const offsetRight =
       document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
     const maxWidth = document.body.offsetWidth - 25;
-    setPanelWidth(Math.min(offsetRight + 3, maxWidth)); // ensure we bury the cursor in the panel
+    setPanelWidthPerc(
+      (Math.min(offsetRight + 3, maxWidth) / window.innerWidth) * 100,
+    ); // ensure we bury the cursor in the panel
   }, []);
   const startResize: MouseEventHandler<HTMLDivElement> = useCallback(e => {
     e.preventDefault();
@@ -172,6 +179,15 @@ export default function DBRowSidePanel({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
+  const serviceName = normalizedRow?.['__hdx_service_name'];
+
+  const tags = useMemo(() => {
+    const tags: Record<string, string> = {};
+    if (serviceName && source.serviceNameExpression) {
+      tags[source.serviceNameExpression] = serviceName;
+    }
+    return tags;
+  }, [serviceName, source.serviceNameExpression]);
 
   const rng = useMemo(() => {
     return [
@@ -211,7 +227,7 @@ export default function DBRowSidePanel({
         }
       }}
       direction="right"
-      size={panelWidth}
+      size={`${Math.min(panelWidthPerc, 90)}vw`}
       zIndex={drawerZIndex}
       enableOverlay={subDrawerOpen}
     >
@@ -227,7 +243,7 @@ export default function DBRowSidePanel({
                 <DBRowSidePanelHeader
                   sourceId={source.id}
                   date={timestampDate}
-                  tags={{}}
+                  tags={tags}
                   mainContent={mainContent}
                   mainContentHeader={mainContentColumn}
                   severityText={severityText}

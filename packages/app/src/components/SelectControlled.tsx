@@ -9,6 +9,7 @@ export type SelectControlledProps = SelectProps &
 
 export default function SelectControlled(props: SelectControlledProps) {
   const { field, fieldState } = useController(props);
+  const { onCreate, ...restProps } = props;
 
   // This is needed as mantine does not clear the select
   // if the value is not in the data after
@@ -23,18 +24,18 @@ export default function SelectControlled(props: SelectControlledProps) {
 
   const onChange = useCallback(
     (value: string | null) => {
-      if (value === '_create_new_value' && props.onCreate != null) {
-        props.onCreate();
+      if (value === '_create_new_value' && onCreate != null) {
+        onCreate();
       } else {
         field.onChange(value);
       }
     },
-    [field],
+    [field, onCreate],
   );
 
   return (
     <Select
-      {...props}
+      {...restProps}
       error={fieldState.error?.message}
       value={selected == null ? null : field.value}
       onChange={onChange}

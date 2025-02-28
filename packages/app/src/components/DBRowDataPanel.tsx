@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getEventBody, getFirstTimestampValueExpression } from '@/source';
@@ -57,6 +58,30 @@ export function useRowData({
               },
             ]
           : []),
+        ...(source.serviceNameExpression
+          ? [
+              {
+                valueExpression: source.serviceNameExpression,
+                alias: '__hdx_service_name',
+              },
+            ]
+          : []),
+        ...(source.resourceAttributesExpression
+          ? [
+              {
+                valueExpression: source.resourceAttributesExpression,
+                alias: '__hdx_resource_attributes',
+              },
+            ]
+          : []),
+        ...(source.eventAttributesExpression
+          ? [
+              {
+                valueExpression: source.eventAttributesExpression,
+                alias: '__hdx_event_attributes',
+              },
+            ]
+          : []),
       ],
       where: rowId ?? '0=1',
       from: source.from,
@@ -88,7 +113,9 @@ export function RowDataPanel({
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
-      <DBRowJsonViewer data={firstRow} />
+      <Box mx="md" my="sm">
+        <DBRowJsonViewer data={firstRow} />
+      </Box>
     </div>
   );
 }
