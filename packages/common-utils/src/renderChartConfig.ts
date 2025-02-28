@@ -827,14 +827,22 @@ function translateMetricChartConfig(
       console.log('aggCondition', aggCondition);
       if (metricType === MetricsDataType.Gauge && metricName) {
         // For Gauge metrics, create a more efficient CTE that directly computes the aggregation
+        // Special handling for count to preserve original values
+        const valueExpr =
+          _select.aggFn === 'count'
+            ? chSql`Value`
+            : _select.aggFn
+              ? chSql`${_select.aggFn}(Value)`
+              : chSql`Value`;
+
         unionSelects.push(chSql`SELECT 
-          ${_select.aggFn ? chSql`${_select.aggFn}(Value)` : chSql`Value`} as Value,
+          ${valueExpr} as Value,
           '${metricLabel}' as MetricLabel,
           TimeUnix
           FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
           WHERE MetricName = '${metricName}'
           ${aggCondition ? chSql`AND ${{ UNSAFE_RAW_SQL: aggCondition }}` : chSql``}
-          ${_select.aggFn ? chSql`GROUP BY TimeUnix` : chSql``}`);
+          GROUP BY ${_select.aggFn === 'count' || !_select.aggFn ? chSql`Value, ` : chSql``}TimeUnix, MetricLabel`);
       } else if (metricType === MetricsDataType.Sum && metricName) {
         // For Sum metrics, we still need the intermediate CTE for rate calculation
         const cteName = `${cteBaseName}RawSum`;
@@ -862,7 +870,7 @@ function translateMetricChartConfig(
           TimeUnix
           FROM ${cteName}
           ${'aggCondition' in _select && typeof _select.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _select.aggCondition }}` : chSql``}
-          ${_select.aggFn ? chSql`GROUP BY TimeUnix` : chSql``}`);
+          GROUP BY TimeUnix, MetricLabel`);
       } else if (metricType === MetricsDataType.Histogram && metricName) {
         // For Histogram metrics, create the histogram calculation CTEs
         const { aggFn, level, ..._selectRest } = _select as {
@@ -920,7 +928,7 @@ function translateMetricChartConfig(
           TimeUnix
           FROM ${rawHistCte}
           ${'aggCondition' in _selectRest && typeof _selectRest.aggCondition === 'string' ? chSql`WHERE ${{ UNSAFE_RAW_SQL: _selectRest.aggCondition }}` : chSql``}
-          GROUP BY TimeUnix`);
+          GROUP BY TimeUnix, MetricLabel`);
       } else {
         throw new Error(`no query support for metric type=${metricType}`);
       }
@@ -942,8 +950,9 @@ function translateMetricChartConfig(
           alias: 'Value',
         },
         {
+          // Use MetricLabel as the series identifier
           valueExpression: 'MetricLabel',
-          alias: 'Metric',
+          alias: 'Series',
         },
       ],
       from: {
@@ -982,6 +991,14 @@ function translateMetricChartConfig(
       },
       where: `MetricName = '${metricName}'`,
       whereLanguage: 'sql',
+      // Add Value to groupBy if using count or no aggregation
+      groupBy:
+        _select.aggFn === 'count' || !_select.aggFn
+          ? ([
+              ...(restChartConfig.groupBy || []),
+              { valueExpression: 'Value' },
+            ] as SelectList)
+          : restChartConfig.groupBy,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
     return {
@@ -1112,10 +1129,3 @@ export async function renderChartConfig(
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
   ]);
 }
-
-// EditForm -> translateToQueriedChartConfig -> QueriedChartConfig
-// renderFn(QueriedChartConfig) -> sql
-// query(sql) -> data
-// formatter(data) -> displayspecificDs
-// displaySettings(QueriedChartConfig) -> displaySepcificDs
-// chartComponent(displayspecificDs) -> React.Node
