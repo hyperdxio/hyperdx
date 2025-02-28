@@ -479,11 +479,17 @@ async function renderSelect(
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
   const isIncludingGroupBy = isUsingGroupBy(chartConfig);
 
+  // For metric queries with CombinedMetrics, we want to avoid duplicating columns
+  const isMetricQuery =
+    chartConfig.from.tableName === 'CombinedMetrics' &&
+    chartConfig.with?.length;
+
   // TODO: clean up these await mess
   return concatChSql(
     ',',
     await renderSelectList(chartConfig.select, chartConfig, metadata),
-    isIncludingGroupBy && chartConfig.selectGroupBy !== false
+    // Only include groupBy columns in SELECT if selectGroupBy is true and we're not using a metric query
+    isIncludingGroupBy && chartConfig.selectGroupBy !== false && !isMetricQuery
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata)
       : [],
     isIncludingTimeBucket
@@ -954,6 +960,8 @@ function translateMetricChartConfig(
         { valueExpression: 'MetricLabel' },
         ...(chartConfig.groupBy?.length ? (chartConfig.groupBy as any) : []),
       ],
+      // Ensure selectGroupBy is false to prevent duplicate columns in the SELECT clause
+      selectGroupBy: false,
     };
   }
 
