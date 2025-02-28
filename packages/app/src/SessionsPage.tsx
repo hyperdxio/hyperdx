@@ -230,7 +230,7 @@ function SessionCardList({
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const appliedConfigMap = {
-  source: parseAsString,
+  sessionSource: parseAsString,
   where: parseAsString,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
@@ -241,7 +241,7 @@ export default function SessionsPage() {
     values: {
       where: appliedConfig.where,
       whereLanguage: appliedConfig.whereLanguage,
-      source: appliedConfig.source,
+      source: appliedConfig.sessionSource,
     },
   });
 
@@ -256,11 +256,28 @@ export default function SessionsPage() {
     id: sessionSource?.traceSourceId,
   });
 
+  // Get all sources and select the first session type source by default
+  const { data: sources } = useSources();
+
   useEffect(() => {
-    if (sourceId && !appliedConfig.source) {
-      setAppliedConfig({ source: sourceId });
+    if (sourceId && !appliedConfig.sessionSource) {
+      setAppliedConfig({ sessionSource: sourceId });
     }
-  }, [appliedConfig.source, setAppliedConfig, sourceId]);
+  }, [appliedConfig.sessionSource, setAppliedConfig, sourceId]);
+
+  // Auto-select the first session source when the page loads
+  useEffect(() => {
+    if (sources && sources.length > 0 && !appliedConfig.sessionSource) {
+      // Find the first session source
+      const sessionSource = sources.find(
+        source => source.kind === SourceKind.Session,
+      );
+      if (sessionSource) {
+        setValue('source', sessionSource.id);
+        // This will trigger the other useEffect above to update appliedConfig
+      }
+    }
+  }, [sources, appliedConfig.sessionSource, setValue]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -281,7 +298,7 @@ export default function SessionsPage() {
 
   // Auto submit when service or source changes
   useEffect(() => {
-    if (sourceId !== appliedConfig.source) {
+    if (sourceId !== appliedConfig.sessionSource) {
       onSubmit();
     }
   }, [sourceId]);
