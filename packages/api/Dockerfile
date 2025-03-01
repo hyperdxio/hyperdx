@@ -4,8 +4,10 @@ FROM node:18.20.3-alpine AS base
 WORKDIR /app
 
 COPY .yarn ./.yarn
-COPY .yarnrc.yml yarn.lock ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./
-RUN yarn install && yarn cache clean
+COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
+COPY ./packages/common-utils ./packages/common-utils
+COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./packages/api/
+RUN yarn install --mode=skip-build && yarn cache clean
 
 
 ## dev #############################################################################################
@@ -14,16 +16,15 @@ FROM base AS dev
 
 EXPOSE 8000
 
-ENTRYPOINT ["yarn"]
-CMD ["dev"]
+ENTRYPOINT ["npx", "nx", "run", "@hyperdx/api:dev"]
 
 
 ## builder #########################################################################################
 
 FROM base AS builder
 
-COPY ./packages/api/src ./src
-RUN yarn run build
+COPY ./packages/api/src ./packages/api/src
+RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api
 
 
 ## prod ############################################################################################
@@ -44,7 +45,12 @@ USER node
 
 WORKDIR /app
 
-COPY --chown=node:node --from=builder /app/build ./build
+COPY --chown=node:node --from=base /app/package.json ./package.json
+COPY --chown=node:node --from=base /app/nx.json ./nx.json
 COPY --chown=node:node --from=base /app/node_modules ./node_modules
+COPY --chown=node:node --from=base /app/packages/api/package.json ./packages/api/package.json
+COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
+COPY --chown=node:node --from=base /app/packages/common-utils/package.json ./packages/common-utils/package.json
+COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 
-ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./build/index.js"]
+ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./packages/api/build/index.js"]
