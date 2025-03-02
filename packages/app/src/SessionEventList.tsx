@@ -152,7 +152,8 @@ export const SessionEventList = ({
         const isNavigation =
           spanName === 'routeChange' || spanName === 'documentLoad';
 
-        const isError = event.severity_text === 'error' || statusCode > 499;
+        const isError =
+          event.severity_text?.toLowerCase() === 'error' || statusCode > 499;
 
         const isSuccess = !isError && statusCode < 400 && statusCode > 99;
 
