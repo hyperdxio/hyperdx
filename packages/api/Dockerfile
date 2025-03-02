@@ -25,6 +25,7 @@ FROM base AS builder
 
 COPY ./packages/api/src ./packages/api/src
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api
+RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
 ## prod ############################################################################################
@@ -45,12 +46,8 @@ USER node
 
 WORKDIR /app
 
-COPY --chown=node:node --from=base /app/package.json ./package.json
-COPY --chown=node:node --from=base /app/nx.json ./nx.json
 COPY --chown=node:node --from=base /app/node_modules ./node_modules
-COPY --chown=node:node --from=base /app/packages/api/package.json ./packages/api/package.json
 COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
-COPY --chown=node:node --from=base /app/packages/common-utils/package.json ./packages/common-utils/package.json
 COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 
 ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./packages/api/build/index.js"]
