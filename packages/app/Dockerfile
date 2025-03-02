@@ -4,10 +4,11 @@ FROM node:18.20.3-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-
 COPY .yarn ./.yarn
-COPY .yarnrc.yml yarn.lock ./packages/app/package.json ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
-RUN yarn install && yarn cache clean
+COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
+COPY ./packages/common-utils ./packages/common-utils
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
+RUN yarn install --mode=skip-build && yarn cache clean
 
 
 ## dev #############################################################################################
@@ -15,8 +16,8 @@ FROM base AS dev
 
 EXPOSE 8080
 
-ENTRYPOINT ["yarn"]
-CMD ["dev"]
+ENTRYPOINT ["npx", "nx", "run", "@hyperdx/app:dev"]
+
 
 ## builder #########################################################################################
 # Rebuild the source code only when needed
@@ -31,13 +32,12 @@ ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_IS_LOCAL_MODE $IS_LOCAL_MODE
 
-COPY ./packages/app/tsconfig.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./
-COPY ./packages/app/src ./src 
-COPY ./packages/app/pages ./pages 
-COPY ./packages/app/public ./public 
-COPY ./packages/app/styles ./styles
-COPY --from=base /app/node_modules ./node_modules
-RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
+COPY ./packages/app/src ./packages/app/src
+COPY ./packages/app/pages ./packages/app/pages
+COPY ./packages/app/public ./packages/app/public
+COPY ./packages/app/styles ./packages/app/styles
+RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/app 
+RUN rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
 
 
 ## prod ############################################################################################
@@ -50,11 +50,11 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 
 # You only need to copy next.config.js if you are NOT using the default configuration
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder /app/packages/app/next.config.js ./
+COPY --from=builder --chown=nextjs:nodejs /app/packages/app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/packages/app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/packages/app/package.json ./package.json
 
 USER nextjs
 
