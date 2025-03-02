@@ -1,75 +1,15 @@
-import { useMemo } from 'react';
+import { useCallback, useContext, useMemo } from 'react';
+import { pickBy } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Accordion } from '@mantine/core';
+import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { getEventBody, getFirstTimestampValueExpression } from '@/source';
-
+import { useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
+import { RowSidePanelContext } from './DBRowSidePanel';
+import EventTag from './EventTag';
+import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 
-export function useRowData({
-  source,
-  rowId,
-}: {
-  source: TSource;
-  rowId: string | undefined | null;
-}) {
-  const eventBodyExpr = getEventBody(source);
-
-  const searchedTraceIdExpr = source.traceIdExpression;
-
-  const severityTextExpr =
-    source.severityTextExpression || source.statusCodeExpression;
-
-  return useQueriedChartConfig(
-    {
-      connection: source.connection,
-      select: [
-        {
-          valueExpression: '*',
-        },
-        {
-          valueExpression: getFirstTimestampValueExpression(
-            source.timestampValueExpression,
-          ),
-          alias: '__hdx_timestamp',
-        },
-        ...(eventBodyExpr
-          ? [
-              {
-                valueExpression: eventBodyExpr,
-                alias: '__hdx_body',
-              },
-            ]
-          : []),
-        ...(searchedTraceIdExpr
-          ? [
-              {
-                valueExpression: searchedTraceIdExpr,
-                alias: '__hdx_trace_id',
-              },
-            ]
-          : []),
-        ...(severityTextExpr
-          ? [
-              {
-                valueExpression: severityTextExpr,
-                alias: '__hdx_severity_text',
-              },
-            ]
-          : []),
-      ],
-      where: rowId ?? '0=1',
-      from: source.from,
-      limit: { limit: 1 },
-    },
-    {
-      queryKey: ['row_side_panel', rowId, source],
-      enabled: rowId != null,
-    },
-  );
-}
-
+const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
@@ -78,6 +18,8 @@ export function RowOverviewPanel({
   rowId: string | undefined | null;
 }) {
   const { data, isLoading, isError } = useRowData({ source, rowId });
+  const { onPropertyAddClick, generateSearchUrl } =
+    useContext(RowSidePanelContext);
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
@@ -87,33 +29,94 @@ export function RowOverviewPanel({
     return firstRow;
   }, [data]);
 
-  const resourceAttributes = useMemo(() => {
-    return firstRow[source.resourceAttributesExpression!] || {};
-  }, [firstRow, source.resourceAttributesExpression]);
+  const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
+  const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
-  const eventAttributes = useMemo(() => {
-    return firstRow[source.eventAttributesExpression!] || {};
-  }, [firstRow, source.eventAttributesExpression]);
+  const _generateSearchUrl = useCallback(
+    (query?: string, timeRange?: [Date, Date]) => {
+      return (
+        generateSearchUrl?.({
+          where: query,
+          whereLanguage: 'lucene',
+        }) ?? '/'
+      );
+    },
+    [generateSearchUrl],
+  );
+
+  const isHttpRequest = useMemo(() => {
+    return eventAttributes?.['http.url'] != null;
+  }, [eventAttributes]);
+
+  const filteredEventAttributes = useMemo(() => {
+    if (isHttpRequest) {
+      return pickBy(eventAttributes, (value, key) => {
+        return !key.startsWith('http.');
+      });
+    }
+    return eventAttributes;
+  }, [eventAttributes, isHttpRequest]);
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
       <Accordion
-        defaultValue={['resourceAttributes', 'eventAttributes']}
+        mt="sm"
+        defaultValue={['network', 'resourceAttributes', 'eventAttributes']}
         multiple
       >
-        <Accordion.Item value="resourceAttributes">
-          <Accordion.Control>Resource Attributes</Accordion.Control>
-          <Accordion.Panel>
-            <DBRowJsonViewer data={resourceAttributes} />
-          </Accordion.Panel>
-        </Accordion.Item>
+        {isHttpRequest && (
+          <Accordion.Item value="network">
+            <Accordion.Control>
+              <Text size="sm" c="gray.2" ps="md">
+                HTTP Request
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <NetworkPropertySubpanel
+                  eventAttributes={eventAttributes}
+                  onPropertyAddClick={onPropertyAddClick}
+                  generateSearchUrl={_generateSearchUrl}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
 
         <Accordion.Item value="eventAttributes">
           <Accordion.Control>
-            {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+            <Text size="sm" c="gray.2" ps="md">
+              {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+            </Text>
           </Accordion.Control>
           <Accordion.Panel>
-            <DBRowJsonViewer data={eventAttributes} />
+            <Box px="md">
+              <DBRowJsonViewer data={filteredEventAttributes} />
+            </Box>
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        <Accordion.Item value="resourceAttributes">
+          <Accordion.Control>
+            <Text size="sm" c="gray.2" ps="md">
+              Resource Attributes
+            </Text>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+              {Object.entries(resourceAttributes).map(([key, value]) => (
+                <EventTag
+                  onPropertyAddClick={onPropertyAddClick!}
+                  generateSearchUrl={_generateSearchUrl}
+                  displayedKey={key}
+                  // TODO: Escape properly
+                  sqlExpression={`${source.resourceAttributesExpression}['${key}']`}
+                  name={`${source.resourceAttributesExpression}.${key}`}
+                  value={value as string}
+                  key={key}
+                />
+              ))}
+            </Flex>
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useContext } from 'react';
 import { Box, Button, Flex, Modal, Paper, Popover, Text } from '@mantine/core';
 
 import EventTag from '@/components/EventTag';
@@ -6,6 +6,7 @@ import { TableSourceForm } from '@/components/SourceForm';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import { RowSidePanelContext } from './DBRowSidePanel';
 import LogLevel from './LogLevel';
 
 const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
@@ -46,10 +47,12 @@ export default function DBRowSidePanelHeader({
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
-  tags: { [key: string]: string };
+  tags: Record<string, string>;
   severityText?: string;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
+  const { onPropertyAddClick, generateSearchUrl } =
+    useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
   const mainContentDisplayed = React.useMemo(
@@ -58,6 +61,18 @@ export default function DBRowSidePanelHeader({
         ? mainContent
         : mainContent?.slice(0, MAX_MAIN_CONTENT_LENGTH),
     [bodyExpanded, mainContent],
+  );
+
+  const _generateSearchUrl = useCallback(
+    (query?: string, timeRange?: [Date, Date]) => {
+      return (
+        generateSearchUrl?.({
+          where: query,
+          whereLanguage: 'lucene',
+        }) ?? '/'
+      );
+    },
+    [generateSearchUrl],
   );
 
   return (
@@ -115,12 +130,36 @@ export default function DBRowSidePanelHeader({
           <EditButton sourceId={sourceId} label="Set body expression" />
         </Paper>
       )}
-      {/* <EventTag
-        generateSearchUrl={() => ''}
-        displayedKey="hi"
-        name="hi"
-        value="hi"
-      /> */}
+      <Flex mt="sm">
+        {Object.entries(tags).map(([sqlKey, value]) => {
+          // Convert SQL syntax to Lucene syntax
+          // SQL: column['property.foo'] -> Lucene: column.property.foo
+          // or SQL: column -> Lucene: column
+          const luceneKey = sqlKey.replace(/\['([^']+)'\]/g, '.$1');
+
+          return onPropertyAddClick ? (
+            <EventTag
+              onPropertyAddClick={onPropertyAddClick}
+              sqlExpression={sqlKey} // Original SQL syntax for property add
+              generateSearchUrl={_generateSearchUrl}
+              displayedKey={luceneKey} // Show friendly Lucene format
+              name={luceneKey} // Use Lucene syntax for search
+              value={value}
+              key={sqlKey}
+            />
+          ) : (
+            <EventTag
+              onPropertyAddClick={undefined}
+              sqlExpression={undefined}
+              generateSearchUrl={_generateSearchUrl}
+              displayedKey={luceneKey}
+              name={luceneKey}
+              value={value}
+              key={sqlKey}
+            />
+          );
+        })}
+      </Flex>
     </>
   );
 }
