@@ -209,99 +209,103 @@ export default function SessionSubpanel({
     ] as DateRange['dateRange'];
   }, [playerStartTs, playerEndTs]);
 
-  const commonSelect = [
-    // body
-    // component
-    // duration
-    // end_timestamp
-    // error.message
-    // exception.group_id
-    // http.method
-    // http.status_code
-    // http.url
-    // id
-    // location.href
-    // otel.library.name
-    // parent_span_id
-    // severity_text
-    // sort_key
-    // span_id
-    // span_name
-    // timestamp
-    // trace_id
-    // type
-    // _host
-    // _platform
-    // _service
-    {
-      valueExpression: `${traceSource.statusCodeExpression}`,
-      alias: 'body',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['component']`,
-      alias: 'component',
-    },
-    {
-      valueExpression: `toFloat64OrZero(toString(${traceSource.durationExpression})) * pow(10, 3) / pow(10, toInt8OrZero(toString(${traceSource.durationPrecision})))`,
-      alias: 'durationInMs',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['error.message']`,
-      alias: 'error.message',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['http.method']`,
-      alias: 'http.method',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['http.status_code']`,
-      alias: 'http.status_code',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
-      alias: 'http.url',
-    },
-    {
-      valueExpression: `cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}, ${traceSource.timestampValueExpression})`,
-      alias: 'id',
-    },
-    {
-      valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
-      alias: 'location.href',
-    },
-    {
-      valueExpression: 'ScopeName', // FIXME: add mapping
-      alias: 'otel.library.name',
-    },
-    {
-      valueExpression: `${traceSource.parentSpanIdExpression}`,
-      alias: 'parent_span_id',
-    },
-    {
-      valueExpression: `${traceSource.statusCodeExpression}`,
-      alias: 'severity_text',
-    },
-    {
-      valueExpression: `${traceSource.spanIdExpression}`,
-      alias: 'span_id',
-    },
-    {
-      valueExpression: `${traceSource.spanNameExpression}`,
-      alias: 'span_name',
-    },
-    {
-      valueExpression: `${traceSource.timestampValueExpression}`,
-      alias: 'timestamp',
-    },
-    {
-      valueExpression: `${traceSource.traceIdExpression}`,
-      alias: 'trace_id',
-    },
-    {
-      valueExpression: `CAST('span', 'String')`,
-      alias: 'type',
-    },
-  ];
+  const commonSelect = useMemo(
+    () => [
+      // body
+      // component
+      // duration
+      // end_timestamp
+      // error.message
+      // exception.group_id
+      // http.method
+      // http.status_code
+      // http.url
+      // id
+      // location.href
+      // otel.library.name
+      // parent_span_id
+      // severity_text
+      // sort_key
+      // span_id
+      // span_name
+      // timestamp
+      // trace_id
+      // type
+      // _host
+      // _platform
+      // _service
+      {
+        // valueExpression: `${traceSource.statusCodeExpression}`,
+        valueExpression: `${traceSource.eventAttributesExpression}['message']`,
+        alias: 'body',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['component']`,
+        alias: 'component',
+      },
+      {
+        valueExpression: `toFloat64OrZero(toString(${traceSource.durationExpression})) * pow(10, 3) / pow(10, toInt8OrZero(toString(${traceSource.durationPrecision})))`,
+        alias: 'durationInMs',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['error.message']`,
+        alias: 'error.message',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['http.method']`,
+        alias: 'http.method',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['http.status_code']`,
+        alias: 'http.status_code',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['http.url']`,
+        alias: 'http.url',
+      },
+      {
+        valueExpression: `cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}, ${traceSource.timestampValueExpression})`,
+        alias: 'id',
+      },
+      {
+        valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
+        alias: 'location.href',
+      },
+      {
+        valueExpression: 'ScopeName', // FIXME: add mapping
+        alias: 'otel.library.name',
+      },
+      {
+        valueExpression: `${traceSource.parentSpanIdExpression}`,
+        alias: 'parent_span_id',
+      },
+      {
+        valueExpression: `${traceSource.statusCodeExpression}`,
+        alias: 'severity_text',
+      },
+      {
+        valueExpression: `${traceSource.spanIdExpression}`,
+        alias: 'span_id',
+      },
+      {
+        valueExpression: `${traceSource.spanNameExpression}`,
+        alias: 'span_name',
+      },
+      {
+        valueExpression: `${traceSource.timestampValueExpression}`,
+        alias: 'timestamp',
+      },
+      {
+        valueExpression: `${traceSource.traceIdExpression}`,
+        alias: 'trace_id',
+      },
+      {
+        valueExpression: `CAST('span', 'String')`,
+        alias: 'type',
+      },
+    ],
+    [traceSource],
+  );
 
   const filteredEventsWhere = `
     ${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"

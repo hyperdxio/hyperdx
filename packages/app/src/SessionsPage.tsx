@@ -258,11 +258,28 @@ export default function SessionsPage() {
     id: sessionSource?.traceSourceId,
   });
 
+  // Get all sources and select the first session type source by default
+  const { data: sources } = useSources();
+
   useEffect(() => {
     if (sourceId && !appliedConfig.sessionSource) {
       setAppliedConfig({ sessionSource: sourceId });
     }
   }, [appliedConfig.sessionSource, setAppliedConfig, sourceId]);
+
+  // Auto-select the first session source when the page loads
+  useEffect(() => {
+    if (sources && sources.length > 0 && !appliedConfig.sessionSource) {
+      // Find the first session source
+      const sessionSource = sources.find(
+        source => source.kind === SourceKind.Session,
+      );
+      if (sessionSource) {
+        setValue('source', sessionSource.id);
+        // This will trigger the other useEffect above to update appliedConfig
+      }
+    }
+  }, [sources, appliedConfig.sessionSource, setValue]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =

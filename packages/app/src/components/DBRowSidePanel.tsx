@@ -128,7 +128,7 @@ export default function DBRowSidePanel({
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
-  const [stateTab, setStateTab] = useState<Tab>(Tab.Parsed);
+  const [stateTab, setStateTab] = useState<Tab>(Tab.Overview);
   // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
   // We'll need to handle this properly eventually...
   const tab = isNestedPanel ? stateTab : queryTab;
