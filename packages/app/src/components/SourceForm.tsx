@@ -168,19 +168,6 @@ export function LogTableModelForm({
           />
         </FormRow>
         <FormRow
-          label={'Displayed Timestamp Column'}
-          helpText="This DateTime column is used to display search results."
-        >
-          <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
-            control={control}
-            name="displayedTimestampValueExpression"
-            disableKeywordAutocomplete
-            connectionId={connectionId}
-          />
-        </FormRow>
-        <FormRow
           label={'Default Select'}
           helpText="Default columns selected in search results (this can be customized per search later)"
         >
@@ -263,6 +250,19 @@ export function LogTableModelForm({
             control={control}
             name="resourceAttributesExpression"
             placeholder="ResourceAttributes"
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow
+          label={'Displayed Timestamp Column'}
+          helpText="This DateTime column is used to display search results."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="displayedTimestampValueExpression"
+            disableKeywordAutocomplete
             connectionId={connectionId}
           />
         </FormRow>
