@@ -168,6 +168,19 @@ export function LogTableModelForm({
           />
         </FormRow>
         <FormRow
+          label={'Displayed Timestamp Column'}
+          helpText="This DateTime column is used for display."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="displayedTimestampValueExpression"
+            disableKeywordAutocomplete
+            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow
           label={'Default Select'}
           helpText="Default columns selected in search results (this can be customized per search later)"
         >
