@@ -169,7 +169,7 @@ export function LogTableModelForm({
         </FormRow>
         <FormRow
           label={'Displayed Timestamp Column'}
-          helpText="This DateTime column is used for display."
+          helpText="This DateTime column is used to display search results."
         >
           <SQLInlineEditorControlled
             database={databaseName}
