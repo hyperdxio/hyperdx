@@ -20,7 +20,7 @@ import TimelineChart from '@/TimelineChart';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
-type SpanRow = {
+export type SpanRow = {
   Body: string;
   Timestamp: string;
   Duration: number; // seconds
@@ -176,7 +176,7 @@ export function useEventsData({
   return useOffsetPaginatedQuery(query, { enabled });
 }
 
-function useEventsAroundFocus({
+export function useEventsAroundFocus({
   tableSource,
   focusDate,
   dateRange,

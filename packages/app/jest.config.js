@@ -4,14 +4,16 @@ module.exports = {
   globalSetup: '<rootDir>/global-setup.js',
   roots: ['<rootDir>/src'],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': 'ts-jest',
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
   transformIgnorePatterns: ['/node_modules/(?!(ky|ky-universal))'],
   moduleNameMapper: {
-    '@/(.*)$': '<rootDir>/src/$1',
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   // Prettier 3 not supported yet
   // See: https://stackoverflow.com/a/76818962
   prettierPath: null,
