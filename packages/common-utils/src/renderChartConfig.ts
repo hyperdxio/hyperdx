@@ -816,36 +816,51 @@ function translateMetricChartConfig(
       whereLanguage: 'sql',
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
+    const time_bucket_col = '`__hdx_time_bucket2`';
+    const value_high_col = '`__hdx_value_high`';
+    const value_high_prev_col = '`__hdx_value_high_prev`';
+    const time_expr = timeBucketExpr({
+      interval: chartConfig.granularity || 'auto',
+      timestampValueExpression:
+        chartConfig.timestampValueExpression || 'TimeUnix',
+      dateRange: chartConfig.dateRange,
+      alias: '__hdx_time_bucket2',
+    });
     return {
       ...restChartConfig,
       with: [
         {
           name: 'RawSum',
-          sql: chSql`SELECT *,
-               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
-               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
-               IF(AggregationTemporality = 1,
-                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
-                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate
+          sql: chSql`SELECT ${time_expr}, AttributesHash, last_value(a.Value) AS ${value_high_col},
+              any(${value_high_col}) OVER(PARTITION BY AttributesHash ORDER BY ${time_bucket_col} ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${value_high_prev_col},
+              ${value_high_col} - ${value_high_prev_col} AS Value, any(ResourceAttributes) AS ResourceAttributes, any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+              any(ScopeName) AS ScopeName, any(ScopeVersion) AS ScopeVersion, any(ScopeAttributes) AS ScopeAttributes, any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+              any(ScopeSchemaUrl) AS ScopeSchemaUrl, any(ServiceName) AS ServiceName, any(MetricName) AS MetricName, any(MetricDescription) AS MetricDescription,
+              any(MetricUnit) AS MetricUnit, any(Attributes) AS Attributes, any(StartTimeUnix) AS StartTimeUnix, any(Flags) AS Flags, any(AggregationTemporality) AS AggregationTemporality,
+              any(IsMonotonic) AS IsMonotonic
             FROM (
-                SELECT *, 
-                       cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              SELECT SUM(Rate) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS Value, *
+              FROM (
+                SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  any(AttributesHash) OVER (ORDER BY AttributesHash, TimeUnix ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
+                  any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
+                  IF(AggregationTemporality = 1, Value,
+                    IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
+                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) AS Rate
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
-                WHERE MetricName = '${metricName}'
-                ORDER BY AttributesHash, TimeUnix ASC
-            ) `,
+                WHERE MetricName = '${metricName}')
+              ORDER BY AttributesHash, TimeUnix) a
+            GROUP BY AttributesHash, ${time_bucket_col}
+            ORDER BY AttributesHash, ${time_bucket_col}
+          `,
         },
       ],
-      select: [
-        {
-          ..._select,
-          valueExpression: 'Rate',
-        },
-      ],
+      select,
       from: {
         databaseName: '',
         tableName: 'RawSum',
       },
+      timestampValueExpression: time_bucket_col,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
     // histograms are only valid for quantile selections

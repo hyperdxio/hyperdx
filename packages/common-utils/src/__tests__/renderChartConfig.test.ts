@@ -104,28 +104,32 @@ describe('renderChartConfig', () => {
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toBe(
-      'WITH RawSum AS (SELECT *,\n' +
-        '               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,\n' +
-        '               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,\n' +
-        '               IF(AggregationTemporality = 1,\n' +
-        '                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,\n' +
-        '                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate\n' +
+      'WITH RawSum AS (SELECT toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS `__hdx_time_bucket2`, AttributesHash, last_value(a.Value) AS `__hdx_value_high`,\n' +
+        '              any(`__hdx_value_high`) OVER(PARTITION BY AttributesHash ORDER BY `__hdx_time_bucket2` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS `__hdx_value_high_prev`,\n' +
+        '              `__hdx_value_high` - `__hdx_value_high_prev` AS Value, any(ResourceAttributes) AS ResourceAttributes, any(ResourceSchemaUrl) AS ResourceSchemaUrl,\n' +
+        '              any(ScopeName) AS ScopeName, any(ScopeVersion) AS ScopeVersion, any(ScopeAttributes) AS ScopeAttributes, any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,\n' +
+        '              any(ScopeSchemaUrl) AS ScopeSchemaUrl, any(ServiceName) AS ServiceName, any(MetricName) AS MetricName, any(MetricDescription) AS MetricDescription,\n' +
+        '              any(MetricUnit) AS MetricUnit, any(Attributes) AS Attributes, any(StartTimeUnix) AS StartTimeUnix, any(Flags) AS Flags, any(AggregationTemporality) AS AggregationTemporality,\n' +
+        '              any(IsMonotonic) AS IsMonotonic\n' +
         '            FROM (\n' +
-        '                SELECT *, \n' +
-        '                       cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash\n' +
+        '              SELECT SUM(Rate) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS Value, *\n' +
+        '              FROM (\n' +
+        '                SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,\n' +
+        '                  any(AttributesHash) OVER (ORDER BY AttributesHash, TimeUnix ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,\n' +
+        '                  any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,\n' +
+        '                  IF(AggregationTemporality = 1, Value,\n' +
+        '                    IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,\n' +
+        '                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) AS Rate\n' +
         '                FROM default.otel_metrics_sum\n' +
-        "                WHERE MetricName = 'db.client.connections.usage'\n" +
-        '                ORDER BY AttributesHash, TimeUnix ASC\n' +
-        '            ) ) SELECT avg(\n' +
-        '      toFloat64OrNull(toString(Rate))\n' +
-        '    ),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS `__hdx_time_bucket`' +
-        ' FROM RawSum WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))' +
-        ' GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS `__hdx_time_bucket`' +
-        ' ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS `__hdx_time_bucket`' +
-        ' WITH FILL FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 5 minute))\n' +
+        "                WHERE MetricName = 'db.client.connections.usage')\n" +
+        '              ORDER BY AttributesHash, TimeUnix) a\n' +
+        '            GROUP BY AttributesHash, `__hdx_time_bucket2`\n' +
+        '            ORDER BY AttributesHash, `__hdx_time_bucket2`\n' +
+        '          ) SELECT avg(\n' +
+        '      toFloat64OrNull(toString(Value))\n' +
+        '    ),toStartOfInterval(toDateTime(`__hdx_time_bucket2`), INTERVAL 5 minute) AS `__hdx_time_bucket` FROM RawSum WHERE (`__hdx_time_bucket2` >= fromUnixTimestamp64Milli(1739318400000) AND `__hdx_time_bucket2` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(`__hdx_time_bucket2`), INTERVAL 5 minute) AS `__hdx_time_bucket` ORDER BY toStartOfInterval(toDateTime(`__hdx_time_bucket2`), INTERVAL 5 minute) AS `__hdx_time_bucket` WITH FILL FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 5 minute))\n' +
         '      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 5 minute))\n' +
-        '      STEP 300' +
-        ' LIMIT 10',
+        '      STEP 300 LIMIT 10',
     );
   });
 

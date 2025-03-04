@@ -21,15 +21,41 @@ Array [
 ]
 `;
 
+exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: maxSum 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "max(toFloat64OrNull(toString(Value)))": 24,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "max(toFloat64OrNull(toString(Value)))": 134,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: minSum 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "min(toFloat64OrNull(toString(Value)))": 15,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+    "min(toFloat64OrNull(toString(Value)))": 52,
+  },
+]
+`;
+
 exports[`renderChartConfig Query Metrics handles counter resets correctly for sum metrics 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 15,
+    "sum(toFloat64OrNull(toString(Value)))": 15,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 52,
+    "sum(toFloat64OrNull(toString(Value)))": 52,
   },
 ]
 `;
@@ -38,19 +64,19 @@ exports[`renderChartConfig Query Metrics single sum rate 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 19,
+    "sum(toFloat64OrNull(toString(Value)))": 19,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 79,
+    "sum(toFloat64OrNull(toString(Value)))": 79,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 5813,
+    "sum(toFloat64OrNull(toString(Value)))": 5813,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:15:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 78754,
+    "sum(toFloat64OrNull(toString(Value)))": 78754,
   },
 ]
 `;
