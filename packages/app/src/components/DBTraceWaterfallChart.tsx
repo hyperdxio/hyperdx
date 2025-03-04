@@ -75,7 +75,6 @@ function getConfig(source: TSource, traceId: string) {
     StatusCode: source.statusCodeExpression ?? '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
-    SpanAttributes: source.eventAttributesExpression ?? '',
   };
   const select = [
     {
@@ -120,10 +119,10 @@ function getConfig(source: TSource, traceId: string) {
               },
             ]
           : []),
-        ...(alias.SpanAttributes
+        ...(source.eventAttributesExpression
           ? [
               {
-                valueExpression: alias.SpanAttributes,
+                valueExpression: source.eventAttributesExpression,
                 alias: 'SpanAttributes',
               },
             ]
@@ -219,11 +218,22 @@ function useEventsAroundFocus({
     return [
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
-    ].map(cd => ({
-      ...cd,
-      id: rowWhere(cd),
-      type,
-    }));
+    ].map(cd => {
+      const rowData = {
+        Body: cd.Body,
+        Timestamp: cd.Timestamp,
+        SpanId: cd.SpanId,
+        ServiceName: cd.ServiceName,
+        Duration: cd.Duration,
+        ParentSpanId: cd.ParentSpanId,
+        StatusCode: cd.StatusCode,
+      };
+      return {
+        ...cd,
+        id: rowWhere(rowData),
+        type,
+      };
+    });
   }, [afterSpanData, beforeSpanData]);
 
   return {
@@ -403,33 +413,25 @@ export function DBTraceWaterfallChartContainer({
 
     const body = result.Body;
     const serviceName = result.ServiceName;
+    const id = result.id;
     const type = result.type;
+
+    // Extract HTTP-related logic
     const eventAttributes = result.SpanAttributes || {};
     const httpUrl = eventAttributes['http.url'];
-
-    const id = result.id;
-
-    const isHighlighted = highlightedRowWhere === id;
-
-    // TODO: Legacy schemas will have STATUS_CODE_ERROR
-    // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-    const isError =
-      result.StatusCode == 'Error' || result.SeverityText === 'error';
-    const isWarn = result.SeverityText === 'warn';
-
-    // Detect HTTP spans either from span name or attributes
     const isHttpSpanFromName =
       /^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/.test(body);
     const hasHttpAttributes = Boolean(
       eventAttributes['http.url'] || eventAttributes['http.method'],
     );
     const isHttpSpan = isHttpSpanFromName || hasHttpAttributes;
+    const displayText = isHttpSpan && httpUrl ? `${body} ${httpUrl}` : body;
 
-    // For HTTP spans, construct the display string using available information
-    const httpDisplayText =
-      isHttpSpan && httpUrl
-        ? `HTTP ${eventAttributes['http.method']} ${httpUrl}`
-        : body;
+    // Extract status logic
+    const isError =
+      result.StatusCode == 'Error' || result.SeverityText === 'error';
+    const isWarn = result.SeverityText === 'warn';
+    const isHighlighted = highlightedRowWhere === result.id;
 
     return {
       id,
@@ -486,7 +488,7 @@ export function DBTraceWaterfallChartContainer({
               // onClick={() => {
               //   toggleCollapse(id);
               // }}
-              title={`${serviceName}${isHttpSpan && httpUrl ? ` | ${httpDisplayText}` : ''}`}
+              title={`${serviceName}${isHttpSpan && httpUrl ? ` | ${displayText}` : ''}`}
               role="button"
             >
               {type === SourceKind.Log ? (
@@ -496,7 +498,7 @@ export function DBTraceWaterfallChartContainer({
                 />
               ) : null}
               {serviceName ? `${serviceName} | ` : ''}
-              {httpDisplayText}
+              {displayText}
             </Text>
           </div>
         </div>
@@ -511,11 +513,9 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${httpDisplayText} ${
-            tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''
-          }`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{httpDisplayText}</span>,
+          body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
           minWidthPerc: 1,
         },
       ],
