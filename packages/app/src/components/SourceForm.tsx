@@ -253,6 +253,19 @@ export function LogTableModelForm({
             connectionId={connectionId}
           />
         </FormRow>
+        <FormRow
+          label={'Displayed Timestamp Column'}
+          helpText="This DateTime column is used to display search results."
+        >
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="displayedTimestampValueExpression"
+            disableKeywordAutocomplete
+            connectionId={connectionId}
+          />
+        </FormRow>
         <Divider />
         <FormRow
           label={'Correlated Trace Source'}
