@@ -75,6 +75,9 @@ function getConfig(source: TSource, traceId: string) {
     StatusCode: source.statusCodeExpression ?? '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
+    // Note: SpanAttributes is intentionally not included in alias object
+    // to prevent it from being used in row identification while still
+    // being available in the select array for display purposes
   };
   const select = [
     {
@@ -119,6 +122,9 @@ function getConfig(source: TSource, traceId: string) {
               },
             ]
           : []),
+        // SpanAttributes is included in select but not in alias object above
+        // This ensures we can access SpanAttributes (e.g. http.url) for display
+        // while preventing it from being used in row identification
         ...(source.eventAttributesExpression
           ? [
               {
