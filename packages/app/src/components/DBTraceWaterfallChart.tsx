@@ -225,6 +225,10 @@ function useEventsAroundFocus({
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
     ].map(cd => {
+      // We need to explicitly construct rowData with only the fields we want to use for identification
+      // because spreading the full 'cd' object would include SpanAttributes even though it's not in alias.
+      // This is necessary because useRowWhere will use any fields present in the data it receives,
+      // not just the fields defined in aliasMap.
       const rowData = {
         Body: cd.Body,
         Timestamp: cd.Timestamp,
@@ -235,8 +239,8 @@ function useEventsAroundFocus({
         StatusCode: cd.StatusCode,
       };
       return {
-        ...cd,
-        id: rowWhere(rowData),
+        ...cd, // Keep all fields available for display
+        id: rowWhere(rowData), // But only use selected fields for identification
         type,
       };
     });
