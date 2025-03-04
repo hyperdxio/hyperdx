@@ -75,9 +75,7 @@ function getConfig(source: TSource, traceId: string) {
     StatusCode: source.statusCodeExpression ?? '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
-    // Note: SpanAttributes is intentionally not included in alias object
-    // to prevent it from being used in row identification while still
-    // being available in the select array for display purposes
+    SpanAttributes: source.eventAttributesExpression ?? '',
   };
   const select = [
     {
@@ -122,13 +120,10 @@ function getConfig(source: TSource, traceId: string) {
               },
             ]
           : []),
-        // SpanAttributes is included in select but not in alias object above
-        // This ensures we can access SpanAttributes (e.g. http.url) for display
-        // while preventing it from being used in row identification
-        ...(source.eventAttributesExpression
+        ...(alias.SpanAttributes
           ? [
               {
-                valueExpression: source.eventAttributesExpression,
+                valueExpression: alias.SpanAttributes,
                 alias: 'SpanAttributes',
               },
             ]
@@ -225,22 +220,10 @@ function useEventsAroundFocus({
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
     ].map(cd => {
-      // We need to explicitly construct rowData with only the fields we want to use for identification
-      // because spreading the full 'cd' object would include SpanAttributes even though it's not in alias.
-      // This is necessary because useRowWhere will use any fields present in the data it receives,
-      // not just the fields defined in aliasMap.
-      const rowData = {
-        Body: cd.Body,
-        Timestamp: cd.Timestamp,
-        SpanId: cd.SpanId,
-        ServiceName: cd.ServiceName,
-        Duration: cd.Duration,
-        ParentSpanId: cd.ParentSpanId,
-        StatusCode: cd.StatusCode,
-      };
+      const { SpanAttributes, ...rowData } = cd;
       return {
         ...cd, // Keep all fields available for display
-        id: rowWhere(rowData), // But only use selected fields for identification
+        id: rowWhere(rowData), // But only use fields except SpanAttributes for identification
         type,
       };
     });
@@ -421,21 +404,16 @@ export function DBTraceWaterfallChartContainer({
     const start = startOffset - minOffset;
     const end = start + tookMs;
 
-    const body = result.Body;
-    const serviceName = result.ServiceName;
-    const id = result.id;
-    const type = result.type;
+    const { Body: body, ServiceName: serviceName, id, type } = result;
 
     // Extract HTTP-related logic
     const eventAttributes = result.SpanAttributes || {};
+    const hasHttpAttributes =
+      eventAttributes['http.url'] || eventAttributes['http.method'];
     const httpUrl = eventAttributes['http.url'];
-    const isHttpSpanFromName =
-      /^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/.test(body);
-    const hasHttpAttributes = Boolean(
-      eventAttributes['http.url'] || eventAttributes['http.method'],
-    );
-    const isHttpSpan = isHttpSpanFromName || hasHttpAttributes;
-    const displayText = isHttpSpan && httpUrl ? `${body} ${httpUrl}` : body;
+
+    const displayText =
+      hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
 
     // Extract status logic
     // TODO: Legacy schemas will have STATUS_CODE_ERROR
@@ -443,7 +421,7 @@ export function DBTraceWaterfallChartContainer({
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
     const isWarn = result.SeverityText === 'warn';
-    const isHighlighted = highlightedRowWhere === result.id;
+    const isHighlighted = highlightedRowWhere === id;
 
     return {
       id,
@@ -500,7 +478,7 @@ export function DBTraceWaterfallChartContainer({
               // onClick={() => {
               //   toggleCollapse(id);
               // }}
-              title={`${serviceName}${isHttpSpan && httpUrl ? ` | ${displayText}` : ''}`}
+              title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
               role="button"
             >
               {type === SourceKind.Log ? (
