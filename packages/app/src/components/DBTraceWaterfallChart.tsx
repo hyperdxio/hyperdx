@@ -434,6 +434,8 @@ export function DBTraceWaterfallChartContainer({
     const displayText = isHttpSpan && httpUrl ? `${body} ${httpUrl}` : body;
 
     // Extract status logic
+    // TODO: Legacy schemas will have STATUS_CODE_ERROR
+    // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
     const isWarn = result.SeverityText === 'warn';
