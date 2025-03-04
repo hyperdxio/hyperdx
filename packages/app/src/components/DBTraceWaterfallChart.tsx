@@ -31,6 +31,7 @@ type SpanRow = {
   SeverityText?: string;
   HyperDXEventType: 'span';
   type?: string;
+  SpanAttributes?: Record<string, any>;
 };
 
 function textColor(condition: { isError: boolean; isWarn: boolean }): string {
@@ -74,6 +75,7 @@ function getConfig(source: TSource, traceId: string) {
     StatusCode: source.statusCodeExpression ?? '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
+    SpanAttributes: source.eventAttributesExpression ?? '',
   };
   const select = [
     {
@@ -115,6 +117,14 @@ function getConfig(source: TSource, traceId: string) {
               {
                 valueExpression: alias.StatusCode,
                 alias: 'StatusCode',
+              },
+            ]
+          : []),
+        ...(alias.SpanAttributes
+          ? [
+              {
+                valueExpression: alias.SpanAttributes,
+                alias: 'SpanAttributes',
               },
             ]
           : []),
@@ -394,6 +404,8 @@ export function DBTraceWaterfallChartContainer({
     const body = result.Body;
     const serviceName = result.ServiceName;
     const type = result.type;
+    const eventAttributes = result.SpanAttributes || {};
+    const httpUrl = eventAttributes['http.url'];
 
     const id = result.id;
 
@@ -404,6 +416,20 @@ export function DBTraceWaterfallChartContainer({
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
     const isWarn = result.SeverityText === 'warn';
+
+    // Detect HTTP spans either from span name or attributes
+    const isHttpSpanFromName =
+      /^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/.test(body);
+    const hasHttpAttributes = Boolean(
+      eventAttributes['http.url'] || eventAttributes['http.method'],
+    );
+    const isHttpSpan = isHttpSpanFromName || hasHttpAttributes;
+
+    // For HTTP spans, construct the display string using available information
+    const httpDisplayText =
+      isHttpSpan && httpUrl
+        ? `HTTP ${eventAttributes['http.method']} ${httpUrl}`
+        : body;
 
     return {
       id,
@@ -457,10 +483,10 @@ export function DBTraceWaterfallChartContainer({
               truncate="end"
               // style={{ width: 200 }}
               span
-              title={serviceName}
               // onClick={() => {
               //   toggleCollapse(id);
               // }}
+              title={`${serviceName}${isHttpSpan && httpUrl ? ` | ${httpDisplayText}` : ''}`}
               role="button"
             >
               {type === SourceKind.Log ? (
@@ -470,7 +496,7 @@ export function DBTraceWaterfallChartContainer({
                 />
               ) : null}
               {serviceName ? `${serviceName} | ` : ''}
-              {body}
+              {httpDisplayText}
             </Text>
           </div>
         </div>
@@ -485,11 +511,11 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${body} ${
+          tooltip: `${httpDisplayText} ${
             tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''
           }`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{body}</span>,
+          body: <span style={{ color: '#FFFFFFEE' }}>{httpDisplayText}</span>,
           minWidthPerc: 1,
         },
       ],
