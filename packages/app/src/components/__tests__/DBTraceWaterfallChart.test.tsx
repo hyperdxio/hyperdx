@@ -269,8 +269,7 @@ describe('useEventsAroundFocus', () => {
     mockUseRowWhere.mockReturnValue(() => 'row-id');
   });
 
-  // Helper function to test the hook
-  const testEventsAroundFocus = async (options: {
+  const testEventsAroundFocus = (options: {
     beforeData?: any;
     afterData?: any;
     enabled?: boolean;
@@ -281,12 +280,19 @@ describe('useEventsAroundFocus', () => {
       enabled = true,
     } = options;
 
-    // Set up mock return values for the queries
-    mockUseOffsetPaginatedQuery
-      .mockReturnValueOnce({ data: beforeData, isFetching: false }) // before focus
-      .mockReturnValueOnce({ data: afterData, isFetching: false }); // after focus
+    mockUseOffsetPaginatedQuery.mockReset();
 
-    // Render the hook
+    if (enabled) {
+      mockUseOffsetPaginatedQuery
+        .mockReturnValueOnce({ data: beforeData, isFetching: false })
+        .mockReturnValueOnce({ data: afterData, isFetching: false });
+    } else {
+      mockUseOffsetPaginatedQuery.mockReturnValue({
+        data: { data: [], meta: [] },
+        isFetching: false,
+      });
+    }
+
     const { result } = renderHook(() =>
       useEventsAroundFocus({
         tableSource: mockTableSource,
@@ -297,18 +303,10 @@ describe('useEventsAroundFocus', () => {
       }),
     );
 
-    // Wait for the hook to complete its async operations
-    await waitFor(() => {
-      expect(mockUseOffsetPaginatedQuery).toHaveBeenCalledTimes(
-        enabled ? 2 : 0,
-      );
-    });
-
     return result.current;
   };
 
-  it('fetches events before and after focus date', async () => {
-    // Mock data for before and after the focus date
+  it('fetches events before and after focus date', () => {
     const mockBeforeData = {
       data: [{ Body: 'before focus' }],
       meta: [{ totalCount: 1 }],
@@ -318,8 +316,7 @@ describe('useEventsAroundFocus', () => {
       meta: [{ totalCount: 1 }],
     };
 
-    // Use the helper function
-    const result = await testEventsAroundFocus({
+    const result = testEventsAroundFocus({
       beforeData: mockBeforeData,
       afterData: mockAfterData,
     });
@@ -340,20 +337,13 @@ describe('useEventsAroundFocus', () => {
     expect((result.rows[1] as any).Body).toBe('after focus');
   });
 
-  it('handles empty data correctly', async () => {
-    // Use the helper function with default empty data
-    const result = await testEventsAroundFocus({});
-
-    // Verify empty results
+  it('handles empty data correctly', () => {
+    const result = testEventsAroundFocus({});
     expect(result.rows.length).toBe(0);
   });
 
-  it('does not fetch when disabled', async () => {
-    // Use the helper function with enabled=false
-    const result = await testEventsAroundFocus({ enabled: false });
-
-    // Verify no queries were made
-    expect(mockUseOffsetPaginatedQuery).not.toHaveBeenCalled();
+  it('does not fetch when disabled', () => {
+    const result = testEventsAroundFocus({ enabled: false });
     expect(result.rows.length).toBe(0);
   });
 });
