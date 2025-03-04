@@ -214,18 +214,6 @@
   }
 }
 
-.stringWrappable {
-  color: #a6e22e;
-  word-break: break-all;
-  overflow: auto;
-  white-space: pre-wrap;
-  &::before,
-  &::after {
-    content: '"';
-    color: #888;
-  }
-}
-
 .number {
   color: #f90;
 }
