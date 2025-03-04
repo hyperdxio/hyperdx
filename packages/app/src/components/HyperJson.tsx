@@ -14,6 +14,9 @@ import { useHover } from '@mantine/hooks';
 
 import styles from './HyperJson.module.scss';
 
+const STRING_COLLAPSE_THRESHOLD = 70;
+const COLLAPSE_STRING_SIZE = 40;
+
 export type LineAction = {
   key: string;
   title?: string;
@@ -142,6 +145,17 @@ const Line = React.memo(
     // mounting it for potentially hundreds of lines
     const { ref, hovered } = useHover<HTMLDivElement>();
 
+    const isCollapsibleString =
+      isString(value) &&
+      (value.split('\n').length > 1 ||
+        value.length > STRING_COLLAPSE_THRESHOLD);
+    const collapseString = isCollapsibleString
+      ? (value.split('\n').length > 1 ? value.split('\n')[0] : value).substring(
+          0,
+          COLLAPSE_STRING_SIZE,
+        ) + '...'
+      : '';
+
     const isStringValueValidJson = React.useMemo(() => {
       if (!isString(value)) return false;
       try {
@@ -169,6 +183,7 @@ const Line = React.memo(
       () =>
         (isPlainObject(value) && Object.keys(value).length > 0) ||
         (isArray(value) && value.length > 0) ||
+        isCollapsibleString ||
         isStringValueValidJson,
       [isStringValueValidJson, value],
     );
@@ -251,6 +266,8 @@ const Line = React.memo(
                   <div className={styles.jsonBtn}>Expand JSON</div>
                 </>
               )
+            ) : isCollapsibleString && !isExpanded ? (
+              <div className={styles.string}>{collapseString}</div>
             ) : (
               <ValueRenderer value={value} ref={valueRef} />
             )}
@@ -259,7 +276,7 @@ const Line = React.memo(
             <LineMenu keyName={keyName} keyPath={keyPath} value={value} />
           )}
         </div>
-        {isExpanded && isExpandable && (
+        {!isCollapsibleString && isExpanded && isExpandable && (
           <TreeNode
             data={expandedData}
             keyPath={keyPath}

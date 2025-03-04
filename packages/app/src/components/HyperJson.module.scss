@@ -16,7 +16,7 @@
 .withLineWrap {
   .valueContainer {
     .string {
-      white-space: pre;
+      white-space: pre-wrap;
     }
   }
 }
@@ -207,6 +207,18 @@
   word-break: break-all;
 
   // margin-left: -6px;margin-left
+  &::before,
+  &::after {
+    content: '"';
+    color: #888;
+  }
+}
+
+.stringWrappable {
+  color: #a6e22e;
+  word-break: break-all;
+  overflow: auto;
+  white-space: pre-wrap;
   &::before,
   &::after {
     content: '"';
