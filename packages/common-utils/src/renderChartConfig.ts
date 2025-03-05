@@ -816,7 +816,7 @@ function translateMetricChartConfig(
       whereLanguage: 'sql',
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
-    const timeBucketCol = '`__hdx_time_bucket2`';
+    const timeBucketCol = '__hdx_time_bucket2';
     const valueHighCol = '`__hdx_value_high`';
     const valueHighPrevCol = '`__hdx_value_high_prev`';
     const timeExpr = timeBucketExpr({
@@ -824,7 +824,7 @@ function translateMetricChartConfig(
       timestampValueExpression:
         chartConfig.timestampValueExpression || 'TimeUnix',
       dateRange: chartConfig.dateRange,
-      alias: '__hdx_time_bucket2',
+      alias: timeBucketCol,
     });
     /*
 
@@ -859,7 +859,7 @@ function translateMetricChartConfig(
               ${timeExpr},
               AttributesHash,
               last_value(Source.Value) AS ${valueHighCol},
-              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY ${timeBucketCol} ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
+              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
               ${valueHighCol} - ${valueHighPrevCol} AS Value,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
@@ -878,8 +878,8 @@ function translateMetricChartConfig(
               any(AggregationTemporality) AS AggregationTemporality,
               any(IsMonotonic) AS IsMonotonic
             FROM Source
-            GROUP BY AttributesHash, ${timeBucketCol}
-            ORDER BY AttributesHash, ${timeBucketCol}
+            GROUP BY AttributesHash, \`${timeBucketCol}\`
+            ORDER BY AttributesHash, \`${timeBucketCol}\`
           `,
         },
       ],
@@ -888,7 +888,7 @@ function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
-      timestampValueExpression: timeBucketCol,
+      timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
     // histograms are only valid for quantile selections
