@@ -340,10 +340,6 @@ describe('renderChartConfig', () => {
       ]);
     });
 
-    it.skip('gauge (last value)', async () => {
-      // IMPLEMENT ME (last_value aggregation)
-    });
-
     it('single sum gauge', async () => {
       const query = await renderChartConfig(
         {
