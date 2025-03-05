@@ -416,6 +416,8 @@ export default function SessionsPage() {
                 where: `rum_session_id:"${selectedSession.id}"`,
               })
             }
+            whereLanguage={whereLanguage || undefined}
+            where={where || undefined}
           />
         )}
       <Box p="sm">
