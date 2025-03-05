@@ -20,7 +20,7 @@ import TimelineChart from '@/TimelineChart';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
-type SpanRow = {
+export type SpanRow = {
   Body: string;
   Timestamp: string;
   Duration: number; // seconds
@@ -31,6 +31,7 @@ type SpanRow = {
   SeverityText?: string;
   HyperDXEventType: 'span';
   type?: string;
+  SpanAttributes?: Record<string, any>;
 };
 
 function textColor(condition: { isError: boolean; isWarn: boolean }): string {
@@ -74,6 +75,7 @@ function getConfig(source: TSource, traceId: string) {
     StatusCode: source.statusCodeExpression ?? '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
+    SpanAttributes: source.eventAttributesExpression ?? '',
   };
   const select = [
     {
@@ -115,6 +117,14 @@ function getConfig(source: TSource, traceId: string) {
               {
                 valueExpression: alias.StatusCode,
                 alias: 'StatusCode',
+              },
+            ]
+          : []),
+        ...(alias.SpanAttributes
+          ? [
+              {
+                valueExpression: alias.SpanAttributes,
+                alias: 'SpanAttributes',
               },
             ]
           : []),
@@ -166,7 +176,7 @@ export function useEventsData({
   return useOffsetPaginatedQuery(query, { enabled });
 }
 
-function useEventsAroundFocus({
+export function useEventsAroundFocus({
   tableSource,
   focusDate,
   dateRange,
@@ -209,11 +219,14 @@ function useEventsAroundFocus({
     return [
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
-    ].map(cd => ({
-      ...cd,
-      id: rowWhere(cd),
-      type,
-    }));
+    ].map(cd => {
+      const { SpanAttributes, ...rowData } = cd;
+      return {
+        ...cd, // Keep all fields available for display
+        id: rowWhere(rowData), // But only use fields except SpanAttributes for identification
+        type,
+      };
+    });
   }, [afterSpanData, beforeSpanData]);
 
   return {
@@ -391,19 +404,24 @@ export function DBTraceWaterfallChartContainer({
     const start = startOffset - minOffset;
     const end = start + tookMs;
 
-    const body = result.Body;
-    const serviceName = result.ServiceName;
-    const type = result.type;
+    const { Body: body, ServiceName: serviceName, id, type } = result;
 
-    const id = result.id;
+    // Extract HTTP-related logic
+    const eventAttributes = result.SpanAttributes || {};
+    const hasHttpAttributes =
+      eventAttributes['http.url'] || eventAttributes['http.method'];
+    const httpUrl = eventAttributes['http.url'];
 
-    const isHighlighted = highlightedRowWhere === id;
+    const displayText =
+      hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
 
+    // Extract status logic
     // TODO: Legacy schemas will have STATUS_CODE_ERROR
     // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
     const isWarn = result.SeverityText === 'warn';
+    const isHighlighted = highlightedRowWhere === id;
 
     return {
       id,
@@ -457,10 +475,10 @@ export function DBTraceWaterfallChartContainer({
               truncate="end"
               // style={{ width: 200 }}
               span
-              title={serviceName}
               // onClick={() => {
               //   toggleCollapse(id);
               // }}
+              title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
               role="button"
             >
               {type === SourceKind.Log ? (
@@ -470,7 +488,7 @@ export function DBTraceWaterfallChartContainer({
                 />
               ) : null}
               {serviceName ? `${serviceName} | ` : ''}
-              {body}
+              {displayText}
             </Text>
           </div>
         </div>
@@ -485,11 +503,9 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${body} ${
-            tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''
-          }`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{body}</span>,
+          body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
           minWidthPerc: 1,
         },
       ],
