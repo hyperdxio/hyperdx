@@ -340,8 +340,58 @@ describe('renderChartConfig', () => {
       ]);
     });
 
-    it('single sum gauge', async () => {
-      const query = await renderChartConfig(
+    it('single max/avg/sum gauge', async () => {
+      const avgQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(avgQuery)).toMatchSnapshot();
+      const maxQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(maxQuery)).toMatchSnapshot();
+      const sumQuery = await renderChartConfig(
         {
           select: [
             {
@@ -365,10 +415,10 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
-      expect(await queryData(query)).toMatchSnapshot();
+      expect(await queryData(sumQuery)).toMatchSnapshot();
     });
 
-    it('single avg gauge', async () => {
+    it('single avg gauge with where', async () => {
       const query = await renderChartConfig(
         {
           select: [
@@ -380,7 +430,8 @@ describe('renderChartConfig', () => {
             },
           ],
           from: metricSource.from,
-          where: '',
+          where: `ResourceAttributes['host'] = 'host1'`,
+          whereLanguage: 'sql',
           metricTables: {
             sum: DEFAULT_METRICS_TABLE.SUM,
             gauge: DEFAULT_METRICS_TABLE.GAUGE,
