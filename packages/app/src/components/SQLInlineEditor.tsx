@@ -226,7 +226,7 @@ export default function SQLInlineEditor({
           {label}
         </Text>
       )}
-      <div style={{ minWidth: 10 }}>
+      <div style={{ minWidth: 10, width: '100%' }}>
         <CodeMirror
           indentWithTab={false}
           ref={ref}
