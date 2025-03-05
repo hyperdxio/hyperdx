@@ -826,6 +826,16 @@ function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: '__hdx_time_bucket2',
     });
+    /*
+
+    SELECT 
+      cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS High,
+    FROM default.otel_metrics_sum
+    GROUP BY 
+
+
+     */
     return {
       ...restChartConfig,
       with: [
@@ -835,23 +845,12 @@ function translateMetricChartConfig(
                 SELECT
                   *,
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                  any(AttributesHash) OVER (ORDER BY AttributesHash, TimeUnix ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
-                  any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
-                  IF(AggregationTemporality = 1, Value,
-                    IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
-                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) AS Rate
+                  IF(AggregationTemporality = 1,
+                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                  ) AS Value
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
                 WHERE MetricName = '${metricName}'`,
-        },
-        {
-          name: 'Totaled',
-          sql: chSql`
-            SELECT
-              *,
-              SUM(Rate) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS Value
-            FROM Source
-            ORDER BY AttributesHash, TimeUnix
-            `,
         },
         {
           name: 'Bucketed',
@@ -859,7 +858,7 @@ function translateMetricChartConfig(
             SELECT
               ${timeExpr},
               AttributesHash,
-              last_value(Totaled.Value) AS ${valueHighCol},
+              last_value(Source.Value) AS ${valueHighCol},
               any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY ${timeBucketCol} ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
               ${valueHighCol} - ${valueHighPrevCol} AS Value,
               any(ResourceAttributes) AS ResourceAttributes,
@@ -878,7 +877,7 @@ function translateMetricChartConfig(
               any(Flags) AS Flags,
               any(AggregationTemporality) AS AggregationTemporality,
               any(IsMonotonic) AS IsMonotonic
-            FROM Totaled
+            FROM Source
             GROUP BY AttributesHash, ${timeBucketCol}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,

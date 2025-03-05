@@ -43,23 +43,16 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
                 SELECT
                   *,
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                  any(AttributesHash) OVER (ORDER BY AttributesHash, TimeUnix ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
-                  any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
-                  IF(AggregationTemporality = 1, Value,
-                    IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
-                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) AS Rate
+                  IF(AggregationTemporality = 1,
+                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                  ) AS Value
                 FROM default.otel_metrics_sum
-                WHERE MetricName = 'db.client.connections.usage'),Totaled AS (
-            SELECT
-              *,
-              SUM(Rate) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS Value
-            FROM Source
-            ORDER BY AttributesHash, TimeUnix
-            ),Bucketed AS (
+                WHERE MetricName = 'db.client.connections.usage'),Bucketed AS (
             SELECT
               toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS \`__hdx_time_bucket2\`,
               AttributesHash,
-              last_value(Totaled.Value) AS \`__hdx_value_high\`,
+              last_value(Source.Value) AS \`__hdx_value_high\`,
               any(\`__hdx_value_high\`) OVER(PARTITION BY AttributesHash ORDER BY \`__hdx_time_bucket2\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_value_high_prev\`,
               \`__hdx_value_high\` - \`__hdx_value_high_prev\` AS Value,
               any(ResourceAttributes) AS ResourceAttributes,
@@ -78,7 +71,7 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
               any(Flags) AS Flags,
               any(AggregationTemporality) AS AggregationTemporality,
               any(IsMonotonic) AS IsMonotonic
-            FROM Totaled
+            FROM Source
             GROUP BY AttributesHash, \`__hdx_time_bucket2\`
             ORDER BY AttributesHash, \`__hdx_time_bucket2\`
           ) SELECT avg(
