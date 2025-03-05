@@ -815,6 +815,10 @@ async function translateMetricChartConfig(
     const where = await renderWhere(
       {
         ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Gauge],
+        },
         filters: [
           {
             type: 'sql',
