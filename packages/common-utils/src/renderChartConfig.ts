@@ -816,10 +816,10 @@ function translateMetricChartConfig(
       whereLanguage: 'sql',
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
-    const time_bucket_col = '`__hdx_time_bucket2`';
-    const value_high_col = '`__hdx_value_high`';
-    const value_high_prev_col = '`__hdx_value_high_prev`';
-    const time_expr = timeBucketExpr({
+    const timeBucketCol = '`__hdx_time_bucket2`';
+    const valueHighCol = '`__hdx_value_high`';
+    const valueHighPrevCol = '`__hdx_value_high_prev`';
+    const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
       timestampValueExpression:
         chartConfig.timestampValueExpression || 'TimeUnix',
@@ -857,11 +857,11 @@ function translateMetricChartConfig(
           name: 'Bucketed',
           sql: chSql`
             SELECT
-              ${time_expr},
+              ${timeExpr},
               AttributesHash,
-              last_value(Totaled.Value) AS ${value_high_col},
-              any(${value_high_col}) OVER(PARTITION BY AttributesHash ORDER BY ${time_bucket_col} ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${value_high_prev_col},
-              ${value_high_col} - ${value_high_prev_col} AS Value,
+              last_value(Totaled.Value) AS ${valueHighCol},
+              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY ${timeBucketCol} ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
+              ${valueHighCol} - ${valueHighPrevCol} AS Value,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
               any(ScopeName) AS ScopeName,
@@ -879,8 +879,8 @@ function translateMetricChartConfig(
               any(AggregationTemporality) AS AggregationTemporality,
               any(IsMonotonic) AS IsMonotonic
             FROM Totaled
-            GROUP BY AttributesHash, ${time_bucket_col}
-            ORDER BY AttributesHash, ${time_bucket_col}
+            GROUP BY AttributesHash, ${timeBucketCol}
+            ORDER BY AttributesHash, ${timeBucketCol}
           `,
         },
       ],
@@ -889,7 +889,7 @@ function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
-      timestampValueExpression: time_bucket_col,
+      timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
     // histograms are only valid for quantile selections
