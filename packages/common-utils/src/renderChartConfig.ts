@@ -785,9 +785,10 @@ function renderFill(
   return undefined;
 }
 
-function translateMetricChartConfig(
+async function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRangeEx {
+  metadata: Metadata,
+): Promise<ChartConfigWithOptDateRangeEx> {
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
@@ -810,6 +811,19 @@ function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
     });
+
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        filters: [
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+      },
+      metadata,
+    );
 
     return {
       ...restChartConfig,
@@ -835,7 +849,7 @@ function translateMetricChartConfig(
               any(StartTimeUnix) AS StartTimeUnix,
               any(Flags) AS Flags
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
-            WHERE MetricName = ${{ String: metricName }}
+            WHERE ${where}
             GROUP BY ScopeAttributes, ResourceAttributes, Attributes, ${timeBucketCol}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,
@@ -959,7 +973,7 @@ export async function renderChartConfig(
   // but goes through the same generation process
   const chartConfig =
     rawChartConfig.metricTables != null
-      ? translateMetricChartConfig(rawChartConfig)
+      ? await translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 
   const withClauses = renderWith(chartConfig, metadata);
