@@ -153,7 +153,9 @@ export const SessionEventList = ({
           spanName === 'routeChange' || spanName === 'documentLoad';
 
         const isError =
-          event.severity_text?.toLowerCase() === 'error' || statusCode > 499;
+          event.severity_text?.toLowerCase() === 'error' ||
+          component === 'error' ||
+          statusCode > 499;
 
         const isSuccess = !isError && statusCode < 400 && statusCode > 99;
 
@@ -176,25 +178,29 @@ export const SessionEventList = ({
             ? `Navigated`
             : isException
               ? 'Exception'
-              : url.length > 0
-                ? `${statusCode} ${method}`
-                : errorMessage != null && errorMessage.length > 0
-                  ? 'console.error'
-                  : spanName === 'intercom.onShow'
-                    ? 'Intercom Chat Opened'
-                    : isCustomEvent
-                      ? spanName
-                      : component === 'console'
-                        ? spanName
-                        : 'console.error',
+              : spanName === 'console.error'
+                ? 'console.error'
+                : spanName === 'console.log'
+                  ? 'console.log'
+                  : spanName === 'console.warn'
+                    ? 'console.warn'
+                    : url.length > 0
+                      ? `${statusCode} ${method}`
+                      : spanName === 'intercom.onShow'
+                        ? 'Intercom Chat Opened'
+                        : isCustomEvent
+                          ? spanName
+                          : component === 'console'
+                            ? spanName
+                            : 'console.error',
           description: isNavigation
             ? shortLocationHref
-            : url.length > 0
-              ? shortUrl
-              : errorMessage != null && errorMessage.length > 0
-                ? errorMessage
-                : component === 'console'
-                  ? body
+            : errorMessage != null && errorMessage.length > 0
+              ? errorMessage
+              : component === 'console'
+                ? body
+                : url.length > 0
+                  ? shortUrl
                   : '',
           timestamp: new Date(startOffset),
           formattedTimestamp: showRelativeTime

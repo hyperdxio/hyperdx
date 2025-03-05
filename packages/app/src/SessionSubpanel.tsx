@@ -3,9 +3,12 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
+import { useForm } from 'react-hook-form';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
+  SearchCondition,
+  SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -19,11 +22,12 @@ import {
 
 import * as clickhouse from '@/clickhouse';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 
+import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
 import SearchInput from './SearchInput';
+import SearchInputV2 from './SearchInputV2';
 import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
 import { formatmmss, useLocalStorage, usePrevious } from './utils';
@@ -44,6 +48,8 @@ export default function SessionSubpanel({
   start,
   end,
   initialTs,
+  where,
+  whereLanguage = 'lucene',
 }: {
   traceSource: TSource;
   sessionSource: TSource;
@@ -61,6 +67,8 @@ export default function SessionSubpanel({
   start: Date;
   end: Date;
   initialTs?: number;
+  where?: SearchCondition;
+  whereLanguage?: SearchConditionLanguage;
 }) {
   const [rowId, setRowId] = useState<string | undefined>(undefined);
 
@@ -307,8 +315,10 @@ export default function SessionSubpanel({
     [traceSource],
   );
 
-  const filteredEventsWhere = `
-    ${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+  const filteredEventsFilter = useMemo(
+    () => ({
+      type: 'lucene' as const,
+      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
       ${traceSource.eventAttributesExpression}.http.status_code:>299 
       OR ${traceSource.eventAttributesExpression}.component:"error" 
@@ -316,10 +326,15 @@ export default function SessionSubpanel({
       OR ${traceSource.spanNameExpression}:"documentLoad" 
       OR ${traceSource.spanNameExpression}:"intercom.onShow" 
       OR ScopeName:"custom-action" 
-    ) ${searchedQuery}`;
+    )`,
+    }),
+    [traceSource, rumSessionId],
+  );
 
-  const allEventsWhere = `
-    ${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+  const allEventsFilter = useMemo(
+    () => ({
+      type: 'lucene' as const,
+      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
       ${traceSource.eventAttributesExpression}.http.status_code:* 
       OR ${traceSource.eventAttributesExpression}.component:"console" 
@@ -328,16 +343,18 @@ export default function SessionSubpanel({
       OR ${traceSource.spanNameExpression}:"documentLoad" 
       OR ${traceSource.spanNameExpression}:"intercom.onShow" 
       OR ScopeName:"custom-action" 
-    ) ${searchedQuery}`;
+    )`,
+    }),
+    [traceSource, rumSessionId],
+  );
 
   const playBarEventsConfig = useMemo<ChartConfigWithOptDateRange>(
     () => ({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      // TODO: support SQL ? (should be consistent with searchQuery)
-      whereLanguage: 'lucene',
-      where: filteredEventsWhere,
+      whereLanguage,
+      where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
       connection: traceSource.connection,
@@ -346,8 +363,24 @@ export default function SessionSubpanel({
         limit: 4000,
         offset: 0,
       },
+      filters: [
+        filteredEventsFilter,
+        ...(where ? [{ type: whereLanguage, condition: where }] : []),
+      ],
     }),
-    [rumSessionId, start, end, searchedQuery],
+    [
+      commonSelect,
+      traceSource.from,
+      traceSource.timestampValueExpression,
+      traceSource.implicitColumnExpression,
+      traceSource.connection,
+      start,
+      end,
+      whereLanguage,
+      searchedQuery,
+      filteredEventsFilter,
+      where,
+    ],
   );
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
 
@@ -367,9 +400,8 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      // TODO: support SQL ? (should be consistent with searchQuery)
-      whereLanguage: 'lucene',
-      where: tab === 'events' ? allEventsWhere : filteredEventsWhere,
+      whereLanguage,
+      where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
       connection: traceSource.connection,
@@ -378,17 +410,26 @@ export default function SessionSubpanel({
         limit: 4000,
         offset: 0,
       },
-      // whereLanguage: 'lucene',
-      // where: `rum_session_id:"${rumSessionId}" ((http.status_code:>${
-      //   tab === 'events' ? '-1' : '299'
-      // }${
-      //   tab === 'events' ? ' AND http.status_code:*' : ''
-      // }) OR component:"error" ${
-      //   tab === 'events' ? 'OR component:"console"' : ''
-      // } OR span_name:"routeChange" OR span_name:"documentLoad" OR span_name:"intercom.onShow" OR otel.library.name:"custom-action" OR exception.group_id:*) ${searchedQuery}`,
-      // dateRange: [start, end] as DateRange['dateRange'],
+      filters: [
+        tab === 'highlighted' ? filteredEventsFilter : allEventsFilter,
+        ...(where ? [{ type: whereLanguage, condition: where }] : []),
+      ],
     }),
-    [rumSessionId, start, end, tab, searchedQuery],
+    [
+      commonSelect,
+      traceSource.from,
+      traceSource.timestampValueExpression,
+      traceSource.implicitColumnExpression,
+      traceSource.connection,
+      start,
+      end,
+      whereLanguage,
+      searchedQuery,
+      tab,
+      filteredEventsFilter,
+      allEventsFilter,
+      where,
+    ],
   );
 
   const handleSetPlayerSpeed = useCallback(() => {
@@ -401,7 +442,7 @@ export default function SessionSubpanel({
     } else if (playerSpeed == 8) {
       setPlayerSpeed(1);
     }
-  }, [playerSpeed]);
+  }, [playerSpeed, setPlayerSpeed]);
 
   const minTs = playbackRange[0].getTime();
   const maxTs = playbackRange[1].getTime();
@@ -424,6 +465,18 @@ export default function SessionSubpanel({
     });
   }, [setFocus, focus?.ts, minTs, maxTs]);
 
+  const { control, handleSubmit } = useForm({
+    values: {
+      where: searchedQuery,
+    },
+  });
+  const handleWhereSubmit = useCallback(
+    (values: { where: string }) => {
+      setSearchedQuery(values.where);
+    },
+    [setSearchedQuery],
+  );
+
   return (
     <div className={styles.wrapper}>
       {rowId != null && portaledPanel}
@@ -431,37 +484,37 @@ export default function SessionSubpanel({
         <div className={styles.eventListHeader}>
           <form
             style={{ zIndex: 100, width: '100%' }}
-            onSubmit={e => {
-              e.preventDefault();
-              setSearchedQuery(inputQuery);
-            }}
+            onSubmit={handleSubmit(handleWhereSubmit)}
           >
-            <SearchInput
-              inputRef={inputRef}
-              value={inputQuery}
-              onChange={value => setInputQuery(value)}
-              onSearch={() => {}}
-              placeholder="Filter events"
-              size="xs"
-            />
-
-            <button
-              type="submit"
-              style={{
-                position: 'absolute',
-                width: 0,
-                height: 0,
-                border: 0,
-                padding: 0,
-              }}
-            />
+            {whereLanguage === 'sql' ? (
+              <SQLInlineEditorControlled
+                connectionId={traceSource?.connection}
+                database={traceSource?.from?.databaseName}
+                table={traceSource?.from?.tableName}
+                control={control}
+                name="where"
+                placeholder="SQL WHERE clause (ex. column = 'foo')"
+                language="sql"
+                size="xs"
+                enableHotkey
+              />
+            ) : (
+              <SearchInputV2
+                connectionId={traceSource?.connection}
+                database={traceSource?.from?.databaseName}
+                table={traceSource?.from?.tableName}
+                control={control}
+                name="where"
+                language="lucene"
+                size="xs"
+                placeholder="Search your events w/ Lucene ex. column:foo"
+                enableHotkey
+              />
+            )}
           </form>
           <Group gap={6}>
             <SegmentedControl
               flex={1}
-              radius="md"
-              bg="gray.9"
-              color="gray.7"
               size="xs"
               data={[
                 { value: 'highlighted', label: 'Highlighted' },
@@ -473,8 +526,8 @@ export default function SessionSubpanel({
             <Tooltip label="Sync with player position" color="gray">
               <ActionIcon
                 size="md"
+                color="gray"
                 variant={eventsFollowPlayerPosition ? 'filled' : 'subtle'}
-                color={eventsFollowPlayerPosition ? 'gray' : 'gray.8'}
                 onClick={() =>
                   setEventsFollowPlayerPosition(!eventsFollowPlayerPosition)
                 }

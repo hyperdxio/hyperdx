@@ -72,7 +72,10 @@ export default function Playbar({
           const isNavigation =
             spanName === 'routeChange' || spanName === 'documentLoad';
 
-          const isError = event.severity_text === 'error' || statusCode >= 399;
+          const isError =
+            event.severity_text?.toLowerCase() === 'error' ||
+            event.component === 'error' ||
+            statusCode >= 399;
 
           return {
             id: event.id,

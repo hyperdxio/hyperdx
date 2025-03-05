@@ -24,6 +24,8 @@ export default function SessionSidePanel({
   sessionId,
   session,
   dateRange,
+  where,
+  whereLanguage,
   onClose,
   onPropertyAddClick,
   generateSearchUrl,
@@ -35,6 +37,8 @@ export default function SessionSidePanel({
   sessionId: string;
   session: clickhouse.Session;
   dateRange: DateRange['dateRange'];
+  where?: SearchCondition;
+  whereLanguage?: SearchConditionLanguage;
   onClose: () => void;
   onPropertyAddClick?: (name: string, value: string) => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
@@ -147,6 +151,8 @@ export default function SessionSidePanel({
               generateSearchUrl={generateSearchUrl}
               generateChartUrl={generateChartUrl}
               setDrawerOpen={setSubDrawerOpen}
+              where={where}
+              whereLanguage={whereLanguage}
             />
           ) : null}
         </div>

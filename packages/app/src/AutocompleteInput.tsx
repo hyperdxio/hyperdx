@@ -103,7 +103,10 @@ export default function AutocompleteInput({
           className="bg-body border border-dark rounded"
           style={{
             ...style,
-            maxWidth: inputRef.current?.clientWidth ?? 720,
+            maxWidth:
+              (inputRef.current?.clientWidth || 0) > 300
+                ? inputRef.current?.clientWidth
+                : 720,
             width: '100%',
             zIndex,
           }}

@@ -22,7 +22,7 @@ export default function SearchInputV2({
 }: {
   database?: string;
   placeholder?: string;
-  size?: 'sm' | 'lg';
+  size?: 'xs' | 'sm' | 'lg';
   table?: string;
   connectionId: string | undefined;
   zIndex?: number;
