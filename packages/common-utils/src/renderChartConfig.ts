@@ -407,6 +407,7 @@ async function timeFilterExpr({
   metadata,
   connectionId,
   with: withClauses,
+  includedDataInterval,
 }: {
   timestampValueExpression: string;
   dateRange: [Date, Date];
@@ -416,6 +417,7 @@ async function timeFilterExpr({
   databaseName: string;
   tableName: string;
   with?: { name: string; sql: ChSql }[];
+  includedDataInterval?: string;
 }) {
   const valueExpressions = timestampValueExpression.split(',');
   const startTime = dateRange[0].getTime();
@@ -443,23 +445,23 @@ async function timeFilterExpr({
         );
       }
 
+      const startTimeCond = includedDataInterval
+        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+
+      const endTimeCond = includedDataInterval
+        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+
       // If it's a date type
       if (columnMeta?.type === 'Date') {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } toDate(fromUnixTimestamp64Milli(${{
-          Int64: startTime,
-        }})) AND ${unsafeTimestampValueExpression} <= toDate(fromUnixTimestamp64Milli(${{
-          Int64: endTime,
-        }})))`;
+        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} <= toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } fromUnixTimestamp64Milli(${{
-          Int64: startTime,
-        }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
-          Int64: endTime,
-        }}))`;
+        } ${startTimeCond} AND ${unsafeTimestampValueExpression} <= ${endTimeCond})`;
       }
     }),
   );
@@ -654,6 +656,7 @@ async function renderWhere(
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
           with: chartConfig.with,
+          includedDataInterval: chartConfig.includedDataInterval,
         })
       : [],
     whereSearchCondition,
@@ -732,6 +735,7 @@ function renderLimit(
 // for metric SQL generation.
 type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   with?: { name: string; sql: ChSql }[];
+  includedDataInterval?: string;
 };
 
 function renderWith(
@@ -883,6 +887,31 @@ async function translateMetricChartConfig(
       alias: timeBucketCol,
     });
 
+    // Render the where clause to limit data selection on the source CTE but also search forward/back one
+    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
+    // series.
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Gauge],
+        },
+        filters: [
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+        includedDataInterval:
+          chartConfig.granularity === 'auto' &&
+          Array.isArray(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+            : chartConfig.granularity,
+      },
+      metadata,
+    );
+
     return {
       ...restChartConfig,
       with: [
@@ -897,7 +926,7 @@ async function translateMetricChartConfig(
                     deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
                   ) AS Value
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
-                WHERE MetricName = '${metricName}'`,
+                WHERE ${where}`,
         },
         {
           name: 'Bucketed',
