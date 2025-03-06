@@ -826,16 +826,7 @@ function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
     });
-    /*
 
-    SELECT 
-      cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS High,
-    FROM default.otel_metrics_sum
-    GROUP BY 
-
-
-     */
     return {
       ...restChartConfig,
       with: [
