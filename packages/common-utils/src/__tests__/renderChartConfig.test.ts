@@ -17,7 +17,7 @@ describe('renderChartConfig', () => {
         { name: 'timestamp', type: 'DateTime' },
         { name: 'value', type: 'Float64' },
       ]),
-      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue({}),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
       getColumn: jest.fn().mockResolvedValue({ type: 'DateTime' }),
     } as unknown as Metadata;
   });
@@ -57,16 +57,7 @@ describe('renderChartConfig', () => {
 
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
-    expect(actual).toBe(
-      'SELECT quantile(0.95)(toFloat64OrNull(toString(Value))),toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`' +
-        ' FROM default.otel_metrics_gauge WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND' +
-        " (MetricName = 'nodejs.event_loop.utilization') GROUP BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`" +
-        ' ORDER BY toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS `__hdx_time_bucket`' +
-        ' WITH FILL FROM toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 1 minute))\n' +
-        '      TO toUnixTimestamp(toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 1 minute))\n' +
-        '      STEP 60' +
-        ' LIMIT 10',
-    );
+    expect(actual).toMatchSnapshot();
   });
 
   it('should generate sql for a single sum metric', async () => {
