@@ -1,12 +1,16 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { pickBy } from 'lodash';
+import { isString, pickBy } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
+
+import { getEventBody } from '@/source';
 
 import { useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
+import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
+import { ExceptionSubpanel, parseEvents } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 
 const EMPTY_OBJ = {};
@@ -57,11 +61,59 @@ export function RowOverviewPanel({
     return eventAttributes;
   }, [eventAttributes, isHttpRequest]);
 
+  const exceptionValues = useMemo(() => {
+    const parsedEvents =
+      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
+    const stacktrace =
+      parsedEvents?.['exception.stacktrace'] ||
+      parsedEvents?.['exception.parsed_stacktrace'];
+
+    return [
+      {
+        stacktrace: JSON.parse(stacktrace ?? '[]'),
+        type: parsedEvents?.['exception.type'],
+        value:
+          typeof parsedEvents?.['exception.message'] !== 'string'
+            ? JSON.stringify(parsedEvents?.['exception.message'])
+            : parsedEvents?.['exception.message'],
+        mechanism: parsedEvents?.['exception.mechanism'],
+      },
+    ];
+  }, [firstRow]);
+
+  const hasException = useMemo(() => {
+    return (
+      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
+    );
+  }, [firstRow?.__hdx_events_exception_attributes]);
+
+  const mainContentColumn = getEventBody(source);
+  const mainContent = isString(firstRow?.['__hdx_body'])
+    ? firstRow['__hdx_body']
+    : firstRow?.['__hdx_body'] !== undefined
+      ? JSON.stringify(firstRow['__hdx_body'])
+      : undefined;
+
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
+      <Box px="32px" pt="md">
+        <DBRowSidePanelHeader
+          sourceId={source.id}
+          date={new Date(firstRow?.__hdx_timestamp ?? 0)}
+          tags={{}}
+          mainContent={mainContent}
+          mainContentHeader={mainContentColumn}
+          severityText={firstRow?.__hdx_severity_text}
+        />
+      </Box>
       <Accordion
         mt="sm"
-        defaultValue={['network', 'resourceAttributes', 'eventAttributes']}
+        defaultValue={[
+          'exception',
+          'network',
+          'resourceAttributes',
+          'eventAttributes',
+        ]}
         multiple
       >
         {isHttpRequest && (
@@ -77,6 +129,27 @@ export function RowOverviewPanel({
                   eventAttributes={eventAttributes}
                   onPropertyAddClick={onPropertyAddClick}
                   generateSearchUrl={_generateSearchUrl}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasException && (
+          <Accordion.Item value="exception">
+            <Accordion.Control>
+              <Text size="sm" c="gray.2" ps="md">
+                Exception
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <ExceptionSubpanel
+                  exceptionValues={exceptionValues}
+                  breadcrumbs={[]}
+                  logData={{
+                    timestamp: firstRow?.__hdx_timestamp,
+                  }}
                 />
               </Box>
             </Accordion.Panel>

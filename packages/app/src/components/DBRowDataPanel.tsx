@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -79,6 +79,14 @@ export function useRowData({
               {
                 valueExpression: source.eventAttributesExpression,
                 alias: '__hdx_event_attributes',
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace
+          ? [
+              {
+                valueExpression: `Events.Attributes[indexOf(Events.Name, 'exception')]`,
+                alias: '__hdx_events_exception_attributes',
               },
             ]
           : []),
