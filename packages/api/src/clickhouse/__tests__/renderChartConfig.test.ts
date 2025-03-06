@@ -340,15 +340,8 @@ describe('renderChartConfig', () => {
       ]);
     });
 
-    it.skip('gauge (last value)', async () => {
-      // IMPLEMENT ME (last_value aggregation)
-    });
-
-    // FIXME: gauge avg doesn't work as expected (it should pull the average of the last value)
-    // in this case
-    // (6.25 + 4) / 2, (80 + 4) / 2
-    it('single avg gauge', async () => {
-      const query = await renderChartConfig(
+    it('single max/avg/sum gauge', async () => {
+      const avgQuery = await renderChartConfig(
         {
           select: [
             {
@@ -372,6 +365,115 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
+      expect(await queryData(avgQuery)).toMatchSnapshot();
+      const maxQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(maxQuery)).toMatchSnapshot();
+      const sumQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(sumQuery)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with where', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: `ResourceAttributes['host'] = 'host1'`,
+          whereLanguage: 'sql',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with group-by', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          groupBy: `ResourceAttributes['host']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
     it('single sum rate', async () => {
