@@ -64,10 +64,13 @@ export const Source = mongoose.model<ISource>(
       statusMessageExpression: String,
 
       metricTables: {
-        [MetricsDataType.Gauge]: String,
-        [MetricsDataType.Histogram]: String,
-        [MetricsDataType.Sum]: String,
-      } as any,
+        type: {
+          [MetricsDataType.Gauge]: String,
+          [MetricsDataType.Histogram]: String,
+          [MetricsDataType.Sum]: String,
+        },
+        default: undefined,
+      },
     },
     {
       toJSON: { virtuals: true },

@@ -770,15 +770,16 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           connectionId = source.connection.toString();
           chartConfig = {
             connection: connectionId,
-            displayType: firstTile.config.displayType,
             dateRange: [checkStartTime, checkEndTime],
+            displayType: firstTile.config.displayType,
             from: source.from,
             granularity: `${windowSizeInMins} minute`,
-            select: firstTile.config.select,
-            where: firstTile.config.where,
             groupBy: firstTile.config.groupBy,
             implicitColumnExpression: source.implicitColumnExpression,
+            metricTables: source.metricTables,
+            select: firstTile.config.select,
             timestampValueExpression: source.timestampValueExpression,
+            where: firstTile.config.where,
           };
         }
       }
