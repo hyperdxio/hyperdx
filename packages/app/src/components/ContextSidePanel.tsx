@@ -81,11 +81,11 @@ export default function ContextSubpanel({
   const CONTEXT_MAPPING = {
     [ContextBy.All]: {
       field: '',
-      value: originalWhere,
+      value: '',
     },
     [ContextBy.Custom]: {
       field: '',
-      value: debouncedWhere,
+      value: debouncedWhere || '',
     },
     [ContextBy.Service]: {
       field: 'service.name',
@@ -105,20 +105,6 @@ export default function ContextSubpanel({
     },
   } as const;
 
-  /* Helper function to combine WHERE clauses
-     TODO: This could be refactored to use Filters[]
-     and the functionality in searchFilters.tsx in the future.
-  */
-  function combineWhereClauses(
-    original: string,
-    addition: string,
-    isSql: boolean,
-  ): string {
-    if (!addition) return original;
-    if (!original) return addition;
-    return isSql ? `${original} AND ${addition}` : `${original} ${addition}`;
-  }
-
   // Main function to generate WHERE clause based on context
   function getWhereClause(contextBy: ContextBy): string {
     const isSql = originalLanguage === 'sql';
@@ -129,7 +115,7 @@ export default function ContextSubpanel({
     }
 
     if (contextBy === ContextBy.Custom) {
-      return combineWhereClauses(originalWhere, debouncedWhere.trim(), isSql);
+      return mapping.value.trim();
     }
 
     const attributeClause = formatAttributeClause(
@@ -138,7 +124,7 @@ export default function ContextSubpanel({
       mapping.value,
       isSql,
     );
-    return combineWhereClauses(originalWhere, attributeClause, isSql);
+    return attributeClause;
   }
 
   function generateSegmentedControlData() {

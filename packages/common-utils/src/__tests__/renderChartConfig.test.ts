@@ -17,7 +17,7 @@ describe('renderChartConfig', () => {
         { name: 'timestamp', type: 'DateTime' },
         { name: 'value', type: 'Float64' },
       ]),
-      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue({}),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
       getColumn: jest.fn().mockResolvedValue({ type: 'DateTime' }),
     } as unknown as Metadata;
   });

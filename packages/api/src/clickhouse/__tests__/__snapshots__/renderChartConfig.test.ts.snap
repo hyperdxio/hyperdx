@@ -60,6 +60,83 @@ Array [
 ]
 `;
 
+exports[`renderChartConfig Query Metrics single avg gauge with group-by 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host2",
+    "avg(toFloat64OrNull(toString(LastValue)))": 4,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host1",
+    "avg(toFloat64OrNull(toString(LastValue)))": 6.25,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host2",
+    "avg(toFloat64OrNull(toString(LastValue)))": 4,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host1",
+    "avg(toFloat64OrNull(toString(LastValue)))": 80,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single avg gauge with where 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "avg(toFloat64OrNull(toString(LastValue)))": 6.25,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "avg(toFloat64OrNull(toString(LastValue)))": 80,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single max/avg/sum gauge 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "avg(toFloat64OrNull(toString(LastValue)))": 5.125,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "avg(toFloat64OrNull(toString(LastValue)))": 42,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single max/avg/sum gauge 2`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "max(toFloat64OrNull(toString(LastValue)))": 6.25,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "max(toFloat64OrNull(toString(LastValue)))": 80,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single max/avg/sum gauge 3`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(LastValue)))": 10.25,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "sum(toFloat64OrNull(toString(LastValue)))": 84,
+  },
+]
+`;
+
 exports[`renderChartConfig Query Metrics single sum rate 1`] = `
 Array [
   Object {

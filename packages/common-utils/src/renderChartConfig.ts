@@ -38,6 +38,7 @@ function determineTableName(select: SelectSQLStatement): string {
   return '';
 }
 
+const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
 export function isUsingGroupBy(
@@ -784,9 +785,10 @@ function renderFill(
   return undefined;
 }
 
-function translateMetricChartConfig(
+async function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRangeEx {
+  metadata: Metadata,
+): Promise<ChartConfigWithOptDateRangeEx> {
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
@@ -800,20 +802,74 @@ function translateMetricChartConfig(
 
   const { metricType, metricName, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
   if (metricType === MetricsDataType.Gauge && metricName) {
+    const timeBucketCol = '__hdx_time_bucket2';
+    const timeExpr = timeBucketExpr({
+      interval: chartConfig.granularity || 'auto',
+      timestampValueExpression:
+        chartConfig.timestampValueExpression ||
+        DEFAULT_METRIC_TABLE_TIME_COLUMN,
+      dateRange: chartConfig.dateRange,
+      alias: timeBucketCol,
+    });
+
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Gauge],
+        },
+        filters: [
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+      },
+      metadata,
+    );
+
     return {
       ...restChartConfig,
+      with: [
+        {
+          name: 'Bucketed',
+          sql: chSql`
+            SELECT
+              ${timeExpr},
+              ScopeAttributes,
+              ResourceAttributes,
+              Attributes,
+              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+              last_value(Value) AS LastValue,
+              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+              any(ScopeName) AS ScopeName,
+              any(ScopeVersion) AS ScopeVersion,
+              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+              any(ServiceName) AS ServiceName,
+              any(MetricDescription) AS MetricDescription,
+              any(MetricUnit) AS MetricUnit,
+              any(StartTimeUnix) AS StartTimeUnix,
+              any(Flags) AS Flags
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+            WHERE ${where}
+            GROUP BY ScopeAttributes, ResourceAttributes, Attributes, ${timeBucketCol}
+            ORDER BY AttributesHash, ${timeBucketCol}
+          `,
+        },
+      ],
       select: [
         {
           ..._select,
-          valueExpression: 'Value',
+          valueExpression: 'LastValue',
         },
       ],
       from: {
-        ...from,
-        tableName: metricTables[MetricsDataType.Gauge],
+        databaseName: '',
+        tableName: 'Bucketed',
       },
-      where: `MetricName = '${metricName}'`,
-      whereLanguage: 'sql',
+      timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
     const timeBucketCol = '__hdx_time_bucket2';
@@ -955,7 +1011,7 @@ export async function renderChartConfig(
   // but goes through the same generation process
   const chartConfig =
     rawChartConfig.metricTables != null
-      ? translateMetricChartConfig(rawChartConfig)
+      ? await translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 
   const withClauses = renderWith(chartConfig, metadata);
