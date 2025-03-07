@@ -15,6 +15,47 @@ import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { getMetadata } from '@/metadata';
 
+export const isMetric = (config: ChartConfigWithOptDateRange) =>
+  config.metricTables != null;
+
+export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
+  if (Array.isArray(config.select)) {
+    if (isMetric(config)) {
+      return {
+        ...config,
+        select: config.select.map(s => ({
+          ...s,
+          alias: `${s.aggFn}(${s.metricName})`,
+        })),
+      };
+    }
+    return {
+      ...config,
+      select: config.select.map(s => ({
+        ...s,
+        alias: `${s.aggFn}(${s.valueExpression})`,
+      })),
+    };
+  }
+  return config;
+};
+
+export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
+  // only split metric queries for now
+  if (isMetric(config) && Array.isArray(config.select)) {
+    const _configs = [];
+    // split the query into multiple queries
+    for (const select of config.select) {
+      _configs.push({
+        ...config,
+        select: [select],
+      });
+    }
+    return _configs;
+  }
+  return [config];
+};
+
 // used for charting
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
@@ -24,6 +65,8 @@ export function useQueriedChartConfig(
   return useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
     queryFn: async ({ signal }) => {
+      config = setChartSelectsAlias(config);
+
       let query = null;
       if (IS_MTVIEWS_ENABLED) {
         const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
@@ -36,34 +79,9 @@ export function useQueriedChartConfig(
         query = await renderMTViewConfig();
       }
 
-      let queries: ChSql[] = [];
-
-      if (query == null) {
-        if (
-          config.metricTables != null &&
-          Array.isArray(config.select) &&
-          config.select.length > 1
-        ) {
-          const _configs = [];
-          // split the query into multiple queries
-          for (const select of config.select) {
-            _configs.push({
-              ...config,
-              select: [
-                {
-                  ...select,
-                  alias: `${select.aggFn}(${select.metricName})`,
-                },
-              ],
-            });
-          }
-          queries = await Promise.all(
-            _configs.map(c => renderChartConfig(c, getMetadata())),
-          );
-        } else {
-          queries.push(await renderChartConfig(config, getMetadata()));
-        }
-      }
+      const queries: ChSql[] = await Promise.all(
+        splitChartConfigs(config).map(c => renderChartConfig(c, getMetadata())),
+      );
 
       const resultSets = await Promise.all(
         queries.map(async query => {
@@ -80,7 +98,9 @@ export function useQueriedChartConfig(
 
       if (resultSets.length === 1) {
         return resultSets[0];
-      } else if (resultSets.length > 1) {
+      }
+      // join resultSets
+      else if (resultSets.length > 1) {
         const metaSet = new Map<string, any>();
         const tsBucketMap: Map<string, Record<string, any>> = new Map();
         for (const resultSet of resultSets) {
