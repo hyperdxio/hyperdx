@@ -102,8 +102,8 @@ export function useQueriedChartConfig(
       }
       // join resultSets
       else if (resultSets.length > 1) {
-        const metaSet = new Map<string, any>();
-        const tsBucketMap: Map<string, Record<string, any>> = new Map();
+        const metaSet = new Map<string, { name: string; type: string }>();
+        const tsBucketMap = new Map<string, Record<string, string | number>>();
         for (const resultSet of resultSets) {
           // set up the meta data
           if (Array.isArray(resultSet.meta)) {
