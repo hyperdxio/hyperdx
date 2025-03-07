@@ -1,7 +1,9 @@
 import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
+  ChSql,
   ClickHouseQueryError,
+  inferTimestampColumn,
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
@@ -13,6 +15,7 @@ import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { getMetadata } from '@/metadata';
 
+// used for charting
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
   options?: Partial<UseQueryOptions<ResponseJSON<any>>>,
@@ -32,19 +35,90 @@ export function useQueriedChartConfig(
         console.log('mtViewDDL:', mtViewDDL);
         query = await renderMTViewConfig();
       }
+
+      let queries: ChSql[] = [];
+
       if (query == null) {
-        query = await renderChartConfig(config, getMetadata());
+        if (
+          config.metricTables != null &&
+          Array.isArray(config.select) &&
+          config.select.length > 1
+        ) {
+          const _configs = [];
+          // split the query into multiple queries
+          for (const select of config.select) {
+            _configs.push({
+              ...config,
+              select: [
+                {
+                  ...select,
+                  alias: `${select.aggFn}(${select.metricName})`,
+                },
+              ],
+            });
+          }
+          queries = await Promise.all(
+            _configs.map(c => renderChartConfig(c, getMetadata())),
+          );
+        } else {
+          queries.push(await renderChartConfig(config, getMetadata()));
+        }
       }
 
-      const resultSet = await clickhouseClient.query<'JSON'>({
-        query: query.sql,
-        query_params: query.params,
-        format: 'JSON',
-        abort_signal: signal,
-        connectionId: config.connection,
-      });
+      const resultSets = await Promise.all(
+        queries.map(async query => {
+          const resp = await clickhouseClient.query<'JSON'>({
+            query: query.sql,
+            query_params: query.params,
+            format: 'JSON',
+            abort_signal: signal,
+            connectionId: config.connection,
+          });
+          return resp.json<any>();
+        }),
+      );
 
-      return resultSet.json();
+      if (resultSets.length === 1) {
+        return resultSets[0];
+      } else if (resultSets.length > 1) {
+        const metaSet = new Map<string, any>();
+        const tsBucketMap: Map<string, Record<string, any>> = new Map();
+        for (const resultSet of resultSets) {
+          // set up the meta data
+          if (Array.isArray(resultSet.meta)) {
+            for (const meta of resultSet.meta) {
+              const key = meta.name;
+              if (!metaSet.has(key)) {
+                metaSet.set(key, meta);
+              }
+            }
+          }
+
+          const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+          if (timestampColumn == null) {
+            throw new Error('No timestamp column');
+          }
+          for (const row of resultSet.data) {
+            const ts = row[timestampColumn.name];
+            if (tsBucketMap.has(ts)) {
+              const existingRow = tsBucketMap.get(ts);
+              tsBucketMap.set(ts, {
+                ...existingRow,
+                ...row,
+              });
+            } else {
+              tsBucketMap.set(ts, row);
+            }
+          }
+        }
+
+        return {
+          meta: Array.from(metaSet.values()),
+          data: Array.from(tsBucketMap.values()),
+        };
+      } else {
+        throw new Error('No result sets');
+      }
     },
     retry: 1,
     refetchOnWindowFocus: false,
