@@ -340,15 +340,8 @@ describe('renderChartConfig', () => {
       ]);
     });
 
-    it.skip('gauge (last value)', async () => {
-      // IMPLEMENT ME (last_value aggregation)
-    });
-
-    // FIXME: gauge avg doesn't work as expected (it should pull the average of the last value)
-    // in this case
-    // (6.25 + 4) / 2, (80 + 4) / 2
-    it('single avg gauge', async () => {
-      const query = await renderChartConfig(
+    it('single max/avg/sum gauge', async () => {
+      const avgQuery = await renderChartConfig(
         {
           select: [
             {
@@ -372,6 +365,115 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
+      expect(await queryData(avgQuery)).toMatchSnapshot();
+      const maxQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(maxQuery)).toMatchSnapshot();
+      const sumQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(sumQuery)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with where', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: `ResourceAttributes['host'] = 'host1'`,
+          whereLanguage: 'sql',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with group-by', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: {
+            sum: DEFAULT_METRICS_TABLE.SUM,
+            gauge: DEFAULT_METRICS_TABLE.GAUGE,
+            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          },
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          groupBy: `ResourceAttributes['host']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
     });
 
     it('single sum rate', async () => {
@@ -430,12 +532,23 @@ describe('renderChartConfig', () => {
       expect(await queryData(query)).toMatchSnapshot();
     });
 
-    // FIXME: here are the expected values
-    // [0, 1, 8, 8, 15, 15, 23, 25, 25, 67]
-    // [0, 2, 9, 9, 24, 34, 44, 66, 66, 158]
-    // min -> [15, 52]
-    // max -> [24, 134]
-    it.skip('calculates min_rate/max_rate correctly for sum metrics', async () => {
+    it('calculates min_rate/max_rate correctly for sum metrics', async () => {
+      // Based on the data inserted in the fixture, the expected stream of values
+      // for each series after adjusting for the zero reset should be:
+      // MIN_VARIANT_0: [0, 1, 8, 8, 15, 15, 23, 25, 25, 67]
+      // MIN_VARIANT_1: [0, 2, 9, 9, 24, 34, 44, 66, 66, 158]
+      //
+      // At the 10 minute buckets, should result in three buckets for each where
+      // the first bucket is outside the query window.
+      // MIN_VARIANT_0: [0], [1, 8, 8, 15], [15, 23, 25, 25, 67]]
+      // MIN_VARIANT_1: [0], [2, 9, 9, 24], [34, 44, 66, 66, 158]]
+      //
+      // When comparing the value at the end of the buckets over the filtered
+      // time frame it should result in the following counts added per bucket as:
+      // MIN_VARIANT_0: [15, 52]
+      // MIN_VARIANT_1: [24, 134]
+      //
+      // These values are what we apply the aggregation functions to.
       const minQuery = await renderChartConfig(
         {
           select: [
@@ -460,6 +573,7 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
+      expect(await queryData(minQuery)).toMatchSnapshot('minSum');
 
       const maxQuery = await renderChartConfig(
         {
@@ -485,6 +599,7 @@ describe('renderChartConfig', () => {
         },
         metadata,
       );
+      expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
   });
 });

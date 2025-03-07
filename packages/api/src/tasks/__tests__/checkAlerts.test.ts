@@ -4,7 +4,14 @@ import ms from 'ms';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
-import { bulkInsertLogs, getServer, makeTile } from '@/fixtures';
+import {
+  bulkInsertLogs,
+  bulkInsertMetricsGauge,
+  DEFAULT_DATABASE,
+  DEFAULT_METRICS_TABLE,
+  getServer,
+  makeTile,
+} from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
@@ -774,7 +781,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('TILE alert - slack webhook', async () => {
+    it('TILE alert (events) - slack webhook', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValueOnce(null as any);
@@ -935,7 +942,7 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('TILE alert - generic webhook', async () => {
+    it('TILE alert (events) - generic webhook', async () => {
       jest.spyOn(checkAlert, 'handleSendGenericWebhook');
 
       const fetchMock = jest.fn().mockResolvedValue({});
@@ -1088,6 +1095,167 @@ describe('checkAlerts', () => {
           'Content-Type': 'application/json',
         },
       });
+    });
+
+    it('TILE alert (metrics) - slack webhook', async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('10m');
+
+      const gaugePointsA = [
+        { value: 50, timestamp: eventMs },
+        { value: 25, timestamp: eventMs + ms('1m') },
+        { value: 12.5, timestamp: eventMs + ms('2m') },
+        { value: 6.25, timestamp: eventMs + ms('3m') },
+      ].map(point => ({
+        MetricName: 'test.cpu',
+        ResourceAttributes: {
+          host: 'host1',
+          ip: '127.0.0.1',
+        },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+      }));
+
+      await bulkInsertMetricsGauge(gaugePointsA);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: '17quud',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'CPU',
+              select: [
+                {
+                  aggFn: 'max',
+                  valueExpression: 'Value',
+                  metricType: 'gauge',
+                  metricName: 'test.cpu',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+      const alert = await createAlert(team._id, {
+        source: AlertSource.TILE,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId: dashboard.id,
+        tileId: '17quud',
+      });
+
+      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+        'team',
+        'dashboard',
+      ]);
+
+      // should fetch 5m of logs
+      await processAlert(now, enhancedAlert);
+      expect(enhancedAlert.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlert(later, enhancedAlert);
+      // alert should still be in alert state
+      expect(enhancedAlert.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlert(nextWindow, enhancedAlert);
+      // alert should be in ok state
+      expect(enhancedAlert.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: alert._id,
+      }).sort({
+        createdAt: 1,
+      });
+
+      expect(alertHistories.length).toBe(2);
+      const [history1, history2] = alertHistories;
+      expect(history1.state).toBe('ALERT');
+      expect(history1.counts).toBe(1);
+      expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
+      expect(history1.lastValues.length).toBe(1);
+      expect(history1.lastValues[0].count).toBeGreaterThanOrEqual(1);
+
+      expect(history2.state).toBe('OK');
+      expect(history2.counts).toBe(0);
+      expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // check if webhook was triggered
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: 'Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1',
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
+                  '',
+                  '6.25 exceeds 1',
+                  '',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
     });
   });
 });
