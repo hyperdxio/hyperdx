@@ -407,6 +407,7 @@ async function timeFilterExpr({
   metadata,
   connectionId,
   with: withClauses,
+  includedDataInterval,
 }: {
   timestampValueExpression: string;
   dateRange: [Date, Date];
@@ -416,6 +417,7 @@ async function timeFilterExpr({
   databaseName: string;
   tableName: string;
   with?: { name: string; sql: ChSql }[];
+  includedDataInterval?: string;
 }) {
   const valueExpressions = timestampValueExpression.split(',');
   const startTime = dateRange[0].getTime();
@@ -443,23 +445,23 @@ async function timeFilterExpr({
         );
       }
 
+      const startTimeCond = includedDataInterval
+        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+
+      const endTimeCond = includedDataInterval
+        ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+
       // If it's a date type
       if (columnMeta?.type === 'Date') {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } toDate(fromUnixTimestamp64Milli(${{
-          Int64: startTime,
-        }})) AND ${unsafeTimestampValueExpression} <= toDate(fromUnixTimestamp64Milli(${{
-          Int64: endTime,
-        }})))`;
+        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} <= toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } fromUnixTimestamp64Milli(${{
-          Int64: startTime,
-        }}) AND ${unsafeTimestampValueExpression} <= fromUnixTimestamp64Milli(${{
-          Int64: endTime,
-        }}))`;
+        } ${startTimeCond} AND ${unsafeTimestampValueExpression} <= ${endTimeCond})`;
       }
     }),
   );
@@ -654,6 +656,7 @@ async function renderWhere(
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
           with: chartConfig.with,
+          includedDataInterval: chartConfig.includedDataInterval,
         })
       : [],
     whereSearchCondition,
@@ -732,6 +735,7 @@ function renderLimit(
 // for metric SQL generation.
 type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   with?: { name: string; sql: ChSql }[];
+  includedDataInterval?: string;
 };
 
 function renderWith(
@@ -872,36 +876,95 @@ async function translateMetricChartConfig(
       timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
+    const timeBucketCol = '__hdx_time_bucket2';
+    const valueHighCol = '`__hdx_value_high`';
+    const valueHighPrevCol = '`__hdx_value_high_prev`';
+    const timeExpr = timeBucketExpr({
+      interval: chartConfig.granularity || 'auto',
+      timestampValueExpression:
+        chartConfig.timestampValueExpression || 'TimeUnix',
+      dateRange: chartConfig.dateRange,
+      alias: timeBucketCol,
+    });
+
+    // Render the where clause to limit data selection on the source CTE but also search forward/back one
+    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
+    // series.
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Gauge],
+        },
+        filters: [
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+        includedDataInterval:
+          chartConfig.granularity === 'auto' &&
+          Array.isArray(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+            : chartConfig.granularity,
+      },
+      metadata,
+    );
+
     return {
       ...restChartConfig,
       with: [
         {
-          name: 'RawSum',
-          sql: chSql`SELECT *,
-               any(Value) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevValue,
-               any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
-               IF(AggregationTemporality = 1,
-                  Value,IF(Value - PrevValue < 0 AND AttributesHash = PrevAttributesHash, Value,
-                      IF(AttributesHash != PrevAttributesHash, 0, Value - PrevValue))) as Rate
-            FROM (
-                SELECT *, 
-                       cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+          name: 'Source',
+          sql: chSql`
+                SELECT
+                  *,
+                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  IF(AggregationTemporality = 1,
+                    SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                  ) AS Value
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
-                WHERE MetricName = '${metricName}'
-                ORDER BY AttributesHash, TimeUnix ASC
-            ) `,
+                WHERE ${where}`,
         },
-      ],
-      select: [
         {
-          ..._select,
-          valueExpression: 'Rate',
+          name: 'Bucketed',
+          sql: chSql`
+            SELECT
+              ${timeExpr},
+              AttributesHash,
+              last_value(Source.Value) AS ${valueHighCol},
+              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
+              ${valueHighCol} - ${valueHighPrevCol} AS Value,
+              any(ResourceAttributes) AS ResourceAttributes,
+              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
+              any(ScopeName) AS ScopeName,
+              any(ScopeVersion) AS ScopeVersion,
+              any(ScopeAttributes) AS ScopeAttributes,
+              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
+              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
+              any(ServiceName) AS ServiceName,
+              any(MetricName) AS MetricName,
+              any(MetricDescription) AS MetricDescription,
+              any(MetricUnit) AS MetricUnit,
+              any(Attributes) AS Attributes,
+              any(StartTimeUnix) AS StartTimeUnix,
+              any(Flags) AS Flags,
+              any(AggregationTemporality) AS AggregationTemporality,
+              any(IsMonotonic) AS IsMonotonic
+            FROM Source
+            GROUP BY AttributesHash, \`${timeBucketCol}\`
+            ORDER BY AttributesHash, \`${timeBucketCol}\`
+          `,
         },
       ],
+      select,
       from: {
         databaseName: '',
-        tableName: 'RawSum',
+        tableName: 'Bucketed',
       },
+      timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
     // histograms are only valid for quantile selections
