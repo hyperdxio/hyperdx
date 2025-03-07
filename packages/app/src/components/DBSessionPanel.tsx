@@ -109,7 +109,6 @@ export const DBSessionPanel = ({
 
   return (
     <>
-      {traceSourceId}
       {!sessionSource ? (
         <div className="m-2 fs-8 p-4">
           No correlated session source found.
