@@ -18,6 +18,7 @@ import { getMetadata } from '@/metadata';
 export const isMetric = (config: ChartConfigWithOptDateRange) =>
   config.metricTables != null;
 
+// TODO: apply this to all chart configs
 export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
   if (Array.isArray(config.select)) {
     if (isMetric(config)) {
