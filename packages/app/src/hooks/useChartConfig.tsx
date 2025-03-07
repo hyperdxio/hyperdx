@@ -136,9 +136,8 @@ export function useQueriedChartConfig(
           meta: Array.from(metaSet.values()),
           data: Array.from(tsBucketMap.values()),
         };
-      } else {
-        throw new Error('No result sets');
       }
+      throw new Error('No result sets');
     },
     retry: 1,
     refetchOnWindowFocus: false,
