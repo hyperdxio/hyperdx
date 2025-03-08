@@ -5,6 +5,7 @@ import type {
   ResponseJSON,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
+import * as SQLParser from 'node-sql-parser';
 
 import { SQLInterval } from '@/types';
 import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
@@ -435,6 +436,41 @@ export function parameterizedQueryToSql({
   return Object.entries(params).reduce((acc, [key, value]) => {
     return acc.replace(new RegExp(`{${key}:\\w+}`, 'g'), value);
   }, sql);
+}
+
+export function chSqlToAliasMap(
+  chSql: ChSql | undefined,
+): Record<string, string> {
+  const aliasMap: Record<string, string> = {};
+  if (chSql == null) {
+    return aliasMap;
+  }
+
+  const sql = parameterizedQueryToSql(chSql);
+  const parser = new SQLParser.Parser();
+  const ast = parser.astify(sql, {
+    database: 'Postgresql',
+    parseOptions: { includeLocations: true },
+  }) as SQLParser.Select;
+
+  if (ast.columns != null) {
+    ast.columns.forEach(column => {
+      if (column.as != null) {
+        if (column.type === 'expr' && column.expr.type === 'column_ref') {
+          aliasMap[column.as] = column.expr.column.expr.value;
+        } else if (column.expr.loc != null) {
+          aliasMap[column.as] = sql.slice(
+            column.expr.loc.start.offset,
+            column.expr.loc.end.offset,
+          );
+        } else {
+          console.error('Unknown alias column type', column);
+        }
+      }
+    });
+  }
+
+  return aliasMap;
 }
 
 export type ColumnMetaType = { name: string; type: string };

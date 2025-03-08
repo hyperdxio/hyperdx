@@ -2,6 +2,7 @@ import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ChSql,
+  chSqlToAliasMap,
   ClickHouseQueryError,
   inferTimestampColumn,
   parameterizedQueryToSql,
@@ -148,6 +149,28 @@ export function useRenderedSqlChartConfig(
 
       return format(parameterizedQueryToSql(query));
     },
+    ...options,
+  });
+}
+
+export function useAliasMapFromChartConfig(
+  config: ChartConfigWithOptDateRange | undefined,
+  options?: UseQueryOptions<Record<string, string>>,
+) {
+  return useQuery<Record<string, string>>({
+    queryKey: ['aliasMap', config],
+    queryFn: async () => {
+      if (config == null) {
+        return {};
+      }
+
+      const query = await renderChartConfig(config, getMetadata());
+
+      const aliasMap = chSqlToAliasMap(query);
+
+      return aliasMap;
+    },
+    enabled: config != null,
     ...options,
   });
 }
