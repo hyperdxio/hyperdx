@@ -116,11 +116,11 @@ export function useQueriedChartConfig(
           }
 
           const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
-          if (timestampColumn == null) {
-            throw new Error('No timestamp column');
-          }
           for (const row of resultSet.data) {
-            const ts = row[timestampColumn.name];
+            const ts =
+              timestampColumn != null
+                ? row[timestampColumn.name]
+                : '__FIXED_TIMESTAMP__';
             if (tsBucketMap.has(ts)) {
               const existingRow = tsBucketMap.get(ts);
               tsBucketMap.set(ts, {
