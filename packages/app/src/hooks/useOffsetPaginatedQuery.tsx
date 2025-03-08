@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import ms from 'ms';
 import { ResponseJSON, Row } from '@clickhouse/client-web';
 import {
+  ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -26,6 +27,7 @@ type TPageParam = number;
 type TQueryFnData = {
   data: Record<string, any>[];
   meta: ColumnMetaType[];
+  chSql: ChSql;
 };
 type TData = {
   pages: TQueryFnData[];
@@ -76,7 +78,11 @@ const queryFn: QueryFunction<
 
   if (isStreamingIncrementally) {
     queryClient.setQueryData<TData>(queryKey, (oldData): TData => {
-      const EMPTY_PAGE: TQueryFnData = { data: [], meta: [] };
+      const EMPTY_PAGE: TQueryFnData = {
+        data: [],
+        meta: [],
+        chSql: { sql: '', params: {} },
+      };
       if (oldData == null) {
         return {
           pages: [EMPTY_PAGE],
@@ -143,7 +149,7 @@ const queryFn: QueryFunction<
         queryClient.setQueryData<TData>(queryKey, oldData => {
           if (oldData == null) {
             return {
-              pages: [{ data: rowObjs, meta: queryResultMeta }],
+              pages: [{ data: rowObjs, meta: queryResultMeta, chSql: query }],
               pageParams: [pageParam],
             };
           }
@@ -158,6 +164,7 @@ const queryFn: QueryFunction<
                 ...page,
                 data: [...(page.data ?? []), ...rowObjs],
                 meta: queryResultMeta,
+                chSql: query,
               },
             ],
             pageParams: oldData.pageParams,
@@ -195,6 +202,7 @@ const queryFn: QueryFunction<
     return {
       data: queryResultData,
       meta: queryResultMeta,
+      chSql: query,
     };
   }
 
@@ -215,7 +223,7 @@ function flattenPages(pages: TQueryFnData[]) {
   return pages.flatMap(p => p.data);
 }
 
-function flattenData(data: TData | undefined) {
+function flattenData(data: TData | undefined): TQueryFnData | null {
   if (data == null || data.pages.length === 0) {
     return null;
   }
@@ -223,6 +231,7 @@ function flattenData(data: TData | undefined) {
   return {
     meta: data.pages[0].meta,
     data: flattenPages(data.pages),
+    chSql: data.pages[0].chSql,
   };
 }
 
