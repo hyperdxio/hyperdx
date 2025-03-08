@@ -43,10 +43,11 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
-import { Session, useSessions } from './clickhouse';
+import { Session } from './clickhouse';
 import { withAppNav } from './layout';
 import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
+import { useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
