@@ -731,10 +731,9 @@ function renderLimit(
   return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
 }
 
-// CTE (Common Table Expressions) isn't exported at this time. It's only used internally
+// includedDataInterval isn't exported at this time. It's only used internally
 // for metric SQL generation.
 type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
-  with?: { name: string; sql: ChSql }[];
   includedDataInterval?: string;
 };
 
@@ -746,7 +745,12 @@ function renderWith(
   if (withClauses) {
     return concatChSql(
       ',',
-      withClauses.map(clause => chSql`${clause.name} AS (${clause.sql})`),
+      withClauses.map(clause => {
+        if (clause.isSubquery) {
+          return chSql`${{ Identifier: clause.name }} AS (${clause.sql})`;
+        }
+        return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
+      }),
     );
   }
 

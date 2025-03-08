@@ -115,6 +115,23 @@ export const SelectSQLStatementSchema = z.object({
   havingLanguage: SearchConditionLanguageSchema.optional(),
   orderBy: SortSpecificationListSchema.optional(),
   limit: LimitSchema.optional(),
+  with: z
+    .array(
+      z.object({
+        name: z.string(),
+        sql: z.object({
+          sql: z.string(),
+          params: z.record(z.string(), z.any()),
+        }),
+        // If true, it'll render as WITH ident AS (subquery)
+        // If false, it'll be a "variable" ex. WITH (sql) AS ident
+        // where sql can be any expression, ex. a constant string
+        // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+        // default assume true
+        isSubquery: z.boolean().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
