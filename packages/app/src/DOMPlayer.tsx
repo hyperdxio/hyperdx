@@ -5,7 +5,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
 import { ActionIcon, CopyButton, HoverCard } from '@mantine/core';
 
-import { useRRWebEventStream } from '@/clickhouse';
+import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
 
 import styles from '../styles/SessionSubpanelV2.module.scss';

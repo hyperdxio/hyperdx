@@ -20,21 +20,12 @@ export const isMetric = (config: ChartConfigWithOptDateRange) =>
 
 // TODO: apply this to all chart configs
 export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
-  if (Array.isArray(config.select)) {
-    if (isMetric(config)) {
-      return {
-        ...config,
-        select: config.select.map(s => ({
-          ...s,
-          alias: `${s.aggFn}(${s.metricName})`,
-        })),
-      };
-    }
+  if (Array.isArray(config.select) && isMetric(config)) {
     return {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: `${s.aggFn}(${s.valueExpression})`,
+        alias: `${s.aggFn}(${s.metricName})`,
       })),
     };
   }
