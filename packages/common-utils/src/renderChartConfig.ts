@@ -867,6 +867,7 @@ async function translateMetricChartConfig(
         {
           ..._select,
           valueExpression: 'LastValue',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
         },
       ],
       from: {
@@ -959,7 +960,13 @@ async function translateMetricChartConfig(
           `,
         },
       ],
-      select,
+      select: [
+        {
+          ..._select,
+          valueExpression: 'Value',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
+        },
+      ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
