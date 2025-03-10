@@ -11,7 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
-import * as clickhouse from './clickhouse';
+import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
 import { ZIndexContext } from './zIndex';
@@ -35,7 +35,7 @@ export default function SessionSidePanel({
   traceSource: TSource;
   sessionSource: TSource;
   sessionId: string;
-  session: clickhouse.Session;
+  session: Session;
   dateRange: DateRange['dateRange'];
   where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;

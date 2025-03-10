@@ -43,10 +43,10 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
-import { Session, useSessions } from './clickhouse';
 import { withAppNav } from './layout';
 import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
+import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
@@ -484,7 +484,8 @@ export default function SessionsPage() {
             </Group>
           </Group>
         </form>
-        {sessionSource?.kind !== SourceKind.Session || traceTrace == null ? (
+        {isSessionsLoading === false &&
+        (sessionSource?.kind !== SourceKind.Session || traceTrace == null) ? (
           <>
             <Alert
               icon={<i className="bi bi-info-circle-fill text-slate-400" />}
@@ -496,7 +497,7 @@ export default function SessionsPage() {
             </Alert>
             <SessionSetupInstructions />
           </>
-        ) : sessions.length === 0 ? (
+        ) : sessions.length === 0 && isSessionsLoading === false ? (
           <SessionSetupInstructions />
         ) : (
           <div style={{ minHeight: 0 }} className="mt-4">
