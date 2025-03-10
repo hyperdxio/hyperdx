@@ -79,15 +79,23 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
 
 const NumberFormatInputControlled = ({
   control,
+  onSubmit,
 }: {
   control: Control<any>;
+  onSubmit: () => void;
 }) => {
   return (
     <Controller
       control={control}
       name="numberFormat"
       render={({ field: { onChange, value } }) => (
-        <NumberFormatInput onChange={onChange} value={value} />
+        <NumberFormatInput
+          onChange={newValue => {
+            onChange(newValue);
+            onSubmit();
+          }}
+          value={value}
+        />
       )}
     />
   );
@@ -631,7 +639,10 @@ export default function EditTimeChartForm({
                       </Button>
                     )}
                 </Group>
-                <NumberFormatInputControlled control={control} />
+                <NumberFormatInputControlled
+                  control={control}
+                  onSubmit={onSubmit}
+                />
               </Flex>
             </>
           ) : (
