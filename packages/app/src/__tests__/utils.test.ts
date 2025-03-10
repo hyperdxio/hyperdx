@@ -1,9 +1,10 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
-import { MetricsDataType } from '../types';
+import { MetricsDataType, NumberFormat } from '../types';
 import {
   formatAttributeClause,
   formatDate,
+  formatNumber,
   getMetricTableName,
 } from '../utils';
 
@@ -153,5 +154,117 @@ describe('getMetricTableName', () => {
     expect(
       getMetricTableName(source, 'gauge' as MetricsDataType),
     ).toBeUndefined();
+  });
+});
+
+describe('formatNumber', () => {
+  it('handles undefined/null values', () => {
+    expect(formatNumber(undefined)).toBe('N/A');
+    expect(formatNumber(null as any)).toBe('N/A');
+  });
+
+  it('returns string representation when no format options provided', () => {
+    expect(formatNumber(1234)).toBe('1234');
+    expect(formatNumber(0)).toBe('0');
+    expect(formatNumber(-1234)).toBe('-1234');
+  });
+
+  describe('number format', () => {
+    it('formats with mantissa', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        mantissa: 2,
+      };
+      expect(formatNumber(1234.5678, format)).toBe('1234.57');
+    });
+
+    it('formats with thousand separator', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        thousandSeparated: true,
+      };
+      expect(formatNumber(1234567, format)).toBe('1,234,567');
+    });
+
+    it('applies factor multiplication', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        factor: 0.001, // Convert to milliseconds
+      };
+      expect(formatNumber(1000, format)).toBe('1');
+    });
+  });
+
+  describe('currency format', () => {
+    it('formats with default currency symbol', () => {
+      const format: NumberFormat = {
+        output: 'currency',
+        thousandSeparated: true,
+      };
+      expect(formatNumber(1234.56, format)).toBe('$1,235');
+    });
+
+    it('formats with custom currency symbol', () => {
+      const format: NumberFormat = {
+        output: 'currency',
+        currencySymbol: '€',
+      };
+      expect(formatNumber(1234.56, format)).toBe('€1235');
+    });
+  });
+
+  describe('percentage format', () => {
+    it('formats as percentage', () => {
+      const format: NumberFormat = {
+        output: 'percent',
+      };
+      expect(formatNumber(0.1234, format)).toBe('12%');
+    });
+
+    it('formats percentage with mantissa', () => {
+      const format: NumberFormat = {
+        output: 'percent',
+        mantissa: 2,
+      };
+      expect(formatNumber(0.1234, format)).toBe('12.34%');
+    });
+  });
+
+  describe('byte format', () => {
+    it('formats bytes with binary base', () => {
+      const format: NumberFormat = {
+        output: 'byte',
+        decimalBytes: false,
+      };
+      expect(formatNumber(1024, format)).toBe('1 KB');
+    });
+
+    it('formats bytes with decimal base', () => {
+      const format: NumberFormat = {
+        output: 'byte',
+        decimalBytes: true,
+      };
+      expect(formatNumber(1000, format)).toBe('1 KB');
+    });
+  });
+
+  describe('unit handling', () => {
+    it('appends unit to formatted number', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        unit: 'ms',
+      };
+      expect(formatNumber(1234, format)).toBe('1234 ms');
+    });
+  });
+
+  describe('average format', () => {
+    it('formats large numbers with abbreviations when average is true', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        average: true,
+      };
+      expect(formatNumber(1234567, format)).toBe('1m');
+    });
   });
 });
