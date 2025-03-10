@@ -41,7 +41,7 @@ exports[`renderChartConfig should generate sql for a single histogram metric 1`]
             SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                    length(BucketCounts) as CountLength
             FROM default.otel_metrics_histogram)
-            WHERE MetricName = 'http.server.duration'
+            WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
             ORDER BY Attributes, TimeUnix ASC
           ),RawHist AS (
             SELECT *, toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,

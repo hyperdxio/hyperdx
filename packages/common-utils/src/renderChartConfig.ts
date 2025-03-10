@@ -867,6 +867,7 @@ async function translateMetricChartConfig(
         {
           ..._select,
           valueExpression: 'LastValue',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
         },
       ],
       from: {
@@ -959,7 +960,13 @@ async function translateMetricChartConfig(
           `,
         },
       ],
-      select,
+      select: [
+        {
+          ..._select,
+          valueExpression: 'Value',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
+        },
+      ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
@@ -976,6 +983,31 @@ async function translateMetricChartConfig(
     if (aggFn !== 'quantile' || level == null) {
       throw new Error('quantile must be specified for histogram metrics');
     }
+
+    // Render the where clause to limit data selection on the source CTE but also search forward/back one
+    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
+    // series.
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Histogram],
+        },
+        filters: [
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+        includedDataInterval:
+          chartConfig.granularity === 'auto' &&
+          Array.isArray(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+            : chartConfig.granularity,
+      },
+      metadata,
+    );
 
     return {
       ...restChartConfig,
@@ -994,7 +1026,7 @@ async function translateMetricChartConfig(
             SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                    length(BucketCounts) as CountLength
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
-            WHERE MetricName = '${metricName}'
+            WHERE ${where}
             ORDER BY Attributes, TimeUnix ASC
           `,
         },
@@ -1019,6 +1051,7 @@ async function translateMetricChartConfig(
         {
           ..._selectRest,
           aggFn: 'sum',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
           valueExpression: 'Rate',
         },
       ],
