@@ -875,7 +875,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
-      where: '',
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
@@ -974,7 +974,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
-      where: '',
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
@@ -1064,7 +1064,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'RawHist',
       },
-      where: '',
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
     };
   }
 
