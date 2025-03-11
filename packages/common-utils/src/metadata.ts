@@ -406,10 +406,12 @@ export class Metadata {
     chartConfig,
     keys,
     limit = 20,
+    disableRowLimit = false,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
+    disableRowLimit?: boolean;
   }) {
     const sql = await renderChartConfig(
       {
@@ -426,10 +428,12 @@ export class Metadata {
         query: sql.sql,
         query_params: sql.params,
         connectionId: chartConfig.connection,
-        clickhouse_settings: {
-          max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-          read_overflow_mode: 'break',
-        },
+        clickhouse_settings: !disableRowLimit
+          ? {
+              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+              read_overflow_mode: 'break',
+            }
+          : undefined,
       })
       .then(res => res.json<any>());
 

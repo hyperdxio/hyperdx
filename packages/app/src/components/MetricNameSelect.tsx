@@ -45,16 +45,19 @@ function useMetricNames(metricSource: TSource) {
     chartConfig: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
+    disableRowLimit: true,
   });
   const { data: histogramMetrics } = useGetKeyValues({
     chartConfig: histogramConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
+    disableRowLimit: true,
   });
   const { data: sumMetrics } = useGetKeyValues({
     chartConfig: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
+    disableRowLimit: true,
   });
 
   return {
