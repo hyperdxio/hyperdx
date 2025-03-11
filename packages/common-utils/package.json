@@ -49,7 +49,7 @@
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "dev": "nodemon --ext ts --exec \"tsup\"",
+    "dev": "nodemon --watch ./src --ext ts --exec \"tsup\"",
     "build": "tsup",
     "ci:build": "tsup",
     "lint": "eslint --quiet . --ext .ts",
