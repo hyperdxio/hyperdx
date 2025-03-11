@@ -448,5 +448,7 @@ export type Field = {
 
 const __LOCAL_CACHE__ = new MetadataCache();
 
+// TODO: better to init the Metadata object on the client side
+// also the client should be able to choose the cache strategy
 export const getMetadata = (clickhouseClient: ClickhouseClient) =>
   new Metadata(clickhouseClient, __LOCAL_CACHE__);
