@@ -799,7 +799,7 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, ...restChartConfig } = chartConfig;
+  const { select, from, filters, where, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
@@ -824,6 +824,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
+          ...(filters ? filters : []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -874,6 +875,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
+      where: '',
       timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
@@ -899,6 +901,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
+          ...(filters ? filters : []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -971,6 +974,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
+      where: '',
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
@@ -995,6 +999,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Histogram],
         },
         filters: [
+          ...(filters ? filters : []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -1059,6 +1064,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'RawHist',
       },
+      where: '',
     };
   }
 
