@@ -13,7 +13,7 @@ import type { ChartConfigWithDateRange } from '@/types';
 
 const DEFAULT_SAMPLE_SIZE = 1e6;
 
-class MetadataCache {
+export class MetadataCache {
   private cache = new Map<string, any>();
 
   // this should be getOrUpdate... or just query to follow react query
@@ -71,10 +71,11 @@ export type TableMetadata = {
 
 export class Metadata {
   private readonly clickhouseClient: ClickhouseClient;
-  private cache = new MetadataCache();
+  private readonly cache: MetadataCache;
 
-  constructor(clickhouseClient: ClickhouseClient) {
+  constructor(clickhouseClient: ClickhouseClient, cache: MetadataCache) {
     this.clickhouseClient = clickhouseClient;
+    this.cache = cache;
   }
 
   private async queryTableMetadata({
@@ -445,5 +446,9 @@ export type Field = {
   jsType: JSDataType | null;
 };
 
+const __LOCAL_CACHE__ = new MetadataCache();
+
+// TODO: better to init the Metadata object on the client side
+// also the client should be able to choose the cache strategy
 export const getMetadata = (clickhouseClient: ClickhouseClient) =>
-  new Metadata(clickhouseClient);
+  new Metadata(clickhouseClient, __LOCAL_CACHE__);
