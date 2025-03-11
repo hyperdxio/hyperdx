@@ -29,7 +29,12 @@ exports[`renderChartConfig should generate sql for a single gauge metric 1`] = `
 `;
 
 exports[`renderChartConfig should generate sql for a single histogram metric 1`] = `
-"WITH HistRate AS (SELECT *, any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
+"WITH HistRate AS (
+          SELECT
+            *,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+            length(BucketCounts) as CountLength,
+            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
             any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
             any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
             IF(AggregationTemporality = 1,
@@ -37,24 +42,23 @@ exports[`renderChartConfig should generate sql for a single histogram metric 1`]
                IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
                   arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
                   BucketCounts)) as BucketRates
-          FROM (
-            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                   length(BucketCounts) as CountLength
-            FROM default.otel_metrics_histogram)
-            WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
-            ORDER BY Attributes, TimeUnix ASC
+          FROM default.otel_metrics_histogram
+          WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
+          ORDER BY Attributes, TimeUnix ASC
           ),RawHist AS (
-            SELECT *, toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,
-                   arrayCumSum(BucketRates) as CumRates,
-                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
-                   IF(BucketLowIdx = length(BucketRates),
-                      ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value
-                      IF(BucketLowIdx > 1, -- indexes are 1-based
-                         ExplicitBounds[BucketLowIdx] + (ExplicitBounds[BucketLowIdx + 1] - ExplicitBounds[BucketLowIdx]) *
-                         intDivOrZero(
-                             Rank - CumRates[BucketLowIdx - 1],
-                             CumRates[BucketLowIdx] - CumRates[BucketLowIdx - 1]),
-                    arrayElement(ExplicitBounds, BucketLowIdx + 1) * intDivOrZero(Rank, CumRates[BucketLowIdx]))) as Rate
+            SELECT
+              *,
+              toUInt64( 0.5 * arraySum(BucketRates)) AS Rank,
+              arrayCumSum(BucketRates) as CumRates,
+              arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
+              IF(BucketLowIdx = length(BucketRates),
+                arrayElement(ExplicitBounds, length(ExplicitBounds)),
+                IF(BucketLowIdx > 1,
+                  arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
+                    IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
+                      (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
+                  IF(arrayElement(CumRates, 1) > 0, arrayElement(ExplicitBounds, BucketLowIdx + 1) * (Rank / arrayElement(CumRates, BucketLowIdx)), 0)
+                )) as Rate
             FROM HistRate) SELECT sum(
       toFloat64OrNull(toString(Rate))
     ) FROM RawHist WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10"
