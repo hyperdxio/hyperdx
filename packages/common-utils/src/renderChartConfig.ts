@@ -799,7 +799,7 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, ...restChartConfig } = chartConfig;
+  const { select, from, filters, where, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
@@ -824,6 +824,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
+          ...(filters ?? []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -867,12 +868,14 @@ async function translateMetricChartConfig(
         {
           ..._select,
           valueExpression: 'LastValue',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
         },
       ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
       },
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: timeBucketCol,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
@@ -898,6 +901,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
+          ...(filters ?? []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -959,11 +963,18 @@ async function translateMetricChartConfig(
           `,
         },
       ],
-      select,
+      select: [
+        {
+          ..._select,
+          valueExpression: 'Value',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
+        },
+      ],
       from: {
         databaseName: '',
         tableName: 'Bucketed',
       },
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
@@ -976,6 +987,32 @@ async function translateMetricChartConfig(
     if (aggFn !== 'quantile' || level == null) {
       throw new Error('quantile must be specified for histogram metrics');
     }
+
+    // Render the where clause to limit data selection on the source CTE but also search forward/back one
+    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
+    // series.
+    const where = await renderWhere(
+      {
+        ...chartConfig,
+        from: {
+          ...from,
+          tableName: metricTables[MetricsDataType.Histogram],
+        },
+        filters: [
+          ...(filters ?? []),
+          {
+            type: 'sql',
+            condition: `MetricName = '${metricName}'`,
+          },
+        ],
+        includedDataInterval:
+          chartConfig.granularity === 'auto' &&
+          Array.isArray(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+            : chartConfig.granularity,
+      },
+      metadata,
+    );
 
     return {
       ...restChartConfig,
@@ -994,7 +1031,7 @@ async function translateMetricChartConfig(
             SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                    length(BucketCounts) as CountLength
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
-            WHERE MetricName = '${metricName}'
+            WHERE ${where}
             ORDER BY Attributes, TimeUnix ASC
           `,
         },
@@ -1019,6 +1056,7 @@ async function translateMetricChartConfig(
         {
           ..._selectRest,
           aggFn: 'sum',
+          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
           valueExpression: 'Rate',
         },
       ],
@@ -1026,6 +1064,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'RawHist',
       },
+      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
     };
   }
 
