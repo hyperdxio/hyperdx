@@ -824,7 +824,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
-          ...(filters ? filters : []),
+          ...(filters ?? []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -901,7 +901,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Gauge],
         },
         filters: [
-          ...(filters ? filters : []),
+          ...(filters ?? []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
@@ -999,7 +999,7 @@ async function translateMetricChartConfig(
           tableName: metricTables[MetricsDataType.Histogram],
         },
         filters: [
-          ...(filters ? filters : []),
+          ...(filters ?? []),
           {
             type: 'sql',
             condition: `MetricName = '${metricName}'`,
