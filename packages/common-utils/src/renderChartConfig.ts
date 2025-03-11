@@ -416,7 +416,7 @@ async function timeFilterExpr({
   connectionId: string;
   databaseName: string;
   tableName: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
   const valueExpressions = timestampValueExpression.split(',');
@@ -499,11 +499,8 @@ async function renderSelect(
   );
 }
 
-function renderFrom({
-  from,
-}: {
-  from: ChartConfigWithDateRange['from'];
-}): ChSql {
+function renderFrom(chartConfig: ChartConfigWithDateRange): ChSql {
+  const from = chartConfig.from;
   return concatChSql(
     '.',
     chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
@@ -528,7 +525,7 @@ async function renderWhereExpression({
   from: ChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
   connectionId: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
 }): Promise<ChSql> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -737,21 +734,58 @@ type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
 };
 
-function renderWith(
+/**
+ * Type guard to check if an object is a ChSql instance
+ * @param obj The object to check
+ * @returns True if the object is a ChSql instance
+ */
+function isChSqlInstance(obj: any): obj is ChSql {
+  return (
+    obj != null &&
+    typeof obj === 'object' &&
+    'sql' in obj &&
+    'params' in obj &&
+    typeof obj.sql === 'string' &&
+    typeof obj.params === 'object'
+  );
+}
+
+async function renderWith(
   chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-): ChSql | undefined {
+): Promise<ChSql | undefined> {
   const { with: withClauses } = chartConfig;
   if (withClauses) {
     return concatChSql(
       ',',
-      withClauses.map(clause => {
-        if (clause.isSubquery === false) {
-          return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
-        }
-        // Can not use identifier here
-        return chSql`${clause.name} AS (${clause.sql})`;
-      }),
+      await Promise.all(
+        withClauses.map(async clause => {
+          // The sql logic can be specified as either a string, ChSql instance or a
+          // chart config object.
+          let resolvedSql: ChSql;
+          if (typeof clause.sql === 'string') {
+            resolvedSql = chSql`${{ UNSAFE_RAW_SQL: clause.sql }}`;
+          } else if (isChSqlInstance(clause.sql)) {
+            resolvedSql = clause.sql;
+          } else {
+            resolvedSql = await renderChartConfig(
+              {
+                ...clause.sql,
+                connection: chartConfig.connection,
+                timestampValueExpression:
+                  chartConfig.timestampValueExpression || '',
+              } as ChartConfigWithOptDateRangeEx,
+              metadata,
+            );
+          }
+
+          if (clause.isSubquery === false) {
+            return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
+          }
+          // Can not use identifier here
+          return chSql`${clause.name} AS (${resolvedSql})`;
+        }),
+      ),
     );
   }
 
@@ -1100,7 +1134,7 @@ export async function renderChartConfig(
       ? await translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 
-  const withClauses = renderWith(chartConfig, metadata);
+  const withClauses = await renderWith(chartConfig, metadata);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);

@@ -1,6 +1,7 @@
 import { parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 import {
+  ChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
@@ -152,6 +153,72 @@ describe('renderChartConfig', () => {
       timestampValueExpression: 'TimeUnix',
       dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
       limit: { limit: 10 },
+    };
+
+    const generatedSql = await renderChartConfig(config, mockMetadata);
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toMatchSnapshot();
+  });
+
+  it('should render a string CTE configuration correctly', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      connection: 'test-connection',
+      from: {
+        databaseName: '',
+        tableName: 'TestCte',
+      },
+      with: [{ name: 'TestCte', sql: 'SELECT TimeUnix, Line FROM otel_logs' }],
+      select: [{ valueExpression: 'Line' }],
+      where: '',
+      whereLanguage: 'sql',
+    };
+
+    const generatedSql = await renderChartConfig(config, mockMetadata);
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toMatchSnapshot();
+  });
+
+  it('should render a chart config CTE configuration correctly', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      connection: 'test-connection',
+      with: [
+        {
+          name: 'Parts',
+          sql: {
+            select: '_part, _part_offset',
+            from: { databaseName: 'default', tableName: 'some_table' },
+            where: '',
+            whereLanguage: 'sql',
+            filters: [
+              {
+                type: 'sql',
+                condition: `FieldA = 'test'`,
+              },
+            ],
+            orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+            limit: { limit: 1000 },
+          },
+        },
+      ],
+      select: '*',
+      filters: [
+        {
+          type: 'sql',
+          condition: `FieldA = 'test'`,
+        },
+        {
+          type: 'sql',
+          condition: `indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts))`,
+        },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'Parts',
+      },
+      where: '',
+      whereLanguage: 'sql',
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: 1000 },
     };
 
     const generatedSql = await renderChartConfig(config, mockMetadata);
