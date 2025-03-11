@@ -10,15 +10,15 @@ import { useSavedSearches } from './savedSearch';
 
 import '@mantine/spotlight/styles.css';
 
-const useSpotlightActions = () => {
+export const useSpotlightActions = () => {
   const router = useRouter();
 
   const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
 
   const actions = React.useMemo<SpotlightActionData[]>(() => {
-    const logViews = logViewsData?.data ?? [];
-    const dashboards = dashboardsData?.data ?? [];
+    const logViews = logViewsData ?? [];
+    const dashboards = dashboardsData ?? [];
 
     const logViewActions: SpotlightActionData[] = [];
 
