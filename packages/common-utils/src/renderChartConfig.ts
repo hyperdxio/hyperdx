@@ -1028,7 +1028,12 @@ async function translateMetricChartConfig(
       with: [
         {
           name: 'HistRate',
-          sql: chSql`SELECT *, any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
+          sql: chSql`
+          SELECT
+            *,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+            length(BucketCounts) as CountLength,
+            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
             any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
             any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
             IF(AggregationTemporality = 1,
@@ -1036,28 +1041,27 @@ async function translateMetricChartConfig(
                IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
                   arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
                   BucketCounts)) as BucketRates
-          FROM (
-            SELECT *, cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-                   length(BucketCounts) as CountLength
-            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })})
-            WHERE ${where}
-            ORDER BY Attributes, TimeUnix ASC
+          FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
+          WHERE ${where}
+          ORDER BY Attributes, TimeUnix ASC
           `,
         },
         {
           name: 'RawHist',
           sql: chSql`
-            SELECT *, toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
-                   arrayCumSum(BucketRates) as CumRates,
-                   arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
-                   IF(BucketLowIdx = length(BucketRates),
-                      ExplicitBounds[length(ExplicitBounds)],  -- if the low bound is the last bucket, use the last bound value
-                      IF(BucketLowIdx > 1, -- indexes are 1-based
-                         ExplicitBounds[BucketLowIdx] + (ExplicitBounds[BucketLowIdx + 1] - ExplicitBounds[BucketLowIdx]) *
-                         intDivOrZero(
-                             Rank - CumRates[BucketLowIdx - 1],
-                             CumRates[BucketLowIdx] - CumRates[BucketLowIdx - 1]),
-                    arrayElement(ExplicitBounds, BucketLowIdx + 1) * intDivOrZero(Rank, CumRates[BucketLowIdx]))) as Rate
+            SELECT
+              *,
+              toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
+              arrayCumSum(BucketRates) as CumRates,
+              arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
+              IF(BucketLowIdx = length(BucketRates),
+                arrayElement(ExplicitBounds, length(ExplicitBounds)),
+                IF(BucketLowIdx > 1,
+                  arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
+                    IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
+                      (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
+                  IF(arrayElement(CumRates, 1) > 0, arrayElement(ExplicitBounds, BucketLowIdx + 1) * (Rank / arrayElement(CumRates, BucketLowIdx)), 0)
+                )) as Rate
             FROM HistRate`,
         },
       ],
