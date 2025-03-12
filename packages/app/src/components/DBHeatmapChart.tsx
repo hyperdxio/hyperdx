@@ -270,6 +270,77 @@ type HeatmapChartConfig = {
   connection: string;
 };
 
+type TransformHeatmapResult = {
+  time: number[];
+  bucket: number[];
+  count: number[];
+};
+
+type HeatmapDataRow = {
+  [key: string]: string | number;
+  bucket: number;
+  count: string | number;
+};
+
+/**
+ * Transforms raw heatmap data into a format suitable for rendering with uPlot.
+ * This function creates a uniform grid of data points by:
+ * 1. Filling in missing timestamps with zero values
+ * 2. Creating evenly spaced bucket intervals across the value range
+ * 3. Organizing data into parallel arrays for time, bucket, and count
+ */
+export function transformHeatmapData(
+  data: { data: Array<HeatmapDataRow> } | undefined,
+  timestampColumn: { name: string } | undefined,
+  generatedTsBuckets: Date[],
+  min: number,
+  max: number,
+  nBuckets: number,
+): TransformHeatmapResult {
+  const time: number[] = [];
+  const bucket: number[] = [];
+  const count: number[] = [];
+
+  if (data != null && timestampColumn != null) {
+    let dataIndex = 0;
+
+    // Iterate through each timestamp bucket to ensure we have data points
+    // for all time intervals, even if there's no data for that period
+    for (let i = 0; i < generatedTsBuckets.length; i++) {
+      const generatedTs = generatedTsBuckets[i].getTime();
+
+      // Track counts for each bucket at this timestamp
+      const bucketCounts = new Map();
+
+      // Process all data points that match the current timestamp
+      while (
+        dataIndex < data.data.length &&
+        new Date(
+          String(data.data[dataIndex][timestampColumn.name]),
+        ).getTime() === generatedTs
+      ) {
+        const row = data.data[dataIndex];
+        const count =
+          typeof row.count === 'string'
+            ? Number.parseInt(row.count, 10)
+            : row.count;
+        bucketCounts.set(row.bucket, count);
+        dataIndex++;
+      }
+
+      // Create data points for each bucket in the value range
+      // This ensures we have a complete grid, with zeros for empty buckets
+      for (let j = 0; j <= nBuckets + 1; j++) {
+        time.push(generatedTs);
+        bucket.push(min + j * ((max - min) / nBuckets));
+        count.push(bucketCounts.get(j) || 0);
+      }
+    }
+  }
+
+  return { time, bucket, count };
+}
+
 function HeatmapContainer({
   config,
   enabled = true,
@@ -343,39 +414,14 @@ function HeatmapContainer({
   );
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
-  const time: number[] = [];
-  const bucket: number[] = [];
-  const count: number[] = [];
-
-  if (data != null && timestampColumn != null) {
-    let dataIndex = 0;
-
-    for (let i = 0; i < generatedTsBuckets.length; i++) {
-      const generatedTs = generatedTsBuckets[i].getTime();
-
-      // CH widthBucket will return buckets from 0 to nBuckets + 1
-      for (let j = 0; j <= nBuckets + 1; j++) {
-        // const resultIndex = i * nBuckets + j;
-        const row = data?.data?.[dataIndex];
-
-        if (
-          row != null &&
-          new Date(row[timestampColumn.name]).getTime() == generatedTs &&
-          row['bucket'] == j
-        ) {
-          time.push(new Date(row[timestampColumn.name]).getTime());
-          bucket.push(min + row['bucket'] * ((max - min) / nBuckets));
-          count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
-
-          dataIndex++;
-        } else {
-          time.push(generatedTs);
-          bucket.push(min + j * ((max - min) / nBuckets));
-          count.push(0);
-        }
-      }
-    }
-  }
+  const { time, bucket, count } = transformHeatmapData(
+    data,
+    timestampColumn,
+    generatedTsBuckets,
+    min,
+    max,
+    nBuckets,
+  );
 
   if (isLoading || isMinMaxLoading) {
     return (
