@@ -838,15 +838,25 @@ async function translateMetricChartConfig(
       ...restChartConfig,
       with: [
         {
+          name: 'Source',
+          sql: chSql`
+            SELECT
+              *,
+              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
+            WHERE ${where}
+          `,
+        },
+        {
           name: 'Bucketed',
           sql: chSql`
             SELECT
               ${timeExpr},
-              ScopeAttributes,
-              ResourceAttributes,
-              Attributes,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+              AttributesHash,
               last_value(Value) AS LastValue,
+              any(ScopeAttributes) AS ScopeAttributes,
+              any(ResourceAttributes) AS ResourceAttributes,
+              any(Attributes) AS Attributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
               any(ScopeName) AS ScopeName,
               any(ScopeVersion) AS ScopeVersion,
@@ -857,9 +867,8 @@ async function translateMetricChartConfig(
               any(MetricUnit) AS MetricUnit,
               any(StartTimeUnix) AS StartTimeUnix,
               any(Flags) AS Flags
-            FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
-            WHERE ${where}
-            GROUP BY ScopeAttributes, ResourceAttributes, Attributes, ${timeBucketCol}
+            FROM Source
+            GROUP BY AttributesHash, ${timeBucketCol}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,
         },

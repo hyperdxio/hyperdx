@@ -412,6 +412,7 @@ export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ServiceName: string;
     TimeUnix: Date;
     Value: number;
   }[],
@@ -427,12 +428,13 @@ export const bulkInsertMetricsGauge = async (
 
 export const bulkInsertMetricsSum = async (
   metrics: {
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    TimeUnix: Date;
-    Value: number;
     AggregationTemporality: number;
     IsMonotonic: boolean;
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    ServiceName: string;
+    TimeUnix: Date;
+    Value: number;
   }[],
 ) => {
   if (!config.IS_CI) {
