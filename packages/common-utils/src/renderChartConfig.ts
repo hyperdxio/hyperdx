@@ -746,10 +746,11 @@ function renderWith(
     return concatChSql(
       ',',
       withClauses.map(clause => {
-        if (clause.isSubquery) {
-          return chSql`${{ Identifier: clause.name }} AS (${clause.sql})`;
+        if (clause.isSubquery === false) {
+          return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
         }
-        return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
+        // Can not use identifier here
+        return chSql`${clause.name} AS (${clause.sql})`;
       }),
     );
   }
