@@ -1,5 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { isPlainObject, isString, pickBy } from 'lodash';
+import { isString, pickBy } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
