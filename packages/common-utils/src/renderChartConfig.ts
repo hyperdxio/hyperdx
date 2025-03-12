@@ -749,7 +749,7 @@ async function renderWith(
           // chart config object.
           let resolvedSql: ChSql;
           if (typeof clause.sql === 'string') {
-            resolvedSql = chSql`${{ UNSAFE_RAW_SQL: clause.sql }}`;
+            resolvedSql = chSql`${{ Identifier: clause.sql }}`;
           } else if (clause.sql && 'sql' in clause.sql) {
             resolvedSql = clause.sql;
           } else if (
