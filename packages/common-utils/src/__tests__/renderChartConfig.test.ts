@@ -1,7 +1,6 @@
 import { parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 import {
-  ChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,

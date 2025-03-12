@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import { ChSql } from '@/clickhouse';
-
 // Basic Enums
 export enum MetricsDataType {
   Gauge = 'gauge',
