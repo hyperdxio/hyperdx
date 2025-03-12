@@ -191,6 +191,7 @@ describe('renderChartConfig', () => {
         { value: 80, timestamp: now + ms('9m') },
       ].map(point => ({
         MetricName: 'test.cpu',
+        ServiceName: 'db',
         ResourceAttributes: {
           host: 'host1',
           ip: '127.0.0.1',
@@ -209,6 +210,7 @@ describe('renderChartConfig', () => {
         { value: 4, timestamp: now + ms('9m') },
       ].map(point => ({
         MetricName: 'test.cpu',
+        ServiceName: 'db',
         ResourceAttributes: {
           host: 'host2',
           ip: '127.0.2',
@@ -229,6 +231,7 @@ describe('renderChartConfig', () => {
         { value: 42, timestamp: now + ms('19m') }, // 42
       ].map(point => ({
         MetricName: 'test.users',
+        ServiceName: 'api',
         ResourceAttributes: {
           host: 'host1',
           ip: '127.0.0.1',
@@ -252,6 +255,7 @@ describe('renderChartConfig', () => {
         { value: 84626, timestamp: now + ms('19m') }, // 84626
       ].map(point => ({
         MetricName: 'test.users',
+        ServiceName: 'api',
         ResourceAttributes: {
           host: 'host2',
           ip: '127.0.0.1',
@@ -274,6 +278,7 @@ describe('renderChartConfig', () => {
         { value: 42, timestamp: now + ms('19m') }, // 42
       ].map(point => ({
         MetricName: 'counter.reset',
+        ServiceName: 'api',
         ResourceAttributes: {
           host: 'host3',
           ip: '127.0.1',
@@ -296,6 +301,7 @@ describe('renderChartConfig', () => {
         { value: 42, timestamp: now + ms('19m') }, // 42
       ].map(point => ({
         MetricName: 'counter.min_reset',
+        ServiceName: 'api',
         ResourceAttributes: {
           host: 'MIN_VARIANT_0',
           ip: '127.0.1',
@@ -318,6 +324,7 @@ describe('renderChartConfig', () => {
         { value: 92, timestamp: now + ms('19m') },
       ].map(point => ({
         MetricName: 'counter.min_reset',
+        ServiceName: 'api',
         ResourceAttributes: {
           host: 'MAX_VARIANT_1',
           ip: '127.0.1',
@@ -430,8 +437,8 @@ describe('renderChartConfig', () => {
             },
           ],
           from: metricSource.from,
-          where: `ResourceAttributes['host'] = 'host1'`,
-          whereLanguage: 'sql',
+          where: 'ServiceName:"db" AND ResourceAttributes.host:"host1"',
+          whereLanguage: 'lucene',
           metricTables: {
             sum: DEFAULT_METRICS_TABLE.SUM,
             gauge: DEFAULT_METRICS_TABLE.GAUGE,
