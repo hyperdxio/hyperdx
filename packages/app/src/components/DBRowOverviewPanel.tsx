@@ -68,9 +68,16 @@ export function RowOverviewPanel({
       parsedEvents?.['exception.stacktrace'] ||
       parsedEvents?.['exception.parsed_stacktrace'];
 
+    let parsedStacktrace = stacktrace ?? '[]';
+    try {
+      parsedStacktrace = JSON.parse(stacktrace);
+    } catch (e) {
+      // do nothing
+    }
+
     return [
       {
-        stacktrace: JSON.parse(stacktrace ?? '[]'),
+        stacktrace: parsedStacktrace,
         type: parsedEvents?.['exception.type'],
         value:
           typeof parsedEvents?.['exception.message'] !== 'string'
