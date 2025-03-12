@@ -1115,6 +1115,7 @@ describe('checkAlerts', () => {
         { value: 6.25, timestamp: eventMs + ms('3m') },
       ].map(point => ({
         MetricName: 'test.cpu',
+        ServiceName: 'db',
         ResourceAttributes: {
           host: 'host1',
           ip: '127.0.0.1',
