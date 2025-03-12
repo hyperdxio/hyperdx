@@ -36,6 +36,17 @@ export function RowOverviewPanel({
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
   const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
+  const dataAttributes =
+    source.kind === 'log'
+      ? firstRow?.['LogAttributes'] &&
+        Object.keys(firstRow['LogAttributes']).length > 0
+        ? { LogAttributes: firstRow['LogAttributes'] }
+        : {}
+      : firstRow?.['SpanAttributes'] &&
+          Object.keys(firstRow['SpanAttributes']).length > 0
+        ? { SpanAttributes: firstRow['SpanAttributes'] }
+        : {};
+
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
       return (
@@ -49,17 +60,24 @@ export function RowOverviewPanel({
   );
 
   const isHttpRequest = useMemo(() => {
-    return eventAttributes?.['http.url'] != null;
-  }, [eventAttributes]);
+    const attributes =
+      dataAttributes?.LogAttributes || dataAttributes?.SpanAttributes;
+    return attributes?.['http.url'] != null;
+  }, [dataAttributes]);
 
   const filteredEventAttributes = useMemo(() => {
+    const attributes =
+      dataAttributes?.LogAttributes || dataAttributes?.SpanAttributes;
     if (isHttpRequest) {
-      return pickBy(eventAttributes, (value, key) => {
-        return !key.startsWith('http.');
-      });
+      return {
+        [dataAttributes?.LogAttributes ? 'LogAttributes' : 'SpanAttributes']:
+          pickBy(attributes, (value, key) => {
+            return !key.startsWith('http.');
+          }),
+      };
     }
-    return eventAttributes;
-  }, [eventAttributes, isHttpRequest]);
+    return dataAttributes;
+  }, [dataAttributes, isHttpRequest]);
 
   const exceptionValues = useMemo(() => {
     const parsedEvents =
