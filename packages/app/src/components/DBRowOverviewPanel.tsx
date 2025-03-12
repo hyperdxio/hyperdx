@@ -1,5 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { isString, pickBy } from 'lodash';
+import { isPlainObject, isString, pickBy } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
@@ -70,7 +70,11 @@ export function RowOverviewPanel({
 
     return [
       {
-        stacktrace: JSON.parse(stacktrace ?? '[]'),
+        stacktrace: isPlainObject(stacktrace)
+          ? JSON.parse(stacktrace)
+          : isString(stacktrace)
+            ? stacktrace
+            : [],
         type: parsedEvents?.['exception.type'],
         value:
           typeof parsedEvents?.['exception.message'] !== 'string'
