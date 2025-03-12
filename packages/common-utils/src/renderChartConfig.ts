@@ -7,6 +7,7 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
+  ChartConfigSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   MetricsDataType,
@@ -734,22 +735,6 @@ type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
 };
 
-/**
- * Type guard to check if an object is a ChSql instance
- * @param obj The object to check
- * @returns True if the object is a ChSql instance
- */
-function isChSqlInstance(obj: any): obj is ChSql {
-  return (
-    obj != null &&
-    typeof obj === 'object' &&
-    'sql' in obj &&
-    'params' in obj &&
-    typeof obj.sql === 'string' &&
-    typeof obj.params === 'object'
-  );
-}
-
 async function renderWith(
   chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -765,9 +750,12 @@ async function renderWith(
           let resolvedSql: ChSql;
           if (typeof clause.sql === 'string') {
             resolvedSql = chSql`${{ UNSAFE_RAW_SQL: clause.sql }}`;
-          } else if (isChSqlInstance(clause.sql)) {
+          } else if (clause.sql && 'sql' in clause.sql) {
             resolvedSql = clause.sql;
-          } else {
+          } else if (
+            clause.sql &&
+            ('select' in clause.sql || 'connection' in clause.sql)
+          ) {
             resolvedSql = await renderChartConfig(
               {
                 ...clause.sql,
@@ -776,6 +764,10 @@ async function renderWith(
                   chartConfig.timestampValueExpression || '',
               } as ChartConfigWithOptDateRangeEx,
               metadata,
+            );
+          } else {
+            throw new Error(
+              `ChartConfig with clause is an unsupported type: ${clause.sql}`,
             );
           }
 
