@@ -1106,7 +1106,7 @@ export async function renderChartConfig(
   const where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
-  const fill = renderFill(chartConfig);
+  //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
 
   return concatChSql(' ', [
@@ -1116,7 +1116,7 @@ export async function renderChartConfig(
     chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
-    chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
+    //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
   ]);
 }
