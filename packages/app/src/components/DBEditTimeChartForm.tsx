@@ -44,7 +44,7 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_DEV } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
@@ -622,7 +622,7 @@ export default function EditTimeChartForm({
                   )}
                   {displayType === DisplayType.Line &&
                     dashboardId &&
-                    IS_DEV && (
+                    !IS_LOCAL_MODE && (
                       <Button
                         variant="subtle"
                         size="sm"
