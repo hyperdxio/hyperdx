@@ -19,12 +19,13 @@ Clickhouse cluster (imagine Kibana, for Clickhouse).
   <a href="https://www.hyperdx.io/docs/v2/">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://play.hyperdx.io/search">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a> • <a href="https://hyperdx.io/v2">Website</a>
 </p>
 
-- 🕵️ Correlate/search logs and traces all in one place
+- 🕵️ Correlate/search logs, metrics, session replays and traces all in one place
 - 📝 Schema agnostic, works on top of your existing Clickhouse schema
 - 🔥 Blazing fast searches & visualizations optimized for Clickhouse
 - 🔍 Intuitive full-text search and property search syntax (ex. `level:err`),
   SQL optional!
 - 📊 Analyze trends in anomalies with event deltas
+- 🔔 Set up alerts in just a few clicks
 - 📈 Dashboard high cardinality events without a complex query language
 - `{` Native JSON string querying
 - ⚡ Live tail logs and traces to always get the freshest events
@@ -182,10 +183,10 @@ features in the future. In the meantime, we're highly aligned with Gitlab's
 
 ## HyperDX V2 Roadmap
 
-HyperDX v2 is currently in early beta, with the goals of accomplishing
-deployment simplicity, native SQL support, and improved performance for PB+
-deployments. Currently we've released a subset of features with the goal of
-getting early feedback from the community.
+HyperDX v2 is currently in beta, with the goals of accomplishing deployment
+simplicity, native SQL support, and improved performance for PB+ deployments.
+Currently we've released a subset of features with the goal of getting early
+feedback from the community.
 
 Here's a high-level list of support we're working on delivering as part of v2:
 
@@ -193,14 +194,14 @@ Here's a high-level list of support we're working on delivering as part of v2:
 - [x] Charting & Dashboarding
 - [x] Event Deltas
 - [x] Performance Improvements
-- [ ] Authentication & Saving Sources/Connections
-- [ ] Saved Searches & Dashboards
-- [ ] Alerting
+- [x] Authentication & Saving Sources/Connections
+- [x] Saved Searches & Dashboards
+- [x] Alerting
 - [ ] PromQL-based Metrics
-- [ ] OTLP/SQL-based Metrics
-- [ ] Browser Monitoring/Session Replay
+- [x] OTLP/SQL-based Metrics
+- [x] Browser Monitoring/Session Replay
 - [ ] Raw SQL Charting
-- [ ] Improved Custom Domain/TLS Support
+- [x] Improved Custom Domain/TLS Support
 - [ ] Official Helm Chart
 - [ ] v1 Migration Tooling
 - [ ] Public API
