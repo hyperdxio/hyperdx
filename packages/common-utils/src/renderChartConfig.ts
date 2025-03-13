@@ -351,7 +351,7 @@ async function renderSelectList(
 
       return chSql`${expr}${
         select.alias != null
-          ? chSql` AS \`${{ UNSAFE_RAW_SQL: select.alias }}\``
+          ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
           : []
       }`;
     }),

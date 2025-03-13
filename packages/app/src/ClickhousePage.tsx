@@ -63,7 +63,7 @@ function InfrastructureTab({
                 {
                   valueExpression:
                     'avg(ProfileEvent_OSCPUVirtualTimeMicroseconds) / 1000000',
-                  alias: `"CPU Cores"`,
+                  alias: `CPU Cores`,
                 },
               ],
               from: {
@@ -89,7 +89,7 @@ function InfrastructureTab({
               select: [
                 {
                   valueExpression: 'avg(CurrentMetric_MemoryTracking)',
-                  alias: `"Bytes"`,
+                  alias: `Bytes`,
                 },
               ],
               from: {
@@ -117,13 +117,13 @@ function InfrastructureTab({
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_OSReadChars',
-                  alias: `"Bytes Read"`,
+                  alias: `Bytes Read`,
                 },
                 {
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_OSWriteChars',
-                  alias: `"Bytes Written"`,
+                  alias: `Bytes Written`,
                 },
               ],
               from: {
@@ -151,31 +151,31 @@ function InfrastructureTab({
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'CurrentMetric_S3Requests',
-                  alias: `"All Requests"`,
+                  alias: `All Requests`,
                 },
                 {
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_S3GetObject',
-                  alias: `"GetObject Requests"`,
+                  alias: `GetObject Requests`,
                 },
                 {
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_S3PutObject',
-                  alias: `"PutObject Requests"`,
+                  alias: `PutObject Requests`,
                 },
                 {
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_S3ListObjects',
-                  alias: `"ListObjects Requests"`,
+                  alias: `ListObjects Requests`,
                 },
                 {
                   aggFn: 'avg',
                   aggCondition: '',
                   valueExpression: 'ProfileEvent_S3UploadPart',
-                  alias: `"UploadPart Requests"`,
+                  alias: `UploadPart Requests`,
                 },
               ],
               from: {
@@ -330,7 +330,7 @@ function InsertsTab({
                   valueExpression: 'value',
                   aggCondition: `metric = 'MaxPartCountForPartition'`,
                   aggConditionLanguage: 'sql',
-                  alias: '"Max Parts per Partition"',
+                  alias: 'Max Parts per Partition',
                 },
               ],
               from: {
@@ -622,7 +622,7 @@ function ClickhousePage() {
                         aggFn: 'count',
                         valueExpression: '',
                         aggCondition: '',
-                        alias: `"Query Count"`,
+                        alias: `Query Count`,
                       },
                     ],
                     groupBy: [
