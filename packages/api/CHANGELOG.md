@@ -1,5 +1,13 @@
 # @hyperdx/api
 
+## 2.0.0-beta.12
+
+### Patch Changes
+
+- fix: use quote for aliases for sql compatibility
+- Updated dependencies
+  - @hyperdx/common-utils@0.2.0-beta.1
+
 ## 2.0.0-beta.11
 
 ### Minor Changes
