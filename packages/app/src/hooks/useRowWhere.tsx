@@ -20,7 +20,10 @@ export default function useRowWhere({
     () =>
       new Map(
         meta?.map(c => {
-          const valueExpr = aliasMap != null ? aliasMap[c.name] : c.name;
+          // if aliasMap is provided, use the alias as the valueExpr
+          // but if the alias is not found, use the column name as the valueExpr
+          const valueExpr =
+            aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
           return [
             c.name,
             {
