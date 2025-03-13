@@ -12,8 +12,7 @@ jobs:
     name: Publish @hyperdx/common-utils
     runs-on: ubuntu-latest
     outputs:
-      changeset_outputs_hasChangesets:
-        ${{ steps.changesets.outputs.hasChangesets }}
+      changeset_outputs_hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,13 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        release:
-          [
-            'release-app',
-            'release-otel-collector',
-            'release-local',
-            'release-local-ui',
-          ]
+        release: ['release-app', 'release-otel-collector', 'release-local']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,7 +68,5 @@ jobs:
       - name: Load environment variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Publish images
-        if:
-          needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
-          'false'
+        if: needs.publish_common_utils.outputs.changeset_outputs_hasChangesets == 'false'
         run: make ${{ matrix.release }}

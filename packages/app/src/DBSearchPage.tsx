@@ -61,7 +61,6 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
-import { IS_DEV } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import {
   useAliasMapFromChartConfig,
@@ -916,7 +915,7 @@ function DBSearchPage() {
 
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
-      {IS_DEV && isAlertModalOpen && (
+      {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal
           id={savedSearch?.id}
           searchedConfig={searchedConfig}
@@ -1012,7 +1011,7 @@ function DBSearchPage() {
                   Update
                 </Button>
               )}
-              {IS_DEV && (
+              {!IS_LOCAL_MODE && (
                 <Button
                   variant="outline"
                   color="dark.2"

@@ -82,33 +82,28 @@ services:
       - internal
     depends_on:
       - ch-server
-  # task-check-alerts:
-  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-app
-  #   entrypoint: 'node'
-  #   command: './build/tasks/index.js check-alerts'
-  #   environment:
-  #     APP_TYPE: 'scheduled-task'
-  #     CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     EXPRESS_SESSION_SECRET: 'hyperdx is cool 👋'
-  #     FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT} # need to be localhost (CORS)
-  #     HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
-  #     HDX_NODE_BETA_MODE: 0
-  #     HDX_NODE_CONSOLE_CAPTURE: 1
-  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     MINER_API_URL: 'http://miner:5123'
-  #     MONGO_URI: 'mongodb://db:27017/hyperdx'
-  #     NODE_ENV: development
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
-  #     OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
-  #     REDIS_URL: redis://redis:6379
-  #   restart: always
-  #   networks:
-  #     - internal
-  #   depends_on:
-  #     - ch-server
-  #     - db
-  #     - redis
+  task-check-alerts:
+    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
+    entrypoint: 'node'
+    command: '/app/api/build/tasks/index.js check-alerts'
+    environment:
+      APP_TYPE: 'scheduled-task'
+      FRONTEND_URL: ${HYPERDX_APP_URL}:${HYPERDX_APP_PORT}
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      MINER_API_URL: 'http://miner:5123'
+      MONGO_URI: 'mongodb://db:27017/hyperdx'
+      NODE_ENV: 'development' # so task will CronJob library
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
+      REDIS_URL: redis://redis:6379
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      - ch-server
+      - db
+      - redis
   app:
     image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
     ports:

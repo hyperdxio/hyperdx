@@ -26,6 +26,6 @@ export const IS_LOCAL_MODE = //true;
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 
 // Features in development
-export const IS_METRICS_ENABLED = false || IS_DEV;
+export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
-export const IS_SESSIONS_ENABLED = false || IS_DEV;
+export const IS_SESSIONS_ENABLED = true;
