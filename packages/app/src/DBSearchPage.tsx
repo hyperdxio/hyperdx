@@ -19,6 +19,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -62,7 +63,10 @@ import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_DEV } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  useAliasMapFromChartConfig,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
 import {
@@ -899,6 +903,17 @@ function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
+  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
+
+  const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
+    name: key,
+    sql: {
+      sql: value,
+      params: {},
+    },
+    isSubquery: false,
+  }));
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {IS_DEV && isAlertModalOpen && (
@@ -1192,6 +1207,7 @@ function DBSearchPage() {
                     ...chartConfig,
                     orderBy: undefined,
                     dateRange: searchedTimeRange,
+                    with: aliasWith,
                   }}
                   {...searchFilters}
                 />
@@ -1214,6 +1230,7 @@ function DBSearchPage() {
                         dateRange: searchedTimeRange,
                         displayType: DisplayType.Heatmap,
                         granularity: 'auto',
+                        with: aliasWith,
                       }}
                       enabled={isReady}
                       onFilter={(xMin, xMax, yMin, yMax) => {
@@ -1273,6 +1290,7 @@ function DBSearchPage() {
                               granularity: 'auto',
                               dateRange: searchedTimeRange,
                               displayType: DisplayType.StackedBar,
+                              with: aliasWith,
                             }}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                           />
@@ -1300,6 +1318,7 @@ function DBSearchPage() {
                             granularity: 'auto',
                             dateRange: searchedTimeRange,
                             displayType: DisplayType.StackedBar,
+                            with: aliasWith,
                           }}
                           enabled={isReady}
                           showDisplaySwitcher={false}

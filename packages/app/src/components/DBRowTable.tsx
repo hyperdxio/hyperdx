@@ -5,6 +5,7 @@ import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  chSqlToAliasMap,
   ClickHouseQueryError,
   convertCHDataTypeToJSType,
   extractColumnReference,
@@ -838,7 +839,9 @@ export function DBSqlRowTable({
     });
   }, [data, objectTypeColumns]);
 
-  const getRowWhere = useRowWhere({ meta: data?.meta });
+  const aliasMap = chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} });
+
+  const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
   const _onRowExpandClick = useCallback(
     (row: Record<string, any>) => {

@@ -531,7 +531,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       throw new Error('Unsupported column type for prefix match');
     }
 
-    throw new Error(`Column not found: ${field}`);
+    // It might be an alias, let's just try the column
+    // TODO: Verify aliases
+    return {
+      found: true,
+      columnExpression: field,
+      columnType: 'Unknown',
+    };
+    // throw new Error(`Column not found: ${field}`);
   }
 
   async getColumnForField(field: string) {
