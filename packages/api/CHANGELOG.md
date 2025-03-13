@@ -1,5 +1,26 @@
 # @hyperdx/api
 
+## 2.0.0-beta.11
+
+### Minor Changes
+
+- 759da7a: Support multiple OTEL metric types in source configuration setup.
+
+### Patch Changes
+
+- 99b60d5: Fixed sum metric query to pass integration test case from v1.
+- cd0e4fd: fix: correct handling of gauge metrics in renderChartConfig
+- Updated dependencies [8acc725]
+- Updated dependencies [9c5c239]
+- Updated dependencies [c50c42d]
+- Updated dependencies [759da7a]
+- Updated dependencies [e80630c]
+- Updated dependencies [29e8f37]
+- Updated dependencies [99b60d5]
+- Updated dependencies [57a6bc3]
+- Updated dependencies [cd0e4fd]
+  - @hyperdx/common-utils@0.2.0-beta.0
+
 ## 2.0.0-beta.10
 
 ### Patch Changes
