@@ -1,5 +1,36 @@
 # @hyperdx/app
 
+## 2.0.0-beta.12
+
+### Patch Changes
+
+- fix: use quote for aliases for sql compatibility
+- Updated dependencies
+  - @hyperdx/common-utils@0.2.0-beta.1
+
+## 2.0.0-beta.11
+
+### Minor Changes
+
+- 759da7a: Support multiple OTEL metric types in source configuration setup.
+- 57a6bc3: feat: BETA metrics support (sum + gauge)
+
+### Patch Changes
+
+- ab617c1: feat: support multiseries metrics chart
+- 4514f2c: Remove connection health hook - too noisy
+- cd0e4fd: fix: correct handling of gauge metrics in renderChartConfig
+- Updated dependencies [8acc725]
+- Updated dependencies [9c5c239]
+- Updated dependencies [c50c42d]
+- Updated dependencies [759da7a]
+- Updated dependencies [e80630c]
+- Updated dependencies [29e8f37]
+- Updated dependencies [99b60d5]
+- Updated dependencies [57a6bc3]
+- Updated dependencies [cd0e4fd]
+  - @hyperdx/common-utils@0.2.0-beta.0
+
 ## 2.0.0-beta.10
 
 ### Patch Changes
