@@ -17,7 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertState, MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -168,7 +168,9 @@ const Tile = forwardRef(
     useEffect(() => {
       if (source != null) {
         // TODO: will need to update this when we allow for multiple metrics per chart
-        const metricType = (chart.config.select as Array<any>)[0].metricType;
+        const firstSelect = chart.config.select[0];
+        const metricType =
+          typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
         const tableName = getMetricTableName(source, metricType);
         if (source.connection) {
           setQueriedConfig({
