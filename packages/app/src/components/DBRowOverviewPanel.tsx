@@ -1,6 +1,6 @@
 import { useCallback, useContext, useMemo } from 'react';
 import { isString, pickBy } from 'lodash';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
 import { getEventBody } from '@/source';
@@ -25,6 +25,10 @@ export function RowOverviewPanel({
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 
+  const eventAttributesExpr =
+    source.eventAttributesExpression ??
+    (source.kind === SourceKind.Log ? 'LogAttributes' : 'SpanAttributes');
+
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
     if (!firstRow) {
@@ -35,17 +39,12 @@ export function RowOverviewPanel({
 
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
   const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
-
   const dataAttributes =
-    source.kind === 'log'
-      ? firstRow?.['LogAttributes'] &&
-        Object.keys(firstRow['LogAttributes']).length > 0
-        ? { LogAttributes: firstRow['LogAttributes'] }
-        : {}
-      : firstRow?.['SpanAttributes'] &&
-          Object.keys(firstRow['SpanAttributes']).length > 0
-        ? { SpanAttributes: firstRow['SpanAttributes'] }
-        : {};
+    eventAttributesExpr &&
+    firstRow?.[eventAttributesExpr] &&
+    Object.keys(firstRow[eventAttributesExpr]).length > 0
+      ? { [eventAttributesExpr]: firstRow[eventAttributesExpr] }
+      : {};
 
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
@@ -61,23 +60,22 @@ export function RowOverviewPanel({
 
   const isHttpRequest = useMemo(() => {
     const attributes =
-      dataAttributes?.LogAttributes || dataAttributes?.SpanAttributes;
+      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
     return attributes?.['http.url'] != null;
-  }, [dataAttributes]);
+  }, [dataAttributes, eventAttributesExpr]);
 
   const filteredEventAttributes = useMemo(() => {
     const attributes =
-      dataAttributes?.LogAttributes || dataAttributes?.SpanAttributes;
+      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
     if (isHttpRequest) {
       return {
-        [dataAttributes?.LogAttributes ? 'LogAttributes' : 'SpanAttributes']:
-          pickBy(attributes, (value, key) => {
-            return !key.startsWith('http.');
-          }),
+        [eventAttributesExpr]: pickBy(attributes, (value, key) => {
+          return !key.startsWith('http.');
+        }),
       };
     }
     return dataAttributes;
-  }, [dataAttributes, isHttpRequest]);
+  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
 
   const exceptionValues = useMemo(() => {
     const parsedEvents =
