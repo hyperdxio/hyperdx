@@ -1,5 +1,4 @@
 import React from 'react';
-import { MantineProvider } from '@mantine/core';
 import {
   act,
   fireEvent,
@@ -29,10 +28,6 @@ jest.mock('@/utils', () => ({
     return result;
   }),
 }));
-
-const renderWithMantine = (ui: React.ReactElement) => {
-  return render(<MantineProvider>{ui}</MantineProvider>);
-};
 
 describe('DBNumberChart', () => {
   const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;

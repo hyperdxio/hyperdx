@@ -45,11 +45,11 @@
     "ts-node": "^10.8.1",
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
-    "tsup": "^8.3.5",
+    "tsup": "^8.4.0",
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "dev": "tsup --watch",
+    "dev": "nodemon --watch ./src --ext ts --exec \"tsup\"",
     "build": "tsup",
     "ci:build": "tsup",
     "lint": "eslint --quiet . --ext .ts",
