@@ -4,7 +4,7 @@ module.exports = {
   plugins: ['simple-import-sort', '@typescript-eslint', 'prettier'],
   parserOptions: {
     tsconfigRootDir: __dirname,
-    project: ['./tsconfig.json'],
+    project: ['./tsconfig.json', './tsconfig.test.json'],
   },
   extends: [
     'next',
