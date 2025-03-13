@@ -731,10 +731,9 @@ function renderLimit(
   return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
 }
 
-// CTE (Common Table Expressions) isn't exported at this time. It's only used internally
+// includedDataInterval isn't exported at this time. It's only used internally
 // for metric SQL generation.
 type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
-  with?: { name: string; sql: ChSql }[];
   includedDataInterval?: string;
 };
 
@@ -746,7 +745,13 @@ function renderWith(
   if (withClauses) {
     return concatChSql(
       ',',
-      withClauses.map(clause => chSql`${clause.name} AS (${clause.sql})`),
+      withClauses.map(clause => {
+        if (clause.isSubquery === false) {
+          return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
+        }
+        // Can not use identifier here
+        return chSql`${clause.name} AS (${clause.sql})`;
+      }),
     );
   }
 
@@ -1101,7 +1106,7 @@ export async function renderChartConfig(
   const where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
-  const fill = renderFill(chartConfig);
+  //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
 
   return concatChSql(' ', [
@@ -1111,7 +1116,7 @@ export async function renderChartConfig(
     chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
-    chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
+    //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
   ]);
 }
