@@ -610,7 +610,7 @@ export function formatAttributeClause(
  */
 export function getMetricTableName(
   source: TSource,
-  metricType?: MetricsDataType,
+  metricType?: string,
 ): string | undefined {
   return metricType == null
     ? source.from.tableName
