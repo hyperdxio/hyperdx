@@ -446,28 +446,32 @@ export function chSqlToAliasMap(
     return aliasMap;
   }
 
-  const sql = parameterizedQueryToSql(chSql);
-  const parser = new SQLParser.Parser();
-  const ast = parser.astify(sql, {
-    database: 'Postgresql',
-    parseOptions: { includeLocations: true },
-  }) as SQLParser.Select;
+  try {
+    const sql = parameterizedQueryToSql(chSql);
+    const parser = new SQLParser.Parser();
+    const ast = parser.astify(sql, {
+      database: 'Postgresql',
+      parseOptions: { includeLocations: true },
+    }) as SQLParser.Select;
 
-  if (ast.columns != null) {
-    ast.columns.forEach(column => {
-      if (column.as != null) {
-        if (column.type === 'expr' && column.expr.type === 'column_ref') {
-          aliasMap[column.as] = column.expr.column.expr.value;
-        } else if (column.expr.loc != null) {
-          aliasMap[column.as] = sql.slice(
-            column.expr.loc.start.offset,
-            column.expr.loc.end.offset,
-          );
-        } else {
-          console.error('Unknown alias column type', column);
+    if (ast.columns != null) {
+      ast.columns.forEach(column => {
+        if (column.as != null) {
+          if (column.type === 'expr' && column.expr.type === 'column_ref') {
+            aliasMap[column.as] = column.expr.column.expr.value;
+          } else if (column.expr.loc != null) {
+            aliasMap[column.as] = sql.slice(
+              column.expr.loc.start.offset,
+              column.expr.loc.end.offset,
+            );
+          } else {
+            console.error('Unknown alias column type', column);
+          }
         }
-      }
-    });
+      });
+    }
+  } catch (e) {
+    console.error('Error parsing alias map', e, 'for query', chSql);
   }
 
   return aliasMap;
