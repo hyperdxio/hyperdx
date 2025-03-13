@@ -25,9 +25,7 @@ export function RowOverviewPanel({
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 
-  const eventAttributesExpr =
-    source.eventAttributesExpression ??
-    (source.kind === SourceKind.Log ? 'LogAttributes' : 'SpanAttributes');
+  const eventAttributesExpr = source.eventAttributesExpression;
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
@@ -65,16 +63,17 @@ export function RowOverviewPanel({
   }, [dataAttributes, eventAttributesExpr]);
 
   const filteredEventAttributes = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    if (isHttpRequest) {
-      return {
-        [eventAttributesExpr]: pickBy(attributes, (value, key) => {
-          return !key.startsWith('http.');
-        }),
-      };
-    }
-    return dataAttributes;
+    if (!eventAttributesExpr) return dataAttributes;
+
+    const attributes = dataAttributes?.[eventAttributesExpr];
+    return isHttpRequest && attributes
+      ? {
+          [eventAttributesExpr]: pickBy(
+            attributes,
+            (_, key) => !key.startsWith('http.'),
+          ),
+        }
+      : dataAttributes;
   }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
 
   const exceptionValues = useMemo(() => {
