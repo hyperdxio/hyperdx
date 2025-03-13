@@ -41,7 +41,7 @@ import {
   AppNavLink,
   AppNavUserMenu,
 } from './AppNav.components';
-import { IS_DEV, IS_LOCAL_MODE } from './config';
+import { IS_LOCAL_MODE } from './config';
 import Icon from './Icon';
 import Logo from './Logo';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
@@ -690,7 +690,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 href="/chart"
                 iconName="bi-graph-up"
               />
-              {IS_DEV && (
+              {!IS_LOCAL_MODE && (
                 <AppNavLink label="Alerts" href="/alerts" iconName="bi-bell" />
               )}
               <AppNavLink
