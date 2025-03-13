@@ -494,7 +494,7 @@ export const renderAlertTemplate = async ({
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '',
+      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
@@ -509,7 +509,6 @@ export const renderAlertTemplate = async ({
     let truncatedResults = '';
     try {
       const query = await renderChartConfig(chartConfig, metadata);
-
       const raw = await clickhouseClient
         .query<'CSV'>({
           query: query.sql,
