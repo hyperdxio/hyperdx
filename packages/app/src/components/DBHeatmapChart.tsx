@@ -268,7 +268,7 @@ type HeatmapChartConfig = {
   numberFormat?: ChartConfigWithDateRange['numberFormat'];
   filters?: ChartConfigWithDateRange['filters'];
   connection: string;
-  with: ChartConfigWithDateRange['with'];
+  with?: ChartConfigWithDateRange['with'];
 };
 
 function HeatmapContainer({
