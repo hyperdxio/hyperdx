@@ -422,7 +422,7 @@ export default function EditTimeChartForm({
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
-    setQueriedConfig(config => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
       if (config == null) {
         return config;
       }

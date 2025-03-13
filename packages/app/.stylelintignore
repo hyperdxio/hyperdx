@@ -1,3 +1,4 @@
 .next
 .storybook
 node_modules
+coverage
