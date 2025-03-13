@@ -93,6 +93,7 @@ services:
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
+      NODE_ENV: 'development' # so task will CronJob library
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-task-check-alerts'
       REDIS_URL: redis://redis:6379
