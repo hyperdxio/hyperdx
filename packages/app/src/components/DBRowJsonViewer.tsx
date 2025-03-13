@@ -152,9 +152,17 @@ export function DBRowJsonViewer({ data }: { data: any }) {
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
+      const fieldPath = mergePath(keyPath);
 
-      // only strings for now
-      if (onPropertyAddClick != null && typeof value === 'string' && value) {
+      // Add to Filters action (strings only)
+      // FIXME: TOTAL HACK To disallow adding timestamp to filters
+      if (
+        onPropertyAddClick != null &&
+        typeof value === 'string' &&
+        value &&
+        fieldPath != 'Timestamp' &&
+        fieldPath != 'TimestampTime'
+      ) {
         actions.push({
           key: 'add-to-search',
           label: (
@@ -165,10 +173,10 @@ export function DBRowJsonViewer({ data }: { data: any }) {
           ),
           title: 'Add to Filters',
           onClick: () => {
-            onPropertyAddClick(mergePath(keyPath), value);
+            onPropertyAddClick(fieldPath, value);
             notifications.show({
               color: 'green',
-              message: `Added "${mergePath(keyPath)} = ${value}" to filters`,
+              message: `Added "${fieldPath} = ${value}" to filters`,
             });
           },
         });
@@ -185,11 +193,17 @@ export function DBRowJsonViewer({ data }: { data: any }) {
           ),
           title: 'Search for this value only',
           onClick: () => {
+            let defaultWhere = `${fieldPath} = ${
+              typeof value === 'string' ? `'${value}'` : value
+            }`;
+
+            // FIXME: TOTAL HACK
+            if (fieldPath == 'Timestamp' || fieldPath == 'TimestampTime') {
+              defaultWhere = `${fieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+            }
             router.push(
               generateSearchUrl({
-                where: `${mergePath(keyPath)} = ${
-                  typeof value === 'string' ? `'${value}'` : value
-                }`,
+                where: defaultWhere,
                 whereLanguage: 'sql',
               }),
             );
@@ -207,7 +221,7 @@ export function DBRowJsonViewer({ data }: { data: any }) {
             router.push(
               generateChartUrl({
                 aggFn: 'avg',
-                field: `${keyPath.join('.')}`,
+                field: fieldPath,
                 groupBy: [],
               }),
             );
@@ -215,9 +229,9 @@ export function DBRowJsonViewer({ data }: { data: any }) {
         });
       }
 
+      // Toggle column action (non-object values)
       if (toggleColumn && typeof value !== 'object') {
-        const keyPathString = mergePath(keyPath);
-        const isIncluded = displayedColumns?.includes(keyPathString);
+        const isIncluded = displayedColumns?.includes(fieldPath);
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? (
@@ -232,13 +246,13 @@ export function DBRowJsonViewer({ data }: { data: any }) {
             </>
           ),
           title: isIncluded
-            ? `Remove ${keyPathString} column from results table`
-            : `Add ${keyPathString} column to results table`,
+            ? `Remove ${fieldPath} column from results table`
+            : `Add ${fieldPath} column to results table`,
           onClick: () => {
-            toggleColumn(keyPathString);
+            toggleColumn(fieldPath);
             notifications.show({
               color: 'green',
-              message: `Column "${keyPathString}" ${
+              message: `Column "${fieldPath}" ${
                 isIncluded ? 'removed from' : 'added to'
               } results table`,
             });

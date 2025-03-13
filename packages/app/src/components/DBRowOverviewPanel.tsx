@@ -1,6 +1,6 @@
 import { useCallback, useContext, useMemo } from 'react';
 import { isString, pickBy } from 'lodash';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
 import { getEventBody } from '@/source';
@@ -25,6 +25,8 @@ export function RowOverviewPanel({
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 
+  const eventAttributesExpr = source.eventAttributesExpression;
+
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
     if (!firstRow) {
@@ -35,6 +37,12 @@ export function RowOverviewPanel({
 
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
   const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
+  const dataAttributes =
+    eventAttributesExpr &&
+    firstRow?.[eventAttributesExpr] &&
+    Object.keys(firstRow[eventAttributesExpr]).length > 0
+      ? { [eventAttributesExpr]: firstRow[eventAttributesExpr] }
+      : {};
 
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
@@ -49,17 +57,24 @@ export function RowOverviewPanel({
   );
 
   const isHttpRequest = useMemo(() => {
-    return eventAttributes?.['http.url'] != null;
-  }, [eventAttributes]);
+    const attributes =
+      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
+    return attributes?.['http.url'] != null;
+  }, [dataAttributes, eventAttributesExpr]);
 
   const filteredEventAttributes = useMemo(() => {
-    if (isHttpRequest) {
-      return pickBy(eventAttributes, (value, key) => {
-        return !key.startsWith('http.');
-      });
-    }
-    return eventAttributes;
-  }, [eventAttributes, isHttpRequest]);
+    if (!eventAttributesExpr) return dataAttributes;
+
+    const attributes = dataAttributes?.[eventAttributesExpr];
+    return isHttpRequest && attributes
+      ? {
+          [eventAttributesExpr]: pickBy(
+            attributes,
+            (_, key) => !key.startsWith('http.'),
+          ),
+        }
+      : dataAttributes;
+  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
 
   const exceptionValues = useMemo(() => {
     const parsedEvents =
