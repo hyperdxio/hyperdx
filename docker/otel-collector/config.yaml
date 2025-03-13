@@ -58,7 +58,7 @@ exporters:
     username: ${env:CLICKHOUSE_USER}
     password: ${env:CLICKHOUSE_PASSWORD}
     ttl: 72h
-    logs_table_name: rrweb
+    logs_table_name: hyperdx_sessions
     timeout: 5s
     retry_on_failure:
       enabled: true
