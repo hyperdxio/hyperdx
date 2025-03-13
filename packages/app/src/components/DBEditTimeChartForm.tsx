@@ -384,7 +384,7 @@ export default function EditTimeChartForm({
       setChartConfig(form);
       if (tableSource != null) {
         setQueriedConfig({
-          ...form,
+          ...structuredClone(form),
           from: tableSource.from,
           timestampValueExpression: tableSource.timestampValueExpression,
           dateRange,
