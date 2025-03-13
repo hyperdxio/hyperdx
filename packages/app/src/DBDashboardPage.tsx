@@ -17,7 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { AlertState, MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
