@@ -1106,7 +1106,7 @@ export async function renderChartConfig(
 
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
-    chSql`SELECT ${select?.sql ? select : '*'}`,
+    chSql`SELECT ${select}`,
     chSql`FROM ${from}`,
     chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
