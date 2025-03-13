@@ -471,6 +471,7 @@ export const RawLogTable = memo(
             onScroll?.(scrollTop);
           }
         }}
+        data-testid="search-table-container"
         ref={tableContainerRef}
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}

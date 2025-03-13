@@ -178,6 +178,7 @@ export const TimePicker = ({
     >
       <Popover.Target>
         <TextInput
+          data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
               <Icon

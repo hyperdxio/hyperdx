@@ -188,6 +188,7 @@ export const Table = ({
   return (
     <div
       className="overflow-auto h-100 fs-8 bg-inherit"
+      data-testid="search-table-container"
       ref={tableContainerRef}
     >
       <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>

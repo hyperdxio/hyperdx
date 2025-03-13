@@ -1140,6 +1140,7 @@ function DBSearchPage() {
           <Button
             variant="outline"
             type="submit"
+            data-testid="search-submit-button"
             color={formState.isDirty ? 'green' : 'gray.4'}
           >
             <i className="bi bi-play"></i>
@@ -1341,6 +1342,7 @@ function DBSearchPage() {
                         size="compact-xs"
                         variant="outline"
                         onClick={handleResumeLiveTail}
+                        data-testid="resume-live-tail-button"
                       >
                         <i className="bi text-success bi-lightning-charge-fill me-2" />
                         Resume Live Tail
