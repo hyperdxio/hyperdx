@@ -158,4 +158,29 @@ describe('renderChartConfig', () => {
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
   });
+
+  it('should use * for empty select', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      connection: '',
+      displayType: DisplayType.Search,
+      dateRange: [
+        new Date('2025-03-13T04:24:00.000Z'),
+        new Date('2025-03-13T04:25:00.000Z'),
+      ],
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: '',
+      where: '',
+      whereLanguage: 'lucene',
+      implicitColumnExpression: 'Body',
+      timestampValueExpression: 'TimestampTime',
+      orderBy: '',
+      limit: { limit: 5, offset: 0 },
+    };
+
+    const generatedSql = await renderChartConfig(config, mockMetadata);
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toEqual(
+      'SELECT * FROM default.otel_logs WHERE (TimestampTime >= fromUnixTimestamp64Milli(1741839840000) AND TimestampTime <= fromUnixTimestamp64Milli(1741839900000)) LIMIT 5 OFFSET 0',
+    );
+  });
 });

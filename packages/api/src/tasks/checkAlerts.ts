@@ -494,7 +494,7 @@ export const renderAlertTemplate = async ({
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select ?? source.defaultTableSelectExpression,
+      select: savedSearch.select || source.defaultTableSelectExpression || '*',
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
