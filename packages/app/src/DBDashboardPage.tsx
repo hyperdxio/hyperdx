@@ -927,44 +927,53 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Flex>
       <Box mt="sm">
         {dashboard != null && dashboard.tiles != null ? (
-          <ReactGridLayout
-            layout={layout}
-            containerPadding={[0, 0]}
-            onLayoutChange={newLayout => {
-              // compare x, y, h, w between newLayout and layout to see if anything has changed
-              // if so, update the dashboard
-              // this will prevent spurious updates to the dashboard,
-              // that messes with router/URL state due to
-              // qparam being used to store dashboard state
-              // also it reduced network requests
-              let hasDiff = false;
-              if (newLayout.length !== layout.length) {
-                hasDiff = true;
-              } else {
-                for (let i = 0; i < newLayout.length; i++) {
-                  const curr = newLayout[i];
-                  const oldLayout = layout.find(l => l.i === curr.i);
-                  if (
-                    oldLayout?.x !== curr.x ||
-                    oldLayout?.y !== curr.y ||
-                    oldLayout?.h !== curr.h ||
-                    oldLayout?.w !== curr.w
-                  ) {
-                    hasDiff = true;
-                    break;
+          <ErrorBoundary
+            onError={console.error}
+            fallback={
+              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                An error occurred while rendering the dashboard.
+              </div>
+            }
+          >
+            <ReactGridLayout
+              layout={layout}
+              containerPadding={[0, 0]}
+              onLayoutChange={newLayout => {
+                // compare x, y, h, w between newLayout and layout to see if anything has changed
+                // if so, update the dashboard
+                // this will prevent spurious updates to the dashboard,
+                // that messes with router/URL state due to
+                // qparam being used to store dashboard state
+                // also it reduced network requests
+                let hasDiff = false;
+                if (newLayout.length !== layout.length) {
+                  hasDiff = true;
+                } else {
+                  for (let i = 0; i < newLayout.length; i++) {
+                    const curr = newLayout[i];
+                    const oldLayout = layout.find(l => l.i === curr.i);
+                    if (
+                      oldLayout?.x !== curr.x ||
+                      oldLayout?.y !== curr.y ||
+                      oldLayout?.h !== curr.h ||
+                      oldLayout?.w !== curr.w
+                    ) {
+                      hasDiff = true;
+                      break;
+                    }
                   }
                 }
-              }
 
-              if (hasDiff) {
-                setDashboard(produce(dashboard, updateLayout(newLayout)));
-              }
-            }}
-            cols={24}
-            rowHeight={32}
-          >
-            {tiles}
-          </ReactGridLayout>
+                if (hasDiff) {
+                  setDashboard(produce(dashboard, updateLayout(newLayout)));
+                }
+              }}
+              cols={24}
+              rowHeight={32}
+            >
+              {tiles}
+            </ReactGridLayout>
+          </ErrorBoundary>
         ) : null}
       </Box>
       <Button
