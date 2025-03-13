@@ -264,7 +264,7 @@ function SaveSearchModal({
           },
           {
             onSuccess: savedSearch => {
-              router.push(`/search/${savedSearch.id}`);
+              router.push(`/search/${savedSearch.id}${window.location.search}`);
               onClose();
             },
           },
