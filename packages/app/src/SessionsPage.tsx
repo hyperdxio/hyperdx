@@ -537,7 +537,7 @@ function SessionSetupInstructions() {
           section, and select <strong>Session</strong> as the source type.
         </Text>
         <Text c="gray" fw={500} mt="sm">
-          2. Choose the <strong>rrweb</strong> table
+          2. Choose the <strong>hyperdx_sessions</strong> table
         </Text>
         <Text c="dimmed" size="xs">
           Select the <strong>rrweb</strong> table from the dropdown, and select
