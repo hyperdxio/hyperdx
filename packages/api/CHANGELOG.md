@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.0.0-beta.13
+
+### Patch Changes
+
+- 5db2767: Fixed CI linting and UI release task.
+- Updated dependencies [a9dfa14]
+- Updated dependencies [5db2767]
+  - @hyperdx/common-utils@0.2.0-beta.2
+
 ## 2.0.0-beta.12
 
 ### Patch Changes
