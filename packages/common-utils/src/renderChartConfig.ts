@@ -7,6 +7,7 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
+  ChartConfigSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   MetricsDataType,
@@ -416,7 +417,7 @@ async function timeFilterExpr({
   connectionId: string;
   databaseName: string;
   tableName: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
   const valueExpressions = timestampValueExpression.split(',');
@@ -499,11 +500,8 @@ async function renderSelect(
   );
 }
 
-function renderFrom({
-  from,
-}: {
-  from: ChartConfigWithDateRange['from'];
-}): ChSql {
+function renderFrom(chartConfig: ChartConfigWithDateRange): ChSql {
+  const from = chartConfig.from;
   return concatChSql(
     '.',
     chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
@@ -528,7 +526,7 @@ async function renderWhereExpression({
   from: ChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
   connectionId: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
 }): Promise<ChSql> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -737,21 +735,49 @@ type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
 };
 
-function renderWith(
+async function renderWith(
   chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-): ChSql | undefined {
+): Promise<ChSql | undefined> {
   const { with: withClauses } = chartConfig;
   if (withClauses) {
     return concatChSql(
       ',',
-      withClauses.map(clause => {
-        if (clause.isSubquery === false) {
-          return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
-        }
-        // Can not use identifier here
-        return chSql`${clause.name} AS (${clause.sql})`;
-      }),
+      await Promise.all(
+        withClauses.map(async clause => {
+          // The sql logic can be specified as either a string, ChSql instance or a
+          // chart config object.
+          let resolvedSql: ChSql;
+          if (typeof clause.sql === 'string') {
+            resolvedSql = chSql`${{ Identifier: clause.sql }}`;
+          } else if (clause.sql && 'sql' in clause.sql) {
+            resolvedSql = clause.sql;
+          } else if (
+            clause.sql &&
+            ('select' in clause.sql || 'connection' in clause.sql)
+          ) {
+            resolvedSql = await renderChartConfig(
+              {
+                ...clause.sql,
+                connection: chartConfig.connection,
+                timestampValueExpression:
+                  chartConfig.timestampValueExpression || '',
+              } as ChartConfigWithOptDateRangeEx,
+              metadata,
+            );
+          } else {
+            throw new Error(
+              `ChartConfig with clause is an unsupported type: ${clause.sql}`,
+            );
+          }
+
+          if (clause.isSubquery === false) {
+            return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
+          }
+          // Can not use identifier here
+          return chSql`${clause.name} AS (${resolvedSql})`;
+        }),
+      ),
     );
   }
 
@@ -1100,7 +1126,7 @@ export async function renderChartConfig(
       ? await translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 
-  const withClauses = renderWith(chartConfig, metadata);
+  const withClauses = await renderWith(chartConfig, metadata);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);

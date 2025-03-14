@@ -102,6 +102,12 @@ export const LimitSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
 });
+
+export const ChSqlSchema = z.object({
+  sql: z.string(),
+  params: z.record(z.string(), z.any()),
+});
+
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -119,10 +125,7 @@ export const SelectSQLStatementSchema = z.object({
     .array(
       z.object({
         name: z.string(),
-        sql: z.object({
-          sql: z.string(),
-          params: z.record(z.string(), z.any()),
-        }),
+        sql: z.lazy(() => ChSqlSchema.or(ChartConfigSchema)),
         // If true, it'll render as WITH ident AS (subquery)
         // If false, it'll be a "variable" ex. WITH (sql) AS ident
         // where sql can be any expression, ex. a constant string
