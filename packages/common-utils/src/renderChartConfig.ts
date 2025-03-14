@@ -7,9 +7,11 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
+  ChartConfig,
   ChartConfigSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  ChSqlSchema,
   MetricsDataType,
   SearchCondition,
   SearchConditionLanguage,
@@ -745,31 +747,41 @@ async function renderWith(
       ',',
       await Promise.all(
         withClauses.map(async clause => {
-          // The sql logic can be specified as either a string, ChSql instance or a
-          // chart config object.
-          let resolvedSql: ChSql;
-          if (typeof clause.sql === 'string') {
-            resolvedSql = chSql`${{ Identifier: clause.sql }}`;
-          } else if (clause.sql && 'sql' in clause.sql) {
-            resolvedSql = clause.sql;
-          } else if (
-            clause.sql &&
-            ('select' in clause.sql || 'connection' in clause.sql)
-          ) {
-            resolvedSql = await renderChartConfig(
-              {
-                ...clause.sql,
-                connection: chartConfig.connection,
-                timestampValueExpression:
-                  chartConfig.timestampValueExpression || '',
-              } as ChartConfigWithOptDateRangeEx,
-              metadata,
-            );
-          } else {
+          const {
+            sql,
+            chartConfig,
+          }: { sql?: ChSql; chartConfig?: ChartConfig } = clause;
+
+          // The sql logic can be specified as either a ChSql instance or a chart
+          // config object. Due to type erasure and the recursive nature of ChartConfig
+          // when using CTEs, we need to validate the types here to ensure junk did
+          // not make it through.
+          if (sql && chartConfig) {
             throw new Error(
-              `ChartConfig with clause is an unsupported type: ${clause.sql}`,
+              "cannot specify both 'sql' and 'chartConfig' in with clause",
             );
           }
+
+          if (!(sql || chartConfig)) {
+            throw new Error(
+              "must specify either 'sql' or 'chartConfig' in with clause",
+            );
+          }
+
+          if (sql && !ChSqlSchema.safeParse(sql).success) {
+            throw new Error('non-conforming sql object in CTE');
+          }
+
+          if (
+            chartConfig &&
+            !ChartConfigSchema.safeParse(chartConfig).success
+          ) {
+            throw new Error('non-conforming chartConfig object in CTE');
+          }
+
+          const resolvedSql = sql
+            ? sql
+            : await renderChartConfig(chartConfig, metadata);
 
           if (clause.isSubquery === false) {
             return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;

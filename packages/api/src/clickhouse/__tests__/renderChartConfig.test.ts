@@ -133,7 +133,7 @@ describe('renderChartConfig', () => {
           query_params: query.params,
           format: 'JSON',
         })
-        .then(res => res.json<any>());
+        .then(res => res.json() as any);
       expect(resp.data).toMatchSnapshot();
     });
 
