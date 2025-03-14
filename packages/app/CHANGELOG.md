@@ -1,5 +1,15 @@
 # @hyperdx/app
 
+## 2.0.0-beta.13
+
+### Patch Changes
+
+- a9dfa14: Added support to CTE rendering where you can now specify a CTE using a full chart config object instance. This CTE capability is then used to avoid the URI too long error for delta event queries.
+- 5db2767: Fixed CI linting and UI release task.
+- Updated dependencies [a9dfa14]
+- Updated dependencies [5db2767]
+  - @hyperdx/common-utils@0.2.0-beta.2
+
 ## 2.0.0-beta.12
 
 ### Patch Changes
