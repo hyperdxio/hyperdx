@@ -107,3 +107,7 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
       toFloat64OrNull(toString(Value))
     ),toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10"
 `;
+
+exports[`renderChartConfig should render a chart config CTE configuration correctly 1`] = `"WITH Parts AS (SELECT _part, _part_offset FROM default.some_table WHERE ((FieldA = 'test')) ORDER BY rand() DESC LIMIT 1000) SELECT * FROM Parts WHERE ((FieldA = 'test') AND (indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts)))) ORDER BY rand() DESC LIMIT 1000"`;
+
+exports[`renderChartConfig should render a string CTE configuration correctly 1`] = `"WITH TestCte AS (SELECT TimeUnix, Line FROM otel_logs) SELECT Line FROM TestCte"`;
