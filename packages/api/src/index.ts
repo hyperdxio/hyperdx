@@ -1,6 +1,6 @@
 import { getHyperDXMetricReader } from '@hyperdx/node-opentelemetry/build/src/metrics';
 import { HostMetrics } from '@opentelemetry/host-metrics';
-import { MeterProvider } from '@opentelemetry/sdk-metrics';
+import { MeterProvider, MetricReader } from '@opentelemetry/sdk-metrics';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
@@ -10,7 +10,8 @@ import logger from '@/utils/logger';
 
 // Start collecting host metrics
 const meterProvider = new MeterProvider({
-  readers: [getHyperDXMetricReader()],
+  // FIXME: missing selectCardinalityLimit property
+  readers: [getHyperDXMetricReader() as unknown as MetricReader],
 });
 const hostMetrics = new HostMetrics({ meterProvider });
 hostMetrics.start();
