@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
@@ -49,13 +50,18 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
   return [config];
 };
 
+interface AdditionalUseQueriedChartConfigOptions {
+  onError?: (error: Error | ClickHouseQueryError) => void;
+}
+
 // used for charting
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: Partial<UseQueryOptions<ResponseJSON<any>>>,
+  options?: Partial<UseQueryOptions<ResponseJSON<any>>> &
+    AdditionalUseQueriedChartConfigOptions,
 ) {
   const clickhouseClient = getClickhouseClient();
-  return useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
+  const query = useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
     queryFn: async ({ signal }) => {
       config = setChartSelectsAlias(config);
@@ -136,6 +142,10 @@ export function useQueriedChartConfig(
     refetchOnWindowFocus: false,
     ...options,
   });
+  useEffect(() => {
+    if (options?.onError && query.isError) options.onError(query.error);
+  }, [query.isError]);
+  return query;
 }
 
 export function useRenderedSqlChartConfig(

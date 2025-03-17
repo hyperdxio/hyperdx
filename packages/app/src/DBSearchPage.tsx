@@ -19,7 +19,6 @@ import {
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -31,9 +30,10 @@ import {
   Button,
   Card,
   Center,
+  Code,
   Flex,
+  Grid,
   Group,
-  Indicator,
   Modal,
   Paper,
   Stack,
@@ -87,6 +87,9 @@ import { usePrevious } from '@/utils';
 
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
+import { SQLPreview } from './components/ChartSQLPreview';
+import CodeMirror from '@uiw/react-codemirror';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 
 const SearchConfigSchema = z.object({
   select: z.string(),
@@ -124,14 +127,15 @@ function SearchTotalCount({
     granularity,
     limit: { limit: 100000 },
   };
-  const { data: totalCountData, isLoading } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      queryKey: [queryKeyPrefix, queriedConfig],
-      staleTime: 1000 * 60 * 5,
-      refetchOnWindowFocus: false,
-    },
-  );
+  const {
+    data: totalCountData,
+    isLoading,
+    isError,
+  } = useQueriedChartConfig(queriedConfig, {
+    queryKey: [queryKeyPrefix, queriedConfig],
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+  });
 
   const totalCount = useMemo(() => {
     return totalCountData?.data?.reduce(
@@ -144,10 +148,10 @@ function SearchTotalCount({
     <Text size="xs" c="gray.4" mb={4}>
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
-      ) : totalCount !== null ? (
+      ) : totalCount !== null && !isError ? (
         `${totalCount} Results`
       ) : (
-        'Results'
+        '0 Results'
       )}
     </Text>
   );
@@ -705,6 +709,14 @@ function DBSearchPage() {
   const { data: chartConfig, isLoading: isChartConfigLoading } =
     useSearchedConfigToChartConfig(searchedConfig);
 
+  const [_queryErrors, setQueryErrors] = useState<{
+    [key: string]: Error | ClickHouseQueryError;
+  }>({});
+  const { hasQueryError, queryError } = useMemo(() => {
+    const hasQueryError = Object.values(_queryErrors).length > 0;
+    const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
+    return { hasQueryError, queryError };
+  }, [_queryErrors]);
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(
@@ -719,7 +731,15 @@ function DBSearchPage() {
         });
       },
     )();
-  }, [handleSubmit, setSearchedConfig, displayedTimeInputValue, onSearch]);
+    // clear query errors
+    setQueryErrors({});
+  }, [
+    handleSubmit,
+    setSearchedConfig,
+    displayedTimeInputValue,
+    onSearch,
+    setQueryErrors,
+  ]);
 
   const queryReady =
     chartConfig?.from?.databaseName &&
@@ -884,9 +904,13 @@ function DBSearchPage() {
     ],
   );
 
-  const handleTableError = useCallback(() => {
-    setIsLive(false);
-  }, [setIsLive]);
+  const handleTableError = useCallback(
+    (error: Error | ClickHouseQueryError) => {
+      setIsLive(false);
+      setQueryErrors(prev => ({ ...prev, DBSqlRowTable: error }));
+    },
+    [setIsLive, setQueryErrors],
+  );
 
   const [isAlertModalOpen, { open: openAlertModal, close: closeAlertModal }] =
     useDisclosure();
@@ -1265,42 +1289,48 @@ function DBSearchPage() {
                 </Flex>
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {analysisMode === 'results' && (
-                  <Box
-                    style={{ height: 140, minHeight: 140 }}
-                    p="xs"
-                    pb="md"
-                    mb="md"
-                  >
-                    {chartConfig && (
-                      <>
-                        <Group justify="space-between" mb={4}>
-                          <SearchTotalCount
-                            config={{
-                              ...chartConfig,
-                              select: [
-                                {
-                                  aggFn: 'count',
-                                  aggCondition: '',
-                                  valueExpression: '',
-                                },
-                              ],
-                              orderBy: undefined,
-                              granularity: 'auto',
-                              dateRange: searchedTimeRange,
-                              displayType: DisplayType.StackedBar,
-                              with: aliasWith,
-                            }}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                          />
-                          <SearchNumRows
-                            config={{
-                              ...chartConfig,
-                              dateRange: searchedTimeRange,
-                            }}
-                            enabled={isReady}
-                          />
-                        </Group>
+                {analysisMode === 'results' && chartConfig && (
+                  <>
+                    <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
+                      <Group
+                        justify="space-between"
+                        mb={4}
+                        style={{ width: '100%' }}
+                      >
+                        <SearchTotalCount
+                          config={{
+                            ...chartConfig,
+                            select: [
+                              {
+                                aggFn: 'count',
+                                aggCondition: '',
+                                valueExpression: '',
+                              },
+                            ],
+                            orderBy: undefined,
+                            granularity: 'auto',
+                            dateRange: searchedTimeRange,
+                            displayType: DisplayType.StackedBar,
+                            with: aliasWith,
+                          }}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                        />
+                        <SearchNumRows
+                          config={{
+                            ...chartConfig,
+                            dateRange: searchedTimeRange,
+                          }}
+                          enabled={isReady}
+                        />
+                      </Group>
+                    </Box>
+                    {!hasQueryError && (
+                      <Box
+                        style={{ height: 120, minHeight: 120 }}
+                        p="xs"
+                        pb="md"
+                        mb="md"
+                      >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1326,42 +1356,130 @@ function DBSearchPage() {
                             onTimeRangeSelect(d1, d2);
                             setIsLive(false);
                           }}
+                          onError={error =>
+                            setQueryErrors(prev => ({
+                              ...prev,
+                              DBTimeChart: error,
+                            }))
+                          }
                         />
-                      </>
+                      </Box>
                     )}
-                  </Box>
+                  </>
                 )}
-                {shouldShowLiveModeHint && analysisMode === 'results' && (
-                  <div
-                    className="d-flex justify-content-center"
-                    style={{ height: 0 }}
-                  >
-                    <div style={{ position: 'relative', top: -20, zIndex: 2 }}>
-                      <Button
-                        size="compact-xs"
-                        variant="outline"
-                        onClick={handleResumeLiveTail}
-                      >
-                        <i className="bi text-success bi-lightning-charge-fill me-2" />
-                        Resume Live Tail
-                      </Button>
+                {hasQueryError && queryError ? (
+                  <>
+                    <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                      <Box mt="sm">
+                        <Text my="sm" size="sm">
+                          Error encountered for query with inputs:
+                        </Text>
+                        <Paper
+                          flex="auto"
+                          p={'sm'}
+                          shadow="none"
+                          radius="sm"
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <Grid>
+                            <Grid.Col span={2}>
+                              <Text>SELECT</Text>
+                            </Grid.Col>
+                            <Grid.Col span={10}>
+                              <SQLPreview
+                                data={`${chartConfig.select as string}`}
+                                formatData={false}
+                              />
+                            </Grid.Col>
+                            <Grid.Col span={2}>
+                              <Text>ORDER BY</Text>
+                            </Grid.Col>
+                            <Grid.Col span={10}>
+                              <SQLPreview
+                                data={`${chartConfig.orderBy}`}
+                                formatData={false}
+                              />
+                            </Grid.Col>
+                            <Grid.Col span={2}>
+                              {chartConfig.whereLanguage === 'lucene' ? (
+                                <Text>Searched For</Text>
+                              ) : (
+                                <Text>WHERE</Text>
+                              )}
+                            </Grid.Col>
+                            <Grid.Col span={10}>
+                              {chartConfig.whereLanguage === 'lucene' ? (
+                                <CodeMirror
+                                  indentWithTab={false}
+                                  value={chartConfig.where}
+                                  theme="dark"
+                                  basicSetup={{
+                                    lineNumbers: false,
+                                    foldGutter: false,
+                                    highlightActiveLine: false,
+                                    highlightActiveLineGutter: false,
+                                  }}
+                                  editable={false}
+                                />
+                              ) : (
+                                <SQLPreview data={`${chartConfig.where}`} />
+                              )}
+                            </Grid.Col>
+                          </Grid>
+                        </Paper>
+                      </Box>
+                      <Box mt="lg">
+                        <Text my="sm" size="sm">
+                          Error Message:
+                        </Text>
+                        <Code
+                          block
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                          }}
+                        >
+                          {queryError.message}
+                        </Code>
+                      </Box>
                     </div>
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    {shouldShowLiveModeHint && analysisMode === 'results' && (
+                      <div
+                        className="d-flex justify-content-center"
+                        style={{ height: 0 }}
+                      >
+                        <div
+                          style={{ position: 'relative', top: -20, zIndex: 2 }}
+                        >
+                          <Button
+                            size="compact-xs"
+                            variant="outline"
+                            onClick={handleResumeLiveTail}
+                          >
+                            <i className="bi text-success bi-lightning-charge-fill me-2" />
+                            Resume Live Tail
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {chartConfig &&
+                      dbSqlRowTableConfig &&
+                      analysisMode === 'results' && (
+                        <DBSqlRowTable
+                          config={dbSqlRowTableConfig}
+                          onRowExpandClick={onRowExpandClick}
+                          highlightedLineId={rowId ?? undefined}
+                          enabled={isReady}
+                          isLive={isLive ?? true}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onScroll={onTableScroll}
+                          onError={handleTableError}
+                        />
+                      )}
+                  </>
                 )}
-                {chartConfig &&
-                  dbSqlRowTableConfig &&
-                  analysisMode === 'results' && (
-                    <DBSqlRowTable
-                      config={dbSqlRowTableConfig}
-                      onRowExpandClick={onRowExpandClick}
-                      highlightedLineId={rowId ?? undefined}
-                      enabled={isReady}
-                      isLive={isLive ?? true}
-                      queryKeyPrefix={QUERY_KEY_PREFIX}
-                      onScroll={onTableScroll}
-                      onError={handleTableError}
-                    />
-                  )}
               </div>
             </div>
           </>

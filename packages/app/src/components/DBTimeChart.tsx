@@ -30,6 +30,7 @@ export function DBTimeChart({
   config,
   sourceId,
   onSettled,
+  onError,
   referenceLines,
   showDisplaySwitcher = true,
   setDisplayType,
@@ -41,6 +42,7 @@ export function DBTimeChart({
   config: ChartConfigWithDateRange;
   sourceId?: string;
   onSettled?: () => void;
+  onError?: (error: Error | ClickHouseQueryError) => void;
   showDisplaySwitcher?: boolean;
   setDisplayType?: (type: DisplayType) => void;
   referenceLines?: React.ReactNode;
@@ -67,6 +69,7 @@ export function DBTimeChart({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
+      onError,
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
