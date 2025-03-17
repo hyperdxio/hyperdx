@@ -96,7 +96,7 @@ router.get(
     }
   },
   createProxyMiddleware({
-    target: 'http://localhost:8123',
+    target: 'http://localhost:8123', // doesn't matter. it should be overridden by the router
     changeOrigin: true,
     pathFilter: (path, _req) => {
       // TODO: allow other methods
