@@ -1,9 +1,19 @@
+import { getHyperDXMetricReader } from '@hyperdx/node-opentelemetry/build/src/metrics';
+import { HostMetrics } from '@opentelemetry/host-metrics';
+import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import Server from '@/server';
 import { isOperationalError } from '@/utils/errors';
 import logger from '@/utils/logger';
+
+// Start collecting host metrics
+const meterProvider = new MeterProvider({
+  readers: [getHyperDXMetricReader()],
+});
+const hostMetrics = new HostMetrics({ meterProvider });
+hostMetrics.start();
 
 const server = new Server();
 

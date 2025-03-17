@@ -1,9 +1,9 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import * as config from '@/config';
+import { Connection } from '@/../../common-utils/dist/types';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { objectIdSchema } from '@/utils/zod';
@@ -82,76 +82,81 @@ router.get(
         return;
       }
 
-      const newPath = req.params[0];
-      const qparams = new URLSearchParams(req.query);
-      qparams.delete('hyperdx_connection_id');
-
-      return createProxyMiddleware({
-        target: connection.host,
-        changeOrigin: true,
-        pathFilter: (path, req) => {
-          // TODO: allow other methods
-          return req.method === 'GET';
-        },
-        pathRewrite: {
-          '^/clickhouse-proxy': '',
-        },
-        headers: {
-          ...(connection.username
-            ? { 'X-ClickHouse-User': connection.username }
-            : {}),
-          ...(connection.password
-            ? { 'X-ClickHouse-Key': connection.password }
-            : {}),
-        },
-        on: {
-          proxyReq: (proxyReq, req) => {
-            proxyReq.path = `/${newPath}?${qparams.toString()}`;
-          },
-          proxyRes: (proxyRes, req, res) => {
-            // since clickhouse v24, the cors headers * will be attached to the response by default
-            // which will cause the browser to block the response
-            if (req.headers['access-control-request-method']) {
-              proxyRes.headers['access-control-allow-methods'] =
-                req.headers['access-control-request-method'];
-            }
-
-            if (req.headers['access-control-request-headers']) {
-              proxyRes.headers['access-control-allow-headers'] =
-                req.headers['access-control-request-headers'];
-            }
-
-            if (req.headers.origin) {
-              proxyRes.headers['access-control-allow-origin'] =
-                req.headers.origin;
-              proxyRes.headers['access-control-allow-credentials'] = 'true';
-            }
-          },
-          error: (err, _req, _res) => {
-            console.error('Proxy error:', err);
-            res.writeHead(500, {
-              'Content-Type': 'application/json',
-            });
-            res.end(
-              JSON.stringify({
-                success: false,
-                error: err.message || 'Failed to connect to ClickHouse server',
-              }),
-            );
-          },
-        },
-        // ...(config.IS_DEV && {
-        //   logger: console,
-        // }),
-      })(req, res, next);
+      req._hdx_connection = {
+        host: connection.host,
+        id: connection.id,
+        name: connection.name,
+        password: connection.password,
+        username: connection.username,
+      };
+      next();
     } catch (e) {
-      console.error('Router error:', e);
-      res.status(500).json({
-        success: false,
-        error: e instanceof Error ? e.message : 'Internal server error',
-      });
+      console.error('Error fetching connection info:', e);
+      next(e);
     }
   },
+  createProxyMiddleware({
+    target: 'http://localhost:8123',
+    changeOrigin: true,
+    pathFilter: (path, _req) => {
+      // TODO: allow other methods
+      return _req.method === 'GET';
+    },
+    pathRewrite: {
+      '^/clickhouse-proxy': '',
+    },
+    router: _req => _req._hdx_connection?.host,
+    on: {
+      proxyReq: (proxyReq, _req) => {
+        const newPath = _req.params[0];
+        const qparams = new URLSearchParams(_req.query);
+        qparams.delete('hyperdx_connection_id');
+        if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
+          proxyReq.setHeader(
+            'X-ClickHouse-User',
+            _req._hdx_connection.username,
+          );
+          proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
+        }
+        proxyReq.path = `/${newPath}?${qparams.toString()}`;
+      },
+      proxyRes: (proxyRes, _req, res) => {
+        // since clickhouse v24, the cors headers * will be attached to the response by default
+        // which will cause the browser to block the response
+        if (_req.headers['access-control-request-method']) {
+          proxyRes.headers['access-control-allow-methods'] =
+            _req.headers['access-control-request-method'];
+        }
+
+        if (_req.headers['access-control-request-headers']) {
+          proxyRes.headers['access-control-allow-headers'] =
+            _req.headers['access-control-request-headers'];
+        }
+
+        if (_req.headers.origin) {
+          proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
+          proxyRes.headers['access-control-allow-credentials'] = 'true';
+        }
+      },
+      error: (err, _req, _res) => {
+        console.error('Proxy error:', err);
+        if (_res instanceof Response) {
+          (_res as Response).writeHead(500, {
+            'Content-Type': 'application/json',
+          });
+          _res.end(
+            JSON.stringify({
+              success: false,
+              error: err.message || 'Failed to connect to ClickHouse server',
+            }),
+          );
+        }
+      },
+    },
+    // ...(config.IS_DEV && {
+    //   logger: console,
+    // }),
+  }),
 );
 
 export default router;
