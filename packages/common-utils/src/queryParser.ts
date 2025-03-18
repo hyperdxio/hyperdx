@@ -362,9 +362,9 @@ export abstract class SQLSerializer implements Serializer {
       // to utilize the token bloom filter unless a prefix/sufix wildcard is specified
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
-          `(lower(??) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
+          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
-            column,
+            SqlString.raw(column ?? ''),
             `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
           ],
         );
@@ -381,8 +381,8 @@ export abstract class SQLSerializer implements Serializer {
               ]),
             ),
             // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(??) LIKE lower(?))`, [
-              column,
+            SqlString.format(`(lower(?) LIKE lower(?))`, [
+              SqlString.raw(column ?? ''),
               `%${term}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
@@ -557,7 +557,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       return {
         column:
           expressions.length > 1
-            ? `arrayStringConcat(${JSON.stringify(expressions)}, ';')`
+            ? `arrayStringConcat([${expressions.join(',')}], ';')`
             : this.implicitColumnExpression,
         columnJSON: undefined,
         propertyType: JSDataType.String,
