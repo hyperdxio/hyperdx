@@ -90,28 +90,11 @@ import { SearchConfig } from './types';
 import { SQLPreview } from './components/ChartSQLPreview';
 import CodeMirror from '@uiw/react-codemirror';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-
-const SearchConfigSchema = z.object({
-  select: z.string(),
-  source: z.string(),
-  where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']),
-  orderBy: z.string(),
-  filters: z.array(
-    z.union([
-      z.object({
-        type: z.literal('sql_ast'),
-        operator: z.enum(['=', '<', '>', '>=', '<=', '!=']),
-        left: z.string(),
-        right: z.string(),
-      }),
-      z.object({
-        type: z.enum(['sql', 'lucene']),
-        condition: z.string(),
-      }),
-    ]),
-  ),
-});
+import {
+  SearchConfigFromSchema,
+  SearchConfigSchema,
+  useSqlSuggestions,
+} from './hooks/useSqlSuggestions';
 
 function SearchTotalCount({
   config,
@@ -534,13 +517,14 @@ function DBSearchPage() {
     control,
     watch,
     setValue,
+    setFocus,
     reset,
     handleSubmit,
     getValues,
     formState,
     setError,
     resetField,
-  } = useForm<z.infer<typeof SearchConfigSchema>>({
+  } = useForm<SearchConfigFromSchema>({
     values: {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
@@ -709,6 +693,7 @@ function DBSearchPage() {
   const { data: chartConfig, isLoading: isChartConfigLoading } =
     useSearchedConfigToChartConfig(searchedConfig);
 
+  // query error handling
   const [_queryErrors, setQueryErrors] = useState<{
     [key: string]: Error | ClickHouseQueryError;
   }>({});
@@ -717,6 +702,13 @@ function DBSearchPage() {
     const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
+  // query suggestion if error
+  const suggestions = useSqlSuggestions({
+    setValue,
+    getValues,
+    hasQueryError,
+  });
+
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(
@@ -1370,6 +1362,25 @@ function DBSearchPage() {
                 {hasQueryError && queryError ? (
                   <>
                     <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                      {suggestions && suggestions.length > 0 && (
+                        <Box mb="xl">
+                          <Text size="lg">
+                            <b>Query Helper</b>
+                          </Text>
+                          <Grid>
+                            {suggestions!.map(s => (
+                              <>
+                                <Grid.Col span={10}>
+                                  <Text>{s.userMessage}</Text>
+                                </Grid.Col>
+                                <Grid.Col span={2}>
+                                  <Button onClick={s.action}>Accept</Button>
+                                </Grid.Col>
+                              </>
+                            ))}
+                          </Grid>
+                        </Box>
+                      )}
                       <Box mt="sm">
                         <Text my="sm" size="sm">
                           Error encountered for query with inputs:
@@ -1401,11 +1412,11 @@ function DBSearchPage() {
                               />
                             </Grid.Col>
                             <Grid.Col span={2}>
-                              {chartConfig.whereLanguage === 'lucene' ? (
-                                <Text>Searched For</Text>
-                              ) : (
-                                <Text>WHERE</Text>
-                              )}
+                              <Text>
+                                {chartConfig.whereLanguage === 'lucene'
+                                  ? 'Searched For'
+                                  : 'WHERE'}
+                              </Text>
                             </Grid.Col>
                             <Grid.Col span={10}>
                               {chartConfig.whereLanguage === 'lucene' ? (
