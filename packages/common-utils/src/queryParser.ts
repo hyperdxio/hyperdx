@@ -3,6 +3,7 @@ import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
+import { extractMultiColumnExpression } from '@/utils';
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -374,8 +375,8 @@ export abstract class SQLSerializer implements Serializer {
           const tokens = this.tokenizeTerm(term);
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
-              SqlString.format(`hasTokenCaseInsensitive(??, ?)`, [
-                column,
+              SqlString.format(`hasTokenCaseInsensitive(?, ?)`, [
+                SqlString.raw(column ?? ''),
                 token,
               ]),
             ),
@@ -387,8 +388,8 @@ export abstract class SQLSerializer implements Serializer {
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(??, ?))`,
-            [column, term],
+            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(?, ?))`,
+            [SqlString.raw(column ?? ''), term],
           );
         }
       }
@@ -549,8 +550,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         );
       }
 
+      const expressions = extractMultiColumnExpression(
+        this.implicitColumnExpression,
+      );
+
       return {
-        column: this.implicitColumnExpression,
+        column:
+          expressions.length > 1
+            ? `arrayStringConcat(${JSON.stringify(expressions)}, ';')`
+            : this.implicitColumnExpression,
         columnJSON: undefined,
         propertyType: JSDataType.String,
         found: true,
