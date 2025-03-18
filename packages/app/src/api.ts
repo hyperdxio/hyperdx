@@ -777,6 +777,14 @@ const api = {
       hdxServer(`team/members`).json(),
     );
   },
+  useSetTeamName() {
+    return useMutation<any, HTTPError, { name: string }>(async ({ name }) =>
+      hdxServer(`team/name`, {
+        method: 'PATCH',
+        json: { name },
+      }).json(),
+    );
+  },
   useTags() {
     return useQuery<{ data: string[] }, HTTPError>(`team/tags`, () =>
       hdxServer(`team/tags`).json<{ data: string[] }>(),

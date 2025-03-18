@@ -61,6 +61,10 @@ export function rotateTeamApiKey(teamId: ObjectId) {
   return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { new: true });
 }
 
+export function setTeamName(teamId: ObjectId, name: string) {
+  return Team.findByIdAndUpdate(teamId, { name }, { new: true });
+}
+
 export async function getTags(teamId: ObjectId) {
   const [dashboardTags, logViewTags] = await Promise.all([
     Dashboard.aggregate([
