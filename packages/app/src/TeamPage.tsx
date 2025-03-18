@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { FormEventHandler, useCallback, useState } from 'react';
 import Head from 'next/head';
 import {
   Button,
@@ -166,6 +166,7 @@ export default function TeamPage() {
   const deleteTeamInvitation = api.useDeleteTeamInvitation();
   const saveWebhook = api.useSaveWebhook();
   const deleteWebhook = api.useDeleteWebhook();
+  const setTeamName = api.useSetTeamName();
 
   const hasAdminAccess = true;
 
@@ -492,13 +493,43 @@ export default function TeamPage() {
     ],
   });
 
+  const [isEditingTeamName, setIsEditingTeamName] = useState(false);
+  const [editingTeamNameValue, setEditingTeamNameValue] = useState('');
+  const handleSetTeamName = useCallback<FormEventHandler<HTMLFormElement>>(
+    e => {
+      e.stopPropagation();
+      e.preventDefault();
+      setTeamName.mutate(
+        { name: editingTeamNameValue },
+        {
+          onError: e => {
+            notifications.show({
+              color: 'red',
+              message: 'Failed to update team name',
+            });
+          },
+          onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: 'Updated team name',
+            });
+            refetchTeam();
+            setIsEditingTeamName(false);
+            setEditingTeamNameValue(team.name);
+          },
+        },
+      );
+    },
+    [editingTeamNameValue, refetchTeam, setTeamName, team?.name],
+  );
+
   return (
     <div className="TeamPage">
       <Head>
         <title>My Team - HyperDX</title>
       </Head>
       <div className={styles.header}>
-        <div>{team?.name || 'My team'}</div>
+        <div>Team Settings</div>
       </div>
       <div>
         <Container>
@@ -509,6 +540,69 @@ export default function TeamPage() {
           )}
           {!isLoading && team != null && (
             <Stack my={20} gap="xl">
+              <div className={styles.sectionHeader}>Team Name</div>
+              <Card>
+                {isEditingTeamName ? (
+                  <form onSubmit={handleSetTeamName}>
+                    <Group gap="xs">
+                      <TextInput
+                        size="xs"
+                        value={editingTeamNameValue}
+                        onChange={e => {
+                          setEditingTeamNameValue(e.target.value);
+                        }}
+                        placeholder="My Team"
+                        miw={300}
+                        required
+                        min={1}
+                        max={100}
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === 'Escape') {
+                            setIsEditingTeamName(false);
+                          }
+                        }}
+                      />
+                      <MButton
+                        type="submit"
+                        size="xs"
+                        variant="light"
+                        color="green"
+                        loading={setTeamName.isLoading}
+                      >
+                        Save
+                      </MButton>
+                      <MButton
+                        type="button"
+                        size="xs"
+                        variant="default"
+                        disabled={setTeamName.isLoading}
+                        onClick={() => setIsEditingTeamName(false)}
+                      >
+                        Cancel
+                      </MButton>
+                    </Group>
+                  </form>
+                ) : (
+                  <Group gap="lg">
+                    <div className="text-slate-300 fs-7">{team.name}</div>
+                    <MButton
+                      size="xs"
+                      variant="default"
+                      leftSection={
+                        <i className="bi bi-pencil text-slate-300" />
+                      }
+                      onClick={() => {
+                        setIsEditingTeamName(true);
+                        setEditingTeamNameValue(team.name);
+                      }}
+                    >
+                      Change
+                    </MButton>
+                  </Group>
+                )}
+              </Card>
+
               <div className={styles.sectionHeader}>API Keys</div>
               <Card>
                 <div className="mb-3 text-slate-300 fs-7">
