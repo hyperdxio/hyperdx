@@ -19,6 +19,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -42,6 +43,7 @@ import {
 import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
+import CodeMirror from '@uiw/react-codemirror';
 
 import { useTimeChartSettings } from '@/ChartUtils';
 import DBDeltaChart from '@/components/DBDeltaChart';
@@ -85,16 +87,14 @@ import {
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
-import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
-import { SearchConfig } from './types';
 import { SQLPreview } from './components/ChartSQLPreview';
-import CodeMirror from '@uiw/react-codemirror';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   SearchConfigFromSchema,
   SearchConfigSchema,
   useSqlSuggestions,
 } from './hooks/useSqlSuggestions';
+import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
+import { SearchConfig } from './types';
 
 function SearchTotalCount({
   config,
