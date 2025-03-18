@@ -16,6 +16,7 @@ export default function SearchPageActionBar({
           px="xs"
           size="xs"
           style={{ flexShrink: 0 }}
+          data-testid="search-page-action-bar-button"
         >
           <i className="bi bi-three-dots-vertical" />
         </Button>
@@ -25,12 +26,14 @@ export default function SearchPageActionBar({
         <Menu.Item
           leftSection={<i className="bi bi-trash-fill" />}
           onClick={onClickDeleteSavedSearch}
+          data-testid="search-page-action-bar-delete-saved-search"
         >
           Delete Saved Search
         </Menu.Item>
         <Menu.Item
           leftSection={<i className="bi bi-input-cursor-text" />}
           onClick={onClickRenameSavedSearch}
+          data-testid="search-page-action-bar-rename-saved-search"
         >
           Rename Saved Search
         </Menu.Item>

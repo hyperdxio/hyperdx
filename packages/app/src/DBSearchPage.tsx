@@ -141,7 +141,7 @@ function SearchTotalCount({
   }, [totalCountData]);
 
   return (
-    <Text size="xs" c="gray.4" mb={4}>
+    <Text size="xs" c="gray.4" mb={4} data-testid="search-total-count">
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null ? (
@@ -282,6 +282,7 @@ function SaveSearchModal({
       title="Save Search"
       centered
       size="lg"
+      data-testid="search-save-modal"
     >
       <form onSubmit={onSubmit}>
         <Stack>
@@ -994,6 +995,7 @@ function DBSearchPage() {
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-save-button"
                 >
                   Save
                 </Button>
@@ -1007,6 +1009,7 @@ function DBSearchPage() {
                     setSaveSearchModalState('update');
                   }}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-save-button"
                 >
                   Update
                 </Button>
@@ -1019,6 +1022,7 @@ function DBSearchPage() {
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-alerts-button"
                 >
                   Alerts
                 </Button>
@@ -1035,6 +1039,7 @@ function DBSearchPage() {
                     px="xs"
                     size="xs"
                     style={{ flexShrink: 0 }}
+                    data-testid="search-tags-button"
                   >
                     <i className="bi bi-tags-fill me-1"></i>
                     {savedSearch.tags?.length || 0}
@@ -1042,6 +1047,7 @@ function DBSearchPage() {
                 </Tags>
               )}
               <SearchPageActionBar
+                data-testid="saved-search-action-bar"
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {
                     onSuccess: () => {
