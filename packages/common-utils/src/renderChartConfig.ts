@@ -7,8 +7,11 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
+  ChartConfig,
+  ChartConfigSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  ChSqlSchema,
   MetricsDataType,
   SearchCondition,
   SearchConditionLanguage,
@@ -416,7 +419,7 @@ async function timeFilterExpr({
   connectionId: string;
   databaseName: string;
   tableName: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
   const valueExpressions = timestampValueExpression.split(',');
@@ -499,11 +502,8 @@ async function renderSelect(
   );
 }
 
-function renderFrom({
-  from,
-}: {
-  from: ChartConfigWithDateRange['from'];
-}): ChSql {
+function renderFrom(chartConfig: ChartConfigWithDateRange): ChSql {
+  const from = chartConfig.from;
   return concatChSql(
     '.',
     chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
@@ -528,7 +528,7 @@ async function renderWhereExpression({
   from: ChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
   connectionId: string;
-  with?: { name: string; sql: ChSql }[];
+  with?: ChartConfigWithDateRange['with'];
 }): Promise<ChSql> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -737,21 +737,59 @@ type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
 };
 
-function renderWith(
+async function renderWith(
   chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-): ChSql | undefined {
+): Promise<ChSql | undefined> {
   const { with: withClauses } = chartConfig;
   if (withClauses) {
     return concatChSql(
       ',',
-      withClauses.map(clause => {
-        if (clause.isSubquery === false) {
-          return chSql`(${clause.sql}) AS ${{ Identifier: clause.name }}`;
-        }
-        // Can not use identifier here
-        return chSql`${clause.name} AS (${clause.sql})`;
-      }),
+      await Promise.all(
+        withClauses.map(async clause => {
+          const {
+            sql,
+            chartConfig,
+          }: { sql?: ChSql; chartConfig?: ChartConfig } = clause;
+
+          // The sql logic can be specified as either a ChSql instance or a chart
+          // config object. Due to type erasure and the recursive nature of ChartConfig
+          // when using CTEs, we need to validate the types here to ensure junk did
+          // not make it through.
+          if (sql && chartConfig) {
+            throw new Error(
+              "cannot specify both 'sql' and 'chartConfig' in with clause",
+            );
+          }
+
+          if (!(sql || chartConfig)) {
+            throw new Error(
+              "must specify either 'sql' or 'chartConfig' in with clause",
+            );
+          }
+
+          if (sql && !ChSqlSchema.safeParse(sql).success) {
+            throw new Error('non-conforming sql object in CTE');
+          }
+
+          if (
+            chartConfig &&
+            !ChartConfigSchema.safeParse(chartConfig).success
+          ) {
+            throw new Error('non-conforming chartConfig object in CTE');
+          }
+
+          const resolvedSql = sql
+            ? sql
+            : await renderChartConfig(chartConfig, metadata);
+
+          if (clause.isSubquery === false) {
+            return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
+          }
+          // Can not use identifier here
+          return chSql`${clause.name} AS (${resolvedSql})`;
+        }),
+      ),
     );
   }
 
@@ -1100,7 +1138,7 @@ export async function renderChartConfig(
       ? await translateMetricChartConfig(rawChartConfig, metadata)
       : rawChartConfig;
 
-  const withClauses = renderWith(chartConfig, metadata);
+  const withClauses = await renderWith(chartConfig, metadata);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
