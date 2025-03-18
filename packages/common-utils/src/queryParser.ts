@@ -3,7 +3,7 @@ import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
-import { extractMultiColumnExpression } from '@/utils';
+import { splitAndTrimCSV } from '@/utils';
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -550,9 +550,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         );
       }
 
-      const expressions = extractMultiColumnExpression(
-        this.implicitColumnExpression,
-      );
+      const expressions = splitAndTrimCSV(this.implicitColumnExpression);
 
       return {
         column:

@@ -23,8 +23,8 @@ import {
 } from '@/types';
 import {
   convertDateRangeToGranularityString,
-  extractMultiColumnExpression,
   getFirstTimestampValueExpression,
+  splitAndTrimCSV,
 } from '@/utils';
 
 // FIXME: SQLParser.ColumnRef is incomplete
@@ -423,9 +423,7 @@ async function timeFilterExpr({
   with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
-  const valueExpressions = extractMultiColumnExpression(
-    timestampValueExpression,
-  );
+  const valueExpressions = splitAndTrimCSV(timestampValueExpression);
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 

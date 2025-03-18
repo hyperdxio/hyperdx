@@ -24,7 +24,7 @@ import {
   DisplayType,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { extractMultiColumnExpression } from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -840,7 +840,7 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
   });
 
-  const displayedColumns = extractMultiColumnExpression(
+  const displayedColumns = splitAndTrimCSV(
     dbSqlRowTableConfig?.select ??
       searchedSource?.defaultTableSelectExpression ??
       '',
