@@ -435,6 +435,8 @@ export const ConnectionSchema = z.object({
   password: z.string().optional(),
 });
 
+export type Connection = z.infer<typeof ConnectionSchema>;
+
 // --------------------------
 // TABLE SOURCES
 // --------------------------
