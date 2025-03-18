@@ -8,7 +8,10 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { hashCode } from '@hyperdx/common-utils/dist/utils';
+import {
+  extractMultiColumnExpression,
+  hashCode,
+} from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -43,7 +46,7 @@ function getLocalSources(): TSource[] {
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return valueExpression.split(',')[0].trim();
+  return extractMultiColumnExpression(valueExpression)[0];
 }
 
 export function getSpanEventBody(eventModel: TSource) {
@@ -214,7 +217,7 @@ export async function inferTableSourceConfig({
       connectionId,
     })
   ).primary_key;
-  const keys = primaryKeys.split(',').map(k => k.trim());
+  const keys = extractMultiColumnExpression(primaryKeys);
 
   const isOtelLogSchema = hasAllColumns(columns, [
     'Timestamp',
