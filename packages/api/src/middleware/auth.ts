@@ -1,3 +1,4 @@
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
@@ -10,6 +11,11 @@ import logger from '@/utils/logger';
 declare global {
   namespace Express {
     interface User extends UserDocument {}
+  }
+  namespace Express {
+    interface Request {
+      _hdx_connection?: Connection;
+    }
   }
 }
 
