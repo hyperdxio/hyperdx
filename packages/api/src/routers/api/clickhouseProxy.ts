@@ -95,7 +95,7 @@ router.get(
     }
   },
   createProxyMiddleware({
-    target: 'http://localhost:8123', // doesn't matter. it should be overridden by the router
+    target: '', // doesn't matter. it should be overridden by the router
     changeOrigin: true,
     pathFilter: (path, _req) => {
       // TODO: allow other methods
@@ -104,7 +104,12 @@ router.get(
     pathRewrite: {
       '^/clickhouse-proxy': '',
     },
-    router: _req => _req._hdx_connection?.host,
+    router: _req => {
+      if (!_req._hdx_connection?.host) {
+        throw new Error('[createProxyMiddleware] Connection not found');
+      }
+      return _req._hdx_connection.host;
+    },
     on: {
       proxyReq: (proxyReq, _req) => {
         const newPath = _req.params[0];
