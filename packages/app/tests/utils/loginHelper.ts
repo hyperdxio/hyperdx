@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { Page } from "@playwright/test";
+import { Page, test } from "@playwright/test";
 
 const envPath = path.resolve(__dirname, '../.playwright.env');
 
@@ -16,7 +16,7 @@ async function login(page: Page) {
     await page.fill('input[name="password"]', process.env.TEST_USER_PASSWORD);
     await page.click('[aria-label="Close tanstack query devtools"]');
     await page.click('button[type="submit"]');
-    await page.waitForNavigation();
+    await page.context().storageState({ path: 'auth.json' });
   }
 
 export default login;
