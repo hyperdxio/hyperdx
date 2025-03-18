@@ -8,13 +8,15 @@ import Server from '@/server';
 import { isOperationalError } from '@/utils/errors';
 import logger from '@/utils/logger';
 
-// Start collecting host metrics
-const meterProvider = new MeterProvider({
-  // FIXME: missing selectCardinalityLimit property
-  readers: [getHyperDXMetricReader() as unknown as MetricReader],
-});
-const hostMetrics = new HostMetrics({ meterProvider });
-hostMetrics.start();
+if (config.IS_DEV) {
+  // Start collecting host metrics
+  const meterProvider = new MeterProvider({
+    // FIXME: missing selectCardinalityLimit property
+    readers: [getHyperDXMetricReader() as unknown as MetricReader],
+  });
+  const hostMetrics = new HostMetrics({ meterProvider });
+  hostMetrics.start();
+}
 
 const server = new Server();
 
