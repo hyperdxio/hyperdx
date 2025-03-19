@@ -9,6 +9,11 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  filterColumnMetaByType,
+  inferTimestampColumn,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
   Divider,
   Group,
   SegmentedControl,
@@ -24,7 +29,8 @@ import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
 import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';
-import { legacyMetricNameToNameAndDataType } from './utils';
+import { legacyMetricNameToNameAndDataType, logLevelColor } from './utils';
+import { ResponseJSON } from '@clickhouse/client';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -164,7 +170,7 @@ const seriesDisplayName = (
     const displayField =
       s.aggFn !== 'count'
         ? s.table === 'metrics'
-          ? (s.field?.split(' - ')?.[0] ?? s.field)
+          ? s.field?.split(' - ')?.[0] ?? s.field
           : s.field
         : '';
 
@@ -757,3 +763,158 @@ export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
 export const K8S_NETWORK_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
 };
+
+function inferValueColumns(meta: Array<{ name: string; type: string }>) {
+  return filterColumnMetaByType(meta, [JSDataType.Number]);
+}
+
+function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
+  return filterColumnMetaByType(meta, [
+    JSDataType.String,
+    JSDataType.Map,
+    JSDataType.Array,
+  ]);
+}
+
+// Input: { ts, value1, value2, groupBy1, groupBy2 },
+// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
+export function formatResponseForTimeChart({
+  res,
+  dateRange,
+  granularity,
+  generateEmptyBuckets = true,
+}: {
+  dateRange: [Date, Date];
+  granularity?: SQLInterval;
+  res: ResponseJSON<Record<string, any>>;
+  generateEmptyBuckets?: boolean;
+}) {
+  const meta = res.meta;
+  const data = res.data;
+
+  if (meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  const timestampColumn = inferTimestampColumn(meta);
+  const valueColumns = inferValueColumns(meta) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
+
+  if (timestampColumn == null) {
+    throw new Error(
+      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  // Timestamp -> { tsCol, line1, line2, ...}
+  const tsBucketMap: Map<number, Record<string, any>> = new Map();
+  const lineDataMap: {
+    [keyName: string]: {
+      dataKey: string;
+      displayName: string;
+      maxValue: number;
+      minValue: number;
+      color: string | undefined;
+    };
+  } = {};
+
+  for (const row of data) {
+    const date = new Date(row[timestampColumn.name]);
+    const ts = date.getTime() / 1000;
+
+    for (const valueColumn of valueColumns) {
+      const tsBucket = tsBucketMap.get(ts) ?? {};
+
+      const keyName = [
+        valueColumn.name,
+        ...groupColumns.map(g => row[g.name]),
+      ].join(' · ');
+
+      // UInt64 are returned as strings, we'll convert to number
+      // and accept a bit of floating point error
+      const rawValue = row[valueColumn.name];
+      const value =
+        typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
+
+      tsBucketMap.set(ts, {
+        ...tsBucket,
+        [timestampColumn.name]: ts,
+        [keyName]: value,
+      });
+
+      let color =
+        groupColumns.length === 1
+          ? logLevelColor(row[groupColumns[0].name])
+          : undefined;
+      // TODO: Set name and color correctly
+      lineDataMap[keyName] = {
+        dataKey: keyName,
+        displayName: keyName,
+        color,
+        maxValue: Math.max(
+          lineDataMap[keyName]?.maxValue ?? Number.NEGATIVE_INFINITY,
+          value,
+        ),
+        minValue: Math.min(
+          lineDataMap[keyName]?.minValue ?? Number.POSITIVE_INFINITY,
+          value,
+        ),
+      };
+    }
+  }
+
+  // TODO: Custom sort and truncate top N lines
+  const sortedLineDataMap = Object.values(lineDataMap).sort((a, b) => {
+    return a.maxValue - b.maxValue;
+  });
+
+  if (generateEmptyBuckets && granularity != null) {
+    // Zero fill TODO: Make this an option
+    const generatedTsBuckets = timeBucketByGranularity(
+      dateRange[0],
+      dateRange[1],
+      granularity,
+    );
+
+    generatedTsBuckets.forEach(date => {
+      const ts = date.getTime() / 1000;
+      const tsBucket = tsBucketMap.get(ts);
+
+      if (tsBucket == null) {
+        const tsBucket: Record<string, any> = {
+          [timestampColumn.name]: ts,
+        };
+
+        for (const line of sortedLineDataMap) {
+          tsBucket[line.dataKey] = 0;
+        }
+
+        tsBucketMap.set(ts, tsBucket);
+      } else {
+        for (const line of sortedLineDataMap) {
+          if (tsBucket[line.dataKey] == null) {
+            tsBucket[line.dataKey] = 0;
+          }
+        }
+        tsBucketMap.set(ts, tsBucket);
+      }
+    });
+  }
+
+  // Sort results again by timestamp
+  const graphResults: {
+    [key: string]: number | undefined;
+  }[] = Array.from(tsBucketMap.values()).sort(
+    (a, b) => a[timestampColumn.name] - b[timestampColumn.name],
+  );
+
+  // TODO: Return line color and names
+  return {
+    // dateRange: [minDate, maxDate],
+    graphResults,
+    timestampColumn,
+    groupKeys: sortedLineDataMap.map(l => l.dataKey),
+    lineNames: sortedLineDataMap.map(l => l.displayName),
+    lineColors: sortedLineDataMap.map(l => l.color),
+  };
+}

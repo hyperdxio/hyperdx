@@ -16,6 +16,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  BarProps,
   CartesianGrid,
   Label,
   Legend,
@@ -291,6 +292,14 @@ export const MemoChart = memo(function MemoChart({
 
       const color = lineColors[i] ?? _color;
 
+      const StackedBarWithOverlap = (props: BarProps) => {
+        const { x, y, width, height, fill } = props;
+        // Add a tiny bit to the height to create overlap. Otherwise there's a gap
+        return (
+          <rect x={x} y={y} width={width} height={height! + 0.5} fill={fill} />
+        );
+      };
+
       return displayType === 'stacked_bar' ? (
         <Bar
           key={key}
@@ -301,6 +310,7 @@ export const MemoChart = memo(function MemoChart({
           opacity={opacity}
           stackId="1"
           isAnimationActive={false}
+          shape={<StackedBarWithOverlap dataKey={key}/>}
         />
       ) : (
         <Area

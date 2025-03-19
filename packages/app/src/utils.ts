@@ -291,7 +291,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 
 // Accessible chart colors
 export const COLORS = [
-  '#09D99C', // Green
+  '#20c997', // Green
   // '#F81358', // Red
   '#8250dc', // Light Purple
   '#cdad7a', // Tan
@@ -338,6 +338,15 @@ export const semanticKeyedColor = (
   }
 
   return COLORS[index % COLORS.length];
+};
+
+export const logLevelColor = (key: string | number | undefined) => {
+  const logLevel = getLogLevelClass(`${key}`);
+  return logLevel === 'error'
+    ? '#F81358' // red
+    : logLevel === 'warn'
+      ? '#ffc107' // yellow
+      : '#20c997'; // green;
 };
 
 const getLevelColor = (logLevel?: string) => {
