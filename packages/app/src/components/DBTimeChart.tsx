@@ -2,10 +2,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
-import {
-  ClickHouseQueryError,
-  formatResponseForTimeChart,
-} from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -15,6 +12,7 @@ import { useDisclosure } from '@mantine/hooks';
 
 import {
   convertDateRangeToGranularityString,
+  formatResponseForTimeChart,
   Granularity,
   useTimeChartSettings,
 } from '@/ChartUtils';
