@@ -1,30 +1,4 @@
 import { useEffect, useState } from 'react';
-import { UseFormGetValues, UseFormSetValue } from 'react-hook-form';
-import { z } from 'zod';
-
-export const SearchConfigSchema = z.object({
-  select: z.string(),
-  source: z.string(),
-  where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']),
-  orderBy: z.string(),
-  filters: z.array(
-    z.union([
-      z.object({
-        type: z.literal('sql_ast'),
-        operator: z.enum(['=', '<', '>', '>=', '<=', '!=']),
-        left: z.string(),
-        right: z.string(),
-      }),
-      z.object({
-        type: z.enum(['sql', 'lucene']),
-        condition: z.string(),
-      }),
-    ]),
-  ),
-});
-
-export type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 /// Interface for all suggestion engines
 interface ISuggestionEngine {
@@ -40,13 +14,19 @@ interface ISuggestionEngine {
 class DoubleQuoteSuggestion implements ISuggestionEngine {
   detect(input: string): boolean {
     let inSingleQuote = false;
-    for (let i = 0; i < input.length; i++) {
-      const char = input[i];
+    let escaped = false;
+    for (const char of input) {
       if (char === "'") {
-        inSingleQuote = !inSingleQuote;
+        if (escaped) {
+          escaped = false;
+        } else {
+          inSingleQuote = !inSingleQuote;
+        }
       } else if (char === '"') {
         if (inSingleQuote) continue;
         return true;
+      } else if (char === '\\') {
+        escaped = true;
       }
     }
     return false;
@@ -59,14 +39,23 @@ class DoubleQuoteSuggestion implements ISuggestionEngine {
   correct(input: string): string {
     let inSingleQuote = false;
     let correctedText = '';
+    let escaped = false;
     for (let i = 0; i < input.length; i++) {
       switch (input[i]) {
         case "'":
-          inSingleQuote = !inSingleQuote;
+          if (escaped) {
+            inSingleQuote = !inSingleQuote;
+          } else {
+            escaped = false;
+          }
           correctedText += input[i];
           break;
         case '"':
           correctedText += inSingleQuote ? '"' : "'";
+          break;
+        case '\\':
+          escaped = true;
+          correctedText += input[i];
           break;
         default:
           correctedText += input[i];
@@ -82,52 +71,36 @@ class DoubleQuoteSuggestion implements ISuggestionEngine {
 const suggestionEngines = [new DoubleQuoteSuggestion()];
 
 export type Suggestion = {
-  userMessage: string;
-  action: () => void;
+  userMessage: (field: string) => string;
+  corrected: () => string;
 };
 
 export function useSqlSuggestions({
-  setValue,
-  getValues,
-  hasQueryError,
+  input,
+  enabled,
 }: {
-  setValue: UseFormSetValue<SearchConfigFromSchema>;
-  getValues: UseFormGetValues<SearchConfigFromSchema>;
-  hasQueryError: boolean;
+  input: string;
+  enabled: boolean;
 }): Suggestion[] | null {
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
-  const [toggle, setToggle] = useState(false);
-  const refresh = () => setToggle(!toggle);
 
   useEffect(() => {
-    if (!hasQueryError) {
+    if (!enabled) {
       setSuggestions(null);
       return;
     }
 
-    const fields: ('select' | 'where' | 'orderBy')[] = [
-      'select',
-      'where',
-      'orderBy',
-    ];
     const suggestions: Suggestion[] = [];
     for (const se of suggestionEngines) {
-      for (const field of fields) {
-        if (field === 'where' && getValues('whereLanguage') !== 'sql') continue;
-        const input = getValues(field);
-        if (se.detect(input)) {
-          suggestions.push({
-            userMessage: se.userMessage(field),
-            action: () => {
-              setValue(field, se.correct(input));
-              refresh();
-            },
-          });
-        }
+      if (se.detect(input)) {
+        suggestions.push({
+          userMessage: field => se.userMessage(field),
+          corrected: () => se.correct(input),
+        });
       }
     }
-    setSuggestions(suggestions);
-  }, [hasQueryError, toggle]);
+    setSuggestions(suggestions.length > 0 ? suggestions : null);
+  }, [input, enabled]);
 
   return suggestions;
 }

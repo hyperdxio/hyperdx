@@ -88,13 +88,33 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
-import {
-  SearchConfigFromSchema,
-  SearchConfigSchema,
-  useSqlSuggestions,
-} from './hooks/useSqlSuggestions';
+import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
+
+const SearchConfigSchema = z.object({
+  select: z.string(),
+  source: z.string(),
+  where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']),
+  orderBy: z.string(),
+  filters: z.array(
+    z.union([
+      z.object({
+        type: z.literal('sql_ast'),
+        operator: z.enum(['=', '<', '>', '>=', '<=', '!=']),
+        left: z.string(),
+        right: z.string(),
+      }),
+      z.object({
+        type: z.enum(['sql', 'lucene']),
+        condition: z.string(),
+      }),
+    ]),
+  ),
+});
+
+type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 function SearchTotalCount({
   config,
@@ -702,11 +722,12 @@ function DBSearchPage() {
     const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
-  // query suggestion if error
-  const suggestions = useSqlSuggestions({
-    setValue,
-    getValues,
-    hasQueryError,
+  const inputWhere = watch('where');
+  const inputWhereLanguage = watch('whereLanguage');
+  // query suggestion for 'where' if error
+  const whereSuggestions = useSqlSuggestions({
+    input: inputWhere,
+    enabled: hasQueryError && inputWhereLanguage === 'sql',
   });
 
   const onSubmit = useCallback(() => {
@@ -1362,19 +1383,25 @@ function DBSearchPage() {
                 {hasQueryError && queryError ? (
                   <>
                     <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                      {suggestions && suggestions.length > 0 && (
+                      {whereSuggestions && whereSuggestions.length > 0 && (
                         <Box mb="xl">
                           <Text size="lg">
                             <b>Query Helper</b>
                           </Text>
                           <Grid>
-                            {suggestions!.map(s => (
+                            {whereSuggestions!.map(s => (
                               <>
                                 <Grid.Col span={10}>
-                                  <Text>{s.userMessage}</Text>
+                                  <Text>{s.userMessage('where')}</Text>
                                 </Grid.Col>
                                 <Grid.Col span={2}>
-                                  <Button onClick={s.action}>Accept</Button>
+                                  <Button
+                                    onClick={() =>
+                                      setValue('where', s.corrected())
+                                    }
+                                  >
+                                    Accept
+                                  </Button>
                                 </Grid.Col>
                               </>
                             ))}

@@ -142,9 +142,9 @@ export function useQueriedChartConfig(
     refetchOnWindowFocus: false,
     ...options,
   });
-  useEffect(() => {
-    if (options?.onError && query.isError) options.onError(query.error);
-  }, [query.isError]);
+  if (query.isError && options?.onError) {
+    options.onError(query.error);
+  }
   return query;
 }
 
