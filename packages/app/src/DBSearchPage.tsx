@@ -537,7 +537,6 @@ function DBSearchPage() {
     control,
     watch,
     setValue,
-    setFocus,
     reset,
     handleSubmit,
     getValues,
