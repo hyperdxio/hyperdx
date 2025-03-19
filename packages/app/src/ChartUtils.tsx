@@ -29,7 +29,11 @@ import MetricTagFilterInput from './MetricTagFilterInput';
 import SearchInput from './SearchInput';
 import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
 import { NumberFormat } from './types';
-import { legacyMetricNameToNameAndDataType, logLevelColor } from './utils';
+import {
+  legacyMetricNameToNameAndDataType,
+  logLevelColor,
+  logLevelColorOrder,
+} from './utils';
 import { ResponseJSON } from '@clickhouse/client';
 
 export const SORT_ORDER = [
@@ -865,7 +869,10 @@ export function formatResponseForTimeChart({
 
   // TODO: Custom sort and truncate top N lines
   const sortedLineDataMap = Object.values(lineDataMap).sort((a, b) => {
-    return a.maxValue - b.maxValue;
+    return (
+      logLevelColorOrder.findIndex(color => color === a.color) -
+      logLevelColorOrder.findIndex(color => color === b.color)
+    );
   });
 
   if (generateEmptyBuckets && granularity != null) {
