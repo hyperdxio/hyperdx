@@ -296,7 +296,13 @@ export const MemoChart = memo(function MemoChart({
         const { x, y, width, height, fill } = props;
         // Add a tiny bit to the height to create overlap. Otherwise there's a gap
         return (
-          <rect x={x} y={y} width={width} height={(height && height > 0) ? height + 0.5 : 0} fill={fill} />
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height && height > 0 ? height + 0.5 : 0}
+            fill={fill}
+          />
         );
       };
 
@@ -310,7 +316,7 @@ export const MemoChart = memo(function MemoChart({
           opacity={opacity}
           stackId="1"
           isAnimationActive={false}
-          shape={<StackedBarWithOverlap dataKey={key}/>}
+          shape={<StackedBarWithOverlap dataKey={key} />}
         />
       ) : (
         <Area

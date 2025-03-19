@@ -350,7 +350,11 @@ export const logLevelColor = (key: string | number | undefined) => {
 };
 
 // order of colors for sorting. green on bottom, then yellow, then red
-export const logLevelColorOrder = [logLevelColor('info'), logLevelColor('warn'), logLevelColor('error')];
+export const logLevelColorOrder = [
+  logLevelColor('info'),
+  logLevelColor('warn'),
+  logLevelColor('error'),
+];
 
 const getLevelColor = (logLevel?: string) => {
   if (logLevel == null) {

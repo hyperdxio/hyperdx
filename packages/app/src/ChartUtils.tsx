@@ -2,17 +2,18 @@ import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
+import { ResponseJSON } from '@clickhouse/client';
+import {
+  filterColumnMetaByType,
+  inferTimestampColumn,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   SavedChartConfig,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  filterColumnMetaByType,
-  inferTimestampColumn,
-  JSDataType,
-} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Divider,
   Group,
@@ -34,7 +35,6 @@ import {
   logLevelColor,
   logLevelColorOrder,
 } from './utils';
-import { ResponseJSON } from '@clickhouse/client';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -174,7 +174,7 @@ const seriesDisplayName = (
     const displayField =
       s.aggFn !== 'count'
         ? s.table === 'metrics'
-          ? s.field?.split(' - ')?.[0] ?? s.field
+          ? (s.field?.split(' - ')?.[0] ?? s.field)
           : s.field
         : '';
 
@@ -846,7 +846,7 @@ export function formatResponseForTimeChart({
         [keyName]: value,
       });
 
-      let color =
+      const color =
         groupColumns.length === 1
           ? logLevelColor(row[groupColumns[0].name])
           : undefined;
