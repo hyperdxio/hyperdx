@@ -1,5 +1,6 @@
 @import './variables';
 
+/* stylelint-disable selector-pseudo-class-no-unknown */
 .filtersPanel {
   width: 220px;
   max-height: 100%;
@@ -15,7 +16,6 @@
     .mantine-TextInput-input {
       height: 20px;
       min-height: 20px;
-      //padding: 0 4px;
       background-color: transparent;
       border: none !important;
       color: var(--mantine-color-gray-3);
