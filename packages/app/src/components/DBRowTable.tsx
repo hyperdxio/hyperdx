@@ -742,7 +742,7 @@ export function DBSqlRowTable({
   enabled?: boolean;
   isLive?: boolean;
   onScroll?: (scrollTop: number) => void;
-  onError?: () => void;
+  onError?: (error: Error | ClickHouseQueryError) => void;
 }) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -851,10 +851,10 @@ export function DBSqlRowTable({
   );
 
   useEffect(() => {
-    if (isError && onError) {
-      onError();
+    if (isError && onError && error) {
+      onError(error);
     }
-  }, [isError, onError]);
+  }, [isError, onError, error]);
 
   return (
     <RawLogTable
