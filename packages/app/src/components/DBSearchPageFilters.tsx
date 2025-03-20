@@ -22,9 +22,10 @@ import classes from '../../styles/SearchPage.module.scss';
 
 type FilterCheckboxProps = {
   label: string;
-  value?: boolean;
+  value?: 'included' | 'excluded' | false;
   onChange?: (checked: boolean) => void;
   onClickOnly?: VoidFunction;
+  onClickExclude?: VoidFunction;
 };
 
 export const TextButton = ({
@@ -49,6 +50,7 @@ export const FilterCheckbox = ({
   label,
   onChange,
   onClickOnly,
+  onClickExclude,
 }: FilterCheckboxProps) => {
   return (
     <div className={classes.filterCheckbox}>
@@ -66,6 +68,7 @@ export const FilterCheckbox = ({
             // taken care by the onClick in the group, triggering here will double fire
             emptyFn
           }
+          indeterminate={value === 'excluded'}
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -75,12 +78,21 @@ export const FilterCheckbox = ({
           fz="xxs"
           color="gray"
         >
-          <Text size="xs" c="gray.3" truncate="end" maw="150px" title={label}>
+          <Text
+            size="xs"
+            c={value === 'excluded' ? 'red.4' : 'gray.3'}
+            truncate="end"
+            maw="150px"
+            title={label}
+          >
             {label}
           </Text>
         </Tooltip>
       </Group>
-      {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
+      <div className={classes.filterActions}>
+        {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
+        {onClickExclude && <TextButton onClick={onClickExclude} label="Not" />}
+      </div>
     </div>
   );
 };
@@ -89,10 +101,14 @@ type FilterGroupProps = {
   name: string;
   options: { value: string; label: string }[];
   optionsLoading?: boolean;
-  selectedValues?: Set<string>;
+  selectedValues?: {
+    included: Set<string>;
+    excluded: Set<string>;
+  };
   onChange: (value: string) => void;
   onClearClick: VoidFunction;
   onOnlyClick: (value: string) => void;
+  onExcludeClick: (value: string) => void;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -101,17 +117,22 @@ export const FilterGroup = ({
   name,
   options,
   optionsLoading,
-  selectedValues = new Set(),
+  selectedValues = { included: new Set(), excluded: new Set() },
   onChange,
   onClearClick,
   onOnlyClick,
+  onExcludeClick,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
 
   const augmentedOptions = useMemo(() => {
+    const selectedSet = new Set([
+      ...selectedValues.included,
+      ...selectedValues.excluded,
+    ]);
     return [
-      ...Array.from(selectedValues)
+      ...Array.from(selectedSet)
         .filter(value => !options.find(option => option.value === value))
         .map(value => ({ value, label: value })),
       ...options,
@@ -132,12 +153,20 @@ export const FilterGroup = ({
       a: (typeof augmentedOptions)[0],
       b: (typeof augmentedOptions)[0],
     ) => {
-      if (selectedValues.has(a.value) && !selectedValues.has(b.value)) {
-        return -1;
-      }
-      if (!selectedValues.has(a.value) && selectedValues.has(b.value)) {
-        return 1;
-      }
+      const aIncluded = selectedValues.included.has(a.value);
+      const aExcluded = selectedValues.excluded.has(a.value);
+      const bIncluded = selectedValues.included.has(b.value);
+      const bExcluded = selectedValues.excluded.has(b.value);
+
+      // First sort by included status
+      if (aIncluded && !bIncluded) return -1;
+      if (!aIncluded && bIncluded) return 1;
+
+      // Then sort by excluded status
+      if (aExcluded && !bExcluded) return -1;
+      if (!aExcluded && bExcluded) return 1;
+
+      // Finally sort alphabetically
       return a.value.localeCompare(b.value);
     };
 
@@ -151,7 +180,9 @@ export const FilterGroup = ({
       isExpanded ||
       augmentedOptions.some(
         (option, index) =>
-          selectedValues.has(option.value) && index >= MAX_FILTER_GROUP_ITEMS,
+          (selectedValues.included.has(option.value) ||
+            selectedValues.excluded.has(option.value)) &&
+          index >= MAX_FILTER_GROUP_ITEMS,
       );
 
     return augmentedOptions
@@ -161,13 +192,20 @@ export const FilterGroup = ({
           ? sortBySelectionAndAlpha(a, b)
           : a.value.localeCompare(b.value),
       )
-      .slice(0, Math.max(MAX_FILTER_GROUP_ITEMS, selectedValues.size));
+      .slice(
+        0,
+        Math.max(
+          MAX_FILTER_GROUP_ITEMS,
+          selectedValues.included.size + selectedValues.excluded.size,
+        ),
+      );
   }, [search, isExpanded, augmentedOptions, selectedValues]);
 
   const showExpandButton =
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
-    selectedValues.size < augmentedOptions.length;
+    selectedValues.included.size + selectedValues.excluded.size <
+      augmentedOptions.length;
 
   return (
     <Stack gap={0}>
@@ -201,7 +239,7 @@ export const FilterGroup = ({
             setSearch(event.currentTarget.value)
           }
         /> */}
-        {selectedValues.size > 0 && (
+        {selectedValues.included.size + selectedValues.excluded.size > 0 && (
           <TextButton
             label="Clear"
             onClick={() => {
@@ -216,9 +254,16 @@ export const FilterGroup = ({
           <FilterCheckbox
             key={option.value}
             label={option.label}
-            value={selectedValues.has(option.value)}
+            value={
+              selectedValues.included.has(option.value)
+                ? 'included'
+                : selectedValues.excluded.has(option.value)
+                  ? 'excluded'
+                  : false
+            }
             onChange={() => onChange(option.value)}
             onClickOnly={() => onOnlyClick(option.value)}
+            onClickExclude={() => onExcludeClick(option.value)}
           />
         ))}
         {optionsLoading ? (
@@ -340,7 +385,10 @@ export const DBSearchPageFilters = ({
     const _facets: { key: string; value: string[] }[] = [];
     for (const facet of facets ?? []) {
       // don't include empty facets, unless they are already selected
-      if (facet.value?.length > 0 || filterState[facet.key]?.size > 0) {
+      const filter = filterState[facet.key];
+      const hasSelectedValues =
+        filter && (filter.included.size > 0 || filter.excluded.size > 0);
+      if (facet.value?.length > 0 || hasSelectedValues) {
         _facets.push(facet);
       }
     }
@@ -348,7 +396,10 @@ export const DBSearchPageFilters = ({
   }, [facets, filterState]);
 
   const showClearAllButton = useMemo(
-    () => Object.keys(filterState).length > 0,
+    () =>
+      Object.values(filterState).some(
+        f => f.included.size > 0 || f.excluded.size > 0,
+      ),
     [filterState],
   );
 
@@ -434,13 +485,20 @@ export const DBSearchPageFilters = ({
                 label: value,
               }))}
               optionsLoading={isFacetsLoading}
-              selectedValues={filterState[facet.key] || new Set()}
+              selectedValues={
+                filterState[facet.key]
+                  ? filterState[facet.key]
+                  : { included: new Set(), excluded: new Set() }
+              }
               onChange={value => {
                 setFilterValue(facet.key, value);
               }}
               onClearClick={() => clearFilter(facet.key)}
               onOnlyClick={value => {
-                setFilterValue(facet.key, value, true);
+                setFilterValue(facet.key, value, 'only');
+              }}
+              onExcludeClick={value => {
+                setFilterValue(facet.key, value, 'exclude');
               }}
             />
           ))}
