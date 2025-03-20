@@ -58,14 +58,15 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 }
 
 export function getEventBody(eventModel: TSource) {
-  return (
+  const expression =
     eventModel.bodyExpression ??
     ('spanNameExpression' in eventModel
       ? eventModel?.spanNameExpression
       : undefined) ??
-    eventModel.implicitColumnExpression //??
-    // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
-  );
+    eventModel.implicitColumnExpression; //??
+  // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
+  const multiExpr = splitAndTrimCSV(expression ?? '');
+  return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
 export function useSources() {
