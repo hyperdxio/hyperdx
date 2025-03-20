@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { format } from 'sql-formatter';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ChSql,
@@ -9,6 +8,7 @@ import {
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -156,7 +156,6 @@ export function useRenderedSqlChartConfig(
     queryKey: ['renderedSql', config],
     queryFn: async () => {
       const query = await renderChartConfig(config, getMetadata());
-
       return format(parameterizedQueryToSql(query));
     },
     ...options,
