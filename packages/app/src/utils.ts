@@ -227,9 +227,7 @@ export function useIntersectionObserver<T extends Element>(
   {
     onIntersect,
   }: {
-    onIntersect?: (
-      isIntersecting: boolean,
-    ) => void;
+    onIntersect?: (isIntersecting: boolean) => void;
   } = {},
 ) {
   const [isIntersecting, setIsIntersecting] = useState(false);
@@ -254,7 +252,7 @@ export function useIntersectionObserver<T extends Element>(
 
       // Call the callback if it exists
       if (onIntersectRef.current) {
-        onIntersectRef.current(entry.isIntersecting, entry);
+        onIntersectRef.current(entry.isIntersecting);
       }
     });
 

@@ -7,10 +7,10 @@ import {
 import { Box, Code, Text } from '@mantine/core';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
+import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { omit, useIntersectionObserver } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
-import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 
 // TODO: Support clicking in to view matched events
 export default function DBTableChart({
@@ -101,7 +101,11 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
-      tableBottom={<Text ref={fetchMoreRef} ta="center">Fetching More</Text>}
+      tableBottom={
+        <Text ref={fetchMoreRef} ta="center">
+          Fetching More
+        </Text>
+      }
     />
   );
 }
