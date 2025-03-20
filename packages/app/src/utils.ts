@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { RefObject, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -220,6 +220,53 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   };
   return [storedValue, setValue] as const;
+}
+
+export function useIntersectionObserver<T extends Element>(
+  elementRef: RefObject<T>,
+  {
+    onIntersect,
+  }: {
+    onIntersect?: (
+      isIntersecting: boolean,
+    ) => void;
+  } = {},
+) {
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const [entry, setEntry] = useState<IntersectionObserverEntry | null>(null);
+
+  // Store the onIntersect callback in a ref so we don't recreate the observer
+  // when the callback changes
+  const onIntersectRef = useRef(onIntersect);
+  useEffect(() => {
+    onIntersectRef.current = onIntersect;
+  }, [onIntersect]);
+
+  useEffect(() => {
+    // Don't observe if the hook is explicitly disabled or the element ref isn't set
+    if (!elementRef.current) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsIntersecting(entry.isIntersecting);
+      setEntry(entry);
+
+      // Call the callback if it exists
+      if (onIntersectRef.current) {
+        onIntersectRef.current(entry.isIntersecting, entry);
+      }
+    });
+
+    observer.observe(elementRef.current);
+
+    // Clean up observer when component unmounts or dependencies change
+    return () => {
+      observer.disconnect();
+    };
+  }, [elementRef.current]);
+
+  return { isIntersecting, entry };
 }
 
 export function truncateText(

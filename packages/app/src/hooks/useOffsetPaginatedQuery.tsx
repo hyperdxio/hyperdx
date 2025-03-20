@@ -256,7 +256,7 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
+  const { data, fetchNextPage, hasNextPage, isFetching, isError, error, isLoading } =
     useInfiniteQuery<
       TQueryFnData,
       Error | ClickHouseQueryError,
@@ -307,5 +307,6 @@ export default function useOffsetPaginatedQuery(
     fetchNextPage,
     hasNextPage,
     isFetching,
+    isLoading,
   };
 }

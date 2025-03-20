@@ -1,13 +1,16 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { omit } from '@/utils';
+import { omit, useIntersectionObserver } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 
 // TODO: Support clicking in to view matched events
 export default function DBTableChart({
@@ -23,15 +26,27 @@ export default function DBTableChart({
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {
-  const queriedConfig = omit(config, ['granularity']);
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+  const queriedConfig = (() => {
+    const _config = omit(config, ['granularity']);
+    _config.limit = {
+      limit: 200,
+    };
+    return _config;
+  })();
+
+  const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
+    useOffsetPaginatedQuery(queriedConfig as ChartConfigWithDateRange, {
       enabled,
+      queryKeyPrefix,
+    });
+  const fetchMoreRef = useRef(null);
+  useIntersectionObserver(fetchMoreRef, {
+    onIntersect: isVisible => {
+      if (isVisible && hasNextPage) {
+        fetchNextPage();
+      }
     },
-  );
+  });
 
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
@@ -86,6 +101,7 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
+      endElementRef={fetchMoreRef}
     />
   );
 }
