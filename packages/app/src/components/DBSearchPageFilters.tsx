@@ -128,8 +128,22 @@ export const FilterGroup = ({
       });
     }
 
+    const sortBySelectionAndAlpha = (
+      a: (typeof augmentedOptions)[0],
+      b: (typeof augmentedOptions)[0],
+    ) => {
+      if (selectedValues.has(a.value) && !selectedValues.has(b.value)) {
+        return -1;
+      }
+      if (!selectedValues.has(a.value) && selectedValues.has(b.value)) {
+        return 1;
+      }
+      return a.value.localeCompare(b.value);
+    };
+
+    // If expanded or small list, sort everything
     if (isExpanded || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
-      return augmentedOptions;
+      return augmentedOptions.sort(sortBySelectionAndAlpha);
     }
 
     // Do not rearrange items if all selected values are visible without expanding
@@ -142,18 +156,11 @@ export const FilterGroup = ({
 
     return augmentedOptions
       .slice()
-      .sort((a, b) => {
-        if (!shouldSortBySelected) {
-          return 0;
-        }
-        if (selectedValues.has(a.value) && !selectedValues.has(b.value)) {
-          return -1;
-        }
-        if (!selectedValues.has(a.value) && selectedValues.has(b.value)) {
-          return 1;
-        }
-        return 0;
-      })
+      .sort((a, b) =>
+        shouldSortBySelected
+          ? sortBySelectionAndAlpha(a, b)
+          : a.value.localeCompare(b.value),
+      )
       .slice(0, Math.max(MAX_FILTER_GROUP_ITEMS, selectedValues.size));
   }, [search, isExpanded, augmentedOptions, selectedValues]);
 
