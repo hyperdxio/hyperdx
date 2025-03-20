@@ -65,7 +65,7 @@ export default function DBTableChart({
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
       Loading Chart Data...
     </div>
-  ) : isError ? (
+  ) : isError && error ? (
     <div className="h-100 w-100 align-items-center justify-content-center text-muted">
       <Text ta="center" size="sm" mt="sm">
         Error loading chart, please check your query or try again later.
@@ -101,7 +101,7 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
-      endElementRef={fetchMoreRef}
+      tableBottom={<Text ref={fetchMoreRef} ta="center">Fetching More</Text>}
     />
   );
 }

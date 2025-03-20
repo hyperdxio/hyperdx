@@ -1,4 +1,4 @@
-import { memo, MutableRefObject, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { CSVLink } from 'react-csv';
 import { Flex, Text } from '@mantine/core';
@@ -48,7 +48,7 @@ export const Table = ({
   columns,
   getRowSearchLink,
   onSortClick,
-  endElementRef, 
+  tableBottom,
 }: {
   data: any[];
   columns: {
@@ -62,7 +62,7 @@ export const Table = ({
   groupColumnName?: string;
   getRowSearchLink?: (row: any) => string;
   onSortClick?: (columnNumber: number) => void;
-  endElementRef?: MutableRefObject<null>
+  tableBottom?: React.ReactNode;
 }) => {
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
@@ -339,8 +339,8 @@ export const Table = ({
               <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
             </tr>
           )}
-          {endElementRef && <div ref={endElementRef} />}
         </tbody>
+        {tableBottom && tableBottom}
       </table>
     </div>
   );
