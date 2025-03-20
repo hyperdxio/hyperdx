@@ -1,16 +1,17 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { FilterGroup } from '../DBSearchPageFilters';
+import { FilterGroup, type FilterGroupProps } from '../DBSearchPageFilters';
 
 describe('FilterGroup', () => {
-  const defaultProps = {
+  const defaultProps: FilterGroupProps = {
     name: 'Test Filter',
     options: [
       { value: 'zebra', label: 'zebra' },
       { value: 'apple', label: 'apple' },
       { value: 'banana', label: 'banana' },
     ],
+    selectedValues: { included: new Set(), excluded: new Set() },
     onChange: jest.fn(),
     onClearClick: jest.fn(),
     onOnlyClick: jest.fn(),
@@ -104,6 +105,30 @@ describe('FilterGroup', () => {
     // Should show all items
     options = screen.getAllByRole('checkbox');
     expect(options).toHaveLength(15);
+  });
+
+  it('should clear excluded values when clicking Only', async () => {
+    const onOnlyClick = jest.fn();
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(['apple']),
+          excluded: new Set(['zebra']),
+        }}
+        onOnlyClick={onOnlyClick}
+      />,
+    );
+
+    // Find and click the "Only" button for banana
+    const bananaRow = screen
+      .getByText('banana')
+      .closest('.filterCheckbox') as HTMLElement;
+    const onlyButton = within(bananaRow).getByText('Only');
+    await userEvent.click(onlyButton);
+
+    // Verify onOnlyClick was called
+    expect(onOnlyClick).toHaveBeenCalledWith('banana');
   });
 
   // Type in search box (uncomment when search input is enabled)

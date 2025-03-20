@@ -97,7 +97,7 @@ export const FilterCheckbox = ({
   );
 };
 
-type FilterGroupProps = {
+export type FilterGroupProps = {
   name: string;
   options: { value: string; label: string }[];
   optionsLoading?: boolean;
