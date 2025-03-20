@@ -1312,6 +1312,7 @@ function DBSearchPage() {
                               },
                             ],
                             orderBy: undefined,
+                            groupBy: searchedSource?.severityTextExpression,
                             granularity: 'auto',
                             dateRange: searchedTimeRange,
                             displayType: DisplayType.StackedBar,

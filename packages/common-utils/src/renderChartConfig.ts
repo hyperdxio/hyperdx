@@ -12,6 +12,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   ChSqlSchema,
+  CteChartConfig,
   MetricsDataType,
   SearchCondition,
   SearchConditionLanguage,
@@ -503,8 +504,11 @@ async function renderSelect(
   );
 }
 
-function renderFrom(chartConfig: ChartConfigWithDateRange): ChSql {
-  const from = chartConfig.from;
+function renderFrom({
+  from,
+}: {
+  from: ChartConfigWithDateRange['from'];
+}): ChSql {
   return concatChSql(
     '.',
     chSql`${from.databaseName === '' ? '' : { Identifier: from.databaseName }}`,
@@ -751,7 +755,7 @@ async function renderWith(
           const {
             sql,
             chartConfig,
-          }: { sql?: ChSql; chartConfig?: ChartConfig } = clause;
+          }: { sql?: ChSql; chartConfig?: CteChartConfig } = clause;
 
           // The sql logic can be specified as either a ChSql instance or a chart
           // config object. Due to type erasure and the recursive nature of ChartConfig
@@ -780,9 +784,12 @@ async function renderWith(
             throw new Error('non-conforming chartConfig object in CTE');
           }
 
+          // Note that every NonRecursiveChartConfig object is also a ChartConfig object
+          // without a `with` property. The type cast here prevents a type error but because
+          // results in schema conformance.
           const resolvedSql = sql
             ? sql
-            : await renderChartConfig(chartConfig, metadata);
+            : await renderChartConfig(chartConfig as ChartConfig, metadata);
 
           if (clause.isSubquery === false) {
             return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
