@@ -2,10 +2,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
-import {
-  ClickHouseQueryError,
-  formatResponseForTimeChart,
-} from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -15,6 +12,7 @@ import { useDisclosure } from '@mantine/hooks';
 
 import {
   convertDateRangeToGranularityString,
+  formatResponseForTimeChart,
   Granularity,
   useTimeChartSettings,
 } from '@/ChartUtils';
@@ -30,6 +28,7 @@ export function DBTimeChart({
   config,
   sourceId,
   onSettled,
+  onError,
   referenceLines,
   showDisplaySwitcher = true,
   setDisplayType,
@@ -41,6 +40,7 @@ export function DBTimeChart({
   config: ChartConfigWithDateRange;
   sourceId?: string;
   onSettled?: () => void;
+  onError?: (error: Error | ClickHouseQueryError) => void;
   showDisplaySwitcher?: boolean;
   setDisplayType?: (type: DisplayType) => void;
   referenceLines?: React.ReactNode;
@@ -67,6 +67,7 @@ export function DBTimeChart({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
+      onError,
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;

@@ -121,26 +121,6 @@ export const SelectSQLStatementSchema = z.object({
   havingLanguage: SearchConditionLanguageSchema.optional(),
   orderBy: SortSpecificationListSchema.optional(),
   limit: LimitSchema.optional(),
-  with: z
-    .array(
-      z.object({
-        name: z.string(),
-
-        // Need to specify either a sql or chartConfig instance. To avoid
-        // the schema falling into an any type, the fields are separate
-        // and listed as optional.
-        sql: ChSqlSchema.optional(),
-        chartConfig: z.lazy(() => ChartConfigSchema).optional(),
-
-        // If true, it'll render as WITH ident AS (subquery)
-        // If false, it'll be a "variable" ex. WITH (sql) AS ident
-        // where sql can be any expression, ex. a constant string
-        // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
-        // default assume true
-        isSubquery: z.boolean().optional(),
-      }),
-    )
-    .optional(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -367,9 +347,44 @@ export const _ChartConfigSchema = z.object({
   metricTables: MetricTableSchema.optional(),
 });
 
-export const ChartConfigSchema = z.intersection(
-  _ChartConfigSchema,
+// This is a ChartConfig type without the `with` CTE clause included.
+// It needs to be a separate, named schema to avoid use ot z.lazy(...),
+// use of which allows for type mistakes to make it past linting.
+export const CteChartConfigSchema = z.intersection(
+  _ChartConfigSchema.partial({ timestampValueExpression: true }),
   SelectSQLStatementSchema,
+);
+
+export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
+
+// The `with` CTE property needs to be defined at this level, just above the
+// non-recursive chart config so that it can reference a complete chart config
+// schema. This structure does mean that we cannot nest `with` clauses but does
+// ensure the type system can catch more issues in the build pipeline.
+export const ChartConfigSchema = z.intersection(
+  z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
+  z
+    .object({
+      with: z.array(
+        z.object({
+          name: z.string(),
+
+          // Need to specify either a sql or chartConfig instance. To avoid
+          // the schema falling into an any type, the fields are separate
+          // and listed as optional.
+          sql: ChSqlSchema.optional(),
+          chartConfig: CteChartConfigSchema.optional(),
+
+          // If true, it'll render as WITH ident AS (subquery)
+          // If false, it'll be a "variable" ex. WITH (sql) AS ident
+          // where sql can be any expression, ex. a constant string
+          // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+          // default assume true
+          isSubquery: z.boolean().optional(),
+        }),
+      ),
+    })
+    .partial(),
 );
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
@@ -434,6 +449,8 @@ export const ConnectionSchema = z.object({
   username: z.string(),
   password: z.string().optional(),
 });
+
+export type Connection = z.infer<typeof ConnectionSchema>;
 
 // --------------------------
 // TABLE SOURCES
