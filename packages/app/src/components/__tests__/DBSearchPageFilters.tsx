@@ -131,26 +131,28 @@ describe('FilterGroup', () => {
     expect(onOnlyClick).toHaveBeenCalledWith('banana');
   });
 
-  // Type in search box (uncomment when search input is enabled)
-  //   it('should filter options when searching', async () => {
-  //     renderWithMantine(
-  //       <FilterGroup
-  //         {...defaultProps}
-  //         options={[
-  //           { value: 'apple123', label: 'apple123' },
-  //           { value: 'apple456', label: 'apple456' },
-  //           { value: 'banana', label: 'banana' },
-  //         ]}
-  //       />,
-  //     );
+  it('should filter options when searching', async () => {
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[
+          { value: 'apple123', label: 'apple123' },
+          { value: 'apple456', label: 'apple456' },
+          { value: 'banana', label: 'banana' },
+        ]}
+      />,
+    );
 
-  //     // Type in search box (uncomment when search input is enabled)
-  //     // const searchInput = screen.getByPlaceholderText('Test Filter');
-  //     // await userEvent.type(searchInput, 'apple');
+    // Type in search box
+    const searchInput = screen.getByPlaceholderText('Test Filter');
+    await userEvent.type(searchInput, 'apple');
 
-  //     // const labels = screen.getAllByText(/apple123|apple456/);
-  //     // expect(labels).toHaveLength(2);
-  //     // expect(labels[0]).toHaveTextContent('apple123');
-  //     // expect(labels[1]).toHaveTextContent('apple456');
-  //   });
+    const labels = screen.getAllByText(/apple123|apple456/);
+    expect(labels).toHaveLength(2);
+    expect(labels[0]).toHaveTextContent('apple123');
+    expect(labels[1]).toHaveTextContent('apple456');
+
+    // Verify banana is not shown
+    expect(screen.queryByText('banana')).not.toBeInTheDocument();
+  });
 });

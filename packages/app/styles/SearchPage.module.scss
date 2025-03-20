@@ -6,6 +6,32 @@
   background-color: #00000030;
   flex-shrink: 0;
   word-break: break-all;
+
+  :global {
+    .mantine-TextInput-wrapper {
+      background-color: transparent;
+    }
+
+    .mantine-TextInput-input {
+      height: 20px;
+      min-height: 20px;
+      //padding: 0 4px;
+      background-color: transparent;
+      border: none !important;
+      color: var(--mantine-color-gray-3);
+      font-size: var(--mantine-font-size-xs);
+
+      &::placeholder {
+        color: var(--mantine-color-gray-6);
+        font-weight: bold;
+      }
+
+      &:focus {
+        border: none;
+        outline: none;
+      }
+    }
+  }
 }
 
 .textButton {

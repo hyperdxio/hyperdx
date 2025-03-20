@@ -10,9 +10,11 @@ import {
   Stack,
   Tabs,
   Text,
+  TextInput,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import { useSearchPageFilterState } from '@/searchFilters';
@@ -209,46 +211,27 @@ export const FilterGroup = ({
 
   return (
     <Stack gap={0}>
-      <Group justify="space-between" wrap="nowrap">
-        <Tooltip
-          openDelay={name.length > 26 ? 0 : 1500}
-          label={name}
-          position="top"
-          withArrow
-          fz="xxs"
-          color="gray"
-        >
-          <Text
-            size="xxs"
-            c="gray.3"
-            fw="bold"
-            truncate="start"
-            maw="170px"
-            title={name}
-          >
-            {name}
-          </Text>
-        </Tooltip>
-        {/* <TextInput
-          size="xs"
-          variant="default"
-          placeholder={name}
-          leftSection={<span className="bi-search fs-8.5" />}
-          value={search}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-            setSearch(event.currentTarget.value)
-          }
-        /> */}
-        {selectedValues.included.size + selectedValues.excluded.size > 0 && (
-          <TextButton
-            label="Clear"
-            onClick={() => {
-              onClearClick();
-              setSearch('');
-            }}
-          />
-        )}
-      </Group>
+      <TextInput
+        size="xs"
+        placeholder={name}
+        value={search}
+        onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+          setSearch(event.currentTarget.value)
+        }
+        leftSectionWidth={27}
+        leftSection={<IconSearch size={15} stroke={2} />}
+        rightSection={
+          selectedValues.included.size + selectedValues.excluded.size > 0 ? (
+            <TextButton
+              label="Clear"
+              onClick={() => {
+                onClearClick();
+                setSearch('');
+              }}
+            />
+          ) : null
+        }
+      />
       <Stack gap={0}>
         {displayedOptions.map(option => (
           <FilterCheckbox
