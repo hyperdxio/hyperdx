@@ -102,9 +102,11 @@ export default function DBTableChart({
       columns={columns}
       getRowSearchLink={getRowSearchLink}
       tableBottom={
-        <Text ref={fetchMoreRef} ta="center">
-          Fetching More
-        </Text>
+        hasNextPage && (
+          <Text ref={fetchMoreRef} ta="center">
+            Loading...
+          </Text>
+        )
       }
     />
   );
