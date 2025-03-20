@@ -66,7 +66,9 @@ export function getEventBody(eventModel: TSource) {
     eventModel.implicitColumnExpression; //??
   // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
   const multiExpr = splitAndTrimCSV(expression ?? '');
-  return multiExpr.length === 1 ? expression : multiExpr[0];
+  return multiExpr.length === 1
+    ? expression
+    : `concatWithSeparator(';',${multiExpr.join(',')})`;
 }
 
 export function useSources() {

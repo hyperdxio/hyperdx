@@ -555,7 +555,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       return {
         column:
           expressions.length > 1
-            ? `arrayStringConcat([${expressions.join(',')}], ';')`
+            ? `concatWithSeparator(';',${expressions.join(',')})`
             : this.implicitColumnExpression,
         columnJSON: undefined,
         propertyType: JSDataType.String,
