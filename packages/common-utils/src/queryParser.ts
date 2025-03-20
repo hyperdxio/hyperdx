@@ -3,6 +3,7 @@ import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata } from '@/metadata';
+import { splitAndTrimCSV } from '@/utils';
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -361,9 +362,9 @@ export abstract class SQLSerializer implements Serializer {
       // to utilize the token bloom filter unless a prefix/sufix wildcard is specified
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
-          `(lower(??) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
+          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
-            column,
+            SqlString.raw(column ?? ''),
             `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
           ],
         );
@@ -374,21 +375,21 @@ export abstract class SQLSerializer implements Serializer {
           const tokens = this.tokenizeTerm(term);
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
-              SqlString.format(`hasTokenCaseInsensitive(??, ?)`, [
-                column,
+              SqlString.format(`hasTokenCaseInsensitive(?, ?)`, [
+                SqlString.raw(column ?? ''),
                 token,
               ]),
             ),
             // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(??) LIKE lower(?))`, [
-              column,
+            SqlString.format(`(lower(?) LIKE lower(?))`, [
+              SqlString.raw(column ?? ''),
               `%${term}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(??, ?))`,
-            [column, term],
+            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(?, ?))`,
+            [SqlString.raw(column ?? ''), term],
           );
         }
       }
@@ -549,8 +550,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         );
       }
 
+      const expressions = splitAndTrimCSV(this.implicitColumnExpression);
+
       return {
-        column: this.implicitColumnExpression,
+        column:
+          expressions.length > 1
+            ? `concatWithSeparator(';',${expressions.join(',')})`
+            : this.implicitColumnExpression,
         columnJSON: undefined,
         propertyType: JSDataType.String,
         found: true,
