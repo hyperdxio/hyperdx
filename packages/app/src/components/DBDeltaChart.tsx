@@ -258,7 +258,7 @@ export default function DBDeltaChart({
     with: [
       {
         name: 'PartIds',
-        sql: {
+        chartConfig: {
           ...config,
           select: 'tuple(_part, _part_offset)',
           filters: [
@@ -294,7 +294,7 @@ export default function DBDeltaChart({
     with: [
       {
         name: 'PartIds',
-        sql: {
+        chartConfig: {
           ...config,
           select: '_part, _part_offset',
           filters: [
