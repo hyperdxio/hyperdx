@@ -211,27 +211,36 @@ export const FilterGroup = ({
 
   return (
     <Stack gap={0}>
-      <TextInput
-        size="xs"
-        placeholder={name}
-        value={search}
-        onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-          setSearch(event.currentTarget.value)
-        }
-        leftSectionWidth={27}
-        leftSection={<IconSearch size={15} stroke={2} />}
-        rightSection={
-          selectedValues.included.size + selectedValues.excluded.size > 0 ? (
-            <TextButton
-              label="Clear"
-              onClick={() => {
-                onClearClick();
-                setSearch('');
-              }}
-            />
-          ) : null
-        }
-      />
+      <Tooltip
+        openDelay={name.length > 26 ? 0 : 1500}
+        label={name}
+        position="top"
+        withArrow
+        fz="xxs"
+        color="gray"
+      >
+        <TextInput
+          size="xs"
+          placeholder={name}
+          value={search}
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setSearch(event.currentTarget.value)
+          }
+          leftSectionWidth={27}
+          leftSection={<IconSearch size={15} stroke={2} />}
+          rightSection={
+            selectedValues.included.size + selectedValues.excluded.size > 0 ? (
+              <TextButton
+                label="Clear"
+                onClick={() => {
+                  onClearClick();
+                  setSearch('');
+                }}
+              />
+            ) : null
+          }
+        />
+      </Tooltip>
       <Stack gap={0}>
         {displayedOptions.map(option => (
           <FilterCheckbox
