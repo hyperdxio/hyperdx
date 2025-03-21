@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -220,6 +220,21 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   };
   return [storedValue, setValue] as const;
+}
+
+export function useIntersectionObserver(onIntersect: () => void) {
+  const observer = useRef<IntersectionObserver | null>(null);
+  const observerRef = useCallback((node: Element | null) => {
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        onIntersect();
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, []);
+
+  return { observerRef };
 }
 
 export function truncateText(

@@ -48,6 +48,7 @@ export const Table = ({
   columns,
   getRowSearchLink,
   onSortClick,
+  tableBottom,
 }: {
   data: any[];
   columns: {
@@ -61,6 +62,7 @@ export const Table = ({
   groupColumnName?: string;
   getRowSearchLink?: (row: any) => string;
   onSortClick?: (columnNumber: number) => void;
+  tableBottom?: React.ReactNode;
 }) => {
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
@@ -338,6 +340,7 @@ export const Table = ({
             </tr>
           )}
         </tbody>
+        {tableBottom && tableBottom}
       </table>
     </div>
   );

@@ -1,11 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { omit } from '@/utils';
+import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { omit, useIntersectionObserver } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -23,15 +26,23 @@ export default function DBTableChart({
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {
-  const queriedConfig = omit(config, ['granularity']);
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+  const queriedConfig = (() => {
+    const _config = omit(config, ['granularity']);
+    _config.limit = {
+      limit: 200,
+    };
+    if (_config.groupBy && typeof _config.groupBy === 'string') {
+      _config.orderBy = _config.groupBy;
+    }
+    return _config;
+  })();
+
+  const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
+    useOffsetPaginatedQuery(queriedConfig as ChartConfigWithDateRange, {
       enabled,
-    },
-  );
+      queryKeyPrefix,
+    });
+  const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
@@ -50,7 +61,7 @@ export default function DBTableChart({
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
       Loading Chart Data...
     </div>
-  ) : isError ? (
+  ) : isError && error ? (
     <div className="h-100 w-100 align-items-center justify-content-center text-muted">
       <Text ta="center" size="sm" mt="sm">
         Error loading chart, please check your query or try again later.
@@ -86,6 +97,13 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
+      tableBottom={
+        hasNextPage && (
+          <Text ref={fetchMoreRef} ta="center">
+            Loading...
+          </Text>
+        )
+      }
     />
   );
 }
