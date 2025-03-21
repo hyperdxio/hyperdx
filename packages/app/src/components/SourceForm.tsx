@@ -294,6 +294,13 @@ export function LogTableModelForm({
             connectionId={connectionId}
           />
         </FormRow>
+
+        <FormRow
+          label={'Correlated Metric Source'}
+          helpText="HyperDX Source for metrics associated with logs. Optional"
+        >
+          <SourceSelectControlled control={control} name="metricSourceId" />
+        </FormRow>
         <Divider />
         {/* <FormRow
           label={'Unique Row ID Expression'}
@@ -732,6 +739,12 @@ export function MetricTableModelForm({
             />
           </FormRow>
         ))}
+        <FormRow
+          label={'Correlated Log Source'}
+          helpText="HyperDX Source for logs associated with metrics. Optional"
+        >
+          <SourceSelectControlled control={control} name="logSourceId" />
+        </FormRow>
       </Stack>
     </>
   );
