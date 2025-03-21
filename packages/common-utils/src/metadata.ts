@@ -15,6 +15,7 @@ const DEFAULT_SAMPLE_SIZE = 1e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
+  private pendingQueries = new Map<string, Promise<any>>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
@@ -22,15 +23,31 @@ export class MetadataCache {
   }
 
   async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
-    const value = this.get(key) as T | undefined;
-    if (value != null) {
-      return value;
+    // Check if value exists in cache
+    const cachedValue = this.cache.get(key) as T | undefined;
+    if (cachedValue != null) {
+      return cachedValue;
     }
 
-    const newValue = await query();
-    this.cache.set(key, newValue);
+    // Check if there is a pending query
+    if (this.pendingQueries.has(key)) {
+      return this.pendingQueries.get(key)!;
+    }
 
-    return newValue;
+    // If no pending query, initiate the new query
+    const queryPromise = query();
+
+    // Store the pending query promise
+    this.pendingQueries.set(key, queryPromise);
+
+    try {
+      const result = await queryPromise;
+      this.cache.set(key, result);
+      return result;
+    } finally {
+      // Clean up the pending query map
+      this.pendingQueries.delete(key);
+    }
   }
 
   set<T>(key: string, value: T) {
