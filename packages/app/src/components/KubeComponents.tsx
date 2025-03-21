@@ -25,6 +25,7 @@ type AnchorEvent = {
 const renderKubeEvent = (event: KubeEvent) => {
   let href = '#';
   try {
+    // FIXME: should check if it works in v2
     href = `/search?q=${encodeURIComponent(
       `k8s.pod.name:"${event['k8s.pod.name']}"`,
     )}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
@@ -79,6 +80,7 @@ export const KubeTimeline = ({
     [dateRange],
   );
 
+  // FIXME: use renderChartConfig
   const { data, isLoading } = api.useLogBatch({
     q: `k8s.resource.name:"events" ${q}`,
     limit: 50,
