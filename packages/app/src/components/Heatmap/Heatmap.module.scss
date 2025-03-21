@@ -1,0 +1,50 @@
+.wrapper {
+  position: relative;
+  height: 100%;
+}
+
+.xLabels,
+.yLabels {
+  font-size: 10px;
+  color: var(--mantine-color-gray-5);
+  line-height: 1;
+}
+
+.xLabels {
+  position: absolute;
+  bottom: 0;
+  left: 20px;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+.yLabels {
+  position: absolute;
+  top: 0;
+  bottom: 16px;
+  left: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  padding: 0 5px;
+
+  > div {
+    writing-mode: vertical-rl;
+  }
+}
+
+.heatmap {
+  position: absolute;
+  inset: 0 0 16px 22px;
+  display: grid;
+  grid-template-columns: repeat(100, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+  place-items: stretch stretch;
+  gap: 1px;
+}
+
+.cell {
+  transition: background-color 100ms;
+  cursor: pointer;
+}
