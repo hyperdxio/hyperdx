@@ -39,14 +39,7 @@ export default function DBTableChart({
       enabled,
       queryKeyPrefix,
     });
-  const fetchMoreRef = useRef(null);
-  useIntersectionObserver(fetchMoreRef, {
-    onIntersect: isVisible => {
-      if (isVisible && hasNextPage) {
-        fetchNextPage();
-      }
-    },
-  });
+  const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
