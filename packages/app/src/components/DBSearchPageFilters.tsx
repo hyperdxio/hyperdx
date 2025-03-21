@@ -93,7 +93,9 @@ export const FilterCheckbox = ({
       </Group>
       <div className={classes.filterActions}>
         {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
-        {onClickExclude && <TextButton onClick={onClickExclude} label="Not" />}
+        {onClickExclude && (
+          <TextButton onClick={onClickExclude} label="Exclude" />
+        )}
       </div>
     </div>
   );
