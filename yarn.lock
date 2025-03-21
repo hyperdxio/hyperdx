@@ -4456,6 +4456,7 @@ __metadata:
     object-hash: "npm:^3.0.0"
     rimraf: "npm:^4.4.1"
     semver: "npm:^7.5.2"
+    sql-formatter: "npm:^15.4.11"
     sqlstring: "npm:^2.3.3"
     store2: "npm:^2.14.4"
     supertest: "npm:^6.3.1"
@@ -25913,6 +25914,19 @@ __metadata:
   bin:
     sql-formatter: bin/sql-formatter-cli.cjs
   checksum: 10c0/caa7048788296a37a521496087b52e62af2a33e056e81f3c5eed80c2616c83ccfb1bf857696c7beefe711f58dbce5f2f48d8343a90ef89606611164bb5374c14
+  languageName: node
+  linkType: hard
+
+"sql-formatter@npm:^15.4.11":
+  version: 15.4.11
+  resolution: "sql-formatter@npm:15.4.11"
+  dependencies:
+    argparse: "npm:^2.0.1"
+    get-stdin: "npm:=8.0.0"
+    nearley: "npm:^2.20.1"
+  bin:
+    sql-formatter: bin/sql-formatter-cli.cjs
+  checksum: 10c0/a61f252d6d71face6693a41e5b6a689c913f9bf88a37c3410bdf24a0858da552cbac336a9dc2a254e876fdc2f77026465b55425b1c9f15c4afa2f6218c22d80f
   languageName: node
   linkType: hard
 
