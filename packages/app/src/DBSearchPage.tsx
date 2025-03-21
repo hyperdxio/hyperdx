@@ -25,6 +25,7 @@ import {
   DisplayType,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
+import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -872,13 +873,11 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
   });
 
-  const displayedColumns = (
+  const displayedColumns = splitAndTrimCSV(
     dbSqlRowTableConfig?.select ??
-    searchedSource?.defaultTableSelectExpression ??
-    ''
-  )
-    .split(',')
-    .map(s => s.trim());
+      searchedSource?.defaultTableSelectExpression ??
+      '',
+  );
 
   const toggleColumn = (column: string) => {
     const newSelectArray = displayedColumns.includes(column)

@@ -11,10 +11,17 @@ export const isNode: boolean =
   process.versions != null &&
   process.versions.node != null;
 
+export function splitAndTrimCSV(input: string): string[] {
+  return input
+    .split(',')
+    .map(column => column.trim())
+    .filter(column => column.length > 0);
+}
+
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return valueExpression.split(',')[0].trim();
+  return splitAndTrimCSV(valueExpression)[0];
 }
 
 export enum Granularity {
