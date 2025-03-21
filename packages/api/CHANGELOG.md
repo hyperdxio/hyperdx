@@ -1,5 +1,20 @@
 # @hyperdx/api
 
+## 2.0.0-beta.13
+
+### Patch Changes
+
+- b9f7d32: Refactored renderWith to simplify logic and ship more tests with the changes.
+- 5db2767: Fixed CI linting and UI release task.
+- 414ff92: perf + fix: single clickhouse proxy middleware instance
+- Updated dependencies [a9dfa14]
+- Updated dependencies [b9f7d32]
+- Updated dependencies [bd9dc18]
+- Updated dependencies [5db2767]
+- Updated dependencies [414ff92]
+- Updated dependencies [e5a210a]
+  - @hyperdx/common-utils@0.2.0-beta.2
+
 ## 2.0.0-beta.12
 
 ### Patch Changes
