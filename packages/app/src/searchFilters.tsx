@@ -3,19 +3,36 @@ import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
 export type FilterState = {
-  [key: string]: Set<string>;
+  [key: string]: {
+    included: Set<string>;
+    excluded: Set<string>;
+  };
 };
 
 export const filtersToQuery = (filters: FilterState): Filter[] => {
   return Object.entries(filters)
-    .filter(([_, values]) => values.size > 0)
-    .map(([key, values]) => {
-      return {
-        type: 'sql',
-        condition: `${key} IN (${Array.from(values)
-          .map(v => `'${v}'`)
-          .join(', ')})`,
-      };
+    .filter(
+      ([_, values]) => values.included.size > 0 || values.excluded.size > 0,
+    )
+    .flatMap(([key, values]) => {
+      const conditions = [];
+      if (values.included.size > 0) {
+        conditions.push({
+          type: 'sql' as const,
+          condition: `${key} IN (${Array.from(values.included)
+            .map(v => `'${v}'`)
+            .join(', ')})`,
+        });
+      }
+      if (values.excluded.size > 0) {
+        conditions.push({
+          type: 'sql' as const,
+          condition: `${key} NOT IN (${Array.from(values.excluded)
+            .map(v => `'${v}'`)
+            .join(', ')})`,
+        });
+      }
+      return conditions;
     });
 };
 
@@ -28,14 +45,18 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   }
 
   for (const key of aKeys) {
-    if (!b[key] || a[key].size !== b[key].size) {
-      return false;
+    if (!b[key]) return false;
+
+    // Check included values
+    if (a[key].included.size !== b[key].included.size) return false;
+    for (const value of a[key].included) {
+      if (!b[key].included.has(value)) return false;
     }
 
-    for (const value of a[key]) {
-      if (!b[key].has(value)) {
-        return false;
-      }
+    // Check excluded values
+    if (a[key].excluded.size !== b[key].excluded.size) return false;
+    for (const value of a[key].excluded) {
+      if (!b[key].excluded.has(value)) return false;
     }
   }
 
@@ -47,20 +68,35 @@ export const parseQuery = (
 ): {
   filters: FilterState;
 } => {
-  const state = new Map<string, Set<string>>();
+  const state = new Map<
+    string,
+    { included: Set<string>; excluded: Set<string> }
+  >();
   for (const filter of q) {
-    if (filter.type !== 'sql' || filter.condition.indexOf(' IN ') === -1) {
-      continue;
-    }
+    if (filter.type !== 'sql') continue;
 
-    const [key, values] = filter.condition.split(' IN ');
+    const isExclude = filter.condition.includes('NOT IN');
+    const [key, values] = filter.condition.split(
+      isExclude ? ' NOT IN ' : ' IN ',
+    );
     const keyStr = key.trim();
     const valuesStr = values
       .replace('(', '')
       .replace(')', '')
       .split(',')
       .map(v => v.trim().replace(/'/g, ''));
-    state.set(keyStr, new Set(valuesStr));
+
+    if (!state.has(keyStr)) {
+      state.set(keyStr, { included: new Set(), excluded: new Set() });
+    }
+    const sets = state.get(keyStr)!;
+    valuesStr.forEach(v => {
+      if (isExclude) {
+        sets.excluded.add(v);
+      } else {
+        sets.included.add(v);
+      }
+    });
   }
   return { filters: Object.fromEntries(state) };
 };
@@ -102,22 +138,43 @@ export const useSearchPageFilterState = ({
   );
 
   const setFilterValue = React.useCallback(
-    (property: string, value: string, only?: boolean) => {
+    (
+      property: string,
+      value: string,
+      action?: 'only' | 'exclude' | 'include',
+    ) => {
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
-            draft[property] = new Set();
+            draft[property] = { included: new Set(), excluded: new Set() };
           }
-          // if only is true, set the value as the only value
-          if (only) {
-            draft[property] = new Set([value]);
+
+          if (action === 'only') {
+            draft[property] = {
+              included: new Set([value]),
+              excluded: new Set(),
+            };
             return;
           }
-          const values = draft[property];
-          if (values.has(value)) {
-            values.delete(value);
+
+          if (action === 'exclude') {
+            // Remove from included if it was there
+            draft[property].included.delete(value);
+            // Toggle in excluded
+            if (draft[property].excluded.has(value)) {
+              draft[property].excluded.delete(value);
+            } else {
+              draft[property].excluded.add(value);
+            }
+            return;
+          }
+
+          // Regular toggle (include)
+          draft[property].excluded.delete(value);
+          if (draft[property].included.has(value)) {
+            draft[property].included.delete(value);
           } else {
-            values.add(value);
+            draft[property].included.add(value);
           }
         });
         updateFilterQuery(newFilters);
