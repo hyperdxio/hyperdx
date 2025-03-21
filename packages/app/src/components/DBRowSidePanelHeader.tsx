@@ -74,30 +74,21 @@ export default function DBRowSidePanelHeader({
   const [headerHeight, setHeaderHeight] = useState(0);
   useEffect(() => {
     if (!headerRef.current) return;
+    const el = headerRef.current;
 
     const updateHeight = () => {
-      if (headerRef.current) {
-        const newHeight = headerRef.current.offsetHeight;
-        setHeaderHeight(newHeight);
-      }
+      const newHeight = el.offsetHeight;
+      setHeaderHeight(newHeight);
     };
-
     updateHeight();
 
     // Set up a resize observer to detect height changes
-    const resizeObserver = new ResizeObserver(_ => {
-      updateHeight();
-    });
-
-    if (headerRef.current) {
-      resizeObserver.observe(headerRef.current);
-    }
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(el);
 
     // Clean up the observer on component unmount
     return () => {
-      if (headerRef.current) {
-        resizeObserver.disconnect();
-      }
+      resizeObserver.disconnect();
     };
   }, [headerRef.current, setHeaderHeight]);
 
@@ -139,7 +130,7 @@ export default function DBRowSidePanelHeader({
           p="xs"
           mt="sm"
           style={{
-            maxHeight: expandSidebarHeader ? maxBoxHeight : undefined,
+            maxHeight: expandSidebarHeader ? undefined : maxBoxHeight,
             overflow: 'auto',
             overflowWrap: 'break-word',
           }}
@@ -167,9 +158,9 @@ export default function DBRowSidePanelHeader({
               >
                 {/* TODO: Only show expand button when maxHeight = 120? */}
                 {expandSidebarHeader ? (
-                  <i className="bi bi-arrows-angle-expand" />
-                ) : (
                   <i className="bi bi-arrows-angle-contract" />
+                ) : (
+                  <i className="bi bi-arrows-angle-expand" />
                 )}
               </Button>
             )}
