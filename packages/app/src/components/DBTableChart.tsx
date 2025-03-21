@@ -31,6 +31,9 @@ export default function DBTableChart({
     _config.limit = {
       limit: 200,
     };
+    if (_config.groupBy && typeof _config.groupBy === 'string') {
+      _config.orderBy = _config.groupBy;
+    }
     return _config;
   })();
 
