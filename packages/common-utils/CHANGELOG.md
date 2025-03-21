@@ -1,5 +1,19 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.2
+
+### Minor Changes
+
+- a9dfa14: Added support to CTE rendering where you can now specify a CTE using a full chart config object instance. This CTE capability is then used to avoid the URI too long error for delta event queries.
+
+### Patch Changes
+
+- b9f7d32: Refactored renderWith to simplify logic and ship more tests with the changes.
+- bd9dc18: perf: reuse existing queries promises to avoid duplicate requests
+- 5db2767: Fixed CI linting and UI release task.
+- 414ff92: feat: export 'Connection' type
+- e5a210a: feat: support search on multi implicit fields (BETA)
+
 ## 0.2.0-beta.1
 
 ### Patch Changes
