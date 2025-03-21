@@ -13,6 +13,7 @@ export type UserPreferences = {
   backgroundBlur?: number;
   backgroundOpacity?: number;
   backgroundBlendMode?: string;
+  expandSidebarHeader?: boolean;
 };
 
 export const userPreferencesAtom = atomWithStorage<UserPreferences>(
