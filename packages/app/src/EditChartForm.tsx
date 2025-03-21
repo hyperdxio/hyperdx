@@ -10,6 +10,7 @@ import {
   Group,
   Paper,
   Switch,
+  TextInput,
   Tooltip,
 } from '@mantine/core';
 
@@ -958,21 +959,47 @@ export const EditMultiSeriesChartForm = ({
             <Divider
               label={
                 <Group gap="xs">
-                  {editedChart.seriesReturnType === 'column' && (
-                    <ColorSwatchInput
-                      value={series.color}
-                      onChange={(color?: string) => {
-                        setEditedChart(
-                          produce(editedChart, draft => {
-                            const draftSeries = draft.series[i];
-                            if (draftSeries.type === chartType) {
-                              draftSeries.color = color;
-                            }
-                          }),
-                        );
-                      }}
-                    />
+                  {(series.type === 'table' || series.type === 'time') && (
+                    <>
+                      <TextInput
+                        leftSection={
+                          <i className="bi bi-chat-left-quote-fill fs-8.5" />
+                        }
+                        title="Table header name"
+                        size="xs"
+                        w={200}
+                        value={series.displayName}
+                        onChange={event => {
+                          setEditedChart(
+                            produce(editedChart, draft => {
+                              const s = draft.series[i];
+                              if (s.type === 'table' || s.type === 'time') {
+                                s.displayName = event.currentTarget.value;
+                              }
+                            }),
+                          );
+                        }}
+                        placeholder={`${series.aggFn}(${series.field || ''})`}
+                      />
+                    </>
                   )}
+
+                  {editedChart.seriesReturnType === 'column' &&
+                    chartType === 'time' && (
+                      <ColorSwatchInput
+                        value={series.color}
+                        onChange={(color?: string) => {
+                          setEditedChart(
+                            produce(editedChart, draft => {
+                              const draftSeries = draft.series[i];
+                              if (draftSeries.type === chartType) {
+                                draftSeries.color = color;
+                              }
+                            }),
+                          );
+                        }}
+                      />
+                    )}
 
                   {editedChart.series.length > 1 && (
                     <Button
