@@ -12,6 +12,7 @@ import { createTeam } from '@/controllers/team';
 import {
   bulkInsertLogs,
   bulkInsertMetricsGauge,
+  bulkInsertMetricsHistogram,
   bulkInsertMetricsSum,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
@@ -20,6 +21,13 @@ import {
 } from '@/fixtures';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
+import { AggregationTemporality } from '@/utils/logParser';
+
+const TEST_METRIC_TABLES = {
+  sum: DEFAULT_METRICS_TABLE.SUM,
+  gauge: DEFAULT_METRICS_TABLE.GAUGE,
+  histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+};
 
 describe('renderChartConfig', () => {
   const server = getServer();
@@ -334,6 +342,91 @@ describe('renderChartConfig', () => {
         IsMonotonic: true,
         AggregationTemporality: 2, // Cumulative
       }));
+      const histPointsA = [
+        {
+          BucketCounts: [0, 0, 0],
+          ExplicitBounds: [10, 30],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [10, 10, 10],
+          ExplicitBounds: [10, 30],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_lower_bound',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ...point,
+      }));
+      const histPointsB = [
+        {
+          BucketCounts: [0, 0, 0],
+          ExplicitBounds: [1, 30],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [10, 0, 0],
+          ExplicitBounds: [1, 30],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_lower_bound_inf',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ...point,
+      }));
+      const histPointsC = [
+        {
+          BucketCounts: [0, 0, 0],
+          ExplicitBounds: [0, 30],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [0, 0, 10],
+          ExplicitBounds: [0, 30],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_upper_bound_inf',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ...point,
+      }));
+      const histPointsD = [
+        {
+          BucketCounts: [5, 5, 5],
+          ExplicitBounds: [10, 30],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [0, 0, 0],
+          ExplicitBounds: [10, 30],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+        {
+          BucketCounts: [10, 10, 10],
+          ExplicitBounds: [10, 30],
+          TimeUnix: new Date(now + ms('2m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.three_timestamps_bounded',
+        ResourceAttributes: {
+          host: 'test3',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ...point,
+      }));
 
       await Promise.all([
         bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]),
@@ -343,6 +436,12 @@ describe('renderChartConfig', () => {
           ...sumPointsC,
           ...sumPointsD,
           ...sumPointsE,
+        ]),
+        bulkInsertMetricsHistogram([
+          ...histPointsA,
+          ...histPointsB,
+          ...histPointsC,
+          ...histPointsD,
         ]),
       ]);
     });
@@ -360,11 +459,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('10m'))],
           granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -385,11 +480,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('10m'))],
           granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -410,11 +501,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('10m'))],
           granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -439,11 +526,7 @@ describe('renderChartConfig', () => {
           from: metricSource.from,
           where: 'ServiceName:"db" AND ResourceAttributes.host:"host1"',
           whereLanguage: 'lucene',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('10m'))],
           granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -467,11 +550,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('10m'))],
           granularity: '5 minute',
           groupBy: `ResourceAttributes['host']`,
@@ -496,11 +575,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('20m'))],
           granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -524,11 +599,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('20m'))],
           granularity: '10 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -568,11 +639,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('20m'))],
           granularity: '10 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -594,11 +661,7 @@ describe('renderChartConfig', () => {
           ],
           from: metricSource.from,
           where: '',
-          metricTables: {
-            sum: DEFAULT_METRICS_TABLE.SUM,
-            gauge: DEFAULT_METRICS_TABLE.GAUGE,
-            histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
-          },
+          metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('20m'))],
           granularity: '10 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
@@ -607,6 +670,295 @@ describe('renderChartConfig', () => {
         metadata,
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
+    });
+
+    it('two_timestamps_bounded histogram (p50)', async () => {
+      /*
+        This test starts with 2 data points with bounds of [10, 30]:
+          t0: [0, 0, 0]
+          t1: [10, 10, 10]
+
+        Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
+          delta: [10, 10, 10] - [0, 0, 0] = [10, 10, 10]
+
+        Total observations: 10 + 10 + 10 = 30
+        Cumulative counts: [10, 20, 30]
+        p50 point:
+          Rank = 0.5 * 30 = 15
+          This falls in the second bucket (since 10 < 15 ≤ 20)
+
+        We need to interpolate between the lower and upper bounds of the second bucket:
+          Lower bound: 10
+          Upper bound: 30
+          Position in bucket: (15 - 10) / (20 - 10) = 0.5
+          Interpolated value: 10 + (30 - 10) * 0.5 = 10 + 10 = 20
+
+        Thus the first point value would be 0 since it's at the start of the bounds.
+        The second point value would be 20 since that is the median point value delta from the first point.
+       */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              metricName: 'test.two_timestamps_lower_bound',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('two_timestamps_bounded histogram (p90)', async () => {
+      /*
+        This test starts with 2 data points with bounds of [10, 30]:
+          t0: [0, 0, 0]
+          t1: [10, 10, 10]
+
+        Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
+          delta: [10, 10, 10] - [0, 0, 0] = [10, 10, 10]
+
+        Total observations: 10 + 10 + 10 = 30
+        Cumulative counts: [10, 20, 30]
+        p90 point:
+          Rank = 0.9 * 30 = 27
+          This falls in the third bucket (since 20 < 27 ≤ 30)
+
+        We need to interpolate between the lower and upper bounds of the third bucket:
+          Lower bound: 30
+          Upper bound: Infinity (but we use the upper bound of the previous bucket for the last bucket)
+          Position in bucket: (27 - 20) / (30 - 20) = 0.7
+          Interpolated value: 30 (since it's in the last bucket, we return the upper bound of the previous bucket)
+
+        Thus the first point value would be 0 since it's at the start of the bounds.
+        The second point value would be 30 since that is the 90th percentile point value delta from the first point.
+       */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.9,
+              metricName: 'test.two_timestamps_lower_bound',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('two_timestamps_bounded histogram (p25)', async () => {
+      /*
+        This test starts with 2 data points with bounds of [10, 30]:
+          t0: [0, 0, 0]
+          t1: [10, 10, 10]
+
+        Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
+          delta: [10, 10, 10] - [0, 0, 0] = [10, 10, 10]
+
+        Total observations: 10 + 10 + 10 = 30
+        Cumulative counts: [10, 20, 30]
+        p25 point:
+          Rank = 0.25 * 30 = 7.5
+          This falls in the first bucket (since 0 < 7.5 ≤ 10)
+
+        We need to interpolate between the lower and upper bounds of the first bucket:
+          Lower bound: 0 (implicit lower bound for first bucket)
+          Upper bound: 10 (first explicit bound)
+          Position in bucket: 7.5 / 10 = 0.75
+          Interpolated value: 0 + 0.75 * (10 - 0) = 7.5
+
+        Since all observations are in the first bucket which has an upper bound of 1:
+          For the first bucket (≤ 0), the algorithm would interpolate, but since all values are in this bucket and it's the lowest bucket, it would return 10
+          Thus the value columns in res should be [0, 10]
+       */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.25,
+              metricName: 'test.two_timestamps_lower_bound',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('two_timestamps_lower_bound_inf histogram (p50)', async () => {
+      /*
+      This test starts with 2 data points with bounds of [1, 30]:
+        t0: [0, 0, 0]
+        t1: [10, 0, 0]
+
+      Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
+        delta: [10, 0, 0] - [0, 0, 0] = [10, 0, 0]
+
+      Total observations: 10 + 0 + 0 = 10
+      Cumulative counts: [10, 10, 10]
+      p50 point:
+        Rank = 0.5 * 10 = 5
+        This falls in the first bucket (since 5 < 10)
+
+      Since all observations are in the first bucket which has an upper bound of 1:
+        For the first bucket (≤ 0), the algorithm would interpolate, but since all values are in this bucket and it's the lowest bucket, it would return 1
+        Thus the value columns in res should be [0, 1]
+    */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              metricName: 'test.two_timestamps_lower_bound_inf',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('two_timestamps_upper_bound_inf histogram (p50)', async () => {
+      /*
+      This test starts with 2 data points with bounds of [0, 30]:
+        t0: [0, 0, 0]
+        t1: [0, 0, 10]
+
+      Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
+        delta: [0, 0, 10] - [0, 0, 0] = [0, 0, 10]
+
+      Total observations: 0 + 0 + 10 = 10
+      Cumulative counts: [0, 0, 10]
+      p50 point:
+        Rank = 0.5 * 10 = 5
+        This falls in the third bucket
+
+      Since all observations are in the third bucket which has no upper bound (infinity):
+        For the third bucket (> 30), the algorithm would return the upper bound of the previous bucket, which is 30
+        Thus the value columns in res should be [0, 30]
+      */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              metricName: 'test.two_timestamps_upper_bound_inf',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    // HDX-1515: Handle counter reset in histogram metric in the same way that the counter reset
+    // is handled for sum metrics.
+    it.skip('three_timestamps_bounded histogram with reset (p50)', async () => {
+      /*
+        For the following histogram values:
+          b = [10, 30]
+          t0 = [5, 5, 5]
+          t1 = [0, 0, 0]
+          t2 = [10, 10, 10]
+
+        The computed value at each point would be:
+          t0 = 10
+            cum values = [5, 10, 15]
+            rank = 0.5 * 15 = 7.5
+
+          t1 = 0
+            cum values = [0, 0, 0]
+            rank = 0.5 * 0 = 0
+
+          t2 = 20
+            cum values = [10, 20, 30]
+            rank = 0.5 * 30 = 15
+            Position in bucket: (15 - 10) / (20 - 10) = 0.5
+            Interpolated value: 10 + (30 - 10) * 0.5 = 10 + 10 = 20
+
+        Ignoring the counter reset of zeros:
+          [10, 0, 20] is interpolated as [10, 10, 30]
+       */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              metricName: 'test.three_timestamps_bounded',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
     });
   });
 });
