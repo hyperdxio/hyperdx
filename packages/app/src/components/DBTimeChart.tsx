@@ -19,6 +19,7 @@ import {
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -71,6 +72,7 @@ export function DBTimeChart({
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
     useMemo(() => {
@@ -80,6 +82,7 @@ export function DBTimeChart({
             dateRange,
             granularity,
             generateEmptyBuckets: fillNulls !== false,
+            source,
           })
         : {
             graphResults: [],
