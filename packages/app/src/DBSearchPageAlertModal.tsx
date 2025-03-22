@@ -9,7 +9,8 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
-  SavedSearch,
+  SearchCondition,
+  SearchConditionLanguage,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
 import { TextInput } from '@mantine/core';
@@ -58,23 +59,29 @@ const CHANNEL_ICONS = {
 };
 
 const AlertForm = ({
-  savedSearch,
+  sourceId,
+  where,
+  whereLanguage,
   defaultValues,
   loading,
   deleteLoading,
+  hasSavedSearch,
   onDelete,
   onSubmit,
   onClose,
 }: {
-  savedSearch?: SavedSearch;
+  sourceId?: string | null;
+  where?: SearchCondition | null;
+  whereLanguage?: SearchConditionLanguage | null;
   defaultValues?: null | Alert;
   loading?: boolean;
   deleteLoading?: boolean;
+  hasSavedSearch?: boolean;
   onDelete: (id: string) => void;
   onSubmit: (data: Alert) => void;
   onClose: () => void;
 }) => {
-  const { data: source } = useSource({ id: savedSearch?.source });
+  const { data: source } = useSource({ id: sourceId });
 
   const databaseName = source?.from.databaseName;
   const tableName = source?.from.tableName;
@@ -159,24 +166,24 @@ const AlertForm = ({
         </Paper>
       </Stack>
 
-      {savedSearch && (
-        <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
-          <Accordion.Item value="chart">
-            <Accordion.Control icon={<i className="bi bi-chart"></i>}>
-              <Text size="sm">Threshold chart</Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <AlertPreviewChart
-                savedSearch={savedSearch}
-                interval={watch('interval')}
-                groupBy={watch('groupBy')}
-                threshold={watch('threshold')}
-                thresholdType={watch('thresholdType')}
-              />
-            </Accordion.Panel>
-          </Accordion.Item>
-        </Accordion>
-      )}
+      <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
+        <Accordion.Item value="chart">
+          <Accordion.Control icon={<i className="bi bi-chart"></i>}>
+            <Text size="sm">Threshold chart</Text>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <AlertPreviewChart
+              sourceId={sourceId}
+              where={where}
+              whereLanguage={whereLanguage}
+              interval={watch('interval')}
+              groupBy={watch('groupBy')}
+              threshold={watch('threshold')}
+              thresholdType={watch('thresholdType')}
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
 
       <Group mt="lg" justify="space-between" gap="xs">
         <div>
@@ -199,9 +206,9 @@ const AlertForm = ({
           <Button variant="light" type="submit" loading={loading}>
             {defaultValues
               ? 'Save Alert'
-              : savedSearch
+              : hasSavedSearch
                 ? 'Create Alert'
-                : 'Save search'}
+                : 'Save Search with Alert'}
           </Button>
         </Group>
       </Group>
@@ -390,8 +397,11 @@ export const DBSearchPageAlertModal = ({
         </Tabs>
 
         <AlertForm
-          savedSearch={savedSearch}
           key={activeIndex}
+          hasSavedSearch={!!savedSearch}
+          sourceId={searchedConfig?.source}
+          where={searchedConfig?.where}
+          whereLanguage={searchedConfig?.whereLanguage}
           defaultValues={
             activeIndex === 'stage'
               ? null
