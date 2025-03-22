@@ -2,14 +2,11 @@ import {
   createContext,
   MouseEventHandler,
   useCallback,
-  useContext,
-  useId,
   useMemo,
   useState,
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
-import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
@@ -56,22 +53,26 @@ export const RowSidePanelContext = createContext<{
 }>({});
 
 export default function DBRowSidePanel({
-  rowId: rowId,
+  rowId,
   source,
-  // where,
-  q,
+  dbSqlRowTableConfig,
   onClose,
-  isNestedPanel = false,
+  isTopPanel = true,
+  zIndexOffset = 0,
+  tab,
+  setTab,
 }: {
-  // where?: string;
   source: TSource;
-  q?: string;
+  dbSqlRowTableConfig?: ChartConfigWithDateRange;
   rowId: string | undefined;
+  zIndexOffset?: number;
   onClose: () => void;
-  isNestedPanel?: boolean;
+  isTopPanel?: boolean;
+  tab: string;
+  setTab: (tab: string) => void;
 }) {
   const contextZIndex = useZIndex();
-  const drawerZIndex = contextZIndex + 10;
+  const drawerZIndex = contextZIndex + 10 + zIndexOffset;
 
   const {
     data: rowData,
@@ -82,8 +83,6 @@ export default function DBRowSidePanel({
     rowId,
   });
 
-  const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
-
   enum Tab {
     Overview = 'overview',
     Parsed = 'parsed',
@@ -93,11 +92,6 @@ export default function DBRowSidePanel({
     Replay = 'replay',
     Infrastructure = 'infrastructure',
   }
-
-  const [queryTab, setQueryTab] = useQueryState(
-    'tab',
-    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
-  );
 
   const [panelWidthPerc, setPanelWidthPerc] = useState(80);
   const handleResize = useCallback((e: MouseEvent) => {
@@ -118,48 +112,11 @@ export default function DBRowSidePanel({
     document.removeEventListener('mouseup', endResize);
   }, []);
 
-  // const [queryTab, setQueryTab] = useQueryParam(
-  //   'tb',
-  //   withDefault(StringParam, undefined),
-  //   {
-  //     updateType: 'pushIn',
-  //     // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
-  //     enableBatching: true,
-  //   },
-  // );
-  // Keep track of sub-drawers so we can disable closing this root drawer
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
-
-  const [stateTab, setStateTab] = useState<Tab>(Tab.Overview);
-  // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
-  // We'll need to handle this properly eventually...
-  const tab = isNestedPanel ? stateTab : queryTab;
-  const setTab = isNestedPanel ? setStateTab : setQueryTab;
-
-  const displayedTab = tab;
-
-  const _onClose = useCallback(() => {
-    // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
-    // (which might not be valid, ex session replay)
-    if (!isNestedPanel) {
-      setQueryTab(null);
-    }
-    onClose();
-  }, [setQueryTab, isNestedPanel, onClose]);
-
-  useHotkeys(
-    ['esc'],
-    () => {
-      _onClose();
-    },
-    {
-      enabled: subDrawerOpen === false,
-    },
-  );
+  useHotkeys(['esc'], onClose, { enabled: isTopPanel });
 
   const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && rowId != null) {
-      _onClose();
+    if (isTopPanel && rowId != null) {
+      onClose();
     }
   }, ['mouseup', 'touchend']);
 
@@ -236,14 +193,14 @@ export default function DBRowSidePanel({
       duration={0}
       open={rowId != null}
       onClose={() => {
-        if (!subDrawerOpen) {
-          _onClose();
+        if (isTopPanel) {
+          onClose();
         }
       }}
       direction="right"
       size={`${Math.min(panelWidthPerc, 90)}vw`}
       zIndex={drawerZIndex}
-      enableOverlay={subDrawerOpen}
+      enableOverlay={isTopPanel}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel} ref={drawerRef}>
@@ -306,10 +263,10 @@ export default function DBRowSidePanel({
                       ]
                     : []),
                 ]}
-                activeItem={displayedTab}
+                activeItem={tab}
                 onClick={(v: any) => setTab(v)}
               />
-              {displayedTab === Tab.Overview && (
+              {tab === Tab.Overview && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
@@ -323,7 +280,7 @@ export default function DBRowSidePanel({
                   <RowOverviewPanel source={source} rowId={rowId} />
                 </ErrorBoundary>
               )}
-              {displayedTab === Tab.Trace && (
+              {tab === Tab.Trace && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
@@ -345,7 +302,7 @@ export default function DBRowSidePanel({
                   </Box>
                 </ErrorBoundary>
               )}
-              {displayedTab === Tab.Parsed && (
+              {tab === Tab.Parsed && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
@@ -359,7 +316,7 @@ export default function DBRowSidePanel({
                   <RowDataPanel source={source} rowId={rowId} />
                 </ErrorBoundary>
               )}
-              {displayedTab === Tab.Context && (
+              {tab === Tab.Context && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
@@ -378,7 +335,7 @@ export default function DBRowSidePanel({
                   />
                 </ErrorBoundary>
               )}
-              {displayedTab === Tab.Replay && (
+              {tab === Tab.Replay && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
@@ -393,7 +350,6 @@ export default function DBRowSidePanel({
                     <DBSessionPanel
                       dateRange={rng}
                       focusDate={focusDate}
-                      setSubDrawerOpen={setSubDrawerOpen}
                       traceSourceId={traceSourceId}
                       serviceName={rumServiceName}
                       rumSessionId={rumSessionId}

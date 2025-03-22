@@ -2,9 +2,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
 import {
+  ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   DateRange,
   SearchCondition,
@@ -20,13 +20,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import * as clickhouse from '@/clickhouse';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
-
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { useRowSidePanel } from './hooks/useRowSidePanel';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
-import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
 import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
@@ -40,10 +37,6 @@ export default function SessionSubpanel({
   traceSource,
   sessionSource,
   session,
-  onPropertyAddClick,
-  generateChartUrl,
-  generateSearchUrl,
-  setDrawerOpen,
   rumSessionId,
   start,
   end,
@@ -60,9 +53,7 @@ export default function SessionSubpanel({
     field: string;
     groupBy: string[];
   }) => string;
-
   onPropertyAddClick?: (name: string, value: string) => void;
-  setDrawerOpen: (open: boolean) => void;
   rumSessionId: string;
   start: Date;
   end: Date;
@@ -70,42 +61,6 @@ export default function SessionSubpanel({
   where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
 }) {
-  const [rowId, setRowId] = useState<string | undefined>(undefined);
-
-  // Without portaling the nested drawer close overlay will not render properly
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    containerRef.current = document.createElement('div');
-
-    if (containerRef.current) {
-      document.body.appendChild(containerRef.current);
-    }
-
-    return () => {
-      if (containerRef.current) {
-        document.body.removeChild(containerRef.current);
-      }
-    };
-  }, []);
-
-  const portaledPanel =
-    containerRef.current != null
-      ? ReactDOM.createPortal(
-          traceSource && (
-            <DBRowSidePanel
-              source={traceSource}
-              isNestedPanel
-              rowId={rowId}
-              onClose={() => {
-                setDrawerOpen(false);
-                setRowId(undefined);
-              }}
-            />
-          ),
-          containerRef.current,
-        )
-      : null;
-
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
@@ -395,7 +350,7 @@ export default function SessionSubpanel({
     );
   }, [commonSelect]);
 
-  const sessionEventListConfig = useMemo<ChartConfigWithOptDateRange>(
+  const sessionEventListConfig = useMemo<ChartConfigWithDateRange>(
     () => ({
       select: commonSelect,
       from: traceSource.from,
@@ -477,9 +432,10 @@ export default function SessionSubpanel({
     [setSearchedQuery],
   );
 
+  const { pushSidePanel } = useRowSidePanel();
+
   return (
     <div className={styles.wrapper}>
-      {rowId != null && portaledPanel}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form
@@ -544,10 +500,13 @@ export default function SessionSubpanel({
           queriedConfig={sessionEventListConfig}
           onClick={useCallback(
             (id: string) => {
-              setDrawerOpen(true);
-              setRowId(id);
+              pushSidePanel({
+                sourceId: traceSource.id,
+                rowWhere: id,
+                dbSqlRowTableConfig: sessionEventListConfig,
+              });
             },
-            [setDrawerOpen, setRowId],
+            [pushSidePanel, sessionEventListConfig, traceSource.id],
           )}
           focus={focus}
           onTimeClick={useCallback(

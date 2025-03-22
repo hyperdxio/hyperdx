@@ -49,7 +49,6 @@ import CodeMirror from '@uiw/react-codemirror';
 import { useTimeChartSettings } from '@/ChartUtils';
 import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart from '@/components/DBHeatmapChart';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
@@ -89,6 +88,7 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
+import { useRowSidePanel } from './hooks/useRowSidePanel';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -576,8 +576,6 @@ function DBSearchPage() {
     [inputSourceObj?.timestampValueExpression],
   );
 
-  const [rowId, setRowId] = useQueryState('rowWhere');
-
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
 
@@ -697,13 +695,7 @@ function DBSearchPage() {
     [setIsLive],
   );
 
-  const onRowExpandClick = useCallback(
-    (rowWhere: string) => {
-      setIsLive(false);
-      setRowId(rowWhere);
-    },
-    [setRowId, setIsLive],
-  );
+  const { sidePanel, pushSidePanel } = useRowSidePanel();
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false);
   const [saveSearchModalState, setSaveSearchModalState] = useState<
@@ -867,6 +859,23 @@ function DBSearchPage() {
       limit: { limit: 200 },
     };
   }, [chartConfig, searchedTimeRange]);
+
+  const onRowExpandClick = useCallback(
+    (rowWhere: string) => {
+      if (!searchedConfig.source) {
+        return;
+      }
+      pushSidePanel(
+        {
+          sourceId: searchedConfig.source,
+          dbSqlRowTableConfig,
+          rowWhere,
+        },
+        true,
+      );
+    },
+    [dbSqlRowTableConfig, pushSidePanel, searchedConfig.source],
+  );
 
   const searchFilters = useSearchPageFilterState({
     searchQuery: watch('filters') ?? undefined,
@@ -1190,16 +1199,9 @@ function DBSearchPage() {
           displayedColumns,
           toggleColumn,
           generateSearchUrl,
-          dbSqlRowTableConfig,
         }}
       >
-        {searchedSource && (
-          <DBRowSidePanel
-            source={searchedSource}
-            rowId={rowId ?? undefined}
-            onClose={() => setRowId(null)}
-          />
-        )}
+        {/* TODO */}
       </RowSidePanelContext.Provider>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
@@ -1510,7 +1512,7 @@ function DBSearchPage() {
                         <DBSqlRowTable
                           config={dbSqlRowTableConfig}
                           onRowExpandClick={onRowExpandClick}
-                          highlightedLineId={rowId ?? undefined}
+                          highlightedLineId={sidePanel?.rowWhere}
                           enabled={isReady}
                           isLive={isLive ?? true}
                           queryKeyPrefix={QUERY_KEY_PREFIX}

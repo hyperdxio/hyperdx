@@ -63,8 +63,8 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
+import { useRowSidePanel } from '@/hooks/useRowSidePanel';
 
-import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
@@ -194,14 +194,15 @@ const Tile = forwardRef(
     const [hovered, setHovered] = useState(false);
 
     // Search tile
-    const [rowId, setRowId] = useQueryState('rowWhere');
-    const [_, setRowSource] = useQueryState('rowSource');
+    const { pushSidePanel, sidePanel } = useRowSidePanel();
     const handleRowExpandClick = useCallback(
       (rowWhere: string) => {
-        setRowId(rowWhere);
-        setRowSource(chart.config.source);
+        pushSidePanel({
+          sourceId: chart.config.source,
+          rowWhere,
+        });
       },
-      [chart.config.source, setRowId, setRowSource],
+      [chart.config.source, pushSidePanel],
     );
 
     const alert = chart.config.alert;
@@ -353,7 +354,7 @@ const Tile = forwardRef(
                   granularity: undefined,
                 }}
                 onRowExpandClick={handleRowExpandClick}
-                highlightedLineId={rowId ?? undefined}
+                highlightedLineId={sidePanel?.rowWhere}
                 onScroll={() => {}}
                 isLive={false}
                 queryKeyPrefix={'search'}
@@ -986,13 +987,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
-      {rowId && rowSidePanelSource && (
-        <DBRowSidePanel
-          source={rowSidePanelSource}
-          rowId={rowId}
-          onClose={handleSidePanelClose}
-        />
-      )}
     </Box>
   );
 }

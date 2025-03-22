@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Button } from 'react-bootstrap';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -11,10 +10,12 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
+import { useRowSidePanel } from '@/hooks/useRowSidePanel';
+
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
-import { ZIndexContext } from './zIndex';
+import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-modern-drawer/dist/index.css';
 
@@ -30,7 +31,6 @@ export default function SessionSidePanel({
   onPropertyAddClick,
   generateSearchUrl,
   generateChartUrl,
-  zIndex = 100,
 }: {
   traceSource: TSource;
   sessionSource: TSource;
@@ -47,30 +47,25 @@ export default function SessionSidePanel({
     field: string;
     groupBy: string[];
   }) => string;
-  zIndex?: number;
 }) {
-  // Keep track of sub-drawers so we can disable closing this root drawer
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+  const { sidePanel } = useRowSidePanel();
+  const subDrawerOpen = !!sidePanel;
+
+  const contextZIndex = useZIndex();
+  const zIndex = contextZIndex + 1;
 
   useHotkeys(
     ['esc'],
     () => {
       onClose();
     },
-    {
-      enabled: subDrawerOpen === false,
-    },
+    { enabled: !subDrawerOpen },
   );
 
-  // console.log({ logId: sessionId, subDrawerOpen });
   const maxTime =
     session != null ? new Date(session?.maxTimestamp) : new Date();
-  // const minTime =
-  //   session != null ? new Date(session?.['min_timestamp']) : new Date();
+
   const timeAgo = formatDistanceToNowStrictShort(maxTime);
-  // const durationStr = new Date(maxTime.getTime() - minTime.getTime())
-  //   .toISOString()
-  //   .slice(11, 19);
 
   return (
     <Drawer
@@ -150,7 +145,6 @@ export default function SessionSidePanel({
               onPropertyAddClick={onPropertyAddClick}
               generateSearchUrl={generateSearchUrl}
               generateChartUrl={generateChartUrl}
-              setDrawerOpen={setSubDrawerOpen}
               where={where}
               whereLanguage={whereLanguage}
             />

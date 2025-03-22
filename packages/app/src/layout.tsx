@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { RowSidePanels } from './hooks/useRowSidePanel';
 import AppNav from './AppNav';
 import { HDXSpotlightProvider } from './Spotlights';
 
@@ -21,6 +22,7 @@ export const withAppNav = (page: React.ReactNode) => {
           {page}
         </div>
       </div>
+      <RowSidePanels />
     </HDXSpotlightProvider>
   );
 };

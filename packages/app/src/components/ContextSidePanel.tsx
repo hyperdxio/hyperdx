@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { sq } from 'date-fns/locale';
+import { useCallback, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useForm } from 'react-hook-form';
 import {
@@ -11,6 +10,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import { useRowSidePanel } from '@/hooks/useRowSidePanel';
 import SearchInputV2 from '@/SearchInputV2';
 import { formatAttributeClause } from '@/utils';
 
@@ -150,6 +150,18 @@ export default function ContextSubpanel({
     };
   }, [dbSqlRowTableConfig, newDateRange, contextBy, debouncedWhere]);
 
+  const { pushSidePanel } = useRowSidePanel();
+  const handleExpandLine = useCallback(
+    (rowWhere: string) => {
+      pushSidePanel({
+        rowWhere,
+        sourceId: source.id,
+        dbSqlRowTableConfig,
+      });
+    },
+    [dbSqlRowTableConfig, pushSidePanel, source.id],
+  );
+
   return (
     config && (
       <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
@@ -239,6 +251,7 @@ export default function ContextSubpanel({
             isLive={false}
             config={config}
             queryKeyPrefix={QUERY_KEY_PREFIX}
+            onRowExpandClick={handleExpandLine}
           />
         </div>
       </Flex>

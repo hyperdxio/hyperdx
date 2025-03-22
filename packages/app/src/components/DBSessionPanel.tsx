@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Loader } from '@mantine/core';
+import { Center, Loader } from '@mantine/core';
 
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
@@ -89,14 +89,12 @@ export const DBSessionPanel = ({
   dateRange,
   focusDate,
   serviceName,
-  setSubDrawerOpen,
 }: {
   traceSourceId?: string;
   rumSessionId: string;
   dateRange: [Date, Date];
   focusDate: Date;
   serviceName: string;
-  setSubDrawerOpen: (open: boolean) => void;
 }) => {
   const { data: traceSource } = useSource({ id: traceSourceId });
   const { data: sessionSource } = useSource({
@@ -104,7 +102,11 @@ export const DBSessionPanel = ({
   });
 
   if (!traceSource || !sessionSource) {
-    return <Loader />;
+    return (
+      <Center style={{ height: 200 }}>
+        <Loader color="gray" />
+      </Center>
+    );
   }
 
   return (
@@ -126,7 +128,6 @@ export const DBSessionPanel = ({
           session={{ serviceName }}
           sessionSource={sessionSource}
           rumSessionId={rumSessionId}
-          setDrawerOpen={setSubDrawerOpen}
           initialTs={focusDate.getTime()}
         />
       ) : (
