@@ -1,5 +1,9 @@
 import React from 'react';
-import { AlertInterval, SavedSearch } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertInterval,
+  SearchCondition,
+  SearchConditionLanguage,
+} from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -9,7 +13,9 @@ import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 import { getAlertReferenceLines } from './Alerts';
 
 export type AlertPreviewChartProps = {
-  savedSearch?: SavedSearch;
+  sourceId?: string | null;
+  where?: SearchCondition | null;
+  whereLanguage?: SearchConditionLanguage | null;
   interval: AlertInterval;
   groupBy?: string;
   thresholdType: 'above' | 'below';
@@ -17,27 +23,29 @@ export type AlertPreviewChartProps = {
 };
 
 export const AlertPreviewChart = ({
-  savedSearch,
+  sourceId,
+  where,
+  whereLanguage,
   interval,
   groupBy,
   threshold,
   thresholdType,
 }: AlertPreviewChartProps) => {
-  const { data: source } = useSource({ id: savedSearch?.source });
+  const { data: source } = useSource({ id: sourceId });
 
-  if (!savedSearch || !source) {
+  if (!sourceId || !source) {
     return null;
   }
 
   return (
     <Paper w="100%" h={200}>
       <DBTimeChart
-        sourceId={savedSearch.source}
+        sourceId={sourceId}
         showDisplaySwitcher={false}
         referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
         config={{
-          where: savedSearch.where || '',
-          whereLanguage: savedSearch.whereLanguage,
+          where: where || '',
+          whereLanguage: whereLanguage || undefined,
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
           implicitColumnExpression: source.implicitColumnExpression,
