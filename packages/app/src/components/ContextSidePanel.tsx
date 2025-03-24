@@ -138,16 +138,15 @@ export default function ContextSubpanel({
     ];
   }
 
-  const config: ChartConfigWithDateRange = useMemo(() => {
+  const config = useMemo(() => {
     const whereClause = getWhereClause(contextBy);
-    // missing query info, build config from source with default
+    // missing query info, build config from source with default value
     if (!dbSqlRowTableConfig)
       return {
         connection: source.connection,
         from: source.from,
         timestampValueExpression: source.timestampValueExpression,
-        select: source.defaultTableSelectExpression,
-        displayType: 'search',
+        select: source.defaultTableSelectExpression || '',
         limit: { limit: 200 },
         orderBy: `${source.timestampValueExpression} DESC`,
         where: whereClause,
