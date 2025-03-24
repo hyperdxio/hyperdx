@@ -18,17 +18,38 @@ describe('searchFilters', () => {
     });
 
     it('should return query for one filter', () => {
-      const filters = { a: new Set(['b']) };
+      const filters = {
+        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
+      };
       expect(filtersToQuery(filters)).toEqual([
         { type: 'sql', condition: "a IN ('b')" },
       ]);
     });
 
     it('should return query for multiple filters', () => {
-      const filters = { a: new Set(['b']), c: new Set(['d', 'x']) };
+      const filters = {
+        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
+        c: {
+          included: new Set<string>(['d', 'x']),
+          excluded: new Set<string>(),
+        },
+      };
       expect(filtersToQuery(filters)).toEqual([
         { type: 'sql', condition: "a IN ('b')" },
         { type: 'sql', condition: "c IN ('d', 'x')" },
+      ]);
+    });
+
+    it('should handle excluded values', () => {
+      const filters = {
+        a: {
+          included: new Set<string>(['b']),
+          excluded: new Set<string>(['c']),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        { type: 'sql', condition: "a IN ('b')" },
+        { type: 'sql', condition: "a NOT IN ('c')" },
       ]);
     });
   });
@@ -43,14 +64,18 @@ describe('searchFilters', () => {
       const result = parseQuery([
         { type: 'sql', condition: `service IN ('z')` },
       ]);
-      expect(result.filters).toEqual({ service: new Set(['z']) });
+      expect(result.filters).toEqual({
+        service: { included: new Set(['z']), excluded: new Set() },
+      });
     });
 
     it('parses 1 group, multiple values', () => {
       const result = parseQuery([
         { type: 'sql', condition: `service IN ('z', 'y', 'x')` },
       ]);
-      expect(result.filters).toEqual({ service: new Set(['z', 'y', 'x']) });
+      expect(result.filters).toEqual({
+        service: { included: new Set(['z', 'y', 'x']), excluded: new Set() },
+      });
     });
 
     it('parses 3 groups, multiple values', () => {
@@ -60,9 +85,19 @@ describe('searchFilters', () => {
         { type: 'sql', condition: `type IN ('event')` },
       ]);
       expect(result.filters).toEqual({
-        service: new Set(['z', 'y', 'x']),
-        level: new Set(['info', 'error']),
-        type: new Set(['event']),
+        service: { included: new Set(['z', 'y', 'x']), excluded: new Set() },
+        level: { included: new Set(['info', 'error']), excluded: new Set() },
+        type: { included: new Set(['event']), excluded: new Set() },
+      });
+    });
+
+    it('parses excluded values', () => {
+      const result = parseQuery([
+        { type: 'sql', condition: `service IN ('z')` },
+        { type: 'sql', condition: `service NOT IN ('y')` },
+      ]);
+      expect(result.filters).toEqual({
+        service: { included: new Set(['z']), excluded: new Set(['y']) },
       });
     });
 
@@ -74,27 +109,47 @@ describe('searchFilters', () => {
 
   describe('areFiltersEqual', () => {
     it('should return true for equal filters', () => {
-      const a = { a: new Set(['b']) };
-      const b = { a: new Set(['b']) };
+      const a = {
+        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
+      };
+      const b = {
+        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
+      };
       expect(areFiltersEqual(a, b)).toBe(true);
     });
 
     it('should return false for different filters', () => {
-      const a = { a: new Set(['b']) };
-      const b = { a: new Set(['c']) };
+      const a = {
+        a: { included: new Set<string>(['b']), excluded: new Set<string>() },
+      };
+      const b = {
+        a: { included: new Set<string>(['c']), excluded: new Set<string>() },
+      };
       expect(areFiltersEqual(a, b)).toBe(false);
     });
 
     it('should return true for equal filters in different order', () => {
       const a = {
-        service: new Set(['a', 'b']),
-        level: new Set(['info', 'error']),
-        type: new Set<string>(),
+        service: {
+          included: new Set<string>(['a', 'b']),
+          excluded: new Set<string>(),
+        },
+        level: {
+          included: new Set<string>(['info', 'error']),
+          excluded: new Set<string>(),
+        },
+        type: { included: new Set<string>(), excluded: new Set<string>() },
       };
       const b = {
-        level: new Set(['error', 'info']),
-        service: new Set(['b', 'a']),
-        type: new Set<string>(),
+        level: {
+          included: new Set<string>(['error', 'info']),
+          excluded: new Set<string>(),
+        },
+        service: {
+          included: new Set<string>(['b', 'a']),
+          excluded: new Set<string>(),
+        },
+        type: { included: new Set<string>(), excluded: new Set<string>() },
       };
       expect(areFiltersEqual(a, b)).toBe(true);
     });
@@ -187,10 +242,37 @@ describe('searchFilters', () => {
       );
 
       expect(result.current.filters).toEqual({
-        service: new Set(['hdx-oss-dev-app']),
-        hyperdx_event_type: new Set(['span']),
-        level: new Set(['info', 'ok']),
+        service: {
+          included: new Set(['hdx-oss-dev-app']),
+          excluded: new Set(),
+        },
+        hyperdx_event_type: {
+          included: new Set(['span']),
+          excluded: new Set(),
+        },
+        level: { included: new Set(['info', 'ok']), excluded: new Set() },
       });
+    });
+
+    it('should clear excluded values when using only action', () => {
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            { type: 'sql', condition: `service IN ('app')` },
+            { type: 'sql', condition: `level NOT IN ('error')` },
+          ],
+          onFilterChange,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('level', 'info', 'only');
+      });
+
+      expect(onFilterChange).toHaveBeenCalledWith([
+        { type: 'sql', condition: `service IN ('app')` },
+        { type: 'sql', condition: `level IN ('info')` }, // Should only have the included value, no excluded values
+      ]);
     });
   });
 });
