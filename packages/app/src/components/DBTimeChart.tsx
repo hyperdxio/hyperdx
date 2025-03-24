@@ -19,6 +19,7 @@ import {
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -28,6 +29,7 @@ export function DBTimeChart({
   config,
   sourceId,
   onSettled,
+  onError,
   referenceLines,
   showDisplaySwitcher = true,
   setDisplayType,
@@ -39,6 +41,7 @@ export function DBTimeChart({
   config: ChartConfigWithDateRange;
   sourceId?: string;
   onSettled?: () => void;
+  onError?: (error: Error | ClickHouseQueryError) => void;
   showDisplaySwitcher?: boolean;
   setDisplayType?: (type: DisplayType) => void;
   referenceLines?: React.ReactNode;
@@ -65,9 +68,11 @@ export function DBTimeChart({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
+      onError,
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
     useMemo(() => {
@@ -77,6 +82,7 @@ export function DBTimeChart({
             dateRange,
             granularity,
             generateEmptyBuckets: fillNulls !== false,
+            source,
           })
         : {
             graphResults: [],
