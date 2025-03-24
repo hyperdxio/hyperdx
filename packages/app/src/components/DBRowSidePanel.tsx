@@ -26,11 +26,11 @@ import { SearchConfig } from '@/types';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ContextSubpanel from './ContextSidePanel';
+import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
-import DBInfraPanel from './DBInfraPanel';
 
 import 'react-modern-drawer/dist/index.css';
 import styles from '@/../styles/LogSidePanel.module.scss';

@@ -1,26 +1,28 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { add, min, sub } from 'date-fns';
+import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  Box,
   Card,
   Group,
+  ScrollArea,
   SegmentedControl,
   SimpleGrid,
   Stack,
-  ScrollArea,
-  Box,
 } from '@mantine/core';
-import { add, sub, min } from 'date-fns';
 
-import { KubeTimeline } from './KubeComponents';
+import { getEventBody, useSource } from '@/source';
+
 import {
+  convertDateRangeToGranularityString,
   Granularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
-  convertDateRangeToGranularityString,
 } from '../ChartUtils';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+
 import { DBTimeChart } from './DBTimeChart';
-import { useSource } from '@/source';
+import { KubeTimeline } from './KubeComponents';
 
 const InfraSubpanelGroup = ({
   fieldPrefix,
@@ -229,32 +231,36 @@ export default ({
               metricSource={metricSource}
             />
           )}
-          <Card p="md" mt="xl">
-            <Card.Section p="md" py="xs" withBorder>
-              Pod Timeline
-            </Card.Section>
-            <Card.Section>
-              <ScrollArea
-                viewportProps={{
-                  style: { maxHeight: 280 },
-                }}
-              >
-                <Box p="md" py="sm">
-                  <KubeTimeline
-                    q={`k8s.pod.uid:"${podUid}"`}
-                    dateRange={[
-                      sub(new Date(timestamp), { days: 1 }),
-                      add(new Date(timestamp), { days: 1 }),
-                    ]}
-                    anchorEvent={{
-                      label: <div className="text-success">This Event</div>,
-                      timestamp: new Date(timestamp).toISOString(),
-                    }}
-                  />
-                </Box>
-              </ScrollArea>
-            </Card.Section>
-          </Card>
+
+          {source && (
+            <Card p="md" mt="xl">
+              <Card.Section p="md" py="xs" withBorder>
+                Pod Timeline
+              </Card.Section>
+              <Card.Section>
+                <ScrollArea
+                  viewportProps={{
+                    style: { maxHeight: 280 },
+                  }}
+                >
+                  <Box p="md" py="sm">
+                    <KubeTimeline
+                      logSource={source}
+                      q={`${getEventBody(source)}.object.regarding.uid:"${podUid}"`}
+                      dateRange={[
+                        sub(new Date(timestamp), { days: 1 }),
+                        add(new Date(timestamp), { days: 1 }),
+                      ]}
+                      anchorEvent={{
+                        label: <div className="text-success">This Event</div>,
+                        timestamp: new Date(timestamp).toISOString(),
+                      }}
+                    />
+                  </Box>
+                </ScrollArea>
+              </Card.Section>
+            </Card>
+          )}
         </div>
       )}
       {nodeName && metricSource && (
