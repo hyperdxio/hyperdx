@@ -1,9 +1,16 @@
-import React, { useCallback, useContext } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Box, Button, Flex, Modal, Paper, Popover, Text } from '@mantine/core';
 
 import EventTag from '@/components/EventTag';
 import { TableSourceForm } from '@/components/SourceForm';
 import { FormatTime } from '@/useFormatTime';
+import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -63,6 +70,32 @@ export default function DBRowSidePanelHeader({
     [bodyExpanded, mainContent],
   );
 
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const el = headerRef.current;
+
+    const updateHeight = () => {
+      const newHeight = el.offsetHeight;
+      setHeaderHeight(newHeight);
+    };
+    updateHeight();
+
+    // Set up a resize observer to detect height changes
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(el);
+
+    // Clean up the observer on component unmount
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [headerRef.current, setHeaderHeight]);
+
+  const { userPreferences, setUserPreference } = useUserPreferences();
+  const { expandSidebarHeader } = userPreferences;
+  const maxBoxHeight = 120;
+
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
       return (
@@ -97,16 +130,40 @@ export default function DBRowSidePanelHeader({
           p="xs"
           mt="sm"
           style={{
-            maxHeight: 120,
+            maxHeight: expandSidebarHeader ? undefined : maxBoxHeight,
             overflow: 'auto',
             overflowWrap: 'break-word',
           }}
+          ref={headerRef}
         >
-          <Flex align="baseline" gap={2} mb="xs">
-            <Text size="xs" c="gray.4">
-              {mainContentHeader}
-            </Text>
-            <EditButton sourceId={sourceId} />
+          <Flex justify="space-between" mb="xs">
+            <Flex align="baseline" gap={2}>
+              <Text size="xs" c="gray.4">
+                {mainContentHeader}
+              </Text>
+              <EditButton sourceId={sourceId} />
+            </Flex>
+            {/* Toggles expanded sidebar header*/}
+            {headerHeight >= maxBoxHeight && (
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                color="gray.3"
+                onClick={() =>
+                  setUserPreference({
+                    ...userPreferences,
+                    expandSidebarHeader: !expandSidebarHeader,
+                  })
+                }
+              >
+                {/* TODO: Only show expand button when maxHeight = 120? */}
+                {expandSidebarHeader ? (
+                  <i className="bi bi-arrows-angle-contract" />
+                ) : (
+                  <i className="bi bi-arrows-angle-expand" />
+                )}
+              </Button>
+            )}
           </Flex>
           {mainContentDisplayed}
           {isContentTruncated && (
