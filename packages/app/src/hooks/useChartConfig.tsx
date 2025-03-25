@@ -1,4 +1,4 @@
-import { format } from 'sql-formatter';
+import { useEffect } from 'react';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ChSql,
@@ -8,6 +8,7 @@ import {
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -49,13 +50,18 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
   return [config];
 };
 
+interface AdditionalUseQueriedChartConfigOptions {
+  onError?: (error: Error | ClickHouseQueryError) => void;
+}
+
 // used for charting
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: Partial<UseQueryOptions<ResponseJSON<any>>>,
+  options?: Partial<UseQueryOptions<ResponseJSON<any>>> &
+    AdditionalUseQueriedChartConfigOptions,
 ) {
   const clickhouseClient = getClickhouseClient();
-  return useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
+  const query = useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
     queryFn: async ({ signal }) => {
       config = setChartSelectsAlias(config);
@@ -136,6 +142,10 @@ export function useQueriedChartConfig(
     refetchOnWindowFocus: false,
     ...options,
   });
+  if (query.isError && options?.onError) {
+    options.onError(query.error);
+  }
+  return query;
 }
 
 export function useRenderedSqlChartConfig(
@@ -146,7 +156,6 @@ export function useRenderedSqlChartConfig(
     queryKey: ['renderedSql', config],
     queryFn: async () => {
       const query = await renderChartConfig(config, getMetadata());
-
       return format(parameterizedQueryToSql(query));
     },
     ...options,

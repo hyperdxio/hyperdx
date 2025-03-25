@@ -19,6 +19,7 @@ import {
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -26,26 +27,30 @@ import { SQLPreview } from './ChartSQLPreview';
 
 export function DBTimeChart({
   config,
-  sourceId,
-  onSettled,
-  referenceLines,
-  showDisplaySwitcher = true,
-  setDisplayType,
-  queryKeyPrefix,
   enabled = true,
+  logReferenceTimestamp,
+  onError,
+  onSettled,
   onTimeRangeSelect,
+  queryKeyPrefix,
+  referenceLines,
+  setDisplayType,
+  showDisplaySwitcher = true,
   showLegend = true,
+  sourceId,
 }: {
   config: ChartConfigWithDateRange;
-  sourceId?: string;
-  onSettled?: () => void;
-  showDisplaySwitcher?: boolean;
-  setDisplayType?: (type: DisplayType) => void;
-  referenceLines?: React.ReactNode;
-  queryKeyPrefix?: string;
   enabled?: boolean;
+  logReferenceTimestamp?: number;
+  onError?: (error: Error | ClickHouseQueryError) => void;
+  onSettled?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
+  queryKeyPrefix?: string;
+  referenceLines?: React.ReactNode;
+  setDisplayType?: (type: DisplayType) => void;
+  showDisplaySwitcher?: boolean;
   showLegend?: boolean;
+  sourceId?: string;
 }) {
   const {
     displayType: displayTypeProp,
@@ -65,9 +70,11 @@ export function DBTimeChart({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
+      onError,
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
     useMemo(() => {
@@ -77,6 +84,7 @@ export function DBTimeChart({
             dateRange,
             granularity,
             generateEmptyBuckets: fillNulls !== false,
+            source,
           })
         : {
             graphResults: [],
@@ -280,16 +288,17 @@ export function DBTimeChart({
           displayType={displayType}
           graphResults={graphResults}
           groupKeys={groupKeys}
+          isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
           lineColors={lineColors}
           lineNames={lineNames}
-          timestampKey={timestampColumn?.name}
-          setIsClickActive={setActiveClickPayload}
-          isClickActive={false}
-          onTimeRangeSelect={onTimeRangeSelect}
-          showLegend={showLegend}
+          logReferenceTimestamp={logReferenceTimestamp}
           numberFormat={config.numberFormat}
+          onTimeRangeSelect={onTimeRangeSelect}
           referenceLines={referenceLines}
+          setIsClickActive={setActiveClickPayload}
+          showLegend={showLegend}
+          timestampKey={timestampColumn?.name}
         />
       </div>
     </div>

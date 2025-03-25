@@ -144,17 +144,15 @@ router.get(
       },
       error: (err, _req, _res) => {
         console.error('Proxy error:', err);
-        if (_res instanceof Response) {
-          (_res as Response).writeHead(500, {
-            'Content-Type': 'application/json',
-          });
-          _res.end(
-            JSON.stringify({
-              success: false,
-              error: err.message || 'Failed to connect to ClickHouse server',
-            }),
-          );
-        }
+        (_res as Response).writeHead(500, {
+          'Content-Type': 'application/json',
+        });
+        _res.end(
+          JSON.stringify({
+            success: false,
+            error: err.message || 'Failed to connect to ClickHouse server',
+          }),
+        );
       },
     },
     // ...(config.IS_DEV && {
