@@ -24,10 +24,11 @@ type KubeEvent = {
   id: string;
   timestamp: string;
   severity_text?: string;
-  'object.reason'?: string;
-  'object.note'?: string;
-  'object.type'?: string;
   'k8s.pod.name'?: string;
+  'object.message'?: string;
+  'object.note'?: string;
+  'object.reason'?: string;
+  'object.type'?: string;
 };
 
 type AnchorEvent = {
@@ -130,12 +131,12 @@ const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
   return (
     <Timeline.Item key={event.id}>
       <Link href={href} passHref legacyBehavior>
-        <Anchor size="11" c="gray.6" title={event.timestamp}>
+        <Anchor size="xs" fz={11} c="gray.6" title={event.timestamp}>
           <FormatTime value={event.timestamp} />
         </Anchor>
       </Link>
       <Group gap="xs" my={4}>
-        <Text size="12" color="white" fw="bold">
+        <Text size="sm" fz={12} c="white" fw="bold">
           {event['object.reason']}
         </Text>
         {event['object.type'] && (
@@ -149,7 +150,7 @@ const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
           </Badge>
         )}
       </Group>
-      <Text size="xs">{event['object.note']}</Text>
+      <Text size="xs">{event['object.note'] || event['object.message']}</Text>
     </Timeline.Item>
   );
 };
@@ -280,11 +281,11 @@ export const KubeTimeline = ({
       <Timeline bulletSize={12} lineWidth={1}>
         {podEventsAfterAnchor.map(renderKubeEvent(logSource))}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
-          <Text size="11" c="gray.6" title={anchorEvent.timestamp}>
+          <Text size="xs" fz={11} c="gray.6" title={anchorEvent.timestamp}>
             <FormatTime value={anchorEvent.timestamp} />
           </Text>
           <Group gap="xs" my={4}>
-            <Text size="12" c="white" fw="bold">
+            <Text size="sm" fz={12} c="white" fw="bold">
               {anchorEvent.label}
             </Text>
           </Group>

@@ -231,7 +231,6 @@ export default ({
               metricSource={metricSource}
             />
           )}
-
           {source && (
             <Card p="md" mt="xl">
               <Card.Section p="md" py="xs" withBorder>
