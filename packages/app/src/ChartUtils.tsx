@@ -10,6 +10,7 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
   DisplayType,
   MetricsDataType as MetricsDataTypeV2,
@@ -936,6 +937,44 @@ export function formatResponseForTimeChart({
   };
 }
 
+// Define a mapping from app AggFn to common-utils AggregateFunction
+export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
+  // Map rate-based aggregations to their base aggregation
+  if (aggFn.endsWith('_rate')) {
+    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+  }
+
+  // Map percentiles to quantile
+  if (
+    aggFn === 'p50' ||
+    aggFn === 'p90' ||
+    aggFn === 'p95' ||
+    aggFn === 'p99'
+  ) {
+    return 'quantile';
+  }
+
+  // Map per-time-unit counts to count
+  if (
+    aggFn === 'count_per_sec' ||
+    aggFn === 'count_per_min' ||
+    aggFn === 'count_per_hour'
+  ) {
+    return 'count';
+  }
+
+  if (aggFn === 'last_value') {
+    throw new Error('last_value is not supported in v2');
+  }
+
+  // For standard aggregations that exist in both, return as is
+  if (['avg', 'count', 'count_distinct', 'max', 'min', 'sum'].includes(aggFn)) {
+    return aggFn as AggFnV2;
+  }
+
+  throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
+};
+
 export const convertV1ChartConfigToV2 = (
   chartConfig: {
     // only support time or table series
@@ -961,46 +1000,6 @@ export const convertV1ChartConfigToV2 = (
     fillNulls,
   } = chartConfig;
 
-  // Define a mapping from app AggFn to common-utils AggregateFunction
-  const mapAggFn = (aggFn: AggFn): string => {
-    // Map rate-based aggregations to their base aggregation
-    if (aggFn.endsWith('_rate')) {
-      return mapAggFn(aggFn.replace('_rate', '') as AggFn);
-    }
-
-    // Map percentiles to quantile
-    if (
-      aggFn === 'p50' ||
-      aggFn === 'p90' ||
-      aggFn === 'p95' ||
-      aggFn === 'p99'
-    ) {
-      return 'quantile';
-    }
-
-    // Map per-time-unit counts to count
-    if (
-      aggFn === 'count_per_sec' ||
-      aggFn === 'count_per_min' ||
-      aggFn === 'count_per_hour'
-    ) {
-      return 'count';
-    }
-
-    if (aggFn === 'last_value') {
-      throw new Error('last_value is not supported in v2');
-    }
-
-    // For standard aggregations that exist in both, return as is
-    if (
-      ['avg', 'count', 'count_distinct', 'max', 'min', 'sum'].includes(aggFn)
-    ) {
-      return aggFn;
-    }
-
-    throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
-  };
-
   if (series.length !== 1) {
     throw new Error('only one series is supported in v2');
   }
@@ -1025,7 +1024,7 @@ export const convertV1ChartConfigToV2 = (
     return {
       select: [
         {
-          aggFn: mapAggFn(firstSeries.aggFn),
+          aggFn: mapV1AggFnToV2(firstSeries.aggFn),
           metricType: metricDataType,
           valueExpression: 'Value',
           metricName,
