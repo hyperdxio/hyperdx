@@ -233,6 +233,16 @@ export function LogTableModelForm({
             connectionId={connectionId}
           />
         </FormRow>
+        <FormRow label={'Body Expression'}>
+          <SQLInlineEditorControlled
+            database={databaseName}
+            table={tableName}
+            control={control}
+            name="bodyExpression"
+            placeholder="Body"
+            connectionId={connectionId}
+          />
+        </FormRow>
         <FormRow label={'Log Attributes Expression'}>
           <SQLInlineEditorControlled
             database={databaseName}
@@ -268,6 +278,12 @@ export function LogTableModelForm({
         </FormRow>
         <Divider />
         <FormRow
+          label={'Correlated Metric Source'}
+          helpText="HyperDX Source for metrics associated with logs. Optional"
+        >
+          <SourceSelectControlled control={control} name="metricSourceId" />
+        </FormRow>
+        <FormRow
           label={'Correlated Trace Source'}
           helpText="HyperDX Source for traces associated with logs. Optional"
         >
@@ -294,6 +310,7 @@ export function LogTableModelForm({
             connectionId={connectionId}
           />
         </FormRow>
+
         <Divider />
         {/* <FormRow
           label={'Unique Row ID Expression'}
@@ -732,6 +749,12 @@ export function MetricTableModelForm({
             />
           </FormRow>
         ))}
+        <FormRow
+          label={'Correlated Log Source'}
+          helpText="HyperDX Source for logs associated with metrics. Optional"
+        >
+          <SourceSelectControlled control={control} name="logSourceId" />
+        </FormRow>
       </Stack>
     </>
   );
