@@ -840,6 +840,129 @@ function renderFill(
   return undefined;
 }
 
+async function translateHistogramChartConfig(
+  chartConfig: ChartConfigWithOptDateRange,
+  metadata: Metadata,
+): Promise<ChartConfigWithOptDateRangeEx> {
+  const metricTables = chartConfig.metricTables;
+  if (!metricTables) {
+    return chartConfig;
+  }
+
+  // assumes all the selects are from a single metric type, for now
+  const { select, from, filters, ...restChartConfig } = chartConfig;
+  if (!select || !Array.isArray(select)) {
+    throw new Error('multi select or string select on metrics not supported');
+  }
+
+  // Initial impl only supports one metric select per chart config
+  if (select.length != 1) {
+    throw new Error('histogram metric only supports single metric');
+  }
+  const { metricName, aggFn, level } = select[0] as {
+    metricName: string;
+    aggFn: string;
+    level?: number;
+  };
+
+  if (aggFn !== 'quantile' || level == null) {
+    throw new Error('quantile must be specified for histogram metrics');
+  }
+
+  // Render the where clause to limit data selection on the source CTE but also search forward/back one
+  // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
+  // series.
+  const cteChartConfig = {
+    ...chartConfig,
+    from: {
+      ...from,
+      tableName: metricTables[MetricsDataType.Histogram],
+    },
+    filters: [
+      ...(filters ?? []),
+      {
+        type: 'sql',
+        condition: `MetricName = '${metricName}'`,
+      },
+    ],
+    includedDataInterval:
+      chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
+        ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+        : chartConfig.granularity,
+  } as ChartConfigWithOptDateRangeEx;
+
+  const timeBucketSelect = isUsingGranularity(cteChartConfig)
+    ? timeBucketExpr({
+        interval: cteChartConfig.granularity,
+        timestampValueExpression: cteChartConfig.timestampValueExpression,
+        dateRange: cteChartConfig.dateRange,
+      })
+    : chSql``;
+  const where = await renderWhere(cteChartConfig, metadata);
+  const groupBy = (await renderGroupBy(cteChartConfig, metadata)) || chSql``;
+  const limit = renderLimit(chartConfig);
+
+  return {
+    connection: restChartConfig.connection,
+    with: [
+      {
+        name: 'Points',
+        sql: chSql`
+          SELECT
+            ${timeBucketSelect.sql ? chSql`${timeBucketSelect},` : ''}
+            last_value(HistogramTable.Count) AS Count,
+            last_value(HistogramTable.BucketCounts) AS BucketCounts,
+            last_value(HistogramTable.ExplicitBounds) AS ExplicitBounds,
+            last_value(HistogramTable.Sum) AS Sum,
+            last_value(HistogramTable.AggregationTemporality) AS AggregationTemporality,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+            toUInt64( ${{ Float64: level }} * Count) AS Rank,
+            arrayCumSum(BucketCounts) as CumCounts,
+            arrayFirstIndex(x -> if(x > Rank, 1, 0), CumCounts) AS BucketLowIdx,
+            CASE
+              WHEN Count = 0 THEN 0
+              WHEN Count = 1 THEN Sum
+              WHEN BucketLowIdx = 1 THEN ExplicitBounds[BucketLowIdx]
+              WHEN BucketLowIdx = length(BucketCounts) THEN ExplicitBounds[length(ExplicitBounds)]
+              ELSE
+                ExplicitBounds[BucketLowIdx - 1] +
+                  ((Rank - ExplicitBounds[BucketLowIdx - 1]) / (BucketCounts[BucketLowIdx])) * (ExplicitBounds[BucketLowIdx] - ExplicitBounds[BucketLowIdx - 1])
+            END AS Point
+          FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })} HistogramTable
+          WHERE ${where}
+          GROUP BY ${concatChSql(',', [chSql`AttributesHash`, groupBy])}
+          ORDER BY ${concatChSql(',', [chSql`AttributesHash`, groupBy])} ASC
+          ${limit?.sql ? chSql`LIMIT ${limit}` : ''}
+          SETTINGS short_circuit_function_evaluation = 'enable'
+        `,
+      },
+      {
+        name: 'Rates',
+        sql: chSql`
+        SELECT
+          \`__hdx_time_bucket\`,
+          any(Point) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevPoint,
+          any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
+          IF(AggregationTemporality = 2 AND AttributesHash = PrevAttributesHash AND PrevPoint <= Point,
+            Point - PrevPoint,
+            Point
+          ) AS Rate
+        FROM Points
+        `,
+      },
+    ],
+    select: 'Rate, `__hdx_time_bucket`',
+    from: {
+      databaseName: '',
+      tableName: 'Rates',
+    },
+    // reset the following fields to default values; they were used in the inner CTE
+    where: '',
+    groupBy: undefined,
+    limit: undefined,
+  };
+}
+
 async function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
@@ -850,7 +973,7 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, filters, where, ...restChartConfig } = chartConfig;
+  const { select, from, filters, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
@@ -1038,98 +1161,7 @@ async function translateMetricChartConfig(
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
-    // histograms are only valid for quantile selections
-    const { aggFn, level, ..._selectRest } = _select as {
-      aggFn: string;
-      level?: number;
-    };
-
-    if (aggFn !== 'quantile' || level == null) {
-      throw new Error('quantile must be specified for histogram metrics');
-    }
-
-    // Render the where clause to limit data selection on the source CTE but also search forward/back one
-    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
-    // series.
-    const where = await renderWhere(
-      {
-        ...chartConfig,
-        from: {
-          ...from,
-          tableName: metricTables[MetricsDataType.Histogram],
-        },
-        filters: [
-          ...(filters ?? []),
-          {
-            type: 'sql',
-            condition: `MetricName = '${metricName}'`,
-          },
-        ],
-        includedDataInterval:
-          chartConfig.granularity === 'auto' &&
-          Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
-            : chartConfig.granularity,
-      },
-      metadata,
-    );
-
-    return {
-      ...restChartConfig,
-      with: [
-        {
-          name: 'HistRate',
-          sql: chSql`
-          SELECT
-            *,
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-            length(BucketCounts) as CountLength,
-            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
-            any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
-            any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
-            IF(AggregationTemporality = 1,
-               BucketCounts,
-               IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
-                  arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
-                  BucketCounts)) as BucketRates
-          FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
-          WHERE ${where}
-          ORDER BY Attributes, TimeUnix ASC
-          `,
-        },
-        {
-          name: 'RawHist',
-          sql: chSql`
-            SELECT
-              *,
-              toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
-              arrayCumSum(BucketRates) as CumRates,
-              arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
-              IF(BucketLowIdx = length(BucketRates),
-                arrayElement(ExplicitBounds, length(ExplicitBounds)),
-                IF(BucketLowIdx > 1,
-                  arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
-                    IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
-                      (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
-                  arrayElement(ExplicitBounds, BucketLowIdx)
-                )) as Rate
-            FROM HistRate`,
-        },
-      ],
-      select: [
-        {
-          ..._selectRest,
-          aggFn: 'sum',
-          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
-          valueExpression: 'Rate',
-        },
-      ],
-      from: {
-        databaseName: '',
-        tableName: 'RawHist',
-      },
-      where: '', // clear up the condition since the where clause is already applied at the upstream CTE
-    };
+    return await translateHistogramChartConfig(chartConfig, metadata);
   }
 
   throw new Error(`no query support for metric type=${metricType}`);
