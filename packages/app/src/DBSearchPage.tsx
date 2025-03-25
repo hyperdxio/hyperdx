@@ -1059,35 +1059,38 @@ function DBSearchPage() {
                 </Button>
               )}
               {!!savedSearch && (
-                <Tags
-                  allowCreate
-                  values={savedSearch.tags || []}
-                  onChange={handleUpdateTags}
-                >
-                  <Button
-                    variant="outline"
-                    color="dark.2"
-                    px="xs"
-                    size="xs"
-                    style={{ flexShrink: 0 }}
+                <>
+                  <Tags
+                    allowCreate
+                    values={savedSearch.tags || []}
+                    onChange={handleUpdateTags}
                   >
-                    <i className="bi bi-tags-fill me-1"></i>
-                    {savedSearch.tags?.length || 0}
-                  </Button>
-                </Tags>
+                    <Button
+                      variant="outline"
+                      color="dark.2"
+                      px="xs"
+                      size="xs"
+                      style={{ flexShrink: 0 }}
+                    >
+                      <i className="bi bi-tags-fill me-1"></i>
+                      {savedSearch.tags?.length || 0}
+                    </Button>
+                  </Tags>
+
+                  <SearchPageActionBar
+                    onClickDeleteSavedSearch={() => {
+                      deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                        onSuccess: () => {
+                          router.push('/search');
+                        },
+                      });
+                    }}
+                    onClickRenameSavedSearch={() => {
+                      setSaveSearchModalState('update');
+                    }}
+                  />
+                </>
               )}
-              <SearchPageActionBar
-                onClickDeleteSavedSearch={() => {
-                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                    onSuccess: () => {
-                      router.push('/search');
-                    },
-                  });
-                }}
-                onClickRenameSavedSearch={() => {
-                  setSaveSearchModalState('update');
-                }}
-              />
             </>
           )}
         </Flex>
