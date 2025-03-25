@@ -5,26 +5,29 @@ import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
 import { useAllFields } from '@/hooks/useMetadata';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 
 export default function SearchInputV2({
   database,
+  table,
+  connectionId,
+  autoCompleteFields,
   placeholder = 'Search your events for anything...',
   size = 'sm',
-  table,
   zIndex,
   language,
   onLanguageChange,
-  connectionId,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
   ...props
 }: {
   database?: string;
+  table?: string;
+  connectionId?: string;
+  autoCompleteFields?: Field[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
-  table?: string;
-  connectionId: string | undefined;
   zIndex?: number;
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
@@ -38,17 +41,19 @@ export default function SearchInputV2({
 
   const ref = useRef<HTMLInputElement>(null);
 
-  const { data: fields } = useAllFields(
+  const { data: _fields } = useAllFields(
     {
       databaseName: database ?? '',
       tableName: table ?? '',
       connectionId: connectionId ?? '',
     },
     {
-      enabled: !!database && !!table && !!connectionId,
+      enabled: !autoCompleteFields && !!database && !!table && !!connectionId,
     },
   );
 
+  // use autoCompleteFields if provided, else fallback to queried _fields
+  const fields = autoCompleteFields ?? _fields;
   const autoCompleteOptions = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
     const baseOptions = _columns.map(c => ({

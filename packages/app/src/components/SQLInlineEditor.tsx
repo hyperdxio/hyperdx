@@ -89,8 +89,10 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  database?: string | undefined;
-  table?: string | undefined;
+  database?: string;
+  table?: string;
+  connectionId?: string;
+  autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
   onChange: (value: string) => void;
@@ -101,7 +103,6 @@ type SQLInlineEditorProps = {
   size?: string;
   label?: React.ReactNode;
   disableKeywordAutocomplete?: boolean;
-  connectionId: string | undefined;
   enableHotkey?: boolean;
   additionalSuggestions?: string[];
 };
@@ -120,32 +121,34 @@ const styleTheme = EditorView.baseTheme({
 
 export default function SQLInlineEditor({
   database,
+  table,
+  connectionId,
+  autoCompleteFields,
   filterField,
   onChange,
   placeholder,
   onLanguageChange,
   language,
   onSubmit,
-  table,
   value,
   size,
   label,
   disableKeywordAutocomplete,
-  connectionId,
   enableHotkey,
   additionalSuggestions = [],
 }: SQLInlineEditorProps) {
-  const { data: fields } = useAllFields(
+  const { data: _fields } = useAllFields(
     {
       databaseName: database ?? '',
       tableName: table ?? '',
       connectionId: connectionId ?? '',
     },
     {
-      enabled: !!database && !!table && !!connectionId,
+      enabled: !autoCompleteFields && !!database && !!table && !!connectionId,
     },
   );
-
+  // use autoCompleteFields if provided, else fallback to queried _fields
+  const fields = autoCompleteFields ?? _fields;
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);

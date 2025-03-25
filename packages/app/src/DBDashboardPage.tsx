@@ -89,6 +89,8 @@ import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { useAllFields } from './hooks/useMetadata';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
@@ -110,6 +112,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      setFields,
 
       // Properties forwarded by grid layout
       className,
@@ -131,6 +134,7 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      setFields: (id: string, fields: Field[]) => void;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -158,6 +162,24 @@ const Tile = forwardRef(
     const { data: source } = useSource({
       id: chart.config.source,
     });
+
+    const { data: fields } = useAllFields(
+      {
+        databaseName: queriedConfig?.from?.databaseName ?? '',
+        tableName: queriedConfig?.from?.tableName ?? '',
+        connectionId: queriedConfig?.connection ?? '',
+      },
+      {
+        enabled:
+          !!queriedConfig?.from?.databaseName &&
+          !!queriedConfig?.from?.tableName &&
+          !!queriedConfig?.connection,
+      },
+    );
+    useEffect(() => {
+      if (!fields) return;
+      setFields(chart.id, fields);
+    }, [fields]);
 
     // const prevSource = usePrevious(source);
     // const prevChart = usePrevious(chart);
@@ -506,6 +528,30 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const { data: sources } = useSources();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
+  const [_fields, _setFields] = useState<{ [key: string]: Field[] }>({});
+  const setFields = useCallback(
+    (key: string, fields: Field[]) => {
+      _setFields({
+        ..._fields,
+        [key]: fields,
+      });
+    },
+    [_fields],
+  );
+  const autoCompleteFields = useMemo(() => {
+    const map = new Map<string, Field>();
+    for (const arr of Object.values(_fields)) {
+      for (const v of arr) {
+        if (v.path.length === 0) continue;
+        const key =
+          v.path.length > 1 ? `${v.path.join('.')}` : `${v.path[0]}.${v.type}`;
+        if (!map.has(key)) {
+          map.set(key, structuredClone(v));
+        }
+      }
+    }
+    return Array.from(map.values());
+  }, [_fields]);
 
   const [granularity, setGranularity] = useQueryState(
     'granularity',
@@ -614,6 +660,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 condition: where,
               },
             ]}
+            setFields={setFields}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighed={highlightedTileId === chart.id}
             onUpdateChart={newChart => {
@@ -889,6 +936,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 connectionId={defaultSource?.connection}
                 database={defaultDatabaseName}
                 table={defaultTableName}
+                autoCompleteFields={autoCompleteFields}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -900,9 +948,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               />
             ) : (
               <SearchInputV2
-                connectionId={defaultSource?.connection}
-                database={defaultDatabaseName}
-                table={defaultTableName}
+                autoCompleteFields={autoCompleteFields}
                 control={control}
                 name="where"
                 onLanguageChange={lang => setValue('whereLanguage', lang)}
