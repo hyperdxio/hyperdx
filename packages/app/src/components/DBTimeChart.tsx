@@ -134,11 +134,11 @@ export function DBTimeChart({
   }, [activeClickPayload]);
 
   const qparams = useMemo(() => {
-    if (!clickedActiveLabelDate || !source?.id) {
+    if (clickedActiveLabelDate == null || !source?.id == null) {
       return null;
     }
     const isMetricChart = isMetricChartConfig(config);
-    if (isMetricChart && !source?.logSourceId) {
+    if (isMetricChart && source?.logSourceId == null) {
       notifications.show({
         color: 'yellow',
         message: 'No log source is associated with the selected metric source.',
@@ -150,7 +150,7 @@ export function DBTimeChart({
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
     return new URLSearchParams({
-      source: isMetricChart ? (source.logSourceId ?? source.id) : source.id,
+      source: isMetricChart ? (source.logSourceId ?? '') : source.id,
       where: config.where,
       whereLanguage: config.whereLanguage || 'lucene',
       filters: JSON.stringify(config.filters),
