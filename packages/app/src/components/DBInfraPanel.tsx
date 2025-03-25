@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { add, min, sub } from 'date-fns';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Card,
@@ -11,6 +11,7 @@ import {
   Stack,
 } from '@mantine/core';
 
+import { convertV1ChartConfigToV2 } from '@/ChartUtils';
 import { getEventBody, useSource } from '@/source';
 
 import {
@@ -107,27 +108,27 @@ const InfraSubpanelGroup = ({
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
             <DBTimeChart
-              config={{
-                select: [
-                  {
-                    aggFn: 'avg',
-                    metricType: MetricsDataType.Gauge,
-                    valueExpression: 'Value',
-                    metricName: `${fieldPrefix}cpu.utilization`,
-                    aggConditionLanguage: 'lucene',
-                    aggCondition: where,
-                  },
-                ],
-                from: metricSource.from,
-                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                dateRange,
-                connection: metricSource.connection,
-                metricTables: metricSource.metricTables,
-                timestampValueExpression: metricSource.timestampValueExpression,
-                granularity,
-                where: '',
-                fillNulls: false,
-              }}
+              config={convertV1ChartConfigToV2(
+                {
+                  dateRange,
+                  granularity,
+                  seriesReturnType: 'column',
+                  series: [
+                    {
+                      type: 'time',
+                      where,
+                      groupBy: [],
+                      aggFn: 'avg',
+                      field: `${fieldPrefix}cpu.utilization - Gauge`,
+                      table: 'metrics',
+                      numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                    },
+                  ],
+                },
+                {
+                  metric: metricSource,
+                },
+              )}
               showDisplaySwitcher={false}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -139,27 +140,27 @@ const InfraSubpanelGroup = ({
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
             <DBTimeChart
-              config={{
-                select: [
-                  {
-                    aggFn: 'avg',
-                    metricType: MetricsDataType.Gauge,
-                    valueExpression: 'Value',
-                    metricName: `${fieldPrefix}memory.usage`,
-                    aggConditionLanguage: 'lucene',
-                    aggCondition: where,
-                  },
-                ],
-                from: metricSource.from,
-                numberFormat: K8S_MEM_NUMBER_FORMAT,
-                dateRange,
-                connection: metricSource.connection,
-                metricTables: metricSource.metricTables,
-                timestampValueExpression: metricSource.timestampValueExpression,
-                granularity,
-                where: '',
-                fillNulls: false,
-              }}
+              config={convertV1ChartConfigToV2(
+                {
+                  dateRange,
+                  granularity,
+                  seriesReturnType: 'column',
+                  series: [
+                    {
+                      type: 'time',
+                      where,
+                      groupBy: [],
+                      aggFn: 'avg',
+                      field: `${fieldPrefix}memory.usage - Gauge`,
+                      table: 'metrics',
+                      numberFormat: K8S_MEM_NUMBER_FORMAT,
+                    },
+                  ],
+                },
+                {
+                  metric: metricSource,
+                },
+              )}
               showDisplaySwitcher={false}
               logReferenceTimestamp={timestamp / 1000}
             />
@@ -171,27 +172,27 @@ const InfraSubpanelGroup = ({
           </Card.Section>
           <Card.Section py={8} px={4} h={height}>
             <DBTimeChart
-              config={{
-                select: [
-                  {
-                    aggCondition: where,
-                    aggConditionLanguage: 'lucene',
-                    aggFn: 'avg',
-                    metricName: `${fieldPrefix}filesystem.available`,
-                    metricType: MetricsDataType.Gauge,
-                    valueExpression: 'Value',
-                  },
-                ],
-                from: metricSource.from,
-                numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
-                dateRange,
-                connection: metricSource.connection,
-                metricTables: metricSource.metricTables,
-                timestampValueExpression: metricSource.timestampValueExpression,
-                granularity,
-                where: '',
-                fillNulls: false,
-              }}
+              config={convertV1ChartConfigToV2(
+                {
+                  dateRange,
+                  granularity,
+                  seriesReturnType: 'column',
+                  series: [
+                    {
+                      type: 'time',
+                      where,
+                      groupBy: [],
+                      aggFn: 'avg',
+                      field: `${fieldPrefix}filesystem.available - Gauge`,
+                      table: 'metrics',
+                      numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
+                    },
+                  ],
+                },
+                {
+                  metric: metricSource,
+                },
+              )}
               showDisplaySwitcher={false}
               logReferenceTimestamp={timestamp / 1000}
             />
