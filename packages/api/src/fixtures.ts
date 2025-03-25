@@ -446,6 +446,25 @@ export const bulkInsertMetricsSum = async (
   );
 };
 
+export const bulkInsertMetricsHistogram = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    TimeUnix: Date;
+    BucketCounts: number[];
+    ExplicitBounds: number[];
+    AggregationTemporality: number;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await _bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
+    metrics,
+  );
+};
+
 // TODO: DEPRECATED
 export function buildMetricSeries({
   tags,

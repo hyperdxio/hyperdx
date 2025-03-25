@@ -1111,7 +1111,7 @@ async function translateMetricChartConfig(
                   arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
                     IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
                       (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
-                  IF(arrayElement(CumRates, 1) > 0, arrayElement(ExplicitBounds, BucketLowIdx + 1) * (Rank / arrayElement(CumRates, BucketLowIdx)), 0)
+                  arrayElement(ExplicitBounds, BucketLowIdx)
                 )) as Rate
             FROM HistRate`,
         },
