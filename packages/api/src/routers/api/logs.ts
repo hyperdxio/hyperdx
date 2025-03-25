@@ -16,60 +16,6 @@ import { LimitedSizeQueue } from '@/utils/queue';
 
 const router = express.Router();
 
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    const { endTime, offset, q, startTime, order, limit } = req.query;
-    let { extraFields } = req.query;
-    if (teamId == null) {
-      return res.sendStatus(403);
-    }
-
-    if (extraFields == null) {
-      extraFields = [];
-    }
-
-    if (
-      !Array.isArray(extraFields) ||
-      (extraFields?.length > 0 && typeof extraFields[0] != 'string')
-    ) {
-      return res.sendStatus(400);
-    }
-
-    const team = await getTeam(teamId);
-    if (team == null) {
-      return res.sendStatus(403);
-    }
-
-    const MAX_LIMIT = 4000;
-
-    res.json(
-      await clickhouse.getLogBatch({
-        extraFields: extraFields as string[],
-        endTime: parseInt(endTime as string),
-        limit: Number.isInteger(Number.parseInt(`${limit}`))
-          ? Math.min(MAX_LIMIT, Number.parseInt(`${limit}`))
-          : 100,
-        offset: parseInt(offset as string),
-        q: q as string,
-        order:
-          order === 'null'
-            ? clickhouse.SortOrder.Desc
-            : (order as clickhouse.SortOrder),
-        startTime: parseInt(startTime as string),
-        tableVersion: team.logStreamTableVersion,
-        teamId: teamId.toString(),
-      }),
-    );
-  } catch (e) {
-    const span = opentelemetry.trace.getActiveSpan();
-    span?.recordException(e as Error);
-    span?.setStatus({ code: SpanStatusCode.ERROR });
-
-    next(e);
-  }
-});
-
 router.get('/patterns', async (req, res, next) => {
   try {
     const teamId = req.user?.team;

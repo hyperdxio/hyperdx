@@ -508,6 +508,7 @@ export const SourceSchema = z.object({
 
   // OTEL Metrics
   metricTables: MetricTableSchema.optional(),
+  metricSourceId: z.string().optional(),
 });
 
 export type TSource = z.infer<typeof SourceSchema>;

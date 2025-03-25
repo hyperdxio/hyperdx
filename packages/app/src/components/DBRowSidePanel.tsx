@@ -26,6 +26,7 @@ import { SearchConfig } from '@/types';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ContextSubpanel from './ContextSidePanel';
+import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
@@ -90,6 +91,7 @@ export default function DBRowSidePanel({
     Trace = 'trace',
     Context = 'context',
     Replay = 'replay',
+    Infrastructure = 'infrastructure',
   }
 
   const [queryTab, setQueryTab] = useQueryState(
@@ -216,6 +218,18 @@ export default function DBRowSidePanel({
     enabled: rowId != null,
   });
 
+  const hasK8sContext = useMemo(() => {
+    if (!source?.resourceAttributesExpression || !normalizedRow) {
+      return false;
+    }
+    return (
+      normalizedRow[source.resourceAttributesExpression]['k8s.pod.uid'] !=
+        null ||
+      normalizedRow[source.resourceAttributesExpression]['k8s.node.name'] !=
+        null
+    );
+  }, [source, normalizedRow]);
+
   return (
     <Drawer
       customIdSuffix={`log-side-panel-${rowId}`}
@@ -280,6 +294,14 @@ export default function DBRowSidePanel({
                         {
                           text: 'Session Replay',
                           value: Tab.Replay,
+                        },
+                      ]
+                    : []),
+                  ...(hasK8sContext
+                    ? [
+                        {
+                          text: 'Infrastructure',
+                          value: Tab.Infrastructure,
                         },
                       ]
                     : []),
@@ -377,6 +399,26 @@ export default function DBRowSidePanel({
                       rumSessionId={rumSessionId}
                     />
                   </div>
+                </ErrorBoundary>
+              )}
+              {displayedTab === Tab.Infrastructure && (
+                <ErrorBoundary
+                  onError={err => {
+                    console.error(err);
+                  }}
+                  fallbackRender={() => (
+                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                      An error occurred while rendering this event.
+                    </div>
+                  )}
+                >
+                  <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
+                    <DBInfraPanel
+                      source={source}
+                      rowData={normalizedRow}
+                      rowId={rowId}
+                    />
+                  </Box>
                 </ErrorBoundary>
               )}
               <LogSidePanelKbdShortcuts />

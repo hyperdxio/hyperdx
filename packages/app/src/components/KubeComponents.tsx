@@ -1,9 +1,22 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
+import type { ResponseJSON } from '@clickhouse/client';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
+  ChartConfigWithDateRange,
+  DateRange,
+  SearchCondition,
+  SearchConditionLanguage,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import api from '../api';
+import { getClickhouseClient } from '@/clickhouse';
+import { getMetadata } from '@/metadata';
+import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+
 import { KubePhase } from '../types';
 import { FormatTime } from '../useFormatTime';
 
@@ -11,10 +24,11 @@ type KubeEvent = {
   id: string;
   timestamp: string;
   severity_text?: string;
-  'object.reason'?: string;
-  'object.note'?: string;
-  'object.type'?: string;
   'k8s.pod.name'?: string;
+  'object.message'?: string;
+  'object.note'?: string;
+  'object.reason'?: string;
+  'object.type'?: string;
 };
 
 type AnchorEvent = {
@@ -22,12 +36,92 @@ type AnchorEvent = {
   label: React.ReactNode;
 };
 
-const renderKubeEvent = (event: KubeEvent) => {
+const useV2LogBatch = (
+  {
+    dateRange,
+    extraSelects,
+    limit,
+    logSource,
+    order,
+    where,
+    whereLanguage,
+  }: {
+    dateRange: DateRange['dateRange'];
+    extraSelects?: ChartConfigWithDateRange['select'];
+    limit?: number;
+    logSource: TSource;
+    order: 'asc' | 'desc';
+    where: SearchCondition;
+    whereLanguage: SearchConditionLanguage;
+  },
+  options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
+) => {
+  const clickhouseClient = getClickhouseClient();
+  return useQuery<ResponseJSON<KubeEvent>, Error>({
+    queryKey: [
+      'v2LogBatch',
+      logSource.id,
+      extraSelects,
+      dateRange,
+      where,
+      whereLanguage,
+      limit,
+      order,
+    ],
+    queryFn: async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              valueExpression: getDisplayedTimestampValueExpression(logSource),
+              alias: 'timestamp',
+            },
+            {
+              valueExpression: `${logSource.serviceNameExpression}`,
+              alias: '_service',
+            },
+            ...(extraSelects && Array.isArray(extraSelects)
+              ? extraSelects
+              : []),
+          ],
+          from: logSource.from,
+          dateRange,
+          timestampValueExpression: logSource.timestampValueExpression,
+          implicitColumnExpression: logSource.implicitColumnExpression,
+          where,
+          whereLanguage,
+          connection: logSource.connection,
+          limit: {
+            limit: limit ?? 50,
+            offset: 0,
+          },
+          orderBy: `${logSource.timestampValueExpression} ${order}`,
+        },
+        getMetadata(),
+      );
+
+      const json = await clickhouseClient
+        .query({
+          query: query.sql,
+          query_params: query.params,
+          connectionId: logSource.connection,
+        })
+        .then(res => res.json());
+
+      return json as ResponseJSON<KubeEvent>;
+    },
+    staleTime: 1000 * 60 * 5, // Cache every 5 min
+    ...options,
+  });
+};
+
+const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
   let href = '#';
   try {
+    // FIXME: should check if it works in v2
     href = `/search?q=${encodeURIComponent(
-      `k8s.pod.name:"${event['k8s.pod.name']}"`,
-    )}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
+      `${source.resourceAttributesExpression}.k8s.pod.name:"${event['k8s.pod.name']}"`,
+    )}&source=${source.id}&from=${new Date(event.timestamp).getTime() - 1000 * 60 * 15}&to=${
       new Date(event.timestamp).getTime() + 1
     }`;
   } catch (_) {
@@ -37,12 +131,12 @@ const renderKubeEvent = (event: KubeEvent) => {
   return (
     <Timeline.Item key={event.id}>
       <Link href={href} passHref legacyBehavior>
-        <Anchor size="11" c="gray.6" title={event.timestamp}>
+        <Anchor size="xs" fz={11} c="gray.6" title={event.timestamp}>
           <FormatTime value={event.timestamp} />
         </Anchor>
       </Link>
       <Group gap="xs" my={4}>
-        <Text size="12" color="white" fw="bold">
+        <Text size="sm" fz={12} c="white" fw="bold">
           {event['object.reason']}
         </Text>
         {event['object.type'] && (
@@ -56,17 +150,19 @@ const renderKubeEvent = (event: KubeEvent) => {
           </Badge>
         )}
       </Group>
-      <Text size="xs">{event['object.note']}</Text>
+      <Text size="xs">{event['object.note'] || event['object.message']}</Text>
     </Timeline.Item>
   );
 };
 
 export const KubeTimeline = ({
   q,
+  logSource,
   anchorEvent,
   dateRange,
 }: {
   q: string;
+  logSource: TSource;
   dateRange?: [Date, Date];
   anchorEvent?: AnchorEvent;
 }) => {
@@ -79,25 +175,60 @@ export const KubeTimeline = ({
     [dateRange],
   );
 
-  const { data, isLoading } = api.useLogBatch({
-    q: `k8s.resource.name:"events" ${q}`,
+  const { data, isLoading } = useV2LogBatch({
+    dateRange: [startDate, endDate],
     limit: 50,
-    startDate,
-    endDate,
-    extraFields: [
-      'object.metadata.creationTimestamp',
-      'object.reason',
-      'object.note',
-      'object.type',
-      'type',
-      'k8s.pod.name',
-    ],
+    logSource,
     order: 'desc',
+    where: `${logSource.eventAttributesExpression}.k8s.resource.name:"events" ${q}`,
+    whereLanguage: 'lucene',
+    extraSelects: [
+      {
+        valueExpression: `generateUUIDv4()`,
+        alias: 'id',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'metadata', 'creationTimestamp')`,
+        alias: 'object.metadata.creationTimestamp',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'reason')`,
+        alias: 'object.reason',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        alias: 'object.note',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        alias: 'object.type',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'message')`,
+        alias: 'object.message',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
+        alias: 'k8s.pod.name',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'type')`,
+        alias: 'type',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        alias: 'severity_text',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        alias: 'body',
+      },
+    ],
   });
 
   const allPodEvents: KubeEvent[] = React.useMemo(
     () =>
-      (data?.pages?.[0]?.data || []).sort(
+      (data?.data || []).sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       ),
@@ -148,24 +279,24 @@ export const KubeTimeline = ({
   if (anchorEvent) {
     return (
       <Timeline bulletSize={12} lineWidth={1}>
-        {podEventsAfterAnchor.map(renderKubeEvent)}
+        {podEventsAfterAnchor.map(renderKubeEvent(logSource))}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
-          <Text size="11" c="gray.6" title={anchorEvent.timestamp}>
+          <Text size="xs" fz={11} c="gray.6" title={anchorEvent.timestamp}>
             <FormatTime value={anchorEvent.timestamp} />
           </Text>
           <Group gap="xs" my={4}>
-            <Text size="12" c="white" fw="bold">
+            <Text size="sm" fz={12} c="white" fw="bold">
               {anchorEvent.label}
             </Text>
           </Group>
         </Timeline.Item>
-        {podEventsBeforeAnchor.map(renderKubeEvent)}
+        {podEventsBeforeAnchor.map(renderKubeEvent(logSource))}
       </Timeline>
     );
   } else {
     return (
       <Timeline bulletSize={12} lineWidth={1}>
-        {allPodEvents.map(renderKubeEvent)}
+        {allPodEvents.map(renderKubeEvent(logSource))}
       </Timeline>
     );
   }
