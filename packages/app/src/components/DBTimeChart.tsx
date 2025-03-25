@@ -150,7 +150,7 @@ export function DBTimeChart({
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
     return new URLSearchParams({
-      source: isMetricChart ? (source.logSourceId ?? '') : source.id,
+      source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
       where: config.where,
       whereLanguage: config.whereLanguage || 'lucene',
       filters: JSON.stringify(config.filters),
