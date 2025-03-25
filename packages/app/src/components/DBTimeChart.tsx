@@ -3,6 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -132,7 +133,7 @@ export function DBTimeChart({
   }, [activeClickPayload]);
 
   const qparams = useMemo(() => {
-    if (!clickedActiveLabelDate || !sourceId) {
+    if (!clickedActiveLabelDate || !source) {
       return null;
     }
     const from = clickedActiveLabelDate.getTime();
@@ -140,14 +141,14 @@ export function DBTimeChart({
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
     return new URLSearchParams({
-      source: sourceId,
+      source: isMetricChartConfig(config) ? source.logSourceId : source.id,
       where: config.where,
       whereLanguage: config.whereLanguage || 'lucene',
       filters: JSON.stringify(config.filters),
       from: from.toString(),
       to: to.toString(),
     });
-  }, [clickedActiveLabelDate, config, granularity, sourceId]);
+  }, [clickedActiveLabelDate, config, granularity, source]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
