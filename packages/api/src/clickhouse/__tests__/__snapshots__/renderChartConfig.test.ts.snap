@@ -157,3 +157,85 @@ Array [
   },
 ]
 `;
+
+exports[`renderChartConfig Query Metrics three_timestamps_bounded histogram with reset (p50) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 10,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 10,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 30,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p25) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 0,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 10,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p50) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 0,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 20,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p90) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 0,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 30,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics two_timestamps_lower_bound_inf histogram (p50) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 0,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 1,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics two_timestamps_upper_bound_inf histogram (p50) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 0,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "sum(toFloat64OrNull(toString(Rate)))": 30,
+  },
+]
+`;
