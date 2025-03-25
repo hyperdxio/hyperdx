@@ -10,6 +10,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 
 import {
   convertDateRangeToGranularityString,
@@ -133,7 +134,15 @@ export function DBTimeChart({
   }, [activeClickPayload]);
 
   const qparams = useMemo(() => {
-    if (!clickedActiveLabelDate || !source) {
+    if (!clickedActiveLabelDate || !source?.id) {
+      return null;
+    }
+    const isMetricChart = isMetricChartConfig(config);
+    if (isMetricChart && !source?.logSourceId) {
+      notifications.show({
+        color: 'yellow',
+        message: 'No log source is associated with the selected metric source.',
+      });
       return null;
     }
     const from = clickedActiveLabelDate.getTime();
@@ -141,7 +150,7 @@ export function DBTimeChart({
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
     return new URLSearchParams({
-      source: isMetricChartConfig(config) ? source.logSourceId : source.id,
+      source: isMetricChart ? (source.logSourceId ?? source.id) : source.id,
       where: config.where,
       whereLanguage: config.whereLanguage || 'lucene',
       filters: JSON.stringify(config.filters),
