@@ -18,20 +18,10 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Divider,
-  Group,
-  SegmentedControl,
-  Select as MSelect,
-} from '@mantine/core';
+import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
-import { MetricNameSelect } from './components/MetricNameSelect';
-import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
-import FieldMultiSelect from './FieldMultiSelect';
-import MetricTagFilterInput from './MetricTagFilterInput';
-import SearchInput from './SearchInput';
 import {
   AggFn,
   ChartSeries,
