@@ -788,11 +788,13 @@ export function formatResponseForTimeChart({
   dateRange,
   granularity,
   generateEmptyBuckets = true,
+  source,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
   res: ResponseJSON<Record<string, any>>;
   generateEmptyBuckets?: boolean;
+  source?: TSource;
 }) {
   const meta = res.meta;
   const data = res.data;
@@ -847,10 +849,13 @@ export function formatResponseForTimeChart({
         [keyName]: value,
       });
 
-      const color =
-        groupColumns.length === 1
-          ? logLevelColor(row[groupColumns[0].name])
-          : undefined;
+      let color: string | undefined = undefined;
+      if (
+        groupColumns.length === 1 &&
+        groupColumns[0].name === source?.severityTextExpression
+      ) {
+        color = logLevelColor(row[groupColumns[0].name]);
+      }
       // TODO: Set name and color correctly
       lineDataMap[keyName] = {
         dataKey: keyName,
