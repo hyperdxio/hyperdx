@@ -372,12 +372,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   );
   const { width } = useWindowSize();
 
-  const [isPreferCollapsed, setIsPreferCollapsed] = useState<
-    undefined | boolean
-  >(undefined);
+  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>(
+    'isNavCollapsed',
+    false,
+  );
 
   const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isPreferCollapsed ?? isSmallScreen;
+  const isCollapsed = isSmallScreen || isPreferCollapsed;
 
   const navWidth = isCollapsed ? 50 : 230;
 
@@ -595,7 +596,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={isCollapsed ? 'mt-4' : ''}
               style={{ marginRight: -4 }}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed(v => !v)}
+              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
               <i className="bi bi-layout-sidebar"></i>
             </Button>
