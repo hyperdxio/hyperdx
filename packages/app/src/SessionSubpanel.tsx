@@ -432,7 +432,7 @@ export default function SessionSubpanel({
     [setSearchedQuery],
   );
 
-  const { pushSidePanel } = useRowSidePanel();
+  const { openRowSidePanel } = useRowSidePanel();
 
   return (
     <div className={styles.wrapper}>
@@ -500,13 +500,9 @@ export default function SessionSubpanel({
           queriedConfig={sessionEventListConfig}
           onClick={useCallback(
             (id: string) => {
-              pushSidePanel({
-                sourceId: traceSource.id,
-                rowWhere: id,
-                dbSqlRowTableConfig: sessionEventListConfig,
-              });
+              openRowSidePanel(traceSource.id, id, sessionEventListConfig);
             },
-            [pushSidePanel, sessionEventListConfig, traceSource.id],
+            [openRowSidePanel, sessionEventListConfig, traceSource.id],
           )}
           focus={focus}
           onTimeClick={useCallback(

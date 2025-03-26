@@ -194,15 +194,12 @@ const Tile = forwardRef(
     const [hovered, setHovered] = useState(false);
 
     // Search tile
-    const { pushSidePanel, sidePanel } = useRowSidePanel();
+    const { openRowSidePanel, sidePanel } = useRowSidePanel();
     const handleRowExpandClick = useCallback(
       (rowWhere: string) => {
-        pushSidePanel({
-          sourceId: chart.config.source,
-          rowWhere,
-        });
+        openRowSidePanel(chart.config.source, rowWhere);
       },
-      [chart.config.source, pushSidePanel],
+      [chart.config.source, openRowSidePanel],
     );
 
     const alert = chart.config.alert;
@@ -354,7 +351,7 @@ const Tile = forwardRef(
                   granularity: undefined,
                 }}
                 onRowExpandClick={handleRowExpandClick}
-                highlightedLineId={sidePanel?.rowWhere}
+                highlightedLineId={sidePanel?.rw}
                 onScroll={() => {}}
                 isLive={false}
                 queryKeyPrefix={'search'}

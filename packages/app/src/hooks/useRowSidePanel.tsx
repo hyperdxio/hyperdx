@@ -1,15 +1,14 @@
 import React from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import produce from 'immer';
+import { parseAsArrayOf, parseAsJson, useQueryState } from 'nuqs';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { useSources } from '@/source';
 
 type SidePanelState = {
-  sourceId: string;
-  rowWhere: string;
-  tab?: string;
-  dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  sid: string;
+  rw: string;
+  tcfg?: ChartConfigWithDateRange;
 };
 
 type SidePanelStack = SidePanelState[];
@@ -17,39 +16,34 @@ type SidePanelStack = SidePanelState[];
 export const useRowSidePanel = () => {
   const [sidePanelStack, setSidePanelStack] = useQueryState<SidePanelStack>(
     'drawer',
-    parseAsJson(),
+    parseAsArrayOf(parseAsJson()),
   );
 
   const pushSidePanel = React.useCallback(
-    (sidePanel: SidePanelState, replace?: boolean) => {
-      setSidePanelStack(prev => {
-        const next = [...(prev || [])];
-        if (replace) {
-          next.pop();
-        }
-        next.push(sidePanel);
-        return next;
-      });
-    },
+    (sidePanel: SidePanelState, replace?: boolean) =>
+      setSidePanelStack(
+        produce(_draft => {
+          const draft = _draft || [];
+          if (replace) {
+            draft.pop();
+          }
+          draft.push(sidePanel);
+          return draft;
+        }),
+      ),
     [setSidePanelStack],
   );
 
-  const popSidePanel = React.useCallback(() => {
-    setSidePanelStack(prev => {
-      const next = [...(prev || [])];
-      next.pop();
-      return next;
-    });
-  }, [setSidePanelStack]);
-
   const closeSidePanel = React.useCallback(
-    (index: number) => {
-      setSidePanelStack(prev => {
-        const next = [...(prev || [])];
-        next.splice(index, 1);
-        return next;
-      });
-    },
+    (index: number) =>
+      setSidePanelStack(
+        produce(draft => {
+          draft?.splice(index, 1);
+          if (!draft?.length) {
+            draft = null;
+          }
+        }),
+      ),
     [setSidePanelStack],
   );
 
@@ -58,42 +52,43 @@ export const useRowSidePanel = () => {
     [sidePanelStack],
   );
 
+  // Row Side Panel
+  const openRowSidePanel = React.useCallback(
+    (
+      sid: string,
+      rw: string,
+      tcfg?: ChartConfigWithDateRange,
+      replace?: boolean,
+    ) => {
+      pushSidePanel({ sid, rw, tcfg }, replace);
+    },
+    [pushSidePanel],
+  );
+
   return {
     sidePanel,
     sidePanelStack,
     closeSidePanel,
-    pushSidePanel,
-    popSidePanel,
+    openRowSidePanel,
   };
 };
 
 export const RowSidePanels = () => {
   const { sidePanelStack, closeSidePanel } = useRowSidePanel();
-  const { data: sources } = useSources();
-
-  if (!sources) {
-    return null;
-  }
 
   if (!sidePanelStack) {
     return null;
   }
 
-  return sidePanelStack
-    .map(sp => {
-      const source = sources.find(s => s.id === sp.sourceId);
-      return { ...sp, source: source ? source : null };
-    })
-    .filter(sp => sp.source)
-    .map((sidePanel, index) => (
-      <DBRowSidePanel
-        key={index}
-        onClose={() => closeSidePanel(index)}
-        rowId={sidePanel.rowWhere}
-        source={sidePanel.source!}
-        zIndexOffset={index}
-        dbSqlRowTableConfig={sidePanel.dbSqlRowTableConfig}
-        isTopPanel={index === sidePanelStack.length - 1}
-      />
-    ));
+  return sidePanelStack.map((sidePanel, index) => (
+    <DBRowSidePanel
+      key={index}
+      onClose={() => closeSidePanel(index)}
+      rowId={sidePanel.rw}
+      sourceId={sidePanel.sid}
+      zIndexOffset={index}
+      dbSqlRowTableConfig={sidePanel.tcfg}
+      isTopPanel={index === sidePanelStack.length - 1}
+    />
+  ));
 };

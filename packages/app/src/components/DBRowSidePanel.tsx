@@ -11,13 +11,14 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
+import { useSource } from '@/source';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
@@ -53,21 +54,41 @@ export const RowSidePanelContext = createContext<{
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
 }>({});
 
-export default function DBRowSidePanel({
-  rowId,
-  source,
-  dbSqlRowTableConfig,
-  onClose,
-  isTopPanel = true,
-  zIndexOffset = 0,
-}: {
-  source: TSource;
+type DBRowSidePanelProps = {
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  source: TSource;
   rowId: string | undefined;
   zIndexOffset?: number;
   onClose: () => void;
   isTopPanel?: boolean;
-}) {
+};
+
+// Hooks used in DBRowSidePanel are not allowing nullable `source` prop,
+// so in order to avoid conditionally rendering hooks, we need to fetch it before
+// rendering DBRowSidePanel.
+export default function DBRowSidePanelWithFetcher({
+  sourceId,
+  ...props
+}: {
+  sourceId: string;
+} & Omit<DBRowSidePanelProps, 'source'>) {
+  const { data: source } = useSource({ id: sourceId });
+
+  if (!source) {
+    return null;
+  }
+
+  return <DBRowSidePanel {...props} source={source} />;
+}
+
+function DBRowSidePanel({
+  rowId,
+  source,
+  dbSqlRowTableConfig,
+  onClose: _onClose,
+  isTopPanel = true,
+  zIndexOffset = 0,
+}: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10 + zIndexOffset;
 
@@ -109,17 +130,16 @@ export default function DBRowSidePanel({
     document.removeEventListener('mouseup', endResize);
   }, []);
 
-  useHotkeys(['esc'], onClose, { enabled: isTopPanel });
-
-  const [queryTab, setQueryTab] = useQueryState(
-    'tab',
+  const [tab, setTab] = useQueryState(
+    'tab_' + zIndexOffset,
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
   );
-  const [stateTab, setStateTab] = useState<Tab>(Tab.Overview);
-  // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
-  // We'll need to handle this properly eventually...
-  const tab = isTopPanel ? queryTab : stateTab;
-  const setTab = isTopPanel ? setQueryTab : setStateTab;
+
+  const onClose = useCallback(() => {
+    _onClose();
+    setTab(null);
+  }, [_onClose, setTab]);
+  useHotkeys(['esc'], onClose, { enabled: isTopPanel });
 
   const drawerRef = useClickOutside(() => {
     if (isTopPanel && rowId != null) {

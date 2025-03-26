@@ -695,7 +695,7 @@ function DBSearchPage() {
     [setIsLive],
   );
 
-  const { sidePanel, pushSidePanel } = useRowSidePanel();
+  const { sidePanel, openRowSidePanel } = useRowSidePanel();
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false);
   const [saveSearchModalState, setSaveSearchModalState] = useState<
@@ -865,16 +865,14 @@ function DBSearchPage() {
       if (!searchedConfig.source) {
         return;
       }
-      pushSidePanel(
-        {
-          sourceId: searchedConfig.source,
-          dbSqlRowTableConfig,
-          rowWhere,
-        },
+      openRowSidePanel(
+        searchedConfig.source,
+        rowWhere,
+        dbSqlRowTableConfig,
         true,
       );
     },
-    [dbSqlRowTableConfig, pushSidePanel, searchedConfig.source],
+    [dbSqlRowTableConfig, openRowSidePanel, searchedConfig.source],
   );
 
   const searchFilters = useSearchPageFilterState({
@@ -1512,7 +1510,7 @@ function DBSearchPage() {
                         <DBSqlRowTable
                           config={dbSqlRowTableConfig}
                           onRowExpandClick={onRowExpandClick}
-                          highlightedLineId={sidePanel?.rowWhere}
+                          highlightedLineId={sidePanel?.rw}
                           enabled={isReady}
                           isLive={isLive ?? true}
                           queryKeyPrefix={QUERY_KEY_PREFIX}

@@ -150,16 +150,12 @@ export default function ContextSubpanel({
     };
   }, [dbSqlRowTableConfig, newDateRange, contextBy, debouncedWhere]);
 
-  const { pushSidePanel } = useRowSidePanel();
+  const { openRowSidePanel } = useRowSidePanel();
   const handleExpandLine = useCallback(
     (rowWhere: string) => {
-      pushSidePanel({
-        rowWhere,
-        sourceId: source.id,
-        dbSqlRowTableConfig,
-      });
+      openRowSidePanel(source.id, rowWhere, dbSqlRowTableConfig);
     },
-    [dbSqlRowTableConfig, pushSidePanel, source.id],
+    [dbSqlRowTableConfig, openRowSidePanel, source.id],
   );
 
   return (
