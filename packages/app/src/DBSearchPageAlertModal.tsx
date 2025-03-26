@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   type Alert,
   AlertIntervalSchema,
@@ -83,10 +84,6 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const databaseName = source?.from.databaseName;
-  const tableName = source?.from.tableName;
-  const connectionId = source?.connection;
-
   const { control, handleSubmit, watch } = useForm<Alert>({
     defaultValues: defaultValues || {
       interval: '5m',
@@ -148,10 +145,8 @@ const AlertForm = ({
             grouped by
           </Text>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnection={tcFromSource(source)}
             control={control}
-            connectionId={connectionId}
             name={`groupBy`}
             placeholder="SQL Columns"
             disableKeywordAutocomplete

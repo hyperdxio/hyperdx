@@ -3,7 +3,11 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Field } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  isTableConnection,
+  TableConnection,
+} from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -89,9 +93,7 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  database?: string;
-  table?: string;
-  connectionId?: string;
+  tableConnection?: TableConnection | TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -120,10 +122,7 @@ const styleTheme = EditorView.baseTheme({
 });
 
 export default function SQLInlineEditor({
-  database,
-  table,
-  connectionId,
-  autoCompleteFields,
+  tableConnection: _tableConnections,
   filterField,
   onChange,
   placeholder,
@@ -137,18 +136,15 @@ export default function SQLInlineEditor({
   enableHotkey,
   additionalSuggestions = [],
 }: SQLInlineEditorProps) {
-  const { data: _fields } = useAllFields(
-    {
-      databaseName: database ?? '',
-      tableName: table ?? '',
-      connectionId: connectionId ?? '',
-    },
-    {
-      enabled: !autoCompleteFields && !!database && !!table && !!connectionId,
-    },
-  );
-  // use autoCompleteFields if provided, else fallback to queried _fields
-  const fields = autoCompleteFields ?? _fields;
+  const tableConnections =
+    _tableConnections === undefined
+      ? []
+      : isTableConnection(_tableConnections)
+        ? [_tableConnections]
+        : _tableConnections;
+  const { data: fields } = useAllFields(tableConnections, {
+    enabled: tableConnections.length > 0,
+  });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
@@ -174,7 +170,6 @@ export default function SQLInlineEditor({
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
           sql({
-            defaultTable: table ?? '',
             dialect: SQLDialect.define({
               keywords:
                 keywords.join(' ') +
@@ -184,7 +179,7 @@ export default function SQLInlineEditor({
         ),
       });
     },
-    [filteredFields, table, additionalSuggestions],
+    [filteredFields, additionalSuggestions],
   );
 
   useEffect(() => {
@@ -295,11 +290,8 @@ export default function SQLInlineEditor({
 }
 
 export function SQLInlineEditorControlled({
-  database,
-  table,
   placeholder,
   filterField,
-  connectionId,
   additionalSuggestions,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
@@ -307,13 +299,10 @@ export function SQLInlineEditorControlled({
 
   return (
     <SQLInlineEditor
-      database={database}
       filterField={filterField}
       onChange={field.onChange}
       placeholder={placeholder}
-      table={table}
       value={field.value || props.defaultValue}
-      connectionId={connectionId}
       additionalSuggestions={additionalSuggestions}
       {...props}
     />

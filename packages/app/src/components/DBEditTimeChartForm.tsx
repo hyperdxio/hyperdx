@@ -10,6 +10,7 @@ import {
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   AlertBaseSchema,
   ChartConfigWithDateRange,
@@ -200,11 +201,13 @@ function ChartSeriesEditor({
         {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
           <div style={{ minWidth: 220 }}>
             <SQLInlineEditorControlled
-              database={databaseName}
-              table={tableName}
+              tableConnection={{
+                databaseName,
+                tableName: tableName ?? '',
+                connectionId: connectionId ?? '',
+              }}
               control={control}
               name={`${namePrefix}valueExpression`}
-              connectionId={connectionId}
               placeholder="SQL Column"
               onSubmit={onSubmit}
             />
@@ -213,9 +216,11 @@ function ChartSeriesEditor({
         <Text size="sm">Where</Text>
         {aggConditionLanguage === 'sql' ? (
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
-            connectionId={connectionId}
+            tableConnection={{
+              databaseName,
+              tableName: tableName ?? '',
+              connectionId: connectionId ?? '',
+            }}
             control={control}
             name={`${namePrefix}aggCondition`}
             placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -228,9 +233,11 @@ function ChartSeriesEditor({
           />
         ) : (
           <SearchInputV2
-            connectionId={connectionId}
-            database={databaseName}
-            table={tableName}
+            tableConnection={{
+              connectionId: connectionId ?? '',
+              databaseName: databaseName ?? '',
+              tableName: tableName ?? '',
+            }}
             control={control}
             name={`${namePrefix}aggCondition`}
             onLanguageChange={lang =>
@@ -249,10 +256,12 @@ function ChartSeriesEditor({
             </Text>
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
-                database={databaseName}
-                table={tableName}
+                tableConnection={{
+                  databaseName,
+                  tableName: tableName ?? '',
+                  connectionId: connectionId ?? '',
+                }}
                 control={control}
-                connectionId={connectionId}
                 name={`groupBy`}
                 placeholder="SQL Columns"
                 disableKeywordAutocomplete
@@ -586,9 +595,7 @@ export default function EditTimeChartForm({
                     </Text>
                     <div style={{ flexGrow: 1 }}>
                       <SQLInlineEditorControlled
-                        database={databaseName}
-                        table={tableName}
-                        connectionId={tableSource?.connection}
+                        tableConnection={tcFromSource(tableSource)}
                         control={control}
                         name={`groupBy`}
                         placeholder="SQL Columns"
@@ -648,9 +655,7 @@ export default function EditTimeChartForm({
           ) : (
             <Flex gap="xs" direction="column">
               <SQLInlineEditorControlled
-                connectionId={tableSource?.connection}
-                database={databaseName}
-                table={tableName}
+                tableConnection={tcFromSource(tableSource)}
                 control={control}
                 name="select"
                 placeholder={
@@ -662,9 +667,7 @@ export default function EditTimeChartForm({
               />
               {whereLanguage === 'sql' ? (
                 <SQLInlineEditorControlled
-                  database={databaseName}
-                  table={tableName}
-                  connectionId={tableSource?.connection}
+                  tableConnection={tcFromSource(tableSource)}
                   control={control}
                   name={`where`}
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -674,9 +677,11 @@ export default function EditTimeChartForm({
                 />
               ) : (
                 <SearchInputV2
-                  connectionId={tableSource?.connection}
-                  database={databaseName}
-                  table={tableName}
+                  tableConnection={{
+                    connectionId: tableSource?.connection ?? '',
+                    databaseName: databaseName ?? '',
+                    tableName: tableName ?? '',
+                  }}
                   control={control}
                   name="where"
                   onLanguageChange={lang => setValue('whereLanguage', lang)}

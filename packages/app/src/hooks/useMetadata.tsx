@@ -1,5 +1,10 @@
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import { Field, TableMetadata } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  isTableConnection,
+  TableConnection,
+  TableMetadata,
+} from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -36,26 +41,20 @@ export function useColumns(
 }
 
 export function useAllFields(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const metadata = getMetadata();
+  const tableConnections = isTableConnection(_tableConnections)
+    ? [_tableConnections]
+    : _tableConnections;
   return useQuery<Field[]>({
-    queryKey: ['useMetadata.useAllFields', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useAllFields',
+      ...tableConnections.map(tc => ({ ...tc })),
+    ],
     queryFn: async () => {
-      return metadata.getAllFields({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      const metadata = getMetadata();
+      return metadata.getAllFields(...tableConnections);
     },
     ...options,
   });

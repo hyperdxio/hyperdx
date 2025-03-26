@@ -9,7 +9,7 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/renderChartConfig';
-import type { ChartConfigWithDateRange } from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 const DEFAULT_SAMPLE_SIZE = 1e6;
 
@@ -349,53 +349,65 @@ export class Metadata {
     );
   }
 
-  async getAllFields({
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
+  async getAllFields(...tableConnections: TableConnection[]) {
     const fields: Field[] = [];
-    const columns = await this.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
+    const columns2d = await Promise.all(
+      tableConnections.map(tc => this.getColumns(tc)),
+    );
 
-    for (const c of columns) {
-      fields.push({
-        path: [c.name],
-        type: c.type,
-        jsType: convertCHDataTypeToJSType(c.type),
-      });
-    }
-
-    const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
-
-    await Promise.all(
-      mapColumns.map(async column => {
-        const keys = await this.getMapKeys({
-          databaseName,
-          tableName,
-          column: column.name,
-          connectionId,
+    // add to column to fields and avoid duplicates
+    const set = new Set<string>();
+    for (const _columns of columns2d) {
+      for (const c of _columns) {
+        const jsType = convertCHDataTypeToJSType(c.type);
+        const key = `${c.name}_${jsType}`;
+        if (set.has(key)) continue;
+        set.add(key);
+        fields.push({
+          path: [c.name],
+          type: c.type,
+          jsType,
         });
+      }
+    }
+    set.clear(); // not used anymore
 
-        const match = column.type.match(/Map\(.+,\s*(.+)\)/);
-        const chType = match?.[1] ?? 'String'; // default to string ?
+    const mapColumns2d = columns2d.map(
+      columns => filterColumnMetaByType(columns, [JSDataType.Map]) ?? [],
+    );
 
-        for (const key of keys) {
-          fields.push({
-            path: [column.name, key],
-            type: chType,
-            jsType: convertCHDataTypeToJSType(chType),
+    const promises2d = mapColumns2d.map((mapColumns, i) =>
+      mapColumns.map(async column => {
+        const tc = tableConnections[i];
+        try {
+          const keys = await this.getMapKeys({
+            databaseName: tc.databaseName,
+            tableName: tc.tableName,
+            connectionId: tc.connectionId,
+            column: column.name,
           });
+
+          const match = column.type.match(/Map\(.+,\s*(.+)\)/);
+          const chType = match?.[1] ?? 'String'; // default to string ?
+
+          // add to column + keys to fields and avoid duplicates
+          for (const key of keys) {
+            const mapKey = `${column.name}_${key}_${chType}`;
+            if (set.has(mapKey)) continue;
+            set.add(mapKey);
+            fields.push({
+              path: [column.name, key],
+              type: chType,
+              jsType: convertCHDataTypeToJSType(chType),
+            });
+          }
+        } catch (e) {
+          console.error(e);
         }
       }),
     );
+    await Promise.all(promises2d.flatMap(v => v));
+    set.clear();
 
     return fields;
   }
@@ -466,6 +478,37 @@ export type Field = {
   type: string;
   jsType: JSDataType | null;
 };
+
+export type TableConnection = {
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+};
+
+export function isTableConnection(obj: any): obj is TableConnection {
+  return (
+    obj?.length === undefined &&
+    typeof obj?.databaseName === 'string' &&
+    typeof obj?.tableName === 'string' &&
+    typeof obj?.connectionId === 'string'
+  );
+}
+
+export function tcFromChartConfig(config?: ChartConfig): TableConnection {
+  return {
+    databaseName: config?.from?.databaseName ?? '',
+    tableName: config?.from?.tableName ?? '',
+    connectionId: config?.connection ?? '',
+  };
+}
+
+export function tcFromSource(source?: TSource): TableConnection {
+  return {
+    databaseName: source?.from?.databaseName ?? '',
+    tableName: source?.from?.tableName ?? '',
+    connectionId: source?.connection ?? '',
+  };
+}
 
 const __LOCAL_CACHE__ = new MetadataCache();
 
