@@ -17,6 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
@@ -68,6 +69,7 @@ import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useAllFields } from './hooks/useMetadata';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
@@ -89,8 +91,6 @@ import { ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { useAllFields } from './hooks/useMetadata';
-import { Field } from '@hyperdx/common-utils/dist/metadata';
 
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 

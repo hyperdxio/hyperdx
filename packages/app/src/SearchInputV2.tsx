@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
 import { useAllFields } from '@/hooks/useMetadata';
-import { Field } from '@hyperdx/common-utils/dist/metadata';
 
 export default function SearchInputV2({
   database,
