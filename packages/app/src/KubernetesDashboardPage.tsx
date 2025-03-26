@@ -430,53 +430,61 @@ export const InfraPodsStatusTable = ({
 };
 
 const NodesTable = ({
+  metricSource,
   where,
   dateRange,
 }: {
+  metricSource: TSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
   const groupBy = ['k8s.node.name'];
 
-  const { data, isError, isLoading } = api.useMultiSeriesChart({
-    series: [
+  const { data, isError, isLoading } = useQueriedChartConfig(
+    convertV1ChartConfigToV2(
       {
-        table: 'metrics',
-        field: 'k8s.node.cpu.utilization - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
+        series: [
+          {
+            table: 'metrics',
+            field: 'k8s.node.cpu.utilization - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.node.memory.usage - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.node.condition_ready - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.node.uptime - Sum',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+        ],
+        dateRange,
+        seriesReturnType: 'column',
       },
       {
-        table: 'metrics',
-        field: 'k8s.node.memory.usage - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
+        metric: metricSource,
       },
-      {
-        table: 'metrics',
-        field: 'k8s.node.condition_ready - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.node.uptime - Sum',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-      },
-    ],
-    endDate: dateRange[1] ?? new Date(),
-    startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
-  });
+    ),
+  );
 
   const getLink = React.useCallback((nodeName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -491,12 +499,11 @@ const NodesTable = ({
 
     return data.data.map((row: any) => {
       return {
-        name: row.group[0],
-        namespace: row.group[1],
-        cpuAvg: row['series_0.data'],
-        memAvg: row['series_1.data'],
-        ready: row['series_2.data'],
-        uptime: row['series_3.data'],
+        name: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
+        cpuAvg: row['avg(k8s.node.cpu.utilization)'],
+        memAvg: row['avg(k8s.node.memory.usage)'],
+        ready: row['avg(k8s.node.condition_ready)'],
+        uptime: row['avg(k8s.node.uptime)'],
       };
     });
   }, [data]);
@@ -591,48 +598,58 @@ const NodesTable = ({
 };
 
 const NamespacesTable = ({
+  metricSource,
   where,
   dateRange,
 }: {
+  metricSource: TSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = api.useMultiSeriesChart({
-    series: [
+  const { data, isError, isLoading } = useQueriedChartConfig(
+    convertV1ChartConfigToV2(
       {
-        table: 'metrics',
-        field: 'k8s.pod.cpu.utilization - Gauge',
-        type: 'table',
-        aggFn: 'sum',
-        where,
-        groupBy,
+        series: [
+          {
+            table: 'metrics',
+            field: 'k8s.pod.cpu.utilization - Gauge',
+            type: 'table',
+            aggFn: 'sum',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.memory.usage - Gauge',
+            type: 'table',
+            aggFn: 'sum',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.namespace.phase - Gauge',
+            type: 'table',
+            aggFn: 'last_value',
+            where,
+            groupBy,
+          },
+        ],
+        dateRange: [
+          // We should only look at the latest values, otherwise we might
+          // aggregate pod metrics from pods that have been terminated
+          sub(dateRange[1] ?? new Date(), { minutes: 5 }),
+          dateRange[1] ?? new Date(),
+        ],
+        seriesReturnType: 'column',
       },
       {
-        table: 'metrics',
-        field: 'k8s.pod.memory.usage - Gauge',
-        type: 'table',
-        aggFn: 'sum',
-        where,
-        groupBy,
+        metric: metricSource,
       },
-      {
-        table: 'metrics',
-        field: 'k8s.namespace.phase - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy,
-      },
-    ],
-    endDate: dateRange[1] ?? new Date(),
-    // We should only look at the latest values, otherwise we might
-    // aggregate pod metrics from pods that have been terminated
-    startDate: sub(dateRange[1] ?? new Date(), { minutes: 5 }),
-    // startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
-  });
+    ),
+  );
 
   const namespacesList = React.useMemo(() => {
     if (!data) {
@@ -641,10 +658,10 @@ const NamespacesTable = ({
 
     return data.data.map((row: any) => {
       return {
-        name: row.group[0],
-        cpuAvg: row['series_0.data'],
-        memAvg: row['series_1.data'],
-        phase: row['series_2.data'],
+        name: row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
+        cpuAvg: row['sum(k8s.pod.cpu.utilization)'],
+        memAvg: row['sum(k8s.pod.memory.usage)'],
+        phase: row['last_value(k8s.namespace.phase)'],
       };
     });
   }, [data]);
@@ -866,6 +883,22 @@ export default function KubernetesDashboardPage() {
             size="xs"
           />
         </Group>
+
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            onSearch(displayedTimeInputValue);
+            return false;
+          }}
+        >
+          <TimePicker
+            inputValue={displayedTimeInputValue}
+            setInputValue={setDisplayedTimeInputValue}
+            onSearch={range => {
+              onSearch(range);
+            }}
+          />
+        </form>
       </Group>
       <div className="d-flex flex-column">
         <Group
@@ -930,34 +963,6 @@ export default function KubernetesDashboardPage() {
             dropdownClosedWidth={130}
             icon={<i className="bi bi-grid"></i>}
           />
-          <div style={{ flex: 1 }}>
-            <form onSubmit={onSearchSubmit}>
-              <HdxSearchInput
-                inputRef={searchInputRef}
-                placeholder="Scope dashboard to..."
-                value={_searchQuery ?? searchQuery}
-                onChange={v => _setSearchQuery(v)}
-                onSearch={() => {}}
-                showHotkey={false}
-              />
-            </form>
-          </div>
-          <form
-            className="d-flex"
-            style={{ width: 350, height: 36 }}
-            onSubmit={e => {
-              e.preventDefault();
-              onSearch(displayedTimeInputValue);
-            }}
-          >
-            <TimePicker
-              inputValue={displayedTimeInputValue}
-              setInputValue={setDisplayedTimeInputValue}
-              onSearch={range => {
-                onSearch(range);
-              }}
-            />
-          </form>
         </Group>
       </div>
       <Tabs
@@ -1193,7 +1198,13 @@ export default function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <NodesTable dateRange={dateRange} where={whereClause} />
+                {metricSource && (
+                  <NodesTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={whereClause}
+                  />
+                )}
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
@@ -1276,7 +1287,13 @@ export default function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <NamespacesTable dateRange={dateRange} where={whereClause} />
+                {metricSource && (
+                  <NamespacesTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={whereClause}
+                  />
+                )}
               </Grid.Col>
             </Grid>
           </Tabs.Panel>
