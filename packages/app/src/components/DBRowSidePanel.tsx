@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
+import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
@@ -59,8 +60,6 @@ export default function DBRowSidePanel({
   onClose,
   isTopPanel = true,
   zIndexOffset = 0,
-  tab,
-  setTab,
 }: {
   source: TSource;
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
@@ -68,8 +67,6 @@ export default function DBRowSidePanel({
   zIndexOffset?: number;
   onClose: () => void;
   isTopPanel?: boolean;
-  tab: string;
-  setTab: (tab: string) => void;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10 + zIndexOffset;
@@ -113,6 +110,16 @@ export default function DBRowSidePanel({
   }, []);
 
   useHotkeys(['esc'], onClose, { enabled: isTopPanel });
+
+  const [queryTab, setQueryTab] = useQueryState(
+    'tab',
+    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
+  );
+  const [stateTab, setStateTab] = useState<Tab>(Tab.Overview);
+  // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
+  // We'll need to handle this properly eventually...
+  const tab = isTopPanel ? queryTab : stateTab;
+  const setTab = isTopPanel ? setQueryTab : setStateTab;
 
   const drawerRef = useClickOutside(() => {
     if (isTopPanel && rowId != null) {
@@ -220,13 +227,6 @@ export default function DBRowSidePanel({
                   severityText={severityText}
                 />
               </Box>
-              {/* <SidePanelHeader
-                logData={logData}
-                generateShareUrl={generateShareUrl}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                onClose={_onClose}
-              /> */}
               <TabBar
                 className="fs-8 mt-2"
                 items={[
@@ -357,7 +357,7 @@ export default function DBRowSidePanel({
                   </div>
                 </ErrorBoundary>
               )}
-              {displayedTab === Tab.Infrastructure && (
+              {tab === Tab.Infrastructure && (
                 <ErrorBoundary
                   onError={err => {
                     console.error(err);
