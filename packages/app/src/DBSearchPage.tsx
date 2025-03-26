@@ -865,14 +865,9 @@ function DBSearchPage() {
       if (!searchedConfig.source) {
         return;
       }
-      openRowSidePanel(
-        searchedConfig.source,
-        rowWhere,
-        dbSqlRowTableConfig,
-        true,
-      );
+      openRowSidePanel(searchedConfig.source, rowWhere, true);
     },
-    [dbSqlRowTableConfig, openRowSidePanel, searchedConfig.source],
+    [openRowSidePanel, searchedConfig.source],
   );
 
   const searchFilters = useSearchPageFilterState({
@@ -1197,6 +1192,7 @@ function DBSearchPage() {
           displayedColumns,
           toggleColumn,
           generateSearchUrl,
+          dbSqlRowTableConfig,
         }}
       >
         <RowSidePanels />

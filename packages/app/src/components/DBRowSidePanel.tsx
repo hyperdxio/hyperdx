@@ -2,6 +2,7 @@ import {
   createContext,
   MouseEventHandler,
   useCallback,
+  useContext,
   useMemo,
   useState,
 } from 'react';
@@ -55,7 +56,6 @@ export const RowSidePanelContext = createContext<{
 }>({});
 
 type DBRowSidePanelProps = {
-  dbSqlRowTableConfig?: ChartConfigWithDateRange;
   source: TSource;
   rowId: string | undefined;
   zIndexOffset?: number;
@@ -84,7 +84,6 @@ export default function DBRowSidePanelWithFetcher({
 function DBRowSidePanel({
   rowId,
   source,
-  dbSqlRowTableConfig,
   onClose: _onClose,
   isTopPanel = true,
   zIndexOffset = 0,
@@ -213,6 +212,8 @@ function DBRowSidePanel({
         null
     );
   }, [source, normalizedRow]);
+
+  const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
 
   return (
     <Drawer

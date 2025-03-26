@@ -153,9 +153,9 @@ export default function ContextSubpanel({
   const { openRowSidePanel } = useRowSidePanel();
   const handleExpandLine = useCallback(
     (rowWhere: string) => {
-      openRowSidePanel(source.id, rowWhere, dbSqlRowTableConfig);
+      openRowSidePanel(source.id, rowWhere);
     },
-    [dbSqlRowTableConfig, openRowSidePanel, source.id],
+    [openRowSidePanel, source.id],
   );
 
   return (

@@ -985,6 +985,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
+
       <RowSidePanels />
     </Box>
   );

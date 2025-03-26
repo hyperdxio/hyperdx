@@ -500,9 +500,9 @@ export default function SessionSubpanel({
           queriedConfig={sessionEventListConfig}
           onClick={useCallback(
             (id: string) => {
-              openRowSidePanel(traceSource.id, id, sessionEventListConfig);
+              openRowSidePanel(traceSource.id, id);
             },
-            [openRowSidePanel, sessionEventListConfig, traceSource.id],
+            [openRowSidePanel, traceSource.id],
           )}
           focus={focus}
           onTimeClick={useCallback(

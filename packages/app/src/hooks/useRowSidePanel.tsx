@@ -1,21 +1,19 @@
 import React from 'react';
 import produce from 'immer';
 import { parseAsArrayOf, parseAsJson, useQueryState } from 'nuqs';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 
 type SidePanelState = {
   sid: string;
   rw: string;
-  tcfg?: ChartConfigWithDateRange;
 };
 
 type SidePanelStack = SidePanelState[];
 
 export const useRowSidePanel = () => {
   const [sidePanelStack, setSidePanelStack] = useQueryState<SidePanelStack>(
-    'drawer',
+    'rowDetails',
     parseAsArrayOf(parseAsJson()),
   );
 
@@ -54,13 +52,8 @@ export const useRowSidePanel = () => {
 
   // Row Side Panel
   const openRowSidePanel = React.useCallback(
-    (
-      sid: string,
-      rw: string,
-      tcfg?: ChartConfigWithDateRange,
-      replace?: boolean,
-    ) => {
-      pushSidePanel({ sid, rw, tcfg }, replace);
+    (sid: string, rw: string, replace?: boolean) => {
+      pushSidePanel({ sid, rw }, replace);
     },
     [pushSidePanel],
   );
@@ -73,22 +66,21 @@ export const useRowSidePanel = () => {
   };
 };
 
-export const RowSidePanels = () => {
+export const RowSidePanels: React.FC = () => {
   const { sidePanelStack, closeSidePanel } = useRowSidePanel();
 
-  if (!sidePanelStack) {
-    return null;
-  }
-
-  return sidePanelStack.map((sidePanel, index) => (
-    <DBRowSidePanel
-      key={index}
-      onClose={() => closeSidePanel(index)}
-      rowId={sidePanel.rw}
-      sourceId={sidePanel.sid}
-      zIndexOffset={index}
-      dbSqlRowTableConfig={sidePanel.tcfg}
-      isTopPanel={index === sidePanelStack.length - 1}
-    />
-  ));
+  return (
+    <>
+      {sidePanelStack?.map((sidePanel, index) => (
+        <DBRowSidePanel
+          key={index}
+          onClose={() => closeSidePanel(index)}
+          rowId={sidePanel.rw}
+          sourceId={sidePanel.sid}
+          zIndexOffset={index}
+          isTopPanel={index === sidePanelStack.length - 1}
+        />
+      ))}
+    </>
+  );
 };
