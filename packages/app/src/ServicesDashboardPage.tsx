@@ -37,6 +37,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { RowSidePanels } from '@/hooks/useRowSidePanel';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
 import { getExpressions } from '@/serviceDashboard';
@@ -1000,6 +1001,7 @@ function ServicesDashboardPage() {
           </Tabs.Panel>
         </Tabs>
       )}
+      <RowSidePanels />
     </Box>
   );
 }

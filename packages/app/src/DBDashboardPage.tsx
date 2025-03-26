@@ -63,6 +63,7 @@ import {
   useCreateDashboard,
   useDeleteDashboard,
 } from '@/dashboard';
+import { RowSidePanels } from '@/hooks/useRowSidePanel';
 import { useRowSidePanel } from '@/hooks/useRowSidePanel';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -984,6 +985,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
+      <RowSidePanels />
     </Box>
   );
 }

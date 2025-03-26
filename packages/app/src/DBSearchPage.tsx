@@ -88,7 +88,7 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
-import { useRowSidePanel } from './hooks/useRowSidePanel';
+import { RowSidePanels, useRowSidePanel } from './hooks/useRowSidePanel';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -1199,7 +1199,7 @@ function DBSearchPage() {
           generateSearchUrl,
         }}
       >
-        {/* TODO */}
+        <RowSidePanels />
       </RowSidePanelContext.Provider>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal

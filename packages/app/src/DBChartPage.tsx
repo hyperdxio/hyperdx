@@ -1,11 +1,11 @@
-import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
+import { parseAsJson, useQueryState } from 'nuqs';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
-import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
+import { RowSidePanels } from '@/hooks/useRowSidePanel';
 import { withAppNav } from '@/layout';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
@@ -42,19 +42,22 @@ function DBChartExplorerPage() {
   );
 
   return (
-    <Box p="sm" className="bg-hdx-dark">
-      <EditTimeChartForm
-        chartConfig={chartConfig}
-        setChartConfig={config => {
-          setChartConfig(config);
-        }}
-        dateRange={searchedTimeRange}
-        setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-        displayedTimeInputValue={displayedTimeInputValue}
-        onTimeRangeSearch={onSearch}
-        onTimeRangeSelect={onTimeRangeSelect}
-      />
-    </Box>
+    <>
+      <Box p="sm" className="bg-hdx-dark">
+        <EditTimeChartForm
+          chartConfig={chartConfig}
+          setChartConfig={config => {
+            setChartConfig(config);
+          }}
+          dateRange={searchedTimeRange}
+          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+          displayedTimeInputValue={displayedTimeInputValue}
+          onTimeRangeSearch={onSearch}
+          onTimeRangeSelect={onTimeRangeSelect}
+        />
+      </Box>
+      <RowSidePanels />
+    </>
   );
 }
 

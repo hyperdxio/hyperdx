@@ -38,6 +38,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
+import { RowSidePanels } from '@/hooks/useRowSidePanel';
 import { getMetadata } from '@/metadata';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
@@ -511,6 +512,7 @@ export default function SessionsPage() {
           </div>
         )}
       </Box>
+      <RowSidePanels />
     </div>
   );
 }
