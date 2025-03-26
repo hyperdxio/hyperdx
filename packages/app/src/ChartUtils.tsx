@@ -970,6 +970,20 @@ export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
   throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
 };
 
+export const convertV1GroupByToV2 = (
+  metricSource: TSource,
+  groupBy: string[],
+): string => {
+  return groupBy
+    .map(g => {
+      if (g.startsWith('k8s')) {
+        return `${metricSource.resourceAttributesExpression}['${g}']`;
+      }
+      return g;
+    })
+    .join(',');
+};
+
 export const convertV1ChartConfigToV2 = (
   chartConfig: {
     // only support time or table series
@@ -995,8 +1009,8 @@ export const convertV1ChartConfigToV2 = (
     fillNulls,
   } = chartConfig;
 
-  if (series.length !== 1) {
-    throw new Error('only one series is supported in v2');
+  if (series.length < 1) {
+    throw new Error('series is required');
   }
 
   const firstSeries = series[0];
@@ -1017,18 +1031,17 @@ export const convertV1ChartConfigToV2 = (
       .nativeEnum(MetricsDataTypeV2)
       .parse(rawMetricDataType?.toLowerCase());
     return {
-      select: [
-        {
-          aggFn: mapV1AggFnToV2(firstSeries.aggFn),
-          metricType: metricDataType,
-          valueExpression: 'Value',
-          metricName,
-          aggConditionLanguage: 'lucene',
-          aggCondition: firstSeries.where,
-        },
-      ],
+      select: series.map(s => ({
+        aggFn: mapV1AggFnToV2(s.aggFn),
+        metricType: metricDataType,
+        valueExpression: s.field,
+        metricName,
+        aggConditionLanguage: 'lucene',
+        aggCondition: s.where,
+      })),
       from: source.metric?.from,
       numberFormat: firstSeries.numberFormat,
+      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
       dateRange,
       connection: source.metric?.connection,
       metricTables: source.metric?.metricTables,
