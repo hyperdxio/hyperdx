@@ -11,7 +11,7 @@ import {
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
@@ -36,6 +36,7 @@ import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import OnboardingModal from './components/OnboardingModal';
+import { useQueriedChartConfig } from './hooks/useChartConfig';
 import api from './api';
 import {
   convertDateRangeToGranularityString,
@@ -136,9 +137,11 @@ const TableLoading = () => {
 
 export const InfraPodsStatusTable = ({
   dateRange,
+  metricSource,
   where,
 }: {
   dateRange: [Date, Date];
+  metricSource: TSource;
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
@@ -151,87 +154,90 @@ export const InfraPodsStatusTable = ({
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
-  const { data, isError, isLoading } = api.useMultiSeriesChart({
-    series: [
+  const { data, isError, isLoading } = useQueriedChartConfig(
+    convertV1ChartConfigToV2(
       {
-        table: 'metrics',
-        field: 'k8s.pod.phase - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy,
-        ...(sortState.column === 'phase' && {
-          sortOrder: sortState.order,
-        }),
+        series: [
+          {
+            table: 'metrics',
+            field: 'k8s.pod.phase - Gauge',
+            type: 'table',
+            aggFn: 'last_value',
+            where,
+            groupBy,
+            ...(sortState.column === 'phase' && {
+              sortOrder: sortState.order,
+            }),
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.container.restarts - Gauge',
+            type: 'table',
+            aggFn: 'last_value',
+            where,
+            groupBy,
+            ...(sortState.column === 'restarts' && {
+              sortOrder: sortState.order,
+            }),
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.uptime - Sum',
+            type: 'table',
+            aggFn: 'sum',
+            where,
+            groupBy,
+            ...(sortState.column === 'uptime' && {
+              sortOrder: sortState.order,
+            }),
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.cpu.utilization - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.cpu_limit_utilization - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+            ...(sortState.column === 'cpuLimit' && {
+              sortOrder: sortState.order,
+            }),
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.memory.usage - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.pod.memory_limit_utilization - Gauge',
+            type: 'table',
+            aggFn: 'avg',
+            where,
+            groupBy,
+            ...(sortState.column === 'memLimit' && {
+              sortOrder: sortState.order,
+            }),
+          },
+        ],
+        dateRange,
+        seriesReturnType: 'column',
       },
       {
-        table: 'metrics',
-        field: 'k8s.container.restarts - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy,
-        ...(sortState.column === 'restarts' && {
-          sortOrder: sortState.order,
-        }),
+        metric: metricSource,
       },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.uptime - Sum',
-        type: 'table',
-        aggFn: 'sum',
-        where,
-        groupBy,
-        ...(sortState.column === 'uptime' && {
-          sortOrder: sortState.order,
-        }),
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.cpu.utilization - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.cpu_limit_utilization - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-        ...(sortState.column === 'cpuLimit' && {
-          sortOrder: sortState.order,
-        }),
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.memory.usage - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-      },
-      {
-        table: 'metrics',
-        field: 'k8s.pod.memory_limit_utilization - Gauge',
-        type: 'table',
-        aggFn: 'avg',
-        where,
-        groupBy,
-        ...(sortState.column === 'memLimit' && {
-          sortOrder: sortState.order,
-        }),
-      },
-    ],
-    endDate: dateRange[1] ?? new Date(),
-    startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
-    ...(phaseFilter !== 'all' && {
-      postGroupWhere: `series_0:${getKubePhaseNumber(phaseFilter)}`,
-    }),
-  });
+    ),
+  );
 
   // TODO: Use useTable
   const podsList = React.useMemo(() => {
@@ -239,22 +245,30 @@ export const InfraPodsStatusTable = ({
       return [];
     }
 
-    return data.data.map((row: any) => {
-      return {
-        id: makeId(),
-        name: row.group[0],
-        namespace: row.group[1],
-        node: row.group[2],
-        restarts: row['series_1.data'],
-        uptime: row['series_2.data'],
-        cpuAvg: row['series_3.data'],
-        cpuLimitUtilization: row['series_4.data'],
-        memAvg: row['series_5.data'],
-        memLimitUtilization: row['series_6.data'],
-        phase: row['series_0.data'],
-      };
-    });
-  }, [data]);
+    return data.data
+      .map((row: any) => {
+        return {
+          id: makeId(),
+          name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
+          namespace:
+            row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
+          node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
+          restarts: row['last_value(k8s.container.restarts)'],
+          uptime: row['sum(k8s.pod.uptime)'],
+          cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
+          cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
+          memAvg: row['avg(k8s.pod.memory.usage)'],
+          memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
+          phase: row['last_value(k8s.pod.phase)'],
+        };
+      })
+      .filter(pod => {
+        if (phaseFilter === 'all') {
+          return true;
+        }
+        return pod.phase === getKubePhaseNumber(phaseFilter);
+      });
+  }, [data, phaseFilter]);
 
   const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -833,9 +847,14 @@ export default function KubernetesDashboardPage() {
   return (
     <Box p="sm">
       <OnboardingModal requireSource={false} />
-      <PodDetailsSidePanel />
+      {metricSource && logSource && (
+        <PodDetailsSidePanel
+          logSource={logSource}
+          metricSource={metricSource}
+        />
+      )}
       <NodeDetailsSidePanel />
-      <NamespaceDetailsSidePanel />
+      <NamespaceDetailsSidePanel metricSource={metricSource} />
       <Group justify="space-between">
         <Group>
           <Text c="gray.4" size="xl">
@@ -1039,10 +1058,13 @@ export default function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <InfraPodsStatusTable
-                  dateRange={dateRange}
-                  where={whereClause}
-                />
+                {metricSource && (
+                  <InfraPodsStatusTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={whereClause}
+                  />
+                )}
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md">

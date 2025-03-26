@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
@@ -173,7 +174,11 @@ function NamespaceLogs({
   );
 }
 
-export default function NamespaceDetailsSidePanel() {
+export default function NamespaceDetailsSidePanel({
+  metricSource,
+}: {
+  metricSource: TSource;
+}) {
   const [namespaceName, setNamespaceName] = useQueryParam(
     'namespaceName',
     withDefault(StringParam, ''),
@@ -286,7 +291,13 @@ export default function NamespaceDetailsSidePanel() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <InfraPodsStatusTable dateRange={dateRange} where={where} />
+                {metricSource && (
+                  <InfraPodsStatusTable
+                    dateRange={dateRange}
+                    metricSource={metricSource}
+                    where={where}
+                  />
+                )}
               </Grid.Col>
               <Grid.Col span={12}>
                 <NamespaceLogs where={where} dateRange={dateRange} />

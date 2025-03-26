@@ -958,12 +958,18 @@ export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
     return 'count';
   }
 
-  if (aggFn === 'last_value') {
-    throw new Error('last_value is not supported in v2');
-  }
-
   // For standard aggregations that exist in both, return as is
-  if (['avg', 'count', 'count_distinct', 'max', 'min', 'sum'].includes(aggFn)) {
+  if (
+    [
+      'avg',
+      'count',
+      'count_distinct',
+      'last_value',
+      'max',
+      'min',
+      'sum',
+    ].includes(aggFn)
+  ) {
     return aggFn as AggFnV2;
   }
 
@@ -988,12 +994,13 @@ export const convertV1ChartConfigToV2 = (
   chartConfig: {
     // only support time or table series
     series: (TimeChartSeries | TableChartSeries)[];
-    granularity: Granularity;
+    granularity?: Granularity;
     dateRange: [Date, Date];
     seriesReturnType: 'ratio' | 'column';
     displayType?: 'stacked_bar' | 'line';
     name?: string;
     fillNulls?: number | false;
+    sortOrder?: SortOrder;
   },
   source: {
     log?: TSource;
@@ -1024,21 +1031,23 @@ export const convertV1ChartConfigToV2 = (
     if (source.metric == null) {
       throw new Error('source.metric is required for metrics');
     }
-    const [metricName, rawMetricDataType] = (firstSeries.field ?? '').split(
-      ' - ',
-    );
-    const metricDataType = z
-      .nativeEnum(MetricsDataTypeV2)
-      .parse(rawMetricDataType?.toLowerCase());
     return {
-      select: series.map(s => ({
-        aggFn: mapV1AggFnToV2(s.aggFn),
-        metricType: metricDataType,
-        valueExpression: s.field,
-        metricName,
-        aggConditionLanguage: 'lucene',
-        aggCondition: s.where,
-      })),
+      select: series.map(s => {
+        const [metricName, rawMetricDataType] = (s.field ?? '')
+          .split(' - ')
+          .map(s => s.trim());
+        const metricDataType = z
+          .nativeEnum(MetricsDataTypeV2)
+          .parse(rawMetricDataType?.toLowerCase());
+        return {
+          aggFn: mapV1AggFnToV2(s.aggFn),
+          metricType: metricDataType,
+          valueExpression: s.field,
+          metricName,
+          aggConditionLanguage: 'lucene',
+          aggCondition: s.where,
+        };
+      }),
       from: source.metric?.from,
       numberFormat: firstSeries.numberFormat,
       groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),

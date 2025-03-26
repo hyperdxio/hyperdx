@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -16,12 +17,14 @@ import {
 import api from '@/api';
 import {
   convertDateRangeToGranularityString,
+  convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
+import { DBSqlRowTable } from '@/components/DBRowTable';
+import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline } from '@/components/KubeComponents';
-import HDXMultiSeriesTimeChart from '@/HDXMultiSeriesTimeChart';
 import { LogTableWithSidePanel } from '@/LogTableWithSidePanel';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -154,7 +157,13 @@ function PodLogs({
   );
 }
 
-export default function PodDetailsSidePanel() {
+export default function PodDetailsSidePanel({
+  logSource,
+  metricSource,
+}: {
+  logSource: TSource;
+  metricSource: TSource;
+}) {
   const [podName, setPodName] = useQueryParam(
     'podName',
     withDefault(StringParam, ''),
@@ -172,7 +181,7 @@ export default function PodDetailsSidePanel() {
   const drawerZIndex = contextZIndex + 10 + (isNested ? 100 : 0);
 
   const where = React.useMemo(() => {
-    return `k8s.pod.name:"${podName}"`;
+    return `${logSource.eventAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
@@ -217,26 +226,32 @@ export default function PodDetailsSidePanel() {
                     CPU Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesTimeChart
-                      config={{
-                        dateRange,
-                        granularity: convertDateRangeToGranularityString(
+                    <DBTimeChart
+                      config={convertV1ChartConfigToV2(
+                        {
                           dateRange,
-                          60,
-                        ),
-                        seriesReturnType: 'column',
-                        series: [
-                          {
-                            type: 'time',
-                            groupBy: ['k8s.pod.name'],
-                            where,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.cpu.utilization - Gauge',
-                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          },
-                        ],
-                      }}
+                          granularity: convertDateRangeToGranularityString(
+                            dateRange,
+                            60,
+                          ),
+                          seriesReturnType: 'column',
+                          series: [
+                            {
+                              type: 'time',
+                              groupBy: ['k8s.pod.name'],
+                              where,
+                              table: 'metrics',
+                              aggFn: 'avg',
+                              field: 'k8s.pod.cpu.utilization - Gauge',
+                              numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            },
+                          ],
+                        },
+                        {
+                          metric: metricSource,
+                        },
+                      )}
+                      showDisplaySwitcher={false}
                     />
                   </Card.Section>
                 </Card>
@@ -247,26 +262,32 @@ export default function PodDetailsSidePanel() {
                     Memory Usage
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesTimeChart
-                      config={{
-                        dateRange,
-                        granularity: convertDateRangeToGranularityString(
+                    <DBTimeChart
+                      config={convertV1ChartConfigToV2(
+                        {
                           dateRange,
-                          60,
-                        ),
-                        seriesReturnType: 'column',
-                        series: [
-                          {
-                            type: 'time',
-                            groupBy: ['k8s.pod.name'],
-                            where,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.memory.usage - Gauge',
-                            numberFormat: K8S_MEM_NUMBER_FORMAT,
-                          },
-                        ],
-                      }}
+                          granularity: convertDateRangeToGranularityString(
+                            dateRange,
+                            60,
+                          ),
+                          seriesReturnType: 'column',
+                          series: [
+                            {
+                              type: 'time',
+                              groupBy: ['k8s.pod.name'],
+                              where,
+                              table: 'metrics',
+                              aggFn: 'avg',
+                              field: 'k8s.pod.memory.usage - Gauge',
+                              numberFormat: K8S_MEM_NUMBER_FORMAT,
+                            },
+                          ],
+                        },
+                        {
+                          metric: metricSource,
+                        },
+                      )}
+                      showDisplaySwitcher={false}
                     />
                   </Card.Section>
                 </Card>
@@ -283,7 +304,10 @@ export default function PodDetailsSidePanel() {
                       }}
                     >
                       <Box p="md" py="sm">
-                        <KubeTimeline q={`k8s.pod.name:"${podName}"`} />
+                        <KubeTimeline
+                          logSource={logSource}
+                          q={`${logSource.eventAttributesExpression}.k8s.pod.name:"${podName}"`}
+                        />
                       </Box>
                     </ScrollArea>
                   </Card.Section>

@@ -494,6 +494,10 @@ export function inferTimestampColumn(
   return filterColumnMetaByType(meta, [JSDataType.Date])?.[0];
 }
 
+export function inferNumericColumn(meta: Array<ColumnMetaType>) {
+  return filterColumnMetaByType(meta, [JSDataType.Number]);
+}
+
 export type ColumnMeta = {
   codec_expression: string;
   comment: string;

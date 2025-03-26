@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
@@ -187,7 +188,11 @@ function NodeLogs({
   );
 }
 
-export default function NodeDetailsSidePanel() {
+export default function NodeDetailsSidePanel({
+  metricSource,
+}: {
+  metricSource: TSource;
+}) {
   const [nodeName, setNodeName] = useQueryParam(
     'nodeName',
     withDefault(StringParam, ''),
@@ -300,7 +305,13 @@ export default function NodeDetailsSidePanel() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <InfraPodsStatusTable dateRange={dateRange} where={where} />
+                {metricSource && (
+                  <InfraPodsStatusTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={where}
+                  />
+                )}
               </Grid.Col>
               <Grid.Col span={12}>
                 <NodeLogs where={where} dateRange={dateRange} />
