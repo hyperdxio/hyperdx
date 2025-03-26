@@ -596,7 +596,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={isCollapsed ? 'mt-4' : ''}
               style={{ marginRight: -4 }}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed(v => !v)}
+              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
               <i className="bi bi-layout-sidebar"></i>
             </Button>
