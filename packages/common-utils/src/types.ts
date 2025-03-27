@@ -43,6 +43,7 @@ export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
   'count_distinct',
+  'last_value',
   'max',
   'min',
   'quantile',
