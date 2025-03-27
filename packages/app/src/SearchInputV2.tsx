@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import {
-  isTableConnection,
-  TableConnection,
-} from '@hyperdx/common-utils/dist/metadata';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
 import { useAllFields } from '@/hooks/useMetadata';
 
 export default function SearchInputV2({
-  tableConnection: _tableConnections,
+  tableConnections,
   placeholder = 'Search your events for anything...',
   size = 'sm',
   zIndex,
@@ -22,7 +19,7 @@ export default function SearchInputV2({
   additionalSuggestions,
   ...props
 }: {
-  tableConnection?: TableConnection | TableConnection[];
+  tableConnections?: TableConnection | TableConnection[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
@@ -38,14 +35,10 @@ export default function SearchInputV2({
 
   const ref = useRef<HTMLInputElement>(null);
 
-  const tableConnections =
-    _tableConnections === undefined
-      ? []
-      : isTableConnection(_tableConnections)
-        ? [_tableConnections]
-        : _tableConnections;
-  const { data: fields } = useAllFields(tableConnections, {
-    enabled: tableConnections.length > 0,
+  const { data: fields } = useAllFields(tableConnections ?? [], {
+    enabled:
+      !!tableConnections &&
+      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
   });
 
   const autoCompleteOptions = useMemo(() => {

@@ -1,7 +1,8 @@
+import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
-  isTableConnection,
+  isSingleTableConnection,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/metadata';
@@ -44,36 +45,24 @@ export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const tableConnections = isTableConnection(_tableConnections)
+  const tableConnections = isSingleTableConnection(_tableConnections)
     ? [_tableConnections]
     : _tableConnections;
+  const metadata = getMetadata();
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
-      const metadata = getMetadata();
       const fields2d = await Promise.all(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
 
-      // skip deduplication if not possible
+      // skip deduplication if not needed
       if (fields2d.length === 1) return fields2d[0];
 
-      // deduplicate common fields
-      const fields = [];
-      const set = new Set<string>();
-      for (const _fields of fields2d) {
-        for (const field of _fields) {
-          const key = `${field.path.join('.')}_${field.jsType?.toString()}`;
-          if (set.has(key)) continue;
-          set.add(key);
-          fields.push(field);
-        }
-      }
-
-      return fields;
+      return deduplicate2dArray(fields2d);
     },
     ...options,
   });
@@ -133,3 +122,21 @@ export function useGetKeyValues({
     placeholderData: keepPreviousData,
   });
 }
+
+function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
+  const array: T[] = [];
+  const set = new Set<string>();
+  for (const _array of array2d) {
+    for (const elem of _array) {
+      const key = objectHash.sha1(elem);
+      if (set.has(key)) continue;
+      set.add(key);
+      array.push(elem);
+    }
+  }
+  return array;
+}
+
+// export functions for testing only
+export const testExports =
+  process.env.NODE_ENV === 'test' ? { deduplicate2dArray } : undefined;

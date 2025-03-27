@@ -145,7 +145,7 @@ const AlertForm = ({
             grouped by
           </Text>
           <SQLInlineEditorControlled
-            tableConnection={tcFromSource(source)}
+            tableConnections={tcFromSource(source)}
             control={control}
             name={`groupBy`}
             placeholder="SQL Columns"

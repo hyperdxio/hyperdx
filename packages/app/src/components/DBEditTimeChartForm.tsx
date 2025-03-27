@@ -201,7 +201,7 @@ function ChartSeriesEditor({
         {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
           <div style={{ minWidth: 220 }}>
             <SQLInlineEditorControlled
-              tableConnection={{
+              tableConnections={{
                 databaseName,
                 tableName: tableName ?? '',
                 connectionId: connectionId ?? '',
@@ -216,7 +216,7 @@ function ChartSeriesEditor({
         <Text size="sm">Where</Text>
         {aggConditionLanguage === 'sql' ? (
           <SQLInlineEditorControlled
-            tableConnection={{
+            tableConnections={{
               databaseName,
               tableName: tableName ?? '',
               connectionId: connectionId ?? '',
@@ -233,7 +233,7 @@ function ChartSeriesEditor({
           />
         ) : (
           <SearchInputV2
-            tableConnection={{
+            tableConnections={{
               connectionId: connectionId ?? '',
               databaseName: databaseName ?? '',
               tableName: tableName ?? '',
@@ -256,7 +256,7 @@ function ChartSeriesEditor({
             </Text>
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
-                tableConnection={{
+                tableConnections={{
                   databaseName,
                   tableName: tableName ?? '',
                   connectionId: connectionId ?? '',
@@ -595,7 +595,7 @@ export default function EditTimeChartForm({
                     </Text>
                     <div style={{ flexGrow: 1 }}>
                       <SQLInlineEditorControlled
-                        tableConnection={tcFromSource(tableSource)}
+                        tableConnections={tcFromSource(tableSource)}
                         control={control}
                         name={`groupBy`}
                         placeholder="SQL Columns"
@@ -655,7 +655,7 @@ export default function EditTimeChartForm({
           ) : (
             <Flex gap="xs" direction="column">
               <SQLInlineEditorControlled
-                tableConnection={tcFromSource(tableSource)}
+                tableConnections={tcFromSource(tableSource)}
                 control={control}
                 name="select"
                 placeholder={
@@ -667,7 +667,7 @@ export default function EditTimeChartForm({
               />
               {whereLanguage === 'sql' ? (
                 <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(tableSource)}
+                  tableConnections={tcFromSource(tableSource)}
                   control={control}
                   name={`where`}
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -677,7 +677,7 @@ export default function EditTimeChartForm({
                 />
               ) : (
                 <SearchInputV2
-                  tableConnection={{
+                  tableConnections={{
                     connectionId: tableSource?.connection ?? '',
                     databaseName: databaseName ?? '',
                     tableName: tableName ?? '',

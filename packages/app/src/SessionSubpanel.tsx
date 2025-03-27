@@ -489,7 +489,7 @@ export default function SessionSubpanel({
           >
             {whereLanguage === 'sql' ? (
               <SQLInlineEditorControlled
-                tableConnection={tcFromSource(traceSource)}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -499,7 +499,7 @@ export default function SessionSubpanel({
               />
             ) : (
               <SearchInputV2
-                tableConnection={tcFromSource(traceSource)}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 language="lucene"

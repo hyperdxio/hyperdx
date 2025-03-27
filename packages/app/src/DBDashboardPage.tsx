@@ -17,10 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import {
-  TableConnection,
-  tcFromChartConfig,
-} from '@hyperdx/common-utils/dist/metadata';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
@@ -906,7 +903,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           render={({ field }) =>
             field.value === 'sql' ? (
               <SQLInlineEditorControlled
-                tableConnection={tableConnections}
+                tableConnections={tableConnections}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -918,7 +915,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               />
             ) : (
               <SearchInputV2
-                tableConnection={tableConnections}
+                tableConnections={tableConnections}
                 control={control}
                 name="where"
                 onLanguageChange={lang => setValue('whereLanguage', lang)}

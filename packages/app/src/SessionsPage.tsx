@@ -437,7 +437,7 @@ export default function SessionsPage() {
                 control={control}
                 sqlInput={
                   <SQLInlineEditorControlled
-                    tableConnection={tcFromSource(traceTrace)}
+                    tableConnections={tcFromSource(traceTrace)}
                     onSubmit={onSubmit}
                     control={control}
                     name="where"
@@ -454,7 +454,7 @@ export default function SessionsPage() {
                 }
                 luceneInput={
                   <SearchInputV2
-                    tableConnection={tcFromSource(traceTrace)}
+                    tableConnections={tcFromSource(traceTrace)}
                     control={control}
                     name="where"
                     onLanguageChange={lang =>

@@ -469,9 +469,11 @@ export type TableConnection = {
   connectionId: string;
 };
 
-export function isTableConnection(obj: any): obj is TableConnection {
+export function isSingleTableConnection(
+  obj: TableConnection | TableConnection[],
+): obj is TableConnection {
   return (
-    obj?.length === undefined &&
+    !Array.isArray(obj) &&
     typeof obj?.databaseName === 'string' &&
     typeof obj?.tableName === 'string' &&
     typeof obj?.connectionId === 'string'

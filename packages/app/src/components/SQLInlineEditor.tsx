@@ -3,11 +3,7 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import {
-  Field,
-  isTableConnection,
-  TableConnection,
-} from '@hyperdx/common-utils/dist/metadata';
+import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -93,7 +89,7 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  tableConnection?: TableConnection | TableConnection[];
+  tableConnections?: TableConnection | TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -122,7 +118,7 @@ const styleTheme = EditorView.baseTheme({
 });
 
 export default function SQLInlineEditor({
-  tableConnection: _tableConnections,
+  tableConnections,
   filterField,
   onChange,
   placeholder,
@@ -136,14 +132,10 @@ export default function SQLInlineEditor({
   enableHotkey,
   additionalSuggestions = [],
 }: SQLInlineEditorProps) {
-  const tableConnections =
-    _tableConnections === undefined
-      ? []
-      : isTableConnection(_tableConnections)
-        ? [_tableConnections]
-        : _tableConnections;
-  const { data: fields } = useAllFields(tableConnections, {
-    enabled: tableConnections.length > 0,
+  const { data: fields } = useAllFields(tableConnections ?? [], {
+    enabled:
+      !!tableConnections &&
+      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
   });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
