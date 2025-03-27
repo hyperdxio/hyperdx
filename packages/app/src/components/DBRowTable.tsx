@@ -691,6 +691,9 @@ function mergeSelectWithPrimaryAndPartitionKey(
   primaryKeys: string,
   partitionKey: string,
 ): { select: SelectList; additionalKeysLength: number } {
+  if (partitionKey.slice(0, 1) === '(' && partitionKey.slice(-1) === ')') {
+    partitionKey = partitionKey.slice(1, -1);
+  }
   const partitionKeyArr = partitionKey
     .split(',')
     .map(k => extractColumnReference(k.trim()))
