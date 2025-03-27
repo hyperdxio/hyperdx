@@ -38,6 +38,7 @@ import {
 import { TimePicker } from '@/components/TimePicker';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
+import DBRowSidePanel from './components/DBRowSidePanel';
 import { DBSqlRowTable } from './components/DBRowTable';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
@@ -56,7 +57,7 @@ import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import { getEventBody, useSources } from './source';
+import { getEventBody, useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -866,6 +867,25 @@ function KubernetesDashboardPage() {
     },
     [_searchQuery, setSearchQuery],
   );
+
+  // Row details side panel
+  const [rowId, setRowId] = useQueryState('rowWhere');
+  const [rowSource, setRowSource] = useQueryState('rowSource');
+  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
+
+  const handleSidePanelClose = React.useCallback(() => {
+    setRowId(null);
+    setRowSource(null);
+  }, [setRowId, setRowSource]);
+
+  const handleRowExpandClick = React.useCallback(
+    (rowWhere: string) => {
+      setRowId(rowWhere);
+      setRowSource(logSource?.id ?? null);
+    },
+    [logSource?.id, setRowId, setRowSource],
+  );
+
   return (
     <Box p="sm">
       <OnboardingModal requireSource={false} />
@@ -885,6 +905,13 @@ function KubernetesDashboardPage() {
         <NamespaceDetailsSidePanel
           metricSource={metricSource}
           logSource={logSource}
+        />
+      )}
+      {rowId && rowSidePanelSource && (
+        <DBRowSidePanel
+          source={rowSidePanelSource}
+          rowId={rowId}
+          onClose={handleSidePanelClose}
         />
       )}
       <Group justify="space-between">
@@ -1088,8 +1115,8 @@ function KubernetesDashboardPage() {
                           limit: { limit: 200, offset: 0 },
                           dateRange,
                         }}
-                        onRowExpandClick={() => {}}
-                        highlightedLineId={undefined}
+                        onRowExpandClick={handleRowExpandClick}
+                        highlightedLineId={rowId ?? undefined}
                         isLive={false}
                         queryKeyPrefix="k8s-dashboard-events"
                         onScroll={() => {}}
