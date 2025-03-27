@@ -246,7 +246,7 @@ export default ({
                   <Box p="md" py="sm">
                     <KubeTimeline
                       logSource={source}
-                      q={`${getEventBody(source)}.object.regarding.uid:"${podUid}"`}
+                      q={`\`k8s.pod.uid\`:"${podUid}"`}
                       dateRange={[
                         sub(new Date(timestamp), { days: 1 }),
                         add(new Date(timestamp), { days: 1 }),

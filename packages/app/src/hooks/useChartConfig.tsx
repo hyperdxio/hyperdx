@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
+import objectHash from 'object-hash';
 import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ChSql,
   chSqlToAliasMap,
   ClickHouseQueryError,
+  inferNumericColumn,
   inferTimestampColumn,
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -82,6 +84,8 @@ export function useQueriedChartConfig(
         splitChartConfigs(config).map(c => renderChartConfig(c, getMetadata())),
       );
 
+      const isTimeSeries = config.displayType === 'line';
+
       const resultSets = await Promise.all(
         queries.map(async query => {
           const resp = await clickhouseClient.query<'JSON'>({
@@ -114,11 +118,22 @@ export function useQueriedChartConfig(
           }
 
           const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+          const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+          const numericColumnName = numericColumn?.[0]?.name;
           for (const row of resultSet.data) {
+            const _rowWithoutValue = numericColumnName
+              ? Object.fromEntries(
+                  Object.entries(row).filter(
+                    ([key]) => key !== numericColumnName,
+                  ),
+                )
+              : { ...row };
             const ts =
               timestampColumn != null
                 ? row[timestampColumn.name]
-                : '__FIXED_TIMESTAMP__';
+                : isTimeSeries
+                  ? objectHash(_rowWithoutValue)
+                  : '__FIXED_TIMESTAMP__';
             if (tsBucketMap.has(ts)) {
               const existingRow = tsBucketMap.get(ts);
               tsBucketMap.set(ts, {
