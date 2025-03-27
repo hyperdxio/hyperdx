@@ -79,15 +79,17 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
                     deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                  ) AS Value
+                  ) AS Rate,
+                  IF(AggregationTemporality = 1, Rate, Value) AS Sum
                 FROM default.otel_metrics_sum
                 WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 5 minute) - INTERVAL 5 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 5 minute) + INTERVAL 5 minute) AND ((MetricName = 'db.client.connections.usage'))),Bucketed AS (
             SELECT
               toStartOfInterval(toDateTime(TimeUnix), INTERVAL 5 minute) AS \`__hdx_time_bucket2\`,
               AttributesHash,
-              last_value(Source.Value) AS \`__hdx_value_high\`,
+              last_value(Source.Rate) AS \`__hdx_value_high\`,
               any(\`__hdx_value_high\`) OVER(PARTITION BY AttributesHash ORDER BY \`__hdx_time_bucket2\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_value_high_prev\`,
-              \`__hdx_value_high\` - \`__hdx_value_high_prev\` AS Value,
+              \`__hdx_value_high\` - \`__hdx_value_high_prev\` AS Rate,
+              last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
               any(ScopeName) AS ScopeName,
@@ -108,6 +110,6 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
             GROUP BY AttributesHash, \`__hdx_time_bucket2\`
             ORDER BY AttributesHash, \`__hdx_time_bucket2\`
           ) SELECT avg(
-      toFloat64OrNull(toString(Value))
-    ),toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10"
+      toFloat64OrNull(toString(Rate))
+    ) AS \\"Value\\",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10"
 `;

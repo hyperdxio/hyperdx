@@ -958,7 +958,7 @@ async function translateMetricChartConfig(
         ...chartConfig,
         from: {
           ...from,
-          tableName: metricTables[MetricsDataType.Gauge],
+          tableName: metricTables[MetricsDataType.Sum],
         },
         filters: [
           ...(filters ?? []),
@@ -988,7 +988,8 @@ async function translateMetricChartConfig(
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
                     deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-                  ) AS Value
+                  ) AS Rate,
+                  IF(AggregationTemporality = 1, Rate, Value) AS Sum
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
                 WHERE ${where}`,
         },
@@ -998,9 +999,10 @@ async function translateMetricChartConfig(
             SELECT
               ${timeExpr},
               AttributesHash,
-              last_value(Source.Value) AS ${valueHighCol},
+              last_value(Source.Rate) AS ${valueHighCol},
               any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
-              ${valueHighCol} - ${valueHighPrevCol} AS Value,
+              ${valueHighCol} - ${valueHighPrevCol} AS Rate,
+              last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
               any(ScopeName) AS ScopeName,
@@ -1024,11 +1026,22 @@ async function translateMetricChartConfig(
         },
       ],
       select: [
-        {
-          ..._select,
-          valueExpression: 'Value',
-          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
-        },
+        // HDX-1543: If the chart config query asks for an aggregation, the use the computed rate value, otherwise
+        // use the underlying summed value. The alias field appears before the spread so user defined aliases will
+        // take precedent over our generic value.
+        _select.aggFn
+          ? {
+              alias: 'Value',
+              ..._select,
+              valueExpression: 'Rate',
+              aggCondition: '',
+            }
+          : {
+              alias: 'Value',
+              ..._select,
+              valueExpression: 'last_value(Sum)',
+              aggCondition: '',
+            },
       ],
       from: {
         databaseName: '',
