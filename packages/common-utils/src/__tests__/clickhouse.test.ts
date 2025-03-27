@@ -1,4 +1,8 @@
-import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
+import {
+  chSqlToAliasMap,
+  convertCHDataTypeToJSType,
+  JSDataType,
+} from '@/clickhouse';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -131,5 +135,34 @@ describe('convertCHDataTypeToJSType - unit - type', () => {
     const dataType = ')@#D)#Q$J)($*()@random type should not pass';
     const res = convertCHDataTypeToJSType(dataType);
     expect(res).toBeNull();
+  });
+});
+
+describe('chSqlToAliasMap - unit', () => {
+  it('No alias', () => {
+    const sql =
+      'SELECT Timestamp,TimestampTime,ServiceName,TimestampTime FROM default.otel_logs WHERE (TimestampTime >= fromUnixTimestamp64Milli(1743038742000) AND TimestampTime <= fromUnixTimestamp64Milli(1743040542000)) ORDER BY TimestampTime DESC LIMIT 200 OFFSET 0';
+    const res = chSqlToAliasMap(sql);
+    expect(res).toEqual({});
+  });
+
+  it('Normal alias, no brackets', () => {
+    const sql =
+      'SELECT Timestamp as time,Body as testBody,Body,TimestampTime,ServiceName,TimestampTime FROM default.otel_logs WHERE (TimestampTime >= fromUnixTimestamp64Milli(1743038742000) AND TimestampTime <= fromUnixTimestamp64Milli(1743040542000)) ORDER BY TimestampTime DESC LIMIT 200 OFFSET 0';
+    const res = chSqlToAliasMap(sql);
+    expect(res).toEqual({
+      time: 'Timestamp',
+      testBody: 'Body',
+    });
+  });
+
+  it('Normal alias, with brackets', () => {
+    const sql = `SELECT Timestamp as time,Body as testBody,ResourceAttributes['service.name'] as test,Body,TimestampTime,ServiceName,TimestampTime FROM default.otel_logs WHERE (TimestampTime >= fromUnixTimestamp64Milli(1743038742000) AND TimestampTime <= fromUnixTimestamp64Milli(1743040542000)) ORDER BY TimestampTime DESC LIMIT 200 OFFSET 0`;
+    const res = chSqlToAliasMap(sql);
+    expect(res).toEqual({
+      time: 'Timestamp',
+      testBody: 'Body',
+      test: "ResourceAttributes['service.name']",
+    });
   });
 });

@@ -458,7 +458,12 @@ export function chSqlToAliasMap(
       ast.columns.forEach(column => {
         if (column.as != null) {
           if (column.type === 'expr' && column.expr.type === 'column_ref') {
-            aliasMap[column.as] = column.expr.column.expr.value;
+            aliasMap[column.as] =
+              column.expr.array_index && column.expr.array_index[0]?.brackets
+                ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
+                  `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                : // normal alias
+                  column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
             aliasMap[column.as] = sql.slice(
               column.expr.loc.start.offset,
@@ -473,7 +478,9 @@ export function chSqlToAliasMap(
   } catch (e) {
     console.error('Error parsing alias map', e, 'for query', chSql);
   }
-
+  console.log('aliasMap');
+  console.log(aliasMap);
+  console.log('--------------');
   return aliasMap;
 }
 
