@@ -189,7 +189,7 @@ export const InfraPodsStatusTable = ({
             table: 'metrics',
             field: 'k8s.pod.uptime - Sum',
             type: 'table',
-            aggFn: 'sum',
+            aggFn: undefined,
             where,
             groupBy,
             ...(sortState.column === 'uptime' && {
@@ -259,7 +259,7 @@ export const InfraPodsStatusTable = ({
             row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
           node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
           restarts: row['last_value(k8s.container.restarts)'],
-          uptime: row['sum(k8s.pod.uptime)'],
+          uptime: row['undefined(k8s.pod.uptime)'],
           cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
           cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
           memAvg: row['avg(k8s.pod.memory.usage)'],
@@ -477,7 +477,7 @@ const NodesTable = ({
             table: 'metrics',
             field: 'k8s.node.uptime - Sum',
             type: 'table',
-            aggFn: 'avg',
+            aggFn: undefined,
             where,
             groupBy,
           },
@@ -508,7 +508,7 @@ const NodesTable = ({
         cpuAvg: row['avg(k8s.node.cpu.utilization)'],
         memAvg: row['avg(k8s.node.memory.usage)'],
         ready: row['avg(k8s.node.condition_ready)'],
-        uptime: row['avg(k8s.node.uptime)'],
+        uptime: row['undefined(k8s.node.uptime)'],
       };
     });
   }, [data]);

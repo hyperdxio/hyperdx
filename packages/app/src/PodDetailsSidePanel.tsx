@@ -27,6 +27,7 @@ import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { getEventBody } from './source';
 
 import styles from '../styles/LogSidePanel.module.scss';
@@ -51,15 +52,15 @@ const PodDetailsProperty = React.memo(
 );
 
 const PodDetails = ({
-  podName,
   dateRange,
   logSource,
+  podName,
 }: {
-  podName: string;
   dateRange: [Date, Date];
   logSource: TSource;
+  podName: string;
 }) => {
-  const { data } = useV2LogBatch<{
+  const { data: logsData } = useV2LogBatch<{
     'k8s.node.name': string;
     'k8s.pod.name': string;
     'k8s.pod.uid': string;
@@ -96,11 +97,11 @@ const PodDetails = ({
     ],
   });
 
-  if (data?.data?.[0] == null) {
+  if (logsData?.data?.[0] == null) {
     return null;
   }
 
-  const properties = data.data[0] ?? {};
+  const properties = logsData.data[0] ?? {};
 
   // If all properties are empty, don't show the panel
   if (Object.values(properties).every(v => !v)) {
@@ -283,9 +284,9 @@ export default function PodDetailsSidePanel({
           <DrawerBody>
             <Grid>
               <PodDetails
-                podName={podName}
                 dateRange={dateRange}
                 logSource={logSource}
+                podName={podName}
               />
               <Grid.Col span={6}>
                 <Card p="md">

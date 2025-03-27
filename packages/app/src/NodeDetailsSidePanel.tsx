@@ -18,7 +18,6 @@ import {
   Text,
 } from '@mantine/core';
 
-import api from '@/api';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
@@ -33,6 +32,8 @@ import { getEventBody } from '@/source';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
+
+import { useQueriedChartConfig } from './hooks/useChartConfig';
 
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -58,44 +59,55 @@ const PodDetailsProperty = React.memo(
 const NodeDetails = ({
   name,
   dateRange,
+  metricSource,
 }: {
   name: string;
   dateRange: [Date, Date];
+  metricSource: TSource;
 }) => {
-  const where = `k8s.node.name:"${name}"`;
+  const where = `${metricSource.resourceAttributesExpression}.k8s.node.name:"${name}"`;
   const groupBy = ['k8s.node.name'];
 
-  const { data } = api.useMultiSeriesChart({
-    series: [
+  const { data, isError, isLoading } = useQueriedChartConfig(
+    convertV1ChartConfigToV2(
       {
-        table: 'metrics',
-        field: 'k8s.node.condition_ready - Gauge',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy,
+        series: [
+          {
+            table: 'metrics',
+            field: 'k8s.node.condition_ready - Gauge',
+            type: 'table',
+            aggFn: 'last_value',
+            where,
+            groupBy,
+          },
+          {
+            table: 'metrics',
+            field: 'k8s.node.uptime - Sum',
+            type: 'table',
+            aggFn: undefined,
+            where,
+            groupBy,
+          },
+        ],
+        dateRange,
+        seriesReturnType: 'column',
       },
       {
-        table: 'metrics',
-        field: 'k8s.node.uptime - Sum',
-        type: 'table',
-        aggFn: 'last_value',
-        where,
-        groupBy,
+        metric: metricSource,
       },
-    ],
-    endDate: dateRange[1] ?? new Date(),
-    startDate: dateRange[0] ?? new Date(),
-    seriesReturnType: 'column',
-  });
+    ),
+  );
 
   const properties = React.useMemo(() => {
-    const series: Record<string, any> = data?.data?.[0] || {};
+    if (!data) {
+      return {};
+    }
+
     return {
-      ready: series['series_0.data'],
-      uptime: series['series_1.data'],
+      ready: data.data?.[0]?.['last_value(k8s.node.condition_ready)'],
+      uptime: data.data?.[0]?.['undefined(k8s.node.uptime)'],
     };
-  }, [data?.data]);
+  }, [data]);
 
   return (
     <Grid.Col span={12}>
@@ -234,8 +246,8 @@ export default function NodeDetailsSidePanel({
   metricSource,
   logSource,
 }: {
-  metricSource?: TSource;
-  logSource?: TSource;
+  metricSource: TSource;
+  logSource: TSource;
 }) {
   const [nodeName, setNodeName] = useQueryParam(
     'nodeName',
@@ -287,7 +299,11 @@ export default function NodeDetailsSidePanel({
           />
           <DrawerBody>
             <Grid>
-              <NodeDetails name={nodeName} dateRange={dateRange} />
+              <NodeDetails
+                name={nodeName}
+                dateRange={dateRange}
+                metricSource={metricSource}
+              />
               <Grid.Col span={6}>
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
