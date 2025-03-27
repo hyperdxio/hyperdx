@@ -54,7 +54,26 @@ export function useAllFields(
     ],
     queryFn: async () => {
       const metadata = getMetadata();
-      return metadata.getAllFields(...tableConnections);
+      const fields2d = await Promise.all(
+        tableConnections.map(tc => metadata.getAllFields(tc)),
+      );
+
+      // skip deduplication if not possible
+      if (fields2d.length === 1) return fields2d[0];
+
+      // deduplicate common fields
+      const fields = [];
+      const set = new Set<string>();
+      for (const _fields of fields2d) {
+        for (const field of _fields) {
+          const key = `${field.path.join('.')}_${field.jsType?.toString()}`;
+          if (set.has(key)) continue;
+          set.add(key);
+          fields.push(field);
+        }
+      }
+
+      return fields;
     },
     ...options,
   });

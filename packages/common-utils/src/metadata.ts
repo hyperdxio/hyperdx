@@ -349,65 +349,49 @@ export class Metadata {
     );
   }
 
-  async getAllFields(...tableConnections: TableConnection[]) {
+  async getAllFields({
+    databaseName,
+    tableName,
+    connectionId,
+  }: TableConnection) {
     const fields: Field[] = [];
-    const columns2d = await Promise.all(
-      tableConnections.map(tc => this.getColumns(tc)),
-    );
+    const columns = await this.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
+    });
 
-    // add to column to fields and avoid duplicates
-    const set = new Set<string>();
-    for (const _columns of columns2d) {
-      for (const c of _columns) {
-        const jsType = convertCHDataTypeToJSType(c.type);
-        const key = `${c.name}_${jsType}`;
-        if (set.has(key)) continue;
-        set.add(key);
-        fields.push({
-          path: [c.name],
-          type: c.type,
-          jsType,
-        });
-      }
+    for (const c of columns) {
+      fields.push({
+        path: [c.name],
+        type: c.type,
+        jsType: convertCHDataTypeToJSType(c.type),
+      });
     }
-    set.clear(); // not used anymore
 
-    const mapColumns2d = columns2d.map(
-      columns => filterColumnMetaByType(columns, [JSDataType.Map]) ?? [],
-    );
+    const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
 
-    const promises2d = mapColumns2d.map((mapColumns, i) =>
+    await Promise.all(
       mapColumns.map(async column => {
-        const tc = tableConnections[i];
-        try {
-          const keys = await this.getMapKeys({
-            databaseName: tc.databaseName,
-            tableName: tc.tableName,
-            connectionId: tc.connectionId,
-            column: column.name,
+        const keys = await this.getMapKeys({
+          databaseName,
+          tableName,
+          column: column.name,
+          connectionId,
+        });
+
+        const match = column.type.match(/Map\(.+,\s*(.+)\)/);
+        const chType = match?.[1] ?? 'String'; // default to string ?
+
+        for (const key of keys) {
+          fields.push({
+            path: [column.name, key],
+            type: chType,
+            jsType: convertCHDataTypeToJSType(chType),
           });
-
-          const match = column.type.match(/Map\(.+,\s*(.+)\)/);
-          const chType = match?.[1] ?? 'String'; // default to string ?
-
-          // add to column + keys to fields and avoid duplicates
-          for (const key of keys) {
-            const mapKey = `${column.name}_${key}_${chType}`;
-            if (set.has(mapKey)) continue;
-            set.add(mapKey);
-            fields.push({
-              path: [column.name, key],
-              type: chType,
-              jsType: convertCHDataTypeToJSType(chType),
-            });
-          }
-        } catch (e) {
-          console.error(e);
         }
       }),
     );
-    await Promise.all(promises2d.flatMap(v => v));
-    set.clear();
 
     return fields;
   }
