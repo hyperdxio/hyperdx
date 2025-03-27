@@ -24,7 +24,6 @@ import {
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
-import { KubeTimeline } from '@/components/KubeComponents';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
@@ -61,7 +60,7 @@ const NamespaceDetails = ({
   dateRange: [Date, Date];
   metricSource?: TSource;
 }) => {
-  const where = `${metricSource.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
+  const where = `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
   const groupBy = ['k8s.namespace.name'];
 
   const { data, isError, isLoading } = useQueriedChartConfig(
@@ -191,15 +190,15 @@ function NamespaceLogs({
                 alias: 'Timestamp',
               },
               {
-                valueExpression: logSource.severityTextExpression,
+                valueExpression: `${logSource.severityTextExpression}`,
                 alias: 'Severity',
               },
               {
-                valueExpression: logSource.serviceNameExpression,
+                valueExpression: `${logSource.serviceNameExpression}`,
                 alias: 'Service',
               },
               {
-                valueExpression: getEventBody(logSource),
+                valueExpression: `${getEventBody(logSource)}`,
                 alias: 'Message',
               },
             ],
@@ -242,7 +241,7 @@ export default function NamespaceDetailsSidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const where = React.useMemo(() => {
-    return `${metricSource.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
+    return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({

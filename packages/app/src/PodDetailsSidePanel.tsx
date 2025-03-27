@@ -184,11 +184,11 @@ function PodLogs({
                 alias: 'Timestamp',
               },
               {
-                valueExpression: logSource.severityTextExpression,
+                valueExpression: `${logSource.severityTextExpression}`,
                 alias: 'Severity',
               },
               {
-                valueExpression: logSource.serviceNameExpression,
+                valueExpression: `${logSource.serviceNameExpression}`,
                 alias: 'Service',
               },
               {
@@ -196,7 +196,7 @@ function PodLogs({
                 alias: 'Container',
               },
               {
-                valueExpression: getEventBody(logSource),
+                valueExpression: `${getEventBody(logSource)}`,
                 alias: 'Message',
               },
             ],

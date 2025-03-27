@@ -1033,7 +1033,8 @@ export const convertV1ChartConfigToV2 = (
     }
     return {
       select: series.map(s => {
-        const [metricName, rawMetricDataType] = (s.field ?? '')
+        const field = s.field ?? '';
+        const [metricName, rawMetricDataType] = field
           .split(' - ')
           .map(s => s.trim());
         const metricDataType = z
@@ -1042,7 +1043,7 @@ export const convertV1ChartConfigToV2 = (
         return {
           aggFn: mapV1AggFnToV2(s.aggFn),
           metricType: metricDataType,
-          valueExpression: s.field,
+          valueExpression: field,
           metricName,
           aggConditionLanguage: 'lucene',
           aggCondition: s.where,

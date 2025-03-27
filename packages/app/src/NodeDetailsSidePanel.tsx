@@ -198,15 +198,15 @@ function NodeLogs({
                 alias: 'Timestamp',
               },
               {
-                valueExpression: logSource.severityTextExpression,
+                valueExpression: `${logSource.severityTextExpression}`,
                 alias: 'Severity',
               },
               {
-                valueExpression: logSource.serviceNameExpression,
+                valueExpression: `${logSource.serviceNameExpression}`,
                 alias: 'Service',
               },
               {
-                valueExpression: getEventBody(logSource),
+                valueExpression: `${getEventBody(logSource)}`,
                 alias: 'Message',
               },
             ],
@@ -249,7 +249,7 @@ export default function NodeDetailsSidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const where = React.useMemo(() => {
-    return `${metricSource.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
+    return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
