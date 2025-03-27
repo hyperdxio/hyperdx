@@ -342,6 +342,25 @@ describe('renderChartConfig', () => {
         IsMonotonic: true,
         AggregationTemporality: 2, // Cumulative
       }));
+      const podAgePoints = [
+        { Value: 518400, TimeUnix: new Date(now - ms('1m')) },
+        { Value: 604800, TimeUnix: new Date(now) },
+        { Value: 691200, TimeUnix: new Date(now + ms('1m')) },
+        { Value: 777600, TimeUnix: new Date(now + ms('2m')) },
+        { Value: 864000, TimeUnix: new Date(now + ms('3m')) },
+        { Value: 950400, TimeUnix: new Date(now + ms('4m')) },
+        { Value: 1641600, TimeUnix: new Date(now + ms('12m')) },
+      ].map(point => ({
+        MetricName: 'k8s.pod.uptime',
+        ServiceName: 'api',
+        ResourceAttributes: {
+          host: 'cluster-node-1',
+          ip: '127.0.0.1',
+        },
+        IsMonotonic: true,
+        AggregationTemporality: 2,
+        ...point,
+      }));
       const histPointsA = [
         {
           BucketCounts: [0, 0, 0],
@@ -436,6 +455,7 @@ describe('renderChartConfig', () => {
           ...sumPointsC,
           ...sumPointsD,
           ...sumPointsE,
+          ...podAgePoints,
         ]),
         bulkInsertMetricsHistogram([
           ...histPointsA,
@@ -578,6 +598,30 @@ describe('renderChartConfig', () => {
           metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('20m'))],
           granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    it('sum values as without rate computation', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              metricName: 'k8s.pod.uptime',
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: 'ServiceName:api',
+          whereLanguage: 'lucene',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('20m'))],
+          granularity: '5 minutes',
           timestampValueExpression: metricSource.timestampValueExpression,
           connection: connection.id,
         },
