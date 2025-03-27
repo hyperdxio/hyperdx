@@ -916,22 +916,19 @@ function KubernetesDashboardPage() {
         </form>
       </Group>
       <Tabs
-        color="gray"
-        variant="pills"
-        defaultValue="infrastructure"
-        radius="md"
+        mt="md"
         keepMounted={false}
-        value={activeTab}
+        defaultValue="pods"
+        // @ts-ignore
         onChange={setActiveTab}
+        value={activeTab}
       >
-        <div className="px-3 py-2 border-bottom border-dark">
-          <Tabs.List>
-            <Tabs.Tab value="pods">Pods</Tabs.Tab>
-            <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
-            <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
-            {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
-          </Tabs.List>
-        </div>
+        <Tabs.List>
+          <Tabs.Tab value="pods">Pods</Tabs.Tab>
+          <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
+          <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
+          {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
+        </Tabs.List>
 
         <div className="p-3">
           <Tabs.Panel value="pods">
