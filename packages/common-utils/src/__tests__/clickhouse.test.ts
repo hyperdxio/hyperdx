@@ -1,4 +1,9 @@
-import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
+import {
+  ChSql,
+  chSqlToAliasMap,
+  convertCHDataTypeToJSType,
+  JSDataType,
+} from '@/clickhouse';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -131,5 +136,64 @@ describe('convertCHDataTypeToJSType - unit - type', () => {
     const dataType = ')@#D)#Q$J)($*()@random type should not pass';
     const res = convertCHDataTypeToJSType(dataType);
     expect(res).toBeNull();
+  });
+});
+
+describe('chSqlToAliasMap - alias unit test', () => {
+  it('No alias', () => {
+    const chSqlInput: ChSql = {
+      sql: 'SELECT Timestamp,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}',
+      params: {
+        HYPERDX_PARAM_1544803905: 'default',
+        HYPERDX_PARAM_129845054: 'otel_logs',
+        HYPERDX_PARAM_1456399765: 1743038742000,
+        HYPERDX_PARAM_1719057412: 1743040542000,
+        HYPERDX_PARAM_49586: 200,
+        HYPERDX_PARAM_48: 0,
+      },
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    const aliasMap = {};
+    expect(res).toEqual(aliasMap);
+  });
+
+  it('Normal alias, no brackets', () => {
+    const chSqlInput: ChSql = {
+      sql: 'SELECT Timestamp as time,Body as bodyTest,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}',
+      params: {
+        HYPERDX_PARAM_1544803905: 'default',
+        HYPERDX_PARAM_129845054: 'otel_logs',
+        HYPERDX_PARAM_1456399765: 1743038742000,
+        HYPERDX_PARAM_1719057412: 1743040542000,
+        HYPERDX_PARAM_49586: 200,
+        HYPERDX_PARAM_48: 0,
+      },
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    const aliasMap = {
+      time: 'Timestamp',
+      bodyTest: 'Body',
+    };
+    expect(res).toEqual(aliasMap);
+  });
+
+  it('Normal alias, with brackets', () => {
+    const chSqlInput: ChSql = {
+      sql: "SELECT Timestamp as ts,ResourceAttributes['service.name'] as serviceTest,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",
+      params: {
+        HYPERDX_PARAM_1544803905: 'default',
+        HYPERDX_PARAM_129845054: 'otel_logs',
+        HYPERDX_PARAM_1456399765: 1743038742000,
+        HYPERDX_PARAM_1719057412: 1743040542000,
+        HYPERDX_PARAM_49586: 200,
+        HYPERDX_PARAM_48: 0,
+      },
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    const aliasMap = {
+      ts: 'Timestamp',
+      serviceTest: "ResourceAttributes['service.name']",
+    };
+    expect(res).toEqual(aliasMap);
   });
 });
