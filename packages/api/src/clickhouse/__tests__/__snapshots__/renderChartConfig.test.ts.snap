@@ -24,12 +24,12 @@ Array [
 exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: maxSum 1`] = `
 Array [
   Object {
+    "Value": 24,
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "max(toFloat64OrNull(toString(Value)))": 24,
   },
   Object {
+    "Value": 134,
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "max(toFloat64OrNull(toString(Value)))": 134,
   },
 ]
 `;
@@ -37,12 +37,12 @@ Array [
 exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: minSum 1`] = `
 Array [
   Object {
+    "Value": 15,
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "min(toFloat64OrNull(toString(Value)))": 15,
   },
   Object {
+    "Value": 52,
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "min(toFloat64OrNull(toString(Value)))": 52,
   },
 ]
 `;
@@ -50,12 +50,12 @@ Array [
 exports[`renderChartConfig Query Metrics handles counter resets correctly for sum metrics 1`] = `
 Array [
   Object {
+    "Value": 15,
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 15,
   },
   Object {
+    "Value": 52,
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 52,
   },
 ]
 `;
@@ -140,20 +140,33 @@ Array [
 exports[`renderChartConfig Query Metrics single sum rate 1`] = `
 Array [
   Object {
+    "Value": 19,
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 19,
   },
   Object {
+    "Value": 79,
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 79,
   },
   Object {
+    "Value": 5813,
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 5813,
   },
   Object {
+    "Value": 78754,
     "__hdx_time_bucket": "2022-01-05T00:15:00Z",
-    "sum(toFloat64OrNull(toString(Value)))": 78754,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics single sum value 1`] = `
+Array [
+  Object {
+    "Value": 950400,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+  Object {
+    "Value": 1641600,
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
   },
 ]
 `;
