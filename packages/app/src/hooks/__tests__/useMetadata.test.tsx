@@ -1,5 +1,4 @@
-import { testExports } from '../useMetadata';
-const { deduplicate2dArray } = testExports!;
+import { deduplicate2dArray } from '../useMetadata';
 
 describe('deduplicate2dArray', () => {
   // Test basic deduplication
@@ -27,7 +26,7 @@ describe('deduplicate2dArray', () => {
 
   // Test with empty arrays
   it('should handle empty 2D array', () => {
-    const input: number[][] = [];
+    const input: object[][] = [];
 
     const result = deduplicate2dArray(input);
 

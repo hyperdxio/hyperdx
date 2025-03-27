@@ -62,7 +62,7 @@ export function useAllFields(
       // skip deduplication if not needed
       if (fields2d.length === 1) return fields2d[0];
 
-      return deduplicate2dArray(fields2d);
+      return deduplicate2dArray<Field>(fields2d);
     },
     ...options,
   });
@@ -123,7 +123,7 @@ export function useGetKeyValues({
   });
 }
 
-function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
+export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
   // deduplicate common fields
   const array: T[] = [];
   const set = new Set<string>();
@@ -137,7 +137,3 @@ function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
   }
   return array;
 }
-
-// export functions for testing only
-export const testExports =
-  process.env.NODE_ENV === 'test' ? { deduplicate2dArray } : undefined;
