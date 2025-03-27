@@ -2,13 +2,18 @@ import * as React from 'react';
 import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SearchConditionLanguage,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
+  Box,
   Card,
   Flex,
   Grid,
+  ScrollArea,
   SegmentedControl,
   Text,
 } from '@mantine/core';
@@ -16,13 +21,15 @@ import {
 import api from '@/api';
 import {
   convertDateRangeToGranularityString,
+  convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
+import { DBSqlRowTable } from '@/components/DBRowTable';
+import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
-import HDXMultiSeriesTimeChart from '@/HDXMultiSeriesTimeChart';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
-import { LogTableWithSidePanel } from '@/LogTableWithSidePanel';
+import { getEventBody } from '@/source';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -134,15 +141,17 @@ const NodeDetails = ({
 };
 
 function NodeLogs({
-  where,
   dateRange,
+  logSource,
+  where,
 }: {
-  where: string;
   dateRange: [Date, Date];
+  logSource: TSource;
+  where: string;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' level:err' : '');
+  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
 
   return (
     <Card p="md">
@@ -163,25 +172,58 @@ function NodeLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            <Link
-              href={`/search?q=${encodeURIComponent(_where)}`}
-              passHref
-              legacyBehavior
-            >
-              <Anchor size="xs" color="dimmed">
-                Search <i className="bi bi-box-arrow-up-right"></i>
-              </Anchor>
-            </Link>
+            {/* 
+              <Link
+                href={`/search?q=${encodeURIComponent(_where)}`}
+                passHref
+                legacyBehavior
+              >
+                <Anchor size="xs" color="dimmed">
+                  Search <i className="bi bi-box-arrow-up-right"></i>
+                </Anchor>
+              </Link> 
+              */}
           </Flex>
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <LogTableWithSidePanel
+        <DBSqlRowTable
           config={{
-            dateRange,
+            ...logSource,
             where: _where,
+            whereLanguage: 'lucene',
+            select: [
+              {
+                valueExpression: logSource.timestampValueExpression,
+                alias: 'Timestamp',
+              },
+              {
+                valueExpression: logSource.severityTextExpression,
+                alias: 'Severity',
+              },
+              {
+                valueExpression: logSource.serviceNameExpression,
+                alias: 'Service',
+              },
+              {
+                valueExpression: getEventBody(logSource),
+                alias: 'Message',
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: logSource.timestampValueExpression,
+                ordering: 'DESC',
+              },
+            ],
+            limit: { limit: 200, offset: 0 },
+            dateRange,
           }}
+          onRowExpandClick={() => {}}
+          highlightedLineId={undefined}
           isLive={false}
+          queryKeyPrefix="k8s-dashboard-node-logs"
+          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
@@ -190,8 +232,10 @@ function NodeLogs({
 
 export default function NodeDetailsSidePanel({
   metricSource,
+  logSource,
 }: {
-  metricSource: TSource;
+  metricSource?: TSource;
+  logSource?: TSource;
 }) {
   const [nodeName, setNodeName] = useQueryParam(
     'nodeName',
@@ -205,8 +249,8 @@ export default function NodeDetailsSidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const where = React.useMemo(() => {
-    return `k8s.node.name:"${nodeName}"`;
-  }, [nodeName]);
+    return `${metricSource.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
+  }, [nodeName, metricSource]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',
@@ -250,26 +294,31 @@ export default function NodeDetailsSidePanel({
                     CPU Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesTimeChart
-                      config={{
-                        dateRange,
-                        granularity: convertDateRangeToGranularityString(
+                    <DBTimeChart
+                      config={convertV1ChartConfigToV2(
+                        {
                           dateRange,
-                          60,
-                        ),
-                        seriesReturnType: 'column',
-                        series: [
-                          {
-                            type: 'time',
-                            groupBy: ['k8s.pod.name'],
-                            where,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.cpu.utilization - Gauge',
-                            numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                          },
-                        ],
-                      }}
+                          granularity: convertDateRangeToGranularityString(
+                            dateRange,
+                            60,
+                          ),
+                          seriesReturnType: 'column',
+                          series: [
+                            {
+                              type: 'time',
+                              groupBy: ['k8s.pod.name'],
+                              where,
+                              table: 'metrics',
+                              aggFn: 'avg',
+                              field: 'k8s.pod.cpu.utilization - Gauge',
+                              numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                            },
+                          ],
+                        },
+                        {
+                          metric: metricSource,
+                        },
+                      )}
                     />
                   </Card.Section>
                 </Card>
@@ -280,26 +329,31 @@ export default function NodeDetailsSidePanel({
                     Memory Usage by Pod
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <HDXMultiSeriesTimeChart
-                      config={{
-                        dateRange,
-                        granularity: convertDateRangeToGranularityString(
+                    <DBTimeChart
+                      config={convertV1ChartConfigToV2(
+                        {
                           dateRange,
-                          60,
-                        ),
-                        seriesReturnType: 'column',
-                        series: [
-                          {
-                            type: 'time',
-                            groupBy: ['k8s.pod.name'],
-                            where,
-                            table: 'metrics',
-                            aggFn: 'avg',
-                            field: 'k8s.pod.memory.usage - Gauge',
-                            numberFormat: K8S_MEM_NUMBER_FORMAT,
-                          },
-                        ],
-                      }}
+                          granularity: convertDateRangeToGranularityString(
+                            dateRange,
+                            60,
+                          ),
+                          seriesReturnType: 'column',
+                          series: [
+                            {
+                              type: 'time',
+                              groupBy: ['k8s.pod.name'],
+                              where,
+                              table: 'metrics',
+                              aggFn: 'avg',
+                              field: 'k8s.pod.memory.usage - Gauge',
+                              numberFormat: K8S_MEM_NUMBER_FORMAT,
+                            },
+                          ],
+                        },
+                        {
+                          metric: metricSource,
+                        },
+                      )}
                     />
                   </Card.Section>
                 </Card>
@@ -314,7 +368,13 @@ export default function NodeDetailsSidePanel({
                 )}
               </Grid.Col>
               <Grid.Col span={12}>
-                <NodeLogs where={where} dateRange={dateRange} />
+                {logSource && (
+                  <NodeLogs
+                    where={where}
+                    dateRange={dateRange}
+                    logSource={logSource}
+                  />
+                )}
               </Grid.Col>
             </Grid>
           </DrawerBody>

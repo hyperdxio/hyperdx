@@ -36,7 +36,7 @@ type AnchorEvent = {
   label: React.ReactNode;
 };
 
-const useV2LogBatch = (
+export const useV2LogBatch = <T = any,>(
   {
     dateRange,
     extraSelects,
@@ -57,7 +57,7 @@ const useV2LogBatch = (
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) => {
   const clickhouseClient = getClickhouseClient();
-  return useQuery<ResponseJSON<KubeEvent>, Error>({
+  return useQuery<ResponseJSON<T>, Error>({
     queryKey: [
       'v2LogBatch',
       logSource.id,
@@ -108,7 +108,7 @@ const useV2LogBatch = (
         })
         .then(res => res.json());
 
-      return json as ResponseJSON<KubeEvent>;
+      return json as ResponseJSON<T>;
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     ...options,
@@ -175,7 +175,7 @@ export const KubeTimeline = ({
     [dateRange],
   );
 
-  const { data, isLoading } = useV2LogBatch({
+  const { data, isLoading } = useV2LogBatch<KubeEvent>({
     dateRange: [startDate, endDate],
     limit: 50,
     logSource,
@@ -210,6 +210,10 @@ export const KubeTimeline = ({
       {
         valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
         alias: 'k8s.pod.name',
+      },
+      {
+        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'uid')`,
+        alias: 'k8s.pod.uid',
       },
       {
         valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'type')`,

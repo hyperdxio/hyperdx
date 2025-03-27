@@ -14,7 +14,6 @@ import {
   Text,
 } from '@mantine/core';
 
-import api from '@/api';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
@@ -24,10 +23,11 @@ import {
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
-import { KubeTimeline } from '@/components/KubeComponents';
-import { LogTableWithSidePanel } from '@/LogTableWithSidePanel';
+import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
+
+import { getEventBody } from './source';
 
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -53,26 +53,54 @@ const PodDetailsProperty = React.memo(
 const PodDetails = ({
   podName,
   dateRange,
+  logSource,
 }: {
   podName: string;
   dateRange: [Date, Date];
+  logSource: TSource;
 }) => {
-  const { data } = api.useLogBatch({
-    q: `k8s.pod.name:"${podName}"`,
+  const { data } = useV2LogBatch<{
+    'k8s.node.name': string;
+    'k8s.pod.name': string;
+    'k8s.pod.uid': string;
+    'k8s.namespace.name': string;
+    'k8s.deployment.name': string;
+  }>({
+    where: `${logSource.resourceAttributesExpression}.k8s.pod.name:"${podName}"`,
+    whereLanguage: 'lucene',
     limit: 1,
-    startDate: dateRange[0] ?? new Date(),
-    endDate: dateRange[1] ?? new Date(),
-    extraFields: [
-      'k8s.node.name',
-      'k8s.pod.name',
-      'k8s.pod.uid',
-      'k8s.namespace.name',
-      'k8s.deployment.name',
-    ],
+    dateRange,
+    logSource,
     order: 'desc',
+    extraSelects: [
+      {
+        valueExpression: `${logSource.resourceAttributesExpression}['k8s.node.name']`,
+        alias: 'k8s.node.name',
+      },
+      {
+        valueExpression: `${logSource.resourceAttributesExpression}['k8s.pod.name']`,
+        alias: 'k8s.pod.name',
+      },
+      {
+        valueExpression: `${logSource.resourceAttributesExpression}['k8s.pod.uid']`,
+        alias: 'k8s.pod.uid',
+      },
+      {
+        valueExpression: `${logSource.resourceAttributesExpression}['k8s.namespace.name']`,
+        alias: 'k8s.namespace.name',
+      },
+      {
+        valueExpression: `${logSource.resourceAttributesExpression}['k8s.deployment.name']`,
+        alias: 'k8s.deployment.name',
+      },
+    ],
   });
 
-  const properties = data?.pages?.[0]?.data?.[0] || {};
+  if (data?.data?.[0] == null) {
+    return null;
+  }
+
+  const properties = data.data[0] ?? {};
 
   // If all properties are empty, don't show the panel
   if (Object.values(properties).every(v => !v)) {
@@ -99,15 +127,17 @@ const PodDetails = ({
 };
 
 function PodLogs({
-  where,
   dateRange,
+  logSource,
+  where,
 }: {
-  where: string;
   dateRange: [Date, Date];
+  logSource: TSource;
+  where: string;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' level:err' : '');
+  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
 
   return (
     <Card p="md">
@@ -128,29 +158,62 @@ function PodLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            <Link
-              href={`/search?q=${encodeURIComponent(_where)}`}
-              passHref
-              legacyBehavior
-            >
-              <Anchor size="xs" color="dimmed">
-                Search <i className="bi bi-box-arrow-up-right"></i>
-              </Anchor>
-            </Link>
+            {/* 
+              <Link
+                href={`/search?q=${encodeURIComponent(_where)}`}
+                passHref
+                legacyBehavior
+              >
+                <Anchor size="xs" color="dimmed">
+                  Search <i className="bi bi-box-arrow-up-right"></i>
+                </Anchor>
+              </Link> 
+              */}
           </Flex>
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <LogTableWithSidePanel
+        <DBSqlRowTable
           config={{
-            dateRange,
+            ...logSource,
             where: _where,
-            columns: ['k8s.container.name'],
+            whereLanguage: 'lucene',
+            select: [
+              {
+                valueExpression: logSource.timestampValueExpression,
+                alias: 'Timestamp',
+              },
+              {
+                valueExpression: logSource.severityTextExpression,
+                alias: 'Severity',
+              },
+              {
+                valueExpression: logSource.serviceNameExpression,
+                alias: 'Service',
+              },
+              {
+                valueExpression: `${logSource.resourceAttributesExpression}['k8s.container.name']`,
+                alias: 'Container',
+              },
+              {
+                valueExpression: getEventBody(logSource),
+                alias: 'Message',
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: logSource.timestampValueExpression,
+                ordering: 'DESC',
+              },
+            ],
+            limit: { limit: 200, offset: 0 },
+            dateRange,
           }}
+          onRowExpandClick={() => {}}
+          highlightedLineId={undefined}
           isLive={false}
-          columnNameMap={{
-            'k8s.container.name': 'Container',
-          }}
+          queryKeyPrefix="k8s-dashboard-pod-logs"
+          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
@@ -181,8 +244,8 @@ export default function PodDetailsSidePanel({
   const drawerZIndex = contextZIndex + 10 + (isNested ? 100 : 0);
 
   const where = React.useMemo(() => {
-    return `${logSource.eventAttributesExpression}.k8s.pod.name:"${podName}"`;
-  }, [podName]);
+    return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
+  }, [podName, metricSource]);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',
@@ -219,7 +282,11 @@ export default function PodDetailsSidePanel({
           />
           <DrawerBody>
             <Grid>
-              <PodDetails podName={podName} dateRange={dateRange} />
+              <PodDetails
+                podName={podName}
+                dateRange={dateRange}
+                logSource={logSource}
+              />
               <Grid.Col span={6}>
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
@@ -306,7 +373,8 @@ export default function PodDetailsSidePanel({
                       <Box p="md" py="sm">
                         <KubeTimeline
                           logSource={logSource}
-                          q={`${logSource.eventAttributesExpression}.k8s.pod.name:"${podName}"`}
+                          q={`\`k8s.pod.name\`:"${podName}"`}
+                          dateRange={dateRange}
                         />
                       </Box>
                     </ScrollArea>
@@ -314,7 +382,11 @@ export default function PodDetailsSidePanel({
                 </Card>
               </Grid.Col>
               <Grid.Col span={12}>
-                <PodLogs where={where} dateRange={dateRange} />
+                <PodLogs
+                  logSource={logSource}
+                  where={where}
+                  dateRange={dateRange}
+                />
               </Grid.Col>
             </Grid>
           </DrawerBody>

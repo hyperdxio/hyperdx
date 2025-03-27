@@ -1,4 +1,5 @@
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
@@ -57,6 +58,8 @@ import { useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
+
+import 'react-modern-drawer/dist/index.css';
 
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
@@ -598,13 +601,13 @@ const NodesTable = ({
 };
 
 const NamespacesTable = ({
+  dateRange,
   metricSource,
   where,
-  dateRange,
 }: {
+  dateRange: [Date, Date];
   metricSource: TSource;
   where: string;
-  dateRange: [Date, Date];
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
@@ -797,7 +800,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
-export default function KubernetesDashboardPage() {
+function KubernetesDashboardPage() {
   const { data: connections } = useConnections();
   const [_connection, setConnection] = useQueryState('connection');
 
@@ -870,8 +873,18 @@ export default function KubernetesDashboardPage() {
           metricSource={metricSource}
         />
       )}
-      <NodeDetailsSidePanel />
-      <NamespaceDetailsSidePanel metricSource={metricSource} />
+      {metricSource && logSource && (
+        <NodeDetailsSidePanel
+          metricSource={metricSource}
+          logSource={logSource}
+        />
+      )}
+      {metricSource && logSource && (
+        <NamespaceDetailsSidePanel
+          metricSource={metricSource}
+          logSource={logSource}
+        />
+      )}
       <Group justify="space-between">
         <Group>
           <Text c="gray.4" size="xl">
@@ -1015,6 +1028,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1053,6 +1067,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1150,6 +1165,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1188,6 +1204,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1239,6 +1256,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1277,6 +1295,7 @@ export default function KubernetesDashboardPage() {
                             ],
                           },
                           {
+                            log: logSource,
                             metric: metricSource,
                           },
                         )}
@@ -1289,8 +1308,8 @@ export default function KubernetesDashboardPage() {
               <Grid.Col span={12}>
                 {metricSource && (
                   <NamespacesTable
-                    metricSource={metricSource}
                     dateRange={dateRange}
+                    metricSource={metricSource}
                     where={whereClause}
                   />
                 )}
@@ -1304,4 +1323,14 @@ export default function KubernetesDashboardPage() {
   );
 }
 
-KubernetesDashboardPage.getLayout = withAppNav;
+const KubernetesDashboardPageDynamic = dynamic(
+  async () => KubernetesDashboardPage,
+  {
+    ssr: false,
+  },
+);
+
+// @ts-ignore
+KubernetesDashboardPageDynamic.getLayout = withAppNav;
+
+export default KubernetesDashboardPageDynamic;
