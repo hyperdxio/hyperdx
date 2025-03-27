@@ -12,7 +12,11 @@ import {
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SearchConditionLanguage,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
@@ -34,11 +38,11 @@ import {
 import { TimePicker } from '@/components/TimePicker';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
+import { DBSqlRowTable } from './components/DBRowTable';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import OnboardingModal from './components/OnboardingModal';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
-import api from './api';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
@@ -46,15 +50,13 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
 import { useConnections } from './connection';
-import HDXMultiSeriesTimeChart from './HDXMultiSeriesTimeChart';
 import { withAppNav } from './layout';
-import { LogTableWithSidePanel } from './LogTableWithSidePanel';
 import MetricTagValueSelect from './MetricTagValueSelect';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import HdxSearchInput from './SearchInput';
-import { useSources } from './source';
+import { getEventBody, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -1091,6 +1093,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="xs" withBorder>
                     <Flex justify="space-between">
                       Latest Kubernetes Warning Events
+                      {/* 
                       <Link
                         href={`/search?q=${encodeURIComponent(
                           `${
@@ -1106,29 +1109,60 @@ function KubernetesDashboardPage() {
                           Search <i className="bi bi-box-arrow-up-right"></i>
                         </Anchor>
                       </Link>
+                      */}
                     </Flex>
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    <LogTableWithSidePanel
-                      config={{
-                        dateRange,
-                        where: `${
-                          whereClause.trim().length > 0
-                            ? `(${whereClause.trim()}) `
-                            : ''
-                        }(k8s.resource.name:"events" -level:"normal")`,
-                        columns: [
-                          'object.regarding.kind',
-                          'object.regarding.name',
-                        ],
-                      }}
-                      columnNameMap={{
-                        'object.regarding.kind': 'Kind',
-                        'object.regarding.name': 'Name',
-                      }}
-                      isLive={false}
-                      hiddenColumns={['service']}
-                    />
+                    {logSource && (
+                      <DBSqlRowTable
+                        config={{
+                          ...logSource,
+                          where: `${
+                            whereClause.trim().length > 0
+                              ? `(${whereClause.trim()}) `
+                              : ''
+                          }(${logSource.eventAttributesExpression}.k8s.resource.name:"events" -Severity:"Normal")`,
+                          whereLanguage: 'lucene',
+                          select: [
+                            {
+                              valueExpression:
+                                logSource.timestampValueExpression,
+                              alias: 'Timestamp',
+                            },
+                            {
+                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+                              alias: 'Severity',
+                            },
+                            {
+                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'kind')`,
+                              alias: 'Kind',
+                            },
+                            {
+                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
+                              alias: 'Name',
+                            },
+                            {
+                              valueExpression: `${getEventBody(logSource)}`,
+                              alias: 'Message',
+                            },
+                          ],
+                          orderBy: [
+                            {
+                              valueExpression:
+                                logSource.timestampValueExpression,
+                              ordering: 'DESC',
+                            },
+                          ],
+                          limit: { limit: 200, offset: 0 },
+                          dateRange,
+                        }}
+                        onRowExpandClick={() => {}}
+                        highlightedLineId={undefined}
+                        isLive={false}
+                        queryKeyPrefix="k8s-dashboard-events"
+                        onScroll={() => {}}
+                      />
+                    )}
                   </Card.Section>
                 </Card>
               </Grid.Col>
