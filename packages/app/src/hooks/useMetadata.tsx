@@ -124,6 +124,7 @@ export function useGetKeyValues({
 }
 
 function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
+  // deduplicate common fields
   const array: T[] = [];
   const set = new Set<string>();
   for (const _array of array2d) {
