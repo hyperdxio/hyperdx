@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -176,9 +177,7 @@ export default function DBTracePanel({
           </Text>
           <Flex>
             <SQLInlineEditorControlled
-              connectionId={parentSourceData?.id}
-              database={parentSourceData?.from.databaseName}
-              table={parentSourceData?.from.tableName}
+              tableConnections={tcFromSource(parentSourceData)}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}

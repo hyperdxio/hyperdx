@@ -9,7 +9,7 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/renderChartConfig';
-import type { ChartConfigWithDateRange } from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 const DEFAULT_SAMPLE_SIZE = 1e6;
 
@@ -353,11 +353,7 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
+  }: TableConnection) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -466,6 +462,39 @@ export type Field = {
   type: string;
   jsType: JSDataType | null;
 };
+
+export type TableConnection = {
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+};
+
+export function isSingleTableConnection(
+  obj: TableConnection | TableConnection[],
+): obj is TableConnection {
+  return (
+    !Array.isArray(obj) &&
+    typeof obj?.databaseName === 'string' &&
+    typeof obj?.tableName === 'string' &&
+    typeof obj?.connectionId === 'string'
+  );
+}
+
+export function tcFromChartConfig(config?: ChartConfig): TableConnection {
+  return {
+    databaseName: config?.from?.databaseName ?? '',
+    tableName: config?.from?.tableName ?? '',
+    connectionId: config?.connection ?? '',
+  };
+}
+
+export function tcFromSource(source?: TSource): TableConnection {
+  return {
+    databaseName: source?.from?.databaseName ?? '',
+    tableName: source?.from?.tableName ?? '',
+    connectionId: source?.connection ?? '',
+  };
+}
 
 const __LOCAL_CACHE__ = new MetadataCache();
 

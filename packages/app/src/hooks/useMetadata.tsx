@@ -1,5 +1,11 @@
+import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import { Field, TableMetadata } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  isSingleTableConnection,
+  TableConnection,
+  TableMetadata,
+} from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -36,26 +42,27 @@ export function useColumns(
 }
 
 export function useAllFields(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
+  const tableConnections = isSingleTableConnection(_tableConnections)
+    ? [_tableConnections]
+    : _tableConnections;
   const metadata = getMetadata();
   return useQuery<Field[]>({
-    queryKey: ['useMetadata.useAllFields', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useAllFields',
+      ...tableConnections.map(tc => ({ ...tc })),
+    ],
     queryFn: async () => {
-      return metadata.getAllFields({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      const fields2d = await Promise.all(
+        tableConnections.map(tc => metadata.getAllFields(tc)),
+      );
+
+      // skip deduplication if not needed
+      if (fields2d.length === 1) return fields2d[0];
+
+      return deduplicate2dArray<Field>(fields2d);
     },
     ...options,
   });
@@ -114,4 +121,19 @@ export function useGetKeyValues({
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
   });
+}
+
+export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
+  // deduplicate common fields
+  const array: T[] = [];
+  const set = new Set<string>();
+  for (const _array of array2d) {
+    for (const elem of _array) {
+      const key = objectHash.sha1(elem);
+      if (set.has(key)) continue;
+      set.add(key);
+      array.push(elem);
+    }
+  }
+  return array;
 }
