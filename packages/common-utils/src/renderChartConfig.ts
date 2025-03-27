@@ -1111,7 +1111,7 @@ async function translateMetricChartConfig(
                   arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
                     IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
                       (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
-                  IF(arrayElement(CumRates, 1) > 0, arrayElement(ExplicitBounds, BucketLowIdx + 1) * (Rank / arrayElement(CumRates, BucketLowIdx)), 0)
+                  arrayElement(ExplicitBounds, BucketLowIdx)
                 )) as Rate
             FROM HistRate`,
         },
@@ -1135,16 +1135,21 @@ async function translateMetricChartConfig(
   throw new Error(`no query support for metric type=${metricType}`);
 }
 
+export const isMetricChartConfig = (
+  chartConfig: ChartConfigWithOptDateRange,
+) => {
+  return chartConfig.metricTables != null;
+};
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
 ): Promise<ChSql> {
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const chartConfig =
-    rawChartConfig.metricTables != null
-      ? await translateMetricChartConfig(rawChartConfig, metadata)
-      : rawChartConfig;
+  const chartConfig = isMetricChartConfig(rawChartConfig)
+    ? await translateMetricChartConfig(rawChartConfig, metadata)
+    : rawChartConfig;
 
   const withClauses = await renderWith(chartConfig, metadata);
   const select = await renderSelect(chartConfig, metadata);

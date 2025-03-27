@@ -414,65 +414,6 @@ const api = {
       ...options,
     });
   },
-  useLogBatch(
-    {
-      q,
-      startDate,
-      endDate,
-      extraFields,
-      order,
-      limit = 100,
-    }: {
-      q: string;
-      startDate: Date;
-      endDate: Date;
-      extraFields: string[];
-      order: 'asc' | 'desc' | null;
-      limit?: number;
-    },
-    options?: Partial<
-      UseInfiniteQueryOptions<
-        any,
-        Error,
-        InfiniteData<{ data: any[] }>,
-        any,
-        QueryKey,
-        number
-      >
-    >,
-  ) {
-    const startTime = startDate.getTime();
-    const endTime = endDate.getTime();
-    return useInfiniteQuery<
-      { data: any[] },
-      Error,
-      InfiniteData<{ data: any[] }>,
-      QueryKey,
-      number
-    >({
-      queryKey: ['logs', q, startTime, endTime, extraFields, order, limit],
-      initialPageParam: 0,
-      getNextPageParam: (lastPage: any, allPages: any) => {
-        if (lastPage.rows === 0) return undefined;
-        // @ts-ignore
-        return allPages.flatMap(page => page.data).length;
-      },
-      queryFn: async ({ pageParam }: { pageParam: number }) =>
-        hdxServer('logs', {
-          method: 'GET',
-          searchParams: [
-            ['endTime', endTime],
-            ['offset', pageParam],
-            ['q', q],
-            ['startTime', startTime],
-            ['order', order],
-            ['limit', limit],
-            ...extraFields.map(field => ['extraFields[]', field] as const),
-          ] as Array<Array<string | number | boolean>>,
-        }).json(),
-      ...options,
-    });
-  },
   useCreateAlert() {
     return useMutation<any, Error, ApiAlertInput>({
       mutationFn: async alert =>
