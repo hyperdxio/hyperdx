@@ -478,9 +478,7 @@ export function chSqlToAliasMap(
   } catch (e) {
     console.error('Error parsing alias map', e, 'for query', chSql);
   }
-  console.log('aliasMap');
-  console.log(aliasMap);
-  console.log('--------------');
+
   return aliasMap;
 }
 
