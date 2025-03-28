@@ -1101,7 +1101,7 @@ function KubernetesDashboardPage() {
                               alias: 'Name',
                             },
                             {
-                              valueExpression: `${getEventBody(logSource)}`,
+                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
                               alias: 'Message',
                             },
                           ],
