@@ -933,7 +933,10 @@ export function formatResponseForTimeChart({
 }
 
 // Define a mapping from app AggFn to common-utils AggregateFunction
-export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
+export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
+  if (aggFn == null) {
+    return aggFn;
+  }
   // Map rate-based aggregations to their base aggregation
   if (aggFn.endsWith('_rate')) {
     return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);

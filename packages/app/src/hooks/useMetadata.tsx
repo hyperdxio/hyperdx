@@ -95,19 +95,22 @@ export function useTableMetadata(
   });
 }
 
-export function useGetKeyValues({
-  chartConfig,
-  keys,
-  limit,
-  disableRowLimit,
-}: {
-  chartConfig: ChartConfigWithDateRange;
-  keys: string[];
-  limit?: number;
-  disableRowLimit?: boolean;
-}) {
+export function useGetKeyValues(
+  {
+    chartConfig,
+    keys,
+    limit,
+    disableRowLimit,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    keys: string[];
+    limit?: number;
+    disableRowLimit?: boolean;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
   const metadata = getMetadata();
-  return useQuery({
+  return useQuery<{ key: string; value: string[] }[]>({
     queryKey: ['useMetadata.useGetKeyValues', { chartConfig, keys }],
     queryFn: async () => {
       return metadata.getKeyValues({
@@ -120,6 +123,7 @@ export function useGetKeyValues({
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
+    ...options,
   });
 }
 
