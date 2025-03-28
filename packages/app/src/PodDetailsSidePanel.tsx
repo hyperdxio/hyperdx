@@ -305,6 +305,7 @@ export default function PodDetailsSidePanel({
   const logsWhere = React.useMemo(() => {
     const _where = `${logSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
     if (
+      logServiceNames &&
       Array.isArray(logServiceNames?.[0].value) &&
       doesPrimaryOrSortingKeysContainServiceExpression
     ) {

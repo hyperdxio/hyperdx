@@ -110,7 +110,7 @@ export function useGetKeyValues(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = getMetadata();
-  return useQuery({
+  return useQuery<Record<string, string[]>[]>({
     queryKey: ['useMetadata.useGetKeyValues', { chartConfig, keys }],
     queryFn: async () => {
       return metadata.getKeyValues({

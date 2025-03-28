@@ -229,8 +229,8 @@ export default function NamespaceDetailsSidePanel({
   metricSource,
   logSource,
 }: {
-  metricSource?: TSource;
-  logSource?: TSource;
+  metricSource: TSource;
+  logSource: TSource;
 }) {
   const [namespaceName, setNamespaceName] = useQueryParam(
     'namespaceName',
@@ -303,6 +303,7 @@ export default function NamespaceDetailsSidePanel({
   const logsWhere = React.useMemo(() => {
     const _where = `${logSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
     if (
+      logServiceNames &&
       Array.isArray(logServiceNames?.[0].value) &&
       doesPrimaryOrSortingKeysContainServiceExpression
     ) {

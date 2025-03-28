@@ -322,6 +322,7 @@ export default function NodeDetailsSidePanel({
   const logsWhere = React.useMemo(() => {
     const _where = `${logSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
     if (
+      logServiceNames &&
       Array.isArray(logServiceNames?.[0].value) &&
       doesPrimaryOrSortingKeysContainServiceExpression
     ) {
