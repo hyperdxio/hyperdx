@@ -158,7 +158,7 @@ export type TimeChartSeries = {
   displayName?: string;
   table: SourceTable;
   type: 'time';
-  aggFn: AggFn; // TODO: Type
+  aggFn?: AggFn; // TODO: Type
   field?: string | undefined;
   where: string;
   groupBy: string[];
@@ -177,7 +177,7 @@ export type TableChartSeries = {
   displayName?: string;
   type: 'table';
   table: SourceTable;
-  aggFn: AggFn;
+  aggFn?: AggFn;
   field?: string | undefined;
   where: string;
   groupBy: string[];
