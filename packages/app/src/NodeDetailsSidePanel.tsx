@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   SearchConditionLanguage,
   TSource,
@@ -34,6 +35,7 @@ import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -260,7 +262,7 @@ export default function NodeDetailsSidePanel({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const where = React.useMemo(() => {
+  const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
 
@@ -271,6 +273,71 @@ export default function NodeDetailsSidePanel({
       defaultTimeRange?.[1]?.getTime() ?? -1,
     ],
   });
+
+  const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
+
+  let doesPrimaryOrSortingKeysContainServiceExpression = false;
+
+  if (
+    logSource?.serviceNameExpression &&
+    (logsTableMetadata?.primary_key || logsTableMetadata?.sorting_key)
+  ) {
+    if (
+      logsTableMetadata.primary_key &&
+      logsTableMetadata.primary_key.includes(logSource.serviceNameExpression)
+    ) {
+      doesPrimaryOrSortingKeysContainServiceExpression = true;
+    } else if (
+      logsTableMetadata.sorting_key &&
+      logsTableMetadata.sorting_key.includes(logSource.serviceNameExpression)
+    ) {
+      doesPrimaryOrSortingKeysContainServiceExpression = true;
+    }
+  }
+
+  const { data: logServiceNames } = useGetKeyValues(
+    {
+      chartConfig: {
+        from: logSource.from,
+        where: `${logSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`,
+        whereLanguage: 'lucene',
+        select: '',
+        timestampValueExpression: logSource.timestampValueExpression ?? '',
+        connection: logSource.connection,
+        dateRange,
+      },
+      keys: [logSource.serviceNameExpression ?? ''],
+      limit: 10,
+      disableRowLimit: false,
+    },
+    {
+      enabled:
+        !!nodeName &&
+        !!logSource.serviceNameExpression &&
+        doesPrimaryOrSortingKeysContainServiceExpression,
+    },
+  );
+
+  // HACK: craft where clause for logs given the ServiceName is part of the primary key
+  const logsWhere = React.useMemo(() => {
+    const _where = `${logSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
+    if (
+      Array.isArray(logServiceNames?.[0].value) &&
+      doesPrimaryOrSortingKeysContainServiceExpression
+    ) {
+      const _svs: string[] = logServiceNames[0].value;
+      const _key = logServiceNames[0].key;
+      return `(${_svs
+        .map(sv => `${_key}:"${sv}"`)
+        .join(' OR ')}) AND ${_where}`;
+    }
+    return _where;
+  }, [
+    nodeName,
+    logSource,
+    doesPrimaryOrSortingKeysContainServiceExpression,
+    logServiceNames,
+  ]);
 
   const handleClose = React.useCallback(() => {
     setNodeName(undefined);
@@ -323,7 +390,7 @@ export default function NodeDetailsSidePanel({
                             {
                               type: 'time',
                               groupBy: ['k8s.pod.name'],
-                              where,
+                              where: metricsWhere,
                               table: 'metrics',
                               aggFn: 'avg',
                               field: 'k8s.pod.cpu.utilization - Gauge',
@@ -358,7 +425,7 @@ export default function NodeDetailsSidePanel({
                             {
                               type: 'time',
                               groupBy: ['k8s.pod.name'],
-                              where,
+                              where: metricsWhere,
                               table: 'metrics',
                               aggFn: 'avg',
                               field: 'k8s.pod.memory.usage - Gauge',
@@ -379,14 +446,14 @@ export default function NodeDetailsSidePanel({
                   <InfraPodsStatusTable
                     metricSource={metricSource}
                     dateRange={dateRange}
-                    where={where}
+                    where={metricsWhere}
                   />
                 )}
               </Grid.Col>
               <Grid.Col span={12}>
                 {logSource && (
                   <NodeLogs
-                    where={where}
+                    where={logsWhere}
                     dateRange={dateRange}
                     logSource={logSource}
                   />
