@@ -304,7 +304,7 @@ export default function NamespaceDetailsSidePanel({
     const _where = `${logSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
     if (
       logServiceNames &&
-      Array.isArray(logServiceNames?.[0].value) &&
+      logServiceNames[0].value.length > 0 &&
       doesPrimaryOrSortingKeysContainServiceExpression
     ) {
       const _svs: string[] = logServiceNames[0].value;

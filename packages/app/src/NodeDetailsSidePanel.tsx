@@ -323,7 +323,7 @@ export default function NodeDetailsSidePanel({
     const _where = `${logSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
     if (
       logServiceNames &&
-      Array.isArray(logServiceNames?.[0].value) &&
+      logServiceNames[0].value.length > 0 &&
       doesPrimaryOrSortingKeysContainServiceExpression
     ) {
       const _svs: string[] = logServiceNames[0].value;
