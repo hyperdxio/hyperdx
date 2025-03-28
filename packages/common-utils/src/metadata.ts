@@ -450,6 +450,8 @@ export class Metadata {
       })
       .then(res => res.json<any>());
 
+    // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
+    // string[], sometimes it's { [key: string]: string; }
     return Object.entries(json.data[0]).map(([key, value]) => ({
       key: keys[parseInt(key.replace('param', ''))],
       value: (value as string[])?.filter(Boolean), // remove nulls
