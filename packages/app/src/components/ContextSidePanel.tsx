@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useForm } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithDateRange,
   TSource,
@@ -177,9 +178,7 @@ export default function ContextSubpanel({
               sqlInput={
                 originalLanguage === 'lucene' ? null : (
                   <SQLInlineEditorControlled
-                    connectionId={source.connection}
-                    database={source.from.databaseName}
-                    table={source.from.tableName}
+                    tableConnections={tcFromSource(source)}
                     control={control}
                     name="where"
                     placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -192,9 +191,7 @@ export default function ContextSubpanel({
               luceneInput={
                 originalLanguage === 'sql' ? null : (
                   <SearchInputV2
-                    connectionId={source.connection}
-                    database={source.from.databaseName}
-                    table={source.from.tableName}
+                    tableConnections={tcFromSource(source)}
                     control={control}
                     name="where"
                     language="lucene"

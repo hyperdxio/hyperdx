@@ -1,30 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
 import { useAllFields } from '@/hooks/useMetadata';
 
 export default function SearchInputV2({
-  database,
+  tableConnections,
   placeholder = 'Search your events for anything...',
   size = 'sm',
-  table,
   zIndex,
   language,
   onLanguageChange,
-  connectionId,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
   ...props
 }: {
-  database?: string;
+  tableConnections?: TableConnection | TableConnection[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
-  table?: string;
-  connectionId: string | undefined;
   zIndex?: number;
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
@@ -38,16 +35,11 @@ export default function SearchInputV2({
 
   const ref = useRef<HTMLInputElement>(null);
 
-  const { data: fields } = useAllFields(
-    {
-      databaseName: database ?? '',
-      tableName: table ?? '',
-      connectionId: connectionId ?? '',
-    },
-    {
-      enabled: !!database && !!table && !!connectionId,
-    },
-  );
+  const { data: fields } = useAllFields(tableConnections ?? [], {
+    enabled:
+      !!tableConnections &&
+      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
+  });
 
   const autoCompleteOptions = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);

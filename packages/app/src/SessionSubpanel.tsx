@@ -3,6 +3,7 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -444,9 +445,7 @@ export default function SessionSubpanel({
           >
             {whereLanguage === 'sql' ? (
               <SQLInlineEditorControlled
-                connectionId={traceSource?.connection}
-                database={traceSource?.from?.databaseName}
-                table={traceSource?.from?.tableName}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -456,9 +455,7 @@ export default function SessionSubpanel({
               />
             ) : (
               <SearchInputV2
-                connectionId={traceSource?.connection}
-                database={traceSource?.from?.databaseName}
-                table={traceSource?.from?.tableName}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 language="lucene"

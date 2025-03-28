@@ -15,6 +15,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   DateRange,
   SearchCondition,
@@ -437,9 +438,7 @@ export default function SessionsPage() {
                 control={control}
                 sqlInput={
                   <SQLInlineEditorControlled
-                    connectionId={traceTrace?.connection}
-                    database={traceTrace?.from?.databaseName}
-                    table={traceTrace?.from?.tableName}
+                    tableConnections={tcFromSource(traceTrace)}
                     onSubmit={onSubmit}
                     control={control}
                     name="where"
@@ -456,9 +455,7 @@ export default function SessionsPage() {
                 }
                 luceneInput={
                   <SearchInputV2
-                    connectionId={traceTrace?.connection}
-                    database={traceTrace?.from?.databaseName}
-                    table={traceTrace?.from?.tableName}
+                    tableConnections={tcFromSource(traceTrace)}
                     control={control}
                     name="where"
                     onLanguageChange={lang =>

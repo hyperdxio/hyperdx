@@ -7,6 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import { DisplayType, Filter, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -916,9 +917,7 @@ function ServicesDashboardPage() {
               control={control}
               sqlInput={
                 <SQLInlineEditorControlled
-                  connectionId={source?.connection}
-                  database={source?.from?.databaseName}
-                  table={source?.from?.tableName}
+                  tableConnections={tcFromSource(source)}
                   onSubmit={onSubmit}
                   control={control}
                   name="where"
@@ -935,9 +934,7 @@ function ServicesDashboardPage() {
               }
               luceneInput={
                 <SearchInputV2
-                  connectionId={source?.connection}
-                  database={source?.from?.databaseName}
-                  table={source?.from?.tableName}
+                  tableConnections={tcFromSource(source)}
                   control={control}
                   name="where"
                   onLanguageChange={lang =>
