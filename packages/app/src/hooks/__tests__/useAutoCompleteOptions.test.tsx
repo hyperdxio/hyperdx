@@ -9,7 +9,7 @@ import { useAllFields, useGetKeyValues } from '../useMetadata';
 if (!globalThis.structuredClone) {
   globalThis.structuredClone = (obj: any) => {
     return JSON.parse(JSON.stringify(obj));
-  }
+  };
 }
 
 // Mock dependencies
