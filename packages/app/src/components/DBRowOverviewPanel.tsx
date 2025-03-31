@@ -1,13 +1,16 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { pickBy } from 'lodash';
-import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Box, Flex, Text } from '@mantine/core';
+import { isString, pickBy } from 'lodash';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
+
+import { getEventBody } from '@/source';
 
 import { useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
+import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
-import { ExceptionSubpanel } from './ExceptionSubpanel';
+import { ExceptionSubpanel, parseEvents } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 
 const EMPTY_OBJ = {};
@@ -18,7 +21,7 @@ export function RowOverviewPanel({
   source: TSource;
   rowId: string | undefined | null;
 }) {
-  const { data } = useRowData({ source, rowId });
+  const { data, isLoading, isError } = useRowData({ source, rowId });
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 
@@ -34,13 +37,12 @@ export function RowOverviewPanel({
 
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
   const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
-  const dataAttributes = useMemo(() => {
-    return eventAttributesExpr &&
-      firstRow?.[eventAttributesExpr] &&
-      Object.keys(firstRow[eventAttributesExpr]).length > 0
+  const dataAttributes =
+    eventAttributesExpr &&
+    firstRow?.[eventAttributesExpr] &&
+    Object.keys(firstRow[eventAttributesExpr]).length > 0
       ? { [eventAttributesExpr]: firstRow[eventAttributesExpr] }
       : {};
-  }, [firstRow, eventAttributesExpr]);
 
   const _generateSearchUrl = useCallback(
     (query?: string, timeRange?: [Date, Date]) => {
@@ -107,8 +109,25 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_events_exception_attributes]);
 
+  const mainContentColumn = getEventBody(source);
+  const mainContent = isString(firstRow?.['__hdx_body'])
+    ? firstRow['__hdx_body']
+    : firstRow?.['__hdx_body'] !== undefined
+      ? JSON.stringify(firstRow['__hdx_body'])
+      : undefined;
+
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
+      <Box px="32px" pt="md">
+        <DBRowSidePanelHeader
+          sourceId={source.id}
+          date={new Date(firstRow?.__hdx_timestamp ?? 0)}
+          tags={{}}
+          mainContent={mainContent}
+          mainContentHeader={mainContentColumn}
+          severityText={firstRow?.__hdx_severity_text}
+        />
+      </Box>
       <Accordion
         mt="sm"
         defaultValue={[
