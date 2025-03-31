@@ -149,10 +149,21 @@ export function DBTimeChart({
     const to = add(clickedActiveLabelDate, {
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
+    let where = config.where;
+    let whereLanguage = config.where || 'lucene';
+    if (where.length === 0 && Array.isArray(config.select)) {
+      const idx = config.select.findIndex(
+        v => v.aggCondition && v.aggCondition.length > 0,
+      );
+      if (idx >= 0) {
+        where = config.select[idx].aggCondition!;
+        whereLanguage = config.select[idx].aggConditionLanguage || 'lucene';
+      }
+    }
     return new URLSearchParams({
       source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
-      where: config.where,
-      whereLanguage: config.whereLanguage || 'lucene',
+      where: where,
+      whereLanguage: whereLanguage,
       filters: JSON.stringify(config.filters),
       from: from.toString(),
       to: to.toString(),
