@@ -22,6 +22,7 @@ export function ConnectionSelectControlled({
   return (
     <SelectControlled
       {...props}
+      allowDeselect={false}
       data={values}
       // disabled={isDatabasesLoading}
       comboboxProps={{ withinPortal: false }}
