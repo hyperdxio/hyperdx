@@ -511,7 +511,7 @@ export const MemoChart = memo(function MemoChart({
         <Tooltip
           content={<HDXLineChartTooltip numberFormat={numberFormat} />}
           wrapperStyle={{
-            zIndex: 1000,
+            zIndex: 0.1,
           }}
           allowEscapeViewBox={{ y: true }}
         />
