@@ -2,7 +2,6 @@ import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
-  isSingleTableConnection,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/metadata';
