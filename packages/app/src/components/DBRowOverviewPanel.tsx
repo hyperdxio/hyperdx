@@ -17,9 +17,11 @@ const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
+  hideHeader = false,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  hideHeader?: boolean;
 }) {
   const { data, isLoading, isError } = useRowData({ source, rowId });
   const { onPropertyAddClick, generateSearchUrl } =
@@ -118,16 +120,18 @@ export function RowOverviewPanel({
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
-      <Box px="32px" pt="md">
-        <DBRowSidePanelHeader
-          sourceId={source.id}
-          date={new Date(firstRow?.__hdx_timestamp ?? 0)}
-          tags={{}}
-          mainContent={mainContent}
-          mainContentHeader={mainContentColumn}
-          severityText={firstRow?.__hdx_severity_text}
-        />
-      </Box>
+      {!hideHeader && (
+        <Box px="32px" pt="md">
+          <DBRowSidePanelHeader
+            sourceId={source.id}
+            date={new Date(firstRow?.__hdx_timestamp ?? 0)}
+            tags={{}}
+            mainContent={mainContent}
+            mainContentHeader={mainContentColumn}
+            severityText={firstRow?.__hdx_severity_text}
+          />
+        </Box>
+      )}
       <Accordion
         mt="sm"
         defaultValue={[
