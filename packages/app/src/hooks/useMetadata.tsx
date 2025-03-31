@@ -45,9 +45,9 @@ export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const tableConnections = isSingleTableConnection(_tableConnections)
-    ? [_tableConnections]
-    : _tableConnections;
+  const tableConnections = Array.isArray(_tableConnections)
+    ? _tableConnections
+    : [_tableConnections];
   const metadata = getMetadata();
   return useQuery<Field[]>({
     queryKey: [
