@@ -320,7 +320,11 @@ export default function DBRowSidePanel({
                     </div>
                   )}
                 >
-                  <RowOverviewPanel source={source} rowId={rowId} />
+                  <RowOverviewPanel
+                    source={source}
+                    rowId={rowId}
+                    hideHeader={true}
+                  />
                 </ErrorBoundary>
               )}
               {displayedTab === Tab.Trace && (
