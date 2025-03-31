@@ -476,7 +476,7 @@ export function isSingleTableConnection(
     !Array.isArray(obj) &&
     typeof obj?.databaseName === 'string' &&
     typeof obj?.tableName === 'string' &&
-    typeof obj?.connectionId === 'string'
+    (typeof obj?.connectionId === 'string' || obj?.connectionId == null)
   );
 }
 
