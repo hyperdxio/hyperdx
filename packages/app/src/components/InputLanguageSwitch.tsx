@@ -10,7 +10,7 @@ export default function InputLanguageSwitch({
   showHotkey?: boolean;
 }) {
   return (
-    <Flex wrap="nowrap" gap="xxxs" pe="sm">
+    <Flex wrap="nowrap" gap="xxxs" px="sm">
       {showHotkey && (
         <Text c="gray.3" size="xxs" bg="gray.8" px={4} py={0} mr={4} lh={1.4}>
           /
