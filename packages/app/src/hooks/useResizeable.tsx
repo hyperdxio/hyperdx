@@ -24,26 +24,17 @@ function useResizable(
     (e: globalThis.MouseEvent) => {
       const delta = e.clientX - startPosRef.current;
       const deltaPercent = (delta / window.innerWidth) * 100;
+      const directionMultiplier = direction === 'right' ? -1 : 1;
 
-      if (direction === 'right') {
-        // For right panel, moving right decreases width
-        const newWidth = startWidthRef.current - deltaPercent;
-        const maxWidth =
-          ((document.body.offsetWidth - MAX_PANEL_OFFSET) / window.innerWidth) *
-          100;
-        setWidthPercent(
-          Math.min(Math.max(MIN_PANEL_WIDTH_PERCENT, newWidth), maxWidth),
-        );
-      } else {
-        // For left panel, moving right increases width
-        const newWidth = startWidthRef.current + deltaPercent;
-        const maxWidth =
-          ((document.body.offsetWidth - MAX_PANEL_OFFSET) / window.innerWidth) *
-          100;
-        setWidthPercent(
-          Math.min(Math.max(MIN_PANEL_WIDTH_PERCENT, newWidth), maxWidth),
-        );
-      }
+      const newWidth =
+        startWidthRef.current + deltaPercent * directionMultiplier;
+      const maxWidth =
+        ((document.body.offsetWidth - MAX_PANEL_OFFSET) / window.innerWidth) *
+        100;
+
+      setWidthPercent(
+        Math.min(Math.max(MIN_PANEL_WIDTH_PERCENT, newWidth), maxWidth),
+      );
     },
     [direction],
   );
@@ -64,6 +55,7 @@ function useResizable(
     [widthPercent, handleResize, endResize],
   );
 
+  // Cleanup event listeners on unmount
   useEffect(() => {
     return () => {
       document.removeEventListener('mousemove', handleResize);

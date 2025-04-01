@@ -5,13 +5,12 @@
   bottom: 0;
   width: 6px;
   cursor: col-resize;
-  transition: background-color 150ms ease;
+  transition: all 150ms ease;
   z-index: 10;
-  background-color: transparent;
   
-  &:hover {
+  &:hover,
+  &:active {
     background-color: var(--mantine-color-dark-3);
-    width: 6px;
   }
   
   &:active {
