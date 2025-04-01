@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
 import { useForm } from 'react-hook-form';
@@ -79,54 +79,61 @@ export default function ContextSubpanel({
     'service.name': service,
   } = rowData.ResourceAttributes ?? {};
 
-  const CONTEXT_MAPPING = {
-    [ContextBy.All]: {
-      field: '',
-      value: '',
-    },
-    [ContextBy.Custom]: {
-      field: '',
-      value: debouncedWhere || '',
-    },
-    [ContextBy.Service]: {
-      field: 'service.name',
-      value: service,
-    },
-    [ContextBy.Host]: {
-      field: 'host.name',
-      value: host,
-    },
-    [ContextBy.Pod]: {
-      field: 'k8s.pod.name',
-      value: k8sPodName,
-    },
-    [ContextBy.Node]: {
-      field: 'k8s.node.name',
-      value: k8sNodeName,
-    },
-  } as const;
+  const CONTEXT_MAPPING = useMemo(
+    () =>
+      ({
+        [ContextBy.All]: {
+          field: '',
+          value: '',
+        },
+        [ContextBy.Custom]: {
+          field: '',
+          value: debouncedWhere || '',
+        },
+        [ContextBy.Service]: {
+          field: 'service.name',
+          value: service,
+        },
+        [ContextBy.Host]: {
+          field: 'host.name',
+          value: host,
+        },
+        [ContextBy.Pod]: {
+          field: 'k8s.pod.name',
+          value: k8sPodName,
+        },
+        [ContextBy.Node]: {
+          field: 'k8s.node.name',
+          value: k8sNodeName,
+        },
+      }) as const,
+    [k8sNodeName, k8sPodName, host, service, debouncedWhere],
+  );
 
   // Main function to generate WHERE clause based on context
-  function getWhereClause(contextBy: ContextBy): string {
-    const isSql = originalLanguage === 'sql';
-    const mapping = CONTEXT_MAPPING[contextBy];
+  const getWhereClause = useCallback(
+    (contextBy: ContextBy): string => {
+      const isSql = originalLanguage === 'sql';
+      const mapping = CONTEXT_MAPPING[contextBy];
 
-    if (contextBy === ContextBy.All) {
-      return mapping.value;
-    }
+      if (contextBy === ContextBy.All) {
+        return mapping.value;
+      }
 
-    if (contextBy === ContextBy.Custom) {
-      return mapping.value.trim();
-    }
+      if (contextBy === ContextBy.Custom) {
+        return mapping.value.trim();
+      }
 
-    const attributeClause = formatAttributeClause(
-      'ResourceAttributes',
-      mapping.field,
-      mapping.value,
-      isSql,
-    );
-    return attributeClause;
-  }
+      const attributeClause = formatAttributeClause(
+        'ResourceAttributes',
+        mapping.field,
+        mapping.value,
+        isSql,
+      );
+      return attributeClause;
+    },
+    [CONTEXT_MAPPING, originalLanguage],
+  );
 
   function generateSegmentedControlData() {
     return [
@@ -148,8 +155,15 @@ export default function ContextSubpanel({
       where: whereClause,
       whereLanguage: originalLanguage,
       dateRange: newDateRange,
+      filters: [],
     };
-  }, [dbSqlRowTableConfig, newDateRange, contextBy, debouncedWhere]);
+  }, [
+    dbSqlRowTableConfig,
+    getWhereClause,
+    originalLanguage,
+    newDateRange,
+    contextBy,
+  ]);
 
   return (
     config && (
