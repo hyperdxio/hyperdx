@@ -553,6 +553,12 @@ export function TraceTableModelForm({
       >
         <SourceSelectControlled control={control} name="sessionSourceId" />
       </FormRow>
+      <FormRow
+        label={'Correlated Metric Source'}
+        helpText="HyperDX Source for metrics associated with traces. Optional"
+      >
+        <SourceSelectControlled control={control} name="metricSourceId" />
+      </FormRow>
       <FormRow label={'Status Code Expression'}>
         <SQLInlineEditorControlled
           tableConnections={{
