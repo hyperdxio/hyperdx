@@ -5,11 +5,12 @@ import { Select, SelectProps } from '@mantine/core';
 export type SelectControlledProps = SelectProps &
   UseControllerProps<any> & {
     onCreate?: () => void;
+    allowDeselect?: boolean;
   };
 
 export default function SelectControlled(props: SelectControlledProps) {
   const { field, fieldState } = useController(props);
-  const { onCreate, ...restProps } = props;
+  const { onCreate, allowDeselect = true, ...restProps } = props;
 
   // This is needed as mantine does not clear the select
   // if the value is not in the data after
@@ -26,11 +27,11 @@ export default function SelectControlled(props: SelectControlledProps) {
     (value: string | null) => {
       if (value === '_create_new_value' && onCreate != null) {
         onCreate();
-      } else {
+      } else if (value !== null || allowDeselect) {
         field.onChange(value);
       }
     },
-    [field, onCreate],
+    [field, onCreate, allowDeselect],
   );
 
   return (
