@@ -19,9 +19,11 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import useResizable from '@/hooks/useResizeable';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
+import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
 type FilterCheckboxProps = {
@@ -304,6 +306,17 @@ export const FilterGroup = ({
 
 type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
+interface Field {
+  path: string[];
+  type: string;
+  jsType?: string;
+}
+
+interface Facet {
+  key: string;
+  value: string[];
+}
+
 export const DBSearchPageFilters = ({
   filters: filterState,
   clearAllFilters,
@@ -319,6 +332,8 @@ export const DBSearchPageFilters = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
 } & FilterStateHook) => {
+  const { width, startResize } = useResizable(16, 'left');
+
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -333,27 +348,27 @@ export const DBSearchPageFilters = ({
     }
 
     const strings = data
-      .sort((a, b) => {
+      .sort((a: Field, b: Field) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
           type.includes('LowCardinality');
         return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
       })
       .filter(
-        field => field.jsType && ['string'].includes(field.jsType),
+        (field: Field) => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
       )
-      .map(({ path, type }) => {
+      .map(({ path, type }: Field) => {
         return { type, path: mergePath(path) };
       })
       .filter(
-        field =>
+        (field: { type: string; path: string }) =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
           Object.keys(filterState).includes(field.path), // keep selected fields
       )
-      .map(({ path }) => path)
-      .filter(path => !['Body', 'Timestamp'].includes(path));
+      .map(({ path }: { path: string }) => path)
+      .filter((path: string) => !['Body', 'Timestamp'].includes(path));
 
     return strings;
   }, [data, filterState, showMoreFields]);
@@ -403,14 +418,15 @@ export const DBSearchPageFilters = ({
   );
 
   return (
-    <div className={classes.filtersPanel}>
+    <Box className={classes.filtersPanel} style={{ width: `${width}%` }}>
+      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
       <ScrollArea
         h="100%"
         scrollbarSize={4}
         scrollbars="y"
         style={{
           display: 'block',
-          maxWidth: '100%',
+          width: '100%',
           overflow: 'hidden',
         }}
       >
@@ -516,6 +532,6 @@ export const DBSearchPageFilters = ({
           </Button>
         </Stack>
       </ScrollArea>
-    </div>
+    </Box>
   );
 };

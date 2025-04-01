@@ -19,6 +19,7 @@ import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
+import useResizable from '@/hooks/useResizeable';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
@@ -99,24 +100,8 @@ export default function DBRowSidePanel({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
   );
 
-  const [panelWidthPerc, setPanelWidthPerc] = useState(80);
-  const handleResize = useCallback((e: MouseEvent) => {
-    const offsetRight =
-      document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
-    const maxWidth = document.body.offsetWidth - 25;
-    setPanelWidthPerc(
-      (Math.min(offsetRight + 3, maxWidth) / window.innerWidth) * 100,
-    ); // ensure we bury the cursor in the panel
-  }, []);
-  const startResize: MouseEventHandler<HTMLDivElement> = useCallback(e => {
-    e.preventDefault();
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', endResize);
-  }, []);
-  const endResize = useCallback(() => {
-    document.removeEventListener('mousemove', handleResize);
-    document.removeEventListener('mouseup', endResize);
-  }, []);
+  const initialWidth = 80;
+  const { width, startResize } = useResizable(initialWidth);
 
   // const [queryTab, setQueryTab] = useQueryParam(
   //   'tb',
@@ -241,7 +226,7 @@ export default function DBRowSidePanel({
         }
       }}
       direction="right"
-      size={`${Math.min(panelWidthPerc, 90)}vw`}
+      size={`${width}vw`}
       zIndex={drawerZIndex}
       enableOverlay={subDrawerOpen}
     >

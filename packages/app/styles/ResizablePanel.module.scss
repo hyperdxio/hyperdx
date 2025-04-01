@@ -1,0 +1,22 @@
+.resizeHandle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  transition: background-color 150ms ease;
+  z-index: 10;
+  background-color: transparent;
+  
+  &:hover {
+    background-color: var(--mantine-color-dark-3);
+    width: 6px;
+  }
+  
+  &:active {
+    background-color: var(--mantine-color-dark-4);
+    width: 8px;
+    margin-right: -1px;
+  }
+} 
