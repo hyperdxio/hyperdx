@@ -19,9 +19,11 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import useResizable from '@/hooks/useResizable';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
+import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
 type FilterCheckboxProps = {
@@ -319,6 +321,8 @@ export const DBSearchPageFilters = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
 } & FilterStateHook) => {
+  const { width, startResize } = useResizable(16, 'left');
+
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -403,14 +407,15 @@ export const DBSearchPageFilters = ({
   );
 
   return (
-    <div className={classes.filtersPanel}>
+    <Box className={classes.filtersPanel} style={{ width: `${width}%` }}>
+      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
       <ScrollArea
         h="100%"
         scrollbarSize={4}
         scrollbars="y"
         style={{
           display: 'block',
-          maxWidth: '100%',
+          width: '100%',
           overflow: 'hidden',
         }}
       >
@@ -516,6 +521,6 @@ export const DBSearchPageFilters = ({
           </Button>
         </Stack>
       </ScrollArea>
-    </div>
+    </Box>
   );
 };

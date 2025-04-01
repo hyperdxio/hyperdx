@@ -94,6 +94,8 @@ import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
 
+import searchPageStyles from '../styles/SearchPage.module.scss';
+
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -1227,7 +1229,7 @@ function DBSearchPage() {
         ) : (
           <>
             <div
-              className="d-flex flex-row flex-grow-0"
+              className={searchPageStyles.searchPageContainer}
               style={{
                 minHeight: 0,
                 height: '100%',
