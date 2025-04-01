@@ -131,6 +131,99 @@ describe('Metadata', () => {
     jest.clearAllMocks();
   });
 
+  describe('getTableMetadata', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('should normalize partition_key format by removing parentheses', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'test_table',
+        partition_key: '(toYYYYMM(timestamp), user_id)',
+        sorting_key: 'column2',
+        primary_key: 'column3',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'test_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result.partition_key).toEqual('toYYYYMM(timestamp), user_id');
+    });
+
+    it('should not modify partition_key if it does not have parentheses', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'test_table',
+        partition_key: 'column1',
+        sorting_key: 'column2',
+        primary_key: 'column3',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'test_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result.partition_key).toEqual('column1');
+    });
+
+    it('should use the cache when retrieving table metadata', async () => {
+      // Setup the mock implementation
+      mockCache.getOrFetch.mockReset();
+
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'test_table',
+        partition_key: 'column1',
+        sorting_key: 'column2',
+        primary_key: 'column3',
+      };
+
+      // Setup the cache to return the mock data
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
+        if (key === 'test_db.test_table.metadata') {
+          return Promise.resolve(mockTableMetadata);
+        }
+        return queryFn();
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'test_table',
+        connectionId: 'test_connection',
+      });
+
+      // Verify the cache was called with the right key
+      expect(mockCache.getOrFetch).toHaveBeenCalledWith(
+        'test_db.test_table.metadata',
+        expect.any(Function),
+      );
+
+      // Verify the mockClickhouseClient.query wasn't called since we're using cached data
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+
+      // Verify we still get the correct result
+      expect(result).toEqual(mockTableMetadata);
+    });
+  });
+
   describe('getKeyValues', () => {
     const mockChartConfig: ChartConfigWithDateRange = {
       from: {
