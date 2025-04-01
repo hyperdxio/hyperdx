@@ -8,7 +8,6 @@ import {
 
 const MIN_PANEL_WIDTH_PERCENT = 10; // Minimum 10% of window width
 const MAX_PANEL_OFFSET = 25; // Pixels to reserve on the right
-const CURSOR_OFFSET = 3; // Pixels to offset cursor into panel
 
 type ResizeDirection = 'left' | 'right';
 
