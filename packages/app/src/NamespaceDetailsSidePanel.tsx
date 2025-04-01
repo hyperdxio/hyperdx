@@ -32,6 +32,7 @@ import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
+import { useRowSidePanel } from './hooks/useRowSidePanel';
 
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -148,6 +149,16 @@ function NamespaceLogs({
 
   const _where = where + (resultType === 'error' ? ' Severity:err' : '');
 
+  const { openRowSidePanel, sidePanel } = useRowSidePanel();
+  const handleExpandLine = React.useCallback(
+    (rowWhere: string) => {
+      if (logSource?.id != null) {
+        openRowSidePanel(logSource.id, rowWhere);
+      }
+    },
+    [openRowSidePanel, logSource],
+  );
+
   return (
     <Card p="md">
       <Card.Section p="md" py="xs" withBorder>
@@ -214,8 +225,8 @@ function NamespaceLogs({
             limit: { limit: 200, offset: 0 },
             dateRange,
           }}
-          onRowExpandClick={() => {}}
-          highlightedLineId={undefined}
+          onRowExpandClick={handleExpandLine}
+          highlightedLineId={sidePanel?.rw}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-namespace-logs"
           onScroll={() => {}}

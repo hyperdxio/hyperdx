@@ -36,9 +36,9 @@ import {
 } from '@mantine/core';
 
 import { TimePicker } from '@/components/TimePicker';
+import { RowSidePanels } from '@/hooks/useRowSidePanel';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
-import DBRowSidePanel from './components/DBRowSidePanel';
 import { DBSqlRowTable } from './components/DBRowTable';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
@@ -1298,6 +1298,7 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
         </div>
       </Tabs>
+      <RowSidePanels />
     </Box>
   );
 }
