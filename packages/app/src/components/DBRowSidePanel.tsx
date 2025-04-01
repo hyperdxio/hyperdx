@@ -262,7 +262,6 @@ export default function DBRowSidePanel({
             <>
               <Box p="sm">
                 <DBRowSidePanelHeader
-                  sourceId={source.id}
                   date={timestampDate}
                   tags={tags}
                   mainContent={mainContent}
