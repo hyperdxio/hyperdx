@@ -44,6 +44,7 @@ import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import OnboardingModal from './components/OnboardingModal';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useRowSidePanel } from './hooks/useRowSidePanel';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
@@ -868,22 +869,14 @@ function KubernetesDashboardPage() {
     [_searchQuery, setSearchQuery],
   );
 
-  // Row details side panel
-  const [rowId, setRowId] = useQueryState('rowWhere');
-  const [rowSource, setRowSource] = useQueryState('rowSource');
-  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
-
-  const handleSidePanelClose = React.useCallback(() => {
-    setRowId(null);
-    setRowSource(null);
-  }, [setRowId, setRowSource]);
-
-  const handleRowExpandClick = React.useCallback(
+  const { openRowSidePanel, sidePanel } = useRowSidePanel();
+  const handleExpandLine = React.useCallback(
     (rowWhere: string) => {
-      setRowId(rowWhere);
-      setRowSource(logSource?.id ?? null);
+      if (logSource?.id != null) {
+        openRowSidePanel(logSource.id, rowWhere);
+      }
     },
-    [logSource?.id, setRowId, setRowSource],
+    [openRowSidePanel, logSource],
   );
 
   return (
@@ -905,13 +898,6 @@ function KubernetesDashboardPage() {
         <NamespaceDetailsSidePanel
           metricSource={metricSource}
           logSource={logSource}
-        />
-      )}
-      {rowId && rowSidePanelSource && (
-        <DBRowSidePanel
-          source={rowSidePanelSource}
-          rowId={rowId}
-          onClose={handleSidePanelClose}
         />
       )}
       <Group justify="space-between">
@@ -1115,8 +1101,8 @@ function KubernetesDashboardPage() {
                           limit: { limit: 200, offset: 0 },
                           dateRange,
                         }}
-                        onRowExpandClick={handleRowExpandClick}
-                        highlightedLineId={rowId ?? undefined}
+                        onRowExpandClick={handleExpandLine}
+                        highlightedLineId={sidePanel?.rw}
                         isLive={false}
                         queryKeyPrefix="k8s-dashboard-events"
                         onScroll={() => {}}
