@@ -469,17 +469,6 @@ export type TableConnection = {
   connectionId: string;
 };
 
-export function isSingleTableConnection(
-  obj: TableConnection | TableConnection[],
-): obj is TableConnection {
-  return (
-    !Array.isArray(obj) &&
-    typeof obj?.databaseName === 'string' &&
-    typeof obj?.tableName === 'string' &&
-    typeof obj?.connectionId === 'string'
-  );
-}
-
 export function tcFromChartConfig(config?: ChartConfig): TableConnection {
   return {
     databaseName: config?.from?.databaseName ?? '',
