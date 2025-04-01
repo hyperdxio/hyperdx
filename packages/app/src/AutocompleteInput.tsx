@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { OverlayTrigger } from 'react-bootstrap';
 import { TextInput } from '@mantine/core';
@@ -83,6 +83,7 @@ export default function AutocompleteInput({
     onChange(newValue);
     inputRef.current?.focus();
   };
+  const ref = useRef<HTMLDivElement>(null);
 
   return (
     <OverlayTrigger
@@ -234,9 +235,9 @@ export default function AutocompleteInput({
             }
           }
         }}
-        rightSectionWidth="auto"
+        rightSectionWidth={ref.current?.clientWidth ?? 'auto'}
         rightSection={
-          <>
+          <div ref={ref}>
             {language != null && onLanguageChange != null && (
               <InputLanguageSwitch
                 showHotkey={showHotkey && isSearchInputFocused}
@@ -244,7 +245,7 @@ export default function AutocompleteInput({
                 onLanguageChange={onLanguageChange}
               />
             )}
-          </>
+          </div>
         }
       />
     </OverlayTrigger>
