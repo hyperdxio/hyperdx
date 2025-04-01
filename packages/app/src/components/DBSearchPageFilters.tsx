@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Field } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -338,29 +337,27 @@ export const DBSearchPageFilters = ({
     }
 
     const strings = data
-      .sort((a: Field, b: Field) => {
+      .sort((a, b) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
           type.includes('LowCardinality');
-        return (
-          Number(isLowCardinality(a.type) && !isLowCardinality(b.type)) * -2 + 1
-        );
+        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
       })
       .filter(
-        (field: Field) => field.jsType && ['string'].includes(field.jsType),
+        field => field.jsType && ['string'].includes(field.jsType),
+        // todo: add number type with sliders :D
       )
-      .map((field: Field) => ({
-        type: field.type,
-        path: mergePath(field.path),
-      }))
+      .map(({ path, type }) => {
+        return { type, path: mergePath(path) };
+      })
       .filter(
-        (field: { type: string; path: string }) =>
+        field =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
           Object.keys(filterState).includes(field.path), // keep selected fields
       )
-      .map(({ path }: { path: string }) => path)
-      .filter((path: string) => !['Body', 'Timestamp'].includes(path));
+      .map(({ path }) => path)
+      .filter(path => !['Body', 'Timestamp'].includes(path));
 
     return strings;
   }, [data, filterState, showMoreFields]);
