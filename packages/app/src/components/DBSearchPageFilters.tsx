@@ -307,11 +307,6 @@ export const FilterGroup = ({
 
 type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
-interface Facet {
-  key: string;
-  value: string[];
-}
-
 export const DBSearchPageFilters = ({
   filters: filterState,
   clearAllFilters,
