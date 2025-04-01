@@ -3,7 +3,6 @@ import {
   MouseEventHandler,
   useCallback,
   useContext,
-  useId,
   useMemo,
   useState,
 } from 'react';
@@ -176,10 +175,18 @@ export default function DBRowSidePanel({
     return tags;
   }, [serviceName, source.serviceNameExpression]);
 
-  const rng = useMemo(() => {
+  const oneHourRange = useMemo(() => {
     return [
       add(timestampDate, { minutes: -60 }),
       add(timestampDate, { minutes: 60 }),
+    ] as [Date, Date];
+  }, [timestampDate]);
+
+  // For session replay, we need +/-4 hours to get full session
+  const fourHourRange = useMemo(() => {
+    return [
+      add(timestampDate, { hours: -4 }),
+      add(timestampDate, { hours: 4 }),
     ] as [Date, Date];
   }, [timestampDate]);
 
@@ -199,7 +206,7 @@ export default function DBRowSidePanel({
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
-    dateRange: rng,
+    dateRange: oneHourRange,
     enabled: rowId != null,
   });
 
@@ -328,7 +335,7 @@ export default function DBRowSidePanel({
                       parentSourceId={source.id}
                       childSourceId={childSourceId}
                       traceId={traceId}
-                      dateRange={rng}
+                      dateRange={oneHourRange}
                       focusDate={focusDate}
                     />
                   </Box>
@@ -380,7 +387,7 @@ export default function DBRowSidePanel({
                 >
                   <div className="overflow-hidden flex-grow-1">
                     <DBSessionPanel
-                      dateRange={rng}
+                      dateRange={fourHourRange}
                       focusDate={focusDate}
                       setSubDrawerOpen={setSubDrawerOpen}
                       traceSourceId={traceSourceId}

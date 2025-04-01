@@ -149,10 +149,20 @@ export function DBTimeChart({
     const to = add(clickedActiveLabelDate, {
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
+    let where = config.where;
+    let whereLanguage = config.whereLanguage || 'lucene';
+    if (
+      where.length === 0 &&
+      Array.isArray(config.select) &&
+      config.select.length === 1
+    ) {
+      where = config.select[0].aggCondition ?? '';
+      whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
+    }
     return new URLSearchParams({
       source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
-      where: config.where,
-      whereLanguage: config.whereLanguage || 'lucene',
+      where: where,
+      whereLanguage: whereLanguage,
       filters: JSON.stringify(config.filters),
       from: from.toString(),
       to: to.toString(),
@@ -213,7 +223,10 @@ export function DBTimeChart({
           top: 0,
         }}
       >
-        {activeClickPayload != null && qparams != null ? (
+        {activeClickPayload != null &&
+        qparams != null &&
+        // only View Events for single series
+        (!Array.isArray(config.select) || config.select.length === 1) ? (
           <div
             className="bg-grey px-3 py-2 rounded fs-8"
             style={{
