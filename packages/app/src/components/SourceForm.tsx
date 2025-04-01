@@ -555,7 +555,7 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow
         label={'Correlated Metric Source'}
-        helpText="HyperDX Source for metrics associated with logs. Optional"
+        helpText="HyperDX Source for metrics associated with traces. Optional"
       >
         <SourceSelectControlled control={control} name="metricSourceId" />
       </FormRow>
