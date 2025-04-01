@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  Box,
   Button,
   Checkbox,
   Flex,
   Group,
   Loader,
+  MantineStyleProps,
   ScrollArea,
   Stack,
   Tabs,
@@ -33,13 +35,15 @@ type FilterCheckboxProps = {
 export const TextButton = ({
   onClick,
   label,
+  ms,
 }: {
   onClick?: VoidFunction;
   label: React.ReactNode;
+  ms?: MantineStyleProps['ms'];
 }) => {
   return (
     <UnstyledButton onClick={onClick} className={classes.textButton}>
-      <Text size="xxs" c="gray.6" lh={1}>
+      <Text size="xxs" c="gray.6" lh={1} ms={ms}>
         {label}
       </Text>
     </UnstyledButton>
@@ -233,6 +237,7 @@ export const FilterGroup = ({
           rightSection={
             selectedValues.included.size + selectedValues.excluded.size > 0 ? (
               <TextButton
+                ms="xs"
                 label="Clear"
                 onClick={() => {
                   onClearClick();
