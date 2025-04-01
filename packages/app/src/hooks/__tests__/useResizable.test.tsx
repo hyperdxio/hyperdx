@@ -1,7 +1,7 @@
 import { fireEvent } from '@testing-library/dom';
 import { act, renderHook } from '@testing-library/react';
 
-import useResizable from '../useResizeable';
+import useResizable from '../useResizable';
 
 describe('useResizable', () => {
   const originalInnerWidth = window.innerWidth;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Field } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -19,7 +20,7 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
-import useResizable from '@/hooks/useResizeable';
+import useResizable from '@/hooks/useResizable';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
@@ -306,12 +307,6 @@ export const FilterGroup = ({
 
 type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
-interface Field {
-  path: string[];
-  type: string;
-  jsType?: string;
-}
-
 interface Facet {
   key: string;
   value: string[];
@@ -352,15 +347,17 @@ export const DBSearchPageFilters = ({
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
           type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
+        return (
+          Number(isLowCardinality(a.type) && !isLowCardinality(b.type)) * -2 + 1
+        );
       })
       .filter(
         (field: Field) => field.jsType && ['string'].includes(field.jsType),
-        // todo: add number type with sliders :D
       )
-      .map(({ path, type }: Field) => {
-        return { type, path: mergePath(path) };
-      })
+      .map((field: Field) => ({
+        type: field.type,
+        path: mergePath(field.path),
+      }))
       .filter(
         (field: { type: string; path: string }) =>
           showMoreFields ||

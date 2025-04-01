@@ -19,7 +19,7 @@ import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
-import useResizable from '@/hooks/useResizeable';
+import useResizable from '@/hooks/useResizable';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';

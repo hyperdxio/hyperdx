@@ -6,8 +6,8 @@ import {
   useState,
 } from 'react';
 
-const MIN_PANEL_WIDTH_PERCENT = 10; // Minimum 10% of window width
-const MAX_PANEL_OFFSET = 25; // Pixels to reserve on the right
+const MIN_PANEL_WIDTH_PERCENT = 10;
+const MAX_PANEL_OFFSET = 25;
 
 type ResizeDirection = 'left' | 'right';
 
@@ -54,7 +54,6 @@ function useResizable(
     [widthPercent, handleResize, endResize],
   );
 
-  // Cleanup event listeners on unmount
   useEffect(() => {
     return () => {
       document.removeEventListener('mousemove', handleResize);

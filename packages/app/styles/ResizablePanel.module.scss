@@ -7,15 +7,15 @@
   cursor: col-resize;
   transition: all 150ms ease;
   z-index: 10;
-  
+
   &:hover,
   &:active {
     background-color: var(--mantine-color-dark-3);
   }
-  
+
   &:active {
     background-color: var(--mantine-color-dark-4);
     width: 8px;
     margin-right: -1px;
   }
-} 
+}
