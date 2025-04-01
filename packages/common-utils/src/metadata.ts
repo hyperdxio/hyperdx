@@ -412,6 +412,13 @@ export class Metadata {
       connectionId,
     });
 
+    // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
+    if (
+      tableMetadata.partition_key.startsWith('(') &&
+      tableMetadata.partition_key.endsWith(')')
+    ) {
+      tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
+    }
     return tableMetadata;
   }
 
