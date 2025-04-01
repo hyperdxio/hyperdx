@@ -224,7 +224,10 @@ export function DBTimeChart({
           top: 0,
         }}
       >
-        {activeClickPayload != null && qparams != null ? (
+        {activeClickPayload != null &&
+        qparams != null &&
+        // only View Events for single series
+        (!Array.isArray(config.select) || config.select.length === 1) ? (
           <div
             className="bg-grey px-3 py-2 rounded fs-8"
             style={{
