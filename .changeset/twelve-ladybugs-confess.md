@@ -2,4 +2,4 @@
 "@hyperdx/api": patch
 ---
 
-feat: introduce CRON_IN_APP_DISABLED + enable in-app task
+feat: introduce RUN_SCHEDULED_TASKS_EXTERNALLY + enable in-app task

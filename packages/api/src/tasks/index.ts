@@ -3,7 +3,7 @@ import minimist from 'minimist';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
-import { CRON_IN_APP_DISABLED } from '@/config';
+import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
 import logger from '@/utils/logger';
 import redisClient from '@/utils/redis';
@@ -60,9 +60,9 @@ const main = async (taskName: string) => {
 const argv = minimist(process.argv.slice(2));
 const taskName = argv._[0];
 // WARNING: the cron job will be enabled only in development mode
-if (!CRON_IN_APP_DISABLED) {
+if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.info('In-app cron job is enabled');
-  // run cron job every 15 seconds
+  // run cron job every 1 minute
   const job = CronJob.from({
     cronTime: '0 * * * * *',
     waitForCompletion: true,
