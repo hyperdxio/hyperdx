@@ -3,13 +3,18 @@
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Internal Services
-export MONGO_URI="mongodb://127.0.0.1:27017/hyperdx"
+export MONGO_URI="${MONGO_URI:-mongodb://127.0.0.1:27017/hyperdx}"
 
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 
-# Start Mongo Server
-mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
+# Start Mongo Server if it exists (will run in prod-extended but not in prod)
+if command -v mongod &> /dev/null; then
+  echo "Starting MongoDB server..."
+  mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
+  # Wait for MongoDB to start
+  sleep 2
+fi
 
 # Use concurrently to run both the API and App servers
 npx concurrently \
