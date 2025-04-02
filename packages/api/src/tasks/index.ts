@@ -6,17 +6,15 @@ import { serializeError } from 'serialize-error';
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
 import logger from '@/utils/logger';
-import redisClient from '@/utils/redis';
 
 import checkAlerts from './checkAlerts';
 import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
-const shutdown = async () =>
-  Promise.all([redisClient.disconnect(), mongooseConnection.close()]);
+const shutdown = async () => Promise.all([mongooseConnection.close()]);
 
 const main = async (taskName: string) => {
-  // connect dbs + redis
-  await Promise.all([connectDB(), redisClient.connect()]);
+  // connect dbs
+  await Promise.all([connectDB()]);
 
   const t0 = performance.now();
   logger.info(`Task [${taskName}] started at ${new Date()}`);
