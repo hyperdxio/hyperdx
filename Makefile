@@ -138,7 +138,7 @@ release-extended-app:
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${IMAGE_NAME_DOCKERHUB}:latest
+		-t ${IMAGE_NAME_DOCKERHUB}:latest \
 		--target prod-extended \
 		--push \
 	 	--cache-from=type=gha \
