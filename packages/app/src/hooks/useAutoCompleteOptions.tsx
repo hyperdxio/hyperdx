@@ -136,7 +136,7 @@ export function useAutoCompleteOptions(
             for (const [key, val] of Object.entries(v)) {
               if (typeof key !== 'string' || typeof val !== 'string') {
                 console.error('unknown type for autocomplete object ', v);
-                return;
+                return [];
               }
               const field = structuredClone(searchField);
               field.path.push(key);

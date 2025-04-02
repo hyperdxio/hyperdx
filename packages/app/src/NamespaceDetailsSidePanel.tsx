@@ -278,7 +278,7 @@ export default function NamespaceDetailsSidePanel({
 
   const { data: logServiceNames } = useGetKeyValues(
     {
-      chartConfig: {
+      chartConfigs: {
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`,
         whereLanguage: 'lucene',
