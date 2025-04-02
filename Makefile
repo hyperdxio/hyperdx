@@ -132,7 +132,7 @@ release-app:
 		--cache-to=type=gha,mode=max
 
 .PHONY: release-extended-app
-release-app:
+release-extended-app:
 	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
 		--build-context fullstack=./docker/fullstack \
 		--build-context api=./packages/api \
