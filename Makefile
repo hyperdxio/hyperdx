@@ -130,3 +130,16 @@ release-app:
 		--push \
 	 	--cache-from=type=gha \
 		--cache-to=type=gha,mode=max
+
+.PHONY: release-extended-app
+release-extended-app:
+	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
+		--build-context fullstack=./docker/fullstack \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${IMAGE_NAME_DOCKERHUB}:latest
+		--target prod-extended \
+		--push \
+	 	--cache-from=type=gha \
+		--cache-to=type=gha,mode=max
