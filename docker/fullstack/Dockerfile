@@ -76,3 +76,23 @@ COPY --from=app_builder /app/app/package.json ./package.json
 # Set up start script
 COPY --chown=node:node --from=fullstack ./entry.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
+
+# prod-extended ############################################################################################
+FROM prod AS prod-extended
+
+USER root
+
+# == Install MongoDB v4 Deps ==
+RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories
+RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories
+RUN apk update
+RUN apk add mongodb yaml-cpp=0.6.2-r2
+
+# Set up Mongo directories with proper permissions
+RUN mkdir -p /data/db && \
+  chown -R node:node /data/db && \
+  chown -R node:node /var/log
+
+USER node
+
+ENTRYPOINT ["sh", "/etc/local/entry.sh"]
