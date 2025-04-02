@@ -65,7 +65,7 @@ export const FilterCheckbox = ({
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
-        flex={1}
+        style={{ minWidth: 0 }}
         wrap="nowrap"
         align="flex-start"
       >
@@ -90,7 +90,7 @@ export const FilterCheckbox = ({
             size="xs"
             c={value === 'excluded' ? 'red.4' : 'gray.3'}
             truncate="end"
-            maw="150px"
+            w="100%"
             title={label}
           >
             {label}

@@ -58,7 +58,8 @@
 
 .filterCheckbox {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 20px;
   padding: 2px 6px;
   justify-content: space-between;
   align-items: center;
