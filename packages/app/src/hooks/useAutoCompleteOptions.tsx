@@ -36,14 +36,13 @@ export function useAutoCompleteOptions(
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 
     const fieldCompleteMap = new Map<string, Field>();
-    const baseOptions = new Array(_columns.length);
-    _columns.forEach((c, i) => {
+    const baseOptions = _columns.map(c => {
       const val = {
         value: formatter.formatFieldValue(c),
         label: formatter.formatFieldLabel(c),
       };
-      baseOptions[i] = val;
       fieldCompleteMap.set(val.value, c);
+      return val;
     });
 
     const suggestionOptions =
@@ -134,7 +133,7 @@ export function useAutoCompleteOptions(
               value: string;
               label: string;
             }[] = [];
-            Object.entries(v).forEach(([key, val]) => {
+            for (const [key, val] of Object.entries(v)) {
               if (typeof key !== 'string' || typeof val !== 'string') {
                 console.error('unknown type for autocomplete object ', v);
                 return;
@@ -149,7 +148,7 @@ export function useAutoCompleteOptions(
                 value,
                 label: value,
               });
-            });
+            }
             return output;
           } else {
             return [];
