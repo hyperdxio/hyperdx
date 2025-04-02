@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  Box,
   Button,
   Checkbox,
   Flex,
   Group,
   Loader,
+  MantineStyleProps,
   ScrollArea,
   Stack,
   Tabs,
@@ -17,9 +19,11 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import useResizable from '@/hooks/useResizable';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
+import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
 type FilterCheckboxProps = {
@@ -33,13 +37,15 @@ type FilterCheckboxProps = {
 export const TextButton = ({
   onClick,
   label,
+  ms,
 }: {
   onClick?: VoidFunction;
   label: React.ReactNode;
+  ms?: MantineStyleProps['ms'];
 }) => {
   return (
     <UnstyledButton onClick={onClick} className={classes.textButton}>
-      <Text size="xxs" c="gray.6" lh={1}>
+      <Text size="xxs" c="gray.6" lh={1} ms={ms}>
         {label}
       </Text>
     </UnstyledButton>
@@ -59,7 +65,7 @@ export const FilterCheckbox = ({
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
-        flex={1}
+        style={{ minWidth: 0 }}
         wrap="nowrap"
         align="flex-start"
       >
@@ -84,7 +90,7 @@ export const FilterCheckbox = ({
             size="xs"
             c={value === 'excluded' ? 'red.4' : 'gray.3'}
             truncate="end"
-            maw="150px"
+            w="100%"
             title={label}
           >
             {label}
@@ -233,6 +239,7 @@ export const FilterGroup = ({
           rightSection={
             selectedValues.included.size + selectedValues.excluded.size > 0 ? (
               <TextButton
+                ms="xs"
                 label="Clear"
                 onClick={() => {
                   onClearClick();
@@ -314,6 +321,8 @@ export const DBSearchPageFilters = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
 } & FilterStateHook) => {
+  const { width, startResize } = useResizable(16, 'left');
+
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -398,14 +407,15 @@ export const DBSearchPageFilters = ({
   );
 
   return (
-    <div className={classes.filtersPanel}>
+    <Box className={classes.filtersPanel} style={{ width: `${width}%` }}>
+      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
       <ScrollArea
         h="100%"
         scrollbarSize={4}
         scrollbars="y"
         style={{
           display: 'block',
-          maxWidth: '100%',
+          width: '100%',
           overflow: 'hidden',
         }}
       >
@@ -511,6 +521,6 @@ export const DBSearchPageFilters = ({
           </Button>
         </Stack>
       </ScrollArea>
-    </div>
+    </Box>
   );
 };

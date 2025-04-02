@@ -2,7 +2,6 @@ import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
-  isSingleTableConnection,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/metadata';
@@ -46,9 +45,9 @@ export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const tableConnections = isSingleTableConnection(_tableConnections)
-    ? [_tableConnections]
-    : _tableConnections;
+  const tableConnections = Array.isArray(_tableConnections)
+    ? _tableConnections
+    : [_tableConnections];
   const metadata = getMetadata();
   return useQuery<Field[]>({
     queryKey: [
@@ -96,20 +95,23 @@ export function useTableMetadata(
   });
 }
 
-export function useGetKeyValues({
-  chartConfigs,
-  keys,
-  limit,
-  disableRowLimit,
-}: {
-  chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
-  keys: string[];
-  limit?: number;
-  disableRowLimit?: boolean;
-}) {
+export function useGetKeyValues(
+  {
+    chartConfigs,
+    keys,
+    limit,
+    disableRowLimit,
+  }: {
+    chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
+    keys: string[];
+    limit?: number;
+    disableRowLimit?: boolean;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
   const metadata = getMetadata();
   const chartConfigsArr = toArray(chartConfigs);
-  return useQuery({
+  return useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),
@@ -131,6 +133,7 @@ export function useGetKeyValues({
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
+    ...options,
   });
 }
 

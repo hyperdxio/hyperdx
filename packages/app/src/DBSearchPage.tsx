@@ -94,6 +94,8 @@ import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
 
+import searchPageStyles from '../styles/SearchPage.module.scss';
+
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -132,26 +134,33 @@ function SearchTotalCount({
     granularity,
     limit: { limit: 100000 },
   };
-  const {
-    data: totalCountData,
-    isLoading,
-    isError,
-  } = useQueriedChartConfig(queriedConfig, {
-    queryKey: [queryKeyPrefix, queriedConfig],
-    staleTime: 1000 * 60 * 5,
-    refetchOnWindowFocus: false,
-  });
+  const { data: totalCountData, isError } = useQueriedChartConfig(
+    queriedConfig,
+    {
+      queryKey: [queryKeyPrefix, queriedConfig],
+      staleTime: 1000 * 60 * 5,
+      refetchOnWindowFocus: false,
+    },
+  );
 
-  const totalCount = useMemo(() => {
-    return totalCountData?.data?.reduce(
-      (p: number, v: any) => p + Number.parseInt(v['count()']),
-      0,
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!totalCountData) {
+      // if totalCount already exists, set to that. Else, set to null
+      setTotalCount(totalCount ?? null);
+      return;
+    }
+    setTotalCount(
+      totalCountData?.data?.reduce(
+        (p: number, v: any) => p + Number.parseInt(v['count()']),
+        0,
+      ),
     );
   }, [totalCountData]);
 
   return (
     <Text size="xs" c="gray.4" mb={4}>
-      {isLoading ? (
+      {!totalCount ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
         `${totalCount} Results`
@@ -1220,7 +1229,7 @@ function DBSearchPage() {
         ) : (
           <>
             <div
-              className="d-flex flex-row flex-grow-0"
+              className={searchPageStyles.searchPageContainer}
               style={{
                 minHeight: 0,
                 height: '100%',

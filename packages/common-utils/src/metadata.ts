@@ -412,6 +412,13 @@ export class Metadata {
       connectionId,
     });
 
+    // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
+    if (
+      tableMetadata.partition_key.startsWith('(') &&
+      tableMetadata.partition_key.endsWith(')')
+    ) {
+      tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
+    }
     return tableMetadata;
   }
 
@@ -470,17 +477,6 @@ export type TableConnection = {
   tableName: string;
   connectionId: string;
 };
-
-export function isSingleTableConnection(
-  obj: TableConnection | TableConnection[],
-): obj is TableConnection {
-  return (
-    !Array.isArray(obj) &&
-    typeof obj?.databaseName === 'string' &&
-    typeof obj?.tableName === 'string' &&
-    typeof obj?.connectionId === 'string'
-  );
-}
 
 export function tcFromChartConfig(config?: ChartConfig): TableConnection {
   return {

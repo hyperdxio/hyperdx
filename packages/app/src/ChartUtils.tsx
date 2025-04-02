@@ -933,7 +933,10 @@ export function formatResponseForTimeChart({
 }
 
 // Define a mapping from app AggFn to common-utils AggregateFunction
-export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
+export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
+  if (aggFn == null) {
+    return aggFn;
+  }
   // Map rate-based aggregations to their base aggregation
   if (aggFn.endsWith('_rate')) {
     return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
@@ -958,28 +961,49 @@ export const mapV1AggFnToV2 = (aggFn: AggFn): AggFnV2 => {
     return 'count';
   }
 
-  if (aggFn === 'last_value') {
-    throw new Error('last_value is not supported in v2');
-  }
-
   // For standard aggregations that exist in both, return as is
-  if (['avg', 'count', 'count_distinct', 'max', 'min', 'sum'].includes(aggFn)) {
+  if (
+    [
+      'avg',
+      'count',
+      'count_distinct',
+      'last_value',
+      'max',
+      'min',
+      'sum',
+    ].includes(aggFn)
+  ) {
     return aggFn as AggFnV2;
   }
 
   throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
 };
 
+export const convertV1GroupByToV2 = (
+  metricSource: TSource,
+  groupBy: string[],
+): string => {
+  return groupBy
+    .map(g => {
+      if (g.startsWith('k8s')) {
+        return `${metricSource.resourceAttributesExpression}['${g}']`;
+      }
+      return g;
+    })
+    .join(',');
+};
+
 export const convertV1ChartConfigToV2 = (
   chartConfig: {
     // only support time or table series
     series: (TimeChartSeries | TableChartSeries)[];
-    granularity: Granularity;
+    granularity?: Granularity;
     dateRange: [Date, Date];
     seriesReturnType: 'ratio' | 'column';
     displayType?: 'stacked_bar' | 'line';
     name?: string;
     fillNulls?: number | false;
+    sortOrder?: SortOrder;
   },
   source: {
     log?: TSource;
@@ -995,8 +1019,8 @@ export const convertV1ChartConfigToV2 = (
     fillNulls,
   } = chartConfig;
 
-  if (series.length !== 1) {
-    throw new Error('only one series is supported in v2');
+  if (series.length < 1) {
+    throw new Error('series is required');
   }
 
   const firstSeries = series[0];
@@ -1010,25 +1034,27 @@ export const convertV1ChartConfigToV2 = (
     if (source.metric == null) {
       throw new Error('source.metric is required for metrics');
     }
-    const [metricName, rawMetricDataType] = (firstSeries.field ?? '').split(
-      ' - ',
-    );
-    const metricDataType = z
-      .nativeEnum(MetricsDataTypeV2)
-      .parse(rawMetricDataType?.toLowerCase());
     return {
-      select: [
-        {
-          aggFn: mapV1AggFnToV2(firstSeries.aggFn),
+      select: series.map(s => {
+        const field = s.field ?? '';
+        const [metricName, rawMetricDataType] = field
+          .split(' - ')
+          .map(s => s.trim());
+        const metricDataType = z
+          .nativeEnum(MetricsDataTypeV2)
+          .parse(rawMetricDataType?.toLowerCase());
+        return {
+          aggFn: mapV1AggFnToV2(s.aggFn),
           metricType: metricDataType,
-          valueExpression: 'Value',
+          valueExpression: field,
           metricName,
           aggConditionLanguage: 'lucene',
-          aggCondition: firstSeries.where,
-        },
-      ],
+          aggCondition: s.where,
+        };
+      }),
       from: source.metric?.from,
       numberFormat: firstSeries.numberFormat,
+      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
       dateRange,
       connection: source.metric?.connection,
       metricTables: source.metric?.metricTables,
