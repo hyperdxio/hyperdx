@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { parseAsJson, useQueryState } from 'nuqs';
+import objectHash from 'object-hash';
+import {
+  ChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -21,7 +26,7 @@ import { IconSearch } from '@tabler/icons-react';
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { useSearchPageFilterState } from '@/searchFilters';
-import { mergePath } from '@/utils';
+import { mergePath, useLocalStorage } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -304,6 +309,149 @@ export const FilterGroup = ({
   );
 };
 
+type SavedFilters = {
+  [key: string]: Filter[];
+};
+
+function SaveFilterInput() {
+  const [savedFilters, setSavedFilters] = useLocalStorage<SavedFilters>(
+    'hdx-saved-search-filters',
+    {},
+  );
+  const [queryFilters] = useQueryState<Filter[]>(
+    'filters',
+    parseAsJson<Filter[]>(),
+  );
+  const [newFilterName, setNewFilterName] = useState('');
+  const [showButton, setShowButton] = useState(true);
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    setNewFilterName(e.target.value);
+  };
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!queryFilters) return;
+    const tmp = savedFilters;
+    tmp[newFilterName] = queryFilters;
+    setSavedFilters(tmp);
+  };
+
+  return (
+    <Flex pl="xs" py="xxs" mb="xs" className={classes.filterCheckbox}>
+      {showButton ? (
+        <UnstyledButton
+          onClick={() => setShowButton(false)}
+          className={classes.textButton}
+          style={{ width: '100%' }}
+        >
+          <Text size="xs" c="gray.6" lh={1}>
+            <b>+ Save Filter</b>
+          </Text>
+        </UnstyledButton>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <TextInput
+            autoFocus
+            onBlur={() => setShowButton(true)}
+            placeholder="New Filter"
+            onChange={handleChange}
+            name="newFilterName"
+          />
+        </form>
+      )}
+    </Flex>
+  );
+}
+
+export function SavedFilters() {
+  const [queryFilters, setQueryFilters] = useQueryState(
+    'filters',
+    parseAsJson<Filter[]>(),
+  );
+  const [savedFilters, setSavedFilters] = useLocalStorage<SavedFilters>(
+    'hdx-saved-search-filters',
+    {},
+  );
+  const showSaveButton = useMemo(
+    // true if no saved filter matches the current filters
+    () =>
+      queryFilters &&
+      queryFilters.length > 0 &&
+      !Object.entries(savedFilters).some(
+        ([_, filter]) =>
+          objectHash.sha1(filter) === objectHash.sha1(queryFilters),
+      ),
+    [queryFilters, savedFilters],
+  );
+  const removeFilter = useCallback(
+    (label: string) => {
+      const newFilters = structuredClone(savedFilters);
+      delete newFilters[label];
+      setSavedFilters(newFilters);
+    },
+    [savedFilters, setSavedFilters],
+  );
+
+  const SavedFilterOption = ({
+    label,
+    filters,
+  }: {
+    label: string;
+    filters: Filter[];
+  }) => {
+    const [isHovered, setIsHovered] = useState(false);
+    const active = objectHash.sha1(filters) === objectHash.sha1(queryFilters);
+    return (
+      <Group
+        key={label}
+        justify="space-between"
+        wrap="nowrap"
+        onMouseOver={() => setIsHovered(true)}
+        onMouseOut={() => setIsHovered(false)}
+        className={classes.highlightRow}
+      >
+        <Text
+          size="xs"
+          c={active ? 'green' : 'gray.3'}
+          w="100%"
+          pl="xs"
+          onClick={() => setQueryFilters(filters)}
+          style={{ cursor: 'pointer', opacity: 0.8 }}
+        >
+          {label}
+        </Text>
+        {/* ONLY SHOW X IF HOVERING OVER THIS COMPONENT */}
+        <UnstyledButton
+          className={classes.highlightButton}
+          style={{ visibility: isHovered ? 'inherit' : 'hidden' }}
+          p="2px"
+          onClick={() => removeFilter(label)}
+        >
+          <i className="bi bi-x"></i>
+        </UnstyledButton>
+      </Group>
+    );
+  };
+
+  return (
+    <Stack gap={0}>
+      {(Object.keys(savedFilters).length > 0 || showSaveButton) && (
+        <Text size="xxs" c="dimmed" fw="bold">
+          Saved Filters
+        </Text>
+      )}
+      {Object.keys(savedFilters).length > 0 && (
+        <Stack gap={0}>
+          {Object.entries(savedFilters).map(([label, filters]) => (
+            <SavedFilterOption key={label} label={label} filters={filters} />
+          ))}
+        </Stack>
+      )}
+      {showSaveButton && <SaveFilterInput />}
+    </Stack>
+  );
+}
+
 type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
 export const DBSearchPageFilters = ({
@@ -442,6 +590,8 @@ export const DBSearchPageFilters = ({
               </Tabs.Tab> */}
             </Tabs.List>
           </Tabs>
+
+          <SavedFilters />
 
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>

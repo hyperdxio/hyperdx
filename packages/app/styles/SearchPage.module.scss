@@ -56,7 +56,37 @@
   }
 }
 
+.highlightRow {
+  &:hover {
+    input {
+      opacity: 1;
+    }
+
+    background-color: $slate-950;
+
+    .filterActions {
+      display: flex;
+    }
+  }
+}
+
+.highlightButton {
+  border-radius: 3px;
+
+  &:hover {
+    background-color: $slate-800;
+    color: $slate-200;
+  }
+
+  &:active {
+    background-color: $slate-700;
+    color: $slate-100;
+  }
+}
+
 .filterCheckbox {
+  @extend .highlightRow;
+
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 20px;
@@ -87,29 +117,8 @@
 
     .textButton {
       padding: 2px 6px;
-      border-radius: 3px;
 
-      &:hover {
-        background-color: $slate-800;
-        color: $slate-200;
-      }
-
-      &:active {
-        background-color: $slate-700;
-        color: $slate-100;
-      }
-    }
-  }
-
-  &:hover {
-    input {
-      opacity: 1;
-    }
-
-    background-color: $slate-950;
-
-    .filterActions {
-      display: flex;
+      @extend .highlightButton;
     }
   }
 }
