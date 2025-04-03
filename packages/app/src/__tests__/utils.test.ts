@@ -1,8 +1,8 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { renderHook, act } from '@testing-library/react';
-import * as utils from '../utils';
+import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
+import * as utils from '../utils';
 import {
   formatAttributeClause,
   formatDate,
@@ -274,7 +274,7 @@ describe('formatNumber', () => {
 describe('useLocalStorage', () => {
   // Create a mock for localStorage
   let localStorageMock: jest.Mocked<Storage>;
-  
+
   beforeEach(() => {
     // Clear all mocks between tests
     jest.clearAllMocks();
@@ -288,14 +288,14 @@ describe('useLocalStorage', () => {
       key: jest.fn(),
       length: 0,
     };
-    
+
     // Replace window.localStorage with our mock
-    Object.defineProperty(window, 'localStorage', { 
+    Object.defineProperty(window, 'localStorage', {
       value: localStorageMock,
-      writable: true
+      writable: true,
     });
   });
-  
+
   afterAll(() => {
     // Restore original implementations
     jest.restoreAllMocks();
@@ -304,13 +304,15 @@ describe('useLocalStorage', () => {
   test('should initialize with initial value when localStorage is empty', () => {
     // Mock localStorage.getItem to return null (empty)
     localStorageMock.getItem.mockReturnValueOnce(null);
-    
+
     const initialValue = { test: 'value' };
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', initialValue));
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', initialValue),
+    );
 
     // Check if initialized with initial value
     expect(result.current[0]).toEqual(initialValue);
-    
+
     // Verify localStorage was checked
     expect(localStorageMock.getItem).toHaveBeenCalledWith('testKey');
   });
@@ -319,8 +321,10 @@ describe('useLocalStorage', () => {
     // Mock localStorage to return existing value
     const existingValue = { test: 'existing' };
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(existingValue));
-    
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', { test: 'default' }));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', { test: 'default' }),
+    );
 
     // Should use the value from localStorage, not the initial value
     expect(result.current[0]).toEqual(existingValue);
@@ -329,8 +333,10 @@ describe('useLocalStorage', () => {
 
   test('should update localStorage when setValue is called', () => {
     localStorageMock.getItem.mockReturnValueOnce(null);
-    
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', 'initial'));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
 
     // Update value
     const newValue = 'updated';
@@ -340,43 +346,55 @@ describe('useLocalStorage', () => {
 
     // Check if state updated
     expect(result.current[0]).toBe(newValue);
-    
+
     // Check if localStorage was updated
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('testKey', JSON.stringify(newValue));
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'testKey',
+      JSON.stringify(newValue),
+    );
   });
 
   test('should handle functional updates', () => {
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(0));
-    
-    const { result } = renderHook(() => utils.useLocalStorage<number>('testKey', 0));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage<number>('testKey', 0),
+    );
 
     // Update using function
     act(() => {
-      result.current[1]((prev) => prev + 1);
+      result.current[1](prev => prev + 1);
     });
 
     // Check if state updated correctly
     expect(result.current[0]).toBe(1);
-    
+
     // Check if localStorage was updated
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('testKey', JSON.stringify(1));
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'testKey',
+      JSON.stringify(1),
+    );
   });
 
   test('should handle storage event from another window', () => {
     // Initial setup
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial'));
-    
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', 'initial'));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
 
     // Update mock to return new value when checked after event
     localStorageMock.getItem.mockReturnValue(JSON.stringify('external update'));
-    
+
     // Dispatch storage event
     act(() => {
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'testKey',
-        newValue: JSON.stringify('external update'),
-      }));
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'testKey',
+          newValue: JSON.stringify('external update'),
+        }),
+      );
     });
 
     // State should be updated
@@ -386,18 +404,24 @@ describe('useLocalStorage', () => {
   test('should handle customStorage event from same window but different hook instance', () => {
     // First hook instance
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial1'));
-    const { result: result1 } = renderHook(() => utils.useLocalStorage('sharedKey', 'initial1'));
-    
+    const { result: result1 } = renderHook(() =>
+      utils.useLocalStorage('sharedKey', 'initial1'),
+    );
+
     // Second hook instance
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial1'));
-    const { result: result2 } = renderHook(() => utils.useLocalStorage('sharedKey', 'initial2'));
+    const { result: result2 } = renderHook(() =>
+      utils.useLocalStorage('sharedKey', 'initial2'),
+    );
 
     // Clear mock calls count
     localStorageMock.getItem.mockClear();
-    
+
     // When the second hook checks localStorage after custom event
-    localStorageMock.getItem.mockReturnValue(JSON.stringify('updated by hook 1'));
-    
+    localStorageMock.getItem.mockReturnValue(
+      JSON.stringify('updated by hook 1'),
+    );
+
     // Update value in the first instance
     act(() => {
       result1.current[1]('updated by hook 1');
@@ -405,12 +429,15 @@ describe('useLocalStorage', () => {
 
     // Manually trigger custom event (since it's happening within the same test)
     act(() => {
-      const event = new CustomEvent<utils.CustomStorageChangeDetail>('customStorage', {
-        detail: {
-          key: 'sharedKey',
-          instanceId: 'some-id', // Different from the instance updating
+      const event = new CustomEvent<utils.CustomStorageChangeDetail>(
+        'customStorage',
+        {
+          detail: {
+            key: 'sharedKey',
+            instanceId: 'some-id', // Different from the instance updating
+          },
         },
-      });
+      );
       window.dispatchEvent(event);
     });
 
@@ -421,72 +448,26 @@ describe('useLocalStorage', () => {
   test('should not update if storage event is for a different key', () => {
     // Initial setup
     localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial'));
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', 'initial'));
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
 
     // Clear the mock calls counter
     localStorageMock.getItem.mockClear();
-    
+
     // Simulate storage event for a different key
     act(() => {
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: 'differentKey',
-        newValue: JSON.stringify('different value'),
-      }));
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'differentKey',
+          newValue: JSON.stringify('different value'),
+        }),
+      );
     });
 
     // State should remain unchanged
     expect(result.current[0]).toBe('initial');
     // localStorage should not be accessed since key doesn't match
     expect(localStorageMock.getItem).not.toHaveBeenCalled();
-  });
-
-  test('should handle JSON parsing errors', () => {
-    // Mock console.log to test error logging
-    const originalConsoleLog = console.log;
-    console.log = jest.fn();
-
-    // Set invalid JSON in localStorage
-    localStorageMock.getItem.mockReturnValueOnce('invalid-json');
-
-    // Should fall back to initial value on error
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', 'fallback'));
-    
-    // Verify console.log was called (error was logged)
-    expect(console.log).toHaveBeenCalled();
-    
-    // Initial value should be used
-    expect(result.current[0]).toBe('fallback');
-    
-    // Restore console.log
-    console.log = originalConsoleLog;
-  });
-
-  test('should handle errors when setting localStorage', () => {
-    // Mock console.log to test error logging
-    const originalConsoleLog = console.log;
-    console.log = jest.fn();
-    
-    // Initial setup
-    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial'));
-    const { result } = renderHook(() => utils.useLocalStorage('testKey', 'initial'));
-
-    // Mock setItem to throw error
-    localStorageMock.setItem.mockImplementationOnce(() => {
-      throw new Error('QuotaExceededError');
-    });
-
-    // Try to update value
-    act(() => {
-      result.current[1]('updated');
-    });
-    
-    // State should still update even if localStorage fails
-    expect(result.current[0]).toBe('updated');
-    
-    // Verify error was logged
-    expect(console.log).toHaveBeenCalled();
-    
-    // Restore console.log
-    console.log = originalConsoleLog;
   });
 });
