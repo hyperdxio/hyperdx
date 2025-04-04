@@ -14,6 +14,7 @@ import {
   SortableHandle,
   SortEndHandler,
 } from 'react-sortable-hoc';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 
 import api from '@/api';
 import { useColumns } from '@/hooks/useMetadata';
@@ -58,24 +59,17 @@ const SortableSelect = SortableContainer(AsyncSelect) as React.ComponentClass<
 export default function DBColumnMultiSelect({
   values,
   setValues,
-  database,
-  connectionId,
-  table,
+  tableConnection,
 }: {
-  database: string | undefined;
-  table: string | undefined;
-  connectionId: string | undefined;
   values: string[];
   setValues: (value: string[]) => void;
+  tableConnection: TableConnection;
 }) {
+  const { databaseName, tableName, connectionId } = tableConnection;
   const { data: columns, isLoading: isColumnsLoading } = useColumns(
+    tableConnection,
     {
-      databaseName: database ?? '',
-      tableName: table ?? '',
-      connectionId: connectionId ?? '',
-    },
-    {
-      enabled: !!database && !!table && !!connectionId,
+      enabled: !!databaseName && !!tableName && !!connectionId,
     },
   );
 

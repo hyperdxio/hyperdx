@@ -15,26 +15,15 @@ import {
 import { getMetadata } from '@/metadata';
 
 export function useColumns(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  tableConnection: TableConnection,
   options?: Partial<UseQueryOptions<ColumnMeta[]>>,
 ) {
+  const { databaseName, tableName } = tableConnection;
   return useQuery<ColumnMeta[]>({
     queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
     queryFn: async () => {
       const metadata = getMetadata();
-      return metadata.getColumns({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      return metadata.getColumns(tableConnection);
     },
     ...options,
   });
@@ -68,26 +57,15 @@ export function useAllFields(
 }
 
 export function useTableMetadata(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  tableConnection: TableConnection,
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
+  const { databaseName, tableName } = tableConnection;
   const metadata = getMetadata();
   return useQuery<TableMetadata>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
-      return await metadata.getTableMetadata({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      return await metadata.getTableMetadata(tableConnection);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     ...options,

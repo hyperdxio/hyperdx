@@ -460,10 +460,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    */
   private async buildColumnExpressionFromField(field: string) {
     const exactMatch = await this.metadata.getColumn({
-      databaseName: this.databaseName,
-      tableName: this.tableName,
+      tableConnection: {
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        connectionId: this.connectionId,
+      },
       column: field,
-      connectionId: this.connectionId,
     });
 
     if (exactMatch) {
@@ -478,10 +480,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     const fieldPrefix = field.split('.')[0];
     const prefixMatch = await this.metadata.getColumn({
-      databaseName: this.databaseName,
-      tableName: this.tableName,
+      tableConnection: {
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        connectionId: this.connectionId,
+      },
       column: fieldPrefix,
-      connectionId: this.connectionId,
     });
 
     if (prefixMatch) {

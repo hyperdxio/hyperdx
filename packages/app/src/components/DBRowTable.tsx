@@ -11,6 +11,7 @@ import {
   extractColumnReference,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromChartConfig } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithDateRange,
   SelectList,
@@ -742,11 +743,7 @@ export function DBSqlRowTable({
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
 }) {
-  const { data: tableMetadata } = useTableMetadata({
-    databaseName: config.from.databaseName,
-    tableName: config.from.tableName,
-    connectionId: config.connection,
-  });
+  const { data: tableMetadata } = useTableMetadata(tcFromChartConfig(config));
 
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;

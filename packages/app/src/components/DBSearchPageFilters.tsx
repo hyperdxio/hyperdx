@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tcFromChartConfig } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -323,11 +324,7 @@ export const DBSearchPageFilters = ({
 } & FilterStateHook) => {
   const { width, startResize } = useResizable(16, 'left');
 
-  const { data, isLoading } = useAllFields({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
+  const { data, isLoading } = useAllFields(tcFromChartConfig(chartConfig));
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 

@@ -96,15 +96,11 @@ export class Metadata {
   }
 
   private async queryTableMetadata({
-    database,
-    table,
+    tableConnection: { databaseName: database, tableName: table, connectionId },
     cache,
-    connectionId,
   }: {
-    database: string;
-    table: string;
+    tableConnection: TableConnection;
     cache: MetadataCache;
-    connectionId: string;
   }) {
     return cache.getOrFetch(`${database}.${table}.metadata`, async () => {
       const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
@@ -119,15 +115,7 @@ export class Metadata {
     });
   }
 
-  async getColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
+  async getColumns({ databaseName, tableName, connectionId }: TableConnection) {
     return this.cache.getOrFetch<ColumnMeta[]>(
       `${databaseName}.${tableName}.columns`,
       async () => {
@@ -145,20 +133,8 @@ export class Metadata {
     );
   }
 
-  async getMaterializedColumnsLookupTable({
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
-    const columns = await this.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
+  async getMaterializedColumnsLookupTable(tableConnection: TableConnection) {
+    const columns = await this.getColumns(tableConnection);
 
     // Build up materalized fields lookup table
     return new Map(
@@ -172,23 +148,15 @@ export class Metadata {
   }
 
   async getColumn({
-    databaseName,
-    tableName,
     column,
     matchLowercase = false,
-    connectionId,
+    tableConnection,
   }: {
-    databaseName: string;
-    tableName: string;
     column: string;
     matchLowercase?: boolean;
-    connectionId: string;
+    tableConnection: TableConnection;
   }): Promise<ColumnMeta | undefined> {
-    const tableColumns = await this.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
+    const tableColumns = await this.getColumns(tableConnection);
 
     return tableColumns.filter(c => {
       if (matchLowercase) {
@@ -200,18 +168,15 @@ export class Metadata {
   }
 
   async getMapKeys({
-    databaseName,
-    tableName,
     column,
     maxKeys = 1000,
-    connectionId,
+    tableConnection,
   }: {
-    databaseName: string;
-    tableName: string;
     column: string;
     maxKeys?: number;
-    connectionId: string;
+    tableConnection: TableConnection;
   }) {
+    const { databaseName, tableName, connectionId } = tableConnection;
     const cachedKeys = this.cache.get<string[]>(
       `${databaseName}.${tableName}.${column}.keys`,
     );
@@ -221,10 +186,8 @@ export class Metadata {
     }
 
     const colMeta = await this.getColumn({
-      databaseName,
-      tableName,
       column,
-      connectionId,
+      tableConnection,
     });
 
     if (colMeta == null) {
@@ -285,20 +248,17 @@ export class Metadata {
   }
 
   async getMapValues({
-    databaseName,
-    tableName,
     column,
     key,
     maxValues = 20,
-    connectionId,
+    tableConnection,
   }: {
-    databaseName: string;
-    tableName: string;
     column: string;
     key?: string;
     maxValues?: number;
-    connectionId: string;
+    tableConnection: TableConnection;
   }) {
+    const { databaseName, tableName, connectionId } = tableConnection;
     const cachedValues = this.cache.get<string[]>(
       `${databaseName}.${tableName}.${column}.${key}.values`,
     );
@@ -349,17 +309,9 @@ export class Metadata {
     );
   }
 
-  async getAllFields({
-    databaseName,
-    tableName,
-    connectionId,
-  }: TableConnection) {
+  async getAllFields(tableConnection: TableConnection) {
     const fields: Field[] = [];
-    const columns = await this.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
+    const columns = await this.getColumns(tableConnection);
 
     for (const c of columns) {
       fields.push({
@@ -374,10 +326,8 @@ export class Metadata {
     await Promise.all(
       mapColumns.map(async column => {
         const keys = await this.getMapKeys({
-          databaseName,
-          tableName,
           column: column.name,
-          connectionId,
+          tableConnection,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -396,20 +346,10 @@ export class Metadata {
     return fields;
   }
 
-  async getTableMetadata({
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
+  async getTableMetadata(tableConnection: TableConnection) {
     const tableMetadata = await this.queryTableMetadata({
       cache: this.cache,
-      database: databaseName,
-      table: tableName,
-      connectionId,
+      tableConnection,
     });
 
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'

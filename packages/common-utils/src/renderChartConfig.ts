@@ -2,7 +2,7 @@ import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { Metadata } from '@/metadata';
+import { Metadata, TableConnection } from '@/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
@@ -407,10 +407,8 @@ async function timeFilterExpr({
   timestampValueExpression,
   dateRange,
   dateRangeStartInclusive,
-  databaseName,
-  tableName,
   metadata,
-  connectionId,
+  tableConnection,
   with: withClauses,
   includedDataInterval,
 }: {
@@ -418,12 +416,11 @@ async function timeFilterExpr({
   dateRange: [Date, Date];
   dateRangeStartInclusive: boolean;
   metadata: Metadata;
-  connectionId: string;
-  databaseName: string;
-  tableName: string;
+  tableConnection: TableConnection;
   with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
+  const { databaseName, tableName } = tableConnection;
   const valueExpressions = splitAndTrimCSV(timestampValueExpression);
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
@@ -434,10 +431,8 @@ async function timeFilterExpr({
       const columnMeta = withClauses?.length
         ? null
         : await metadata.getColumn({
-            databaseName,
-            tableName,
+            tableConnection,
             column: col,
-            connectionId,
           });
 
       const unsafeTimestampValueExpression = {
@@ -657,9 +652,11 @@ async function renderWhere(
           dateRange: chartConfig.dateRange,
           dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
           metadata,
-          connectionId: chartConfig.connection,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
+          tableConnection: {
+            connectionId: chartConfig.connection,
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+          },
           with: chartConfig.with,
           includedDataInterval: chartConfig.includedDataInterval,
         })

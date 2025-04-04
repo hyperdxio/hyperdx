@@ -762,12 +762,16 @@ export function MetricTableModelForm({
           const [prefix, suffix] = name.split('.');
           if (prefix === 'metricTables') {
             const tableName =
-              value?.metricTables?.[suffix as keyof typeof value.metricTables];
+              value?.metricTables?.[
+                suffix as keyof typeof value.metricTables
+              ] ?? '';
             const metricType = suffix as MetricsDataType;
             const isValid = await isValidMetricTable({
-              databaseName,
-              tableName,
-              connectionId,
+              tableConnection: {
+                databaseName,
+                tableName,
+                connectionId,
+              },
               metricType,
             });
             if (!isValid) {

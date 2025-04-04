@@ -7,6 +7,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { hashCode, splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -190,31 +191,16 @@ function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   return missingColumns.length === 0;
 }
 
-export async function inferTableSourceConfig({
-  databaseName,
-  tableName,
-  connectionId,
-}: {
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-}): Promise<
+export async function inferTableSourceConfig(
+  tableConnection: TableConnection,
+): Promise<
   Partial<Omit<TSource, 'id' | 'name' | 'from' | 'connection' | 'kind'>>
 > {
   const metadata = getMetadata();
-  const columns = await metadata.getColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const columns = await metadata.getColumns(tableConnection);
 
-  const primaryKeys = (
-    await metadata.getTableMetadata({
-      databaseName,
-      tableName,
-      connectionId,
-    })
-  ).primary_key;
+  const primaryKeys = (await metadata.getTableMetadata(tableConnection))
+    .primary_key;
   const keys = splitAndTrimCSV(primaryKeys);
 
   const isOtelLogSchema = hasAllColumns(columns, [
@@ -340,26 +326,18 @@ const ReqMetricTableColumns = {
 };
 
 export async function isValidMetricTable({
-  databaseName,
-  tableName,
-  connectionId,
   metricType,
+  tableConnection,
 }: {
-  databaseName: string;
-  tableName?: string;
-  connectionId: string;
   metricType: MetricsDataType;
+  tableConnection: TableConnection;
 }) {
-  if (!tableName) {
+  if (!tableConnection.tableName) {
     return false;
   }
 
   const metadata = getMetadata();
-  const columns = await metadata.getColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const columns = await metadata.getColumns(tableConnection);
 
   return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
 }
