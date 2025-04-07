@@ -12,9 +12,4 @@
   white-space: nowrap;
   padding-right: 8px;
   position: relative;
-  
-  /* Make imported resize handle appear on hover */
-  &:hover :global(div[class*="resizeHandle"]) {
-    opacity: 1;
-  }
 }

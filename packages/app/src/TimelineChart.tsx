@@ -585,6 +585,7 @@ export default function TimelineChart({
                   <div
                     className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
+                    style={{ backgroundColor: '#3a3a44' }}
                   />
                 </div>
                 <NewTimelineRow
