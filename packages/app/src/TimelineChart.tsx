@@ -3,6 +3,7 @@ import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import useResizable from './hooks/useResizable';
 import { useDrag, usePrevious } from './utils';
 
 import styles from '../styles/TimelineChart.module.scss';
@@ -344,7 +345,7 @@ export default function TimelineChart({
   rowHeight,
   onMouseMove,
   onEventClick,
-  labelWidth,
+  labelWidth: initialLabelWidth,
   className,
   style,
   onClick,
@@ -373,6 +374,16 @@ export default function TimelineChart({
 }) {
   const [offset, setOffset] = useState(0);
   const prevScale = usePrevious(scale);
+
+  // Convert initialLabelWidth to a percentage for the resizable hook
+  const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
+  const { width: labelWidthPercent, startResize } = useResizable(
+    initialWidthPercent,
+    'left',
+  );
+
+  // Convert percentage back to pixels for rendering
+  const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const onMouseEvent = (
@@ -561,8 +572,19 @@ export default function TimelineChart({
                   ...row.style,
                 }}
               >
-                <div style={{ width: labelWidth, minWidth: labelWidth }}>
-                  {row.label}
+                <div
+                  className={styles.labelContainer}
+                  style={{
+                    width: labelWidth,
+                    minWidth: labelWidth,
+                    position: 'relative',
+                  }}
+                >
+                  <div className="text-truncate">{row.label}</div>
+                  <div
+                    className={styles.resizeHandle}
+                    onMouseDown={startResize}
+                  />
                 </div>
                 <NewTimelineRow
                   events={row.events}

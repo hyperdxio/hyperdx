@@ -487,7 +487,7 @@ export function DBTraceWaterfallChartContainer({
                   title="Correlated Log Line"
                 />
               ) : null}
-              {serviceName ? `${serviceName} | ` : ''}
+              {/* {serviceName ? `${serviceName} | ` : ''} */}
               {displayText}
             </Text>
           </div>
