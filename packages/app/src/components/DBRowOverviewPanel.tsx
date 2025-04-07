@@ -123,7 +123,6 @@ export function RowOverviewPanel({
       {!hideHeader && (
         <Box px="32px" pt="md">
           <DBRowSidePanelHeader
-            sourceId={source.id}
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             tags={{}}
             mainContent={mainContent}

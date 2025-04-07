@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
   Button,
   Center,
   Divider,
@@ -14,7 +13,6 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { useSource, useUpdateSource } from '@/source';
@@ -22,7 +20,6 @@ import TabBar from '@/TabBar';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
-import { TableSourceForm } from './SourceForm';
 import { SourceSelectControlled } from './SourceSelect';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
@@ -103,22 +100,6 @@ export default function DBTracePanel({
   }, [parentSourceData?.traceIdExpression, traceIdSetValue]);
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
-  const [showSourceForm, setShowSourceForm] = useState(false);
-  useEffect(() => {
-    if (
-      isTraceSourceLoading == false &&
-      (traceSourceData == null ||
-        traceSourceData?.kind == 'log' ||
-        traceSourceData?.durationExpression == null)
-    ) {
-      setShowSourceForm(true);
-    }
-  }, [showSourceForm, traceSourceData, isTraceSourceLoading]);
-
-  const [
-    sourceFormModalOpened,
-    { open: openSourceFormModal, close: closeSourceFormModal },
-  ] = useDisclosure(false);
 
   // Reset highlighted row when trace ID changes
   // otherwise we'll show stale span details
@@ -155,19 +136,6 @@ export default function DBTracePanel({
               : 'Correlated Log Source'}
           </Text>
           <SourceSelectControlled control={control} name="source" size="xs" />
-          <ActionIcon
-            variant="subtle"
-            color="dark.2"
-            size="sm"
-            onClick={
-              sourceFormModalOpened ? closeSourceFormModal : openSourceFormModal
-            }
-            title="Edit Source"
-          >
-            <Text size="xs">
-              <i className="bi bi-gear" />
-            </Text>
-          </ActionIcon>
         </Group>
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
@@ -214,7 +182,6 @@ export default function DBTracePanel({
         </Stack>
       )}
       <Divider my="sm" />
-      {sourceFormModalOpened && <TableSourceForm sourceId={watch('source')} />}
       {traceSourceData?.kind === SourceKind.Trace && (
         <DBTraceWaterfallChartContainer
           traceTableSource={traceSourceData}
