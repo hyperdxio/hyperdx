@@ -376,14 +376,12 @@ export default function TimelineChart({
   const [offset, setOffset] = useState(0);
   const prevScale = usePrevious(scale);
 
-  // Convert initialLabelWidth to a percentage for the resizable hook
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
   const { width: labelWidthPercent, startResize } = useResizable(
     initialWidthPercent,
     'left',
   );
 
-  // Convert percentage back to pixels for rendering
   const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -578,10 +576,9 @@ export default function TimelineChart({
                   style={{
                     width: labelWidth,
                     minWidth: labelWidth,
-                    position: 'relative',
                   }}
                 >
-                  <div className="text-truncate">{row.label}</div>
+                  {row.label}
                   <div
                     className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
