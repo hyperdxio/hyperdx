@@ -13,28 +13,8 @@
   padding-right: 8px;
   position: relative;
   
-  &:hover .resizeHandle {
+  /* Make imported resize handle appear on hover */
+  &:hover :global(div[class*="resizeHandle"]) {
     opacity: 1;
-  }
-}
-
-.resizeHandle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  cursor: col-resize;
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
-  z-index: 10;
-  
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-  }
-  
-  &:active {
-    opacity: 1;
-    background-color: rgba(255, 255, 255, 0.3);
   }
 }

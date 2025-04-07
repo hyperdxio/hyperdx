@@ -6,6 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import useResizable from './hooks/useResizable';
 import { useDrag, usePrevious } from './utils';
 
+import resizeStyles from '../styles/ResizablePanel.module.scss';
 import styles from '../styles/TimelineChart.module.scss';
 
 type TimelineEventT = {
@@ -582,7 +583,7 @@ export default function TimelineChart({
                 >
                   <div className="text-truncate">{row.label}</div>
                   <div
-                    className={styles.resizeHandle}
+                    className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
                   />
                 </div>
