@@ -41,10 +41,8 @@ export default function ContextSubpanel({
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const { Timestamp: origTimestamp } = rowData;
-  const {
-    where: originalWhere = '',
-    whereLanguage: originalLanguage = 'lucene',
-  } = dbSqlRowTableConfig ?? {};
+  const { whereLanguage: originalLanguage = 'lucene' } =
+    dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
   const [contextBy, setContextBy] = useState<ContextBy>(ContextBy.All);
   const { control, watch } = useForm({
@@ -232,11 +230,6 @@ export default function ContextSubpanel({
             {contextBy !== ContextBy.All && (
               <Badge size="md" variant="default">
                 {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-              </Badge>
-            )}
-            {originalWhere && (
-              <Badge size="md" variant="default">
-                {originalWhere}
               </Badge>
             )}
             <Badge size="md" variant="default">
