@@ -380,7 +380,7 @@ export const DBSearchPageFilters = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
+    chartConfigs: { ...chartConfig, dateRange },
     keys: datum,
   });
 
