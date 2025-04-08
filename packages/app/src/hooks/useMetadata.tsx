@@ -13,6 +13,7 @@ import {
 } from '@tanstack/react-query';
 
 import { getMetadata } from '@/metadata';
+import { toArray } from '@/utils';
 
 export function useColumns(
   {
@@ -96,12 +97,12 @@ export function useTableMetadata(
 
 export function useGetKeyValues(
   {
-    chartConfig,
+    chartConfigs,
     keys,
     limit,
     disableRowLimit,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
@@ -109,21 +110,35 @@ export function useGetKeyValues(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = getMetadata();
+  const chartConfigsArr = toArray(chartConfigs);
   return useQuery<{ key: string; value: string[] }[]>({
-    queryKey: ['useMetadata.useGetKeyValues', { chartConfig, keys }],
-    queryFn: async () => {
-      return metadata.getKeyValues({
-        chartConfig,
-        keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
-        limit,
-        disableRowLimit,
-      });
-    },
+    queryKey: [
+      'useMetadata.useGetKeyValues',
+      ...chartConfigsArr.map(cc => ({ ...cc })),
+      ...keys,
+    ],
+    queryFn: async () =>
+      (
+        await Promise.all(
+          chartConfigsArr.map(chartConfig =>
+            metadata.getKeyValues({
+              chartConfig,
+              keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+              limit,
+              disableRowLimit,
+            }),
+          ),
+        )
+      ).flatMap(v => v),
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
     ...options,
   });
+}
+
+export function deduplicateArray<T extends object>(array: T[]): T[] {
+  return deduplicate2dArray([array]);
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
