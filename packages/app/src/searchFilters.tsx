@@ -222,6 +222,34 @@ type PinnedFilters = {
 
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
+function usePinnedFilterBySource(sourceId: string | null) {
+  // Eventually this can call mongo instead
+  const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
+    [sourceId: string]: PinnedFilters;
+  }>('hdx-pinned-search-filters', {});
+
+  const pinnedFilters = React.useMemo<PinnedFilters>(
+    () =>
+      !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
+    [_pinnedFilters, sourceId],
+  );
+  const setPinnedFilters = React.useCallback<
+    (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => void
+  >(
+    val => {
+      if (!sourceId) return;
+      _setPinnedFilters(prev =>
+        produce(prev, draft => {
+          draft[sourceId] =
+            val instanceof Function ? val(draft[sourceId] ?? {}) : val;
+        }),
+      );
+    },
+    [sourceId, _setPinnedFilters],
+  );
+  return { pinnedFilters, setPinnedFilters };
+}
+
 export function usePinnedFilters({
   filters,
   setFilterValue,
@@ -240,9 +268,8 @@ export function usePinnedFilters({
   ////////////////////////////////////////////////////////
   // Eventually replace pinnedFilters with a GET from api/mongo
   // Eventually replace setPinnedFilters with a POST to api/mongo
-  const [pinnedFilters, setPinnedFilters] = useLocalStorage<PinnedFilters>(
-    'hdx-pinned-search-filters',
-    {},
+  const { pinnedFilters, setPinnedFilters } = usePinnedFilterBySource(
+    sourceId ?? null,
   );
   const [isPinnedFiltersActive, _setPinnedFiltersActive] =
     useLocalStorage<boolean>('hdx-pinned-search-filters-active', false);
