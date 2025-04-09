@@ -670,6 +670,48 @@ function DBSearchPage() {
     inputSource,
   ]);
 
+  const [_queryErrors, setQueryErrors] = useState<{
+    [key: string]: Error | ClickHouseQueryError;
+  }>({});
+
+  const onSubmit = useCallback(() => {
+    onSearch(displayedTimeInputValue);
+    handleSubmit(
+      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+        setSearchedConfig({
+          select,
+          where,
+          whereLanguage,
+          source,
+          filters,
+          orderBy,
+        });
+      },
+    )();
+    // clear query errors
+    setQueryErrors({});
+  }, [
+    handleSubmit,
+    setSearchedConfig,
+    displayedTimeInputValue,
+    onSearch,
+    setQueryErrors,
+  ]);
+
+  const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
+  const handleSetFilters = useCallback(
+    (filters: Filter[]) => {
+      setValue('filters', filters);
+      debouncedSubmit();
+    },
+    [debouncedSubmit, setValue],
+  );
+
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: watch('filters') ?? undefined,
+    onFilterChange: handleSetFilters,
+  });
+
   useEffect(() => {
     const { unsubscribe } = watch((data, { name, type }) => {
       // If the user changes the source dropdown, reset the select and orderby fields
@@ -689,11 +731,13 @@ function DBSearchPage() {
               newInputSourceObj?.timestampValueExpression ?? '',
             )} DESC`,
           );
+          // Clear all search filters
+          searchFilters.clearAllFilters();
         }
       }
     });
     return () => unsubscribe();
-  }, [watch, inputSourceObj, setValue, inputSourceObjs]);
+  }, [watch, inputSourceObj, setValue, inputSourceObjs, searchFilters]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
@@ -722,9 +766,6 @@ function DBSearchPage() {
     useSearchedConfigToChartConfig(searchedConfig);
 
   // query error handling
-  const [_queryErrors, setQueryErrors] = useState<{
-    [key: string]: Error | ClickHouseQueryError;
-  }>({});
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
     const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
@@ -737,30 +778,6 @@ function DBSearchPage() {
     input: inputWhere,
     enabled: hasQueryError && inputWhereLanguage === 'sql',
   });
-
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
-        setSearchedConfig({
-          select,
-          where,
-          whereLanguage,
-          source,
-          filters,
-          orderBy,
-        });
-      },
-    )();
-    // clear query errors
-    setQueryErrors({});
-  }, [
-    handleSubmit,
-    setSearchedConfig,
-    displayedTimeInputValue,
-    onSearch,
-    setQueryErrors,
-  ]);
 
   const queryReady =
     chartConfig?.from?.databaseName &&
@@ -855,15 +872,6 @@ function DBSearchPage() {
     onSearch('Live Tail');
   }, [onSearch, setIsLive]);
 
-  const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
-  const handleSetFilters = useCallback(
-    (filters: Filter[]) => {
-      setValue('filters', filters);
-      debouncedSubmit();
-    },
-    [debouncedSubmit, setValue],
-  );
-
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
       return undefined;
@@ -875,11 +883,6 @@ function DBSearchPage() {
       limit: { limit: 200 },
     };
   }, [chartConfig, searchedTimeRange]);
-
-  const searchFilters = useSearchPageFilterState({
-    searchQuery: watch('filters') ?? undefined,
-    onFilterChange: handleSetFilters,
-  });
 
   const displayedColumns = splitAndTrimCSV(
     dbSqlRowTableConfig?.select ??
