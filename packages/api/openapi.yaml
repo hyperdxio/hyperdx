@@ -1,0 +1,906 @@
+openapi: 3.0.3
+info:
+  title: HyperDX API
+  description: |-
+    API for managing HyperDX Alerts and Dashboards, and querying Chart series data.
+    Based strictly on documentation available at:
+    - https://www.hyperdx.io/docs/api/alerts
+    - https://www.hyperdx.io/docs/api/dashboards
+    - https://www.hyperdx.io/docs/api/charts
+
+    Note: Chart configurations appear to be managed implicitly via the Dashboards API.
+    The `/v1/chart/series` endpoint queries data based on a definition, it does not manage saved chart configurations.
+  version: '1.0.1' # Incremented version for revision
+servers:
+  - url: https://app.hyperdx.io/api
+    description: Production server
+security:
+  - ApiKeyAuth: []
+tags:
+  - name: Alerts
+    description: Manage monitoring alerts
+  - name: Dashboards
+    description: Manage dashboards (including their associated chart configurations)
+  - name: Chart Data
+    description: Query time series data for charts
+
+paths:
+  # --- Alerts Endpoints (Verified against docs) ---
+  /alerts:
+    get:
+      tags:
+        - Alerts
+      summary: List all alerts
+      description: Retrieves a list of all configured alerts.
+      operationId: listAlerts
+      responses:
+        '200':
+          description: A list of alerts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+              example:
+                - _id: "alert_abc123"
+                  name: "High Error Rate"
+                  description: "Alert when error logs exceed 10 per minute"
+                  query: "level:error"
+                  threshold: 10
+                  type: "THRESHOLD"
+                  channelType: "SLACK"
+                  channelConfig:
+                    channel: "#alerts"
+                    url: "https://hooks.slack.com/services/..."
+                  frequency: 60
+                  window: 60
+                  lastTriggeredAt: "2023-10-26T10:00:00.000Z"
+                  # lastFailureMessage removed as not in docs examples
+                  createdAt: "2023-10-01T12:00:00.000Z"
+                  updatedAt: "2023-10-26T10:00:00.000Z"
+                  silencedUntil: null
+                  state: "OK"
+                  severity: "ERROR"
+                # ... other example alerts
+    post:
+      tags:
+        - Alerts
+      summary: Create a new alert
+      description: Creates a new monitoring alert based on the provided configuration.
+      operationId: createAlert
+      requestBody:
+        description: Alert configuration object based on documentation examples.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertPayload'
+            example:
+              name: "High Latency P95"
+              description: "Alert when p95 latency > 500ms"
+              query: "duration_ms:>0"
+              threshold: 500 # Required for THRESHOLD type
+              type: "THRESHOLD" # or PRESENCE/ABSENCE
+              channelType: "EMAIL"
+              channelConfig:
+                emails: ["ops@example.com"]
+              frequency: 60 # Check every 60 seconds
+              window: 300 # Over the last 300 seconds
+              severity: "WARNING"
+              # silencedUntil is not in the create example, omitted from payload schema
+      responses:
+        '201':
+          description: Alert created successfully. Returns the created alert object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '400':
+          description: Bad Request - Invalid input data.
+
+  /alerts/{alertId}:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        description: The ID of the alert to operate on.
+        schema:
+          type: string
+        example: "alert_abc123"
+    get:
+      tags:
+        - Alerts
+      summary: Get a specific alert
+      description: Retrieves the details of a specific alert by its ID.
+      operationId: getAlertById
+      responses:
+        '200':
+          description: Alert details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+              example:
+                _id: "alert_abc123"
+                # ... full alert object example from previous versions
+        '404':
+          description: Not Found - Alert with the specified ID does not exist.
+    put:
+      tags:
+        - Alerts
+      summary: Update an existing alert
+      description: Updates the configuration of an existing alert. The payload should contain all fields for replacement.
+      operationId: updateAlert
+      requestBody:
+        description: Updated alert configuration object based on documentation examples.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlertPayload'
+            example:
+              name: "High Error Rate (Updated)"
+              description: "Alert when error logs exceed 15 per minute"
+              query: "level:error"
+              threshold: 15
+              type: "THRESHOLD"
+              channelType: "SLACK"
+              channelConfig:
+                channel: "#alerts-critical"
+                url: "https://hooks.slack.com/services/..."
+              frequency: 60
+              window: 120
+              severity: "CRITICAL"
+              # silencedUntil is part of the Alert object but not shown in PUT example payload, omitted here
+      responses:
+        '200':
+          description: Alert updated successfully. Returns the updated alert object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '400':
+          description: Bad Request - Invalid input data.
+        '404':
+          description: Not Found - Alert with the specified ID does not exist.
+    delete:
+      tags:
+        - Alerts
+      summary: Delete an alert
+      description: Permanently deletes a specific alert by its ID.
+      operationId: deleteAlert
+      responses:
+        '204':
+          description: Alert deleted successfully. No content.
+        '404':
+          description: Not Found - Alert with the specified ID does not exist.
+
+  # --- Dashboards Endpoints (Verified against docs with corrections) ---
+  /dashboards:
+    get:
+      tags:
+        - Dashboards
+      summary: List all dashboards
+      description: Retrieves a summary list of all dashboards accessible by the user.
+      operationId: listDashboards
+      responses:
+        '200':
+          description: A list of dashboard summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardSummary'
+              example:
+                - _id: "dash_abc123"
+                  name: "API Performance"
+                  description: "Dashboard tracking key API metrics"
+                  tags: ["api", "performance"]
+                  createdAt: "2023-08-15T10:00:00Z"
+                  updatedAt: "2023-10-25T14:30:00Z"
+                # ... other dashboard summary examples
+    post:
+      tags:
+        - Dashboards
+      summary: Create a new dashboard
+      description: |-
+        Creates a new dashboard.
+        Note: The documentation example shows `charts` and `layout` as empty arrays `[]` upon creation.
+        It's assumed charts/layout are typically configured via PUT after creation or referenced by ID if created elsewhere.
+      operationId: createDashboard
+      requestBody:
+        description: Dashboard configuration object based on documentation example.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDashboardPayload'
+            example:
+              name: "User Authentication Metrics"
+              description: "Tracks login, signup, and session events."
+              tags: ["auth", "users"]
+              charts: [] # Example shows empty array
+              layout: [] # Example shows empty array
+              variables:
+                - name: "Service"
+                  type: "query"
+                  definition: "SELECT DISTINCT service FROM logs"
+                  defaultValue: "auth-service"
+      responses:
+        '201':
+          description: Dashboard created successfully. Returns the created dashboard object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          description: Bad Request - Invalid input data.
+
+  /dashboards/{dashboardId}:
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The ID of the dashboard to operate on.
+        schema:
+          type: string
+        example: "dash_abc123"
+    get:
+      tags:
+        - Dashboards
+      summary: Get a specific dashboard
+      description: Retrieves the full details of a specific dashboard, including its chart configurations, layout, and variables.
+      operationId: getDashboardById
+      responses:
+        '200':
+          description: Dashboard details including nested chart configurations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+              example:
+                _id: "dash_abc123"
+                name: "API Performance"
+                description: "Dashboard tracking key API metrics"
+                tags: ["api", "performance"]
+                charts: # Array of full Chart objects
+                  - _id: "chart_xyz789"
+                    name: "API Request Count"
+                    # ... other chart fields as defined in Chart schema
+                  - _id: "chart_uvw456"
+                    name: "P95 Latency"
+                    # ... other chart fields
+                layout: # Array of LayoutItem objects
+                  - i: "chart_xyz789"
+                    x: 0
+                    y: 0
+                    w: 6
+                    h: 4
+                  # ... other layout items
+                variables: # Array of DashboardVariable objects
+                  - name: "Environment"
+                    type: "custom"
+                    # ... other variable fields
+                createdAt: "2023-08-15T10:00:00Z"
+                updatedAt: "2023-10-25T14:30:00Z"
+        '404':
+          description: Not Found - Dashboard with the specified ID does not exist.
+    put:
+      tags:
+        - Dashboards
+      summary: Update an existing dashboard
+      description: |-
+        Updates the configuration of an existing dashboard.
+        Note: Based on the documentation example, the `charts` array in the payload should contain **chart IDs (strings)**, not full chart objects.
+        The payload should contain all fields for replacement.
+      operationId: updateDashboard
+      requestBody:
+        description: Updated dashboard configuration object. Charts are referenced by ID.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDashboardPayload'
+            example:
+              name: "API Performance (Enhanced)"
+              description: "Dashboard tracking key API metrics including errors"
+              tags: ["api", "performance", "errors"]
+              charts: ["chart_xyz789", "chart_uvw456", "chart_new123"] # Array of strings (Chart IDs)
+              layout:
+                - i: "chart_xyz789"
+                  x: 0
+                  y: 0
+                  w: 4
+                  h: 3
+                - i: "chart_uvw456"
+                  x: 4
+                  y: 0
+                  w: 4
+                  h: 3
+                - i: "chart_new123"
+                  x: 8
+                  y: 0
+                  w: 4
+                  h: 3
+              variables:
+                - name: "Environment"
+                  type: "custom"
+                  definition: "prod,staging"
+                  defaultValue: "prod"
+      responses:
+        '200':
+          description: Dashboard updated successfully. Returns the updated dashboard object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          description: Bad Request - Invalid input data.
+        '404':
+          description: Not Found - Dashboard with the specified ID does not exist.
+    delete:
+      tags:
+        - Dashboards
+      summary: Delete a dashboard
+      description: Permanently deletes a specific dashboard and its associated configurations (likely including chart configurations defined within it).
+      operationId: deleteDashboard
+      responses:
+        '204':
+          description: Dashboard deleted successfully. No content.
+        '404':
+          description: Not Found - Dashboard with the specified ID does not exist.
+
+  # --- Chart Data Query Endpoint (Unchanged from previous correction) ---
+  /v1/chart/series:
+    post:
+      tags:
+        - Chart Data
+      summary: Query chart time series data
+      description: Executes a query based on the provided chart definition parameters and returns time series data points. This does *not* interact with saved chart configurations.
+      operationId: queryChartSeries
+      requestBody:
+        description: Chart query definition and time range.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartSeriesQueryPayload'
+            example:
+              type: "TIMESERIES"
+              query: "level:error service:api"
+              aggFn: "COUNT"
+              groupBy: ["status_code"]
+              granularityMillis: 60000
+              startTime: 1678886400000
+              endTime: 1678890000000
+      responses:
+        '200':
+          description: Successfully retrieved time series data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartSeriesResponse'
+              example:
+                series:
+                  - name: "status_code:500"
+                    data:
+                      - { x: 1678886400000, y: 10 }
+                      - { x: 1678886460000, y: 12 }
+                  - name: "status_code:404"
+                    data:
+                      - { x: 1678886400000, y: 5 }
+                      - { x: 1678886460000, y: 7 }
+                metadata:
+                  query: "level:error service:api"
+                  startTime: 1678886400000
+                  endTime: 1678890000000
+                  granularityMillis: 60000
+        '400':
+          description: Bad Request - Invalid query parameters or time range.
+
+
+components:
+  schemas:
+    # ----- Alert Schemas (Corrected) -----
+    Alert:
+      type: object
+      description: Represents a configured alert.
+      properties:
+        _id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        query:
+          type: string
+        threshold:
+          type: number
+          format: double
+          description: Required for THRESHOLD type alerts.
+        type:
+          type: string
+          enum: [THRESHOLD, PRESENCE, ABSENCE]
+        channelType:
+          type: string
+          enum: [SLACK, WEBHOOK, EMAIL, PAGERDUTY]
+        channelConfig:
+          type: object
+          additionalProperties: true # Kept flexible as structure varies greatly
+          description: Configuration specific to the channelType. See docs for examples per type.
+        frequency:
+          type: integer
+          description: Evaluation frequency in seconds.
+        window:
+          type: integer
+          description: Evaluation window in seconds.
+        lastTriggeredAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        # lastFailureMessage: Removed - Not present in documentation examples for the Alert object.
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        silencedUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp until which alert notifications are silenced. Can be set via PUT.
+        state:
+          type: string
+          enum: [OK, ALERT, NO_DATA, ERROR]
+          readOnly: true
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+      required:
+        # Based on observed fields in examples
+        - _id
+        - name
+        - query
+        - type
+        - channelType
+        - channelConfig
+        - frequency
+        - window
+        - createdAt
+        - updatedAt
+        - state
+        - severity
+
+    CreateAlertPayload:
+      type: object
+      description: Payload for creating a new alert based on documentation examples.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        query:
+          type: string
+        threshold:
+          type: number
+          format: double
+          description: Required for THRESHOLD type alerts.
+        type:
+          type: string
+          enum: [THRESHOLD, PRESENCE, ABSENCE]
+        channelType:
+          type: string
+          enum: [SLACK, WEBHOOK, EMAIL, PAGERDUTY]
+        channelConfig:
+          type: object
+          additionalProperties: true
+          description: Configuration specific to the channelType.
+        frequency:
+          type: integer
+        window:
+          type: integer
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+        # silencedUntil: Omitted as it's not in the POST example payload in the docs.
+      required:
+        - name
+        - query
+        - type
+        - channelType
+        - channelConfig
+        - frequency
+        - window
+        - severity
+
+    UpdateAlertPayload:
+      type: object
+      description: Payload for updating an existing alert based on documentation examples. Assumes full replacement (PUT semantics).
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        query:
+          type: string
+        threshold:
+          type: number
+          format: double
+          description: Required for THRESHOLD type alerts.
+        type:
+          type: string
+          enum: [THRESHOLD, PRESENCE, ABSENCE]
+        channelType:
+          type: string
+          enum: [SLACK, WEBHOOK, EMAIL, PAGERDUTY]
+        channelConfig:
+          type: object
+          additionalProperties: true
+          description: Configuration specific to the channelType.
+        frequency:
+          type: integer
+        window:
+          type: integer
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+        silencedUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional field to silence the alert until a specific time during update. Present in Alert object, assumed usable in PUT.
+      required:
+        # Required fields based on PUT example and standard PUT behavior (replace)
+        - name
+        - query
+        - type
+        - channelType
+        - channelConfig
+        - frequency
+        - window
+        - severity
+
+    # ----- Dashboard Schemas (Corrected) -----
+    DashboardSummary:
+      type: object
+      description: Summary representation of a dashboard, as returned by the list endpoint.
+      properties:
+        _id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - _id
+        - name
+        - tags
+        - createdAt
+        - updatedAt
+
+    Dashboard:
+      type: object
+      description: Full representation of a dashboard, including nested chart configurations.
+      properties:
+        _id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        charts:
+          type: array
+          items:
+             $ref: '#/components/schemas/Chart' # GET response includes full chart objects
+          description: Array of chart configurations included in this dashboard.
+        layout:
+          type: array
+          items:
+            $ref: '#/components/schemas/LayoutItem'
+          description: Defines the position and size of charts on the dashboard grid.
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardVariable'
+          description: Template variables configured for the dashboard.
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - _id
+        - name
+        - tags
+        - charts
+        - layout
+        - variables
+        - createdAt
+        - updatedAt
+
+    CreateDashboardPayload:
+      type: object
+      description: |-
+        Payload for creating a new dashboard.
+        Note: Documentation example shows `charts` and `layout` as `[]`. Schema reflects minimum required fields based on example.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          description: Optional tags for the dashboard.
+        charts:
+          type: array
+          items:
+            type: string # Corrected: Assumed to be empty or contain existing chart IDs, not full definitions, based on `[]` in example.
+          description: Optional list of existing chart IDs. Example shows `[]`.
+        layout:
+          type: array
+          items:
+            $ref: '#/components/schemas/LayoutItem'
+          description: Optional layout configuration. Example shows `[]`.
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardVariableInput'
+          description: Optional template variables.
+      required:
+        - name # Only name is consistently shown as required/non-empty across examples.
+
+    UpdateDashboardPayload:
+      type: object
+      description: |-
+        Payload for updating an existing dashboard. Assumes full replacement (PUT semantics).
+        Note: `charts` array should contain **chart IDs (strings)** based on documentation example.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        charts:
+          type: array
+          items:
+            type: string # Corrected: Docs example uses array of chart IDs.
+          description: Complete list of chart IDs (strings) to be included in the dashboard. Order matters.
+        layout:
+          type: array
+          items:
+            $ref: '#/components/schemas/LayoutItem'
+          description: Complete layout configuration for the charts specified.
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardVariableInput' # Assuming variable definitions are replaced entirely on PUT
+          description: Complete list of template variables for the dashboard.
+      required: # Based on PUT example showing all these sections being provided
+        - name
+        - tags
+        - charts
+        - layout
+        - variables
+
+    LayoutItem:
+      # (Schema unchanged, matches examples)
+      type: object
+      properties:
+        i:
+          type: string # Chart ID
+        x:
+          type: integer
+        y:
+          type: integer
+        w:
+          type: integer
+        h:
+          type: integer
+      required:
+        - i
+        - x
+        - y
+        - w
+        - h
+
+    DashboardVariable:
+      # (Schema unchanged, matches examples in GET response)
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [query, custom, textbox] # From example
+        definition:
+          type: string
+        defaultValue:
+          type: string
+      required:
+        - name
+        - type
+        - definition
+
+    DashboardVariableInput:
+      # (Schema unchanged, matches examples in POST/PUT payloads)
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [query, custom, textbox]
+        definition:
+          type: string
+        defaultValue:
+          type: string
+      required:
+        - name
+        - type
+        - definition
+
+
+    Chart: # Represents the Chart *Configuration* as seen inside a Dashboard GET response
+      type: object
+      description: Configuration details of a chart as represented within a dashboard response. Management occurs via Dashboard endpoints.
+      properties:
+        _id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [TIMESERIES, TABLE, NUMBER, HISTOGRAM, TEXT] # Based on dashboard GET examples
+        query:
+          type: string
+        spanField:
+          type: string
+          nullable: true
+        aggFn:
+          type: string
+          nullable: true
+        groupBy:
+          type: array
+          items:
+            type: string
+        displayType:
+          type: string
+          nullable: true
+        granularityMillis:
+          type: integer
+          nullable: true
+        visualizationOptions:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required: # Based on fields observed in Dashboard GET examples
+        - _id
+        - name
+        - type
+        - query
+        - createdAt
+        - updatedAt
+
+    # ----- Schemas for Chart Data Querying (POST /v1/chart/series) - Unchanged -----
+
+    ChartSeriesQueryPayload:
+      type: object
+      # ... properties (type, query, aggFn, etc.)
+      required:
+        - type
+        - query
+        - granularityMillis
+        - startTime
+        - endTime
+
+    ChartSeriesResponse:
+      type: object
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeriesData'
+        metadata:
+          $ref: '#/components/schemas/SeriesMetadata'
+      required:
+        - series
+        - metadata
+
+    SeriesData:
+      type: object
+      properties:
+        name:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              x:
+                type: integer
+                format: int64
+              y:
+                type: number
+            required:
+             - x
+             - y
+      required:
+        - name
+        - data
+
+    SeriesMetadata:
+      type: object
+      properties:
+        query:
+          type: string
+        startTime:
+          type: integer
+          format: int64
+        endTime:
+          type: integer
+          format: int64
+        granularityMillis:
+          type: integer
+      required:
+        - query
+        - startTime
+        - endTime
+        - granularityMillis
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: "Authentication using a Bearer token (API Key) in the Authorization header."
