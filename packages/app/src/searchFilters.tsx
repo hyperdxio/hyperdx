@@ -356,9 +356,13 @@ export function usePinnedFilters({
 
   const clearPinnedFilterValue = useCallback(
     (property: string, value: string) => {
-      if (!Object.hasOwn(pinnedFilters, property)) return;
+      if (!pinnedFilters[property]) return;
       setPinnedFilters(prevFilters =>
         produce(prevFilters, draft => {
+          const curMode = currentFilterMode(property, value);
+          if (curMode) {
+            setFilterValue(property, value, curMode);
+          }
           const newArr = draft[property].filter(v => v.value !== value);
           draft[property] = newArr;
           if (draft[property].length === 0) {
