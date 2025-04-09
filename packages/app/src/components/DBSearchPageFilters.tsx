@@ -1,10 +1,5 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
-import objectHash from 'object-hash';
-import {
-  ChartConfigWithDateRange,
-  Filter,
-} from '@hyperdx/common-utils/dist/types';
+import { useEffect, useMemo, useState } from 'react';
+import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -25,8 +20,8 @@ import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
-import { useSearchPageFilterState } from '@/searchFilters';
-import { mergePath, useLocalStorage } from '@/utils';
+import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
+import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -34,9 +29,12 @@ import classes from '../../styles/SearchPage.module.scss';
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
+  pinned: boolean;
   onChange?: (checked: boolean) => void;
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
+  onClickPin: VoidFunction;
+  onClickClearPin: VoidFunction;
 };
 
 export const TextButton = ({
@@ -61,15 +59,21 @@ const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
   label,
+  pinned,
   onChange,
   onClickOnly,
   onClickExclude,
+  onClickPin,
+  onClickClearPin,
 }: FilterCheckboxProps) => {
   return (
-    <div className={classes.filterCheckbox}>
+    <div
+      className={classes.filterCheckbox}
+      style={{ cursor: pinned ? 'auto' : 'pointer' }}
+    >
       <Group
         gap={8}
-        onClick={() => onChange?.(!value)}
+        onClick={() => !pinned && onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
         align="flex-start"
@@ -103,11 +107,22 @@ export const FilterCheckbox = ({
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
-        {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
-        {onClickExclude && (
+        {!pinned && onClickOnly && (
+          <TextButton onClick={onClickOnly} label="Only" />
+        )}
+        {!pinned && onClickExclude && (
           <TextButton onClick={onClickExclude} label="Exclude" />
         )}
+        <TextButton
+          onClick={pinned ? onClickClearPin : onClickPin}
+          label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
+        />
       </div>
+      {pinned && (
+        <Text size="xxs" c="gray.6">
+          <i className="bi bi-pin-angle-fill"></i>
+        </Text>
+      )}
     </div>
   );
 };
@@ -124,7 +139,7 @@ export type FilterGroupProps = {
   onClearClick: VoidFunction;
   onOnlyClick: (value: string) => void;
   onExcludeClick: (value: string) => void;
-};
+} & ReturnType<typeof usePinnedFilters>;
 
 const MAX_FILTER_GROUP_ITEMS = 10;
 
@@ -137,6 +152,10 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
   onExcludeClick,
+  setPinnedFilterValue,
+  clearPinnedFilterValue,
+  checkIsFilterValuePinned,
+  isPinnedFiltersActive,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
@@ -168,12 +187,18 @@ export const FilterGroup = ({
       a: (typeof augmentedOptions)[0],
       b: (typeof augmentedOptions)[0],
     ) => {
+      const aPinned = checkIsFilterValuePinned(name, a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
+      const bPinned = checkIsFilterValuePinned(name, b.value);
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
 
-      // First sort by included status
+      // First sort by pinned status
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // Then sort by included status
       if (aIncluded && !bIncluded) return -1;
       if (!aIncluded && bIncluded) return 1;
 
@@ -260,6 +285,10 @@ export const FilterGroup = ({
           <FilterCheckbox
             key={option.value}
             label={option.label}
+            pinned={
+              isPinnedFiltersActive &&
+              checkIsFilterValuePinned(name, option.value)
+            }
             value={
               selectedValues.included.has(option.value)
                 ? 'included'
@@ -270,6 +299,8 @@ export const FilterGroup = ({
             onChange={() => onChange(option.value)}
             onClickOnly={() => onOnlyClick(option.value)}
             onClickExclude={() => onExcludeClick(option.value)}
+            onClickClearPin={() => clearPinnedFilterValue(name, option.value)}
+            onClickPin={() => setPinnedFilterValue(name, option.value)}
           />
         ))}
         {optionsLoading ? (
@@ -309,156 +340,11 @@ export const FilterGroup = ({
   );
 };
 
-type SavedFilters = {
-  [key: string]: Filter[];
-};
-
-function SaveFilterInput() {
-  const [savedFilters, setSavedFilters] = useLocalStorage<SavedFilters>(
-    'hdx-saved-search-filters',
-    {},
-  );
-  const [queryFilters] = useQueryState<Filter[]>(
-    'filters',
-    parseAsJson<Filter[]>(),
-  );
-  const [newFilterName, setNewFilterName] = useState('');
-  const [showButton, setShowButton] = useState(true);
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    setNewFilterName(e.target.value);
-  };
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!queryFilters) return;
-    const tmp = savedFilters;
-    tmp[newFilterName] = queryFilters;
-    setSavedFilters(tmp);
-  };
-
-  return (
-    <Flex pl="xs" py="xxs" mb="xs" className={classes.filterCheckbox}>
-      {showButton ? (
-        <UnstyledButton
-          onClick={() => setShowButton(false)}
-          className={classes.textButton}
-          style={{ width: '100%' }}
-        >
-          <Text size="xs" c="gray.6" lh={1}>
-            <b>+ Save Filter</b>
-          </Text>
-        </UnstyledButton>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          <TextInput
-            autoFocus
-            onBlur={() => setShowButton(true)}
-            placeholder="New Filter"
-            onChange={handleChange}
-            name="newFilterName"
-          />
-        </form>
-      )}
-    </Flex>
-  );
-}
-
-export function SavedFilters() {
-  const [queryFilters, setQueryFilters] = useQueryState(
-    'filters',
-    parseAsJson<Filter[]>(),
-  );
-  const [savedFilters, setSavedFilters] = useLocalStorage<SavedFilters>(
-    'hdx-saved-search-filters',
-    {},
-  );
-  const showSaveButton = useMemo(
-    // true if no saved filter matches the current filters
-    () =>
-      queryFilters &&
-      queryFilters.length > 0 &&
-      !Object.entries(savedFilters).some(
-        ([_, filter]) =>
-          objectHash.sha1(filter) === objectHash.sha1(queryFilters),
-      ),
-    [queryFilters, savedFilters],
-  );
-  const removeFilter = useCallback(
-    (label: string) => {
-      const newFilters = structuredClone(savedFilters);
-      delete newFilters[label];
-      setSavedFilters(newFilters);
-    },
-    [savedFilters, setSavedFilters],
-  );
-
-  const SavedFilterOption = ({
-    label,
-    filters,
-  }: {
-    label: string;
-    filters: Filter[];
-  }) => {
-    const [isHovered, setIsHovered] = useState(false);
-    const active = objectHash.sha1(filters) === objectHash.sha1(queryFilters);
-    return (
-      <Group
-        key={label}
-        justify="space-between"
-        wrap="nowrap"
-        onMouseOver={() => setIsHovered(true)}
-        onMouseOut={() => setIsHovered(false)}
-        className={classes.highlightRow}
-      >
-        <Text
-          size="xs"
-          c={active ? 'green' : 'gray.3'}
-          w="100%"
-          pl="xs"
-          onClick={() => setQueryFilters(filters)}
-          style={{ cursor: 'pointer', opacity: 0.8 }}
-        >
-          {label}
-        </Text>
-        {/* ONLY SHOW X IF HOVERING OVER THIS COMPONENT */}
-        <UnstyledButton
-          className={classes.highlightButton}
-          style={{ visibility: isHovered ? 'inherit' : 'hidden' }}
-          p="2px"
-          onClick={() => removeFilter(label)}
-        >
-          <i className="bi bi-x"></i>
-        </UnstyledButton>
-      </Group>
-    );
-  };
-
-  return (
-    <Stack gap={0}>
-      {(Object.keys(savedFilters).length > 0 || showSaveButton) && (
-        <Text size="xxs" c="dimmed" fw="bold">
-          Saved Filters
-        </Text>
-      )}
-      {Object.keys(savedFilters).length > 0 && (
-        <Stack gap={0}>
-          {Object.entries(savedFilters).map(([label, filters]) => (
-            <SavedFilterOption key={label} label={label} filters={filters} />
-          ))}
-        </Stack>
-      )}
-      {showSaveButton && <SaveFilterInput />}
-    </Stack>
-  );
-}
-
-type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
-
 export const DBSearchPageFilters = ({
   filters: filterState,
-  clearAllFilters,
-  clearFilter,
   setFilterValue,
+  clearAllFilters: _clearAllFilters,
+  clearFilter: _clearFilter,
   isLive,
   chartConfig,
   analysisMode,
@@ -469,6 +355,19 @@ export const DBSearchPageFilters = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
 } & FilterStateHook) => {
+  const pinnedFiltersOpts = usePinnedFilters({
+    filters: filterState,
+    setFilterValue,
+    _clearAllFilters,
+    _clearFilter,
+  });
+  const {
+    pinnedFilters,
+    isPinnedFiltersActive,
+    setPinnedFiltersActive,
+    clearAllFilters,
+    clearFilter,
+  } = pinnedFiltersOpts;
   const { width, startResize } = useResizable(16, 'left');
 
   const { data, isLoading } = useAllFields({
@@ -522,6 +421,10 @@ export const DBSearchPageFilters = ({
   }, [chartConfig.dateRange, isLive]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
+  const showPinOptionsButton = useMemo(
+    () => Object.entries(pinnedFilters).length > 0,
+    [pinnedFilters],
+  );
 
   const {
     data: facets,
@@ -591,8 +494,6 @@ export const DBSearchPageFilters = ({
             </Tabs.List>
           </Tabs>
 
-          <SavedFilters />
-
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>
               <Text size="xxs" c="dimmed" fw="bold">
@@ -605,6 +506,16 @@ export const DBSearchPageFilters = ({
                       className="bi-arrow-clockwise ms-1 fs-7"
                       onClick={() => setDateRange(chartConfig.dateRange)}
                     />
+                  }
+                />
+              )}
+              {showPinOptionsButton && (
+                <TextButton
+                  onClick={() => setPinnedFiltersActive(prev => !prev)}
+                  label={
+                    <i
+                      className={`bi bi-pin-angle${isPinnedFiltersActive ? '-fill' : ''} ms-1 fs-7`}
+                    ></i>
                   }
                 />
               )}
@@ -654,6 +565,7 @@ export const DBSearchPageFilters = ({
               onExcludeClick={value => {
                 setFilterValue(facet.key, value, 'exclude');
               }}
+              {...pinnedFiltersOpts}
             />
           ))}
 

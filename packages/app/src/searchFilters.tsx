@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
+import { useLocalStorage } from './utils';
 
 export type FilterState = {
   [key: string]: {
@@ -198,15 +199,201 @@ export const useSearchPageFilterState = ({
   );
 
   const clearAllFilters = React.useCallback(() => {
-    setFilters({});
+    setFilters(() => ({}));
     updateFilterQuery({});
   }, [updateFilterQuery]);
 
   return {
     filters,
-    clearFilter,
     setFilters,
     setFilterValue,
+    clearFilter,
     clearAllFilters,
   };
 };
+
+type PinnedFilters = {
+  [key: string]: {
+    value: string;
+    mode: 'include' | 'exclude';
+  }[];
+};
+
+export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
+
+export function usePinnedFilters({
+  filters,
+  setFilterValue,
+  _clearAllFilters,
+  _clearFilter,
+}: {
+  filters: FilterStateHook['filters'];
+  setFilterValue: FilterStateHook['setFilterValue'];
+  _clearAllFilters: FilterStateHook['clearAllFilters'];
+  _clearFilter: FilterStateHook['clearFilter'];
+}) {
+  ////////////////////////////////////////////////////////
+  // State Functions
+  ////////////////////////////////////////////////////////
+  // Eventually replace pinnedFilters with a GET from api/mongo
+  // Eventually replace setPinnedFilters with a POST to api/mongo
+  const [pinnedFilters, setPinnedFilters] = useLocalStorage<PinnedFilters>(
+    'hdx-pinned-search-filters',
+    {},
+  );
+  const [isPinnedFiltersActive, _setPinnedFiltersActive] =
+    useLocalStorage<boolean>('hdx-pinned-search-filters-active', false);
+
+  ////////////////////////////////////////////////////////
+  // Helper Functions
+  ////////////////////////////////////////////////////////
+  const currentFilterMode = useCallback(
+    (property: string, value: string): 'include' | 'exclude' | null => {
+      if (!filters[property]) return null;
+      if (filters[property].included.has(value)) return 'include';
+      if (filters[property].excluded.has(value)) return 'exclude';
+      return null;
+    },
+    [filters],
+  );
+
+  ////////////////////////////////////////////////////////
+  // Business Functions
+  ////////////////////////////////////////////////////////
+  const setPinnedFilterValue = useCallback(
+    (property: string, value: string) => {
+      let mode = currentFilterMode(property, value);
+      // if the pin is directly clicked without the checkbox clicked, apply an
+      // 'include' filter
+      if (mode === null) {
+        mode = 'include';
+        setFilterValue(property, value, mode);
+      }
+      setPinnedFilters(prevPins =>
+        produce(prevPins, draft => {
+          if (!draft[property]) {
+            draft[property] = [];
+          }
+          if (draft[property].findIndex(v => v.value === value) === -1) {
+            draft[property].push({ value, mode: mode! });
+          }
+          return draft;
+        }),
+      );
+      if (!isPinnedFiltersActive) {
+        setPinnedFiltersActive(true);
+      }
+    },
+    [pinnedFilters, setPinnedFilters, setFilterValue],
+  );
+
+  const setPinnedFiltersActive = useCallback(
+    (val: Parameters<typeof _setPinnedFiltersActive>[0]) => {
+      const newIsPinnedFiltersActive =
+        val instanceof Function ? val(isPinnedFiltersActive) : val;
+      if (newIsPinnedFiltersActive && !isPinnedFiltersActive) {
+        // apply all pinned filters
+        for (const [property, pins] of Object.entries(pinnedFilters)) {
+          for (const pin of pins) {
+            if (currentFilterMode(property, pin.value) !== pin.mode) {
+              setFilterValue(property, pin.value, pin.mode);
+            }
+          }
+        }
+        _setPinnedFiltersActive(() => newIsPinnedFiltersActive);
+      } else if (!newIsPinnedFiltersActive && isPinnedFiltersActive) {
+        // remove all pinned filters
+        for (const [property, pins] of Object.entries(pinnedFilters)) {
+          for (const pin of pins) {
+            setFilterValue(property, pin.value, pin.mode);
+          }
+        }
+        _setPinnedFiltersActive(() => newIsPinnedFiltersActive);
+      }
+    },
+    [
+      _setPinnedFiltersActive,
+      setFilterValue,
+      pinnedFilters,
+      isPinnedFiltersActive,
+    ],
+  );
+
+  const clearPinnedFilterValue = useCallback(
+    (property: string, value: string) => {
+      if (!Object.hasOwn(pinnedFilters, property)) return;
+      setPinnedFilters(prevFilters =>
+        produce(prevFilters, draft => {
+          const newArr = draft[property].filter(v => v.value !== value);
+          draft[property] = newArr;
+          if (draft[property].length === 0) {
+            delete draft[property];
+          }
+          return draft;
+        }),
+      );
+    },
+    [pinnedFilters, setPinnedFilters],
+  );
+
+  const checkIsFilterValuePinned = useCallback(
+    (name: string, _value: string): boolean => {
+      return Object.entries(pinnedFilters).some(([filterName, opts]) => {
+        return (
+          filterName === name && opts.some(({ value }) => value === _value)
+        );
+      });
+    },
+    [pinnedFilters],
+  );
+
+  // clears specified filters, except for pins if pinning is active
+  const clearFilter = useCallback(
+    (property: string) => {
+      if (!isPinnedFiltersActive) {
+        _clearFilter(property);
+        return;
+      }
+
+      // clear all filters that are not pinned
+      const sets = structuredClone(filters[property]);
+      for (const value of sets.included.keys()) {
+        if (!checkIsFilterValuePinned(property, value)) {
+          // toggle includes off
+          setFilterValue(property, value, 'include');
+        }
+      }
+      for (const value of sets.excluded.keys()) {
+        if (!checkIsFilterValuePinned(property, value)) {
+          // toggle excludes off
+          setFilterValue(property, value, 'exclude');
+        }
+      }
+    },
+    [filters, checkIsFilterValuePinned, setFilterValue],
+  );
+
+  // clears filters, except for pins if pinning is active
+  const clearAllFilters = useCallback(() => {
+    if (!isPinnedFiltersActive) {
+      _clearAllFilters();
+      return;
+    }
+
+    // clear all filters except for those that are pinned
+    for (const property of Object.keys(filters)) {
+      clearFilter(property);
+    }
+  }, [isPinnedFiltersActive, _clearAllFilters, clearFilter]);
+
+  return {
+    pinnedFilters,
+    setPinnedFilterValue,
+    clearPinnedFilterValue,
+    isPinnedFiltersActive,
+    setPinnedFiltersActive,
+    checkIsFilterValuePinned,
+    clearAllFilters,
+    clearFilter,
+  };
+}
