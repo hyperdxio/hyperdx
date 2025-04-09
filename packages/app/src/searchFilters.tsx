@@ -340,7 +340,10 @@ export function usePinnedFilters({
         // remove all pinned filters
         for (const [property, pins] of Object.entries(pinnedFilters)) {
           for (const pin of pins) {
-            setFilterValue(property, pin.value, pin.mode);
+            const mode = currentFilterMode(property, pin.value);
+            if (mode) {
+              setFilterValue(property, pin.value, pin.mode);
+            }
           }
         }
         _setPinnedFiltersActive(() => newIsPinnedFiltersActive);
