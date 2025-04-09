@@ -139,7 +139,10 @@ export type FilterGroupProps = {
   onClearClick: VoidFunction;
   onOnlyClick: (value: string) => void;
   onExcludeClick: (value: string) => void;
-} & ReturnType<typeof usePinnedFilters>;
+  onClearPinClick: (value: string) => void;
+  onPinClick: (value: string) => void;
+  isPinned: (value: string) => boolean;
+};
 
 const MAX_FILTER_GROUP_ITEMS = 10;
 
@@ -152,10 +155,9 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
   onExcludeClick,
-  setPinnedFilterValue,
-  clearPinnedFilterValue,
-  checkIsFilterValuePinned,
-  isPinnedFiltersActive,
+  onClearPinClick,
+  isPinned,
+  onPinClick,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
@@ -187,10 +189,10 @@ export const FilterGroup = ({
       a: (typeof augmentedOptions)[0],
       b: (typeof augmentedOptions)[0],
     ) => {
-      const aPinned = checkIsFilterValuePinned(name, a.value);
+      const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
-      const bPinned = checkIsFilterValuePinned(name, b.value);
+      const bPinned = isPinned(b.value);
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
 
@@ -285,10 +287,7 @@ export const FilterGroup = ({
           <FilterCheckbox
             key={option.value}
             label={option.label}
-            pinned={
-              isPinnedFiltersActive &&
-              checkIsFilterValuePinned(name, option.value)
-            }
+            pinned={isPinned(option.value)}
             value={
               selectedValues.included.has(option.value)
                 ? 'included'
@@ -299,8 +298,8 @@ export const FilterGroup = ({
             onChange={() => onChange(option.value)}
             onClickOnly={() => onOnlyClick(option.value)}
             onClickExclude={() => onExcludeClick(option.value)}
-            onClickClearPin={() => clearPinnedFilterValue(name, option.value)}
-            onClickPin={() => setPinnedFilterValue(name, option.value)}
+            onClickClearPin={() => onClearPinClick(option.value)}
+            onClickPin={() => onPinClick(option.value)}
           />
         ))}
         {optionsLoading ? (
@@ -355,19 +354,21 @@ export const DBSearchPageFilters = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
 } & FilterStateHook) => {
-  const pinnedFiltersOpts = usePinnedFilters({
-    filters: filterState,
-    setFilterValue,
-    _clearAllFilters,
-    _clearFilter,
-  });
   const {
     pinnedFilters,
     isPinnedFiltersActive,
     setPinnedFiltersActive,
     clearAllFilters,
     clearFilter,
-  } = pinnedFiltersOpts;
+    checkIsFilterValuePinned,
+    clearPinnedFilterValue,
+    setPinnedFilterValue,
+  } = usePinnedFilters({
+    filters: filterState,
+    setFilterValue,
+    _clearAllFilters,
+    _clearFilter,
+  });
   const { width, startResize } = useResizable(16, 'left');
 
   const { data, isLoading } = useAllFields({
@@ -565,7 +566,14 @@ export const DBSearchPageFilters = ({
               onExcludeClick={value => {
                 setFilterValue(facet.key, value, 'exclude');
               }}
-              {...pinnedFiltersOpts}
+              onClearPinClick={value =>
+                clearPinnedFilterValue(facet.key, value)
+              }
+              onPinClick={value => setPinnedFilterValue(facet.key, value)}
+              isPinned={value =>
+                isPinnedFiltersActive &&
+                checkIsFilterValuePinned(facet.key, value)
+              }
             />
           ))}
 

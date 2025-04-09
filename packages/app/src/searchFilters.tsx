@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
+
 import { useLocalStorage } from './utils';
 
 export type FilterState = {

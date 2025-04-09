@@ -16,6 +16,9 @@ describe('FilterGroup', () => {
     onClearClick: jest.fn(),
     onOnlyClick: jest.fn(),
     onExcludeClick: jest.fn(),
+    onClearPinClick: jest.fn(),
+    onPinClick: jest.fn(),
+    isPinned: jest.fn(),
   };
 
   it('should sort options alphabetically by default', () => {
