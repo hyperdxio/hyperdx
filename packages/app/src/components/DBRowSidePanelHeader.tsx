@@ -5,10 +5,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Box, Button, Flex, Modal, Paper, Popover, Text } from '@mantine/core';
+import { Button, Flex, Paper, Text } from '@mantine/core';
 
 import EventTag from '@/components/EventTag';
-import { TableSourceForm } from '@/components/SourceForm';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
@@ -20,37 +19,13 @@ const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
 
 const MAX_MAIN_CONTENT_LENGTH = 2000;
 
-const EditButton = ({
-  sourceId,
-  label,
-}: {
-  sourceId: string;
-  label?: string;
-}) => {
-  return (
-    <Popover width={600} position="bottom" withArrow withinPortal={false}>
-      <Popover.Target>
-        <Button size="compact-xs" variant="subtle" color="gray">
-          <i className="bi bi-gear-fill fs-8.5" />
-          {label && <span className="ms-2">{label}</span>}
-        </Button>
-      </Popover.Target>
-      <Popover.Dropdown>
-        <TableSourceForm sourceId={sourceId} />
-      </Popover.Dropdown>
-    </Popover>
-  );
-};
-
 export default function DBRowSidePanelHeader({
-  sourceId,
   tags,
   mainContent = '',
   mainContentHeader,
   date,
   severityText,
 }: {
-  sourceId: string;
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
@@ -137,12 +112,9 @@ export default function DBRowSidePanelHeader({
           ref={headerRef}
         >
           <Flex justify="space-between" mb="xs">
-            <Flex align="baseline" gap={2}>
-              <Text size="xs" c="gray.4">
-                {mainContentHeader}
-              </Text>
-              <EditButton sourceId={sourceId} />
-            </Flex>
+            <Text size="xs" c="gray.4">
+              {mainContentHeader}
+            </Text>
             {/* Toggles expanded sidebar header*/}
             {headerHeight >= maxBoxHeight && (
               <Button
@@ -184,7 +156,6 @@ export default function DBRowSidePanelHeader({
           <Text size="xs" c="gray.4" mb="xs">
             [Empty]
           </Text>
-          <EditButton sourceId={sourceId} label="Set body expression" />
         </Paper>
       )}
       <Flex mt="sm">

@@ -713,3 +713,10 @@ export function getMetricTableName(
         metricType.toLowerCase() as keyof typeof source.metricTables
       ];
 }
+
+/**
+ * Converts (T | T[]) to T[]. If undefined, empty array
+ */
+export function toArray<T>(obj?: T | T[]): T[] {
+  return !obj ? [] : Array.isArray(obj) ? obj : [obj];
+}
