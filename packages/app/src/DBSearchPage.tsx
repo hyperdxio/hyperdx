@@ -731,8 +731,6 @@ function DBSearchPage() {
               newInputSourceObj?.timestampValueExpression ?? '',
             )} DESC`,
           );
-          // Clear all search filters
-          searchFilters.clearAllFilters();
         }
       }
     });
@@ -1249,6 +1247,7 @@ function DBSearchPage() {
                     dateRange: searchedTimeRange,
                     with: aliasWith,
                   }}
+                  sourceId={inputSourceObj?.id}
                   {...searchFilters}
                 />
               </ErrorBoundary>

@@ -348,11 +348,13 @@ export const DBSearchPageFilters = ({
   chartConfig,
   analysisMode,
   setAnalysisMode,
+  sourceId,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
+  sourceId?: string;
 } & FilterStateHook) => {
   const {
     pinnedFilters,
@@ -368,6 +370,7 @@ export const DBSearchPageFilters = ({
     setFilterValue,
     _clearAllFilters,
     _clearFilter,
+    sourceId,
   });
   const { width, startResize } = useResizable(16, 'left');
 

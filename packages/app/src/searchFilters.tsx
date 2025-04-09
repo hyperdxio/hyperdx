@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -227,11 +227,13 @@ export function usePinnedFilters({
   setFilterValue,
   _clearAllFilters,
   _clearFilter,
+  sourceId,
 }: {
   filters: FilterStateHook['filters'];
   setFilterValue: FilterStateHook['setFilterValue'];
   _clearAllFilters: FilterStateHook['clearAllFilters'];
   _clearFilter: FilterStateHook['clearFilter'];
+  sourceId?: string;
 }) {
   ////////////////////////////////////////////////////////
   // State Functions
@@ -244,6 +246,11 @@ export function usePinnedFilters({
   );
   const [isPinnedFiltersActive, _setPinnedFiltersActive] =
     useLocalStorage<boolean>('hdx-pinned-search-filters-active', false);
+
+  useEffect(() => {
+    if (!sourceId) return;
+    _clearAllFilters();
+  }, [sourceId]);
 
   ////////////////////////////////////////////////////////
   // Helper Functions
