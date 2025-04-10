@@ -34,7 +34,6 @@ type FilterCheckboxProps = {
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
   onClickPin: VoidFunction;
-  onClickClearPin: VoidFunction;
 };
 
 export const TextButton = ({
@@ -64,7 +63,6 @@ export const FilterCheckbox = ({
   onClickOnly,
   onClickExclude,
   onClickPin,
-  onClickClearPin,
 }: FilterCheckboxProps) => {
   return (
     <div
@@ -73,7 +71,7 @@ export const FilterCheckbox = ({
     >
       <Group
         gap={8}
-        onClick={() => !pinned && onChange?.(!value)}
+        onClick={() => onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
         align="flex-start"
@@ -107,14 +105,10 @@ export const FilterCheckbox = ({
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
-        {!pinned && onClickOnly && (
-          <TextButton onClick={onClickOnly} label="Only" />
-        )}
-        {!pinned && onClickExclude && (
-          <TextButton onClick={onClickExclude} label="Exclude" />
-        )}
+        <TextButton onClick={onClickOnly} label="Only" />
+        <TextButton onClick={onClickExclude} label="Exclude" />
         <TextButton
-          onClick={pinned ? onClickClearPin : onClickPin}
+          onClick={onClickPin}
           label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
         />
       </div>
@@ -139,7 +133,6 @@ export type FilterGroupProps = {
   onClearClick: VoidFunction;
   onOnlyClick: (value: string) => void;
   onExcludeClick: (value: string) => void;
-  onClearPinClick: (value: string) => void;
   onPinClick: (value: string) => void;
   isPinned: (value: string) => boolean;
 };
@@ -155,7 +148,6 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
   onExcludeClick,
-  onClearPinClick,
   isPinned,
   onPinClick,
 }: FilterGroupProps) => {
@@ -298,7 +290,6 @@ export const FilterGroup = ({
             onChange={() => onChange(option.value)}
             onClickOnly={() => onOnlyClick(option.value)}
             onClickExclude={() => onExcludeClick(option.value)}
-            onClickClearPin={() => onClearPinClick(option.value)}
             onClickPin={() => onPinClick(option.value)}
           />
         ))}
@@ -342,8 +333,8 @@ export const FilterGroup = ({
 export const DBSearchPageFilters = ({
   filters: filterState,
   setFilterValue,
-  clearAllFilters: _clearAllFilters,
-  clearFilter: _clearFilter,
+  clearAllFilters,
+  clearFilter,
   isLive,
   chartConfig,
   analysisMode,
@@ -356,22 +347,9 @@ export const DBSearchPageFilters = ({
   chartConfig: ChartConfigWithDateRange;
   sourceId?: string;
 } & FilterStateHook) => {
-  const {
-    pinnedFilters,
-    isPinnedFiltersActive,
-    setPinnedFiltersActive,
-    clearAllFilters,
-    clearFilter,
-    checkIsFilterValuePinned,
-    clearPinnedFilterValue,
-    setPinnedFilterValue,
-  } = usePinnedFilters({
-    filters: filterState,
-    setFilterValue,
-    _clearAllFilters,
-    _clearFilter,
-    sourceId,
-  });
+  const { toggleFilterPin, isFilterPinned } = usePinnedFilters(
+    sourceId ?? null,
+  );
   const { width, startResize } = useResizable(16, 'left');
 
   const { data, isLoading } = useAllFields({
@@ -425,10 +403,6 @@ export const DBSearchPageFilters = ({
   }, [chartConfig.dateRange, isLive]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
-  const showPinOptionsButton = useMemo(
-    () => Object.entries(pinnedFilters).length > 0,
-    [pinnedFilters],
-  );
 
   const {
     data: facets,
@@ -513,16 +487,6 @@ export const DBSearchPageFilters = ({
                   }
                 />
               )}
-              {showPinOptionsButton && (
-                <TextButton
-                  onClick={() => setPinnedFiltersActive(prev => !prev)}
-                  label={
-                    <i
-                      className={`bi bi-pin-angle${isPinnedFiltersActive ? '-fill' : ''} ms-1 fs-7`}
-                    ></i>
-                  }
-                />
-              )}
             </Flex>
             {showClearAllButton && (
               <TextButton
@@ -569,14 +533,8 @@ export const DBSearchPageFilters = ({
               onExcludeClick={value => {
                 setFilterValue(facet.key, value, 'exclude');
               }}
-              onClearPinClick={value =>
-                clearPinnedFilterValue(facet.key, value)
-              }
-              onPinClick={value => setPinnedFilterValue(facet.key, value)}
-              isPinned={value =>
-                isPinnedFiltersActive &&
-                checkIsFilterValuePinned(facet.key, value)
-              }
+              onPinClick={value => toggleFilterPin(facet.key, value)}
+              isPinned={value => isFilterPinned(facet.key, value)}
             />
           ))}
 
