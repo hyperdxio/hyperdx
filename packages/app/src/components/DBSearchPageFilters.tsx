@@ -65,10 +65,7 @@ export const FilterCheckbox = ({
   onClickPin,
 }: FilterCheckboxProps) => {
   return (
-    <div
-      className={classes.filterCheckbox}
-      style={{ cursor: pinned ? 'auto' : 'pointer' }}
-    >
+    <div className={classes.filterCheckbox}>
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
@@ -105,8 +102,10 @@ export const FilterCheckbox = ({
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
-        <TextButton onClick={onClickOnly} label="Only" />
-        <TextButton onClick={onClickExclude} label="Exclude" />
+        {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
+        {onClickExclude && (
+          <TextButton onClick={onClickExclude} label="Exclude" />
+        )}
         <TextButton
           onClick={onClickPin}
           label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
@@ -332,9 +331,9 @@ export const FilterGroup = ({
 
 export const DBSearchPageFilters = ({
   filters: filterState,
-  setFilterValue,
   clearAllFilters,
   clearFilter,
+  setFilterValue,
   isLive,
   chartConfig,
   analysisMode,
