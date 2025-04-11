@@ -2,11 +2,14 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig'
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
+import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
 import { getTeam } from '@/controllers/team';
+import { translateExternalSeriesToInternalSeries } from '@/utils/externalApi';
+import { externalQueryChartSeriesSchema } from '@/utils/zod';
 
 // Define Zod schema for v2 API based on OpenAPI spec
 const chartSeriesQueryPayloadSchema = z.object({
@@ -133,13 +136,50 @@ async function queryChartSeriesV2(
 // even though the router file lives in the v2 directory structure.
 router.post(
   '/v1/chart/series',
-  validateRequest({ body: chartSeriesQueryPayloadSchema }),
+  validateRequest({
+    body: z.object({
+      series: z
+        .array(externalQueryChartSeriesSchema)
+        .min(1)
+        .max(5)
+        .refine(
+          series => {
+            const groupByFields = series[0].groupBy;
+            return series.every(s => _.isEqual(s.groupBy, groupByFields));
+          },
+          {
+            message: 'All series must have the same groupBy fields',
+          },
+        ),
+      endTime: z.number(),
+      granularity: z.nativeEnum(clickhouse.Granularity).optional(),
+      startTime: z.number(),
+      seriesReturnType: z.optional(z.nativeEnum(clickhouse.SeriesReturnType)),
+    }),
+  }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      if (!teamId) {
+      const { endTime, granularity, startTime, seriesReturnType, series } =
+        req.body;
+
+      if (teamId == null) {
         return res.sendStatus(403);
       }
+
+      const team = await getTeam(teamId);
+      if (team == null) {
+        return res.sendStatus(403);
+      }
+
+      const internalSeries = series.map(s =>
+        translateExternalSeriesToInternalSeries({
+          type: 'time', // just to reuse the same fn
+          ...s,
+        }),
+      );
+
+      const MAX_NUM_GROUPS = 20;
 
       const seriesData = await queryChartSeriesV2(teamId.toString(), req.body);
       return res.json(seriesData);
