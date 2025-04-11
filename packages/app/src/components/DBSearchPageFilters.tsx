@@ -209,22 +209,8 @@ export const FilterGroup = ({
     }
 
     // Do not rearrange items if all selected values are visible without expanding
-    const shouldSortBySelected =
-      isExpanded ||
-      augmentedOptions.some(
-        (option, index) =>
-          (selectedValues.included.has(option.value) ||
-            selectedValues.excluded.has(option.value)) &&
-          index >= MAX_FILTER_GROUP_ITEMS,
-      );
-
     return augmentedOptions
-      .slice()
-      .sort((a, b) =>
-        shouldSortBySelected
-          ? sortBySelectionAndAlpha(a, b)
-          : a.value.localeCompare(b.value),
-      )
+      .sort((a, b) => sortBySelectionAndAlpha(a, b))
       .slice(
         0,
         Math.max(
