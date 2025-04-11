@@ -3,12 +3,14 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 
 import {
   convertDateRangeToGranularityString,
@@ -19,6 +21,7 @@ import {
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -26,28 +29,30 @@ import { SQLPreview } from './ChartSQLPreview';
 
 export function DBTimeChart({
   config,
-  sourceId,
-  onSettled,
-  onError,
-  referenceLines,
-  showDisplaySwitcher = true,
-  setDisplayType,
-  queryKeyPrefix,
   enabled = true,
+  logReferenceTimestamp,
+  onError,
+  onSettled,
   onTimeRangeSelect,
+  queryKeyPrefix,
+  referenceLines,
+  setDisplayType,
+  showDisplaySwitcher = true,
   showLegend = true,
+  sourceId,
 }: {
   config: ChartConfigWithDateRange;
-  sourceId?: string;
-  onSettled?: () => void;
-  onError?: (error: Error | ClickHouseQueryError) => void;
-  showDisplaySwitcher?: boolean;
-  setDisplayType?: (type: DisplayType) => void;
-  referenceLines?: React.ReactNode;
-  queryKeyPrefix?: string;
   enabled?: boolean;
+  logReferenceTimestamp?: number;
+  onError?: (error: Error | ClickHouseQueryError) => void;
+  onSettled?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
+  queryKeyPrefix?: string;
+  referenceLines?: React.ReactNode;
+  setDisplayType?: (type: DisplayType) => void;
+  showDisplaySwitcher?: boolean;
   showLegend?: boolean;
+  sourceId?: string;
 }) {
   const {
     displayType: displayTypeProp,
@@ -71,6 +76,7 @@ export function DBTimeChart({
     });
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
     useMemo(() => {
@@ -80,6 +86,7 @@ export function DBTimeChart({
             dateRange,
             granularity,
             generateEmptyBuckets: fillNulls !== false,
+            source,
           })
         : {
             graphResults: [],
@@ -127,22 +134,40 @@ export function DBTimeChart({
   }, [activeClickPayload]);
 
   const qparams = useMemo(() => {
-    if (!clickedActiveLabelDate || !sourceId) {
+    if (clickedActiveLabelDate == null || !source?.id == null) {
+      return null;
+    }
+    const isMetricChart = isMetricChartConfig(config);
+    if (isMetricChart && source?.logSourceId == null) {
+      notifications.show({
+        color: 'yellow',
+        message: 'No log source is associated with the selected metric source.',
+      });
       return null;
     }
     const from = clickedActiveLabelDate.getTime();
     const to = add(clickedActiveLabelDate, {
       seconds: convertGranularityToSeconds(granularity),
     }).getTime();
+    let where = config.where;
+    let whereLanguage = config.whereLanguage || 'lucene';
+    if (
+      where.length === 0 &&
+      Array.isArray(config.select) &&
+      config.select.length === 1
+    ) {
+      where = config.select[0].aggCondition ?? '';
+      whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
+    }
     return new URLSearchParams({
-      source: sourceId,
-      where: config.where,
-      whereLanguage: config.whereLanguage || 'lucene',
+      source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
+      where: where,
+      whereLanguage: whereLanguage,
       filters: JSON.stringify(config.filters),
       from: from.toString(),
       to: to.toString(),
     });
-  }, [clickedActiveLabelDate, config, granularity, sourceId]);
+  }, [clickedActiveLabelDate, config, granularity, source]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -198,7 +223,10 @@ export function DBTimeChart({
           top: 0,
         }}
       >
-        {activeClickPayload != null && qparams != null ? (
+        {activeClickPayload != null &&
+        qparams != null &&
+        // only View Events for single series
+        (!Array.isArray(config.select) || config.select.length === 1) ? (
           <div
             className="bg-grey px-3 py-2 rounded fs-8"
             style={{
@@ -283,16 +311,17 @@ export function DBTimeChart({
           displayType={displayType}
           graphResults={graphResults}
           groupKeys={groupKeys}
+          isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
           lineColors={lineColors}
           lineNames={lineNames}
-          timestampKey={timestampColumn?.name}
-          setIsClickActive={setActiveClickPayload}
-          isClickActive={false}
-          onTimeRangeSelect={onTimeRangeSelect}
-          showLegend={showLegend}
+          logReferenceTimestamp={logReferenceTimestamp}
           numberFormat={config.numberFormat}
+          onTimeRangeSelect={onTimeRangeSelect}
           referenceLines={referenceLines}
+          setIsClickActive={setActiveClickPayload}
+          showLegend={showLegend}
+          timestampKey={timestampColumn?.name}
         />
       </div>
     </div>

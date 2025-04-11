@@ -159,12 +159,14 @@ export function LogTableModelForm({
           helpText="DateTime column or expression that is part of your table's primary key."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="timestampValueExpression"
             disableKeywordAutocomplete
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow
@@ -172,12 +174,14 @@ export function LogTableModelForm({
           helpText="Default columns selected in search results (this can be customized per search later)"
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="defaultTableSelectExpression"
             placeholder="Timestamp, Body"
-            connectionId={connectionId}
           />
         </FormRow>
         <Box>
@@ -215,42 +219,62 @@ export function LogTableModelForm({
         <Divider />
         <FormRow label={'Service Name Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="serviceNameExpression"
             placeholder="ServiceName"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow label={'Log Level Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="severityTextExpression"
             placeholder="SeverityText"
-            connectionId={connectionId}
+          />
+        </FormRow>
+        <FormRow label={'Body Expression'}>
+          <SQLInlineEditorControlled
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="bodyExpression"
+            placeholder="Body"
           />
         </FormRow>
         <FormRow label={'Log Attributes Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="eventAttributesExpression"
             placeholder="LogAttributes"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow label={'Resource Attributes Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="resourceAttributesExpression"
             placeholder="ResourceAttributes"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow
@@ -258,15 +282,23 @@ export function LogTableModelForm({
           helpText="This DateTime column is used to display search results."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="displayedTimestampValueExpression"
             disableKeywordAutocomplete
-            connectionId={connectionId}
           />
         </FormRow>
         <Divider />
+        <FormRow
+          label={'Correlated Metric Source'}
+          helpText="HyperDX Source for metrics associated with logs. Optional"
+        >
+          <SourceSelectControlled control={control} name="metricSourceId" />
+        </FormRow>
         <FormRow
           label={'Correlated Trace Source'}
           helpText="HyperDX Source for traces associated with logs. Optional"
@@ -276,46 +308,55 @@ export function LogTableModelForm({
 
         <FormRow label={'Trace Id Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="traceIdExpression"
             placeholder="TraceId"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow label={'Span Id Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="spanIdExpression"
             placeholder="SpanId"
-            connectionId={connectionId}
           />
         </FormRow>
+
         <Divider />
         {/* <FormRow
           label={'Unique Row ID Expression'}
           helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="uniqueRowIdExpression"
             placeholder="Timestamp, ServiceName, Body"
-            connectionId={connectionId}
           />
         </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="tableFilterExpression"
             placeholder="ServiceName = 'only_this_service'"
-            connectionId={connectionId}
           />
         </FormRow> */}
         <FormRow
@@ -323,12 +364,14 @@ export function LogTableModelForm({
           helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="implicitColumnExpression"
             placeholder="Body"
-            connectionId={connectionId}
           />
         </FormRow>
       </Stack>
@@ -372,9 +415,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Timestamp Column'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="timestampValueExpression"
           placeholder="Timestamp"
@@ -386,20 +431,24 @@ export function TraceTableModelForm({
         helpText="Default columns selected in search results (this can be customized per search later)"
       >
         <SQLInlineEditorControlled
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="defaultTableSelectExpression"
           placeholder="Timestamp, ServiceName, StatusCode, Duration, SpanName"
-          connectionId={connectionId}
         />
       </FormRow>
       <Divider />
       <FormRow label={'Duration Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="durationExpression"
           placeholder="Duration Column"
@@ -433,9 +482,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Trace Id Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="traceIdExpression"
           placeholder="TraceId"
@@ -443,9 +494,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Span Id Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="spanIdExpression"
           placeholder="SpanId"
@@ -453,9 +506,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Parent Span Id Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="parentSpanIdExpression"
           placeholder="ParentSpanId"
@@ -463,9 +518,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Span Name Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="spanNameExpression"
           placeholder="SpanName"
@@ -473,9 +530,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Span Kind Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="spanKindExpression"
           placeholder="SpanKind"
@@ -494,11 +553,19 @@ export function TraceTableModelForm({
       >
         <SourceSelectControlled control={control} name="sessionSourceId" />
       </FormRow>
+      <FormRow
+        label={'Correlated Metric Source'}
+        helpText="HyperDX Source for metrics associated with traces. Optional"
+      >
+        <SourceSelectControlled control={control} name="metricSourceId" />
+      </FormRow>
       <FormRow label={'Status Code Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="statusCodeExpression"
           placeholder="StatusCode"
@@ -506,9 +573,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Status Message Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="statusMessageExpression"
           placeholder="StatusMessage"
@@ -516,9 +585,11 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Service Name Expression'}>
         <SQLInlineEditorControlled
-          connectionId={connectionId}
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="serviceNameExpression"
           placeholder="ServiceName"
@@ -526,22 +597,26 @@ export function TraceTableModelForm({
       </FormRow>
       <FormRow label={'Resource Attributes Expression'}>
         <SQLInlineEditorControlled
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="resourceAttributesExpression"
           placeholder="ResourceAttributes"
-          connectionId={connectionId}
         />
       </FormRow>
       <FormRow label={'Event Attributes Expression'}>
         <SQLInlineEditorControlled
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="eventAttributesExpression"
           placeholder="SpanAttributes"
-          connectionId={connectionId}
         />
       </FormRow>
       <FormRow
@@ -549,12 +624,14 @@ export function TraceTableModelForm({
         helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
       >
         <SQLInlineEditorControlled
-          database={databaseName}
-          table={tableName}
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
           control={control}
           name="implicitColumnExpression"
           placeholder="SpanName"
-          connectionId={connectionId}
         />
       </FormRow>
     </Stack>
@@ -603,32 +680,38 @@ export function SessionTableModelForm({
           helpText="DateTime column or expression that is part of your table's primary key."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="timestampValueExpression"
             disableKeywordAutocomplete
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow label={'Log Attributes Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="eventAttributesExpression"
             placeholder="LogAttributes"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow label={'Resource Attributes Expression'}>
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="resourceAttributesExpression"
             placeholder="ResourceAttributes"
-            connectionId={connectionId}
           />
         </FormRow>
         <FormRow
@@ -642,12 +725,14 @@ export function SessionTableModelForm({
           helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
         >
           <SQLInlineEditorControlled
-            database={databaseName}
-            table={tableName}
+            tableConnections={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
             control={control}
             name="implicitColumnExpression"
             placeholder="Body"
-            connectionId={connectionId}
           />
         </FormRow>
       </Stack>
@@ -732,6 +817,12 @@ export function MetricTableModelForm({
             />
           </FormRow>
         ))}
+        <FormRow
+          label={'Correlated Log Source'}
+          helpText="HyperDX Source for logs associated with metrics. Optional"
+        >
+          <SourceSelectControlled control={control} name="logSourceId" />
+        </FormRow>
       </Stack>
     </>
   );

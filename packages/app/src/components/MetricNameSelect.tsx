@@ -42,19 +42,19 @@ function useMetricNames(metricSource: TSource) {
   }, [metricSource]);
 
   const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
+    chartConfigs: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
+  // const { data: histogramMetrics } = useGetKeyValues({
+  //   chartConfigs: histogramConfig,
+  //   keys: ['MetricName'],
+  //   limit: MAX_METRIC_NAME_OPTIONS,
+  //   disableRowLimit: true,
+  // });
   const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
+    chartConfigs: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
@@ -62,7 +62,7 @@ function useMetricNames(metricSource: TSource) {
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
-    histogramMetrics: histogramMetrics?.[0].value,
+    // histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
   };
 }
@@ -86,8 +86,11 @@ export function MetricNameSelect({
 }) {
   const SEPARATOR = ':::::::';
 
-  const { gaugeMetrics, histogramMetrics, sumMetrics } =
-    useMetricNames(metricSource);
+  const {
+    gaugeMetrics,
+    // , histogramMetrics
+    sumMetrics,
+  } = useMetricNames(metricSource);
 
   const options = useMemo(() => {
     return [
@@ -95,16 +98,20 @@ export function MetricNameSelect({
         value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
       })) ?? []),
-      ...(histogramMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}histogram`,
-        label: `${metric} (Histogram)`,
-      })) ?? []),
+      // ...(histogramMetrics?.map(metric => ({
+      //   value: `${metric}${SEPARATOR}histogram`,
+      //   label: `${metric} (Histogram)`,
+      // })) ?? []),
       ...(sumMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}sum`,
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
-  }, [gaugeMetrics, histogramMetrics, sumMetrics]);
+  }, [
+    gaugeMetrics,
+    // histogramMetrics,
+    sumMetrics,
+  ]);
 
   return (
     <Select

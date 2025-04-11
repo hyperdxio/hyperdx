@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import AsyncSelect from 'react-select/async';
+import { z } from 'zod';
 import { ResponseJSON } from '@clickhouse/client';
 import {
   filterColumnMetaByType,
@@ -9,26 +10,26 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
   DisplayType,
+  MetricsDataType as MetricsDataTypeV2,
   SavedChartConfig,
   SQLInterval,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Divider,
-  Group,
-  SegmentedControl,
-  Select as MSelect,
-} from '@mantine/core';
+import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
-import { MetricNameSelect } from './components/MetricNameSelect';
-import { NumberFormatInput } from './components/NumberFormat';
 import api from './api';
 import Checkbox from './Checkbox';
-import FieldMultiSelect from './FieldMultiSelect';
-import MetricTagFilterInput from './MetricTagFilterInput';
-import SearchInput from './SearchInput';
-import { AggFn, ChartSeries, MetricsDataType, SourceTable } from './types';
+import {
+  AggFn,
+  ChartSeries,
+  MetricsDataType,
+  SourceTable,
+  TableChartSeries,
+  TimeChartSeries,
+} from './types';
 import { NumberFormat } from './types';
 import {
   legacyMetricNameToNameAndDataType,
@@ -787,11 +788,13 @@ export function formatResponseForTimeChart({
   dateRange,
   granularity,
   generateEmptyBuckets = true,
+  source,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
   res: ResponseJSON<Record<string, any>>;
   generateEmptyBuckets?: boolean;
+  source?: TSource;
 }) {
   const meta = res.meta;
   const data = res.data;
@@ -846,10 +849,13 @@ export function formatResponseForTimeChart({
         [keyName]: value,
       });
 
-      const color =
-        groupColumns.length === 1
-          ? logLevelColor(row[groupColumns[0].name])
-          : undefined;
+      let color: string | undefined = undefined;
+      if (
+        groupColumns.length === 1 &&
+        groupColumns[0].name === source?.severityTextExpression
+      ) {
+        color = logLevelColor(row[groupColumns[0].name]);
+      }
       // TODO: Set name and color correctly
       lineDataMap[keyName] = {
         dataKey: keyName,
@@ -925,3 +931,139 @@ export function formatResponseForTimeChart({
     lineColors: sortedLineDataMap.map(l => l.color),
   };
 }
+
+// Define a mapping from app AggFn to common-utils AggregateFunction
+export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
+  if (aggFn == null) {
+    return aggFn;
+  }
+  // Map rate-based aggregations to their base aggregation
+  if (aggFn.endsWith('_rate')) {
+    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+  }
+
+  // Map percentiles to quantile
+  if (
+    aggFn === 'p50' ||
+    aggFn === 'p90' ||
+    aggFn === 'p95' ||
+    aggFn === 'p99'
+  ) {
+    return 'quantile';
+  }
+
+  // Map per-time-unit counts to count
+  if (
+    aggFn === 'count_per_sec' ||
+    aggFn === 'count_per_min' ||
+    aggFn === 'count_per_hour'
+  ) {
+    return 'count';
+  }
+
+  // For standard aggregations that exist in both, return as is
+  if (
+    [
+      'avg',
+      'count',
+      'count_distinct',
+      'last_value',
+      'max',
+      'min',
+      'sum',
+    ].includes(aggFn)
+  ) {
+    return aggFn as AggFnV2;
+  }
+
+  throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
+};
+
+export const convertV1GroupByToV2 = (
+  metricSource: TSource,
+  groupBy: string[],
+): string => {
+  return groupBy
+    .map(g => {
+      if (g.startsWith('k8s')) {
+        return `${metricSource.resourceAttributesExpression}['${g}']`;
+      }
+      return g;
+    })
+    .join(',');
+};
+
+export const convertV1ChartConfigToV2 = (
+  chartConfig: {
+    // only support time or table series
+    series: (TimeChartSeries | TableChartSeries)[];
+    granularity?: Granularity;
+    dateRange: [Date, Date];
+    seriesReturnType: 'ratio' | 'column';
+    displayType?: 'stacked_bar' | 'line';
+    name?: string;
+    fillNulls?: number | false;
+    sortOrder?: SortOrder;
+  },
+  source: {
+    log?: TSource;
+    metric?: TSource;
+    trace?: TSource;
+  },
+): ChartConfigWithDateRange => {
+  const {
+    series,
+    granularity,
+    dateRange,
+    displayType = 'line',
+    fillNulls,
+  } = chartConfig;
+
+  if (series.length < 1) {
+    throw new Error('series is required');
+  }
+
+  const firstSeries = series[0];
+  const convertedDisplayType =
+    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
+
+  if (firstSeries.table === 'logs') {
+    // TODO: this might not work properly since logs + traces are mixed in v1
+    throw new Error('IMPLEMENT ME (logs)');
+  } else if (firstSeries.table === 'metrics') {
+    if (source.metric == null) {
+      throw new Error('source.metric is required for metrics');
+    }
+    return {
+      select: series.map(s => {
+        const field = s.field ?? '';
+        const [metricName, rawMetricDataType] = field
+          .split(' - ')
+          .map(s => s.trim());
+        const metricDataType = z
+          .nativeEnum(MetricsDataTypeV2)
+          .parse(rawMetricDataType?.toLowerCase());
+        return {
+          aggFn: mapV1AggFnToV2(s.aggFn),
+          metricType: metricDataType,
+          valueExpression: field,
+          metricName,
+          aggConditionLanguage: 'lucene',
+          aggCondition: s.where,
+        };
+      }),
+      from: source.metric?.from,
+      numberFormat: firstSeries.numberFormat,
+      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
+      dateRange,
+      connection: source.metric?.connection,
+      metricTables: source.metric?.metricTables,
+      timestampValueExpression: source.metric?.timestampValueExpression,
+      granularity,
+      where: '',
+      fillNulls,
+      displayType: convertedDisplayType,
+    };
+  }
+  throw new Error(`unsupported table in v2: ${firstSeries.table}`);
+};

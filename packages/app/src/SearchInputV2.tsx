@@ -1,30 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
-import { useAllFields } from '@/hooks/useMetadata';
+
+import {
+  ILanguageFormatter,
+  useAutoCompleteOptions,
+} from './hooks/useAutoCompleteOptions';
+
+export class LuceneLanguageFormatter implements ILanguageFormatter {
+  formatFieldValue(f: Field): string {
+    return f.path.join('.');
+  }
+  formatFieldLabel(f: Field): string {
+    return `${f.path.join('.')} (${f.jsType})`;
+  }
+  formatKeyValPair(key: string, value: string): string {
+    return `${key}:"${value}"`;
+  }
+}
 
 export default function SearchInputV2({
-  database,
+  tableConnections,
   placeholder = 'Search your events for anything...',
   size = 'sm',
-  table,
   zIndex,
   language,
   onLanguageChange,
-  connectionId,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
   ...props
 }: {
-  database?: string;
+  tableConnections?: TableConnection | TableConnection[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
-  table?: string;
-  connectionId: string | undefined;
   zIndex?: number;
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
@@ -37,35 +50,16 @@ export default function SearchInputV2({
   } = useController(props);
 
   const ref = useRef<HTMLInputElement>(null);
+  const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
-  const { data: fields } = useAllFields(
+  const autoCompleteOptions = useAutoCompleteOptions(
+    new LuceneLanguageFormatter(),
+    value,
     {
-      databaseName: database ?? '',
-      tableName: table ?? '',
-      connectionId: connectionId ?? '',
-    },
-    {
-      enabled: !!database && !!table && !!connectionId,
+      tableConnections,
+      additionalSuggestions,
     },
   );
-
-  const autoCompleteOptions = useMemo(() => {
-    const _columns = (fields ?? []).filter(c => c.jsType !== null);
-    const baseOptions = _columns.map(c => ({
-      value: c.path.join('.'),
-      label: `${c.path.join('.')} (${c.jsType})`,
-    }));
-
-    const suggestionOptions =
-      additionalSuggestions?.map(column => ({
-        value: column,
-        label: column,
-      })) ?? [];
-
-    return [...baseOptions, ...suggestionOptions];
-  }, [fields, additionalSuggestions]);
-
-  const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
   useEffect(() => {
     genEnglishExplanation(value).then(q => {

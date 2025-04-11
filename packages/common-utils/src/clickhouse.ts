@@ -458,7 +458,12 @@ export function chSqlToAliasMap(
       ast.columns.forEach(column => {
         if (column.as != null) {
           if (column.type === 'expr' && column.expr.type === 'column_ref') {
-            aliasMap[column.as] = column.expr.column.expr.value;
+            aliasMap[column.as] =
+              column.expr.array_index && column.expr.array_index[0]?.brackets
+                ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
+                  `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                : // normal alias
+                  column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
             aliasMap[column.as] = sql.slice(
               column.expr.loc.start.offset,
@@ -492,6 +497,10 @@ export function inferTimestampColumn(
   meta: Array<ColumnMetaType>,
 ) {
   return filterColumnMetaByType(meta, [JSDataType.Date])?.[0];
+}
+
+export function inferNumericColumn(meta: Array<ColumnMetaType>) {
+  return filterColumnMetaByType(meta, [JSDataType.Number]);
 }
 
 export type ColumnMeta = {

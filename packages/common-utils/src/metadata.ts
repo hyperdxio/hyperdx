@@ -9,12 +9,13 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/renderChartConfig';
-import type { ChartConfigWithDateRange } from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 const DEFAULT_SAMPLE_SIZE = 1e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
+  private pendingQueries = new Map<string, Promise<any>>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
@@ -22,15 +23,31 @@ export class MetadataCache {
   }
 
   async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
-    const value = this.get(key) as T | undefined;
-    if (value != null) {
-      return value;
+    // Check if value exists in cache
+    const cachedValue = this.cache.get(key) as T | undefined;
+    if (cachedValue != null) {
+      return cachedValue;
     }
 
-    const newValue = await query();
-    this.cache.set(key, newValue);
+    // Check if there is a pending query
+    if (this.pendingQueries.has(key)) {
+      return this.pendingQueries.get(key)!;
+    }
 
-    return newValue;
+    // If no pending query, initiate the new query
+    const queryPromise = query();
+
+    // Store the pending query promise
+    this.pendingQueries.set(key, queryPromise);
+
+    try {
+      const result = await queryPromise;
+      this.cache.set(key, result);
+      return result;
+    } finally {
+      // Clean up the pending query map
+      this.pendingQueries.delete(key);
+    }
   }
 
   set<T>(key: string, value: T) {
@@ -336,11 +353,7 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
+  }: TableConnection) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -399,6 +412,13 @@ export class Metadata {
       connectionId,
     });
 
+    // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
+    if (
+      tableMetadata.partition_key.startsWith('(') &&
+      tableMetadata.partition_key.endsWith(')')
+    ) {
+      tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
+    }
     return tableMetadata;
   }
 
@@ -437,6 +457,8 @@ export class Metadata {
       })
       .then(res => res.json<any>());
 
+    // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
+    // string[], sometimes it's { [key: string]: string; }
     return Object.entries(json.data[0]).map(([key, value]) => ({
       key: keys[parseInt(key.replace('param', ''))],
       value: (value as string[])?.filter(Boolean), // remove nulls
@@ -449,6 +471,28 @@ export type Field = {
   type: string;
   jsType: JSDataType | null;
 };
+
+export type TableConnection = {
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+};
+
+export function tcFromChartConfig(config?: ChartConfig): TableConnection {
+  return {
+    databaseName: config?.from?.databaseName ?? '',
+    tableName: config?.from?.tableName ?? '',
+    connectionId: config?.connection ?? '',
+  };
+}
+
+export function tcFromSource(source?: TSource): TableConnection {
+  return {
+    databaseName: source?.from?.databaseName ?? '',
+    tableName: source?.from?.tableName ?? '',
+    connectionId: source?.connection ?? '',
+  };
+}
 
 const __LOCAL_CACHE__ = new MetadataCache();
 

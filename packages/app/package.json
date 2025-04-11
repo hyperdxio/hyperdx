@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.0.0-beta.12",
+  "version": "2.0.0-beta.13",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -27,7 +27,7 @@
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.2.0-beta.1",
+    "@hyperdx/common-utils": "^0.2.0-beta.2",
     "@hyperdx/node-opentelemetry": "^0.8.1",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
@@ -58,7 +58,7 @@
     "ky": "^0.30.0",
     "ky-universal": "^0.10.1",
     "lodash": "^4.17.21",
-    "next": "13",
+    "next": "^13.5.11",
     "next-query-params": "^4.1.0",
     "next-runtime-env": "1",
     "next-seo": "^4.28.1",

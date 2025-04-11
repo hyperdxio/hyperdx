@@ -3,7 +3,6 @@ import {
   MouseEventHandler,
   useCallback,
   useContext,
-  useId,
   useMemo,
   useState,
 } from 'react';
@@ -19,6 +18,7 @@ import { Box } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
+import useResizable from '@/hooks/useResizable';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
@@ -26,6 +26,7 @@ import { SearchConfig } from '@/types';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ContextSubpanel from './ContextSidePanel';
+import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
@@ -90,6 +91,7 @@ export default function DBRowSidePanel({
     Trace = 'trace',
     Context = 'context',
     Replay = 'replay',
+    Infrastructure = 'infrastructure',
   }
 
   const [queryTab, setQueryTab] = useQueryState(
@@ -97,24 +99,8 @@ export default function DBRowSidePanel({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
   );
 
-  const [panelWidthPerc, setPanelWidthPerc] = useState(80);
-  const handleResize = useCallback((e: MouseEvent) => {
-    const offsetRight =
-      document.body.offsetWidth - (e.clientX - document.body.offsetLeft);
-    const maxWidth = document.body.offsetWidth - 25;
-    setPanelWidthPerc(
-      (Math.min(offsetRight + 3, maxWidth) / window.innerWidth) * 100,
-    ); // ensure we bury the cursor in the panel
-  }, []);
-  const startResize: MouseEventHandler<HTMLDivElement> = useCallback(e => {
-    e.preventDefault();
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', endResize);
-  }, []);
-  const endResize = useCallback(() => {
-    document.removeEventListener('mousemove', handleResize);
-    document.removeEventListener('mouseup', endResize);
-  }, []);
+  const initialWidth = 80;
+  const { width, startResize } = useResizable(initialWidth);
 
   // const [queryTab, setQueryTab] = useQueryParam(
   //   'tb',
@@ -189,10 +175,18 @@ export default function DBRowSidePanel({
     return tags;
   }, [serviceName, source.serviceNameExpression]);
 
-  const rng = useMemo(() => {
+  const oneHourRange = useMemo(() => {
     return [
       add(timestampDate, { minutes: -60 }),
       add(timestampDate, { minutes: 60 }),
+    ] as [Date, Date];
+  }, [timestampDate]);
+
+  // For session replay, we need +/-4 hours to get full session
+  const fourHourRange = useMemo(() => {
+    return [
+      add(timestampDate, { hours: -4 }),
+      add(timestampDate, { hours: 4 }),
     ] as [Date, Date];
   }, [timestampDate]);
 
@@ -212,9 +206,21 @@ export default function DBRowSidePanel({
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
-    dateRange: rng,
+    dateRange: oneHourRange,
     enabled: rowId != null,
   });
+
+  const hasK8sContext = useMemo(() => {
+    if (!source?.resourceAttributesExpression || !normalizedRow) {
+      return false;
+    }
+    return (
+      normalizedRow[source.resourceAttributesExpression]['k8s.pod.uid'] !=
+        null ||
+      normalizedRow[source.resourceAttributesExpression]['k8s.node.name'] !=
+        null
+    );
+  }, [source, normalizedRow]);
 
   return (
     <Drawer
@@ -227,7 +233,7 @@ export default function DBRowSidePanel({
         }
       }}
       direction="right"
-      size={`${Math.min(panelWidthPerc, 90)}vw`}
+      size={`${width}vw`}
       zIndex={drawerZIndex}
       enableOverlay={subDrawerOpen}
     >
@@ -241,7 +247,6 @@ export default function DBRowSidePanel({
             <>
               <Box p="sm">
                 <DBRowSidePanelHeader
-                  sourceId={source.id}
                   date={timestampDate}
                   tags={tags}
                   mainContent={mainContent}
@@ -275,11 +280,19 @@ export default function DBRowSidePanel({
                     text: 'Surrounding Context',
                     value: Tab.Context,
                   },
-                  ...(rumSessionId != null
+                  ...(rumSessionId != null && source.sessionSourceId
                     ? [
                         {
                           text: 'Session Replay',
                           value: Tab.Replay,
+                        },
+                      ]
+                    : []),
+                  ...(hasK8sContext
+                    ? [
+                        {
+                          text: 'Infrastructure',
+                          value: Tab.Infrastructure,
                         },
                       ]
                     : []),
@@ -298,7 +311,11 @@ export default function DBRowSidePanel({
                     </div>
                   )}
                 >
-                  <RowOverviewPanel source={source} rowId={rowId} />
+                  <RowOverviewPanel
+                    source={source}
+                    rowId={rowId}
+                    hideHeader={true}
+                  />
                 </ErrorBoundary>
               )}
               {displayedTab === Tab.Trace && (
@@ -317,7 +334,7 @@ export default function DBRowSidePanel({
                       parentSourceId={source.id}
                       childSourceId={childSourceId}
                       traceId={traceId}
-                      dateRange={rng}
+                      dateRange={oneHourRange}
                       focusDate={focusDate}
                     />
                   </Box>
@@ -369,7 +386,7 @@ export default function DBRowSidePanel({
                 >
                   <div className="overflow-hidden flex-grow-1">
                     <DBSessionPanel
-                      dateRange={rng}
+                      dateRange={fourHourRange}
                       focusDate={focusDate}
                       setSubDrawerOpen={setSubDrawerOpen}
                       traceSourceId={traceSourceId}
@@ -377,6 +394,26 @@ export default function DBRowSidePanel({
                       rumSessionId={rumSessionId}
                     />
                   </div>
+                </ErrorBoundary>
+              )}
+              {displayedTab === Tab.Infrastructure && (
+                <ErrorBoundary
+                  onError={err => {
+                    console.error(err);
+                  }}
+                  fallbackRender={() => (
+                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                      An error occurred while rendering this event.
+                    </div>
+                  )}
+                >
+                  <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
+                    <DBInfraPanel
+                      source={source}
+                      rowData={normalizedRow}
+                      rowId={rowId}
+                    />
+                  </Box>
                 </ErrorBoundary>
               )}
               <LogSidePanelKbdShortcuts />

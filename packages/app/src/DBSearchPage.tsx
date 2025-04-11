@@ -20,6 +20,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -93,6 +94,8 @@ import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
 
+import searchPageStyles from '../styles/SearchPage.module.scss';
+
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -131,26 +134,33 @@ function SearchTotalCount({
     granularity,
     limit: { limit: 100000 },
   };
-  const {
-    data: totalCountData,
-    isLoading,
-    isError,
-  } = useQueriedChartConfig(queriedConfig, {
-    queryKey: [queryKeyPrefix, queriedConfig],
-    staleTime: 1000 * 60 * 5,
-    refetchOnWindowFocus: false,
-  });
+  const { data: totalCountData, isError } = useQueriedChartConfig(
+    queriedConfig,
+    {
+      queryKey: [queryKeyPrefix, queriedConfig],
+      staleTime: 1000 * 60 * 5,
+      refetchOnWindowFocus: false,
+    },
+  );
 
-  const totalCount = useMemo(() => {
-    return totalCountData?.data?.reduce(
-      (p: number, v: any) => p + Number.parseInt(v['count()']),
-      0,
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!totalCountData) {
+      // if totalCount already exists, set to that. Else, set to null
+      setTotalCount(totalCount ?? null);
+      return;
+    }
+    setTotalCount(
+      totalCountData?.data?.reduce(
+        (p: number, v: any) => p + Number.parseInt(v['count()']),
+        0,
+      ),
     );
   }, [totalCountData]);
 
   return (
     <Text size="xs" c="gray.4" mb={4}>
-      {isLoading ? (
+      {!totalCount ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
         `${totalCount} Results`
@@ -564,8 +574,6 @@ function DBSearchPage() {
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
-  const databaseName = inputSourceObj?.from.databaseName;
-  const tableName = inputSourceObj?.from.tableName;
 
   // When source changes, make sure select and orderby fields are set to default
   const defaultOrderBy = useMemo(
@@ -662,6 +670,48 @@ function DBSearchPage() {
     inputSource,
   ]);
 
+  const [_queryErrors, setQueryErrors] = useState<{
+    [key: string]: Error | ClickHouseQueryError;
+  }>({});
+
+  const onSubmit = useCallback(() => {
+    onSearch(displayedTimeInputValue);
+    handleSubmit(
+      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+        setSearchedConfig({
+          select,
+          where,
+          whereLanguage,
+          source,
+          filters,
+          orderBy,
+        });
+      },
+    )();
+    // clear query errors
+    setQueryErrors({});
+  }, [
+    handleSubmit,
+    setSearchedConfig,
+    displayedTimeInputValue,
+    onSearch,
+    setQueryErrors,
+  ]);
+
+  const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
+  const handleSetFilters = useCallback(
+    (filters: Filter[]) => {
+      setValue('filters', filters);
+      debouncedSubmit();
+    },
+    [debouncedSubmit, setValue],
+  );
+
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: watch('filters') ?? undefined,
+    onFilterChange: handleSetFilters,
+  });
+
   useEffect(() => {
     const { unsubscribe } = watch((data, { name, type }) => {
       // If the user changes the source dropdown, reset the select and orderby fields
@@ -681,11 +731,13 @@ function DBSearchPage() {
               newInputSourceObj?.timestampValueExpression ?? '',
             )} DESC`,
           );
+          // Clear all search filters
+          searchFilters.clearAllFilters();
         }
       }
     });
     return () => unsubscribe();
-  }, [watch, inputSourceObj, setValue, inputSourceObjs]);
+  }, [watch, inputSourceObj, setValue, inputSourceObjs, searchFilters]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
@@ -714,9 +766,6 @@ function DBSearchPage() {
     useSearchedConfigToChartConfig(searchedConfig);
 
   // query error handling
-  const [_queryErrors, setQueryErrors] = useState<{
-    [key: string]: Error | ClickHouseQueryError;
-  }>({});
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
     const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
@@ -729,30 +778,6 @@ function DBSearchPage() {
     input: inputWhere,
     enabled: hasQueryError && inputWhereLanguage === 'sql',
   });
-
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
-        setSearchedConfig({
-          select,
-          where,
-          whereLanguage,
-          source,
-          filters,
-          orderBy,
-        });
-      },
-    )();
-    // clear query errors
-    setQueryErrors({});
-  }, [
-    handleSubmit,
-    setSearchedConfig,
-    displayedTimeInputValue,
-    onSearch,
-    setQueryErrors,
-  ]);
 
   const queryReady =
     chartConfig?.from?.databaseName &&
@@ -847,15 +872,6 @@ function DBSearchPage() {
     onSearch('Live Tail');
   }, [onSearch, setIsLive]);
 
-  const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
-  const handleSetFilters = useCallback(
-    (filters: Filter[]) => {
-      setValue('filters', filters);
-      debouncedSubmit();
-    },
-    [debouncedSubmit, setValue],
-  );
-
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
       return undefined;
@@ -867,11 +883,6 @@ function DBSearchPage() {
       limit: { limit: 200 },
     };
   }, [chartConfig, searchedTimeRange]);
-
-  const searchFilters = useSearchPageFilterState({
-    searchQuery: watch('filters') ?? undefined,
-    onFilterChange: handleSetFilters,
-  });
 
   const displayedColumns = splitAndTrimCSV(
     dbSqlRowTableConfig?.select ??
@@ -992,9 +1003,7 @@ function DBSearchPage() {
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
-              connectionId={inputSourceObj?.connection}
-              database={databaseName}
-              table={tableName}
+              tableConnections={tcFromSource(inputSourceObj)}
               control={control}
               name="select"
               defaultValue={inputSourceObj?.defaultTableSelectExpression}
@@ -1008,9 +1017,7 @@ function DBSearchPage() {
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
             <SQLInlineEditorControlled
-              connectionId={inputSourceObj?.connection}
-              database={databaseName}
-              table={tableName}
+              tableConnections={tcFromSource(inputSourceObj)}
               control={control}
               name="orderBy"
               defaultValue={defaultOrderBy}
@@ -1059,35 +1066,38 @@ function DBSearchPage() {
                 </Button>
               )}
               {!!savedSearch && (
-                <Tags
-                  allowCreate
-                  values={savedSearch.tags || []}
-                  onChange={handleUpdateTags}
-                >
-                  <Button
-                    variant="outline"
-                    color="dark.2"
-                    px="xs"
-                    size="xs"
-                    style={{ flexShrink: 0 }}
+                <>
+                  <Tags
+                    allowCreate
+                    values={savedSearch.tags || []}
+                    onChange={handleUpdateTags}
                   >
-                    <i className="bi bi-tags-fill me-1"></i>
-                    {savedSearch.tags?.length || 0}
-                  </Button>
-                </Tags>
+                    <Button
+                      variant="outline"
+                      color="dark.2"
+                      px="xs"
+                      size="xs"
+                      style={{ flexShrink: 0 }}
+                    >
+                      <i className="bi bi-tags-fill me-1"></i>
+                      {savedSearch.tags?.length || 0}
+                    </Button>
+                  </Tags>
+
+                  <SearchPageActionBar
+                    onClickDeleteSavedSearch={() => {
+                      deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                        onSuccess: () => {
+                          router.push('/search');
+                        },
+                      });
+                    }}
+                    onClickRenameSavedSearch={() => {
+                      setSaveSearchModalState('update');
+                    }}
+                  />
+                </>
               )}
-              <SearchPageActionBar
-                onClickDeleteSavedSearch={() => {
-                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                    onSuccess: () => {
-                      router.push('/search');
-                    },
-                  });
-                }}
-                onClickRenameSavedSearch={() => {
-                  setSaveSearchModalState('update');
-                }}
-              />
             </>
           )}
         </Flex>
@@ -1124,9 +1134,7 @@ function DBSearchPage() {
             control={control}
             sqlInput={
               <SQLInlineEditorControlled
-                connectionId={inputSourceObj?.connection}
-                database={databaseName}
-                table={tableName}
+                tableConnections={tcFromSource(inputSourceObj)}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -1143,9 +1151,7 @@ function DBSearchPage() {
             }
             luceneInput={
               <SearchInputV2
-                connectionId={inputSourceObj?.connection}
-                database={databaseName}
-                table={tableName}
+                tableConnections={tcFromSource(inputSourceObj)}
                 control={control}
                 name="where"
                 onLanguageChange={lang =>
@@ -1226,7 +1232,7 @@ function DBSearchPage() {
         ) : (
           <>
             <div
-              className="d-flex flex-row flex-grow-0"
+              className={searchPageStyles.searchPageContainer}
               style={{
                 minHeight: 0,
                 height: '100%',
