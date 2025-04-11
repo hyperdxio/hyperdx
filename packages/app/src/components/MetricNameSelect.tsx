@@ -42,19 +42,19 @@ function useMetricNames(metricSource: TSource) {
   }, [metricSource]);
 
   const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
+    chartConfigs: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
   // const { data: histogramMetrics } = useGetKeyValues({
-  //   chartConfig: histogramConfig,
+  //   chartConfigs: histogramConfig,
   //   keys: ['MetricName'],
   //   limit: MAX_METRIC_NAME_OPTIONS,
   //   disableRowLimit: true,
   // });
   const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
+    chartConfigs: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
