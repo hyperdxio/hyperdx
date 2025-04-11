@@ -1,4 +1,5 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
 import {
@@ -6,6 +7,7 @@ import {
   formatDate,
   formatNumber,
   getMetricTableName,
+  useQueryHistory,
 } from '../utils';
 
 describe('utils', () => {
@@ -266,5 +268,64 @@ describe('formatNumber', () => {
       };
       expect(formatNumber(1234567, format)).toBe('1m');
     });
+  });
+});
+
+describe('useQueryHistory', () => {
+  const mockGetItem = jest.fn();
+  const mockSetItem = jest.fn();
+  const mockRemoveItem = jest.fn();
+
+  beforeEach(() => {
+    mockGetItem.mockClear();
+    mockSetItem.mockClear();
+    mockRemoveItem.mockClear();
+    mockGetItem.mockReturnValue('["service = test3","service = test1"]');
+    Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: (...args: string[]) => mockGetItem(...args),
+        setItem: (...args: string[]) => mockSetItem(...args),
+        removeItem: (...args: string[]) => mockRemoveItem(...args),
+      },
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('adds new query', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('service = test2');
+    });
+
+    expect(mockSetItem).toHaveBeenCalledWith(
+      'QuerySearchHistory.searchSQL',
+      '["service = test2","service = test3","service = test1"]',
+    );
+  });
+
+  it('does not add duplicate query, but change the order to front', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('service = test1');
+    });
+
+    expect(mockSetItem).toHaveBeenCalledWith(
+      'QuerySearchHistory.searchSQL',
+      '["service = test1","service = test3"]',
+    );
+  });
+
+  it('does not add empty query', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('   '); // empty after trim
+    });
+    expect(mockSetItem).not.toBeCalled();
   });
 });

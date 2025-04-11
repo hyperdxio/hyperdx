@@ -3,6 +3,8 @@ import Fuse from 'fuse.js';
 import { OverlayTrigger } from 'react-bootstrap';
 import { TextInput } from '@mantine/core';
 
+import { useQueryHistory } from '@/utils';
+
 import InputLanguageSwitch from './components/InputLanguageSwitch';
 import { useDebounce } from './utils';
 
@@ -22,6 +24,7 @@ export default function AutocompleteInput({
   language,
   showHotkey,
   onSubmit,
+  queryHistoryType,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   value: string;
@@ -38,6 +41,7 @@ export default function AutocompleteInput({
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
   showHotkey?: boolean;
+  queryHistoryType?: string;
 }) {
   const suggestionsLimit = 10;
 
@@ -46,6 +50,20 @@ export default function AutocompleteInput({
 
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
     useState(-1);
+
+  const [selectedQueryHistoryIndex, setSelectedQueryHistoryIndex] =
+    useState(-1);
+  // query search history
+  const [queryHistory, setQueryHistory] = useQueryHistory(queryHistoryType);
+  const queryHistoryList = useMemo(() => {
+    if (!queryHistoryType || !queryHistory) return [];
+    return queryHistory.map(q => {
+      return {
+        value: q,
+        label: q,
+      };
+    });
+  }, [queryHistory]);
 
   useEffect(() => {
     if (isSearchInputFocused) {
@@ -73,6 +91,14 @@ export default function AutocompleteInput({
     }
     return fuse.search(lastToken).map(result => result.item);
   }, [debouncedValue, fuse, autocompleteOptions, showSuggestionsOnEmpty]);
+
+  const onSelectSearchHistory = (query: string) => {
+    setSelectedQueryHistoryIndex(-1);
+    onChange(query); // update inputText bar
+    setQueryHistory(query); // update history order
+    setIsInputDropdownOpen(false); // close dropdown since we execute search
+    onSubmit?.(); // search
+  };
 
   const onAcceptSuggestion = (suggestion: string) => {
     setSelectedAutocompleteIndex(-1);
@@ -117,6 +143,37 @@ export default function AutocompleteInput({
             <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
           )}
           <div>
+            {
+              // only show search history when: 1. on input, 2. has search type, 3. has history list
+              value.length === 0 &&
+                queryHistoryType &&
+                queryHistoryList.length > 0 && (
+                  <div className="border-top border-dark fs-8 py-2">
+                    <div className="text-muted fs-8 fw-bold me-1 px-3">
+                      Search History:
+                    </div>
+                    {queryHistoryList.map(({ value, label }, i) => {
+                      return (
+                        <div
+                          className={`py-2 px-3 text-muted ${
+                            selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
+                          }`}
+                          role="button"
+                          key={value}
+                          onMouseOver={() => {
+                            setSelectedQueryHistoryIndex(i);
+                          }}
+                          onClick={() => {
+                            onSelectSearchHistory(value);
+                          }}
+                        >
+                          <span className="me-1  flex-wrap">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+            }
             {suggestedProperties.length > 0 && (
               <div className="border-top border-dark fs-8 py-2">
                 <div className="d-flex justify-content-between px-3 mb-2">
@@ -179,10 +236,12 @@ export default function AutocompleteInput({
         onChange={e => onChange(e.target.value)}
         onFocus={() => {
           setSelectedAutocompleteIndex(-1);
+          setSelectedQueryHistoryIndex(-1);
           setIsSearchInputFocused(true);
         }}
         onBlur={() => {
           setSelectedAutocompleteIndex(-1);
+          setSelectedQueryHistoryIndex(-1);
           setIsSearchInputFocused(false);
         }}
         onKeyDown={e => {
@@ -213,6 +272,9 @@ export default function AutocompleteInput({
                 suggestedProperties[selectedAutocompleteIndex].value,
               );
             } else {
+              if (queryHistoryType) {
+                setQueryHistory(value);
+              }
               onSubmit?.();
             }
           }
