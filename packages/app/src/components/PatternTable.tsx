@@ -158,8 +158,10 @@ export default function PatternTable({
   } = useSearchTotalCount(totalCountConfig, totalCountQueryKeyPrefix);
 
   const sampleMultiplier = useMemo(() => {
-    return totalCount ? totalCount / SAMPLES : 1;
-  }, [totalCount]);
+    return totalCount && results?.data.length
+      ? totalCount / results?.data.length
+      : 1;
+  }, [totalCount, results?.data.length]);
 
   const granularity = convertDateRangeToGranularityString(config.dateRange, 24);
   const timeRangeBuckets = timeBucketByGranularity(
