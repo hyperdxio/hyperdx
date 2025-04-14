@@ -731,6 +731,8 @@ function DBSearchPage() {
               newInputSourceObj?.timestampValueExpression ?? '',
             )} DESC`,
           );
+          // Clear all search filters
+          searchFilters.clearAllFilters();
         }
       }
     });
