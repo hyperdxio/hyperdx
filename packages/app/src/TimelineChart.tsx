@@ -3,8 +3,10 @@ import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import useResizable from './hooks/useResizable';
 import { useDrag, usePrevious } from './utils';
 
+import resizeStyles from '../styles/ResizablePanel.module.scss';
 import styles from '../styles/TimelineChart.module.scss';
 
 type TimelineEventT = {
@@ -344,7 +346,7 @@ export default function TimelineChart({
   rowHeight,
   onMouseMove,
   onEventClick,
-  labelWidth,
+  labelWidth: initialLabelWidth,
   className,
   style,
   onClick,
@@ -373,6 +375,14 @@ export default function TimelineChart({
 }) {
   const [offset, setOffset] = useState(0);
   const prevScale = usePrevious(scale);
+
+  const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
+  const { width: labelWidthPercent, startResize } = useResizable(
+    initialWidthPercent,
+    'left',
+  );
+
+  const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const onMouseEvent = (
@@ -561,8 +571,19 @@ export default function TimelineChart({
                   ...row.style,
                 }}
               >
-                <div style={{ width: labelWidth, minWidth: labelWidth }}>
+                <div
+                  className={styles.labelContainer}
+                  style={{
+                    width: labelWidth,
+                    minWidth: labelWidth,
+                  }}
+                >
                   {row.label}
+                  <div
+                    className={resizeStyles.resizeHandle}
+                    onMouseDown={startResize}
+                    style={{ backgroundColor: '#3a3a44' }}
+                  />
                 </div>
                 <NewTimelineRow
                   events={row.events}
