@@ -720,3 +720,11 @@ export function getMetricTableName(
 export function toArray<T>(obj?: T | T[]): T[] {
   return !obj ? [] : Array.isArray(obj) ? obj : [obj];
 }
+
+// Helper function to remove trailing slash
+export const stripTrailingSlash = (url: string | undefined | null): string => {
+  if (!url) {
+    return '';
+  }
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+};
