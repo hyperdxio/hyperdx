@@ -132,7 +132,7 @@ export default function AutocompleteInput({
                         onAcceptSuggestion(value);
                       }}
                     >
-                      <span className="me-1">{label}</span>
+                      <span className="me-1 text-break">{label}</span>
                     </div>
                   ))}
               </div>
