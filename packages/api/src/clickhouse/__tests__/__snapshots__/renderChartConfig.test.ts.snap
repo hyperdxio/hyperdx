@@ -60,6 +60,15 @@ Array [
 ]
 `;
 
+exports[`renderChartConfig Query Metrics should include multiple data points in percentile computation (p50) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "any(toFloat64OrNull(toString(Rate)))": 2.9,
+  },
+]
+`;
+
 exports[`renderChartConfig Query Metrics single avg gauge with group-by 1`] = `
 Array [
   Object {
@@ -192,11 +201,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p25) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrNull(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 10,
+    "any(toFloat64OrNull(toString(Rate)))": 10,
   },
 ]
 `;
@@ -205,11 +214,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p50) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrNull(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 20,
+    "any(toFloat64OrNull(toString(Rate)))": 13.333333333333332,
   },
 ]
 `;
@@ -218,11 +227,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p90) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrNull(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 30,
+    "any(toFloat64OrNull(toString(Rate)))": 30,
   },
 ]
 `;
@@ -231,11 +240,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_lower_bound_inf histogra
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrNull(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 1,
+    "any(toFloat64OrNull(toString(Rate)))": 1,
   },
 ]
 `;
@@ -244,11 +253,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_upper_bound_inf histogra
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrNull(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 30,
+    "any(toFloat64OrNull(toString(Rate)))": 30,
   },
 ]
 `;
