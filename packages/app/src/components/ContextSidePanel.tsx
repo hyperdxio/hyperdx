@@ -41,10 +41,8 @@ export default function ContextSubpanel({
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const { Timestamp: origTimestamp } = rowData;
-  const {
-    where: originalWhere = '',
-    whereLanguage: originalLanguage = 'lucene',
-  } = dbSqlRowTableConfig ?? {};
+  const { whereLanguage: originalLanguage = 'lucene' } =
+    dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
   const [contextBy, setContextBy] = useState<ContextBy>(ContextBy.All);
   const { control, watch } = useForm({
@@ -147,9 +145,21 @@ export default function ContextSubpanel({
   }
 
   const config = useMemo(() => {
-    if (!dbSqlRowTableConfig) return null;
-
     const whereClause = getWhereClause(contextBy);
+    // missing query info, build config from source with default value
+    if (!dbSqlRowTableConfig)
+      return {
+        connection: source.connection,
+        from: source.from,
+        timestampValueExpression: source.timestampValueExpression,
+        select: source.defaultTableSelectExpression || '',
+        limit: { limit: 200 },
+        orderBy: `${source.timestampValueExpression} DESC`,
+        where: whereClause,
+        whereLanguage: originalLanguage,
+        dateRange: newDateRange,
+      };
+
     return {
       ...dbSqlRowTableConfig,
       where: whereClause,
@@ -232,11 +242,6 @@ export default function ContextSubpanel({
             {contextBy !== ContextBy.All && (
               <Badge size="md" variant="default">
                 {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-              </Badge>
-            )}
-            {originalWhere && (
-              <Badge size="md" variant="default">
-                {originalWhere}
               </Badge>
             )}
             <Badge size="md" variant="default">

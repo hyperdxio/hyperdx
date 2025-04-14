@@ -20,7 +20,7 @@ import { IconSearch } from '@tabler/icons-react';
 
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
-import { useSearchPageFilterState } from '@/searchFilters';
+import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -29,9 +29,11 @@ import classes from '../../styles/SearchPage.module.scss';
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
+  pinned: boolean;
   onChange?: (checked: boolean) => void;
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
+  onClickPin: VoidFunction;
 };
 
 export const TextButton = ({
@@ -56,9 +58,11 @@ const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
   label,
+  pinned,
   onChange,
   onClickOnly,
   onClickExclude,
+  onClickPin,
 }: FilterCheckboxProps) => {
   return (
     <div className={classes.filterCheckbox}>
@@ -102,7 +106,16 @@ export const FilterCheckbox = ({
         {onClickExclude && (
           <TextButton onClick={onClickExclude} label="Exclude" />
         )}
+        <TextButton
+          onClick={onClickPin}
+          label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
+        />
       </div>
+      {pinned && (
+        <Text size="xxs" c="gray.6">
+          <i className="bi bi-pin-angle-fill"></i>
+        </Text>
+      )}
     </div>
   );
 };
@@ -119,6 +132,8 @@ export type FilterGroupProps = {
   onClearClick: VoidFunction;
   onOnlyClick: (value: string) => void;
   onExcludeClick: (value: string) => void;
+  onPinClick: (value: string) => void;
+  isPinned: (value: string) => boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -132,6 +147,8 @@ export const FilterGroup = ({
   onClearClick,
   onOnlyClick,
   onExcludeClick,
+  isPinned,
+  onPinClick,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
@@ -163,12 +180,18 @@ export const FilterGroup = ({
       a: (typeof augmentedOptions)[0],
       b: (typeof augmentedOptions)[0],
     ) => {
+      const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
+      const bPinned = isPinned(b.value);
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
 
-      // First sort by included status
+      // First sort by pinned status
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // Then sort by included status
       if (aIncluded && !bIncluded) return -1;
       if (!aIncluded && bIncluded) return 1;
 
@@ -186,22 +209,8 @@ export const FilterGroup = ({
     }
 
     // Do not rearrange items if all selected values are visible without expanding
-    const shouldSortBySelected =
-      isExpanded ||
-      augmentedOptions.some(
-        (option, index) =>
-          (selectedValues.included.has(option.value) ||
-            selectedValues.excluded.has(option.value)) &&
-          index >= MAX_FILTER_GROUP_ITEMS,
-      );
-
     return augmentedOptions
-      .slice()
-      .sort((a, b) =>
-        shouldSortBySelected
-          ? sortBySelectionAndAlpha(a, b)
-          : a.value.localeCompare(b.value),
-      )
+      .sort((a, b) => sortBySelectionAndAlpha(a, b))
       .slice(
         0,
         Math.max(
@@ -255,6 +264,7 @@ export const FilterGroup = ({
           <FilterCheckbox
             key={option.value}
             label={option.label}
+            pinned={isPinned(option.value)}
             value={
               selectedValues.included.has(option.value)
                 ? 'included'
@@ -265,6 +275,7 @@ export const FilterGroup = ({
             onChange={() => onChange(option.value)}
             onClickOnly={() => onOnlyClick(option.value)}
             onClickExclude={() => onExcludeClick(option.value)}
+            onClickPin={() => onPinClick(option.value)}
           />
         ))}
         {optionsLoading ? (
@@ -304,8 +315,6 @@ export const FilterGroup = ({
   );
 };
 
-type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
-
 export const DBSearchPageFilters = ({
   filters: filterState,
   clearAllFilters,
@@ -315,12 +324,17 @@ export const DBSearchPageFilters = ({
   chartConfig,
   analysisMode,
   setAnalysisMode,
+  sourceId,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
+  sourceId?: string;
 } & FilterStateHook) => {
+  const { toggleFilterPin, isFilterPinned } = usePinnedFilters(
+    sourceId ?? null,
+  );
   const { width, startResize } = useResizable(16, 'left');
 
   const { data, isLoading } = useAllFields({
@@ -380,7 +394,7 @@ export const DBSearchPageFilters = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
+    chartConfigs: { ...chartConfig, dateRange },
     keys: datum,
   });
 
@@ -504,6 +518,8 @@ export const DBSearchPageFilters = ({
               onExcludeClick={value => {
                 setFilterValue(facet.key, value, 'exclude');
               }}
+              onPinClick={value => toggleFilterPin(facet.key, value)}
+              isPinned={value => isFilterPinned(facet.key, value)}
             />
           ))}
 
