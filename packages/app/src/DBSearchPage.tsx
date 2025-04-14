@@ -1249,6 +1249,7 @@ function DBSearchPage() {
                     dateRange: searchedTimeRange,
                     with: aliasWith,
                   }}
+                  sourceId={inputSourceObj?.id}
                   {...searchFilters}
                 />
               </ErrorBoundary>
