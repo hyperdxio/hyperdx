@@ -27,7 +27,13 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
-import { FetchNextPageOptions } from '@tanstack/react-query';
+import {
+  FetchNextPageOptions,
+  keepPreviousData,
+  QueryClient,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   ColumnDef,
   ColumnResizeMode,
@@ -41,6 +47,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useGroupedPatterns } from '@/hooks/usePatterns';
 import useRowWhere from '@/hooks/useRowWhere';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
@@ -900,6 +907,7 @@ export function DBSqlRowTable({
   isLive = false,
   queryKeyPrefix,
   onScroll,
+  denoiseResults = false,
 }: {
   config: ChartConfigWithDateRange;
   onRowExpandClick?: (where: string) => void;
@@ -909,6 +917,7 @@ export function DBSqlRowTable({
   isLive?: boolean;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
+  denoiseResults?: boolean;
 }) {
   const mergedConfig = useConfigWithPrimaryAndPartitionKey(config);
 
@@ -964,7 +973,7 @@ export function DBSqlRowTable({
       });
       return newRow;
     });
-  }, [data, objectTypeColumns]);
+  }, [data, objectTypeColumns, columnMap]);
 
   const aliasMap = chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} });
 
@@ -983,23 +992,106 @@ export function DBSqlRowTable({
     }
   }, [isError, onError, error]);
 
+  const patternColumn = columns[columns.length - 1];
+  const groupedPatterns = useGroupedPatterns({
+    config,
+    samples: 10_000,
+    bodyValueExpression: patternColumn ?? '',
+    totalCount: undefined,
+    enabled: denoiseResults,
+  });
+  const noisyPatterns = useQuery({
+    queryKey: ['noisy-patterns', config],
+    queryFn: async () => {
+      return Object.values(groupedPatterns.data).filter(
+        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+      );
+    },
+    enabled:
+      denoiseResults &&
+      groupedPatterns.data != null &&
+      Object.values(groupedPatterns.data).length > 0 &&
+      groupedPatterns.miner != null,
+  });
+  const noisyPatternIds = useMemo(() => {
+    return noisyPatterns.data?.map(p => p.id) ?? [];
+  }, [noisyPatterns.data]);
+
+  const queryClient = useQueryClient();
+
+  const denoisedRows = useQuery({
+    queryKey: [
+      'denoised-rows',
+      config,
+      processedRows,
+      noisyPatternIds,
+      patternColumn,
+    ],
+    queryFn: async () => {
+      const matchedLogs = await groupedPatterns.miner?.matchLogs(
+        processedRows.map(row => row[patternColumn]),
+      );
+      return processedRows.filter((row, i) => {
+        const match = matchedLogs?.[i];
+        return !noisyPatternIds.includes(`${match}`);
+      });
+    },
+    placeholderData: (previousData, previousQuery) => {
+      // If it's the same search, but new data, return the previous data while we load
+      if (
+        previousQuery?.queryKey?.[0] === 'denoised-rows' &&
+        previousQuery?.queryKey?.[1] === config
+      ) {
+        return previousData;
+      }
+      return undefined;
+    },
+    enabled:
+      processedRows.length > 0 &&
+      groupedPatterns.miner != null &&
+      noisyPatternIds.length > 0,
+  });
+
+  const isLoading = denoiseResults
+    ? isFetching ||
+      denoisedRows.isFetching ||
+      noisyPatterns.isFetching ||
+      groupedPatterns.isLoading
+    : isFetching;
+
   return (
-    <RawLogTable
-      isLive={isLive}
-      wrapLines={false}
-      displayedColumns={columns}
-      highlightedLineId={highlightedLineId}
-      rows={processedRows}
-      isLoading={isFetching}
-      fetchNextPage={fetchNextPage}
-      // onPropertySearchClick={onPropertySearchClick}
-      hasNextPage={hasNextPage}
-      onRowExpandClick={_onRowExpandClick}
-      onScroll={onScroll}
-      generateRowId={getRowWhere}
-      isError={isError}
-      error={error ?? undefined}
-      columnTypeMap={columnMap}
-    />
+    <>
+      {denoiseResults && (
+        <Box mb="xxs" px="sm" mt="-24px">
+          <Text fw="bold" fz="xs" mb="xxs">
+            Removed Noisy Event Patterns
+          </Text>
+          <Box mah={100} style={{ overflow: 'auto' }}>
+            {noisyPatterns.data?.map(p => (
+              <Text c="gray.3" fz="xs" key={p.id}>
+                {p.pattern}
+              </Text>
+            ))}
+          </Box>
+        </Box>
+      )}
+      <RawLogTable
+        isLive={isLive}
+        wrapLines={false}
+        displayedColumns={columns}
+        highlightedLineId={highlightedLineId}
+        rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        isLoading={isLoading}
+        fetchNextPage={fetchNextPage}
+        // onPropertySearchClick={onPropertySearchClick}
+        hasNextPage={hasNextPage}
+        onRowExpandClick={_onRowExpandClick}
+        onScroll={onScroll}
+        generateRowId={getRowWhere}
+        isError={isError}
+        error={error ?? undefined}
+        columnTypeMap={columnMap}
+      />
+    </>
   );
 }
