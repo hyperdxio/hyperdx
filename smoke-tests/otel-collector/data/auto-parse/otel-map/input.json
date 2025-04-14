@@ -1,0 +1,56 @@
+{
+    "resourceLogs": [
+        {
+            "resource": {
+                "attributes": [
+                    {
+                        "key": "suite-id",
+                        "value": {
+                            "stringValue": "auto-parse"
+                        }
+                    },
+                    {
+                        "key": "test-id",
+                        "value": {
+                            "stringValue": "otel-map"
+                        }
+                    }
+                ]
+            },
+            "scopeLogs": [
+                {
+                    "scope": {},
+                    "logRecords": [
+                        {
+                            "timeUnixNano": "1901999580000000000",
+                            "body": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "message",
+                                            "value": {
+                                                "stringValue": "data sent as OTEL map should also extend the log attributes"
+                                            }
+                                        },
+                                        {
+                                            "key": "user-id",
+                                            "value": {
+                                                "stringValue": "1234"
+                                            }
+                                        },
+                                        {
+                                            "key": "account-id",
+                                            "value": {
+                                                "stringValue": "550e8400-e29b-41d4-a716-446655440000"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
