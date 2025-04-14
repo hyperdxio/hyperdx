@@ -144,7 +144,7 @@ export default function AutocompleteInput({
           )}
           <div>
             {
-              // only show search history when: 1. on input, 2. has search type, 3. has history list
+              // only show search history when: 1.no input, 2.has search type, 3.has history list
               value.length === 0 &&
                 queryHistoryType &&
                 queryHistoryList.length > 0 && (

@@ -219,6 +219,9 @@ export default function SQLInlineEditor({
         }),
       });
       const queryHistoryList = autocompletion({
+        compareCompletions: (a: any, b: any) => {
+          return 0;
+        }, // don't sort the history search
         override: [createHistoryList],
       });
       viewRef.dispatch({
