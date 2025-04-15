@@ -1,43 +1,76 @@
 import { useMemo } from 'react';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  DateRange,
+  MetricsDataType,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
+const DEFAULT_ONE_DAY_FROM_NOW_RANGE = [
+  new Date(Date.now() - 1000 * 60 * 60 * 24),
+  new Date(),
+] as DateRange['dateRange'];
+const DEFAULT_ONE_WEEK_FROM_NOW_RANGE = [
+  new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
+  new Date(),
+] as DateRange['dateRange'];
 
-const dateRange = [new Date(Date.now() - 1000 * 60 * 60 * 24), new Date()] as [
-  Date,
-  Date,
-];
-
-const chartConfigByMetricType = (
-  metricSource: TSource,
-  metricType: MetricsDataType,
-) => ({
-  // metricSource,
-  from: {
-    databaseName: metricSource.from.databaseName,
-    tableName: metricSource.metricTables?.[metricType] ?? '',
-  },
-  where: '',
-  whereLanguage: 'sql' as const,
-  select: '',
-  timestampValueExpression: metricSource.timestampValueExpression ?? '',
-  connection: metricSource.connection,
-  // TODO: Set proper date range (optional)
+const chartConfigByMetricType = ({
   dateRange,
-});
+  metricSource,
+  metricType,
+}: {
+  dateRange?: DateRange['dateRange'];
+  metricSource: TSource;
+  metricType: MetricsDataType;
+}) => {
+  let _dateRange = dateRange ? dateRange : DEFAULT_ONE_DAY_FROM_NOW_RANGE;
+  const period = _dateRange[1].getTime() - _dateRange[0].getTime();
+  if (period < 1000 * 60 * 60 * 24) {
+    _dateRange = DEFAULT_ONE_DAY_FROM_NOW_RANGE;
+  } else if (period > 1000 * 60 * 60 * 24 * 7) {
+    _dateRange = DEFAULT_ONE_WEEK_FROM_NOW_RANGE;
+  }
 
-function useMetricNames(metricSource: TSource) {
+  return {
+    // metricSource,
+    from: {
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.[metricType] ?? '',
+    },
+    where: '',
+    whereLanguage: 'sql' as const,
+    select: '',
+    timestampValueExpression: metricSource.timestampValueExpression ?? '',
+    connection: metricSource.connection,
+    dateRange: _dateRange,
+  };
+};
+
+function useMetricNames(
+  metricSource: TSource,
+  dateRange?: DateRange['dateRange'],
+) {
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
     return {
-      gaugeConfig: chartConfigByMetricType(metricSource, MetricsDataType.Gauge),
-      histogramConfig: chartConfigByMetricType(
+      gaugeConfig: chartConfigByMetricType({
+        dateRange,
         metricSource,
-        MetricsDataType.Histogram,
-      ),
-      sumConfig: chartConfigByMetricType(metricSource, MetricsDataType.Sum),
+        metricType: MetricsDataType.Gauge,
+      }),
+      histogramConfig: chartConfigByMetricType({
+        dateRange,
+        metricSource,
+        metricType: MetricsDataType.Histogram,
+      }),
+      sumConfig: chartConfigByMetricType({
+        dateRange,
+        metricSource,
+        metricType: MetricsDataType.Sum,
+      }),
     };
   }, [metricSource]);
 
@@ -68,6 +101,7 @@ function useMetricNames(metricSource: TSource) {
 }
 
 export function MetricNameSelect({
+  dateRange,
   metricType,
   metricName,
   setMetricType,
@@ -76,6 +110,7 @@ export function MetricNameSelect({
   isError,
   metricSource,
 }: {
+  dateRange?: DateRange['dateRange'];
   metricType: MetricsDataType;
   metricName: string | undefined | null;
   setMetricType: (metricType: MetricsDataType) => void;
@@ -90,7 +125,7 @@ export function MetricNameSelect({
     gaugeMetrics,
     // , histogramMetrics
     sumMetrics,
-  } = useMetricNames(metricSource);
+  } = useMetricNames(metricSource, dateRange);
 
   const options = useMemo(() => {
     return [
