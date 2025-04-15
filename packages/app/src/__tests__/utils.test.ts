@@ -276,6 +276,7 @@ describe('useQueryHistory', () => {
   const mockGetItem = jest.fn();
   const mockSetItem = jest.fn();
   const mockRemoveItem = jest.fn();
+  const originalLocalStorage = window.localStorage;
 
   beforeEach(() => {
     mockGetItem.mockClear();
@@ -293,6 +294,10 @@ describe('useQueryHistory', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    Object.defineProperty(window, 'localStorage', {
+      value: originalLocalStorage,
+      configurable: true,
+    });
   });
 
   it('adds new query', () => {
