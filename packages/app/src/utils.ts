@@ -175,10 +175,62 @@ export const useDebounce = <T>(
   return debouncedValue;
 };
 
+export function getLocalStorageValue<T>(key: string): T | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const item = window.localStorage.getItem(key);
+    return item != null ? JSON.parse(item) : null;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.log(error);
+    return null;
+  }
+}
+
+export interface CustomStorageChangeDetail {
+  key: string;
+  instanceId: string;
+}
+
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State to store our value
   // Pass initial state function to useState so logic is only executed once
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
+  const [storedValue, setStoredValue] = useState<T>(
+    getLocalStorageValue<T>(key) ?? initialValue,
+  );
+
+  // Create a unique ID for this hook instance
+  const [instanceId] = useState(() =>
+    Math.random().toString(36).substring(2, 9),
+  );
+
+  useEffect(() => {
+    const handleCustomStorageChange = (event: Event) => {
+      if (
+        event instanceof CustomEvent<CustomStorageChangeDetail> &&
+        event.detail.key === key &&
+        event.detail.instanceId !== instanceId
+      ) {
+        setStoredValue(getLocalStorageValue<T>(key)!);
+      }
+    };
+    const handleStorageChange = (event: Event) => {
+      if (event instanceof StorageEvent && event.key === key) {
+        setStoredValue(getLocalStorageValue<T>(key)!);
+      }
+    };
+    // check if local storage changed from current window
+    window.addEventListener('customStorage', handleCustomStorageChange);
+    // check if local storage changed from another window
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('customStorage', handleCustomStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // Fetch the value on client-side to avoid SSR issues
   useEffect(() => {
@@ -201,7 +253,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // Return a wrapped version of useState's setter function that ...
   // ... persists the new value to localStorage.
-  const setValue = (value: T | Function) => {
+  const setValue = (value: T | ((prevState: T) => T)) => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -213,6 +265,18 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       setStoredValue(valueToStore);
       // Save to local storage
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      // Fire off event so other localStorage hooks listening with the same key
+      // will update
+      const event = new CustomEvent<CustomStorageChangeDetail>(
+        'customStorage',
+        {
+          detail: {
+            key,
+            instanceId,
+          },
+        },
+      );
+      window.dispatchEvent(event);
     } catch (error) {
       // A more advanced implementation would handle the error case
       // eslint-disable-next-line no-console
@@ -648,4 +712,11 @@ export function getMetricTableName(
     : source.metricTables?.[
         metricType.toLowerCase() as keyof typeof source.metricTables
       ];
+}
+
+/**
+ * Converts (T | T[]) to T[]. If undefined, empty array
+ */
+export function toArray<T>(obj?: T | T[]): T[] {
+  return !obj ? [] : Array.isArray(obj) ? obj : [obj];
 }
