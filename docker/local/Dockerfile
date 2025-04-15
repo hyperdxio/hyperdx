@@ -12,7 +12,7 @@
 # - Allow persisting settings on disk
 # - Limiting persisted data with some auto rotation
 
-ARG NODE_VERSION=18.20.3
+ARG NODE_VERSION=22.14.0
 ARG CLICKHOUSE_VERSION=24
 ARG OTEL_COLLECTOR_VERSION=0.117.0
 # Get Node base image to copy over Node binaries
