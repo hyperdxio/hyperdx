@@ -6,6 +6,7 @@ import {
   autocompletion,
   closeCompletion,
   Completion,
+  CompletionSection,
   startCompletion,
 } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
@@ -178,6 +179,8 @@ export default function SQLInlineEditor({
         options: queryHistory.map(q => {
           return {
             label: q,
+            section: 'Search History',
+            type: 'keyword',
             apply: (
               view: EditorView,
               _completion: Completion,

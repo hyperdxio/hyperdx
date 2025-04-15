@@ -143,37 +143,6 @@ export default function AutocompleteInput({
             <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
           )}
           <div>
-            {
-              // only show search history when: 1.no input, 2.has search type, 3.has history list
-              value.length === 0 &&
-                queryHistoryType &&
-                queryHistoryList.length > 0 && (
-                  <div className="border-top border-dark fs-8 py-2">
-                    <div className="text-muted fs-8 fw-bold me-1 px-3">
-                      Search History:
-                    </div>
-                    {queryHistoryList.map(({ value, label }, i) => {
-                      return (
-                        <div
-                          className={`py-2 px-3 text-muted ${
-                            selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
-                          }`}
-                          role="button"
-                          key={value}
-                          onMouseOver={() => {
-                            setSelectedQueryHistoryIndex(i);
-                          }}
-                          onClick={() => {
-                            onSelectSearchHistory(value);
-                          }}
-                        >
-                          <span className="me-1  flex-wrap">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
-            }
             {suggestedProperties.length > 0 && (
               <div className="border-top border-dark fs-8 py-2">
                 <div className="d-flex justify-content-between px-3 mb-2">
@@ -211,6 +180,39 @@ export default function AutocompleteInput({
               {belowSuggestions}
             </div>
           )}
+          <div>
+            {
+              // only show search history when: 1.no input, 2.has search type, 3.has history list
+              value.length === 0 &&
+                queryHistoryType &&
+                queryHistoryList.length > 0 && (
+                  <div className="border-top border-dark fs-8 py-2">
+                    <div className="text-muted fs-8 fw-bold me-1 px-3">
+                      Search History:
+                    </div>
+                    {queryHistoryList.map(({ value, label }, i) => {
+                      return (
+                        <div
+                          className={`py-2 px-3 text-muted ${
+                            selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
+                          }`}
+                          role="button"
+                          key={value}
+                          onMouseOver={() => {
+                            setSelectedQueryHistoryIndex(i);
+                          }}
+                          onClick={() => {
+                            onSelectSearchHistory(value);
+                          }}
+                        >
+                          <span className="me-1  flex-wrap">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+            }
+          </div>
         </div>
       )}
       popperConfig={{
