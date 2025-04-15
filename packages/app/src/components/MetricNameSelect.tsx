@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
   MetricsDataType,
@@ -9,14 +10,6 @@ import { Select } from '@mantine/core';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
-const DEFAULT_ONE_DAY_FROM_NOW_RANGE = [
-  new Date(Date.now() - 1000 * 60 * 60 * 24),
-  new Date(),
-] as DateRange['dateRange'];
-const DEFAULT_ONE_WEEK_FROM_NOW_RANGE = [
-  new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
-  new Date(),
-] as DateRange['dateRange'];
 
 const chartConfigByMetricType = ({
   dateRange,
@@ -27,12 +20,22 @@ const chartConfigByMetricType = ({
   metricSource: TSource;
   metricType: MetricsDataType;
 }) => {
-  let _dateRange = dateRange ? dateRange : DEFAULT_ONE_DAY_FROM_NOW_RANGE;
-  const period = _dateRange[1].getTime() - _dateRange[0].getTime();
-  if (period < 1000 * 60 * 60 * 24) {
-    _dateRange = DEFAULT_ONE_DAY_FROM_NOW_RANGE;
-  } else if (period > 1000 * 60 * 60 * 24 * 7) {
-    _dateRange = DEFAULT_ONE_WEEK_FROM_NOW_RANGE;
+  const now = new Date();
+  let _dateRange: DateRange['dateRange'] = dateRange
+    ? dateRange
+    : [subDays(now, 1), now];
+  const diffInDays = differenceInDays(_dateRange[1], _dateRange[0]);
+
+  if (diffInDays < 1) {
+    const nextDay = addDays(_dateRange[0], 1);
+    if (nextDay > now) {
+      _dateRange = [subDays(_dateRange[1], 1), _dateRange[1]];
+    } else {
+      _dateRange = [_dateRange[0], nextDay];
+    }
+  } else if (diffInDays > 3) {
+    // most recent 3 days
+    _dateRange = [subDays(_dateRange[1], 3), _dateRange[1]];
   }
 
   return {
@@ -72,7 +75,7 @@ function useMetricNames(
         metricType: MetricsDataType.Sum,
       }),
     };
-  }, [metricSource]);
+  }, [metricSource, dateRange]);
 
   const { data: gaugeMetrics } = useGetKeyValues({
     chartConfigs: gaugeConfig,
