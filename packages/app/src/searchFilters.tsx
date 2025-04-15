@@ -2,6 +2,8 @@ import React from 'react';
 import produce from 'immer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
+import { useLocalStorage } from './utils';
+
 export type FilterState = {
   [key: string]: {
     included: Set<string>;
@@ -198,15 +200,89 @@ export const useSearchPageFilterState = ({
   );
 
   const clearAllFilters = React.useCallback(() => {
-    setFilters({});
+    setFilters(() => ({}));
     updateFilterQuery({});
   }, [updateFilterQuery]);
 
   return {
     filters,
-    clearFilter,
     setFilters,
     setFilterValue,
+    clearFilter,
     clearAllFilters,
   };
 };
+
+type PinnedFilters = {
+  [key: string]: string[];
+};
+
+export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
+
+function usePinnedFilterBySource(sourceId: string | null) {
+  // Eventually replace pinnedFilters with a GET from api/mongo
+  // Eventually replace setPinnedFilters with a POST to api/mongo
+  const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
+    [sourceId: string]: PinnedFilters;
+  }>('hdx-pinned-search-filters', {});
+
+  const pinnedFilters = React.useMemo<PinnedFilters>(
+    () =>
+      !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
+    [_pinnedFilters, sourceId],
+  );
+  const setPinnedFilters = React.useCallback<
+    (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => void
+  >(
+    val => {
+      if (!sourceId) return;
+      _setPinnedFilters(prev =>
+        produce(prev, draft => {
+          draft[sourceId] =
+            val instanceof Function ? val(draft[sourceId] ?? {}) : val;
+        }),
+      );
+    },
+    [sourceId, _setPinnedFilters],
+  );
+  return { pinnedFilters, setPinnedFilters };
+}
+
+export function usePinnedFilters(sourceId: string | null) {
+  const { pinnedFilters, setPinnedFilters } = usePinnedFilterBySource(sourceId);
+
+  const toggleFilterPin = React.useCallback(
+    (property: string, value: string) => {
+      setPinnedFilters(prevPins =>
+        produce(prevPins, draft => {
+          if (!draft[property]) {
+            draft[property] = [];
+          }
+          const idx = draft[property].findIndex(v => v === value);
+          if (idx >= 0) {
+            draft[property].splice(idx);
+          } else {
+            draft[property].push(value);
+          }
+          return draft;
+        }),
+      );
+    },
+    [setPinnedFilters],
+  );
+
+  const isFilterPinned = React.useCallback(
+    (property: string, value: string): boolean => {
+      return (
+        pinnedFilters[property] &&
+        pinnedFilters[property].some(v => v === value)
+      );
+    },
+    [pinnedFilters],
+  );
+
+  return {
+    toggleFilterPin,
+    isFilterPinned,
+  };
+}
