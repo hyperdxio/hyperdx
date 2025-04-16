@@ -53,6 +53,9 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
 };
 
 export const computeRatio = (numeratorStr: string, denominatorStr: string) => {
+  if (numeratorStr.trim() === '' || denominatorStr.trim() === '') {
+    return NaN;
+  }
   const numerator = Number(numeratorStr);
   const denominator = Number(denominatorStr);
 

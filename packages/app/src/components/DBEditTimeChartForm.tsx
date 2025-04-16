@@ -635,12 +635,13 @@ export default function EditTimeChartForm({
                       size="sm"
                       color="gray"
                       variant="subtle"
-                      onClick={() =>
+                      onClick={() => {
                         setValue(
                           'seriesReturnType',
                           seriesReturnType === 'ratio' ? 'column' : 'ratio',
-                        )
-                      }
+                        );
+                        onSubmit();
+                      }}
                       checked={seriesReturnType === 'ratio'}
                     />
                   )}
