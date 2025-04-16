@@ -429,9 +429,6 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     }
-    if (name === 'seriesReturnType' && type === 'change') {
-      onSubmit();
-    }
   });
 
   // Emulate the date range picker auto-searching similar to dashboards

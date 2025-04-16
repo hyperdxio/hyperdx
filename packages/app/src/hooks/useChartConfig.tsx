@@ -52,6 +52,61 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
   return [config];
 };
 
+export const computeRatio = (numeratorStr: string, denominatorStr: string) => {
+  const numerator = Number(numeratorStr);
+  const denominator = Number(denominatorStr);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    return NaN;
+  }
+
+  return numerator / denominator;
+};
+
+export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
+  const _meta = resultSet.meta;
+  const _data = resultSet.data;
+  const timestampColumn = inferTimestampColumn(_meta ?? []);
+  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
+  const firstColumn = _restColumns?.[0];
+  const secondColumn = _restColumns?.[1];
+  if (!firstColumn || !secondColumn) {
+    throw new Error(
+      `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
+    );
+  }
+  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
+  const result = {
+    ...resultSet,
+    data: _data.map(row => ({
+      [ratioColumnName]: computeRatio(
+        row[firstColumn.name],
+        row[secondColumn.name],
+      ),
+      ...(timestampColumn
+        ? {
+            [timestampColumn.name]: row[timestampColumn.name],
+          }
+        : {}),
+    })),
+    meta: [
+      {
+        name: ratioColumnName,
+        type: 'Float64',
+      },
+      ...(timestampColumn
+        ? [
+            {
+              name: timestampColumn.name,
+              type: timestampColumn.type,
+            },
+          ]
+        : []),
+    ],
+  };
+  return result;
+};
+
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
 }
@@ -100,9 +155,12 @@ export function useQueriedChartConfig(
       );
 
       if (resultSets.length === 1) {
-        return resultSets[0];
+        const isRatio =
+          config.seriesReturnType === 'ratio' &&
+          resultSets[0].meta?.length === 3;
+        return isRatio ? computeResultSetRatio(resultSets[0]) : resultSets[0];
       }
-      // join resultSets
+      // metrics -> join resultSets
       else if (resultSets.length > 1) {
         const metaSet = new Map<string, { name: string; type: string }>();
         const tsBucketMap = new Map<string, Record<string, string | number>>();
@@ -146,10 +204,14 @@ export function useQueriedChartConfig(
           }
         }
 
-        return {
+        const isRatio =
+          config.seriesReturnType === 'ratio' && resultSets.length === 2;
+
+        const _resultSet = {
           meta: Array.from(metaSet.values()),
           data: Array.from(tsBucketMap.values()),
         };
+        return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
       }
       throw new Error('No result sets');
     },
