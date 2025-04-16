@@ -1,6 +1,5 @@
 import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
-import qs from 'qs';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -123,7 +122,11 @@ function proxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, _req) => {
         const newPath = _req.params[0];
-        const qparams = qs.stringify(_req.query);
+        let qparams = '';
+        const qIdx = _req.url.indexOf('?');
+        if (qIdx >= 0) {
+          qparams = _req.url.substring(qIdx);
+        }
         if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
           proxyReq.setHeader(
             'X-ClickHouse-User',
@@ -132,9 +135,10 @@ function proxyMiddleware(): RequestHandler {
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
         if (_req.method === 'POST') {
+          // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(_req.body);
         }
-        proxyReq.path = `/${newPath}?${qparams}`;
+        proxyReq.path = `/${newPath}${qparams}`;
       },
       proxyRes: (proxyRes, _req, res) => {
         // since clickhouse v24, the cors headers * will be attached to the response by default
