@@ -138,6 +138,7 @@ export function useQueriedChartConfig(
         query = await renderMTViewConfig();
       }
 
+      // TODO: move multi-series logics to common-utils so alerting can use it
       const queries: ChSql[] = await Promise.all(
         splitChartConfigs(config).map(c => renderChartConfig(c, getMetadata())),
       );
