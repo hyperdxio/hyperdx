@@ -311,7 +311,7 @@ export function useRRWebEventStream(
       pageParam: number;
       limit?: number;
     }) => {
-      if (!source || !onEvent) return;
+      if (!source) return;
       const resBuffer: any[] = [];
       let linesFetched = 0;
 
@@ -394,7 +394,7 @@ export function useRRWebEventStream(
         });
 
         let forFunc: (data: any) => void;
-        if (onEvent != null) {
+        if (onEvent) {
           forFunc = onEvent;
         } else if (keepPreviousData) {
           forFunc = (data: any) => resBuffer.push(data);
