@@ -52,12 +52,30 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
   return [config];
 };
 
-export const computeRatio = (numeratorStr: string, denominatorStr: string) => {
-  if (numeratorStr.trim() === '' || denominatorStr.trim() === '') {
-    return NaN;
+export const computeRatio = (
+  numeratorInput: string | number,
+  denominatorInput: string | number,
+) => {
+  let numerator: number;
+  let denominator: number;
+
+  if (typeof numeratorInput === 'string') {
+    if (numeratorInput.trim() === '') {
+      return NaN;
+    }
+    numerator = Number(numeratorInput);
+  } else {
+    numerator = numeratorInput;
   }
-  const numerator = Number(numeratorStr);
-  const denominator = Number(denominatorStr);
+
+  if (typeof denominatorInput === 'string') {
+    if (denominatorInput.trim() === '') {
+      return NaN;
+    }
+    denominator = Number(denominatorInput);
+  } else {
+    denominator = denominatorInput;
+  }
 
   if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
     return NaN;

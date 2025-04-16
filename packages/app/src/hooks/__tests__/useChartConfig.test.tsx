@@ -25,6 +25,22 @@ describe('computeRatio', () => {
     expect(computeRatio('-10', '5')).toBe(-2);
     expect(computeRatio('10', '-5')).toBe(-2);
   });
+
+  it('should handle number input types', () => {
+    expect(computeRatio(10, 2)).toBe(5);
+    expect(computeRatio(3, 4)).toBe(0.75);
+    expect(computeRatio(10.5, 2)).toBe(5.25);
+    expect(computeRatio(0, 5)).toBe(0);
+    expect(isNaN(computeRatio(10, 0))).toBe(true);
+    expect(computeRatio(-10, 5)).toBe(-2);
+  });
+
+  it('should handle mixed string and number inputs', () => {
+    expect(computeRatio('10', 2)).toBe(5);
+    expect(computeRatio(10, '2')).toBe(5);
+    expect(computeRatio(3, '4')).toBe(0.75);
+    expect(isNaN(computeRatio(10, ''))).toBe(true);
+  });
 });
 
 describe('computeResultSetRatio', () => {
