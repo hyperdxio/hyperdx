@@ -1,10 +1,12 @@
-import express, { Request, Response } from 'express';
+import express, { RequestHandler, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import qs from 'qs';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { validateRequestHeaders } from '@/utils/validation';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -58,17 +60,23 @@ router.post(
   },
 );
 
-router.get(
-  '/*',
-  validateRequest({
-    query: z.object({
-      hyperdx_connection_id: objectIdSchema,
+function validation() {
+  return validateRequestHeaders(
+    z.object({
+      'x-hyperdx-connection-id': objectIdSchema,
     }),
-  }),
-  async (req, res, next) => {
+  );
+}
+
+function getConnection(): RequestHandler {
+  return async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
-      const { hyperdx_connection_id } = req.query;
+      const connection_id = req.headers['x-hyperdx-connection-id']!; // ! because zod already validated
+      delete req.headers['x-hyperdx-connection-id'];
+      const hyperdx_connection_id = Array.isArray(connection_id)
+        ? connection_id.join('')
+        : connection_id;
 
       const connection = await getConnectionById(
         teamId.toString(),
@@ -93,13 +101,15 @@ router.get(
       console.error('Error fetching connection info:', e);
       next(e);
     }
-  },
-  createProxyMiddleware({
+  };
+}
+
+function proxyMiddleware(): RequestHandler {
+  return createProxyMiddleware({
     target: '', // doesn't matter. it should be overridden by the router
     changeOrigin: true,
     pathFilter: (path, _req) => {
-      // TODO: allow other methods
-      return _req.method === 'GET';
+      return _req.method === 'GET' || _req.method === 'POST';
     },
     pathRewrite: {
       '^/clickhouse-proxy': '',
@@ -113,8 +123,7 @@ router.get(
     on: {
       proxyReq: (proxyReq, _req) => {
         const newPath = _req.params[0];
-        const qparams = new URLSearchParams(_req.query);
-        qparams.delete('hyperdx_connection_id');
+        const qparams = qs.stringify(_req.query);
         if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
           proxyReq.setHeader(
             'X-ClickHouse-User',
@@ -122,7 +131,10 @@ router.get(
           );
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
-        proxyReq.path = `/${newPath}?${qparams.toString()}`;
+        if (_req.method === 'POST') {
+          proxyReq.write(_req.body);
+        }
+        proxyReq.path = `/${newPath}?${qparams}`;
       },
       proxyRes: (proxyRes, _req, res) => {
         // since clickhouse v24, the cors headers * will be attached to the response by default
@@ -158,7 +170,10 @@ router.get(
     // ...(config.IS_DEV && {
     //   logger: console,
     // }),
-  }),
-);
+  });
+}
+
+router.get('/*', validation(), getConnection(), proxyMiddleware());
+router.post('/*', validation(), getConnection(), proxyMiddleware());
 
 export default router;

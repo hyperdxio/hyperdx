@@ -289,11 +289,9 @@ export class ClickhouseClient {
     const isLocalMode = this.username != null && this.password != null;
     const includeCredentials = !isLocalMode;
     const includeCorsHeader = isLocalMode;
-    const _connectionId = isLocalMode ? undefined : connectionId;
 
     const searchParams = new URLSearchParams([
       ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
-      ...(_connectionId ? [['hyperdx_connection_id', _connectionId]] : []),
       ['query', query],
       ['default_format', format],
       ['date_time_output_format', 'iso'],
@@ -329,11 +327,17 @@ export class ClickhouseClient {
     if (isBrowser) {
       // TODO: check if we can use the client-web directly
       const { ResultSet } = await import('@clickhouse/client-web');
+
+      const headers = {};
+      if (!isLocalMode && connectionId) {
+        headers['x-hyperdx-connection-id'] = connectionId;
+      }
       // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
-      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
+      const response = await fetch(`${this.host}?${searchParams.toString()}`, {
         ...(includeCredentials ? { credentials: 'include' } : {}),
         signal: abort_signal,
         method: 'GET',
+        headers,
       });
 
       // TODO: Send command to CH to cancel query on abort_signal

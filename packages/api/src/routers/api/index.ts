@@ -6,7 +6,6 @@ import logsRouter from './logs';
 import meRouter from './me';
 import metricsRouter from './metrics';
 import rootRouter from './root';
-import sessionsRouter from './sessions';
 import teamRouter from './team';
 import webhooksRouter from './webhooks';
 
@@ -18,7 +17,6 @@ export default {
   meRouter,
   metricsRouter,
   rootRouter,
-  sessionsRouter,
   teamRouter,
   webhooksRouter,
   chartRouter,
