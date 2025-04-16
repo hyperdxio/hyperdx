@@ -15,7 +15,10 @@ import {
   ChartConfigWithDateRange,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import {
+  splitAndTrimCSV,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
@@ -699,7 +702,7 @@ function mergeSelectWithPrimaryAndPartitionKey(
     primaryKeys.trim() !== '' ? splitAndTrimCSV(primaryKeys) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
-    const selectSplit = splitAndTrimCSV(select);
+    const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
     const additionalKeys = allKeys.filter(k => !selectColumns.has(k));
     return {
