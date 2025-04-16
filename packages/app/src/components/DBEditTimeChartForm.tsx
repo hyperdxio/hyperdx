@@ -14,6 +14,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   AlertBaseSchema,
   ChartConfigWithDateRange,
+  DateRange,
   DisplayType,
   Filter,
   MetricsDataType,
@@ -105,6 +106,7 @@ const NumberFormatInputControlled = ({
 function ChartSeriesEditor({
   control,
   databaseName,
+  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -117,6 +119,7 @@ function ChartSeriesEditor({
 }: {
   control: Control<any>;
   databaseName: string;
+  dateRange?: DateRange['dateRange'];
   connectionId?: string;
   index?: number;
   namePrefix: string;
@@ -188,6 +191,7 @@ function ChartSeriesEditor({
         </div>
         {tableSource?.kind === SourceKind.Metric && (
           <MetricNameSelect
+            dateRange={dateRange}
             metricName={watch(`${namePrefix}metricName`)}
             metricType={metricType}
             setMetricName={value => {
@@ -565,6 +569,7 @@ export default function EditTimeChartForm({
                 <ChartSeriesEditor
                   control={control}
                   databaseName={databaseName ?? ''}
+                  dateRange={dateRange}
                   index={index}
                   key={field.id}
                   namePrefix={`select.${index}.`}
