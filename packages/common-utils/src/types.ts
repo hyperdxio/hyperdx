@@ -346,6 +346,7 @@ export const _ChartConfigSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
+  seriesReturnType: z.enum(['ratio', 'column']).optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
