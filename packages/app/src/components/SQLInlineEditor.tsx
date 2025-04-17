@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
+import {
+  acceptCompletion,
+  autocompletion,
+  closeCompletion,
+  Completion,
+  CompletionSection,
+  startCompletion,
+} from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
 import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
@@ -14,6 +21,7 @@ import CodeMirror, {
 } from '@uiw/react-codemirror';
 
 import { useAllFields } from '@/hooks/useMetadata';
+import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
@@ -103,6 +111,7 @@ type SQLInlineEditorProps = {
   disableKeywordAutocomplete?: boolean;
   enableHotkey?: boolean;
   additionalSuggestions?: string[];
+  queryHistoryType?: string;
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -131,6 +140,7 @@ export default function SQLInlineEditor({
   disableKeywordAutocomplete,
   enableHotkey,
   additionalSuggestions = [],
+  queryHistoryType,
 }: SQLInlineEditorProps) {
   const { data: fields } = useAllFields(tableConnections ?? [], {
     enabled:
@@ -141,6 +151,50 @@ export default function SQLInlineEditor({
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
 
+  // query search history
+  const [queryHistory, setQueryHistory] = useQueryHistory(queryHistoryType);
+
+  const onSelectSearchHistory = (
+    view: EditorView,
+    from: number,
+    to: number,
+    q: string,
+  ) => {
+    // update history into search bar
+    view.dispatch({
+      changes: { from, to, insert: q },
+    });
+    // close history bar;
+    closeCompletion(view);
+    // update history order
+    setQueryHistory(q);
+    // execute search
+    if (onSubmit) onSubmit();
+  };
+
+  const createHistoryList = useMemo(() => {
+    return () => {
+      return {
+        from: 0,
+        options: queryHistory.map(q => {
+          return {
+            label: q,
+            section: 'Search History',
+            type: 'keyword',
+            apply: (
+              view: EditorView,
+              _completion: Completion,
+              from: number,
+              to: number,
+            ) => {
+              onSelectSearchHistory(view, from, to, q);
+            },
+          };
+        }),
+      };
+    };
+  }, [queryHistory]);
+
   const [isFocused, setIsFocused] = useState(false);
 
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -149,6 +203,7 @@ export default function SQLInlineEditor({
 
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
+      const currentText = viewRef.state.doc.toString();
       const keywords = [
         ...(filteredFields?.map(column => {
           if (column.path.length > 1) {
@@ -159,19 +214,26 @@ export default function SQLInlineEditor({
         ...additionalSuggestions,
       ];
 
+      const auto = sql({
+        dialect: SQLDialect.define({
+          keywords:
+            keywords.join(' ') +
+            (disableKeywordAutocomplete ? '' : AUTOCOMPLETE_LIST_STRING),
+        }),
+      });
+      const queryHistoryList = autocompletion({
+        compareCompletions: (a: any, b: any) => {
+          return 0;
+        }, // don't sort the history search
+        override: [createHistoryList],
+      });
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          sql({
-            dialect: SQLDialect.define({
-              keywords:
-                keywords.join(' ') +
-                (disableKeywordAutocomplete ? '' : AUTOCOMPLETE_LIST_STRING),
-            }),
-          }),
+          currentText.length > 0 ? auto : queryHistoryList,
         ),
       });
     },
-    [filteredFields, additionalSuggestions],
+    [filteredFields, additionalSuggestions, queryHistory],
   );
 
   useEffect(() => {
@@ -244,7 +306,9 @@ export default function SQLInlineEditor({
                     if (onSubmit == null) {
                       return false;
                     }
-
+                    if (queryHistoryType && ref?.current?.view) {
+                      setQueryHistory(ref?.current?.view.state.doc.toString());
+                    }
                     onSubmit();
                     return true;
                   },
@@ -268,6 +332,11 @@ export default function SQLInlineEditor({
             highlightActiveLineGutter: false,
           }}
           placeholder={placeholder}
+          onClick={() => {
+            if (ref?.current?.view) {
+              startCompletion(ref.current.view);
+            }
+          }}
         />
       </div>
       {onLanguageChange != null && language != null && (
@@ -285,6 +354,7 @@ export function SQLInlineEditorControlled({
   placeholder,
   filterField,
   additionalSuggestions,
+  queryHistoryType,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
   const { field } = useController(props);
@@ -296,6 +366,7 @@ export function SQLInlineEditorControlled({
       placeholder={placeholder}
       value={field.value || props.defaultValue}
       additionalSuggestions={additionalSuggestions}
+      queryHistoryType={queryHistoryType}
       {...props}
     />
   );

@@ -87,7 +87,7 @@ import {
   useSources,
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
@@ -1146,6 +1146,7 @@ function DBSearchPage() {
                 language="sql"
                 onSubmit={onSubmit}
                 label="WHERE"
+                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
                 enableHotkey
               />
             }
@@ -1159,8 +1160,10 @@ function DBSearchPage() {
                     shouldDirty: true,
                   })
                 }
+                onSubmit={onSubmit}
                 language="lucene"
                 placeholder="Search your events w/ Lucene ex. column:foo"
+                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
               />
             }
