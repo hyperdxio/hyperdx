@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { OverlayTrigger } from 'react-bootstrap';
-import { TextInput } from '@mantine/core';
+import { TextInput, UnstyledButton } from '@mantine/core';
 
 import { useQueryHistory } from '@/utils';
 
@@ -47,6 +47,7 @@ export default function AutocompleteInput({
 
   const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
 
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
     useState(-1);
@@ -70,6 +71,15 @@ export default function AutocompleteInput({
       setIsInputDropdownOpen(true);
     }
   }, [isSearchInputFocused]);
+
+  useEffect(() => {
+    // only show search history when: 1.no input, 2.has search type, 3.has history list
+    if (value.length === 0 && queryHistoryList.length > 0 && queryHistoryType) {
+      setShowSearchHistory(true);
+    } else {
+      setShowSearchHistory(false);
+    }
+  }, [value, queryHistoryType, queryHistoryList]);
 
   const fuse = useMemo(
     () =>
@@ -181,37 +191,27 @@ export default function AutocompleteInput({
             </div>
           )}
           <div>
-            {
-              // only show search history when: 1.no input, 2.has search type, 3.has history list
-              value.length === 0 &&
-                queryHistoryType &&
-                queryHistoryList.length > 0 && (
-                  <div className="border-top border-dark fs-8 py-2">
-                    <div className="text-muted fs-8 fw-bold me-1 px-3">
-                      Search History:
-                    </div>
-                    {queryHistoryList.map(({ value, label }, i) => {
-                      return (
-                        <div
-                          className={`py-2 px-3 text-muted ${
-                            selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
-                          }`}
-                          role="button"
-                          key={value}
-                          onMouseOver={() => {
-                            setSelectedQueryHistoryIndex(i);
-                          }}
-                          onClick={() => {
-                            onSelectSearchHistory(value);
-                          }}
-                        >
-                          <span className="me-1  flex-wrap">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
-            }
+            {showSearchHistory && (
+              <div className="border-top border-dark fs-8 py-2">
+                <div className="text-muted fs-8 fw-bold me-1 px-3">
+                  Search History:
+                </div>
+                {queryHistoryList.map(({ value, label }, i) => {
+                  return (
+                    <UnstyledButton
+                      className={`d-block w-100 text-start text-muted fw-normal px-3 py-2 fs-8 ${
+                        selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
+                      }`}
+                      key={value}
+                      onMouseOver={() => setSelectedQueryHistoryIndex(i)}
+                      onClick={() => onSelectSearchHistory(value)}
+                    >
+                      <span className="me-1 text-truncate">{label}</span>
+                    </UnstyledButton>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

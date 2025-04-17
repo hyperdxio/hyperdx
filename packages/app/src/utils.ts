@@ -300,18 +300,11 @@ export function useQueryHistory<T>(type: string | undefined) {
   const setQueryHistory = (query: string) => {
     // do not set up anything if there is no type or empty query
     try {
-      const trimQuery = query.trim();
-      if (!type || !trimQuery) return null;
-      const newHistory = [trimQuery];
-
-      const dedupe = new Set<string>();
-      dedupe.add(trimQuery);
-      for (const q of queryHistory) {
-        if (dedupe.has(q)) continue;
-        dedupe.add(q);
-        newHistory.push(q);
-      }
-      _setQueryHistory(newHistory.slice(0, QUERY_LOCAL_STORAGE.LIMIT));
+      const trimmed = query.trim();
+      if (!type || !trimmed) return null;
+      const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
+      const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
+      _setQueryHistory(limited);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.log(`Failed to cache query history, error ${e.message}`);
