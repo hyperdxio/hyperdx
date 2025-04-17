@@ -145,9 +145,21 @@ export default function ContextSubpanel({
   }
 
   const config = useMemo(() => {
-    if (!dbSqlRowTableConfig) return null;
-
     const whereClause = getWhereClause(contextBy);
+    // missing query info, build config from source with default value
+    if (!dbSqlRowTableConfig)
+      return {
+        connection: source.connection,
+        from: source.from,
+        timestampValueExpression: source.timestampValueExpression,
+        select: source.defaultTableSelectExpression || '',
+        limit: { limit: 200 },
+        orderBy: `${source.timestampValueExpression} DESC`,
+        where: whereClause,
+        whereLanguage: originalLanguage,
+        dateRange: newDateRange,
+      };
+
     return {
       ...dbSqlRowTableConfig,
       where: whereClause,

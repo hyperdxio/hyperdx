@@ -446,6 +446,36 @@ describe('renderChartConfig', () => {
         AggregationTemporality: 2, // Cumulative
         ...point,
       }));
+      const histPointsE = [
+        {
+          BucketCounts: [1, 1, 1, 1, 1, 1],
+          ExplicitBounds: [1, 2, 5, 8, 13],
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'test-a' },
+        },
+        {
+          BucketCounts: [2, 2, 2, 2, 2, 2],
+          ExplicitBounds: [1, 2, 5, 8, 13],
+          TimeUnix: new Date(now + ms('5s')),
+          ResourceAttributes: { host: 'test-b' },
+        },
+        {
+          BucketCounts: [2, 1, 2, 1, 2, 1],
+          ExplicitBounds: [1, 2, 5, 8, 13],
+          TimeUnix: new Date(now + ms('1m')),
+          ResourceAttributes: { host: 'test-a' },
+        },
+        {
+          BucketCounts: [3, 3, 2, 2, 3, 3],
+          ExplicitBounds: [1, 2, 5, 8, 13],
+          TimeUnix: new Date(now + ms('65s')),
+          ResourceAttributes: { host: 'test-b' },
+        },
+      ].map(point => ({
+        MetricName: 'test.multiple_series',
+        AggregationTemporality: 2, // Cumulative
+        ...point,
+      }));
 
       await Promise.all([
         bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]),
@@ -462,6 +492,7 @@ describe('renderChartConfig', () => {
           ...histPointsB,
           ...histPointsC,
           ...histPointsD,
+          ...histPointsE,
         ]),
       ]);
     });
@@ -655,6 +686,10 @@ describe('renderChartConfig', () => {
     });
 
     it('calculates min_rate/max_rate correctly for sum metrics', async () => {
+      // Raw Data is
+      // MIN_VARIANT_0: [0, 1, 8, 0, 7, 7, 15, 17, 0, 42]
+      // MIN_VARIANT_1: [0, 2, 9, 0, 15, 25 35, 57, 0, 92]
+      //
       // Based on the data inserted in the fixture, the expected stream of values
       // for each series after adjusting for the zero reset should be:
       // MIN_VARIANT_0: [0, 1, 8, 8, 15, 15, 23, 25, 25, 67]
@@ -725,20 +760,10 @@ describe('renderChartConfig', () => {
         Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
           delta: [10, 10, 10] - [0, 0, 0] = [10, 10, 10]
 
-        Total observations: 10 + 10 + 10 = 30
-        Cumulative counts: [10, 20, 30]
-        p50 point:
-          Rank = 0.5 * 30 = 15
-          This falls in the second bucket (since 10 < 15 ≤ 20)
-
         We need to interpolate between the lower and upper bounds of the second bucket:
-          Lower bound: 10
-          Upper bound: 30
-          Position in bucket: (15 - 10) / (20 - 10) = 0.5
-          Interpolated value: 10 + (30 - 10) * 0.5 = 10 + 10 = 20
-
-        Thus the first point value would be 0 since it's at the start of the bounds.
-        The second point value would be 20 since that is the median point value delta from the first point.
+          cum sum = [10, 20, 30]
+          rank = 0.5 * 30 = 15 (between bounds 10 - 30)
+          interpolate: 10 + ((15 - 10) / 30) * (30 - 10) = 13.3333
        */
       const query = await renderChartConfig(
         {
@@ -943,6 +968,57 @@ describe('renderChartConfig', () => {
           metricTables: TEST_METRIC_TABLES,
           dateRange: [new Date(now), new Date(now + ms('2m'))],
           granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('should include multiple data points in percentile computation (p50)', async () => {
+      /*
+        bounds: [1, 2, 5, 8, 13]
+        host = test-a:
+          p1 = [1, 1, 1, 1, 1, 1]
+          p2 = [2, 1, 2, 1, 2, 1]
+        host = test-b:
+          p1 = [2, 2, 2, 2, 2, 2]
+          p2 = [3, 3, 2, 2, 3, 3]
+
+        Compute the diff between adjacent points for each unique host (deltaSumForEach)
+          host = test-a, diff = [1, 0, 1, 0, 1, 0]
+          host = test-b, diff = [1, 1, 0, 0, 1, 1]
+
+        Sum the diffs together to obtain a combined count for the different series
+          sum elements(d) = [2, 1, 1, 0, 2, 1]
+
+        Now compute the p50 value:
+          sum(d) = 7
+          cum sum = [2, 3, 4, 4, 6, 7]
+          rank = 0.5 * 7 = 3.5 (between bounds 2 - 5)
+          interpolate: 2 + ((3.5 - 2) / 5) * (5 - 2) = 2.9
+
+        Since all the points fall within a single granularity interval the result should be a single row
+        with the value 2.9.
+       */
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              metricName: 'test.multiple_series',
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('2m'))],
+          granularity: '5 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
           connection: connection.id,
         },
