@@ -261,7 +261,10 @@ function ChartSeriesEditor({
                   databaseName,
                   tableName: tableName ?? '',
                   connectionId: connectionId ?? '',
-                  metricName,
+                  metricName:
+                    tableSource?.kind === SourceKind.Metric
+                      ? metricName
+                      : undefined,
                 }}
                 control={control}
                 name={`groupBy`}
