@@ -33,6 +33,7 @@ import {
   Group,
   Paper,
   Stack,
+  Switch,
   Tabs,
   Text,
   Textarea,
@@ -338,6 +339,7 @@ export default function EditTimeChartForm({
   const sourceId = watch('source');
   const whereLanguage = watch('whereLanguage');
   const alert = watch('alert');
+  const seriesReturnType = watch('seriesReturnType');
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -631,6 +633,22 @@ export default function EditTimeChartForm({
                       <i className="bi bi-plus-circle me-2" />
                       Add Series
                     </Button>
+                  )}
+                  {select.length == 2 && displayType !== DisplayType.Number && (
+                    <Switch
+                      label="As Ratio"
+                      size="sm"
+                      color="gray"
+                      variant="subtle"
+                      onClick={() => {
+                        setValue(
+                          'seriesReturnType',
+                          seriesReturnType === 'ratio' ? 'column' : 'ratio',
+                        );
+                        onSubmit();
+                      }}
+                      checked={seriesReturnType === 'ratio'}
+                    />
                   )}
                   {displayType === DisplayType.Line &&
                     dashboardId &&

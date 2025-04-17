@@ -16,6 +16,7 @@
     "lint:styles": "stylelint **/*/*.{css,scss}",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
     "ci:unit": "jest --ci --coverage",
+    "dev:unit": "jest --watchAll --detectOpenHandles",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "knip": "knip"
