@@ -205,16 +205,19 @@ export class Metadata {
     column,
     maxKeys = 1000,
     connectionId,
+    metricName,
   }: {
     databaseName: string;
     tableName: string;
     column: string;
     maxKeys?: number;
     connectionId: string;
+    metricName?: string;
   }) {
-    const cachedKeys = this.cache.get<string[]>(
-      `${databaseName}.${tableName}.${column}.keys`,
-    );
+    const cacheKey = metricName
+      ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
+      : `${databaseName}.${tableName}.${column}.keys`;
+    const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
       return cachedKeys;
@@ -239,49 +242,49 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
+    const where = metricName
+      ? chSql`WHERE MetricName=${{ String: metricName }}`
+      : '';
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
       sql = chSql`SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(${{
         Identifier: column,
       }}) as keysArr
-      FROM ${tableExpr({ database: databaseName, table: tableName })}`;
+      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
     } else {
       sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
         Identifier: column,
       }}.keys)) as key
-      FROM ${tableExpr({ database: databaseName, table: tableName })} 
+      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
       LIMIT ${{
         Int32: maxKeys,
       }}`;
     }
 
-    return this.cache.getOrFetch<string[]>(
-      `${databaseName}.${tableName}.${column}.keys`,
-      async () => {
-        const keys = await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-              read_overflow_mode: 'break',
-            },
-          })
-          .then(res => res.json<Record<string, unknown>>())
-          .then(d => {
-            let output: string[];
-            if (strategy === 'groupUniqArrayArray') {
-              output = d.data[0].keysArr as string[];
-            } else {
-              output = d.data.map(row => row.key) as string[];
-            }
+    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
+      const keys = await this.clickhouseClient
+        .query<'JSON'>({
+          query: sql.sql,
+          query_params: sql.params,
+          connectionId,
+          clickhouse_settings: {
+            max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+            read_overflow_mode: 'break',
+          },
+        })
+        .then(res => res.json<Record<string, unknown>>())
+        .then(d => {
+          let output: string[];
+          if (strategy === 'groupUniqArrayArray') {
+            output = d.data[0].keysArr as string[];
+          } else {
+            output = d.data.map(row => row.key) as string[];
+          }
 
-            return output.filter(r => r);
-          });
-        return keys;
-      },
-    );
+          return output.filter(r => r);
+        });
+      return keys;
+    });
   }
 
   async getMapValues({
@@ -353,6 +356,7 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
+    metricName,
   }: TableConnection) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
@@ -378,6 +382,7 @@ export class Metadata {
           tableName,
           column: column.name,
           connectionId,
+          metricName,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -476,6 +481,7 @@ export type TableConnection = {
   databaseName: string;
   tableName: string;
   connectionId: string;
+  metricName?: string;
 };
 
 export function tcFromChartConfig(config?: ChartConfig): TableConnection {
