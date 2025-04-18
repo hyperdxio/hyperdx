@@ -18,7 +18,7 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
-// replace splitAndTrimCSV, can remove splitAndTrimCSV if everything doing good.
+// Replace splitAndTrimCSV, can remove splitAndTrimCSV if everything doing good.
 export function splitAndTrimWithBracket(input: string): string[] {
   let parenCount: number = 0;
   let squareCount: number = 0;
@@ -28,7 +28,7 @@ export function splitAndTrimWithBracket(input: string): string[] {
   const res: string[] = [];
   let cur: string = '';
   for (const c of input + ',') {
-    // Handle quotes properly - toggle quote state when not escaped
+
     if (c === '"' && !inSingleQuote) {
       inDoubleQuote = !inDoubleQuote;
       cur += c;
