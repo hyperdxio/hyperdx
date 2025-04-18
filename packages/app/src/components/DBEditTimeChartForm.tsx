@@ -146,11 +146,12 @@ function ChartSeriesEditor({
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
 
+  const metricName = watch(`${namePrefix}metricName`);
   const { data: attributeKeys } = useFetchMetricResourceAttrs({
     databaseName,
     tableName: tableName || '',
     metricType,
-    metricName: watch(`${namePrefix}metricName`),
+    metricName,
     tableSource,
     isSql: aggConditionLanguage === 'sql',
   });
@@ -192,8 +193,8 @@ function ChartSeriesEditor({
         </div>
         {tableSource?.kind === SourceKind.Metric && (
           <MetricNameSelect
+            metricName={metricName}
             dateRange={dateRange}
-            metricName={watch(`${namePrefix}metricName`)}
             metricType={metricType}
             setMetricName={value => {
               setValue(`${namePrefix}metricName`, value);
@@ -265,6 +266,10 @@ function ChartSeriesEditor({
                   databaseName,
                   tableName: tableName ?? '',
                   connectionId: connectionId ?? '',
+                  metricName:
+                    tableSource?.kind === SourceKind.Metric
+                      ? metricName
+                      : undefined,
                 }}
                 control={control}
                 name={`groupBy`}
