@@ -73,7 +73,7 @@ export function splitAndTrimWithBracket(input: string): string[] {
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return splitAndTrimCSV(valueExpression)[0];
+  return splitAndTrimWithBracket(valueExpression)[0];
 }
 
 export enum Granularity {
