@@ -31,5 +31,6 @@
     "**/*.map": true,
     "**/yarn.lock": true,
     "**/yarn-*.cjs": true
-  }
+  },
+  "cSpell.words": ["micropip", "pyimport", "pyodide"]
 }

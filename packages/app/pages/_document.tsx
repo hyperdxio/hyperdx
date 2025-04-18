@@ -5,6 +5,7 @@ export default function Document() {
     <Html lang="en">
       <Head>
         <script src="/__ENV.js" />
+        <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
       </Head>
       <body>
         <Main />
