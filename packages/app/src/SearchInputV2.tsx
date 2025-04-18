@@ -33,6 +33,7 @@ export default function SearchInputV2({
   enableHotkey,
   onSubmit,
   additionalSuggestions,
+  queryHistoryType,
   ...props
 }: {
   tableConnections?: TableConnection | TableConnection[];
@@ -44,6 +45,7 @@ export default function SearchInputV2({
   enableHotkey?: boolean;
   onSubmit?: () => void;
   additionalSuggestions?: string[];
+  queryHistoryType?: string;
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -91,6 +93,7 @@ export default function SearchInputV2({
       showHotkey={enableHotkey}
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
+      queryHistoryType={queryHistoryType}
       aboveSuggestions={
         <>
           <div className="text-muted fs-8 fw-bold me-1">Searching for:</div>
