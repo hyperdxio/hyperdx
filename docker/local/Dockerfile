@@ -14,7 +14,7 @@
 
 ARG NODE_VERSION=22.14.0
 ARG CLICKHOUSE_VERSION=24
-ARG OTEL_COLLECTOR_VERSION=0.117.0
+ARG OTEL_COLLECTOR_VERSION=0.120.0
 # Get Node base image to copy over Node binaries
 FROM node:${NODE_VERSION}-alpine AS node
 
@@ -43,9 +43,9 @@ COPY --from=app ./package.json .
 RUN yarn install && yarn cache clean
 
 COPY --from=app ./.eslintrc.js ./next.config.js ./tsconfig.json ./next.config.js ./mdx.d.ts ./.eslintrc.js ./
-COPY --from=app ./src ./src 
-COPY --from=app ./pages ./pages 
-COPY --from=app ./public ./public 
+COPY --from=app ./src ./src
+COPY --from=app ./pages ./pages
+COPY --from=app ./public ./public
 COPY --from=app ./styles ./styles
 
 ENV NEXT_TELEMETRY_DISABLED 1
@@ -79,7 +79,7 @@ COPY --from=node /usr/local/bin /usr/local/bin
 # RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories
 # RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories
 # RUN apk update
-# RUN apk add mongodb yaml-cpp=0.6.2-r2 
+# RUN apk add mongodb yaml-cpp=0.6.2-r2
 RUN apk add curl
 
 # == Install Redis ==

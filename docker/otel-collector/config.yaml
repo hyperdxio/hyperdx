@@ -25,6 +25,35 @@ receivers:
         include_metadata: true
         endpoint: '0.0.0.0:4318'
 processors:
+  transform:
+    log_statements:
+      - context: log
+        error_mode: ignore
+        conditions:
+          - severity_number == 0 and severity_text == ""
+        statements:
+          # Infer: extract the first log level keyword from the first 256 characters of the body
+          - set(log.cache["substr"], log.body.string) where Len(log.body.string) < 256
+          - set(log.cache["substr"], Substring(log.body.string, 0, 256)) where Len(log.body.string) >= 256
+          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
+          # Infer: detect FATAL
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.cache["0"], "(?i)(alert|crit|emerg|fatal)")
+          - set(log.severity_text, "fatal") where log.severity_number == SEVERITY_NUMBER_FATAL
+          # Infer: detect ERROR
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsMatch(log.cache["0"], "(?i)(error|err)")
+          - set(log.severity_text, "error") where log.severity_number == SEVERITY_NUMBER_ERROR
+          # Infer: detect WARN
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.cache["0"], "(?i)(warn|notice)")
+          - set(log.severity_text, "warn") where log.severity_number == SEVERITY_NUMBER_WARN
+          # Infer: detect DEBUG
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsMatch(log.cache["0"], "(?i)(debug|dbug)")
+          - set(log.severity_text, "debug") where log.severity_number == SEVERITY_NUMBER_DEBUG
+          # Infer: detect TRACE
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsMatch(log.cache["0"], "(?i)(trace)")
+          - set(log.severity_text, "trace") where log.severity_number == SEVERITY_NUMBER_TRACE
+          # Infer: else
+          - set(log.severity_text, "info") where log.severity_number == 0
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_number == 0
   resourcedetection:
     detectors:
       - env
@@ -71,9 +100,6 @@ exporters:
     username: ${env:CLICKHOUSE_USER}
     password: ${env:CLICKHOUSE_PASSWORD}
     ttl: 72h
-    logs_table_name: otel_logs
-    traces_table_name: otel_traces
-    metrics_table_name: otel_metrics
     timeout: 5s
     retry_on_failure:
       enabled: true
@@ -104,7 +130,7 @@ service:
       exporters: [routing/logs]
     logs/out-default:
       receivers: [routing/logs]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform, batch]
       exporters: [clickhouse]
     logs/out-rrweb:
       receivers: [routing/logs]
