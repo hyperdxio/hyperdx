@@ -325,12 +325,14 @@ export const DBSearchPageFilters = ({
   analysisMode,
   setAnalysisMode,
   sourceId,
+  showDelta,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
   sourceId?: string;
+  showDelta: boolean;
 } & FilterStateHook) => {
   const { toggleFilterPin, isFilterPinned } = usePinnedFilters(
     sourceId ?? null,
@@ -439,7 +441,9 @@ export const DBSearchPageFilters = ({
           </Text>
           <Tabs
             value={analysisMode}
-            onChange={value => setAnalysisMode(value as 'results' | 'delta')}
+            onChange={value =>
+              setAnalysisMode(value as 'results' | 'delta' | 'pattern')
+            }
             orientation="vertical"
             w="100%"
             placement="right"
@@ -448,12 +452,14 @@ export const DBSearchPageFilters = ({
               <Tabs.Tab value="results" size="xs" c="gray.4" h="24px">
                 <Text size="xs">Results Table</Text>
               </Tabs.Tab>
-              <Tabs.Tab value="delta" size="xs" c="gray.4" h="24px">
-                <Text size="xs">Event Deltas</Text>
-              </Tabs.Tab>
-              {/* <Tabs.Tab value="pattern" size="xs" c="gray.4" h="24px">
+              {showDelta && (
+                <Tabs.Tab value="delta" size="xs" c="gray.4" h="24px">
+                  <Text size="xs">Event Deltas</Text>
+                </Tabs.Tab>
+              )}
+              <Tabs.Tab value="pattern" size="xs" c="gray.4" h="24px">
                 <Text size="xs">Event Patterns</Text>
-              </Tabs.Tab> */}
+              </Tabs.Tab>
             </Tabs.List>
           </Tabs>
 
