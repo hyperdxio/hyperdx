@@ -16,6 +16,8 @@ import { getMetadata } from '@/metadata';
 import { usePrevious } from '@/utils';
 
 import { getClickhouseClient } from './clickhouse';
+import { IS_LOCAL_MODE } from './config';
+import { getLocalConnections } from './connection';
 import { useSource } from './source';
 
 export type Session = {
@@ -370,6 +372,19 @@ export function useRRWebEventStream(
         metadata,
       );
 
+      let hostname: string | undefined;
+      let pathname: string | undefined;
+      let username: string | undefined;
+      let password: string | undefined;
+      if (IS_LOCAL_MODE) {
+        const localConnections = getLocalConnections();
+        const fullUrl = new URL(localConnections[0].host);
+        hostname = fullUrl.hostname;
+        pathname = fullUrl.pathname;
+        username = localConnections[0].username;
+        password = localConnections[0].password;
+      }
+
       // TODO: Change ClickhouseClient class to use this under the hood,
       // and refactor this to use ClickhouseClient.query
       const clickhouseClient = createClient({
@@ -378,14 +393,18 @@ export function useRRWebEventStream(
           wait_end_of_query: 0,
           cancel_http_readonly_queries_on_client_close: 1,
         },
-        http_headers: {
-          'x-hyperdx-connection-id': source.connection,
-        },
-        url: window.location.origin,
-        pathname: '/api/clickhouse-proxy',
+        http_headers: !IS_LOCAL_MODE
+          ? {
+              'x-hyperdx-connection-id': source.connection,
+            }
+          : undefined,
+        url: hostname ?? window.location.origin,
+        pathname: pathname ?? '/api/clickhouse-proxy',
         compression: {
           response: true,
         },
+        username,
+        password,
       });
 
       const fetchPromise = (async () => {
