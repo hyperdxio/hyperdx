@@ -103,5 +103,66 @@ describe('utils', () => {
       const expected = ['col1', "concat('Hello, World!')", 'col2'];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
     });
+
+    it('should handle double quoted strings with commas', () => {
+      const input = 'col1, "quoted, string", col3';
+      const expected = ['col1', '"quoted, string"', 'col3'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle single quoted strings with commas', () => {
+      const input = `col1, 'quoted, string', col3`;
+      const expected = ['col1', `'quoted, string'`, 'col3'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle mixed quotes with commas', () => {
+      const input = `col1, "double, quoted", col2, 'single, quoted', col3`;
+      const expected = [
+        'col1',
+        `"double, quoted"`,
+        'col2',
+        `'single, quoted'`,
+        'col3',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle quotes inside function calls', () => {
+      const input = 'col1, func("text with , comma", \'another, text\'), col2';
+      const expected = [
+        'col1',
+        'func("text with , comma", \'another, text\')',
+        'col2',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle brackets inside quoted strings', () => {
+      const input =
+        'col1, "string with (brackets, inside)", col2, \'string with [brackets, inside]\', col3';
+      const expected = [
+        'col1',
+        '"string with (brackets, inside)"',
+        'col2',
+        "'string with [brackets, inside]'",
+        'col3',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle real-world SQL column list example', () => {
+      const input =
+        "Timestamp, ServiceName, JSONExtractString(Body, 'c'), JSONExtractString(Body, 'msg'), Timestamp, \"foo, bar\"";
+      const expected = [
+        'Timestamp',
+        'ServiceName',
+        "JSONExtractString(Body, 'c')",
+        "JSONExtractString(Body, 'msg')",
+        'Timestamp',
+        '"foo, bar"',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
   });
 });

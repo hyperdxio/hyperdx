@@ -18,23 +18,48 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
+// replace splitAndTrimCSV, can remove splitAndTrimCSV if everything doing good.
 export function splitAndTrimWithBracket(input: string): string[] {
   let parenCount: number = 0;
   let squareCount: number = 0;
+  let inSingleQuote: boolean = false;
+  let inDoubleQuote: boolean = false;
 
   const res: string[] = [];
   let cur: string = '';
   for (const c of input + ',') {
-    if (c === '(') {
-      parenCount++;
-    } else if (c === ')') {
-      parenCount--;
-    } else if (c === '[') {
-      squareCount++;
-    } else if (c === ']') {
-      squareCount--;
+    // Handle quotes properly - toggle quote state when not escaped
+    if (c === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      cur += c;
+      continue;
     }
-    if (c === ',' && parenCount === 0 && squareCount === 0) {
+
+    if (c === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      cur += c;
+      continue;
+    }
+    // Only count brackets when not in quotes
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (c === '(') {
+        parenCount++;
+      } else if (c === ')') {
+        parenCount--;
+      } else if (c === '[') {
+        squareCount++;
+      } else if (c === ']') {
+        squareCount--;
+      }
+    }
+
+    if (
+      c === ',' &&
+      parenCount === 0 &&
+      squareCount === 0 &&
+      !inSingleQuote &&
+      !inDoubleQuote
+    ) {
       const trimString = cur.trim();
       if (trimString) res.push(trimString);
       cur = '';
