@@ -333,7 +333,7 @@ export class ClickhouseClient {
         headers['x-hyperdx-connection-id'] = connectionId;
       }
       // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
-      const response = await fetch(`${this.host}?${searchParams.toString()}`, {
+      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
         ...(includeCredentials ? { credentials: 'include' } : {}),
         signal: abort_signal,
         method: 'GET',

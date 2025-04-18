@@ -5,7 +5,7 @@ import { validateRequest } from 'zod-express-middleware';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { validateRequestHeaders } from '@/utils/validation';
+import { validateRequestHeaders } from '@/middleware/validation';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -59,16 +59,15 @@ router.post(
   },
 );
 
-function validation() {
-  return validateRequestHeaders(
-    z.object({
-      'x-hyperdx-connection-id': objectIdSchema,
-    }),
-  );
-}
+const hasConnectionId = validateRequestHeaders(
+  z.object({
+    'x-hyperdx-connection-id': objectIdSchema,
+  }),
+);
 
-function getConnection(): RequestHandler {
-  return async (req, res, next) => {
+const getConnection: RequestHandler =
+  // prettier-ignore-next-line
+  async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
       const connection_id = req.headers['x-hyperdx-connection-id']!; // ! because zod already validated
@@ -101,10 +100,10 @@ function getConnection(): RequestHandler {
       next(e);
     }
   };
-}
 
-function proxyMiddleware(): RequestHandler {
-  return createProxyMiddleware({
+const proxyMiddleware: RequestHandler =
+  // prettier-ignore-next-line
+  createProxyMiddleware({
     target: '', // doesn't matter. it should be overridden by the router
     changeOrigin: true,
     pathFilter: (path, _req) => {
@@ -122,11 +121,9 @@ function proxyMiddleware(): RequestHandler {
     on: {
       proxyReq: (proxyReq, _req) => {
         const newPath = _req.params[0];
-        let qparams = '';
-        const qIdx = _req.url.indexOf('?');
-        if (qIdx >= 0) {
-          qparams = _req.url.substring(qIdx);
-        }
+        // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. Replace with getting query params from _req.url eventually
+        const qparams = new URLSearchParams(_req.query);
+        qparams.delete('hyperdx_connection_id');
         if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
           proxyReq.setHeader(
             'X-ClickHouse-User',
@@ -138,7 +135,7 @@ function proxyMiddleware(): RequestHandler {
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(_req.body);
         }
-        proxyReq.path = `/${newPath}${qparams}`;
+        proxyReq.path = `/${newPath}?${qparams}`;
       },
       proxyRes: (proxyRes, _req, res) => {
         // since clickhouse v24, the cors headers * will be attached to the response by default
@@ -175,9 +172,8 @@ function proxyMiddleware(): RequestHandler {
     //   logger: console,
     // }),
   });
-}
 
-router.get('/*', validation(), getConnection(), proxyMiddleware());
-router.post('/*', validation(), getConnection(), proxyMiddleware());
+router.get('/*', hasConnectionId, getConnection, proxyMiddleware);
+router.post('/*', hasConnectionId, getConnection, proxyMiddleware);
 
 export default router;

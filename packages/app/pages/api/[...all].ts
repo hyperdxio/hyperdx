@@ -7,7 +7,6 @@ export const config = {
   api: {
     externalResolver: true,
     bodyParser: false,
-    responseLimit: '32mb',
   },
 };
 

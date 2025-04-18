@@ -370,6 +370,8 @@ export function useRRWebEventStream(
         metadata,
       );
 
+      // TODO: Change ClickhouseClient class to use this under the hood,
+      // and refactor this to use ClickhouseClient.query
       const clickhouseClient = createClient({
         clickhouse_settings: {
           date_time_output_format: 'iso',
