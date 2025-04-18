@@ -1,0 +1,2 @@
+"debug",0,"2025-05-03T03:23:14Z [INFO] this should skip because the severity_text is already set"
+"",9,"[warn] this should also be skipped because a severity_number was set even if it's missing text"

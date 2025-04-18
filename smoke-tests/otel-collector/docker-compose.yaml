@@ -1,0 +1,38 @@
+name: otel-collector-smoke-tests
+
+services:
+  ch-server:
+    extends:
+      file: ../../docker-compose.ci.yml
+      service: ch-server
+    ports:
+      - 9000:9000
+      - 8123:8123
+    networks:
+      - internal
+    healthcheck:
+      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+  otel-collector:
+    extends:
+      file: ../../docker-compose.ci.yml
+      service: otel-collector
+    environment:
+      - CLICKHOUSE_SERVER_ENDPOINT=ch-server:9000
+      - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
+      - HYPERDX_LOG_LEVEL=info
+    ports:
+      - 4318:4318 # OTLP http receiver
+      - 13133:13133 # health check
+    networks:
+      - internal
+    depends_on:
+      ch-server:
+        condition: service_healthy
+
+networks:
+  internal:
+    name: 'smoke-test-internal-network'
