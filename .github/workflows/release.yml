@@ -2,6 +2,8 @@ name: Release
 on:
   push:
     branches: [v2]
+  pull_request:
+    branches: [v2]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
@@ -53,7 +55,6 @@ jobs:
             'release-otel-collector',
             'release-local',
             'release-local-ui',
-            'release-extended-app',
           ]
     steps:
       - name: Checkout
