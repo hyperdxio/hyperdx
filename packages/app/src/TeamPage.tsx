@@ -679,12 +679,12 @@ type WebhookForm = {
   body?: string;
 };
 
-function CreateWebhookForm({
+export function CreateWebhookForm({
   onClose,
   onSuccess,
 }: {
   onClose: VoidFunction;
-  onSuccess: VoidFunction;
+  onSuccess: (webhookId: string) => void;
 }) {
   const saveWebhook = api.useSaveWebhook();
 
@@ -697,7 +697,7 @@ function CreateWebhookForm({
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     const { service, name, url, description, body } = values;
     try {
-      await saveWebhook.mutateAsync({
+      const response = await saveWebhook.mutateAsync({
         service,
         name,
         url,
@@ -711,7 +711,7 @@ function CreateWebhookForm({
         color: 'green',
         message: `Webhook created successfully`,
       });
-      onSuccess();
+      onSuccess(response.data?._id);
       onClose();
     } catch (e) {
       console.error(e);
