@@ -75,6 +75,7 @@ export default function Playbar({
           const isError =
             event.severity_text?.toLowerCase() === 'error' ||
             event.component === 'error' ||
+            event.component === 'console' ||
             statusCode >= 399;
 
           return {

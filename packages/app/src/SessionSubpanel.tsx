@@ -363,7 +363,7 @@ export default function SessionSubpanel({
         offset: 0,
       },
       filters: [
-        filteredEventsFilter,
+        allEventsFilter,
         ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
@@ -377,7 +377,7 @@ export default function SessionSubpanel({
       end,
       whereLanguage,
       searchedQuery,
-      filteredEventsFilter,
+      allEventsFilter,
       where,
     ],
   );
