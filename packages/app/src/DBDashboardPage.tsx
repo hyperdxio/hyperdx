@@ -958,7 +958,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           color="gray"
         >
           <Button
-            onClick={() => setIsLive(!isLive)}
+            onClick={() => setIsLive(prev => !prev)}
             color={isLive ? 'green' : 'gray'}
             mr={6}
             size="sm"
