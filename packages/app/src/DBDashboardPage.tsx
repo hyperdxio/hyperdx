@@ -545,6 +545,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     parseAsString.withDefault('lucene'),
   );
 
+  const [isLive, setIsLive] = useState(false);
+
   const { control, watch, setValue, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
     where: SearchCondition;
@@ -581,6 +583,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
     // showRelativeInterval: isLive,
+  });
+
+  const {
+    granularityOverride,
+    isRefreshEnabled,
+    manualRefreshCooloff,
+    refresh,
+  } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const onSubmit = () => {
@@ -629,8 +642,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedTile(chart)}
             granularity={
-              granularity ?? undefined
-              // isRefreshEnabled ? granularityOverride : granularityQuery
+              isRefreshEnabled
+                ? granularityOverride
+                : (granularity ?? undefined)
             }
             filters={[
               {
@@ -697,13 +711,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [
       dashboard,
       searchedTimeRange,
-      // isRefreshEnabled,
-      // granularityOverride,
-      // granularityQuery,
+      isRefreshEnabled,
+      granularityOverride,
+      granularity,
       highlightedTileId,
       confirm,
       setDashboard,
-      granularity,
       where,
       whereLanguage,
       onTimeRangeSelect,
@@ -934,6 +947,41 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
         />
         <GranularityPickerControlled control={control} name="granularity" />
+        <Tooltip
+          withArrow
+          label={
+            isRefreshEnabled
+              ? `Auto-refreshing with ${granularityOverride} interval`
+              : 'Enable auto-refresh'
+          }
+          fz="xs"
+          color="gray"
+        >
+          <Button
+            onClick={() => setIsLive(!isLive)}
+            color={isLive ? 'green' : 'gray'}
+            mr={6}
+            size="sm"
+            variant="outline"
+            title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+          >
+            Live
+          </Button>
+        </Tooltip>
+        <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+          <Button
+            onClick={refresh}
+            loading={manualRefreshCooloff}
+            disabled={manualRefreshCooloff}
+            color="gray"
+            mr={6}
+            variant="outline"
+            title="Refresh dashboard"
+            px="xs"
+          >
+            <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
+          </Button>
+        </Tooltip>
         <Button variant="outline" type="submit" color="green">
           <i className="bi bi-play"></i>
         </Button>
