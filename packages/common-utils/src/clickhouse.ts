@@ -6,9 +6,17 @@ import type {
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 import * as SQLParser from 'node-sql-parser';
+import objectHash from 'object-hash';
 
-import { SQLInterval } from '@/types';
+import {
+  renderChartConfig,
+  setChartSelectsAlias,
+  splitChartConfigs,
+} from '@/renderChartConfig';
+import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
 import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
+
+import { Metadata } from './metadata';
 
 export enum JSDataType {
   Array = 'array',
@@ -251,6 +259,74 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
+const castToNumber = (value: string | number) => {
+  if (typeof value === 'string') {
+    if (value.trim() === '') {
+      return NaN;
+    }
+    return Number(value);
+  }
+  return value;
+};
+
+export const computeRatio = (
+  numeratorInput: string | number,
+  denominatorInput: string | number,
+) => {
+  const numerator = castToNumber(numeratorInput);
+  const denominator = castToNumber(denominatorInput);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    return NaN;
+  }
+
+  return numerator / denominator;
+};
+
+export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
+  const _meta = resultSet.meta;
+  const _data = resultSet.data;
+  const timestampColumn = inferTimestampColumn(_meta ?? []);
+  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
+  const firstColumn = _restColumns?.[0];
+  const secondColumn = _restColumns?.[1];
+  if (!firstColumn || !secondColumn) {
+    throw new Error(
+      `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
+    );
+  }
+  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
+  const result = {
+    ...resultSet,
+    data: _data.map(row => ({
+      [ratioColumnName]: computeRatio(
+        row[firstColumn.name],
+        row[secondColumn.name],
+      ),
+      ...(timestampColumn
+        ? {
+            [timestampColumn.name]: row[timestampColumn.name],
+          }
+        : {}),
+    })),
+    meta: [
+      {
+        name: ratioColumnName,
+        type: 'Float64',
+      },
+      ...(timestampColumn
+        ? [
+            {
+              name: timestampColumn.name,
+              type: timestampColumn.type,
+            },
+          ]
+        : []),
+    ],
+  };
+  return result;
+};
+
 export type ClickhouseClientOptions = {
   host: string;
   username?: string;
@@ -385,6 +461,101 @@ export class ClickhouseClient {
         'ClickhouseClient is only supported in the browser or node environment',
       );
     }
+  }
+
+  // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
+  // eventually we want to generate union CTEs on the db side instead of computing it on the client side
+  async queryChartConfig({
+    config,
+    metadata,
+    opts,
+  }: {
+    config: ChartConfigWithOptDateRange;
+    metadata: Metadata;
+    opts?: {
+      abort_signal?: AbortSignal;
+      clickhouse_settings?: Record<string, any>;
+    };
+  }): Promise<ResponseJSON<Record<string, string | number>>> {
+    config = setChartSelectsAlias(config);
+    const queries: ChSql[] = await Promise.all(
+      splitChartConfigs(config).map(c => renderChartConfig(c, metadata)),
+    );
+
+    const isTimeSeries = config.displayType === 'line';
+
+    const resultSets = await Promise.all(
+      queries.map(async query => {
+        const resp = await this.query<'JSON'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'JSON',
+          abort_signal: opts?.abort_signal,
+          connectionId: config.connection,
+          clickhouse_settings: opts?.clickhouse_settings,
+        });
+        return resp.json<any>();
+      }),
+    );
+
+    if (resultSets.length === 1) {
+      return resultSets[0];
+    }
+    // metrics -> join resultSets
+    else if (resultSets.length > 1) {
+      const metaSet = new Map<string, { name: string; type: string }>();
+      const tsBucketMap = new Map<string, Record<string, string | number>>();
+      for (const resultSet of resultSets) {
+        // set up the meta data
+        if (Array.isArray(resultSet.meta)) {
+          for (const meta of resultSet.meta) {
+            const key = meta.name;
+            if (!metaSet.has(key)) {
+              metaSet.set(key, meta);
+            }
+          }
+        }
+
+        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+        const numericColumnName = numericColumn?.[0]?.name;
+        for (const row of resultSet.data) {
+          const _rowWithoutValue = numericColumnName
+            ? Object.fromEntries(
+                Object.entries(row).filter(
+                  ([key]) => key !== numericColumnName,
+                ),
+              )
+            : { ...row };
+          const ts =
+            timestampColumn != null
+              ? row[timestampColumn.name]
+              : isTimeSeries
+                ? objectHash(_rowWithoutValue)
+                : '__FIXED_TIMESTAMP__';
+          if (tsBucketMap.has(ts)) {
+            const existingRow = tsBucketMap.get(ts);
+            tsBucketMap.set(ts, {
+              ...existingRow,
+              ...row,
+            });
+          } else {
+            tsBucketMap.set(ts, row);
+          }
+        }
+      }
+
+      const isRatio =
+        config.seriesReturnType === 'ratio' && resultSets.length === 2;
+
+      const _resultSet: ResponseJSON<any> = {
+        meta: Array.from(metaSet.values()),
+        data: Array.from(tsBucketMap.values()),
+      };
+      // TODO: we should compute the ratio on the db side
+      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+    }
+    throw new Error('No result sets');
   }
 }
 
