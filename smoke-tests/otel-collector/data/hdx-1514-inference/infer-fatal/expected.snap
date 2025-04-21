@@ -1,0 +1,4 @@
+"fatal",21,"ALERT: something is wrong here"
+"fatal",21,"[thread-123] critical: disk issue detected"
+"fatal",21,"Emerg: action required"
+"fatal",21,"2025-05-03T03:23:14Z [thread-1234] c.b.e.b.e.AbstractDatabaseConnectionAdapterFactor [FATAL] this error is a huge problem"
