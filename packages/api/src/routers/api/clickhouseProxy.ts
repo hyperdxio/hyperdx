@@ -121,9 +121,8 @@ const proxyMiddleware: RequestHandler =
     on: {
       proxyReq: (proxyReq, _req) => {
         const newPath = _req.params[0];
-        // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. Replace with getting query params from _req.url eventually
+        // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
         const qparams = new URLSearchParams(_req.query);
-        qparams.delete('hyperdx_connection_id');
         if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
           proxyReq.setHeader(
             'X-ClickHouse-User',

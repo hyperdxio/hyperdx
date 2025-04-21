@@ -372,39 +372,37 @@ export function useRRWebEventStream(
         metadata,
       );
 
-      let hostname: string | undefined;
-      let pathname: string | undefined;
-      let username: string | undefined;
-      let password: string | undefined;
+      let localModeUrl: URL | undefined;
       if (IS_LOCAL_MODE) {
         const localConnections = getLocalConnections();
-        const fullUrl = new URL(localConnections[0].host);
-        hostname = fullUrl.hostname;
-        pathname = fullUrl.pathname;
-        username = localConnections[0].username;
-        password = localConnections[0].password;
+        localModeUrl = new URL(localConnections[0].host);
+        localModeUrl.username = localConnections[0].username;
+        localModeUrl.password = localConnections[0].password;
       }
 
       // TODO: Change ClickhouseClient class to use this under the hood,
       // and refactor this to use ClickhouseClient.query
       const clickhouseClient = createClient({
         clickhouse_settings: {
+          add_http_cors_header: IS_LOCAL_MODE ? 1 : 0,
+          cancel_http_readonly_queries_on_client_close: 1,
           date_time_output_format: 'iso',
           wait_end_of_query: 0,
-          cancel_http_readonly_queries_on_client_close: 1,
         },
         http_headers: !IS_LOCAL_MODE
           ? {
               'x-hyperdx-connection-id': source.connection,
             }
           : undefined,
-        url: hostname ?? window.location.origin,
-        pathname: pathname ?? '/api/clickhouse-proxy',
+        keep_alive: {
+          enabled: true,
+        },
+        url: localModeUrl?.toString() ?? window.location.origin,
+        // TODO: Use PROXY_CLICKHOUSE_HOST instead
+        pathname: localModeUrl?.pathname ?? '/api/clickhouse-proxy',
         compression: {
           response: true,
         },
-        username,
-        password,
       });
 
       const fetchPromise = (async () => {
