@@ -80,9 +80,9 @@ release-local:
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--push \
    	--cache-from=type=gha \
@@ -96,9 +96,9 @@ release-local-ui:
 		--target prod \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-ui \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}-ui \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}-ui \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG}-ui \
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
@@ -107,9 +107,9 @@ release-local-ui:
 release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
 		--push \
    	--cache-from=type=gha \
@@ -123,9 +123,9 @@ release-app:
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
 		--push \
 	 	--cache-from=type=gha \

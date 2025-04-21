@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 2.0.0-beta.14
+
+### Patch Changes
+
+- e5dfefb: Added test cases for the webhook and source routes.
+- f5e9a07: chore: bump node version to v22
+- Updated dependencies [092a292]
+- Updated dependencies [2f626e1]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [4865ce7]
+  - @hyperdx/common-utils@0.2.0-beta.3
+
 ## 2.0.0-beta.13
 
 ### Patch Changes

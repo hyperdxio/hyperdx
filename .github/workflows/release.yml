@@ -48,13 +48,11 @@ jobs:
     strategy:
       matrix:
         release:
-          [
-            'release-app',
-            'release-otel-collector',
-            'release-local',
-            'release-local-ui',
-            'release-extended-app',
-          ]
+          - release-app
+          - release-otel-collector
+          - release-local
+          - release-local-ui
+          # - release-extended-app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
