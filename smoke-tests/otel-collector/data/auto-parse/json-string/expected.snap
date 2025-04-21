@@ -1,0 +1,5 @@
+"{'suite-id':'auto-parse','test-id':'json-string'}","{'attr.intValue':'1','found':'false','message':'this should be parsed into a map'}"
+"{'suite-id':'auto-parse','test-id':'json-string'}","{'bodyAttr':'12345','message':'this has an existing user attribute that should be preserved.','userAttr':'true'}"
+"{'suite-id':'auto-parse','test-id':'json-string'}","{'found':'true','position':'trailing'}"
+"{'suite-id':'auto-parse','test-id':'json-string'}","{'found':'true','position':'leading'}"
+"{'suite-id':'auto-parse','test-id':'json-string'}","{'found':'true','position':'wrapped'}"

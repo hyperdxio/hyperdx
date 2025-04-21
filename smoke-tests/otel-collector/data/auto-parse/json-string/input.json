@@ -1,0 +1,67 @@
+{
+    "resourceLogs": [
+        {
+            "resource": {
+                "attributes": [
+                    {
+                        "key": "suite-id",
+                        "value": {
+                            "stringValue": "auto-parse"
+                        }
+                    },
+                    {
+                        "key": "test-id",
+                        "value": {
+                            "stringValue": "json-string"
+                        }
+                    }
+                ]
+            },
+            "scopeLogs": [
+                {
+                    "scope": {},
+                    "logRecords": [
+                        {
+                            "timeUnixNano": "1901999580000000000",
+                            "body": {
+                                "stringValue": "{\"attr\":{\"intValue\": 1},\"found\":false,\"message\":\"this should be parsed into a map\"}"
+                            }
+                        },
+                        {
+                            "timeUnixNano": "1901999580000000001",
+                            "attributes": [
+                                {
+                                    "key": "userAttr",
+                                    "value": {
+                                        "boolValue": true
+                                    }
+                                }
+                            ],
+                            "body": {
+                                "stringValue": "{\"bodyAttr\":12345,\"message\":\"this has an existing user attribute that should be preserved.\"}"
+                            }
+                        },
+                        {
+                            "timeUnixNano": "1901999580000000002",
+                            "body": {
+                                "stringValue": "should find the trailing JSON object {\"found\":true,\"position\":\"trailing\"}"
+                            }
+                        },
+                        {
+                            "timeUnixNano": "1901999580000000003",
+                            "body": {
+                                "stringValue": "{\"found\":true,\"position\":\"leading\"} should find the leading JSON object "
+                            }
+                        },
+                        {
+                            "timeUnixNano": "1901999580000000004",
+                            "body": {
+                                "stringValue": "should find a wrapped JSON object {\"found\":true,\"position\":\"wrapped\"} between text"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

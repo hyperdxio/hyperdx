@@ -72,3 +72,12 @@ emit_otel_data() {
     fi
     return 0
 }
+
+attempt_env_cleanup() {
+    # Check if we should keep the test containers running
+    if [[ "${SKIP_CLEANUP}" == "1" ]] || [[ "$(echo "${SKIP_CLEANUP}" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
+        echo "🔍  SKIP_CLEANUP is set, skipping container cleanup" >&3
+        return 0
+    fi
+    docker compose down
+}
