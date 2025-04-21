@@ -21,6 +21,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
+import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
@@ -132,14 +133,55 @@ function PodLogs({
   dateRange,
   logSource,
   where,
+  rowId,
+  onRowClick,
 }: {
   dateRange: [Date, Date];
   logSource: TSource;
   where: string;
+  rowId: string | null;
+  onRowClick: (rowId: string) => void;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
   const _where = where + (resultType === 'error' ? ' Severity:err' : '');
+
+  // Create a properly typed config object for DBSqlRowTable
+  const tableConfig = React.useMemo(() => {
+    return {
+      from: logSource.from,
+      where: _where,
+      whereLanguage: 'lucene' as const,
+      timestampValueExpression: logSource.timestampValueExpression,
+      implicitColumnExpression: logSource.implicitColumnExpression,
+      connection: logSource.connection,
+      select: [
+        {
+          valueExpression: logSource.timestampValueExpression,
+          alias: 'Timestamp',
+        },
+        {
+          valueExpression: `${logSource.severityTextExpression}`,
+          alias: 'Severity',
+        },
+        {
+          valueExpression: `${logSource.serviceNameExpression}`,
+          alias: 'Service',
+        },
+        {
+          valueExpression: `${logSource.resourceAttributesExpression}['k8s.container.name']`,
+          alias: 'Container',
+        },
+        {
+          valueExpression: `${getEventBody(logSource)}`,
+          alias: 'Message',
+        },
+      ],
+      orderBy: `${logSource.timestampValueExpression} DESC`,
+      limit: { limit: 200, offset: 0 },
+      dateRange,
+    };
+  }, [_where, dateRange, logSource]);
 
   return (
     <Card p="md">
@@ -160,59 +202,14 @@ function PodLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            {/* 
-              <Link
-                href={`/search?q=${encodeURIComponent(_where)}`}
-                passHref
-                legacyBehavior
-              >
-                <Anchor size="xs" color="dimmed">
-                  Search <i className="bi bi-box-arrow-up-right"></i>
-                </Anchor>
-              </Link> 
-              */}
           </Flex>
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTable
-          config={{
-            ...logSource,
-            where: _where,
-            whereLanguage: 'lucene',
-            select: [
-              {
-                valueExpression: logSource.timestampValueExpression,
-                alias: 'Timestamp',
-              },
-              {
-                valueExpression: `${logSource.severityTextExpression}`,
-                alias: 'Severity',
-              },
-              {
-                valueExpression: `${logSource.serviceNameExpression}`,
-                alias: 'Service',
-              },
-              {
-                valueExpression: `${logSource.resourceAttributesExpression}['k8s.container.name']`,
-                alias: 'Container',
-              },
-              {
-                valueExpression: `${getEventBody(logSource)}`,
-                alias: 'Message',
-              },
-            ],
-            orderBy: [
-              {
-                valueExpression: logSource.timestampValueExpression,
-                ordering: 'DESC',
-              },
-            ],
-            limit: { limit: 200, offset: 0 },
-            dateRange,
-          }}
-          onRowExpandClick={() => {}}
-          highlightedLineId={undefined}
+          config={tableConfig}
+          onRowExpandClick={onRowClick}
+          highlightedLineId={rowId ?? undefined}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-pod-logs"
           onScroll={() => {}}
@@ -236,6 +233,14 @@ export default function PodDetailsSidePanel({
       updateType: 'replaceIn',
     },
   );
+
+  const [rowId, setRowId] = React.useState<string | null>(null);
+  const handleRowClick = React.useCallback((rowWhere: string) => {
+    setRowId(rowWhere);
+  }, []);
+  const handleCloseRowSidePanel = React.useCallback(() => {
+    setRowId(null);
+  }, []);
 
   // If we're in a nested side panel, we need to use a higher z-index
   // TODO: This is a hack
@@ -324,8 +329,12 @@ export default function PodDetailsSidePanel({
   ]);
 
   const handleClose = React.useCallback(() => {
+    if (rowId) {
+      // If we're in a nested side panel, don't close the drawer
+      return;
+    }
     setPodName(undefined);
-  }, [setPodName]);
+  }, [rowId, setPodName]);
 
   if (!podName) {
     return null;
@@ -333,7 +342,7 @@ export default function PodDetailsSidePanel({
 
   return (
     <Drawer
-      enableOverlay
+      enableOverlay={rowId == null}
       overlayOpacity={0.1}
       duration={0}
       open={!!podName}
@@ -454,10 +463,20 @@ export default function PodDetailsSidePanel({
                   logSource={logSource}
                   where={logsWhere}
                   dateRange={dateRange}
+                  rowId={rowId}
+                  onRowClick={handleRowClick}
                 />
               </Grid.Col>
             </Grid>
           </DrawerBody>
+          {rowId && (
+            <DBRowSidePanel
+              source={logSource}
+              rowId={rowId}
+              onClose={handleCloseRowSidePanel}
+              isNestedPanel={true}
+            />
+          )}
         </div>
       </ZIndexContext.Provider>
     </Drawer>
