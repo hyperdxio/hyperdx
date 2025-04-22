@@ -27,7 +27,7 @@ export default function AutocompleteInput({
   queryHistoryType,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
-  value: string;
+  value: string | null;
   onChange: (value: string) => void;
   onSubmit?: () => void;
   placeholder?: string;
@@ -64,7 +64,7 @@ export default function AutocompleteInput({
         label: q,
       };
     });
-  }, [queryHistory]);
+  }, [queryHistory, queryHistoryType]);
 
   useEffect(() => {
     if (isSearchInputFocused) {
@@ -74,7 +74,12 @@ export default function AutocompleteInput({
 
   useEffect(() => {
     // only show search history when: 1.no input, 2.has search type, 3.has history list
-    if (value.length === 0 && queryHistoryList.length > 0 && queryHistoryType) {
+    if (
+      value != null &&
+      value.length === 0 &&
+      queryHistoryList.length > 0 &&
+      queryHistoryType
+    ) {
       setShowSearchHistory(true);
     } else {
       setShowSearchHistory(false);
@@ -114,8 +119,10 @@ export default function AutocompleteInput({
     setSelectedAutocompleteIndex(-1);
 
     const newValue =
-      value.split(' ').slice(0, -1).join(' ') +
-      `${value.split(' ').length > 1 ? ' ' : ''}${suggestion}`;
+      value == null
+        ? suggestion
+        : value.split(' ').slice(0, -1).join(' ') +
+          `${value.split(' ').length > 1 ? ' ' : ''}${suggestion}`;
     onChange(newValue);
     inputRef.current?.focus();
   };
