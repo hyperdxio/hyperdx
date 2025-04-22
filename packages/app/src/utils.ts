@@ -175,6 +175,14 @@ export const useDebounce = <T>(
   return debouncedValue;
 };
 
+// localStorage key for query
+export const QUERY_LOCAL_STORAGE = {
+  KEY: 'QuerySearchHistory',
+  SEARCH_SQL: 'searchSQL',
+  SEARCH_LUCENE: 'searchLucene',
+  LIMIT: 10, // cache up to 10
+};
+
 export function getLocalStorageValue<T>(key: string): T | null {
   if (typeof window === 'undefined') {
     return null;
@@ -284,6 +292,25 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   };
   return [storedValue, setValue] as const;
+}
+
+export function useQueryHistory<T>(type: string | undefined) {
+  const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
+  const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
+  const setQueryHistory = (query: string) => {
+    // do not set up anything if there is no type or empty query
+    try {
+      const trimmed = query.trim();
+      if (!type || !trimmed) return null;
+      const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
+      const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
+      _setQueryHistory(limited);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.log(`Failed to cache query history, error ${e.message}`);
+    }
+  };
+  return [queryHistory, setQueryHistory] as const;
 }
 
 export function useIntersectionObserver(onIntersect: () => void) {
