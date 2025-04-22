@@ -12,7 +12,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';f
+} from 'recharts';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -25,11 +25,7 @@ import {
   ChartConfigWithDateRange,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
-import {
-    Granularity,
-    splitAndTrimCSV,
-    splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
