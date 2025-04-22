@@ -25,7 +25,7 @@ import {
 import {
   convertDateRangeToGranularityString,
   getFirstTimestampValueExpression,
-  splitAndTrimCSV,
+  splitAndTrimWithBracket,
 } from '@/utils';
 
 // FIXME: SQLParser.ColumnRef is incomplete
@@ -71,6 +71,42 @@ function isUsingGranularity(
     chartConfig.granularity != null
   );
 }
+
+export const isMetricChartConfig = (
+  chartConfig: ChartConfigWithOptDateRange,
+) => {
+  return chartConfig.metricTables != null;
+};
+
+// TODO: apply this to all chart configs
+export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
+  if (Array.isArray(config.select) && isMetricChartConfig(config)) {
+    return {
+      ...config,
+      select: config.select.map(s => ({
+        ...s,
+        alias: `${s.aggFn}(${s.metricName})`,
+      })),
+    };
+  }
+  return config;
+};
+
+export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
+  // only split metric queries for now
+  if (isMetricChartConfig(config) && Array.isArray(config.select)) {
+    const _configs: ChartConfigWithOptDateRange[] = [];
+    // split the query into multiple queries
+    for (const select of config.select) {
+      _configs.push({
+        ...config,
+        select: [select],
+      });
+    }
+    return _configs;
+  }
+  return [config];
+};
 
 const INVERSE_OPERATOR_MAP = {
   '=': '!=',
@@ -316,7 +352,10 @@ async function renderSelectList(
         tableName: chartConfig.from.tableName,
       });
 
-  return Promise.all(
+  const isRatio =
+    chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+
+  const selectsSQL = await Promise.all(
     selectList.map(async select => {
       const whereClause = await renderWhereExpression({
         condition: select.aggCondition ?? '',
@@ -361,6 +400,10 @@ async function renderSelectList(
       }`;
     }),
   );
+
+  return isRatio
+    ? [chSql`divide(${selectsSQL[0]}, ${selectsSQL[1]})`]
+    : selectsSQL;
 }
 
 function renderSortSpecificationList(
@@ -424,7 +467,7 @@ async function timeFilterExpr({
   with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
-  const valueExpressions = splitAndTrimCSV(timestampValueExpression);
+  const valueExpressions = splitAndTrimWithBracket(timestampValueExpression);
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 
@@ -1167,12 +1210,6 @@ async function translateMetricChartConfig(
 
   throw new Error(`no query support for metric type=${metricType}`);
 }
-
-export const isMetricChartConfig = (
-  chartConfig: ChartConfigWithOptDateRange,
-) => {
-  return chartConfig.metricTables != null;
-};
 
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRange,

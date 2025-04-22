@@ -42,6 +42,7 @@ import DBRowSidePanel from './components/DBRowSidePanel';
 import { DBSqlRowTable } from './components/DBRowTable';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
+import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import {
@@ -942,6 +943,15 @@ function KubernetesDashboardPage() {
           />
         </form>
       </Group>
+      {metricSource && (
+        <KubernetesFilters
+          dateRange={dateRange}
+          metricSource={metricSource}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
+      )}
+
       <Tabs
         mt="md"
         keepMounted={false}
