@@ -12,12 +12,7 @@ import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
-import {
-  convertDateRangeToGranularityString,
-  formatResponseForTimeChart,
-  Granularity,
-  useTimeChartSettings,
-} from '@/ChartUtils';
+import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';

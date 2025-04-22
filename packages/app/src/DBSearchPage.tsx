@@ -26,7 +26,7 @@ import {
   DisplayType,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -42,7 +42,11 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
+import {
+  useDebouncedCallback,
+  useDisclosure,
+  useDocumentVisibility,
+} from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
@@ -802,12 +806,14 @@ function DBSearchPage() {
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
 
+  const isTabVisible = useDocumentVisibility();
+
   useLiveUpdate({
     isLive,
     interval: 1000 * 60 * 15,
     refreshFrequency: 4000,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady,
+    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client
@@ -835,7 +841,7 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = splitAndTrimCSV(
+  const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
       searchedSource?.defaultTableSelectExpression ??
       '',

@@ -88,12 +88,9 @@ app.use('/', routers.rootRouter);
 // PRIVATE ROUTES
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
-app.use('/logs', isUserAuthenticated, routers.logsRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
-app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
-app.use('/chart', isUserAuthenticated, routers.chartRouter);
 app.use('/datasources', isUserAuthenticated, routers.datasourceRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
