@@ -738,7 +738,7 @@ export default function EditTimeChartForm({
                   control={control}
                 />
                 <NumberInput
-                  min={0.0000000001}
+                  min={0}
                   size="xs"
                   w={80}
                   control={control}
