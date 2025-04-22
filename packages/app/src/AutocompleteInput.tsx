@@ -27,7 +27,7 @@ export default function AutocompleteInput({
   queryHistoryType,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
-  value: string | null;
+  value?: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;
   placeholder?: string;
@@ -281,7 +281,7 @@ export default function AutocompleteInput({
                 suggestedProperties[selectedAutocompleteIndex].value,
               );
             } else {
-              if (queryHistoryType) {
+              if (queryHistoryType && value) {
                 setQueryHistory(value);
               }
               onSubmit?.();
