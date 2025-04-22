@@ -104,8 +104,6 @@ const NumberFormatInputControlled = ({
   );
 };
 
-const supportFloatAggFn = new Set();
-
 function ChartSeriesEditor({
   control,
   databaseName,
