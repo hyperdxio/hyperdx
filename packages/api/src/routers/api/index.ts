@@ -3,7 +3,6 @@ import dashboardRouter from './dashboards';
 import datasourceRouter from './datasources';
 import meRouter from './me';
 import rootRouter from './root';
-import sessionsRouter from './sessions';
 import teamRouter from './team';
 import webhooksRouter from './webhooks';
 
@@ -13,7 +12,6 @@ export default {
   dashboardRouter,
   meRouter,
   rootRouter,
-  sessionsRouter,
   teamRouter,
   webhooksRouter,
 };
