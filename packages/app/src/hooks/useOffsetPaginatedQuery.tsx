@@ -303,6 +303,7 @@ export default function useOffsetPaginatedQuery(
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
     retry: 1,
     refetchOnWindowFocus: false,
+    maxPages: isLive ? 5 : undefined, // Limit number of pages kept in cache for live data
   });
 
   const flattenedData = useMemo(() => flattenData(data), [data]);
