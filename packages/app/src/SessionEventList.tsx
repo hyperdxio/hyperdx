@@ -225,7 +225,7 @@ export const SessionEventList = ({
 
   // Sync scroll position to the DOM Player time
   const currentEventIndex = useThrottledValue(
-    rows.findIndex(row => row.timestamp.getTime() >= (focus?.ts ?? 0)) - 1,
+    rows.findIndex(row => row.timestamp.getTime() >= (focus?.ts ?? 0)),
     500,
   );
 
