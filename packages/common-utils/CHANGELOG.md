@@ -1,5 +1,14 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.3
+
+### Patch Changes
+
+- 092a292: fix: autocomplete for key-values complete for v2 lucene
+- 2f626e1: fix: metric name filtering for some metadata
+- b16c8e1: feat: compute charts ratio
+- 4865ce7: Fixes the histogram query to perform quantile calculation across all data points
+
 ## 0.2.0-beta.2
 
 ### Minor Changes

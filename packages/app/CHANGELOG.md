@@ -1,5 +1,23 @@
 # @hyperdx/app
 
+## 2.0.0-beta.14
+
+### Patch Changes
+
+- 56e39dc: 36c3edc fix: remove several source change forms throughout the log drawer
+- 092a292: fix: autocomplete for key-values complete for v2 lucene
+- 2f626e1: fix: metric name filtering for some metadata
+- f5e9a07: chore: bump node version to v22
+- b16c8e1: feat: compute charts ratio
+- 08009ac: feat: add saved filters for searches
+- db761ba: fix: remove originalWhere tag from view. not used anyways
+- 8c95b9e: Add search history
+- Updated dependencies [092a292]
+- Updated dependencies [2f626e1]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [4865ce7]
+  - @hyperdx/common-utils@0.2.0-beta.3
+
 ## 2.0.0-beta.13
 
 ### Minor Changes
