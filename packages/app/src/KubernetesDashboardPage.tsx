@@ -53,11 +53,9 @@ import {
 } from './ChartUtils';
 import { useConnections } from './connection';
 import { withAppNav } from './layout';
-import MetricTagValueSelect from './MetricTagValueSelect';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import HdxSearchInput from './SearchInput';
 import { getEventBody, useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
@@ -760,43 +758,6 @@ const NamespacesTable = ({
         </ScrollArea>
       </Card.Section>
     </Card>
-  );
-};
-
-const K8sMetricTagValueSelect = ({
-  metricAttribute,
-  searchQuery,
-  setSearchQuery,
-  placeholder,
-  dropdownClosedWidth,
-  icon,
-}: {
-  metricAttribute: string;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  placeholder: string;
-  dropdownClosedWidth: number;
-  icon: React.ReactNode;
-}) => {
-  return (
-    <MetricTagValueSelect
-      metricName="k8s.pod.cpu.utilization - Gauge"
-      metricAttribute={metricAttribute}
-      value={''}
-      onChange={v => {
-        if (v) {
-          const newQuery = `${metricAttribute}:"${v}"${
-            searchQuery.includes(metricAttribute) ? ' OR' : ''
-          } ${searchQuery}`.trim();
-          setSearchQuery(newQuery);
-        }
-      }}
-      placeholder={placeholder}
-      size="sm"
-      dropdownClosedWidth={dropdownClosedWidth}
-      dropdownOpenWidth={350}
-      leftSection={icon}
-    />
   );
 };
 

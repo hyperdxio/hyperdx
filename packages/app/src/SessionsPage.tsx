@@ -45,7 +45,6 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
 import { withAppNav } from './layout';
-import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
