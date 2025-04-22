@@ -408,7 +408,7 @@ export function useRRWebEventStream(
             },
           });
 
-          return await clickhouseClient.query({
+          return clickhouseClient.query({
             query: query.sql,
             query_params: query.params,
             format,
