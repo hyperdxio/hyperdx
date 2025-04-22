@@ -361,7 +361,7 @@ export class ClickhouseClient {
     clickhouse_settings?: Record<string, any>;
     connectionId?: string;
     queryId?: string;
-  }): Promise<BaseResultSet<any, T>> {
+  }): Promise<BaseResultSet<ReadableStream, T>> {
     const isLocalMode = this.username != null && this.password != null;
     const includeCredentials = !isLocalMode;
     const includeCorsHeader = isLocalMode;

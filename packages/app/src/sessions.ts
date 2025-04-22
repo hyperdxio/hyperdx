@@ -372,45 +372,52 @@ export function useRRWebEventStream(
         metadata,
       );
 
-      let localModeUrl: URL | undefined;
-      if (IS_LOCAL_MODE) {
-        const localConnections = getLocalConnections();
-        localModeUrl = new URL(localConnections[0].host);
-        localModeUrl.username = localConnections[0].username;
-        localModeUrl.password = localConnections[0].password;
-      }
-
       // TODO: Change ClickhouseClient class to use this under the hood,
-      // and refactor this to use ClickhouseClient.query
-      const clickhouseClient = createClient({
-        clickhouse_settings: {
-          add_http_cors_header: IS_LOCAL_MODE ? 1 : 0,
-          cancel_http_readonly_queries_on_client_close: 1,
-          date_time_output_format: 'iso',
-          wait_end_of_query: 0,
-        },
-        http_headers: !IS_LOCAL_MODE
-          ? {
-              'x-hyperdx-connection-id': source.connection,
-            }
-          : undefined,
-        keep_alive: {
-          enabled: true,
-        },
-        url: localModeUrl?.toString() ?? window.location.origin,
-        // TODO: Use PROXY_CLICKHOUSE_HOST instead
-        pathname: localModeUrl?.pathname ?? '/api/clickhouse-proxy',
-        compression: {
-          response: true,
-        },
-      });
+      // and refactor this to use ClickhouseClient.query. Also change pathname
+      // in createClient to PROXY_CLICKHOUSE_HOST instead
+      const format = 'JSONEachRow';
+      const queryFn = async () => {
+        if (IS_LOCAL_MODE) {
+          const localConnections = getLocalConnections();
+          const localModeUrl = new URL(localConnections[0].host);
+          localModeUrl.username = localConnections[0].username;
+          localModeUrl.password = localConnections[0].password;
+
+          const clickhouseClient = getClickhouseClient();
+          return clickhouseClient.query({
+            query: query.sql,
+            query_params: query.params,
+            format,
+          });
+        } else {
+          const clickhouseClient = createClient({
+            clickhouse_settings: {
+              add_http_cors_header: IS_LOCAL_MODE ? 1 : 0,
+              cancel_http_readonly_queries_on_client_close: 1,
+              date_time_output_format: 'iso',
+              wait_end_of_query: 0,
+            },
+            http_headers: { 'x-hyperdx-connection-id': source.connection },
+            keep_alive: {
+              enabled: true,
+            },
+            url: window.location.origin,
+            pathname: '/api/clickhouse-proxy',
+            compression: {
+              response: true,
+            },
+          });
+
+          return await clickhouseClient.query({
+            query: query.sql,
+            query_params: query.params,
+            format,
+          });
+        }
+      };
 
       const fetchPromise = (async () => {
-        const resultSet = await clickhouseClient.query({
-          query: query.sql,
-          query_params: query.params,
-          format: 'JSONEachRow',
-        });
+        const resultSet = await queryFn();
 
         let forFunc: (data: any) => void;
         if (onEvent) {
@@ -438,7 +445,6 @@ export function useRRWebEventStream(
             }
           }
         }
-        await clickhouseClient.close();
 
         onEnd?.();
 

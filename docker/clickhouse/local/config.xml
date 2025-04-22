@@ -12,24 +12,6 @@
     <tcp_port>9000</tcp_port>
     <interserver_http_host>ch-server</interserver_http_host>
     <interserver_http_port>9009</interserver_http_port>
-    <http_options_response>
-        <header>
-            <name>Access-Control-Allow-Origin</name>
-            <value>*</value>
-        </header>
-        <header>
-            <name>Access-Control-Allow-Headers</name>
-            <value>origin, authorization</value>
-        </header>
-        <header>
-            <name>Access-Control-Allow-Methods</name>
-            <value>POST, GET, OPTIONS</value>
-        </header>
-        <header>
-            <name>Access-Control-Max-Age</name>
-            <value>86400</value>
-        </header>
-    </http_options_response>
 
     <max_connections>4096</max_connections>
     <keep_alive_timeout>64</keep_alive_timeout>
