@@ -4,16 +4,10 @@ import express from 'express';
 import { isNumber, omit, parseInt } from 'lodash';
 import _ from 'lodash';
 import ms from 'ms';
-import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as clickhouse from '@/clickhouse';
-import { customColumnMapType } from '@/clickhouse/searchQueryParser';
-import { getTeam } from '@/controllers/team';
-import logger from '@/utils/logger';
-import { getLogsPatterns } from '@/utils/miner';
-import { LimitedSizeQueue } from '@/utils/queue';
 
 const router = express.Router();
 
