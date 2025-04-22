@@ -89,7 +89,6 @@ app.use('/', routers.rootRouter);
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
-app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/datasources', isUserAuthenticated, routers.datasourceRouter);

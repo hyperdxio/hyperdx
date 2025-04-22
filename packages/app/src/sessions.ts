@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import produce from 'immer';
 import type { ResponseJSON } from '@clickhouse/client';
+import { createClient } from '@clickhouse/client-web';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
@@ -8,13 +10,15 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { getMetadata } from '@/metadata';
 import { usePrevious } from '@/utils';
 
 import { getClickhouseClient } from './clickhouse';
+import { IS_LOCAL_MODE } from './config';
+import { getLocalConnections } from './connection';
+import { useSource } from './source';
 
 export type Session = {
   errorCount: string;
@@ -236,6 +240,27 @@ class FatalError extends Error {}
 class TimeoutError extends Error {}
 const EventStreamContentType = 'text/event-stream';
 
+async function* streamToAsyncIterator<T>(
+  stream: ReadableStream<T>,
+): AsyncIterableIterator<T> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// OPTIMIZATION STRATEGY
+//
+// 1. Write a clickhouse query to divide a session into different chunks, where each chunk has a start time. Maybe each chunk contains 100 events.
+// 2. When slider advances, use the timestamp to determine which chunk you are in
+// 3. Fetch data associated with that chunk
+// 4. Probably do some prefetching for future times
 export function useRRWebEventStream(
   {
     serviceName,
@@ -278,6 +303,8 @@ export function useRRWebEventStream(
   const [fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>();
 
+  const { data: source } = useSource({ id: sourceId });
+
   const fetchResults = useCallback(
     async ({
       pageParam = 0,
@@ -286,20 +313,14 @@ export function useRRWebEventStream(
       pageParam: number;
       limit?: number;
     }) => {
+      if (!source) return;
       const resBuffer: any[] = [];
       let linesFetched = 0;
 
       const startTime = startDate.getTime().toString();
       const endTime = endDate.getTime().toString();
-
-      const searchParams = new URLSearchParams([
-        ['endTime', endTime],
-        ['limit', (limitOverride ?? limit).toString()],
-        ['offset', pageParam.toString()],
-        ['serviceName', serviceName],
-        ['sourceId', sourceId],
-        ['startTime', startTime],
-      ]);
+      const queryLimit = (limitOverride ?? limit).toString();
+      const offset = pageParam.toString();
 
       const ctrl = new AbortController();
       lastAbortController.current = ctrl;
@@ -308,89 +329,136 @@ export function useRRWebEventStream(
       setFetchStatus('fetching');
       lastFetchStatusRef.current = 'fetching';
 
-      const fetchPromise = fetchEventSource(
-        `/api/sessions/${sessionId}/rrweb?${searchParams.toString()}`,
+      const MAX_LIMIT = 1e6;
+
+      const metadata = getMetadata();
+      const query = await renderChartConfig(
         {
-          method: 'GET',
-          signal: ctrl.signal,
-          credentials: 'include',
-          async onopen(response) {
-            if (
-              response.ok &&
-              response.headers.get('content-type') === EventStreamContentType
-            ) {
-              return; // everything's good
-            } else if (
-              response.status >= 400 &&
-              response.status < 500 &&
-              response.status !== 429
-            ) {
-              // client-side errors are usually non-retriable:
-              // TODO: handle these???
-              throw new FatalError();
-            } else {
-              throw new RetriableError();
-            }
+          // FIXME: add mappings to session source
+          select: [
+            {
+              valueExpression: `${source.implicitColumnExpression}`,
+              alias: 'b',
+            },
+            {
+              valueExpression: `simpleJSONExtractInt(${source.implicitColumnExpression}, 'type')`,
+              alias: 't',
+            },
+            {
+              valueExpression: `${source.eventAttributesExpression}['rr-web.chunk']`,
+              alias: 'ck',
+            },
+            {
+              valueExpression: `${source.eventAttributesExpression}['rr-web.total-chunks']`,
+              alias: 'tcks',
+            },
+          ],
+          dateRange: [
+            new Date(parseInt(startTime)),
+            new Date(parseInt(endTime)),
+          ],
+          from: source.from,
+          whereLanguage: 'lucene',
+          where: `ServiceName:"${serviceName}" AND ${source.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+          timestampValueExpression: source.timestampValueExpression,
+          implicitColumnExpression: source.implicitColumnExpression,
+          connection: source.connection,
+          orderBy: `${source.timestampValueExpression} ASC`,
+          limit: {
+            limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
+            offset: parseInt(offset),
           },
-          onmessage(event) {
-            if (event.event === '') {
-              const parsedRows = event.data
-                .split('\n')
-                .map((row: string) => {
-                  try {
-                    const parsed = JSON.parse(row);
-                    linesFetched++;
-                    return parsed;
-                  } catch (e) {
-                    return null;
-                  }
-                })
-                .filter((v: any) => v !== null);
-
-              if (onEvent != null) {
-                parsedRows.forEach(onEvent);
-              } else if (keepPreviousData) {
-                resBuffer.push(...parsedRows);
-              } else {
-                setResults(prevResults => ({
-                  key: resultsKey ?? prevResults.key ?? 'DEFAULT_KEY',
-                  data: [...prevResults.data, ...parsedRows],
-                }));
-              }
-            } else if (event.event === 'end') {
-              onEnd?.();
-
-              if (keepPreviousData) {
-                setResults({
-                  key: resultsKey ?? 'DEFAULT_KEY',
-                  data: resBuffer,
-                });
-              }
-
-              if (linesFetched === 0 || linesFetched < limit) {
-                setHasNextPage(false);
-              }
-            }
-          },
-          onclose() {
-            ctrl.abort();
-
-            setIsFetching(false);
-            setFetchStatus('idle');
-            lastFetchStatusRef.current = 'idle';
-            // if the server closes the connection unexpectedly, retry:
-            // throw new RetriableError();
-          },
-          // onerror(err) {
-          //   if (err instanceof FatalError) {
-          //     throw err; // rethrow to stop the operation
-          //   } else {
-          //     // do nothing to automatically retry. You can also
-          //     // return a specific retry interval here.
-          //   }
-          // },
         },
+        metadata,
       );
+
+      // TODO: Change ClickhouseClient class to use this under the hood,
+      // and refactor this to use ClickhouseClient.query. Also change pathname
+      // in createClient to PROXY_CLICKHOUSE_HOST instead
+      const format = 'JSONEachRow';
+      const queryFn = async () => {
+        if (IS_LOCAL_MODE) {
+          const localConnections = getLocalConnections();
+          const localModeUrl = new URL(localConnections[0].host);
+          localModeUrl.username = localConnections[0].username;
+          localModeUrl.password = localConnections[0].password;
+
+          const clickhouseClient = getClickhouseClient();
+          return clickhouseClient.query({
+            query: query.sql,
+            query_params: query.params,
+            format,
+          });
+        } else {
+          const clickhouseClient = createClient({
+            clickhouse_settings: {
+              add_http_cors_header: IS_LOCAL_MODE ? 1 : 0,
+              cancel_http_readonly_queries_on_client_close: 1,
+              date_time_output_format: 'iso',
+              wait_end_of_query: 0,
+            },
+            http_headers: { 'x-hyperdx-connection-id': source.connection },
+            keep_alive: {
+              enabled: true,
+            },
+            url: window.location.origin,
+            pathname: '/api/clickhouse-proxy',
+            compression: {
+              response: true,
+            },
+          });
+
+          return clickhouseClient.query({
+            query: query.sql,
+            query_params: query.params,
+            format,
+          });
+        }
+      };
+
+      const fetchPromise = (async () => {
+        const resultSet = await queryFn();
+
+        let forFunc: (data: any) => void;
+        if (onEvent) {
+          forFunc = onEvent;
+        } else if (keepPreviousData) {
+          forFunc = (data: any) => resBuffer.push(data);
+        } else {
+          forFunc = (data: any) =>
+            setResults(prevResults =>
+              produce(prevResults, draft => {
+                draft.key = resultsKey ?? draft.key ?? 'DEFAULT_KEY';
+                draft.data.push(data);
+              }),
+            );
+        }
+        const stream = resultSet.stream();
+        for await (const chunk of streamToAsyncIterator(stream)) {
+          for (const row of chunk) {
+            try {
+              const parsed = row.json();
+              linesFetched++;
+              forFunc(parsed);
+            } catch {
+              // do noting
+            }
+          }
+        }
+
+        onEnd?.();
+
+        if (keepPreviousData) {
+          setResults({
+            key: resultsKey ?? 'DEFAULT_KEY',
+            data: resBuffer,
+          });
+        }
+
+        if (linesFetched === 0 || linesFetched < limit) {
+          setHasNextPage(false);
+        }
+      })();
 
       try {
         await Promise.race([
@@ -413,8 +481,15 @@ export function useRRWebEventStream(
           console.error(e);
         }
       }
+
+      ctrl.abort();
+      setIsFetching(false);
+      setFetchStatus('idle');
+      lastFetchStatusRef.current = 'idle';
     },
     [
+      source,
+      serviceName,
       sessionId,
       startDate,
       endDate,
