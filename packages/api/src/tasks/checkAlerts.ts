@@ -40,6 +40,7 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
+// TODO(perf): no need to populate the team
 const getAlerts = () =>
   Alert.find({}).populate<{
     team: ITeam;

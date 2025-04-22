@@ -8,7 +8,6 @@ import { connectDB, mongooseConnection } from '@/models';
 import logger from '@/utils/logger';
 
 import checkAlerts from './checkAlerts';
-import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
 const shutdown = async () => Promise.all([mongooseConnection.close()]);
 
@@ -21,9 +20,6 @@ const main = async (taskName: string) => {
   switch (taskName) {
     case 'check-alerts':
       await checkAlerts();
-      break;
-    case 'refresh-property-type-mappings':
-      await refreshPropertyTypeMappings();
       break;
     // only for testing
     case 'ping-pong':

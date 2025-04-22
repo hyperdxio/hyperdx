@@ -6,7 +6,6 @@ type ObjectId = mongoose.Types.ObjectId;
 export interface ITeam {
   _id: ObjectId;
   name: string;
-  logStreamTableVersion?: number;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
   hookId: string;
@@ -30,7 +29,6 @@ export default mongoose.model<ITeam>(
           return uuidv4();
         },
       },
-      logStreamTableVersion: Number,
     },
     {
       timestamps: true,

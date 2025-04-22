@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
-import AsyncSelect from 'react-select/async';
 import { z } from 'zod';
 import { ResponseJSON } from '@clickhouse/client';
 import {
@@ -20,8 +19,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
-import api from './api';
-import Checkbox from './Checkbox';
 import {
   AggFn,
   ChartSeries,
@@ -31,11 +28,7 @@ import {
   TimeChartSeries,
 } from './types';
 import { NumberFormat } from './types';
-import {
-  legacyMetricNameToNameAndDataType,
-  logLevelColor,
-  logLevelColorOrder,
-} from './utils';
+import { logLevelColor, logLevelColorOrder } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -152,103 +145,6 @@ export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
   };
 }
 
-const seriesDisplayName = (
-  s: ChartSeries | undefined,
-  {
-    showAggFn,
-    showField,
-    showWhere,
-  }: {
-    showAggFn?: boolean;
-    showField?: boolean;
-    showWhere?: boolean;
-  } = {},
-) => {
-  if (!s) {
-    return '';
-  }
-  if (s.type === 'time' || s.type === 'table') {
-    if (s.displayName != null) {
-      return s.displayName;
-    }
-
-    const displayField =
-      s.aggFn !== 'count'
-        ? s.table === 'metrics'
-          ? (s.field?.split(' - ')?.[0] ?? s.field)
-          : s.field
-        : '';
-
-    return `${showAggFn === false ? '' : s.aggFn}${
-      showField === false ? '' : `(${displayField})`
-    }${s.where && showWhere !== false ? `{${s.where}}` : ''}`;
-  }
-  return '';
-};
-
-export function seriesColumns({
-  series,
-  seriesReturnType,
-}: {
-  seriesReturnType: 'ratio' | 'column';
-  series: ChartSeries[];
-}) {
-  const uniqueWhere = new Set<string | undefined>(
-    series.map(s => ('where' in s ? s.where : undefined)),
-  );
-  const uniqueFields = new Set<string | undefined>(
-    series.map(s => ('field' in s ? s.field : undefined)),
-  );
-
-  const showField = uniqueFields.size > 1;
-  const showWhere = uniqueWhere.size > 1;
-
-  const seriesMeta =
-    seriesReturnType === 'ratio'
-      ? [
-          {
-            dataKey: `series_0.data` as `series_${number}.data`,
-            displayName:
-              'displayName' in series[0] && series[0].displayName != null
-                ? series[0].displayName
-                : `${seriesDisplayName(series[0], {
-                    showField,
-                    showWhere,
-                  })}/${seriesDisplayName(series[1], {
-                    showField,
-                    showWhere,
-                  })}`,
-            sortOrder:
-              'sortOrder' in series[0] ? series[0].sortOrder : undefined,
-            numberFormat:
-              'numberFormat' in series[0] ? series[0].numberFormat : undefined,
-            columnWidthPercent:
-              'columnWidthPercent' in series[0]
-                ? series[0].columnWidthPercent
-                : undefined,
-            visible: 'visible' in series[0] ? series[0].visible : undefined,
-            color: undefined,
-          },
-        ]
-      : series.map((s, i) => {
-          return {
-            dataKey: `series_${i}.data` as `series_${number}.data`,
-            displayName: seriesDisplayName(s, {
-              showField,
-              showWhere,
-            }),
-            sortOrder: 'sortOrder' in s ? s.sortOrder : undefined,
-            numberFormat: 'numberFormat' in s ? s.numberFormat : undefined,
-            columnWidthPercent:
-              'columnWidthPercent' in s ? s.columnWidthPercent : undefined,
-            visible: 'visible' in s ? s.visible : undefined,
-            color: 'color' in s ? s.color : undefined,
-          };
-        });
-
-  return seriesMeta;
-}
-
 export function seriesToSearchQuery({
   series,
   groupByValue,
@@ -295,210 +191,6 @@ export function seriesToUrlSearchQueryParam({
     from: `${dateRange[0].getTime()}`,
     to: `${dateRange[1].getTime()}`,
   });
-}
-
-export function usePropertyOptions(types: ('number' | 'string' | 'bool')[]) {
-  const { data: propertyTypeMappingsResult } = api.usePropertyTypeMappings();
-  const propertyTypeMappings = useMemo(() => {
-    const mapping = new Map(propertyTypeMappingsResult);
-
-    // TODO: handle special properties somehow better...
-    mapping.set('level', 'string');
-    mapping.set('service', 'string');
-    mapping.set('trace_id', 'string');
-    mapping.set('span_id', 'string');
-    mapping.set('parent_span_id', 'string');
-    mapping.set('span_name', 'string');
-    mapping.set('duration', 'number');
-    mapping.set('body', 'string');
-
-    return mapping;
-  }, [propertyTypeMappingsResult]);
-
-  // Blindly consume mappings so we keep the same API/shape as search
-  const propertyOptions = useMemo(() => {
-    return Array.from(propertyTypeMappings.entries())
-      .flatMap(([key, value]) =>
-        // @ts-ignore
-        types.includes(value)
-          ? [
-              {
-                value: key as string,
-                label: `${key} (${value})`,
-              },
-            ]
-          : [],
-      )
-      .sort((a, b) => a.value.length - b.value.length); // Prioritize shorter properties (likely to be less nested)
-  }, [propertyTypeMappings, types]);
-
-  return propertyOptions;
-}
-
-function useMetricTagOptions({ metricNames }: { metricNames?: string[] }) {
-  const metrics = (metricNames ?? []).map(m => ({
-    ...legacyMetricNameToNameAndDataType(m),
-  }));
-  const { data: metricTagsData } = api.useMetricsTags(metrics);
-
-  const options = useMemo(() => {
-    let tagNameSet = new Set<string>();
-    if (metricNames != null && metricNames.length > 0) {
-      const firstMetricName = metricNames[0]; // Start the set
-
-      const tags =
-        metricTagsData?.data?.filter(
-          metric => metric.name === firstMetricName,
-        )?.[0]?.tags ?? [];
-      tags.forEach(tag => {
-        Object.keys(tag).forEach(tagName => tagNameSet.add(tagName));
-      });
-
-      for (let i = 1; i < metricNames.length; i++) {
-        const tags =
-          metricTagsData?.data?.filter(
-            metric => metric.name === metricNames[i],
-          )?.[0]?.tags ?? [];
-        const intersection = new Set<string>();
-        tags.forEach(tag => {
-          Object.keys(tag).forEach(tagName => {
-            if (tagNameSet.has(tagName)) {
-              intersection.add(tagName);
-            }
-          });
-        });
-        tagNameSet = intersection;
-      }
-    }
-
-    return [
-      { value: undefined, label: 'None' },
-      ...Array.from(tagNameSet).map(tagName => ({
-        value: tagName,
-        label: tagName,
-      })),
-    ];
-  }, [metricTagsData]);
-
-  return options;
-}
-
-export function MetricTagSelect({
-  value,
-  setValue,
-  metricNames,
-}: {
-  value: string | undefined | null;
-  setValue: (value: string | undefined) => void;
-  metricNames?: string[];
-}) {
-  const options = useMetricTagOptions({ metricNames });
-
-  return (
-    <AsyncSelect
-      loadOptions={input => {
-        return Promise.resolve(
-          options.filter(v =>
-            input.length > 0
-              ? (v.value ?? 'None').toLowerCase().includes(input.toLowerCase())
-              : true,
-          ),
-        );
-      }}
-      defaultOptions={options}
-      value={
-        value != null
-          ? options.find(v => v.value === value)
-          : { value: undefined, label: 'None' }
-      }
-      onChange={opt => setValue(opt?.value)}
-      className="ds-select"
-      classNamePrefix="ds-react-select"
-    />
-  );
-}
-
-export function MetricRateSelect({
-  metricName,
-  isRate,
-  setIsRate,
-}: {
-  isRate: boolean;
-  setIsRate: (isRate: boolean) => void;
-  metricName: string | undefined | null;
-}) {
-  const { data: metricNamesData } = api.useMetricsNames();
-
-  const metricType = useMemo(() => {
-    return metricNamesData?.data?.find(metric => metric.name === metricName)
-      ?.data_type;
-  }, [metricNamesData, metricName]);
-
-  return (
-    <>
-      {metricType === 'Sum' ? (
-        <Checkbox
-          title="When checked, this calculates the increase of the Sum metric over each time bucket, accounting for counter resets. Recommended for Sum metrics as opposed to the raw value."
-          id="metric-use-rate"
-          className="text-nowrap"
-          labelClassName="fs-7"
-          checked={isRate}
-          onChange={() => setIsRate(!isRate)}
-          label="Use Increase"
-        />
-      ) : null}
-    </>
-  );
-}
-
-export function FieldSelect({
-  value,
-  setValue,
-  types,
-  className,
-  autoFocus,
-}: {
-  value: string | undefined | null;
-  setValue: (value: string | undefined) => void;
-  types: ('number' | 'string' | 'bool')[];
-  className?: string;
-  autoFocus?: boolean;
-}) {
-  const propertyOptions = usePropertyOptions(types);
-
-  return (
-    <AsyncSelect
-      autoFocus={autoFocus}
-      placeholder="Select a field..."
-      loadOptions={input => {
-        return Promise.resolve([
-          { value: undefined, label: 'None' },
-          ...propertyOptions
-            .filter(v =>
-              input.length > 0
-                ? v.value.toLowerCase().includes(input.toLowerCase())
-                : true,
-            )
-            .slice(0, 1000), // TODO: better surface too many results... somehow?
-        ]);
-      }}
-      defaultOptions={[
-        { value: undefined, label: 'None' },
-        ...propertyOptions
-          // Filter out index properties on initial dropdown
-          .filter(v => v.value.match(/\.\d+(\.|$)/) == null)
-          .slice(0, 1000), // TODO: better surface too many results... somehow?
-      ]}
-      value={
-        value != null
-          ? propertyOptions.find(v => v.value === value)
-          : { value: undefined, label: 'None' }
-      }
-      onChange={opt => setValue(opt?.value)}
-      className={`ds-select ${className ?? ''}`}
-      classNamePrefix="ds-react-select"
-    />
-  );
 }
 
 export function TableSelect({
@@ -553,42 +245,6 @@ export function TableToggle({
         { label: 'Metrics', value: 'metrics' },
       ]}
     />
-  );
-}
-
-export function GroupBySelect(
-  props:
-    | {
-        fields?: string[];
-        table: 'metrics';
-        groupBy?: string | undefined;
-        setGroupBy: (groupBy: string | undefined) => void;
-      }
-    | {
-        table: 'logs';
-        groupBy?: string | undefined;
-        setGroupBy: (groupBy: string | undefined) => void;
-      }
-    | { table: 'rrweb' },
-) {
-  return (
-    <>
-      {props.table === 'metrics' && (
-        <MetricTagSelect
-          value={props.groupBy}
-          setValue={props.setGroupBy}
-          metricNames={props.fields}
-        />
-      )}
-      {props.table === 'logs' && props.setGroupBy != null && (
-        <FieldSelect
-          className="w-auto text-nowrap"
-          value={props.groupBy}
-          setValue={props.setGroupBy}
-          types={['number', 'bool', 'string']}
-        />
-      )}
-    </>
   );
 }
 

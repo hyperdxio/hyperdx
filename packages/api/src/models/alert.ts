@@ -1,6 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
+import Team from './team';
 
 export enum AlertThresholdType {
   ABOVE = 'above',
@@ -99,7 +100,7 @@ const AlertSchema = new Schema<IAlert>(
     },
     team: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Team',
+      ref: Team.modelName,
     },
 
     // Message template

@@ -21,13 +21,11 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import * as clickhouse from '@/clickhouse';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
-import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
 import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';

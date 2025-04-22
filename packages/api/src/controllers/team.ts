@@ -14,7 +14,6 @@ const LOCAL_APP_TEAM = {
   // Placeholder keys
   hookId: uuidv4(),
   apiKey: uuidv4(),
-  logStreamTableVersion: 1,
   toJSON() {
     return this;
   },
