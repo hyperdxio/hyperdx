@@ -80,6 +80,8 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
   queriedConfig?.timestampValueExpression;
 
+const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
+
 const NumberFormatInputControlled = ({
   control,
   onSubmit,
@@ -738,7 +740,7 @@ export default function EditTimeChartForm({
                   control={control}
                 />
                 <NumberInput
-                  min={0}
+                  min={MINIMUM_THRESHOLD_VALUE}
                   size="xs"
                   w={80}
                   control={control}
