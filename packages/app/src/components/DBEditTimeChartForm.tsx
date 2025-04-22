@@ -12,7 +12,7 @@ import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
-  AlertBaseSchema,
+  ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   DateRange,
   DisplayType,
@@ -103,6 +103,8 @@ const NumberFormatInputControlled = ({
     />
   );
 };
+
+const supportFloatAggFn = new Set();
 
 function ChartSeriesEditor({
   control,
@@ -293,7 +295,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: AlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.optional(),
   })
   .passthrough();
 
@@ -738,7 +740,7 @@ export default function EditTimeChartForm({
                   control={control}
                 />
                 <NumberInput
-                  min={1}
+                  min={0.0000000001}
                   size="xs"
                   w={80}
                   control={control}
