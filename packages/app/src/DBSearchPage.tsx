@@ -26,7 +26,7 @@ import {
   DisplayType,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -835,7 +835,7 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = splitAndTrimCSV(
+  const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
       searchedSource?.defaultTableSelectExpression ??
       '',

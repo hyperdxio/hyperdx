@@ -8,7 +8,10 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { hashCode, splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import {
+  hashCode,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -43,7 +46,7 @@ function getLocalSources(): TSource[] {
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return splitAndTrimCSV(valueExpression)[0];
+  return splitAndTrimWithBracket(valueExpression)[0];
 }
 
 export function getSpanEventBody(eventModel: TSource) {
@@ -65,7 +68,7 @@ export function getEventBody(eventModel: TSource) {
       : undefined) ??
     eventModel.implicitColumnExpression; //??
   // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
-  const multiExpr = splitAndTrimCSV(expression ?? '');
+  const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0]; // TODO: check if we want to show multiple columns
 }
 
@@ -215,7 +218,7 @@ export async function inferTableSourceConfig({
       connectionId,
     })
   ).primary_key;
-  const keys = splitAndTrimCSV(primaryKeys);
+  const keys = splitAndTrimWithBracket(primaryKeys);
 
   const isOtelLogSchema = hasAllColumns(columns, [
     'Timestamp',

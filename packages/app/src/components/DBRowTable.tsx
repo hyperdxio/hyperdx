@@ -25,7 +25,7 @@ import {
   ChartConfigWithDateRange,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
-import { Granularity, splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import { FetchNextPageOptions } from '@tanstack/react-query';
 import {
@@ -810,10 +810,10 @@ function appendSelectWithPrimaryAndPartitionKey(
     .map(k => extractColumnReference(k.trim()))
     .filter((k): k is string => k != null && k.length > 0);
   const primaryKeyArr =
-    primaryKeys.trim() !== '' ? splitAndTrimCSV(primaryKeys) : [];
+    primaryKeys.trim() !== '' ? splitAndTrimWithBracket(primaryKeys) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
-    const selectSplit = splitAndTrimCSV(select);
+    const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
     const additionalKeys = allKeys.filter(k => !selectColumns.has(k));
     return {
