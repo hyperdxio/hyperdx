@@ -170,22 +170,26 @@ const translateChartDocumentToExternalChart = (
   };
 };
 
-export const translateDashboardDocumentToExternalDashboard = (
-  dashboard: IDashboard,
-): {
+export type ExternalDashboard = {
   id: string;
   name: string;
-  charts: z.infer<typeof externalChartSchemaWithId>[];
-  query: string;
-  tags: string[];
-} => {
-  const { _id, name, charts, query, tags } = dashboard;
-
-  return {
-    id: _id.toString(),
-    name,
-    charts: charts.map(translateChartDocumentToExternalChart),
-    query,
-    tags,
-  };
+  tiles: ExternalChart[];
+  tags?: string[];
 };
+
+export type ExternalDashboardRequest = {
+  name: string;
+  tiles: ExternalChart[];
+  tags?: string[];
+};
+
+export function translateDashboardDocumentToExternalDashboard(
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tiles' | 'tags'>,
+): ExternalDashboard {
+  return {
+    id: dashboard._id.toString(),
+    name: dashboard.name,
+    tiles: dashboard.tiles,
+    tags: dashboard.tags || [],
+  };
+}
