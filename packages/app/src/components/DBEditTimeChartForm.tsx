@@ -12,7 +12,7 @@ import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
-  AlertBaseSchema,
+  ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   DateRange,
   DisplayType,
@@ -79,6 +79,8 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   // tableName is emptry for metric sources
   (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
   queriedConfig?.timestampValueExpression;
+
+const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
 const NumberFormatInputControlled = ({
   control,
@@ -293,7 +295,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: AlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.optional(),
   })
   .passthrough();
 
@@ -738,7 +740,7 @@ export default function EditTimeChartForm({
                   control={control}
                 />
                 <NumberInput
-                  min={1}
+                  min={MINIMUM_THRESHOLD_VALUE}
                   size="xs"
                   w={80}
                   control={control}

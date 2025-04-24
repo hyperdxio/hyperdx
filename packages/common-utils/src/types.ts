@@ -268,9 +268,14 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const AlertSchema = AlertBaseSchema.and(
-  zSavedSearchAlert.or(zTileAlert),
-);
+export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+  threshold: z.number().positive(),
+});
+
+export const AlertSchema = z.union([
+  z.intersection(AlertBaseSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseSchema, zTileAlert),
+]);
 
 export type Alert = z.infer<typeof AlertSchema>;
 
@@ -410,7 +415,10 @@ export const SavedChartConfigSchema = z.intersection(
     z.object({
       name: z.string(),
       source: z.string(),
-      alert: AlertBaseSchema.optional(),
+      alert: z.union([
+        AlertBaseSchema.optional(),
+        ChartAlertBaseSchema.optional(),
+      ]),
     }),
     _ChartConfigSchema.omit({
       connection: true,
