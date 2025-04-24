@@ -170,29 +170,28 @@ export default function OnboardingModal({
                     metricSourceId: metricsSource.id,
                   },
                 });
-                // TODO: enable this once we move the streaming to the frontend
-                // const sessionSource = await createSourceMutation.mutateAsync({
-                //   source: {
-                //     kind: SourceKind.Session,
-                //     name: 'Demo Sessions',
-                //     connection: 'local',
-                //     from: {
-                //       databaseName: 'default',
-                //       tableName: 'hyperdx_sessions',
-                //     },
-                //     timestampValueExpression: 'TimestampTime',
-                //     defaultTableSelectExpression:
-                //       'Timestamp, ServiceName, SeverityText, Body',
-                //     serviceNameExpression: 'ServiceName',
-                //     severityTextExpression: 'SeverityText',
-                //     eventAttributesExpression: 'LogAttributes',
-                //     resourceAttributesExpression: 'ResourceAttributes',
-                //     traceSourceId: traceSource.id,
-                //     traceIdExpression: 'TraceId',
-                //     spanIdExpression: 'SpanId',
-                //     implicitColumnExpression: 'Body',
-                //   },
-                // });
+                const sessionSource = await createSourceMutation.mutateAsync({
+                  source: {
+                    kind: SourceKind.Session,
+                    name: 'Demo Sessions',
+                    connection: 'local',
+                    from: {
+                      databaseName: 'default',
+                      tableName: 'hyperdx_sessions',
+                    },
+                    timestampValueExpression: 'TimestampTime',
+                    defaultTableSelectExpression:
+                      'Timestamp, ServiceName, Body',
+                    serviceNameExpression: 'ServiceName',
+                    severityTextExpression: 'SeverityText',
+                    eventAttributesExpression: 'LogAttributes',
+                    resourceAttributesExpression: 'ResourceAttributes',
+                    traceSourceId: traceSource.id,
+                    traceIdExpression: 'TraceId',
+                    spanIdExpression: 'SpanId',
+                    implicitColumnExpression: 'Body',
+                  },
+                });
                 notifications.show({
                   title: 'Success',
                   message: 'Connected to HyperDX demo server.',
