@@ -1107,7 +1107,7 @@ function DBSearchPage() {
             name="whereLanguage"
             control={control}
             sqlInput={
-              <Box style={{ width: '75%' }}>
+              <Box style={{ width: '75%', flexGrow: 1 }}>
                 <SQLInlineEditorControlled
                   tableConnections={tcFromSource(inputSourceObj)}
                   control={control}
