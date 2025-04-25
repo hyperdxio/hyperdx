@@ -193,3 +193,54 @@ export function translateDashboardDocumentToExternalDashboard(
     tags: dashboard.tags || [],
   };
 }
+
+// Alert related types and transformations
+export type ExternalAlert = {
+  id: string;
+  name: string | null;
+  message: string | null;
+  threshold: number;
+  interval: string;
+  thresholdType: string;
+  source: string;
+  state: string;
+  channel: any;
+  team: string;
+  tileId?: string;
+  dashboard?: string;
+  savedSearch?: string;
+  groupBy?: string;
+  silenced?: any;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function translateAlertDocumentToExternalAlert(
+  alert: any,
+): ExternalAlert {
+  // Convert to plain object if it's a Mongoose document
+  const alertObj = alert.toJSON ? alert.toJSON() : { ...alert };
+
+  // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
+  const result = {
+    id: alertObj._id.toString(),
+    name: alertObj.name,
+    message: alertObj.message,
+    threshold: alertObj.threshold,
+    interval: alertObj.interval,
+    thresholdType: alertObj.thresholdType,
+    source: alertObj.source,
+    state: alertObj.state,
+    channel: alertObj.channel,
+    team: alertObj.team.toString(),
+    tileId: alertObj.tileId,
+    dashboard: alertObj.dashboard?.toString(),
+    savedSearch: alertObj.savedSearch?.toString(),
+    groupBy: alertObj.groupBy,
+    silenced: alertObj.silenced,
+    createdAt: alertObj.createdAt.toISOString(),
+    updatedAt: alertObj.updatedAt.toISOString(),
+  };
+
+  return result;
+}

@@ -143,7 +143,7 @@ describe('External API Alerts', () => {
       );
       expect(createResponse.body).toEqual({
         data: {
-          _id: expect.any(String),
+          id: expect.any(String),
           name: 'Format Test Alert',
           message: 'This is a test alert for format verification',
           threshold: 123,
@@ -160,12 +160,11 @@ describe('External API Alerts', () => {
           state: expect.any(String),
           createdAt: expect.any(String),
           updatedAt: expect.any(String),
-          __v: expect.any(Number),
         },
       });
 
       // Get the alert to verify consistent format
-      const alertId = createResponse.body.data._id;
+      const alertId = createResponse.body.data.id;
       const getResponse = await authRequest(
         'get',
         `${ALERTS_BASE_URL}/${alertId}`,
@@ -228,7 +227,7 @@ describe('External API Alerts', () => {
       expect(createdAlert.threshold).toEqual(100);
       expect(createdAlert.interval).toEqual('1h');
       expect(createdAlert.name).toEqual('Test Alert');
-      expect(createdAlert._id).toBeTruthy();
+      expect(createdAlert.id).toBeTruthy();
     });
 
     it('should handle validation errors when creating alerts', async () => {
@@ -274,7 +273,7 @@ describe('External API Alerts', () => {
           .send(alertInput)
           .expect(200)
           .then(res => {
-            createdAlertIds.push(res.body.data._id);
+            createdAlertIds.push(res.body.data.id);
             return res;
           });
       });
@@ -292,7 +291,7 @@ describe('External API Alerts', () => {
       // Verify each created alert exists in the response
       for (const alertId of createdAlertIds) {
         const found = listResponse.body.data.some(
-          alert => alert._id.toString() === alertId.toString(),
+          alert => alert.id === alertId,
         );
         expect(found).toBe(true);
       }
@@ -320,9 +319,7 @@ describe('External API Alerts', () => {
       ).expect(200);
 
       // Verify response
-      expect(getResponse.body.data._id.toString()).toEqual(
-        alert._id.toString(),
-      );
+      expect(getResponse.body.data.id).toEqual(alert._id.toString());
       expect(getResponse.body.data.name).toEqual('Direct DB Alert');
     });
 
@@ -381,7 +378,7 @@ describe('External API Alerts', () => {
       // Get the original alert to include all required fields
       const originalAlert = await authRequest(
         'get',
-        `${ALERTS_BASE_URL}/${alert._id}`,
+        `${ALERTS_BASE_URL}/${alert.id}`,
       ).expect(200);
 
       // Build update payload with required fields
@@ -400,14 +397,14 @@ describe('External API Alerts', () => {
       };
 
       // Update the alert
-      await authRequest('put', `${ALERTS_BASE_URL}/${alert._id}`)
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
         .send(updatePayload)
         .expect(200);
 
       // Verify the update was applied by getting the alert again
       const getResponse = await authRequest(
         'get',
-        `${ALERTS_BASE_URL}/${alert._id}`,
+        `${ALERTS_BASE_URL}/${alert.id}`,
       ).expect(200);
 
       const retrievedAlert = getResponse.body.data;
@@ -426,21 +423,16 @@ describe('External API Alerts', () => {
       const { alert } = await createTestAlert({ name: 'Delete Test Alert' });
 
       // Delete the alert
-      await authRequest('delete', `${ALERTS_BASE_URL}/${alert._id}`).expect(
-        200,
-      );
+      await authRequest('delete', `${ALERTS_BASE_URL}/${alert.id}`).expect(200);
 
       // Verify alert is deleted by trying to get it
-      await authRequest('get', `${ALERTS_BASE_URL}/${alert._id}`).expect(404);
-
+      await authRequest('get', `${ALERTS_BASE_URL}/${alert.id}`).expect(404);
       // Also verify it's not in the alerts list
       const listResponse = await authRequest('get', ALERTS_BASE_URL).expect(
         200,
       );
 
-      const deletedAlert = listResponse.body.data.find(
-        a => a._id === alert._id,
-      );
+      const deletedAlert = listResponse.body.data.find(a => a.id === alert.id);
       expect(deletedAlert).toBeUndefined();
     });
   });
