@@ -7,6 +7,7 @@ import {
   useQueryState,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { DataFormat } from '@clickhouse/client-common';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -56,7 +57,7 @@ function useBenchmarkQueryIds({
             .query({
               query: shuffledQueries[j],
               connectionId: connections[j],
-              format: 'NULL',
+              format: 'NULL' as DataFormat, // clickhouse doesn't have this under the client-js lib for some reason
               clickhouse_settings: {
                 min_bytes_to_use_direct_io: '1',
                 use_query_cache: 0,
@@ -133,7 +134,7 @@ function useIndexes(
           clickhouseClient
             .query({
               query: `EXPLAIN indexes=1, json=1, description = 0 ${query}`,
-              format: 'TSVRaw',
+              format: 'TabSeparatedRaw',
               connectionId: connections[i],
             })
             .then(res => res.text())
