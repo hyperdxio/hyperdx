@@ -69,7 +69,7 @@ const connectClickhouse = async () => {
       PRIMARY KEY (ServiceName, TimestampTime)
       ORDER BY (ServiceName, TimestampTime, Timestamp)
       TTL TimestampTime + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -111,7 +111,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -155,7 +155,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(15)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -203,7 +203,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -340,6 +340,15 @@ export const clearRedis = async () => {
 // ------------------------------------------------
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
+export const executeSqlCommand = async (sql: string) => {
+  return await clickhouse.client.command({
+    query: sql,
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
+};
+
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
