@@ -455,6 +455,8 @@ export class ClickhouseClient {
             wait_end_of_query: 0,
             cancel_http_readonly_queries_on_client_close: 1,
           },
+          username: '',
+          password: '',
           compression: {
             response: true,
           },
