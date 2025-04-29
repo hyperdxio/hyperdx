@@ -1,8 +1,8 @@
 import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
-import alertsRouter from '@/routers/external-api/v1/alerts';
-import dashboardRouter from '@/routers/external-api/v1/dashboards';
+import alertsRouter from '@/routers/external-api/v2/alerts';
+import dashboardRouter from '@/routers/external-api/v2/dashboards';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import rateLimiter from '@/utils/rateLimiter';
 
@@ -23,7 +23,7 @@ const getDefaultRateLimiter = () =>
 
 router.get('/', validateUserAccessKey, (req, res, next) => {
   res.json({
-    version: 'v1',
+    version: 'v2',
     user: req.user?.toJSON(),
   });
 });

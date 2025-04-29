@@ -10,6 +10,7 @@ import {
   getAlerts,
   updateAlert,
 } from '@/controllers/alerts';
+import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -35,7 +36,7 @@ router.get(
       }
 
       return res.json({
-        data: alert,
+        data: translateAlertDocumentToExternalAlert(alert),
       });
     } catch (e) {
       next(e);
@@ -53,7 +54,7 @@ router.get('/', async (req, res, next) => {
     const alerts = await getAlerts(teamId);
 
     return res.json({
-      data: alerts,
+      data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
     });
   } catch (e) {
     next(e);
@@ -67,9 +68,10 @@ router.post('/', async (req, res, next) => {
   }
   try {
     const alertInput = req.body;
+    const createdAlert = await createAlert(teamId, alertInput);
 
     return res.json({
-      data: await createAlert(teamId, alertInput),
+      data: translateAlertDocumentToExternalAlert(createdAlert),
     });
   } catch (e) {
     next(e);
@@ -101,7 +103,7 @@ router.put(
       }
 
       res.json({
-        data: alert,
+        data: translateAlertDocumentToExternalAlert(alert),
       });
     } catch (e) {
       next(e);
