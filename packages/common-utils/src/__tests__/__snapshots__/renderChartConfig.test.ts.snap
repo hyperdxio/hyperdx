@@ -32,7 +32,7 @@ exports[`renderChartConfig should generate sql for a single gauge metric 1`] = `
             FROM Source
             GROUP BY AttributesHash, __hdx_time_bucket2
             ORDER BY AttributesHash, __hdx_time_bucket2
-          ) SELECT quantile(0.95)(toFloat64OrNull(toString(LastValue))),toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` LIMIT 10"
+          ) SELECT quantile(0.95)(toFloat64OrDefault(toString(LastValue))),toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` LIMIT 10"
 `;
 
 exports[`renderChartConfig should generate sql for a single histogram metric 1`] = `
@@ -75,7 +75,7 @@ exports[`renderChartConfig should generate sql for a single histogram metric 1`]
             FROM Bucketed
             GROUP BY \`__hdx_time_bucket\`
           ) SELECT any(
-      toFloat64OrNull(toString(Rate))
+      toFloat64OrDefault(toString(Rate))
     ) FROM Rates WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10"
 `;
 
@@ -118,6 +118,6 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
             GROUP BY AttributesHash, \`__hdx_time_bucket2\`
             ORDER BY AttributesHash, \`__hdx_time_bucket2\`
           ) SELECT avg(
-      toFloat64OrNull(toString(Rate))
+      toFloat64OrDefault(toString(Rate))
     ) AS \\"Value\\",toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (\`__hdx_time_bucket2\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket2\` <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(\`__hdx_time_bucket2\`), INTERVAL 5 minute) AS \`__hdx_time_bucket\` LIMIT 10"
 `;

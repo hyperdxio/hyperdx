@@ -6,7 +6,11 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig'
 import _ from 'lodash';
 import ms from 'ms';
 
-import { MetricsDataType } from '@/../../common-utils/dist/types';
+import {
+  AggregateFunctionSchema,
+  DerivedColumn,
+  MetricsDataType,
+} from '@/../../common-utils/dist/types';
 import * as config from '@/config';
 import { createTeam } from '@/controllers/team';
 import {
@@ -17,6 +21,7 @@ import {
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_METRICS_TABLE,
+  executeSqlCommand,
   getServer,
 } from '@/fixtures';
 import Connection from '@/models/connection';
@@ -101,6 +106,90 @@ describe('renderChartConfig', () => {
   afterEach(async () => {
     await server.clearDBs();
     jest.clearAllMocks();
+  });
+
+  describe('aggFn', () => {
+    afterAll(async () => {
+      await executeSqlCommand('DROP TABLE IF EXISTS agg_fn_str_test');
+      await executeSqlCommand('DROP TABLE IF EXISTS agg_fn_default_test');
+    });
+
+    it('numeric agg functions should handle numeric values as strings', async () => {
+      await executeSqlCommand(`
+        CREATE TABLE agg_fn_str_test(
+          ts UInt64,
+          strVal String
+        ) ENGINE = MergeTree
+          ORDER BY ts
+      `);
+      await executeSqlCommand(`
+        INSERT INTO agg_fn_str_test(ts, strVal) VALUES
+          (fromUnixTimestamp64Milli(1519211811570), '3'),
+          (fromUnixTimestamp64Milli(1519211811770), '-1'),
+          (fromUnixTimestamp64Milli(1519211811870), '1.1'),
+          (fromUnixTimestamp64Milli(1519211811970), '-1.1'),
+      `);
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            { aggFn: 'avg', valueExpression: 'strVal' },
+            { aggFn: 'max', valueExpression: 'strVal' },
+            { aggFn: 'min', valueExpression: 'strVal' },
+            { aggFn: 'quantile', level: 0.5, valueExpression: 'strVal' },
+            { aggFn: 'sum', valueExpression: 'strVal' },
+          ],
+          from: {
+            databaseName: '',
+            tableName: `agg_fn_str_test`,
+          },
+          where: '',
+          connection: connection.id,
+          timestampValueExpression: 'ts',
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('numeric agg functions should use default values for other types', async () => {
+      await executeSqlCommand(`
+        CREATE TABLE agg_fn_default_test(
+          ts UInt64,
+          strVal String,
+          boolVal Bool,
+          enumVal Enum('a' = 1, 'b' = 2),
+          nullVal Nullable(String),
+        ) ENGINE = MergeTree
+          ORDER BY ts
+      `);
+      await executeSqlCommand(`
+        INSERT INTO agg_fn_default_test(ts, strVal, boolVal, enumVal, nullVal) VALUES
+          (fromUnixTimestamp64Milli(1519211811570), 'a', false, 'b', NULL)
+      `);
+      const query = await renderChartConfig(
+        {
+          select: [
+            { aggFn: 'avg', valueExpression: 'strVal' },
+            { aggFn: 'max', valueExpression: 'strVal' },
+            { aggFn: 'min', valueExpression: 'strVal' },
+            { aggFn: 'quantile', level: 0.5, valueExpression: 'strVal' },
+            { aggFn: 'sum', valueExpression: 'strVal' },
+          ],
+          from: {
+            databaseName: '',
+            tableName: `agg_fn_default_test`,
+          },
+          where: '',
+          connection: connection.id,
+          timestampValueExpression: 'ts',
+        },
+        metadata,
+      );
+      const res = await queryData(query);
+      expect(res).toMatchSnapshot();
+    });
   });
 
   describe('Query Events', () => {

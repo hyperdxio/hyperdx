@@ -64,7 +64,7 @@ exports[`renderChartConfig Query Metrics should include multiple data points in 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 2.9,
+    "any(toFloat64OrDefault(toString(Rate)))": 2.9,
   },
 ]
 `;
@@ -74,22 +74,22 @@ Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
     "arrayElement(ResourceAttributes, 'host')": "host2",
-    "avg(toFloat64OrNull(toString(LastValue)))": 4,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 4,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
     "arrayElement(ResourceAttributes, 'host')": "host1",
-    "avg(toFloat64OrNull(toString(LastValue)))": 6.25,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 6.25,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
     "arrayElement(ResourceAttributes, 'host')": "host2",
-    "avg(toFloat64OrNull(toString(LastValue)))": 4,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 4,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
     "arrayElement(ResourceAttributes, 'host')": "host1",
-    "avg(toFloat64OrNull(toString(LastValue)))": 80,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 80,
   },
 ]
 `;
@@ -98,11 +98,11 @@ exports[`renderChartConfig Query Metrics single avg gauge with where 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "avg(toFloat64OrNull(toString(LastValue)))": 6.25,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 6.25,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "avg(toFloat64OrNull(toString(LastValue)))": 80,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 80,
   },
 ]
 `;
@@ -111,11 +111,11 @@ exports[`renderChartConfig Query Metrics single max/avg/sum gauge 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "avg(toFloat64OrNull(toString(LastValue)))": 5.125,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 5.125,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "avg(toFloat64OrNull(toString(LastValue)))": 42,
+    "avg(toFloat64OrDefault(toString(LastValue)))": 42,
   },
 ]
 `;
@@ -124,11 +124,11 @@ exports[`renderChartConfig Query Metrics single max/avg/sum gauge 2`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "max(toFloat64OrNull(toString(LastValue)))": 6.25,
+    "max(toFloat64OrDefault(toString(LastValue)))": 6.25,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "max(toFloat64OrNull(toString(LastValue)))": 80,
+    "max(toFloat64OrDefault(toString(LastValue)))": 80,
   },
 ]
 `;
@@ -137,11 +137,11 @@ exports[`renderChartConfig Query Metrics single max/avg/sum gauge 3`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(LastValue)))": 10.25,
+    "sum(toFloat64OrDefault(toString(LastValue)))": 10.25,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:05:00Z",
-    "sum(toFloat64OrNull(toString(LastValue)))": 84,
+    "sum(toFloat64OrDefault(toString(LastValue)))": 84,
   },
 ]
 `;
@@ -201,11 +201,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p25) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrDefault(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 10,
+    "any(toFloat64OrDefault(toString(Rate)))": 10,
   },
 ]
 `;
@@ -214,11 +214,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p50) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrDefault(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 13.333333333333332,
+    "any(toFloat64OrDefault(toString(Rate)))": 13.333333333333332,
   },
 ]
 `;
@@ -227,11 +227,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p90) 
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrDefault(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 30,
+    "any(toFloat64OrDefault(toString(Rate)))": 30,
   },
 ]
 `;
@@ -240,11 +240,11 @@ exports[`renderChartConfig Query Metrics two_timestamps_lower_bound_inf histogra
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrDefault(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 1,
+    "any(toFloat64OrDefault(toString(Rate)))": 1,
   },
 ]
 `;
@@ -253,11 +253,35 @@ exports[`renderChartConfig Query Metrics two_timestamps_upper_bound_inf histogra
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 0,
+    "any(toFloat64OrDefault(toString(Rate)))": 0,
   },
   Object {
     "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrNull(toString(Rate)))": 30,
+    "any(toFloat64OrDefault(toString(Rate)))": 30,
+  },
+]
+`;
+
+exports[`renderChartConfig aggFn numeric agg functions should handle numeric values as strings 1`] = `
+Array [
+  Object {
+    "AVG(toFloat64OrDefault(toString(strVal)))": 0.5,
+    "MAX(toFloat64OrDefault(toString(strVal)))": 3,
+    "MIN(toFloat64OrDefault(toString(strVal)))": -1.1,
+    "SUM(toFloat64OrDefault(toString(strVal)))": 2,
+    "quantile(0.5)(toFloat64OrDefault(toString(strVal)))": 0.050000000000000044,
+  },
+]
+`;
+
+exports[`renderChartConfig aggFn numeric agg functions should use default values for other types 1`] = `
+Array [
+  Object {
+    "AVG(toFloat64OrDefault(toString(strVal)))": 0,
+    "MAX(toFloat64OrDefault(toString(strVal)))": 0,
+    "MIN(toFloat64OrDefault(toString(strVal)))": 0,
+    "SUM(toFloat64OrDefault(toString(strVal)))": 0,
+    "quantile(0.5)(toFloat64OrDefault(toString(strVal)))": 0,
   },
 ]
 `;
