@@ -270,7 +270,9 @@ const aggFnExpr = ({
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
   // Cast to float64 because the expr might not be a number
-  const unsafeExpr = { UNSAFE_RAW_SQL: `toFloat64OrNull(toString(${expr}))` };
+  const unsafeExpr = {
+    UNSAFE_RAW_SQL: `toFloat64OrDefault(toString(${expr}))`,
+  };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
   if (fn.endsWith('Merge')) {
