@@ -35,6 +35,9 @@ packages/app/.vercel
 packages/app/coverage
 packages/app/out
 
+# OpenAPI spec
+packages/public/openapi.json
+
 # optional npm cache directory
 **/.npm
 

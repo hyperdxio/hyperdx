@@ -18,6 +18,7 @@ import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
 import passport from './utils/passport';
+import { setupSwagger } from './utils/swagger';
 
 const app: express.Application = express();
 
@@ -102,7 +103,15 @@ app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 // ----------------------- External Routers ----------------------------
 // ---------------------------------------------------------------------
-// API v1
+// API v2
+// Only initialize Swagger in development or if explicitly enabled
+if (
+  process.env.NODE_ENV !== 'production' ||
+  process.env.ENABLE_SWAGGER === 'true'
+) {
+  setupSwagger(app);
+}
+
 app.use('/api/v2', externalRoutersV2);
 
 // error handling
