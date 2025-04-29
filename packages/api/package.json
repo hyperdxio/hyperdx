@@ -73,12 +73,15 @@
     "@types/semver": "^7.3.12",
     "@types/sqlstring": "^2.3.0",
     "@types/supertest": "^2.0.12",
+    "@types/swagger-jsdoc": "^6",
     "@types/uuid": "^8.3.4",
     "jest": "^28.1.3",
     "migrate-mongo": "^11.0.0",
     "nodemon": "^2.0.20",
     "rimraf": "^4.4.1",
     "supertest": "^6.3.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "ts-jest": "^28.0.5",
     "ts-node": "^10.8.1",
     "tsc-alias": "^1.8.8",
@@ -98,6 +101,7 @@
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
     "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts",
     "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",
-    "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up"
+    "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up",
+    "docgen": "ts-node scripts/generate-api-docs.ts"
   }
 }
