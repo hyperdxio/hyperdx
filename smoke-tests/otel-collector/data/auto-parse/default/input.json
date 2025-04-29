@@ -1,53 +1,53 @@
 {
-    "resourceLogs": [
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "auto-parse"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "default"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
         {
-            "resource": {
-                "attributes": [
-                    {
-                        "key": "suite-id",
-                        "value": {
-                            "stringValue": "auto-parse"
-                        }
-                    },
-                    {
-                        "key": "test-id",
-                        "value": {
-                            "stringValue": "default"
-                        }
-                    }
-                ]
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "[note] this is very much not JSON even though it starts with an array char"
+              }
             },
-            "scopeLogs": [
-                {
-                    "scope": {},
-                    "logRecords": [
-                        {
-                            "timeUnixNano": "1901999580000000000",
-                            "body": {
-                                "stringValue": "[note] this is very much not JSON even though it starts with an array char"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000001",
-                            "body": {
-                                "stringValue": "{note} this is very much not JSON even though it starts with an object char"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000002",
-                            "body": {
-                                "stringValue": "NOTE: this is very much not JSON"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000003",
-                            "body": {
-                                "stringValue": "this has some {Key {Value { '{' } } invalid JSON in it"
-                            }
-                        }
-                    ]
-                }
-            ]
+            {
+              "timeUnixNano": "1901999580000000001",
+              "body": {
+                "stringValue": "{note} this is very much not JSON even though it starts with an object char"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000002",
+              "body": {
+                "stringValue": "NOTE: this is very much not JSON"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "body": {
+                "stringValue": "this has some {Key {Value { '{' } } invalid JSON in it"
+              }
+            }
+          ]
         }
-    ]
+      ]
+    }
+  ]
 }
