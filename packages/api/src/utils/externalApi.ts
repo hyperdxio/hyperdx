@@ -1,6 +1,7 @@
 // @ts-nocheck TODO: Fix When Restoring Alerts
 import { z } from 'zod';
 
+import { AlertDocument } from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import {
   chartSchema,
@@ -216,7 +217,7 @@ export type ExternalAlert = {
 };
 
 export function translateAlertDocumentToExternalAlert(
-  alert: any,
+  alert: AlertDocument,
 ): ExternalAlert {
   // Convert to plain object if it's a Mongoose document
   const alertObj = alert.toJSON ? alert.toJSON() : { ...alert };

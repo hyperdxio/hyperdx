@@ -13,6 +13,7 @@ import {
   useDeleteConnection,
   useUpdateConnection,
 } from '@/connection';
+import { stripTrailingSlash } from '@/utils';
 
 import ConfirmDeleteMenu from './ConfirmDeleteMenu';
 
@@ -32,9 +33,10 @@ function useTestConnection({
     useState<TestConnectionState | null>(null);
 
   const handleTestConnection = useCallback(async () => {
-    const host = getValues('host');
+    const hostValue = getValues('host');
     const username = getValues('username');
     const password = getValues('password');
+    const host = stripTrailingSlash(hostValue);
 
     if (testConnectionState) {
       return;
@@ -134,9 +136,15 @@ export function ConnectionForm({
   const deleteConnection = useDeleteConnection();
 
   const onSubmit = (data: Connection) => {
+    // Make sure we don't save a trailing slash in the host
+    const normalizedData = {
+      ...data,
+      host: stripTrailingSlash(data.host),
+    };
+
     if (isNew) {
       createConnection.mutate(
-        { connection: data },
+        { connection: normalizedData },
         {
           onSuccess: () => {
             notifications.show({
@@ -157,7 +165,7 @@ export function ConnectionForm({
       );
     } else {
       updateConnection.mutate(
-        { connection: data, id: connection.id },
+        { connection: normalizedData, id: connection.id },
         {
           onSuccess: () => {
             notifications.show({

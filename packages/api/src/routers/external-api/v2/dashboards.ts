@@ -272,7 +272,6 @@ router.get(
       id: objectIdSchema,
     }),
   }),
-
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -417,7 +416,6 @@ router.post(
       tags: tagsSchema,
     }),
   }),
-
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -583,7 +581,6 @@ router.put(
       tags: tagsSchema,
     }),
   }),
-
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -682,7 +679,6 @@ router.delete(
       id: objectIdSchema,
     }),
   }),
-
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
