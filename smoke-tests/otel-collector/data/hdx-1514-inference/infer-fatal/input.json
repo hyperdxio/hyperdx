@@ -1,53 +1,53 @@
 {
-    "resourceLogs": [
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "hdx-1514"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-fatal"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
         {
-            "resource": {
-                "attributes": [
-                    {
-                        "key": "suite-id",
-                        "value": {
-                            "stringValue": "hdx-1514"
-                        }
-                    },
-                    {
-                        "key": "test-id",
-                        "value": {
-                            "stringValue": "infer-fatal"
-                        }
-                    }
-                ]
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "ALERT: something is wrong here"
+              }
             },
-            "scopeLogs": [
-                {
-                    "scope": {},
-                    "logRecords": [
-                        {
-                            "timeUnixNano": "1901999580000000000",
-                            "body": {
-                                "stringValue": "ALERT: something is wrong here"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000001",
-                            "body": {
-                                "stringValue": "[thread-123] critical: disk issue detected"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000002",
-                            "body": {
-                                "stringValue": "Emerg: action required"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000003",
-                            "body": {
-                                "stringValue": "2025-05-03T03:23:14Z [thread-1234] c.b.e.b.e.AbstractDatabaseConnectionAdapterFactor [FATAL] this error is a huge problem"
-                            }
-                        }
-                    ]
-                }
-            ]
+            {
+              "timeUnixNano": "1901999580000000001",
+              "body": {
+                "stringValue": "[thread-123] critical: disk issue detected"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000002",
+              "body": {
+                "stringValue": "Emerg: action required"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "body": {
+                "stringValue": "2025-05-03T03:23:14Z [thread-1234] c.b.e.b.e.AbstractDatabaseConnectionAdapterFactor [FATAL] this error is a huge problem"
+              }
+            }
+          ]
         }
-    ]
+      ]
+    }
+  ]
 }
