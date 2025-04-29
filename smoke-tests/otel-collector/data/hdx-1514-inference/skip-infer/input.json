@@ -1,44 +1,44 @@
 {
-    "resourceLogs": [
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "hdx-1514"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "skip-infer"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
         {
-            "resource": {
-                "attributes": [
-                    {
-                        "key": "suite-id",
-                        "value": {
-                            "stringValue": "hdx-1514"
-                        }
-                    },
-                    {
-                        "key": "test-id",
-                        "value": {
-                            "stringValue": "skip-infer"
-                        }
-                    }
-                ]
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "severity_number": 0,
+              "severity_text": "debug",
+              "body": {
+                "stringValue": "2025-05-03T03:23:14Z [INFO] this should skip because the severity_text is already set"
+              }
             },
-            "scopeLogs": [
-                {
-                    "scope": {},
-                    "logRecords": [
-                        {
-                            "timeUnixNano": "1901999580000000000",
-                            "severity_number": 0,
-                            "severity_text": "debug",
-                            "body": {
-                                "stringValue": "2025-05-03T03:23:14Z [INFO] this should skip because the severity_text is already set"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000001",
-                            "severity_number": 9,
-                            "body": {
-                                "stringValue": "[warn] this should also be skipped because a severity_number was set even if it's missing text"
-                            }
-                        }
-                    ]
-                }
-            ]
+            {
+              "timeUnixNano": "1901999580000000001",
+              "severity_number": 9,
+              "body": {
+                "stringValue": "[warn] this should also be skipped because a severity_number was set even if it's missing text"
+              }
+            }
+          ]
         }
-    ]
+      ]
+    }
+  ]
 }

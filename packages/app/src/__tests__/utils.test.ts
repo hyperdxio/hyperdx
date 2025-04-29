@@ -8,6 +8,7 @@ import {
   formatDate,
   formatNumber,
   getMetricTableName,
+  stripTrailingSlash,
   useQueryHistory,
 } from '../utils';
 
@@ -470,6 +471,48 @@ describe('useLocalStorage', () => {
     expect(result.current[0]).toBe('initial');
     // localStorage should not be accessed since key doesn't match
     expect(localStorageMock.getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('stripTrailingSlash', () => {
+  it('should throw an error for nullish values', () => {
+    expect(() => stripTrailingSlash(null)).toThrow(
+      'URL must be a non-empty string',
+    );
+    expect(() => stripTrailingSlash(undefined)).toThrow(
+      'URL must be a non-empty string',
+    );
+  });
+
+  it('should throw an error for non-string values', () => {
+    expect(() => stripTrailingSlash(123 as any)).toThrow(
+      'URL must be a non-empty string',
+    );
+    expect(() => stripTrailingSlash({} as any)).toThrow(
+      'URL must be a non-empty string',
+    );
+  });
+
+  it('should remove trailing slash from URLs', () => {
+    expect(stripTrailingSlash('http://example.com/')).toBe(
+      'http://example.com',
+    );
+    expect(stripTrailingSlash('http://example.com/api/')).toBe(
+      'http://example.com/api',
+    );
+  });
+
+  it('should not modify URLs without trailing slash', () => {
+    expect(stripTrailingSlash('http://example.com')).toBe('http://example.com');
+    expect(stripTrailingSlash('http://example.com/api')).toBe(
+      'http://example.com/api',
+    );
+  });
+
+  it('should handle URLs with multiple trailing slashes', () => {
+    expect(stripTrailingSlash('http://example.com///')).toBe(
+      'http://example.com//',
+    );
   });
 });
 

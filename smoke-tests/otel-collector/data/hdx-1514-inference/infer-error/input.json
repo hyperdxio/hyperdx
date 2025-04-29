@@ -1,41 +1,41 @@
 {
-    "resourceLogs": [
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "hdx-1514"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-error"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
         {
-            "resource": {
-                "attributes": [
-                    {
-                        "key": "suite-id",
-                        "value": {
-                            "stringValue": "hdx-1514"
-                        }
-                    },
-                    {
-                        "key": "test-id",
-                        "value": {
-                            "stringValue": "infer-error"
-                        }
-                    }
-                ]
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000004",
+              "body": {
+                "stringValue": "error: things aren't good"
+              }
             },
-            "scopeLogs": [
-                {
-                    "scope": {},
-                    "logRecords": [
-                        {
-                            "timeUnixNano": "1901999580000000004",
-                            "body": {
-                                "stringValue": "error: things aren't good"
-                            }
-                        },
-                        {
-                            "timeUnixNano": "1901999580000000005",
-                            "body": {
-                                "stringValue": "err 00019: something went wrong"
-                            }
-                        }
-                    ]
-                }
-            ]
+            {
+              "timeUnixNano": "1901999580000000005",
+              "body": {
+                "stringValue": "err 00019: something went wrong"
+              }
+            }
+          ]
         }
-    ]
+      ]
+    }
+  ]
 }

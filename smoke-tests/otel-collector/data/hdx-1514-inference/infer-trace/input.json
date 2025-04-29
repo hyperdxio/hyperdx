@@ -1,35 +1,35 @@
 {
-    "resourceLogs": [
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "hdx-1514"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-trace"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
         {
-            "resource": {
-                "attributes": [
-                    {
-                        "key": "suite-id",
-                        "value": {
-                            "stringValue": "hdx-1514"
-                        }
-                    },
-                    {
-                        "key": "test-id",
-                        "value": {
-                            "stringValue": "infer-trace"
-                        }
-                    }
-                ]
-            },
-            "scopeLogs": [
-                {
-                    "scope": {},
-                    "logRecords": [
-                        {
-                            "timeUnixNano": "1901999580000000010",
-                            "body": {
-                                "stringValue": "this is a trace through logic"
-                            }
-                        }
-                    ]
-                }
-            ]
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000010",
+              "body": {
+                "stringValue": "this is a trace through logic"
+              }
+            }
+          ]
         }
-    ]
+      ]
+    }
+  ]
 }
