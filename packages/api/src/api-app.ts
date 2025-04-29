@@ -14,7 +14,7 @@ import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
-import externalRoutersV1 from './routers/external-api/v1';
+import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
 import passport from './utils/passport';
@@ -103,7 +103,7 @@ app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ----------------------- External Routers ----------------------------
 // ---------------------------------------------------------------------
 // API v1
-app.use('/api/v1', externalRoutersV1);
+app.use('/api/v2', externalRoutersV2);
 
 // error handling
 app.use(appErrorHandler);

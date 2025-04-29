@@ -1,7 +1,6 @@
-import * as clickhouse from '@/clickhouse';
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import { getLoggedInAgent, getServer } from '../../../fixtures';
 
-describe.skip('external api v1', () => {
+describe('external api v2', () => {
   const server = getServer();
 
   beforeAll(async () => {
@@ -17,13 +16,13 @@ describe.skip('external api v1', () => {
     await server.stop();
   });
 
-  it('GET /api/v1', async () => {
+  it('GET /api/v2', async () => {
     const { agent, user } = await getLoggedInAgent(server);
     const resp = await agent
-      .get(`/api/v1`)
+      .get(`/api/v2`)
       .set('Authorization', `Bearer ${user?.accessKey}`)
       .expect(200);
-    expect(resp.body.version).toEqual('v1');
+    expect(resp.body.version).toEqual('v2');
     expect(resp.body.user._id).toEqual(user?._id.toString());
   });
 });
