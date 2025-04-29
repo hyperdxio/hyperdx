@@ -723,8 +723,8 @@ export function toArray<T>(obj?: T | T[]): T[] {
 
 // Helper function to remove trailing slash
 export const stripTrailingSlash = (url: string | undefined | null): string => {
-  if (!url) {
-    return '';
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL must be a non-empty string');
   }
   return url.endsWith('/') ? url.slice(0, -1) : url;
 };
