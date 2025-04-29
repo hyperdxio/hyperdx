@@ -2,7 +2,7 @@
 # - API (Node)
 # - App (Frontend)
 
-ARG NODE_VERSION=18.20.3
+ARG NODE_VERSION=22.14.0
 
 # base #############################################################################################
 FROM node:${NODE_VERSION}-alpine AS base

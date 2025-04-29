@@ -13,6 +13,7 @@ import {
   AlertInterval,
   AlertSource,
   AlertThresholdType,
+  ChartAlertBaseSchema,
 } from '@hyperdx/common-utils/dist/types';
 
 import { Granularity } from '@/ChartUtils';
@@ -111,7 +112,7 @@ export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
 };
 
-export const DEFAULT_TILE_ALERT: z.infer<typeof AlertBaseSchema> = {
+export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',

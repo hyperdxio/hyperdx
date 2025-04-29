@@ -10,7 +10,7 @@ permissions:
 jobs:
   publish_common_utils:
     name: Publish @hyperdx/common-utils
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       changeset_outputs_hasChangesets:
         ${{ steps.changesets.outputs.hasChangesets }}
@@ -44,17 +44,15 @@ jobs:
   release:
     name: Release
     needs: publish_common_utils
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         release:
-          [
-            'release-app',
-            'release-otel-collector',
-            'release-local',
-            'release-local-ui',
-            'release-extended-app',
-          ]
+          - release-app
+          - release-otel-collector
+          - release-local
+          - release-local-ui
+          # - release-extended-app
     steps:
       - name: Checkout
         uses: actions/checkout@v4

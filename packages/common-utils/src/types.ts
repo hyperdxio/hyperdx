@@ -268,9 +268,14 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const AlertSchema = AlertBaseSchema.and(
-  zSavedSearchAlert.or(zTileAlert),
-);
+export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+  threshold: z.number().positive(),
+});
+
+export const AlertSchema = z.union([
+  z.intersection(AlertBaseSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseSchema, zTileAlert),
+]);
 
 export type Alert = z.infer<typeof AlertSchema>;
 
@@ -346,6 +351,7 @@ export const _ChartConfigSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
+  seriesReturnType: z.enum(['ratio', 'column']).optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -409,7 +415,10 @@ export const SavedChartConfigSchema = z.intersection(
     z.object({
       name: z.string(),
       source: z.string(),
-      alert: AlertBaseSchema.optional(),
+      alert: z.union([
+        AlertBaseSchema.optional(),
+        ChartAlertBaseSchema.optional(),
+      ]),
     }),
     _ChartConfigSchema.omit({
       connection: true,

@@ -1,6 +1,7 @@
 // @ts-nocheck TODO: Fix When Restoring Alerts
 import { z } from 'zod';
 
+import { AlertDocument } from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import {
   chartSchema,
@@ -170,22 +171,77 @@ const translateChartDocumentToExternalChart = (
   };
 };
 
-export const translateDashboardDocumentToExternalDashboard = (
-  dashboard: IDashboard,
-): {
+export type ExternalDashboard = {
   id: string;
   name: string;
-  charts: z.infer<typeof externalChartSchemaWithId>[];
-  query: string;
-  tags: string[];
-} => {
-  const { _id, name, charts, query, tags } = dashboard;
-
-  return {
-    id: _id.toString(),
-    name,
-    charts: charts.map(translateChartDocumentToExternalChart),
-    query,
-    tags,
-  };
+  tiles: ExternalChart[];
+  tags?: string[];
 };
+
+export type ExternalDashboardRequest = {
+  name: string;
+  tiles: ExternalChart[];
+  tags?: string[];
+};
+
+export function translateDashboardDocumentToExternalDashboard(
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tiles' | 'tags'>,
+): ExternalDashboard {
+  return {
+    id: dashboard._id.toString(),
+    name: dashboard.name,
+    tiles: dashboard.tiles,
+    tags: dashboard.tags || [],
+  };
+}
+
+// Alert related types and transformations
+export type ExternalAlert = {
+  id: string;
+  name: string | null;
+  message: string | null;
+  threshold: number;
+  interval: string;
+  thresholdType: string;
+  source: string;
+  state: string;
+  channel: any;
+  team: string;
+  tileId?: string;
+  dashboard?: string;
+  savedSearch?: string;
+  groupBy?: string;
+  silenced?: any;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function translateAlertDocumentToExternalAlert(
+  alert: AlertDocument,
+): ExternalAlert {
+  // Convert to plain object if it's a Mongoose document
+  const alertObj = alert.toJSON ? alert.toJSON() : { ...alert };
+
+  // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
+  const result = {
+    id: alertObj._id.toString(),
+    name: alertObj.name,
+    message: alertObj.message,
+    threshold: alertObj.threshold,
+    interval: alertObj.interval,
+    thresholdType: alertObj.thresholdType,
+    source: alertObj.source,
+    state: alertObj.state,
+    channel: alertObj.channel,
+    team: alertObj.team.toString(),
+    tileId: alertObj.tileId,
+    dashboard: alertObj.dashboard?.toString(),
+    savedSearch: alertObj.savedSearch?.toString(),
+    groupBy: alertObj.groupBy,
+    silenced: alertObj.silenced,
+    createdAt: alertObj.createdAt.toISOString(),
+    updatedAt: alertObj.updatedAt.toISOString(),
+  };
+
+  return result;
+}

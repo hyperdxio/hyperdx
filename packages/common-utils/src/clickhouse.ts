@@ -6,9 +6,17 @@ import type {
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 import * as SQLParser from 'node-sql-parser';
+import objectHash from 'object-hash';
 
-import { SQLInterval } from '@/types';
+import {
+  renderChartConfig,
+  setChartSelectsAlias,
+  splitChartConfigs,
+} from '@/renderChartConfig';
+import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
 import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
+
+import { Metadata } from './metadata';
 
 export enum JSDataType {
   Array = 'array',
@@ -251,6 +259,74 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
+const castToNumber = (value: string | number) => {
+  if (typeof value === 'string') {
+    if (value.trim() === '') {
+      return NaN;
+    }
+    return Number(value);
+  }
+  return value;
+};
+
+export const computeRatio = (
+  numeratorInput: string | number,
+  denominatorInput: string | number,
+) => {
+  const numerator = castToNumber(numeratorInput);
+  const denominator = castToNumber(denominatorInput);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    return NaN;
+  }
+
+  return numerator / denominator;
+};
+
+export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
+  const _meta = resultSet.meta;
+  const _data = resultSet.data;
+  const timestampColumn = inferTimestampColumn(_meta ?? []);
+  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
+  const firstColumn = _restColumns?.[0];
+  const secondColumn = _restColumns?.[1];
+  if (!firstColumn || !secondColumn) {
+    throw new Error(
+      `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
+    );
+  }
+  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
+  const result = {
+    ...resultSet,
+    data: _data.map(row => ({
+      [ratioColumnName]: computeRatio(
+        row[firstColumn.name],
+        row[secondColumn.name],
+      ),
+      ...(timestampColumn
+        ? {
+            [timestampColumn.name]: row[timestampColumn.name],
+          }
+        : {}),
+    })),
+    meta: [
+      {
+        name: ratioColumnName,
+        type: 'Float64',
+      },
+      ...(timestampColumn
+        ? [
+            {
+              name: timestampColumn.name,
+              type: timestampColumn.type,
+            },
+          ]
+        : []),
+    ],
+  };
+  return result;
+};
+
 export type ClickhouseClientOptions = {
   host: string;
   username?: string;
@@ -269,9 +345,9 @@ export class ClickhouseClient {
   }
 
   // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L151
-  async query<T extends DataFormat>({
+  async query<Format extends DataFormat>({
     query,
-    format = 'JSON',
+    format = 'JSON' as Format,
     query_params = {},
     abort_signal,
     clickhouse_settings,
@@ -279,39 +355,13 @@ export class ClickhouseClient {
     queryId,
   }: {
     query: string;
-    format?: string;
+    format?: Format;
     abort_signal?: AbortSignal;
     query_params?: Record<string, any>;
     clickhouse_settings?: Record<string, any>;
     connectionId?: string;
     queryId?: string;
-  }): Promise<BaseResultSet<any, T>> {
-    const isLocalMode = this.username != null && this.password != null;
-    const includeCredentials = !isLocalMode;
-    const includeCorsHeader = isLocalMode;
-    const _connectionId = isLocalMode ? undefined : connectionId;
-
-    const searchParams = new URLSearchParams([
-      ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
-      ...(_connectionId ? [['hyperdx_connection_id', _connectionId]] : []),
-      ['query', query],
-      ['default_format', format],
-      ['date_time_output_format', 'iso'],
-      ['wait_end_of_query', '0'],
-      ['cancel_http_readonly_queries_on_client_close', '1'],
-      ...(this.username ? [['user', this.username]] : []),
-      ...(this.password ? [['password', this.password]] : []),
-      ...(queryId ? [['query_id', queryId]] : []),
-      ...Object.entries(query_params).map(([key, value]) => [
-        `param_${key}`,
-        value,
-      ]),
-      ...Object.entries(clickhouse_settings ?? {}).map(([key, value]) => [
-        key,
-        value,
-      ]),
-    ]);
-
+  }): Promise<BaseResultSet<ReadableStream, Format>> {
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
@@ -328,32 +378,98 @@ export class ClickhouseClient {
 
     if (isBrowser) {
       // TODO: check if we can use the client-web directly
-      const { ResultSet } = await import('@clickhouse/client-web');
-      // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
-      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
-        ...(includeCredentials ? { credentials: 'include' } : {}),
-        signal: abort_signal,
-        method: 'GET',
-      });
-
-      // TODO: Send command to CH to cancel query on abort_signal
-      if (!response.ok) {
-        if (!isSuccessfulResponse(response.status)) {
-          const text = await response.text();
-          throw new ClickHouseQueryError(`${text}`, debugSql);
-        }
-      }
-
-      if (response.body == null) {
-        // TODO: Handle empty responses better?
-        throw new Error('Unexpected empty response from ClickHouse');
-      }
-      return new ResultSet<T>(
-        response.body,
-        format as T,
-        queryId ?? '',
-        getResponseHeaders(response),
+      const { createClient, ResultSet } = await import(
+        '@clickhouse/client-web'
       );
+
+      const isLocalMode = this.username != null && this.password != null;
+      if (isLocalMode) {
+        // LocalMode may potentially interact directly with a db, so it needs to
+        // send a get request. @clickhouse/client-web does not currently support
+        // querying via GET
+        const includeCredentials = !isLocalMode;
+        const includeCorsHeader = isLocalMode;
+
+        const searchParams = new URLSearchParams([
+          ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
+          ['query', query],
+          ['default_format', format],
+          ['date_time_output_format', 'iso'],
+          ['wait_end_of_query', '0'],
+          ['cancel_http_readonly_queries_on_client_close', '1'],
+          ...(this.username ? [['user', this.username]] : []),
+          ...(this.password ? [['password', this.password]] : []),
+          ...(queryId ? [['query_id', queryId]] : []),
+          ...Object.entries(query_params).map(([key, value]) => [
+            `param_${key}`,
+            value,
+          ]),
+          ...Object.entries(clickhouse_settings ?? {}).map(([key, value]) => [
+            key,
+            value,
+          ]),
+        ]);
+        const headers = {};
+        if (!isLocalMode && connectionId) {
+          headers['x-hyperdx-connection-id'] = connectionId;
+        }
+        // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
+        const response = await fetch(
+          `${this.host}/?${searchParams.toString()}`,
+          {
+            ...(includeCredentials ? { credentials: 'include' } : {}),
+            signal: abort_signal,
+            method: 'GET',
+            headers,
+          },
+        );
+
+        // TODO: Send command to CH to cancel query on abort_signal
+        if (!response.ok) {
+          if (!isSuccessfulResponse(response.status)) {
+            const text = await response.text();
+            throw new ClickHouseQueryError(`${text}`, debugSql);
+          }
+        }
+
+        if (response.body == null) {
+          // TODO: Handle empty responses better?
+          throw new Error('Unexpected empty response from ClickHouse');
+        }
+        return new ResultSet<Format>(
+          response.body,
+          format,
+          queryId ?? '',
+          getResponseHeaders(response),
+        );
+      } else {
+        if (connectionId === undefined) {
+          throw new Error('ConnectionId must be defined');
+        }
+        const clickhouseClient = createClient({
+          url: window.origin,
+          pathname: this.host,
+          http_headers: { 'x-hyperdx-connection-id': connectionId },
+          clickhouse_settings: {
+            date_time_output_format: 'iso',
+            wait_end_of_query: 0,
+            cancel_http_readonly_queries_on_client_close: 1,
+          },
+          username: '',
+          password: '',
+          compression: {
+            response: true,
+          },
+        });
+        return clickhouseClient.query<Format>({
+          query,
+          query_params,
+          format,
+          abort_signal,
+          clickhouse_settings,
+          query_id: queryId,
+        }) as Promise<BaseResultSet<ReadableStream, Format>>;
+      }
     } else if (isNode) {
       const { createClient } = await import('@clickhouse/client');
       const _client = createClient({
@@ -368,19 +484,114 @@ export class ClickhouseClient {
       });
 
       // TODO: Custom error handling
-      return _client.query({
+      return _client.query<Format>({
         query,
         query_params,
-        format: format as T,
+        format,
         abort_signal,
         clickhouse_settings,
         query_id: queryId,
-      }) as unknown as BaseResultSet<any, T>;
+      }) as unknown as Promise<BaseResultSet<ReadableStream, Format>>;
     } else {
       throw new Error(
         'ClickhouseClient is only supported in the browser or node environment',
       );
     }
+  }
+
+  // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
+  // eventually we want to generate union CTEs on the db side instead of computing it on the client side
+  async queryChartConfig({
+    config,
+    metadata,
+    opts,
+  }: {
+    config: ChartConfigWithOptDateRange;
+    metadata: Metadata;
+    opts?: {
+      abort_signal?: AbortSignal;
+      clickhouse_settings?: Record<string, any>;
+    };
+  }): Promise<ResponseJSON<Record<string, string | number>>> {
+    config = setChartSelectsAlias(config);
+    const queries: ChSql[] = await Promise.all(
+      splitChartConfigs(config).map(c => renderChartConfig(c, metadata)),
+    );
+
+    const isTimeSeries = config.displayType === 'line';
+
+    const resultSets = await Promise.all(
+      queries.map(async query => {
+        const resp = await this.query<'JSON'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'JSON',
+          abort_signal: opts?.abort_signal,
+          connectionId: config.connection,
+          clickhouse_settings: opts?.clickhouse_settings,
+        });
+        return resp.json<any>();
+      }),
+    );
+
+    if (resultSets.length === 1) {
+      return resultSets[0];
+    }
+    // metrics -> join resultSets
+    else if (resultSets.length > 1) {
+      const metaSet = new Map<string, { name: string; type: string }>();
+      const tsBucketMap = new Map<string, Record<string, string | number>>();
+      for (const resultSet of resultSets) {
+        // set up the meta data
+        if (Array.isArray(resultSet.meta)) {
+          for (const meta of resultSet.meta) {
+            const key = meta.name;
+            if (!metaSet.has(key)) {
+              metaSet.set(key, meta);
+            }
+          }
+        }
+
+        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+        const numericColumnName = numericColumn?.[0]?.name;
+        for (const row of resultSet.data) {
+          const _rowWithoutValue = numericColumnName
+            ? Object.fromEntries(
+                Object.entries(row).filter(
+                  ([key]) => key !== numericColumnName,
+                ),
+              )
+            : { ...row };
+          const ts =
+            timestampColumn != null
+              ? row[timestampColumn.name]
+              : isTimeSeries
+                ? objectHash(_rowWithoutValue)
+                : '__FIXED_TIMESTAMP__';
+          if (tsBucketMap.has(ts)) {
+            const existingRow = tsBucketMap.get(ts);
+            tsBucketMap.set(ts, {
+              ...existingRow,
+              ...row,
+            });
+          } else {
+            tsBucketMap.set(ts, row);
+          }
+        }
+      }
+
+      const isRatio =
+        config.seriesReturnType === 'ratio' && resultSets.length === 2;
+
+      const _resultSet: ResponseJSON<any> = {
+        meta: Array.from(metaSet.values()),
+        data: Array.from(tsBucketMap.values()),
+      };
+      // TODO: we should compute the ratio on the db side
+      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+    }
+    throw new Error('No result sets');
   }
 }
 

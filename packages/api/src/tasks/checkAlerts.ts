@@ -40,6 +40,7 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
+// TODO(perf): no need to populate the team
 const getAlerts = () =>
   Alert.find({}).populate<{
     team: ITeam;
@@ -780,6 +781,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
             select: firstTile.config.select,
             timestampValueExpression: source.timestampValueExpression,
             where: firstTile.config.where,
+            seriesReturnType: firstTile.config.seriesReturnType,
           };
         }
       }
@@ -821,14 +823,10 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       password: connection.password,
     });
     const metadata = getMetadata(clickhouseClient);
-    const query = await renderChartConfig(chartConfig, metadata);
-    const checksData = await clickhouseClient
-      .query<'JSON'>({
-        query: query.sql,
-        query_params: query.params,
-        format: 'JSON',
-      })
-      .then(res => res.json<Record<string, string>>());
+    const checksData = await clickhouseClient.queryChartConfig({
+      config: chartConfig,
+      metadata,
+    });
 
     logger.info({
       message: `Received alert metric [${alert.source} source]`,
@@ -846,7 +844,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
       state: alertState,
     }).save();
 
-    if (checksData?.rows && checksData?.rows > 0) {
+    if (checksData?.data && checksData?.data.length > 0) {
       // attach JS type
       const meta =
         checksData.meta?.map(m => ({

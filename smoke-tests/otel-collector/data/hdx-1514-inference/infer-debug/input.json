@@ -1,0 +1,41 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "hdx-1514"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-debug"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000008",
+              "body": {
+                "stringValue": "debug - checkpoint a"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000009",
+              "body": {
+                "stringValue": "dbug: value=1,found=false"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

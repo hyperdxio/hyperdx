@@ -25,7 +25,7 @@ import {
 import {
   convertDateRangeToGranularityString,
   getFirstTimestampValueExpression,
-  splitAndTrimCSV,
+  splitAndTrimWithBracket,
 } from '@/utils';
 
 // FIXME: SQLParser.ColumnRef is incomplete
@@ -71,6 +71,42 @@ function isUsingGranularity(
     chartConfig.granularity != null
   );
 }
+
+export const isMetricChartConfig = (
+  chartConfig: ChartConfigWithOptDateRange,
+) => {
+  return chartConfig.metricTables != null;
+};
+
+// TODO: apply this to all chart configs
+export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
+  if (Array.isArray(config.select) && isMetricChartConfig(config)) {
+    return {
+      ...config,
+      select: config.select.map(s => ({
+        ...s,
+        alias: `${s.aggFn}(${s.metricName})`,
+      })),
+    };
+  }
+  return config;
+};
+
+export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
+  // only split metric queries for now
+  if (isMetricChartConfig(config) && Array.isArray(config.select)) {
+    const _configs: ChartConfigWithOptDateRange[] = [];
+    // split the query into multiple queries
+    for (const select of config.select) {
+      _configs.push({
+        ...config,
+        select: [select],
+      });
+    }
+    return _configs;
+  }
+  return [config];
+};
 
 const INVERSE_OPERATOR_MAP = {
   '=': '!=',
@@ -316,7 +352,10 @@ async function renderSelectList(
         tableName: chartConfig.from.tableName,
       });
 
-  return Promise.all(
+  const isRatio =
+    chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
+
+  const selectsSQL = await Promise.all(
     selectList.map(async select => {
       const whereClause = await renderWhereExpression({
         condition: select.aggCondition ?? '',
@@ -361,6 +400,10 @@ async function renderSelectList(
       }`;
     }),
   );
+
+  return isRatio
+    ? [chSql`divide(${selectsSQL[0]}, ${selectsSQL[1]})`]
+    : selectsSQL;
 }
 
 function renderSortSpecificationList(
@@ -424,7 +467,7 @@ async function timeFilterExpr({
   with?: ChartConfigWithDateRange['with'];
   includedDataInterval?: string;
 }) {
-  const valueExpressions = splitAndTrimCSV(timestampValueExpression);
+  const valueExpressions = splitAndTrimWithBracket(timestampValueExpression);
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
 
@@ -1061,98 +1104,112 @@ async function translateMetricChartConfig(
       throw new Error('quantile must be specified for histogram metrics');
     }
 
-    // Render the where clause to limit data selection on the source CTE but also search forward/back one
-    // bucket window to ensure that there is enough data to compute a reasonable value on the ends of the
-    // series.
-    const where = await renderWhere(
-      {
-        ...chartConfig,
-        from: {
-          ...from,
-          tableName: metricTables[MetricsDataType.Histogram],
-        },
-        filters: [
-          ...(filters ?? []),
-          {
-            type: 'sql',
-            condition: `MetricName = '${metricName}'`,
-          },
-        ],
-        includedDataInterval:
-          chartConfig.granularity === 'auto' &&
-          Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
-            : chartConfig.granularity,
+    // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
+    // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
+    // a reasonable value on the ends of the series.
+    const cteChartConfig = {
+      ...chartConfig,
+      from: {
+        ...from,
+        tableName: metricTables[MetricsDataType.Histogram],
       },
-      metadata,
-    );
+      filters: [
+        ...(filters ?? []),
+        {
+          type: 'sql',
+          condition: `MetricName = '${metricName}'`,
+        },
+      ],
+      includedDataInterval:
+        chartConfig.granularity === 'auto' &&
+        Array.isArray(chartConfig.dateRange)
+          ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+          : chartConfig.granularity,
+    } as ChartConfigWithOptDateRangeEx;
+
+    const timeBucketSelect = isUsingGranularity(cteChartConfig)
+      ? timeBucketExpr({
+          interval: cteChartConfig.granularity,
+          timestampValueExpression: cteChartConfig.timestampValueExpression,
+          dateRange: cteChartConfig.dateRange,
+        })
+      : chSql``;
+    const where = await renderWhere(cteChartConfig, metadata);
+    const groupBy = (await renderGroupBy(chartConfig, metadata)) || chSql``;
 
     return {
       ...restChartConfig,
       with: [
         {
-          name: 'HistRate',
+          name: 'Source',
           sql: chSql`
           SELECT
             *,
             cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-            length(BucketCounts) as CountLength,
-            any(BucketCounts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevBucketCounts,
-            any(CountLength) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevCountLength,
-            any(AttributesHash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PrevAttributesHash,
             IF(AggregationTemporality = 1,
-               BucketCounts,
-               IF(AttributesHash = PrevAttributesHash AND CountLength = PrevCountLength,
-                  arrayMap((prev, curr) -> IF(curr < prev, curr, toUInt64(toInt64(curr) - toInt64(prev))), PrevBucketCounts, BucketCounts),
-                  BucketCounts)) as BucketRates
+              sumForEach(BucketCounts) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+              deltaSumForEach(BucketCounts) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+            ) AS MonoBucketCounts
           FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
           WHERE ${where}
-          ORDER BY Attributes, TimeUnix ASC
+          ORDER BY AttributesHash ASC
           `,
         },
         {
-          name: 'RawHist',
+          name: 'Bucketed',
           sql: chSql`
             SELECT
-              *,
-              toUInt64( ${{ Float64: level }} * arraySum(BucketRates)) AS Rank,
-              arrayCumSum(BucketRates) as CumRates,
-              arrayFirstIndex(x -> if(x > Rank, 1, 0), CumRates) AS BucketLowIdx,
-              IF(BucketLowIdx = length(BucketRates),
-                arrayElement(ExplicitBounds, length(ExplicitBounds)),
-                IF(BucketLowIdx > 1,
-                  arrayElement(ExplicitBounds, BucketLowIdx - 1) + (arrayElement(ExplicitBounds, BucketLowIdx) - arrayElement(ExplicitBounds, BucketLowIdx - 1)) *
-                    IF(arrayElement(CumRates, BucketLowIdx) > arrayElement(CumRates, BucketLowIdx - 1),
-                      (Rank - arrayElement(CumRates, BucketLowIdx - 1)) / (arrayElement(CumRates, BucketLowIdx) - arrayElement(CumRates, BucketLowIdx - 1)), 0),
-                  arrayElement(ExplicitBounds, BucketLowIdx)
-                )) as Rate
-            FROM HistRate`,
+              ${timeBucketSelect.sql ? chSql`${timeBucketSelect},` : ''}
+              any(Source.ExplicitBounds) AS ExplicitBounds,
+              sumForEach(MonoBucketCounts) AS TotalBucketCounts,
+              arrayCumSum(TotalBucketCounts) AS BucketCumCounts,
+              ${{ Float64: level }} * arraySum(TotalBucketCounts) AS Rank,
+              arrayFirstIndex(x -> if(x > Rank, 1, 0), BucketCumCounts) AS BucketLowIdx,
+              CASE
+                WHEN BucketLowIdx = 0 THEN 0
+                WHEN BucketLowIdx = 1 THEN ExplicitBounds[BucketLowIdx]
+                WHEN BucketLowIdx = length(TotalBucketCounts) THEN ExplicitBounds[length(ExplicitBounds)]
+                ELSE
+                  ExplicitBounds[BucketLowIdx - 1] +
+                    ((Rank - ExplicitBounds[BucketLowIdx - 1]) / (ExplicitBounds[BucketLowIdx])) * (ExplicitBounds[BucketLowIdx] - ExplicitBounds[BucketLowIdx - 1])
+              END AS Value
+            FROM Source
+            GROUP BY ${groupBy}
+            ORDER BY ${groupBy} ASC
+          `,
+        },
+        {
+          name: 'Rates',
+          sql: chSql`
+            SELECT
+              \`__hdx_time_bucket\`,
+              any(Bucketed.Value) AS \`__hdx_value_high\`,
+              any(\`__hdx_value_high\`) OVER (ORDER BY \`__hdx_time_bucket\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_prev_high\`,
+              \`__hdx_value_high\` - \`__hdx_prev_high\` AS Rate
+            FROM Bucketed
+            GROUP BY \`__hdx_time_bucket\`
+          `,
         },
       ],
       select: [
         {
           ..._selectRest,
-          aggFn: 'sum',
+          aggFn: 'any', // groupings happen further in the CTE stack, just need to grab the value
           aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
           valueExpression: 'Rate',
         },
       ],
       from: {
         databaseName: '',
-        tableName: 'RawHist',
+        tableName: 'Rates',
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      timestampValueExpression: '`__hdx_time_bucket`',
     };
   }
 
   throw new Error(`no query support for metric type=${metricType}`);
 }
-
-export const isMetricChartConfig = (
-  chartConfig: ChartConfigWithOptDateRange,
-) => {
-  return chartConfig.metricTables != null;
-};
 
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRange,

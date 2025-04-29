@@ -26,7 +26,7 @@ import {
   DisplayType,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -42,7 +42,11 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
+import {
+  useDebouncedCallback,
+  useDisclosure,
+  useDocumentVisibility,
+} from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
@@ -59,6 +63,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
+import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
@@ -87,9 +92,10 @@ import {
   useSources,
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
+import PatternTable from './components/PatternTable';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -119,57 +125,6 @@ const SearchConfigSchema = z.object({
 });
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
-
-function SearchTotalCount({
-  config,
-  queryKeyPrefix,
-}: {
-  config: ChartConfigWithDateRange;
-  queryKeyPrefix: string;
-}) {
-  // copied from DBTimeChart
-  const { granularity } = useTimeChartSettings(config);
-  const queriedConfig = {
-    ...config,
-    granularity,
-    limit: { limit: 100000 },
-  };
-  const { data: totalCountData, isError } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      queryKey: [queryKeyPrefix, queriedConfig],
-      staleTime: 1000 * 60 * 5,
-      refetchOnWindowFocus: false,
-    },
-  );
-
-  const [totalCount, setTotalCount] = useState<number | null>(null);
-  useEffect(() => {
-    if (!totalCountData) {
-      // if totalCount already exists, set to that. Else, set to null
-      setTotalCount(totalCount ?? null);
-      return;
-    }
-    setTotalCount(
-      totalCountData?.data?.reduce(
-        (p: number, v: any) => p + Number.parseInt(v['count()']),
-        0,
-      ),
-    );
-  }, [totalCountData]);
-
-  return (
-    <Text size="xs" c="gray.4" mb={4}>
-      {!totalCount ? (
-        <span className="effect-pulse">&middot;&middot;&middot; Results</span>
-      ) : totalCount !== null && !isError ? (
-        `${totalCount} Results`
-      ) : (
-        '0 Results'
-      )}
-    </Text>
-  );
-}
 
 function SearchNumRows({
   config,
@@ -539,7 +494,7 @@ function DBSearchPage() {
   const isLive = _isLive ?? true;
 
   useEffect(() => {
-    if (analysisMode === 'delta') {
+    if (analysisMode === 'delta' || analysisMode === 'pattern') {
       setIsLive(false);
     }
   }, [analysisMode, setIsLive]);
@@ -851,12 +806,14 @@ function DBSearchPage() {
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
 
+  const isTabVisible = useDocumentVisibility();
+
   useLiveUpdate({
     isLive,
     interval: 1000 * 60 * 15,
     refreshFrequency: 4000,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady,
+    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client
@@ -884,7 +841,7 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
-  const displayedColumns = splitAndTrimCSV(
+  const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
       searchedSource?.defaultTableSelectExpression ??
       '',
@@ -958,6 +915,29 @@ function DBSearchPage() {
     },
     isSubquery: false,
   }));
+
+  const histogramTimeChartConfig = useMemo(() => {
+    if (chartConfig == null) {
+      return undefined;
+    }
+
+    return {
+      ...chartConfig,
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          valueExpression: '',
+        },
+      ],
+      orderBy: undefined,
+      granularity: 'auto',
+      dateRange: searchedTimeRange,
+      displayType: DisplayType.StackedBar,
+      groupBy: searchedSource?.severityTextExpression,
+      with: aliasWith,
+    };
+  }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
 
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
@@ -1146,6 +1126,7 @@ function DBSearchPage() {
                 language="sql"
                 onSubmit={onSubmit}
                 label="WHERE"
+                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
                 enableHotkey
               />
             }
@@ -1159,8 +1140,10 @@ function DBSearchPage() {
                     shouldDirty: true,
                   })
                 }
+                onSubmit={onSubmit}
                 language="lucene"
                 placeholder="Search your events w/ Lucene ex. column:foo"
+                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
               />
             }
@@ -1250,9 +1233,74 @@ function DBSearchPage() {
                     with: aliasWith,
                   }}
                   sourceId={inputSourceObj?.id}
+                  showDelta={!!searchedSource?.durationExpression}
                   {...searchFilters}
                 />
               </ErrorBoundary>
+              {analysisMode === 'pattern' &&
+                histogramTimeChartConfig != null && (
+                  <Flex direction="column" w="100%" gap="0px">
+                    <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
+                      <Group
+                        justify="space-between"
+                        mb={4}
+                        style={{ width: '100%' }}
+                      >
+                        <SearchTotalCountChart
+                          config={histogramTimeChartConfig}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                        />
+                        <SearchNumRows
+                          config={{
+                            ...chartConfig,
+                            dateRange: searchedTimeRange,
+                          }}
+                          enabled={isReady}
+                        />
+                      </Group>
+                    </Box>
+                    {!hasQueryError && (
+                      <Box
+                        style={{ height: 120, minHeight: 120 }}
+                        p="xs"
+                        pb="md"
+                        mb="md"
+                      >
+                        <DBTimeChart
+                          sourceId={searchedConfig.source ?? undefined}
+                          showLegend={false}
+                          config={histogramTimeChartConfig}
+                          enabled={isReady}
+                          showDisplaySwitcher={false}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onTimeRangeSelect={(d1, d2) => {
+                            onTimeRangeSelect(d1, d2);
+                            setIsLive(false);
+                          }}
+                          onError={error =>
+                            setQueryErrors(prev => ({
+                              ...prev,
+                              DBTimeChart: error,
+                            }))
+                          }
+                        />
+                      </Box>
+                    )}
+                    <PatternTable
+                      config={{
+                        ...chartConfig,
+                        dateRange: searchedTimeRange,
+                      }}
+                      bodyValueExpression={
+                        searchedSource?.bodyExpression ??
+                        chartConfig.implicitColumnExpression ??
+                        ''
+                      }
+                      totalCountConfig={histogramTimeChartConfig}
+                      totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                    />
+                  </Flex>
+                )}
               {analysisMode === 'delta' && searchedSource != null && (
                 <Flex direction="column" w="100%">
                   <div
@@ -1307,85 +1355,58 @@ function DBSearchPage() {
                 </Flex>
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {analysisMode === 'results' && chartConfig && (
-                  <>
-                    <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
-                      <Group
-                        justify="space-between"
-                        mb={4}
-                        style={{ width: '100%' }}
-                      >
-                        <SearchTotalCount
-                          config={{
-                            ...chartConfig,
-                            select: [
-                              {
-                                aggFn: 'count',
-                                aggCondition: '',
-                                valueExpression: '',
-                              },
-                            ],
-                            orderBy: undefined,
-                            granularity: 'auto',
-                            dateRange: searchedTimeRange,
-                            displayType: DisplayType.StackedBar,
-                            with: aliasWith,
-                          }}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                        />
-                        <SearchNumRows
-                          config={{
-                            ...chartConfig,
-                            dateRange: searchedTimeRange,
-                          }}
-                          enabled={isReady}
-                        />
-                      </Group>
-                    </Box>
-                    {!hasQueryError && (
-                      <Box
-                        style={{ height: 120, minHeight: 120 }}
-                        p="xs"
-                        pb="md"
-                        mb="md"
-                      >
-                        <DBTimeChart
-                          sourceId={searchedConfig.source ?? undefined}
-                          showLegend={false}
-                          config={{
-                            ...chartConfig,
-                            select: [
-                              {
-                                aggFn: 'count',
-                                aggCondition: '',
-                                valueExpression: '',
-                              },
-                            ],
-                            orderBy: undefined,
-                            groupBy: searchedSource?.severityTextExpression,
-                            granularity: 'auto',
-                            dateRange: searchedTimeRange,
-                            displayType: DisplayType.StackedBar,
-                            with: aliasWith,
-                          }}
-                          enabled={isReady}
-                          showDisplaySwitcher={false}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onTimeRangeSelect={(d1, d2) => {
-                            onTimeRangeSelect(d1, d2);
-                            setIsLive(false);
-                          }}
-                          onError={error =>
-                            setQueryErrors(prev => ({
-                              ...prev,
-                              DBTimeChart: error,
-                            }))
-                          }
-                        />
+                {analysisMode === 'results' &&
+                  chartConfig &&
+                  histogramTimeChartConfig && (
+                    <>
+                      <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
+                        <Group
+                          justify="space-between"
+                          mb={4}
+                          style={{ width: '100%' }}
+                        >
+                          <SearchTotalCountChart
+                            config={histogramTimeChartConfig}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                          />
+                          <SearchNumRows
+                            config={{
+                              ...chartConfig,
+                              dateRange: searchedTimeRange,
+                            }}
+                            enabled={isReady}
+                          />
+                        </Group>
                       </Box>
-                    )}
-                  </>
-                )}
+                      {!hasQueryError && (
+                        <Box
+                          style={{ height: 120, minHeight: 120 }}
+                          p="xs"
+                          pb="md"
+                          mb="md"
+                        >
+                          <DBTimeChart
+                            sourceId={searchedConfig.source ?? undefined}
+                            showLegend={false}
+                            config={histogramTimeChartConfig}
+                            enabled={isReady}
+                            showDisplaySwitcher={false}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onTimeRangeSelect={(d1, d2) => {
+                              onTimeRangeSelect(d1, d2);
+                              setIsLive(false);
+                            }}
+                            onError={error =>
+                              setQueryErrors(prev => ({
+                                ...prev,
+                                DBTimeChart: error,
+                              }))
+                            }
+                          />
+                        </Box>
+                      )}
+                    </>
+                  )}
                 {hasQueryError && queryError ? (
                   <>
                     <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
