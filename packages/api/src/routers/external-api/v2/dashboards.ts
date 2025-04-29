@@ -5,7 +5,11 @@ import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { deleteDashboard, updateDashboard } from '@/controllers/dashboard';
+import {
+  deleteDashboard,
+  getDashboard,
+  updateDashboard,
+} from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   translateDashboardDocumentToExternalDashboard,
@@ -36,7 +40,7 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        { _id: 1, name: 1, charts: 1, query: 1 },
+        { _id: 1, name: 1, tiles: 1, tags: 1 },
       );
 
       if (dashboard == null) {
@@ -61,7 +65,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      { _id: 1, name: 1, charts: 1, query: 1 },
+      { _id: 1, name: 1, tiles: 1, tags: 1 },
     ).sort({ name: -1 });
 
     res.json({
@@ -79,8 +83,7 @@ router.post(
   validateRequest({
     body: z.object({
       name: z.string().max(1024),
-      charts: z.array(externalChartSchema),
-      query: z.string().max(2048),
+      tiles: z.array(externalChartSchema),
       tags: tagsSchema,
     }),
   }),
@@ -91,21 +94,20 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { name, charts, query, tags } = req.body;
+      const { name, tiles, tags } = req.body;
 
-      const internalCharts = charts.map(chart => {
+      const charts = tiles.map(tile => {
         const chartId = new ObjectId().toString();
         return translateExternalChartToInternalChart({
           id: chartId,
-          ...chart,
+          ...tile,
         });
       });
 
       // Create new dashboard from name and charts
       const newDashboard = await new Dashboard({
         name,
-        charts: internalCharts,
-        query,
+        tiles: charts,
         tags: tags && uniq(tags),
         team: teamId,
       }).save();
@@ -127,7 +129,7 @@ router.put(
     }),
     body: z.object({
       name: z.string().max(1024),
-      tiles: z.array(TileSchema),
+      tiles: z.array(externalChartSchemaWithId),
       tags: tagsSchema,
     }),
   }),
@@ -144,11 +146,29 @@ router.put(
 
       const { name, tiles, tags } = req.body ?? {};
 
-      const updatedDashboard = await updateDashboard(dashboardId, teamId, {
-        name,
-        tiles,
-        tags,
-      });
+      // Get the existing dashboard to preserve any fields not included in the update
+      const existingDashboard = await getDashboard(dashboardId, teamId);
+      if (existingDashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      // Convert external tiles to internal charts format
+      const charts = tiles.map(tile =>
+        translateExternalChartToInternalChart(tile),
+      );
+
+      // Use updateDashboard to handle the update and all related data (like alerts)
+      const updatedDashboard = await Dashboard.findOneAndUpdate(
+        { _id: dashboardId, team: teamId },
+        {
+          $set: {
+            name,
+            tiles: charts,
+            tags: tags && uniq(tags),
+          },
+        },
+        { new: true },
+      );
 
       if (updatedDashboard == null) {
         return res.sendStatus(404);

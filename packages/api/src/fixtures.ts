@@ -561,6 +561,7 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
       type: 'time',
       dataSource: 'events',
       aggFn: 'count',
+      where: '',
     },
   ],
 });
