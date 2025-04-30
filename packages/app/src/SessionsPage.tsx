@@ -250,7 +250,7 @@ export default function SessionsPage() {
   const where = watch('where');
   const whereLanguage = watch('whereLanguage');
   const sourceId = watch('source');
-  const { data: sessionSource } = useSource({
+  const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
     id: watch('source'),
   });
 
@@ -480,31 +480,42 @@ export default function SessionsPage() {
             </Group>
           </Group>
         </form>
-        {isSessionsLoading === false &&
-        (sessionSource?.kind !== SourceKind.Session || traceTrace == null) ? (
-          <>
-            <Alert
-              icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-              color="gray"
-              py="xs"
-              mt="md"
-            >
-              Please select a valid session source
-            </Alert>
-            <SessionSetupInstructions />
-          </>
-        ) : sessions.length === 0 && isSessionsLoading === false ? (
-          <SessionSetupInstructions />
-        ) : (
-          <div style={{ minHeight: 0 }} className="mt-4">
-            <SessionCardList
-              onClick={session => {
-                setSelectedSession(session);
-              }}
-              sessions={sessions}
-              isSessionLoading={isSessionsLoading}
+
+        {isSessionsLoading || isSessionSourceLoading ? (
+          <div className="text-center mt-8">
+            <div
+              className="spinner-border me-2"
+              role="status"
+              style={{ width: 14, height: 14 }}
             />
+            {isSessionSourceLoading ? 'Loading...' : 'Searching sessions...'}
           </div>
+        ) : (
+          <>
+            {sessionSource && sessionSource.kind !== SourceKind.Session && (
+              <Alert
+                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+                color="gray"
+                py="xs"
+                mt="md"
+              >
+                Please select a valid session source
+              </Alert>
+            )}
+            {!sessions.length ? (
+              <SessionSetupInstructions />
+            ) : (
+              <div style={{ minHeight: 0 }} className="mt-4">
+                <SessionCardList
+                  onClick={session => {
+                    setSelectedSession(session);
+                  }}
+                  sessions={sessions}
+                  isSessionLoading={isSessionsLoading}
+                />
+              </div>
+            )}
+          </>
         )}
       </Box>
     </div>
