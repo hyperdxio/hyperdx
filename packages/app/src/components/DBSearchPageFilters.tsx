@@ -18,13 +18,18 @@ import {
 } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  MAX_ROWS_TO_READ,
+  useAllFields,
+  useGetKeyValues,
+} from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
+import { useExplainQuery } from '@/hooks/useExplainQuery';
 
 type FilterCheckboxProps = {
   label: string;
@@ -339,6 +344,9 @@ export const DBSearchPageFilters = ({
   );
   const { width, startResize } = useResizable(16, 'left');
 
+  const { data: countData } = useExplainQuery(chartConfig);
+  const numRows = countData?.[0]?.rows;
+
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -391,14 +399,23 @@ export const DBSearchPageFilters = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
+  const [disableRowLimit, setDisableRowLimit] = useState(false);
+  const keyLimit = 100;
   const {
     data: facets,
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
     chartConfigs: { ...chartConfig, dateRange },
+    limit: keyLimit,
     keys: datum,
+    disableRowLimit,
   });
+  useEffect(() => {
+    if (numRows > MAX_ROWS_TO_READ && facets && facets.length < keyLimit) {
+      setDisableRowLimit(true);
+    }
+  }, [facets]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];

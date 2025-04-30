@@ -4,6 +4,7 @@ import {
   Field,
   TableConnection,
   TableMetadata,
+  DEFAULT_SAMPLE_SIZE,
 } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
@@ -14,6 +15,8 @@ import {
 
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
+
+export const MAX_ROWS_TO_READ = DEFAULT_SAMPLE_SIZE;
 
 export function useColumns(
   {

@@ -11,7 +11,7 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
-const DEFAULT_SAMPLE_SIZE = 1e6;
+export const DEFAULT_SAMPLE_SIZE = 1e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
