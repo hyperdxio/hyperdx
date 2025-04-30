@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { format } from 'date-fns';
 import { Slider, Tooltip } from '@mantine/core';
 
 import { useFormatTime } from './useFormatTime';
@@ -12,6 +11,7 @@ export type PlaybarMarker = {
   ts: number;
   description: string;
   isError: boolean;
+  isSuccess: boolean;
 };
 
 type PlaybarSliderProps = {
@@ -60,9 +60,11 @@ export const PlaybarSlider = ({
           <div
             className={styles.markerDot}
             style={{
-              backgroundColor: mark.isError
-                ? 'var(--mantine-color-red-6)'
-                : 'var(--mantine-color-gray-6)',
+              backgroundColor: mark.isSuccess
+                ? 'var(--mantine-color-green-6)'
+                : mark.isError
+                  ? 'var(--mantine-color-red-6)'
+                  : 'var(--mantine-color-gray-6)',
               left: `${((mark.ts - min) / (max - min)) * 100}%`,
             }}
             onClick={() => onChange(mark.ts)}
