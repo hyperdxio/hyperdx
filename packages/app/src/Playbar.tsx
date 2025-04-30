@@ -78,6 +78,8 @@ export default function Playbar({
             event.component === 'console' ||
             statusCode >= 399;
 
+          const isSuccess = !isError && statusCode < 400 && statusCode > 99;
+
           return {
             id: event.id,
             ts: event.startOffset,
@@ -94,6 +96,7 @@ export default function Playbar({
                     ? 'Intercom Chat Opened'
                     : event.body,
             isError,
+            isSuccess,
           };
         }) ?? [],
       'percentage',
