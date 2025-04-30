@@ -314,7 +314,8 @@ export default function SessionSubpanel({
     [traceSource],
   );
 
-  const filteredEventsFilter = useMemo(
+  // Events shown in the highlighted tab
+  const highlightedEventsFilter = useMemo(
     () => ({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
@@ -330,6 +331,7 @@ export default function SessionSubpanel({
     [traceSource, rumSessionId],
   );
 
+  // Events shown in the all events tab
   const allEventsFilter = useMemo(
     () => ({
       type: 'lucene' as const,
@@ -410,7 +412,7 @@ export default function SessionSubpanel({
         offset: 0,
       },
       filters: [
-        tab === 'highlighted' ? filteredEventsFilter : allEventsFilter,
+        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
         ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
@@ -425,7 +427,7 @@ export default function SessionSubpanel({
       whereLanguage,
       searchedQuery,
       tab,
-      filteredEventsFilter,
+      highlightedEventsFilter,
       allEventsFilter,
       where,
     ],
