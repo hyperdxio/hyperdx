@@ -48,10 +48,12 @@ const WebhookChannelForm = <T extends object>(
     name: props.name!,
   });
 
-  const handleWebhookCreated = async (webhookId: string) => {
+  const handleWebhookCreated = async (webhookId?: string) => {
     await refetchWebhooks();
-    field.onChange(webhookId);
-    field.onBlur();
+    if (webhookId) {
+      field.onChange(webhookId);
+      field.onBlur();
+    }
     close();
   };
 

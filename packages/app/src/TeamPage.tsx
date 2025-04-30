@@ -684,7 +684,7 @@ export function CreateWebhookForm({
   onSuccess,
 }: {
   onClose: VoidFunction;
-  onSuccess: (webhookId: string) => void;
+  onSuccess: (webhookId?: string) => void;
 }) {
   const saveWebhook = api.useSaveWebhook();
 
