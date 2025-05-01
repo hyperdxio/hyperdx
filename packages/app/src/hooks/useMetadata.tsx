@@ -1,10 +1,10 @@
 import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  DEFAULT_SAMPLE_SIZE,
   Field,
   TableConnection,
   TableMetadata,
-  DEFAULT_SAMPLE_SIZE,
 } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
@@ -119,6 +119,7 @@ export function useGetKeyValues(
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      disableRowLimit,
     ],
     queryFn: async () =>
       (

@@ -18,6 +18,7 @@ import {
 } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 
+import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   MAX_ROWS_TO_READ,
   useAllFields,
@@ -29,7 +30,6 @@ import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
-import { useExplainQuery } from '@/hooks/useExplainQuery';
 
 type FilterCheckboxProps = {
   label: string;
@@ -393,7 +393,10 @@ export const DBSearchPageFilters = ({
 
   useEffect(() => {
     if (!isLive) {
-      setDateRange(chartConfig.dateRange);
+      setDateRange(() => {
+        setDisableRowLimit(() => false);
+        return chartConfig.dateRange;
+      });
     }
   }, [chartConfig.dateRange, isLive]);
 
@@ -413,7 +416,7 @@ export const DBSearchPageFilters = ({
   });
   useEffect(() => {
     if (numRows > MAX_ROWS_TO_READ && facets && facets.length < keyLimit) {
-      setDisableRowLimit(true);
+      setDisableRowLimit(() => true);
     }
   }, [facets]);
 
