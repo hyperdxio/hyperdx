@@ -1,7 +1,8 @@
 @import './variables';
 
 .tableHead {
-  background: inherit;
+  background: $bg-hdx-dark;
+  outline: 1px solid $slate-950;
   position: sticky;
   top: 0;
 }

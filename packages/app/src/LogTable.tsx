@@ -220,7 +220,6 @@ export const RawLogTable = memo(
     isLoading,
     logs,
     onInstructionsClick,
-    // onPropertySearchClick,
     onRowExpandClick,
     onScroll,
     onSettingsClick,
@@ -228,6 +227,8 @@ export const RawLogTable = memo(
     wrapLines,
     columnNameMap,
     showServiceColumn = true,
+    order,
+    setOrder,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -244,10 +245,6 @@ export const RawLogTable = memo(
     isLoading: boolean;
     fetchNextPage: (arg0?: { cb?: VoidFunction }) => any;
     onRowExpandClick: (id: string, sortKey: string) => void;
-    // onPropertySearchClick: (
-    //   name: string,
-    //   value: string | number | boolean,
-    // ) => void;
     hasNextPage: boolean;
     highlightedLineId: string | undefined;
     onScroll: (scrollTop: number) => void;
@@ -256,6 +253,8 @@ export const RawLogTable = memo(
     tableId?: string;
     columnNameMap?: Record<string, string>;
     showServiceColumn?: boolean;
+    order?: 'asc' | 'desc';
+    setOrder?: (order: 'asc' | 'desc') => void;
   }) => {
     const dedupLogs = useMemo(() => {
       const lIds = new Set();
@@ -324,10 +323,39 @@ export const RawLogTable = memo(
         },
         {
           accessorKey: 'timestamp',
-          header: () =>
-            isSmallScreen
-              ? 'Time'
-              : `Timestamp${isUTC ? ' (UTC)' : ' (Local)'}`,
+          header: () => (
+            <div
+              className={cx('d-flex align-items-center', {
+                'cursor-pointer text-muted-hover': !isLive,
+                'text-muted': isLive,
+              })}
+              title={
+                order
+                  ? isLive
+                    ? 'Sort order is fixed in live mode'
+                    : `Sort ${order === 'desc' ? 'ascending' : 'descending'}`
+                  : ''
+              }
+              onClick={() => {
+                setOrder?.(order === 'desc' ? 'asc' : 'desc');
+              }}
+            >
+              {isSmallScreen
+                ? 'Time'
+                : `Timestamp${isUTC ? ' (UTC)' : ' (Local)'}`}
+              {order && (
+                <i
+                  className={`ms-2 fs-7 bi ${
+                    isLive
+                      ? 'bi-record-fill effect-pulse text-success'
+                      : order === 'desc'
+                      ? 'bi-arrow-down text-white'
+                      : 'bi-arrow-up text-white'
+                  }`}
+                />
+              )}
+            </div>
+          ),
           cell: info => {
             // FIXME: since original timestamp doesn't come with timezone info
             const date = new Date(info.getValue<string>());
@@ -429,6 +457,8 @@ export const RawLogTable = memo(
         columnSizeStorage,
         showServiceColumn,
         columnNameMap,
+        order,
+        setOrder,
       ],
     );
 
@@ -829,10 +859,21 @@ export default function LogTable({
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wrapLines, setWrapLines] = useState(false);
+  const [_order, setOrder] = useState<'asc' | 'desc'>('desc');
 
   const prevQueryConfig = usePrevious({ searchedQuery, isLive });
 
-  const resultsKey = [searchedQuery, displayedColumns, isLive].join(':');
+  // Ensure order is always 'desc' in live mode
+  const order = isLive ? 'desc' : _order;
+  useEffect(() => {
+    // Force set to 'desc' after switching to live mode to ensure
+    // scrolling down while in live mode doesn't reset the order to 'asc'
+    if (isLive && _order === 'asc') {
+      setOrder('desc');
+    }
+  }, [_order, isLive, setOrder]);
+
+  const resultsKey = [searchedQuery, displayedColumns, isLive, order].join(':');
 
   const {
     userPreferences: { isUTC },
@@ -851,7 +892,7 @@ export default function LogTable({
       startDate: searchedTimeRange?.[0] ?? new Date(),
       endDate: searchedTimeRange?.[1] ?? new Date(),
       extraFields: displayedColumns,
-      order: 'desc',
+      order,
       onEnd,
       resultsKey,
     },
@@ -931,13 +972,14 @@ export default function LogTable({
           (args: any) => fetchNextPage({ limit: 200, ...args }),
           [fetchNextPage],
         )}
-        // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPageWhenNotLive}
         onRowExpandClick={onRowExpandClick}
         onScroll={onScroll}
         onShowPatternsClick={onShowPatternsClick}
         columnNameMap={columnNameMap}
         showServiceColumn={showServiceColumn}
+        order={order}
+        setOrder={setOrder}
       />
     </>
   );
