@@ -1,7 +1,7 @@
 import rateLimit, { Options } from 'express-rate-limit';
 
-export default (config?: Partial<Options>) => async (req, rs, next) => {
+export default (config?: Partial<Options>) => {
   return rateLimit({
     ...config,
-  })(req, rs, next);
+  });
 };

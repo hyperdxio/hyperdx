@@ -12,14 +12,13 @@ const rateLimiterKeyGenerator = (req: express.Request) => {
   return req.headers.authorization || req.ip;
 };
 
-const getDefaultRateLimiter = () =>
-  rateLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    max: 100, // Limit each IP to 100 requests per `window`
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    keyGenerator: rateLimiterKeyGenerator,
-  });
+const defaultRateLimiter = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // Limit each IP to 100 requests per `window`
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  keyGenerator: rateLimiterKeyGenerator,
+});
 
 router.get('/', validateUserAccessKey, (req, res, next) => {
   res.json({
@@ -28,16 +27,11 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
   });
 });
 
-router.use(
-  '/alerts',
-  getDefaultRateLimiter(),
-  validateUserAccessKey,
-  alertsRouter,
-);
+router.use('/alerts', defaultRateLimiter, validateUserAccessKey, alertsRouter);
 
 router.use(
   '/dashboards',
-  getDefaultRateLimiter(),
+  defaultRateLimiter,
   validateUserAccessKey,
   dashboardRouter,
 );
