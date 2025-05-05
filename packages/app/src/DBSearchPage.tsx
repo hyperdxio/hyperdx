@@ -92,7 +92,7 @@ import {
   useSources,
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
@@ -472,6 +472,10 @@ function DBSearchPage() {
   );
 
   const { data: sources } = useSources();
+  const [lastSelectedSourceId, setLastSelectedSourceId] = useLocalStorage(
+    'hdx-last-selected-source-id',
+    '',
+  );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
   });
@@ -514,7 +518,13 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source: searchedConfig.source ?? sources?.[0]?.id ?? '',
+      source:
+        searchedConfig.source ??
+        (lastSelectedSourceId &&
+        sources?.some(s => s.id === lastSelectedSourceId)
+          ? lastSelectedSourceId
+          : sources?.[0]?.id) ??
+        '',
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -623,6 +633,8 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     inputSource,
+    lastSelectedSourceId,
+    sources,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -676,6 +688,9 @@ function DBSearchPage() {
           s => s.id === data.source,
         );
         if (newInputSourceObj != null) {
+          // Save the selected source ID to localStorage
+          setLastSelectedSourceId(newInputSourceObj.id);
+
           setValue(
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
@@ -692,7 +707,14 @@ function DBSearchPage() {
       }
     });
     return () => unsubscribe();
-  }, [watch, inputSourceObj, setValue, inputSourceObjs, searchFilters]);
+  }, [
+    watch,
+    inputSourceObj,
+    setValue,
+    inputSourceObjs,
+    searchFilters,
+    setLastSelectedSourceId,
+  ]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
