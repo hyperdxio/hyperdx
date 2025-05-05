@@ -413,7 +413,10 @@ export function TraceTableModelForm({
           rules={{ required: 'Table is required' }}
         />
       </FormRow>
-      <FormRow label={'Timestamp Column'}>
+      <FormRow
+        label={'Timestamp Column'}
+        helpText="DateTime column or expression defines the start of the span"
+      >
         <SQLInlineEditorControlled
           tableConnections={{
             databaseName,
@@ -617,6 +620,21 @@ export function TraceTableModelForm({
           control={control}
           name="eventAttributesExpression"
           placeholder="SpanAttributes"
+        />
+      </FormRow>
+      <FormRow
+        label={'Span Events Value Expression'}
+        helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
+      >
+        <SQLInlineEditorControlled
+          tableConnections={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="spanEventsValueExpression"
+          placeholder="Events"
         />
       </FormRow>
       <FormRow
