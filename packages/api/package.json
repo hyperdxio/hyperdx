@@ -13,7 +13,7 @@
     "@opentelemetry/api": "^1.8.0",
     "@sentry/node": "^7.85.0",
     "@slack/webhook": "^6.1.0",
-    "axios": "^1.6.2",
+    "axios": "^1.8.2",
     "compression": "^1.7.4",
     "connect-mongo": "^4.6.0",
     "cors": "^2.8.5",
