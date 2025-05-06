@@ -93,7 +93,7 @@ function FormRow({
           ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
         }}
       >
-        <Tooltip label={helpText} color="dark" c="white">
+        <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
           <i className="bi bi-question-circle cursor-pointer" />
         </Tooltip>
       </Text>
@@ -623,7 +623,7 @@ export function TraceTableModelForm({
         />
       </FormRow>
       <FormRow
-        label={'Span Events Value Expression'}
+        label={'Span Events Expression'}
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >
         <SQLInlineEditorControlled
