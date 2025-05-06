@@ -71,10 +71,36 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Load environment variables from .env
+      - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
-      - name: Publish images
+      - name: Publish Images
         if:
           needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
           'false'
         run: make ${{ matrix.release }}
+      - name: Get Downstream App Installation Token
+        id: auth
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.DOWNSTREAM_CH_APP_ID }}
+          private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
+      - name: Notify Downstream
+        if:
+          needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
+          'false'
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ env.IMAGE_VERSION }}.${{ env.IMAGE_VERSION_SUB_TAG }}
+        with:
+          github-token: ${{ steps.auth.outputs.token }}
+          script: |
+            const { TAG } = process.env;
+            const result = await github.rest.actions.createWorkflowDispatch({
+              owner: '${{ secrets.DOWNSTREAM_CH_OWNER }}',
+              repo: '${{ secrets.DOWNSTREAM_DP_REPO }}',
+              workflow_id: '${{ secrets.DOWNSTREAM_DP_WORKFLOW_ID }}',
+              ref: 'main',
+              inputs: {
+                tag: TAG
+              }
+            });
