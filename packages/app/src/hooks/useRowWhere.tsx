@@ -48,12 +48,14 @@ export default function useRowWhere({
 
           if (jsType == null || chType == null) {
             throw new Error(
-              `Column type not found for ${column}, ${columnMap}`,
+              `Column type not found for ${column}, ${JSON.stringify(columnMap)}`,
             );
           }
 
           if (valueExpr == null) {
-            throw new Error(`valueExpr not found for ${column}, ${columnMap}`);
+            throw new Error(
+              `valueExpr not found for ${column}, ${JSON.stringify(columnMap)}`,
+            );
           }
 
           switch (jsType) {
