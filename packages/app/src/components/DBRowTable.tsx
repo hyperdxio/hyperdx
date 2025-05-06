@@ -29,8 +29,6 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
 import {
   FetchNextPageOptions,
-  keepPreviousData,
-  QueryClient,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
