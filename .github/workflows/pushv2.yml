@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/github-script@v7
         env:
-          ACTOR: ${{ github.actor }}
+          ACTOR: ${{ github.event.head_commit.author.name }}
           MESSAGE: ${{ github.event.head_commit.message }}
           SHA: ${{ github.sha }}
         with:
