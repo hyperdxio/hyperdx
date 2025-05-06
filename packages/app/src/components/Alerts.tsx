@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
-import Link from 'next/link';
-import { Control } from 'react-hook-form';
+import { Control, useController } from 'react-hook-form';
 import { Select, SelectProps } from 'react-hook-form-mantine';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
-import type { Alert, AlertChannelType } from '@hyperdx/common-utils/dist/types';
-import { Button, ComboboxData, Group } from '@mantine/core';
+import type { AlertChannelType } from '@hyperdx/common-utils/dist/types';
+import { Button, ComboboxData, Group, Modal } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
+
+import { CreateWebhookForm } from '../TeamPage';
 
 type Webhook = {
   _id: string;
@@ -16,7 +18,11 @@ type Webhook = {
 const WebhookChannelForm = <T extends object>(
   props: Partial<SelectProps<T>>,
 ) => {
-  const { data: webhooks } = api.useWebhooks(['slack', 'generic']);
+  const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
+    'slack',
+    'generic',
+  ]);
+  const [opened, { open, close }] = useDisclosure(false);
 
   const hasWebhooks = Array.isArray(webhooks?.data) && webhooks.data.length > 0;
 
@@ -37,6 +43,20 @@ const WebhookChannelForm = <T extends object>(
     ];
   }, [webhooks]);
 
+  const { field } = useController({
+    control: props.control,
+    name: props.name!,
+  });
+
+  const handleWebhookCreated = async (webhookId?: string) => {
+    await refetchWebhooks();
+    if (webhookId) {
+      field.onChange(webhookId);
+      field.onBlur();
+    }
+    close();
+  };
+
   return (
     <div>
       <Group gap="md" justify="space-between">
@@ -55,12 +75,21 @@ const WebhookChannelForm = <T extends object>(
           control={props.control}
           {...props}
         />
-        <Link href="/team" passHref>
-          <Button size="xs" variant="subtle" color="gray">
-            Add New Incoming Webhook
-          </Button>
-        </Link>
+        <Button size="xs" variant="subtle" color="gray" onClick={open}>
+          Add New Incoming Webhook
+        </Button>
       </Group>
+
+      <Modal
+        opened={opened}
+        onClose={close}
+        title="Add New Webhook"
+        centered
+        zIndex={9999}
+        size="lg"
+      >
+        <CreateWebhookForm onClose={close} onSuccess={handleWebhookCreated} />
+      </Modal>
     </div>
   );
 };

@@ -40,7 +40,7 @@ Clickhouse cluster (imagine Kibana, for Clickhouse).
 HyperDX can be deployed in a few different ways depending on your needs. The
 easiest way to get started from scratch is to start the complete stack via
 Docker Compose. Which will start an OpenTelemetry collector, Clickhouse, and
-HyperDX with a MongoDB and Redis instance.
+HyperDX with a MongoDB instance.
 
 After cloning this repository, simply start the stack with:
 
@@ -49,7 +49,6 @@ docker compose up -d
 ```
 
 Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.
-MongoDB and Redis instance.
 
 If you already have an existing ClickHouse instance, want to use a single
 container locally, or are looking for production deployment instructions, you

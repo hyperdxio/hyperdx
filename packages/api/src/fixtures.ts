@@ -15,7 +15,6 @@ import { mongooseConnection } from '@/models';
 import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
 import Server from '@/server';
 import { MetricModel } from '@/utils/logParser';
-import { redisClient } from '@/utils/redis';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -69,7 +68,7 @@ const connectClickhouse = async () => {
       PRIMARY KEY (ServiceName, TimestampTime)
       ORDER BY (ServiceName, TimestampTime, Timestamp)
       TTL TimestampTime + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -111,7 +110,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -155,7 +154,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(15)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -203,7 +202,7 @@ const connectClickhouse = async () => {
       PARTITION BY toDate(TimeUnix)
       ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
       TTL toDateTime(TimeUnix) + toIntervalDay(3)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1 
+      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
     `,
     // Recommended for cluster usage to avoid situations
     // where a query processing error occurred after the response code
@@ -289,11 +288,7 @@ class MockServer extends Server {
   }
 
   clearDBs() {
-    return Promise.all([
-      clearClickhouseTables(),
-      clearDBCollections(),
-      clearRedis(),
-    ]);
+    return Promise.all([clearClickhouseTables(), clearDBCollections()]);
   }
 }
 
@@ -328,18 +323,17 @@ export const getLoggedInAgent = async (server: MockServer) => {
 };
 
 // ------------------------------------------------
-// ------------------ Redis -----------------------
-// ------------------------------------------------
-export const clearRedis = async () => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await redisClient.flushAll();
-};
-
-// ------------------------------------------------
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
+export const executeSqlCommand = async (sql: string) => {
+  return await clickhouse.client.command({
+    query: sql,
+    clickhouse_settings: {
+      wait_end_of_query: 1,
+    },
+  });
+};
+
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
@@ -552,6 +546,7 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
       type: 'time',
       dataSource: 'events',
       aggFn: 'count',
+      where: '',
     },
   ],
 });

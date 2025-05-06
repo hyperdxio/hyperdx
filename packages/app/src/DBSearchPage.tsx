@@ -42,7 +42,11 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useDebouncedCallback, useDisclosure } from '@mantine/hooks';
+import {
+  useDebouncedCallback,
+  useDisclosure,
+  useDocumentVisibility,
+} from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
@@ -88,7 +92,7 @@ import {
   useSources,
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
@@ -468,6 +472,10 @@ function DBSearchPage() {
   );
 
   const { data: sources } = useSources();
+  const [lastSelectedSourceId, setLastSelectedSourceId] = useLocalStorage(
+    'hdx-last-selected-source-id',
+    '',
+  );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
   });
@@ -510,7 +518,13 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source: searchedConfig.source ?? sources?.[0]?.id ?? '',
+      source:
+        searchedConfig.source ??
+        (lastSelectedSourceId &&
+        sources?.some(s => s.id === lastSelectedSourceId)
+          ? lastSelectedSourceId
+          : sources?.[0]?.id) ??
+        '',
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -619,6 +633,8 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     inputSource,
+    lastSelectedSourceId,
+    sources,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -672,6 +688,9 @@ function DBSearchPage() {
           s => s.id === data.source,
         );
         if (newInputSourceObj != null) {
+          // Save the selected source ID to localStorage
+          setLastSelectedSourceId(newInputSourceObj.id);
+
           setValue(
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
@@ -688,7 +707,14 @@ function DBSearchPage() {
       }
     });
     return () => unsubscribe();
-  }, [watch, inputSourceObj, setValue, inputSourceObjs, searchFilters]);
+  }, [
+    watch,
+    inputSourceObj,
+    setValue,
+    inputSourceObjs,
+    searchFilters,
+    setLastSelectedSourceId,
+  ]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
@@ -802,12 +828,14 @@ function DBSearchPage() {
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
 
+  const isTabVisible = useDocumentVisibility();
+
   useLiveUpdate({
     isLive,
     interval: 1000 * 60 * 15,
     refreshFrequency: 4000,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady,
+    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client

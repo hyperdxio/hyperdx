@@ -13,14 +13,8 @@ import {
 import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import api from './api';
-import {
-  Granularity,
-  seriesColumns,
-  seriesToUrlSearchQueryParam,
-} from './ChartUtils';
 import { UNDEFINED_WIDTH } from './tableUtils';
-import type { ChartSeries, NumberFormat } from './types';
+import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
 
 export const generateCsvData = (
@@ -345,79 +339,3 @@ export const Table = ({
     </div>
   );
 };
-
-const HDXMultiSeriesTableChart = memo(
-  ({
-    config: { series, seriesReturnType = 'column', dateRange, groupColumnName },
-    onSettled,
-    onSortClick,
-    getRowSearchLink,
-  }: {
-    config: {
-      series: ChartSeries[];
-      granularity: Granularity;
-      dateRange: [Date, Date];
-      seriesReturnType: 'ratio' | 'column';
-      groupColumnName?: string;
-    };
-    onSettled?: () => void;
-    onSortClick?: (seriesIndex: number) => void;
-    getRowSearchLink?: (row: any) => string;
-  }) => {
-    const { data, isError, isLoading } = api.useMultiSeriesChart({
-      series,
-      endDate: dateRange[1] ?? new Date(),
-      startDate: dateRange[0] ?? new Date(),
-      seriesReturnType,
-    });
-
-    const seriesMeta = seriesColumns({
-      series,
-      seriesReturnType,
-    });
-
-    const defaultRowSearchLink = useCallback(
-      (row: { group: string }) => {
-        return `/search?${seriesToUrlSearchQueryParam({
-          series,
-          groupByValue: row.group
-            ? `"${`${row.group}`.replace(/"/g, '\\"')}"`
-            : undefined,
-          dateRange,
-        })}`;
-      },
-      [series, dateRange],
-    );
-
-    return isLoading ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        Loading Chart Data...
-      </div>
-    ) : isError ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        Error loading chart, please try again or contact support.
-      </div>
-    ) : data?.data?.length === 0 ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        No data found within time range.
-      </div>
-    ) : (
-      <div className="d-flex fs-2 h-100 flex-grow-1">
-        <Table
-          data={data?.data ?? []}
-          groupColumnName={
-            groupColumnName ??
-            (series[0].type === 'table'
-              ? series[0].groupBy.join(' ') || 'Group'
-              : 'Group')
-          }
-          columns={seriesMeta}
-          getRowSearchLink={getRowSearchLink ?? defaultRowSearchLink}
-          onSortClick={onSortClick}
-        />
-      </div>
-    );
-  },
-);
-
-export default HDXMultiSeriesTableChart;
