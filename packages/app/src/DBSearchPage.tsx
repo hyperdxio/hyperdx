@@ -1135,22 +1135,24 @@ function DBSearchPage() {
             name="whereLanguage"
             control={control}
             sqlInput={
-              <SQLInlineEditorControlled
-                tableConnections={tcFromSource(inputSourceObj)}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
-                language="sql"
-                onSubmit={onSubmit}
-                label="WHERE"
-                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-                enableHotkey
-              />
+              <Box style={{ width: '75%', flexGrow: 1 }}>
+                <SQLInlineEditorControlled
+                  tableConnections={tcFromSource(inputSourceObj)}
+                  control={control}
+                  name="where"
+                  placeholder="SQL WHERE clause (ex. column = 'foo')"
+                  onLanguageChange={lang =>
+                    setValue('whereLanguage', lang, {
+                      shouldDirty: true,
+                    })
+                  }
+                  language="sql"
+                  onSubmit={onSubmit}
+                  label="WHERE"
+                  queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+                  enableHotkey
+                />
+              </Box>
             }
             luceneInput={
               <SearchInputV2
