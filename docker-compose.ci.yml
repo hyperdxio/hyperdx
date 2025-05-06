@@ -41,12 +41,6 @@ services:
       - 29999:29999
     networks:
       - internal
-  redis:
-    image: redis:7.0.11-alpine
-    ports:
-      - 6379:6379
-    networks:
-      - internal
 networks:
   internal:
     name: 'hyperdx-ci-internal-network'

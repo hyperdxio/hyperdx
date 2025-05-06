@@ -5,37 +5,6 @@ x-hyperdx-logging: &hyperdx-logging
     fluentd-address: tcp://localhost:24225
     labels: 'service.name'
 services:
-  # miner:
-  #   build:
-  #     context: .
-  #     dockerfile: ./packages/miner/Dockerfile
-  #     target: dev
-  #   environment:
-  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-  #     HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
-  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_SERVICE_NAME: hdx-oss-dev-miner
-  #   volumes:
-  #     - ./packages/miner/src:/app/src
-  #   ports:
-  #     - 5123:5123
-  #   networks:
-  #     - internal
-  redis:
-    logging: *hyperdx-logging
-    labels:
-      service.name: 'hdx-oss-dev-redis'
-    image: redis:7.0.11-alpine
-    volumes:
-      - .volumes/redis:/data
-    ports:
-      - 6379:6379
-    networks:
-      - internal
-    depends_on:
-      - otel-collector
   db:
     logging: *hyperdx-logging
     labels:

@@ -1,7 +1,4 @@
 receivers:
-  redis:
-    endpoint: redis:6379
-    collection_interval: 5s
   mongodb:
     hosts:
       - endpoint: db:27017
@@ -33,5 +30,5 @@ service:
       level: ${env:HYPERDX_LOG_LEVEL}
   pipelines:
     metrics:
-      receivers: [mongodb, redis, hostmetrics]
+      receivers: [mongodb, hostmetrics]
       exporters: [otlphttp, logging]

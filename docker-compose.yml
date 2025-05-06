@@ -28,19 +28,6 @@ services:
   #     - 7777:7777
   #   networks:
   #     - internal
-  # miner:
-  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-miner
-  #   environment:
-  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-  #     HYPERDX_ENABLE_ADVANCED_NETWORK_CAPTURE: 1
-  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_SERVICE_NAME: hdx-oss-miner
-  #   ports:
-  #     - 5123:5123
-  #   networks:
-  #     - internal
   # hostmetrics:
   #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-hostmetrics
   #   environment:
@@ -50,14 +37,6 @@ services:
   #   restart: always
   #   networks:
   #     - internal
-  redis:
-    image: redis:7.0.11-alpine
-    volumes:
-      - .volumes/redis:/data
-    ports:
-      - 6379:6379
-    networks:
-      - internal
   db:
     image: mongo:5.0.14-focal
     volumes:
@@ -98,14 +77,12 @@ services:
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
       OTEL_SERVICE_NAME: 'hdx-oss-api'
-      REDIS_URL: redis://redis:6379
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
     networks:
       - internal
     depends_on:
       - ch-server
       - db
-      - redis
   ch-server:
     image: clickhouse/clickhouse-server:24-alpine
     ports:
