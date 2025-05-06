@@ -15,7 +15,6 @@ import { mongooseConnection } from '@/models';
 import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
 import Server from '@/server';
 import { MetricModel } from '@/utils/logParser';
-import { redisClient } from '@/utils/redis';
 
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
@@ -289,11 +288,7 @@ class MockServer extends Server {
   }
 
   clearDBs() {
-    return Promise.all([
-      clearClickhouseTables(),
-      clearDBCollections(),
-      clearRedis(),
-    ]);
+    return Promise.all([clearClickhouseTables(), clearDBCollections()]);
   }
 }
 
@@ -325,16 +320,6 @@ export const getLoggedInAgent = async (server: MockServer) => {
     team,
     user,
   };
-};
-
-// ------------------------------------------------
-// ------------------ Redis -----------------------
-// ------------------------------------------------
-export const clearRedis = async () => {
-  if (!config.IS_CI) {
-    throw new Error('ONLY execute this in CI env 😈 !!!');
-  }
-  await redisClient.flushAll();
 };
 
 // ------------------------------------------------
