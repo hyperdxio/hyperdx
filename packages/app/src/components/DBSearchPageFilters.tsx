@@ -493,25 +493,27 @@ export const DBSearchPageFilters = ({
             )}
           </Flex>
 
-          <Checkbox
-            size={13 as any}
-            checked={denoiseResults}
-            ms="6px"
-            label={
-              <Tooltip
-                openDelay={200}
-                color="gray"
-                position="right"
-                withArrow
-                label="Denoise results will visually remove events matching common event patterns from the results table."
-              >
-                <Text size="xs" c="gray.3" mt="-1px">
-                  <i className="bi bi-noise-reduction"></i> Denoise Results
-                </Text>
-              </Tooltip>
-            }
-            onChange={() => setDenoiseResults(!denoiseResults)}
-          />
+          {analysisMode === 'results' && (
+            <Checkbox
+              size={13 as any}
+              checked={denoiseResults}
+              ms="6px"
+              label={
+                <Tooltip
+                  openDelay={200}
+                  color="gray"
+                  position="right"
+                  withArrow
+                  label="Denoise results will visually remove events matching common event patterns from the results table."
+                >
+                  <Text size="xs" c="gray.3" mt="-1px">
+                    <i className="bi bi-noise-reduction"></i> Denoise Results
+                  </Text>
+                </Tooltip>
+              }
+              onChange={() => setDenoiseResults(!denoiseResults)}
+            />
+          )}
 
           {isLoading || isFacetsLoading ? (
             <Flex align="center" justify="center">

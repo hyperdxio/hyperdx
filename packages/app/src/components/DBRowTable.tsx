@@ -1028,6 +1028,11 @@ export function DBSqlRowTable({
       patternColumn,
     ],
     queryFn: async () => {
+      // No noisy patterns, so no need to denoise
+      if (noisyPatternIds.length === 0) {
+        return processedRows;
+      }
+
       const matchedLogs = await groupedPatterns.miner?.matchLogs(
         processedRows.map(row => row[patternColumn]),
       );
@@ -1047,9 +1052,10 @@ export function DBSqlRowTable({
       return undefined;
     },
     enabled:
+      denoiseResults &&
+      noisyPatterns.isSuccess &&
       processedRows.length > 0 &&
-      groupedPatterns.miner != null &&
-      noisyPatternIds.length > 0,
+      groupedPatterns.miner != null,
   });
 
   const isLoading = denoiseResults
@@ -1072,6 +1078,11 @@ export function DBSqlRowTable({
                 {p.pattern}
               </Text>
             ))}
+            {noisyPatternIds.length === 0 && (
+              <Text c="gray.3" fz="xs">
+                No noisy patterns found
+              </Text>
+            )}
           </Box>
         </Box>
       )}
