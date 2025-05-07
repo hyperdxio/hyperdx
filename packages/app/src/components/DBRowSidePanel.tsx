@@ -94,9 +94,21 @@ export default function DBRowSidePanel({
     Infrastructure = 'infrastructure',
   }
 
+  const hasOverviewPanel = useMemo(() => {
+    if (
+      source.resourceAttributesExpression ||
+      source.eventAttributesExpression
+    ) {
+      return true;
+    }
+    return false;
+  }, [source.eventAttributesExpression, source.resourceAttributesExpression]);
+
+  const defaultTab = hasOverviewPanel ? Tab.Overview : Tab.Parsed;
+
   const [queryTab, setQueryTab] = useQueryState(
     'tab',
-    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(Tab.Overview),
+    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
   const initialWidth = 80;
@@ -114,7 +126,7 @@ export default function DBRowSidePanel({
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
-  const [stateTab, setStateTab] = useState<Tab>(Tab.Overview);
+  const [stateTab, setStateTab] = useState<Tab>(defaultTab);
   // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
   // We'll need to handle this properly eventually...
   const tab = isNestedPanel ? stateTab : queryTab;
@@ -211,15 +223,20 @@ export default function DBRowSidePanel({
   });
 
   const hasK8sContext = useMemo(() => {
-    if (!source?.resourceAttributesExpression || !normalizedRow) {
+    try {
+      if (!source?.resourceAttributesExpression || !normalizedRow) {
+        return false;
+      }
+      return (
+        normalizedRow[source.resourceAttributesExpression]?.['k8s.pod.uid'] !=
+          null ||
+        normalizedRow[source.resourceAttributesExpression]?.['k8s.node.name'] !=
+          null
+      );
+    } catch (e) {
+      console.error(e);
       return false;
     }
-    return (
-      normalizedRow[source.resourceAttributesExpression]['k8s.pod.uid'] !=
-        null ||
-      normalizedRow[source.resourceAttributesExpression]['k8s.node.name'] !=
-        null
-    );
   }, [source, normalizedRow]);
 
   return (
@@ -264,10 +281,14 @@ export default function DBRowSidePanel({
               <TabBar
                 className="fs-8 mt-2"
                 items={[
-                  {
-                    text: 'Overview',
-                    value: Tab.Overview,
-                  },
+                  ...(hasOverviewPanel
+                    ? [
+                        {
+                          text: 'Overview',
+                          value: Tab.Overview,
+                        },
+                      ]
+                    : []),
                   {
                     text: 'Column Values',
                     value: Tab.Parsed,

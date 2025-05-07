@@ -37,7 +37,7 @@ the URL your HyperDX instance is hosted on.
 
 The easiest way to get started with HyperDX from scratch is to use our
 all-in-one Docker Compose stack. This stack will start Clickhouse, an
-OpenTelemetry collector, and HyperDX with a MongoDB and Redis instance.
+OpenTelemetry collector, and HyperDX with a MongoDB instance.
 
 To get started, clone this repository and run the following command:
 
