@@ -34,7 +34,7 @@
     "dev": "docker compose -f docker-compose.dev.yml up -d && yarn app:dev && docker compose -f docker-compose.dev.yml down",
     "lint": "npx nx run-many -t ci:lint",
     "version": "make version",
-    "release": "npx nx run-many --target=build --projects=@hyperdx/common-utils && npx changeset publish --no-git-tag && npx changeset tag && git push --follow-tags"
+    "release": "npx nx run-many --target=build --projects=@hyperdx/common-utils && npx changeset tag && npx changeset publish"
   },
   "lint-staged": {
     "**/*.{ts,tsx}": [

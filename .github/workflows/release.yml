@@ -32,6 +32,7 @@ jobs:
       - name: Install root dependencies
         run: yarn install
       - name: Create Release Pull Request or Publish to npm
+        if: always()
         id: changesets
         uses: changesets/action@v1
         with:
