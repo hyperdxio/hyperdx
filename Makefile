@@ -8,7 +8,7 @@ all: install-tools
 
 .PHONY: install-tools
 install-tools:
-	yarn install
+	yarn setup
 	@echo "All tools installed"
 
 .PHONY: dev-build
