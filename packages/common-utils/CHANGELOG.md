@@ -1,5 +1,17 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.4
+
+### Minor Changes
+
+- 79fe30f: Queries depending on numeric aggregates now use the type's default value (e.g. 0) instead of null when dealing with non-numeric data.
+
+### Patch Changes
+
+- cfdd523: feat: clickhouse queries are by default conducted through the clickhouse library via POST request. localMode still uses GET for CORS purposes
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+
 ## 0.2.0-beta.3
 
 ### Patch Changes

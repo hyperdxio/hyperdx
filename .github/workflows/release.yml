@@ -30,11 +30,13 @@ jobs:
       - name: Install root dependencies
         run: yarn install
       - name: Create Release Pull Request or Publish to npm
+        if: always()
+        continue-on-error: true
         id: changesets
         uses: changesets/action@v1
         with:
           commit: 'chore(release): bump HyperDX app/package versions'
-          title: 'chore(release): bump HyperDX app/package versions'
+          title: 'Release HyperDX'
           version: yarn run version
           publish: yarn release
         env:
@@ -71,10 +73,46 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Load environment variables from .env
+      - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
-      - name: Publish images
+      - name: Publish Images
         if:
           needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
           'false'
         run: make ${{ matrix.release }}
+  notify_downstream:
+    name: Notify Downstream
+    needs: [publish_common_utils, release]
+    runs-on: ubuntu-24.04
+    if:
+      needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
+      'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Get Downstream App Installation Token
+        id: auth
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.DOWNSTREAM_CH_APP_ID }}
+          private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
+          owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
+      - name: Notify Downstream
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
+        with:
+          github-token: ${{ steps.auth.outputs.token }}
+          script: |
+            const { TAG } = process.env;
+            const result = await github.rest.actions.createWorkflowDispatch({
+              owner: '${{ secrets.DOWNSTREAM_CH_OWNER }}',
+              repo: '${{ secrets.DOWNSTREAM_DP_REPO }}',
+              workflow_id: '${{ secrets.DOWNSTREAM_DP_WORKFLOW_ID }}',
+              ref: 'main',
+              inputs: {
+                tag: TAG
+              }
+            });
