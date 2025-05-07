@@ -92,7 +92,7 @@ import {
   useSources,
 } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, usePrevious } from '@/utils';
+import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
@@ -472,6 +472,10 @@ function DBSearchPage() {
   );
 
   const { data: sources } = useSources();
+  const [lastSelectedSourceId, setLastSelectedSourceId] = useLocalStorage(
+    'hdx-last-selected-source-id',
+    '',
+  );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
   });
@@ -499,6 +503,18 @@ function DBSearchPage() {
     }
   }, [analysisMode, setIsLive]);
 
+  const [denoiseResults, _setDenoiseResults] = useQueryState(
+    'denoise',
+    parseAsBoolean.withDefault(false),
+  );
+  const setDenoiseResults = useCallback(
+    (value: boolean) => {
+      setIsLive(false);
+      _setDenoiseResults(value);
+    },
+    [setIsLive, _setDenoiseResults],
+  );
+
   const {
     control,
     watch,
@@ -514,7 +530,13 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source: searchedConfig.source ?? sources?.[0]?.id ?? '',
+      source:
+        searchedConfig.source ??
+        (lastSelectedSourceId &&
+        sources?.some(s => s.id === lastSelectedSourceId)
+          ? lastSelectedSourceId
+          : sources?.[0]?.id) ??
+        '',
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -623,6 +645,8 @@ function DBSearchPage() {
     setSearchedConfig,
     savedSearchId,
     inputSource,
+    lastSelectedSourceId,
+    sources,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -676,6 +700,9 @@ function DBSearchPage() {
           s => s.id === data.source,
         );
         if (newInputSourceObj != null) {
+          // Save the selected source ID to localStorage
+          setLastSelectedSourceId(newInputSourceObj.id);
+
           setValue(
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
@@ -692,16 +719,23 @@ function DBSearchPage() {
       }
     });
     return () => unsubscribe();
-  }, [watch, inputSourceObj, setValue, inputSourceObjs, searchFilters]);
+  }, [
+    watch,
+    inputSourceObj,
+    setValue,
+    inputSourceObjs,
+    searchFilters,
+    setLastSelectedSourceId,
+  ]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
       // If the user scrolls a bit down, kick out of live mode
-      if (scrollTop > 16) {
+      if (scrollTop > 16 && isLive) {
         setIsLive(false);
       }
     },
-    [setIsLive],
+    [isLive, setIsLive],
   );
 
   const onRowExpandClick = useCallback(
@@ -1113,22 +1147,24 @@ function DBSearchPage() {
             name="whereLanguage"
             control={control}
             sqlInput={
-              <SQLInlineEditorControlled
-                tableConnections={tcFromSource(inputSourceObj)}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
-                language="sql"
-                onSubmit={onSubmit}
-                label="WHERE"
-                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-                enableHotkey
-              />
+              <Box style={{ width: '75%', flexGrow: 1 }}>
+                <SQLInlineEditorControlled
+                  tableConnections={tcFromSource(inputSourceObj)}
+                  control={control}
+                  name="where"
+                  placeholder="SQL WHERE clause (ex. column = 'foo')"
+                  onLanguageChange={lang =>
+                    setValue('whereLanguage', lang, {
+                      shouldDirty: true,
+                    })
+                  }
+                  language="sql"
+                  onSubmit={onSubmit}
+                  label="WHERE"
+                  queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+                  enableHotkey
+                />
+              </Box>
             }
             luceneInput={
               <SearchInputV2
@@ -1223,6 +1259,8 @@ function DBSearchPage() {
             >
               <ErrorBoundary message="Unable to render search filters">
                 <DBSearchPageFilters
+                  denoiseResults={denoiseResults}
+                  setDenoiseResults={setDenoiseResults}
                   isLive={isLive}
                   analysisMode={analysisMode}
                   setAnalysisMode={setAnalysisMode}
@@ -1510,25 +1548,31 @@ function DBSearchPage() {
                   </>
                 ) : (
                   <>
-                    {shouldShowLiveModeHint && analysisMode === 'results' && (
-                      <div
-                        className="d-flex justify-content-center"
-                        style={{ height: 0 }}
-                      >
+                    {shouldShowLiveModeHint &&
+                      analysisMode === 'results' &&
+                      denoiseResults != true && (
                         <div
-                          style={{ position: 'relative', top: -20, zIndex: 2 }}
+                          className="d-flex justify-content-center"
+                          style={{ height: 0 }}
                         >
-                          <Button
-                            size="compact-xs"
-                            variant="outline"
-                            onClick={handleResumeLiveTail}
+                          <div
+                            style={{
+                              position: 'relative',
+                              top: -20,
+                              zIndex: 2,
+                            }}
                           >
-                            <i className="bi text-success bi-lightning-charge-fill me-2" />
-                            Resume Live Tail
-                          </Button>
+                            <Button
+                              size="compact-xs"
+                              variant="outline"
+                              onClick={handleResumeLiveTail}
+                            >
+                              <i className="bi text-success bi-lightning-charge-fill me-2" />
+                              Resume Live Tail
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                     {chartConfig &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
@@ -1541,6 +1585,7 @@ function DBSearchPage() {
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onScroll={onTableScroll}
                           onError={handleTableError}
+                          denoiseResults={denoiseResults}
                         />
                       )}
                   </>

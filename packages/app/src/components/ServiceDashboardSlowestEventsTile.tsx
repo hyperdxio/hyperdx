@@ -1,11 +1,15 @@
+import { useCallback } from 'react';
+import { parseAsString, useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import type { Filter, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
+import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getExpressions } from '@/serviceDashboard';
+import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -27,6 +31,23 @@ export default function SlowestEventsTile({
   extraFilters?: Filter[];
 }) {
   const expressions = getExpressions(source);
+
+  const [rowId, setRowId] = useQueryState('rowId', parseAsString);
+  const [rowSource, setRowSource] = useQueryState('rowSource', parseAsString);
+  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
+
+  const handleSidePanelClose = useCallback(() => {
+    setRowId(null);
+    setRowSource(null);
+  }, [setRowId, setRowSource]);
+
+  const handleRowExpandClick = useCallback(
+    (rowWhere: string) => {
+      setRowId(rowWhere);
+      setRowSource(source.id);
+    },
+    [source.id, setRowId, setRowSource],
+  );
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
@@ -102,51 +123,60 @@ export default function SlowestEventsTile({
         </div>
       ) : (
         source && (
-          <DBSqlRowTable
-            config={{
-              ...source,
-              where: '',
-              whereLanguage: 'sql',
-              select: [
-                {
-                  valueExpression: source.timestampValueExpression,
-                  alias: 'Timestamp',
-                },
-                {
-                  valueExpression: expressions.severityText,
-                  alias: 'Severity',
-                },
-                {
-                  valueExpression: expressions.spanName,
-                  alias: 'Span Name',
-                },
-                {
-                  valueExpression: expressions.durationInMillis,
-                  alias: 'Duration (ms)',
-                },
-              ],
-              orderBy: [
-                {
-                  valueExpression: expressions.durationInMillis,
-                  ordering: 'DESC',
-                },
-              ],
-              limit: { limit: 200 },
-              dateRange,
-              filters: [
-                ...extraFilters,
-                {
-                  type: 'sql',
-                  condition: `${expressions.durationInMillis} > ${roundedP95}`,
-                },
-              ],
-            }}
-            onRowExpandClick={() => {}}
-            highlightedLineId={undefined}
-            isLive={false}
-            queryKeyPrefix="service-dashboard-slowest-transactions"
-            onScroll={() => {}}
-          />
+          <>
+            <DBSqlRowTable
+              config={{
+                ...source,
+                where: '',
+                whereLanguage: 'sql',
+                select: [
+                  {
+                    valueExpression: source.timestampValueExpression,
+                    alias: 'Timestamp',
+                  },
+                  {
+                    valueExpression: expressions.severityText,
+                    alias: 'Severity',
+                  },
+                  {
+                    valueExpression: expressions.spanName,
+                    alias: 'Span Name',
+                  },
+                  {
+                    valueExpression: expressions.durationInMillis,
+                    alias: 'Duration (ms)',
+                  },
+                ],
+                orderBy: [
+                  {
+                    valueExpression: expressions.durationInMillis,
+                    ordering: 'DESC',
+                  },
+                ],
+                limit: { limit: 200 },
+                dateRange,
+                filters: [
+                  ...extraFilters,
+                  {
+                    type: 'sql',
+                    condition: `${expressions.durationInMillis} > ${roundedP95}`,
+                  },
+                ],
+              }}
+              onRowExpandClick={handleRowExpandClick}
+              highlightedLineId={rowId ?? undefined}
+              isLive={false}
+              queryKeyPrefix="service-dashboard-slowest-transactions"
+              onScroll={() => {}}
+            />
+            {rowId && rowSidePanelSource && (
+              <DBRowSidePanel
+                source={rowSidePanelSource}
+                rowId={rowId}
+                onClose={handleSidePanelClose}
+              />
+            )}
+          </>
         )
       )}
     </ChartBox>
