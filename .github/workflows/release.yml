@@ -34,7 +34,7 @@ jobs:
         uses: changesets/action@v1
         with:
           commit: 'chore(release): bump HyperDX app/package versions'
-          title: 'chore(release): bump HyperDX app/package versions'
+          title: 'Release HyperDX'
           version: yarn run version
           publish: yarn release
         env:
@@ -84,6 +84,7 @@ jobs:
         with:
           app-id: ${{ secrets.DOWNSTREAM_CH_APP_ID }}
           private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
+          owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
       - name: Notify Downstream
         if:
           needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
