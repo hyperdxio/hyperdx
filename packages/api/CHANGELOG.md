@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.0.0-beta.16
+
+### Patch Changes
+
+- 1674ab8: moved swagger to dependencies instead of devDependencies
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+- Updated dependencies [931d738]
+  - @hyperdx/common-utils@0.2.0-beta.5
+
 ## 2.0.0-beta.15
 
 ### Minor Changes
