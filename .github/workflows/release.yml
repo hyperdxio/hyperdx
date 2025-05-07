@@ -82,6 +82,18 @@ jobs:
           needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
           'false'
         run: make ${{ matrix.release }}
+  notify_downstream:
+    name: Notify Downstream
+    needs: [publish_common_utils, release]
+    runs-on: ubuntu-24.04
+    if:
+      needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
+      'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
       - name: Get Downstream App Installation Token
         id: auth
         uses: actions/create-github-app-token@v2
@@ -90,9 +102,6 @@ jobs:
           private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
           owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
       - name: Notify Downstream
-        if:
-          needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
-          'false'
         uses: actions/github-script@v7
         env:
           TAG: ${{ env.IMAGE_VERSION }}.${{ env.IMAGE_VERSION_SUB_TAG }}
