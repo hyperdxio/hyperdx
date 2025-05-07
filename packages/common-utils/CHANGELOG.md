@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.5
+
+### Patch Changes
+
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+
 ## 0.2.0-beta.4
 
 ### Minor Changes
