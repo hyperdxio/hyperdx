@@ -82,10 +82,10 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.kind === SourceKind.Trace
+        ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
           ? [
               {
-                valueExpression: `Events.Attributes[indexOf(Events.Name, 'exception')]`,
+                valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
                 alias: '__hdx_events_exception_attributes',
               },
             ]

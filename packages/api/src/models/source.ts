@@ -63,6 +63,7 @@ export const Source = mongoose.model<ISource>(
       spanKindExpression: String,
       statusCodeExpression: String,
       statusMessageExpression: String,
+      spanEventsValueExpression: String,
 
       metricTables: {
         type: {

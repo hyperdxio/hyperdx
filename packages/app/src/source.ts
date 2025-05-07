@@ -246,6 +246,9 @@ export async function inferTableSourceConfig({
     'StatusMessage',
   ]);
 
+  // Check if SpanEvents column is available
+  const hasSpanEvents = columns.some(col => col.name === 'Events');
+
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>
     keys.find(
@@ -299,17 +302,18 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
+          ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
         }
       : {}),
   };
 }
 
 export function getDurationMsExpression(source: TSource) {
-  return `${source.durationExpression}/1e${(source.durationPrecision ?? 9) - 3}`;
+  return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
 export function getDurationSecondsExpression(source: TSource) {
-  return `${source.durationExpression}/1e${source.durationPrecision ?? 9}`;
+  return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 
 const ReqMetricTableColumns = {

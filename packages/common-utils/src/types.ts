@@ -510,6 +510,7 @@ export const SourceSchema = z.object({
   durationPrecision: z.number().min(0).max(9).optional(),
   parentSpanIdExpression: z.string().optional(),
   spanNameExpression: z.string().optional(),
+  spanEventsValueExpression: z.string().optional(),
 
   spanKindExpression: z.string().optional(),
   statusCodeExpression: z.string().optional(),
