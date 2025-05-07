@@ -1,5 +1,24 @@
 # @hyperdx/api
 
+## 2.0.0-beta.15
+
+### Minor Changes
+
+- 79fe30f: Queries depending on numeric aggregates now use the type's default value (e.g. 0) instead of null when dealing with non-numeric data.
+
+### Patch Changes
+
+- 9a9581b: Adds external API for alerts and dashboards
+- 293a2af: Adds openapidoc annotations for spec generation and swagger route for development
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- Updated dependencies [79fe30f]
+- Updated dependencies [cfdd523]
+- Updated dependencies [92a4800]
+- Updated dependencies [7f0b397]
+  - @hyperdx/common-utils@0.2.0-beta.4
+
 ## 2.0.0-beta.14
 
 ### Patch Changes

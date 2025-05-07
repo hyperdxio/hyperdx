@@ -1,5 +1,21 @@
 # @hyperdx/app
 
+## 2.0.0-beta.15
+
+### Patch Changes
+
+- 7de8916: Removes trailing slash for connection urls
+- cfdd523: feat: clickhouse queries are by default conducted through the clickhouse library via POST request. localMode still uses GET for CORS purposes
+- 6dc6989: feat: Automatically use last used source when loading search page
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- Updated dependencies [79fe30f]
+- Updated dependencies [cfdd523]
+- Updated dependencies [92a4800]
+- Updated dependencies [7f0b397]
+  - @hyperdx/common-utils@0.2.0-beta.4
+
 ## 2.0.0-beta.14
 
 ### Patch Changes
