@@ -105,7 +105,7 @@ app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // API v2
 // Only initialize Swagger in development or if explicitly enabled
 if (
-  process.env.NODE_ENV !== 'production' ||
+  process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_SWAGGER === 'true'
 ) {
   import('./utils/swagger')
