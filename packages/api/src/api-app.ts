@@ -18,7 +18,6 @@ import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
 import passport from './utils/passport';
-import { setupSwagger } from './utils/swagger';
 
 const app: express.Application = express();
 
@@ -109,7 +108,17 @@ if (
   process.env.NODE_ENV !== 'production' ||
   process.env.ENABLE_SWAGGER === 'true'
 ) {
-  setupSwagger(app);
+  import('./utils/swagger')
+    .then(({ setupSwagger }) => {
+      console.log('Swagger UI setup and available at /api/v2/docs');
+      setupSwagger(app);
+    })
+    .catch(error => {
+      console.error(
+        'Failed to dynamically load or setup Swagger. Swagger UI will not be available.',
+        error,
+      );
+    });
 }
 
 app.use('/api/v2', externalRoutersV2);
