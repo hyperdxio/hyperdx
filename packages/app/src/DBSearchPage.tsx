@@ -255,6 +255,7 @@ function SaveSearchModal({
       title="Save Search"
       centered
       size="lg"
+      data-testid="search-save-modal"
     >
       <form onSubmit={onSubmit}>
         <Stack>
@@ -1050,6 +1051,7 @@ function DBSearchPage() {
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-save-button"
                 >
                   Save
                 </Button>
@@ -1063,6 +1065,7 @@ function DBSearchPage() {
                     setSaveSearchModalState('update');
                   }}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-save-button"
                 >
                   Update
                 </Button>
@@ -1075,6 +1078,7 @@ function DBSearchPage() {
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
+                  data-testid="search-alerts-button"
                 >
                   Alerts
                 </Button>
@@ -1092,6 +1096,7 @@ function DBSearchPage() {
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
+                      data-testid="search-tags-button"
                     >
                       <i className="bi bi-tags-fill me-1"></i>
                       {savedSearch.tags?.length || 0}
