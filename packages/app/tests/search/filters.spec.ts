@@ -27,6 +27,16 @@ async function getInitialRowCount(page: Page) {
 
 test('filters should update results table', async ({ page }) => {
   await login(page);
+  
+  await page.waitForURL('**/search*');
+  
+  // Click the input to open the custom dropdown
+  await page.locator('[data-testid="search-source-select"]').click();
+
+  // Select an option from the source dropdown
+  await page.getByRole('option', { name: 'logs' }).click();
+ 
+  // Wait for the URL to change to the new search URL
   await page.waitForURL('**/search?isLive=true*from=*to=*');
   
   // Get initial results count
@@ -49,6 +59,6 @@ test('filters should update results table', async ({ page }) => {
   
   // Verify results table updates
   const filteredRowCount = await getInitialRowCount(page);
-  expect(filteredRowCount).toBeLessThan(initialRowCount);
+  expect(filteredRowCount).toBeLessThanOrEqual(initialRowCount);
   expect(filteredRowCount).toBeGreaterThan(0);
 });

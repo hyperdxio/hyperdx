@@ -1003,6 +1003,7 @@ function DBSearchPage() {
               onCreate={() => {
                 setNewSourceModalOpened(true);
               }}
+              data-testid="search-source-select"
             />
             <ActionIcon
               variant="subtle"
