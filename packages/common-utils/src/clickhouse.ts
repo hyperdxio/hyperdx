@@ -6,9 +6,17 @@ import type {
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 import * as SQLParser from 'node-sql-parser';
+import objectHash from 'object-hash';
 
-import { SQLInterval } from '@/types';
+import {
+  renderChartConfig,
+  setChartSelectsAlias,
+  splitChartConfigs,
+} from '@/renderChartConfig';
+import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
 import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
+
+import { Metadata } from './metadata';
 
 export enum JSDataType {
   Array = 'array',
@@ -251,6 +259,74 @@ export function extractColumnReference(
   return iterations < maxIterations ? sql.trim() : null;
 }
 
+const castToNumber = (value: string | number) => {
+  if (typeof value === 'string') {
+    if (value.trim() === '') {
+      return NaN;
+    }
+    return Number(value);
+  }
+  return value;
+};
+
+export const computeRatio = (
+  numeratorInput: string | number,
+  denominatorInput: string | number,
+) => {
+  const numerator = castToNumber(numeratorInput);
+  const denominator = castToNumber(denominatorInput);
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    return NaN;
+  }
+
+  return numerator / denominator;
+};
+
+export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
+  const _meta = resultSet.meta;
+  const _data = resultSet.data;
+  const timestampColumn = inferTimestampColumn(_meta ?? []);
+  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
+  const firstColumn = _restColumns?.[0];
+  const secondColumn = _restColumns?.[1];
+  if (!firstColumn || !secondColumn) {
+    throw new Error(
+      `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
+    );
+  }
+  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
+  const result = {
+    ...resultSet,
+    data: _data.map(row => ({
+      [ratioColumnName]: computeRatio(
+        row[firstColumn.name],
+        row[secondColumn.name],
+      ),
+      ...(timestampColumn
+        ? {
+            [timestampColumn.name]: row[timestampColumn.name],
+          }
+        : {}),
+    })),
+    meta: [
+      {
+        name: ratioColumnName,
+        type: 'Float64',
+      },
+      ...(timestampColumn
+        ? [
+            {
+              name: timestampColumn.name,
+              type: timestampColumn.type,
+            },
+          ]
+        : []),
+    ],
+  };
+  return result;
+};
+
 export type ClickhouseClientOptions = {
   host: string;
   username?: string;
@@ -269,9 +345,9 @@ export class ClickhouseClient {
   }
 
   // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L151
-  async query<T extends DataFormat>({
+  async query<Format extends DataFormat>({
     query,
-    format = 'JSON',
+    format = 'JSON' as Format,
     query_params = {},
     abort_signal,
     clickhouse_settings,
@@ -279,39 +355,13 @@ export class ClickhouseClient {
     queryId,
   }: {
     query: string;
-    format?: string;
+    format?: Format;
     abort_signal?: AbortSignal;
     query_params?: Record<string, any>;
     clickhouse_settings?: Record<string, any>;
     connectionId?: string;
     queryId?: string;
-  }): Promise<BaseResultSet<any, T>> {
-    const isLocalMode = this.username != null && this.password != null;
-    const includeCredentials = !isLocalMode;
-    const includeCorsHeader = isLocalMode;
-    const _connectionId = isLocalMode ? undefined : connectionId;
-
-    const searchParams = new URLSearchParams([
-      ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
-      ...(_connectionId ? [['hyperdx_connection_id', _connectionId]] : []),
-      ['query', query],
-      ['default_format', format],
-      ['date_time_output_format', 'iso'],
-      ['wait_end_of_query', '0'],
-      ['cancel_http_readonly_queries_on_client_close', '1'],
-      ...(this.username ? [['user', this.username]] : []),
-      ...(this.password ? [['password', this.password]] : []),
-      ...(queryId ? [['query_id', queryId]] : []),
-      ...Object.entries(query_params).map(([key, value]) => [
-        `param_${key}`,
-        value,
-      ]),
-      ...Object.entries(clickhouse_settings ?? {}).map(([key, value]) => [
-        key,
-        value,
-      ]),
-    ]);
-
+  }): Promise<BaseResultSet<ReadableStream, Format>> {
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
@@ -328,32 +378,98 @@ export class ClickhouseClient {
 
     if (isBrowser) {
       // TODO: check if we can use the client-web directly
-      const { ResultSet } = await import('@clickhouse/client-web');
-      // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
-      const response = await fetch(`${this.host}/?${searchParams.toString()}`, {
-        ...(includeCredentials ? { credentials: 'include' } : {}),
-        signal: abort_signal,
-        method: 'GET',
-      });
-
-      // TODO: Send command to CH to cancel query on abort_signal
-      if (!response.ok) {
-        if (!isSuccessfulResponse(response.status)) {
-          const text = await response.text();
-          throw new ClickHouseQueryError(`${text}`, debugSql);
-        }
-      }
-
-      if (response.body == null) {
-        // TODO: Handle empty responses better?
-        throw new Error('Unexpected empty response from ClickHouse');
-      }
-      return new ResultSet<T>(
-        response.body,
-        format as T,
-        queryId ?? '',
-        getResponseHeaders(response),
+      const { createClient, ResultSet } = await import(
+        '@clickhouse/client-web'
       );
+
+      const isLocalMode = this.username != null && this.password != null;
+      if (isLocalMode) {
+        // LocalMode may potentially interact directly with a db, so it needs to
+        // send a get request. @clickhouse/client-web does not currently support
+        // querying via GET
+        const includeCredentials = !isLocalMode;
+        const includeCorsHeader = isLocalMode;
+
+        const searchParams = new URLSearchParams([
+          ...(includeCorsHeader ? [['add_http_cors_header', '1']] : []),
+          ['query', query],
+          ['default_format', format],
+          ['date_time_output_format', 'iso'],
+          ['wait_end_of_query', '0'],
+          ['cancel_http_readonly_queries_on_client_close', '1'],
+          ...(this.username ? [['user', this.username]] : []),
+          ...(this.password ? [['password', this.password]] : []),
+          ...(queryId ? [['query_id', queryId]] : []),
+          ...Object.entries(query_params).map(([key, value]) => [
+            `param_${key}`,
+            value,
+          ]),
+          ...Object.entries(clickhouse_settings ?? {}).map(([key, value]) => [
+            key,
+            value,
+          ]),
+        ]);
+        const headers = {};
+        if (!isLocalMode && connectionId) {
+          headers['x-hyperdx-connection-id'] = connectionId;
+        }
+        // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L200C7-L200C23
+        const response = await fetch(
+          `${this.host}/?${searchParams.toString()}`,
+          {
+            ...(includeCredentials ? { credentials: 'include' } : {}),
+            signal: abort_signal,
+            method: 'GET',
+            headers,
+          },
+        );
+
+        // TODO: Send command to CH to cancel query on abort_signal
+        if (!response.ok) {
+          if (!isSuccessfulResponse(response.status)) {
+            const text = await response.text();
+            throw new ClickHouseQueryError(`${text}`, debugSql);
+          }
+        }
+
+        if (response.body == null) {
+          // TODO: Handle empty responses better?
+          throw new Error('Unexpected empty response from ClickHouse');
+        }
+        return new ResultSet<Format>(
+          response.body,
+          format,
+          queryId ?? '',
+          getResponseHeaders(response),
+        );
+      } else {
+        if (connectionId === undefined) {
+          throw new Error('ConnectionId must be defined');
+        }
+        const clickhouseClient = createClient({
+          url: window.origin,
+          pathname: this.host,
+          http_headers: { 'x-hyperdx-connection-id': connectionId },
+          clickhouse_settings: {
+            date_time_output_format: 'iso',
+            wait_end_of_query: 0,
+            cancel_http_readonly_queries_on_client_close: 1,
+          },
+          username: '',
+          password: '',
+          compression: {
+            response: true,
+          },
+        });
+        return clickhouseClient.query<Format>({
+          query,
+          query_params,
+          format,
+          abort_signal,
+          clickhouse_settings,
+          query_id: queryId,
+        }) as Promise<BaseResultSet<ReadableStream, Format>>;
+      }
     } else if (isNode) {
       const { createClient } = await import('@clickhouse/client');
       const _client = createClient({
@@ -368,19 +484,114 @@ export class ClickhouseClient {
       });
 
       // TODO: Custom error handling
-      return _client.query({
+      return _client.query<Format>({
         query,
         query_params,
-        format: format as T,
+        format,
         abort_signal,
         clickhouse_settings,
         query_id: queryId,
-      }) as unknown as BaseResultSet<any, T>;
+      }) as unknown as Promise<BaseResultSet<ReadableStream, Format>>;
     } else {
       throw new Error(
         'ClickhouseClient is only supported in the browser or node environment',
       );
     }
+  }
+
+  // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
+  // eventually we want to generate union CTEs on the db side instead of computing it on the client side
+  async queryChartConfig({
+    config,
+    metadata,
+    opts,
+  }: {
+    config: ChartConfigWithOptDateRange;
+    metadata: Metadata;
+    opts?: {
+      abort_signal?: AbortSignal;
+      clickhouse_settings?: Record<string, any>;
+    };
+  }): Promise<ResponseJSON<Record<string, string | number>>> {
+    config = setChartSelectsAlias(config);
+    const queries: ChSql[] = await Promise.all(
+      splitChartConfigs(config).map(c => renderChartConfig(c, metadata)),
+    );
+
+    const isTimeSeries = config.displayType === 'line';
+
+    const resultSets = await Promise.all(
+      queries.map(async query => {
+        const resp = await this.query<'JSON'>({
+          query: query.sql,
+          query_params: query.params,
+          format: 'JSON',
+          abort_signal: opts?.abort_signal,
+          connectionId: config.connection,
+          clickhouse_settings: opts?.clickhouse_settings,
+        });
+        return resp.json<any>();
+      }),
+    );
+
+    if (resultSets.length === 1) {
+      return resultSets[0];
+    }
+    // metrics -> join resultSets
+    else if (resultSets.length > 1) {
+      const metaSet = new Map<string, { name: string; type: string }>();
+      const tsBucketMap = new Map<string, Record<string, string | number>>();
+      for (const resultSet of resultSets) {
+        // set up the meta data
+        if (Array.isArray(resultSet.meta)) {
+          for (const meta of resultSet.meta) {
+            const key = meta.name;
+            if (!metaSet.has(key)) {
+              metaSet.set(key, meta);
+            }
+          }
+        }
+
+        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+        const numericColumnName = numericColumn?.[0]?.name;
+        for (const row of resultSet.data) {
+          const _rowWithoutValue = numericColumnName
+            ? Object.fromEntries(
+                Object.entries(row).filter(
+                  ([key]) => key !== numericColumnName,
+                ),
+              )
+            : { ...row };
+          const ts =
+            timestampColumn != null
+              ? row[timestampColumn.name]
+              : isTimeSeries
+                ? objectHash(_rowWithoutValue)
+                : '__FIXED_TIMESTAMP__';
+          if (tsBucketMap.has(ts)) {
+            const existingRow = tsBucketMap.get(ts);
+            tsBucketMap.set(ts, {
+              ...existingRow,
+              ...row,
+            });
+          } else {
+            tsBucketMap.set(ts, row);
+          }
+        }
+      }
+
+      const isRatio =
+        config.seriesReturnType === 'ratio' && resultSets.length === 2;
+
+      const _resultSet: ResponseJSON<any> = {
+        meta: Array.from(metaSet.values()),
+        data: Array.from(tsBucketMap.values()),
+      };
+      // TODO: we should compute the ratio on the db side
+      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+    }
+    throw new Error('No result sets');
   }
 }
 
@@ -458,7 +669,12 @@ export function chSqlToAliasMap(
       ast.columns.forEach(column => {
         if (column.as != null) {
           if (column.type === 'expr' && column.expr.type === 'column_ref') {
-            aliasMap[column.as] = column.expr.column.expr.value;
+            aliasMap[column.as] =
+              column.expr.array_index && column.expr.array_index[0]?.brackets
+                ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
+                  `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                : // normal alias
+                  column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
             aliasMap[column.as] = sql.slice(
               column.expr.loc.start.offset,
@@ -494,156 +710,8 @@ export function inferTimestampColumn(
   return filterColumnMetaByType(meta, [JSDataType.Date])?.[0];
 }
 
-function inferValueColumns(meta: Array<{ name: string; type: string }>) {
+export function inferNumericColumn(meta: Array<ColumnMetaType>) {
   return filterColumnMetaByType(meta, [JSDataType.Number]);
-}
-
-function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
-  return filterColumnMetaByType(meta, [
-    JSDataType.String,
-    JSDataType.Map,
-    JSDataType.Array,
-  ]);
-}
-
-// TODO: Move to ChartUtils
-// Input: { ts, value1, value2, groupBy1, groupBy2 },
-// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
-export function formatResponseForTimeChart({
-  res,
-  dateRange,
-  granularity,
-  generateEmptyBuckets = true,
-}: {
-  dateRange: [Date, Date];
-  granularity?: SQLInterval;
-  res: ResponseJSON<Record<string, any>>;
-  generateEmptyBuckets?: boolean;
-}) {
-  const meta = res.meta;
-  const data = res.data;
-
-  if (meta == null) {
-    throw new Error('No meta data found in response');
-  }
-
-  const timestampColumn = inferTimestampColumn(meta);
-  const valueColumns = inferValueColumns(meta) ?? [];
-  const groupColumns = inferGroupColumns(meta) ?? [];
-
-  if (timestampColumn == null) {
-    throw new Error(
-      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
-    );
-  }
-
-  // Timestamp -> { tsCol, line1, line2, ...}
-  const tsBucketMap: Map<number, Record<string, any>> = new Map();
-  const lineDataMap: {
-    [keyName: string]: {
-      dataKey: string;
-      displayName: string;
-      maxValue: number;
-      minValue: number;
-      color: string | undefined;
-    };
-  } = {};
-
-  for (const row of data) {
-    const date = new Date(row[timestampColumn.name]);
-    const ts = date.getTime() / 1000;
-
-    for (const valueColumn of valueColumns) {
-      const tsBucket = tsBucketMap.get(ts) ?? {};
-
-      const keyName = [
-        valueColumn.name,
-        ...groupColumns.map(g => row[g.name]),
-      ].join(' · ');
-
-      // UInt64 are returned as strings, we'll convert to number
-      // and accept a bit of floating point error
-      const rawValue = row[valueColumn.name];
-      const value =
-        typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
-
-      tsBucketMap.set(ts, {
-        ...tsBucket,
-        [timestampColumn.name]: ts,
-        [keyName]: value,
-      });
-
-      // TODO: Set name and color correctly
-      lineDataMap[keyName] = {
-        dataKey: keyName,
-        displayName: keyName,
-        color: undefined,
-        maxValue: Math.max(
-          lineDataMap[keyName]?.maxValue ?? Number.NEGATIVE_INFINITY,
-          value,
-        ),
-        minValue: Math.min(
-          lineDataMap[keyName]?.minValue ?? Number.POSITIVE_INFINITY,
-          value,
-        ),
-      };
-    }
-  }
-
-  // TODO: Custom sort and truncate top N lines
-  const sortedLineDataMap = Object.values(lineDataMap).sort((a, b) => {
-    return a.maxValue - b.maxValue;
-  });
-
-  if (generateEmptyBuckets && granularity != null) {
-    // Zero fill TODO: Make this an option
-    const generatedTsBuckets = timeBucketByGranularity(
-      dateRange[0],
-      dateRange[1],
-      granularity,
-    );
-
-    generatedTsBuckets.forEach(date => {
-      const ts = date.getTime() / 1000;
-      const tsBucket = tsBucketMap.get(ts);
-
-      if (tsBucket == null) {
-        const tsBucket: Record<string, any> = {
-          [timestampColumn.name]: ts,
-        };
-
-        for (const line of sortedLineDataMap) {
-          tsBucket[line.dataKey] = 0;
-        }
-
-        tsBucketMap.set(ts, tsBucket);
-      } else {
-        for (const line of sortedLineDataMap) {
-          if (tsBucket[line.dataKey] == null) {
-            tsBucket[line.dataKey] = 0;
-          }
-        }
-        tsBucketMap.set(ts, tsBucket);
-      }
-    });
-  }
-
-  // Sort results again by timestamp
-  const graphResults: {
-    [key: string]: number | undefined;
-  }[] = Array.from(tsBucketMap.values()).sort(
-    (a, b) => a[timestampColumn.name] - b[timestampColumn.name],
-  );
-
-  // TODO: Return line color and names
-  return {
-    // dateRange: [minDate, maxDate],
-    graphResults,
-    timestampColumn,
-    groupKeys: sortedLineDataMap.map(l => l.dataKey),
-    lineNames: sortedLineDataMap.map(l => l.displayName),
-    lineColors: sortedLineDataMap.map(l => l.color),
-  };
 }
 
 export type ColumnMeta = {

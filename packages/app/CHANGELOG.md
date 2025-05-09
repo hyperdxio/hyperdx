@@ -1,5 +1,83 @@
 # @hyperdx/app
 
+## 2.0.0-beta.16
+
+### Patch Changes
+
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+- Updated dependencies [931d738]
+  - @hyperdx/common-utils@0.2.0-beta.5
+
+## 2.0.0-beta.15
+
+### Patch Changes
+
+- 7de8916: Removes trailing slash for connection urls
+- cfdd523: feat: clickhouse queries are by default conducted through the clickhouse library via POST request. localMode still uses GET for CORS purposes
+- 6dc6989: feat: Automatically use last used source when loading search page
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- Updated dependencies [79fe30f]
+- Updated dependencies [cfdd523]
+- Updated dependencies [92a4800]
+- Updated dependencies [7f0b397]
+  - @hyperdx/common-utils@0.2.0-beta.4
+
+## 2.0.0-beta.14
+
+### Patch Changes
+
+- 56e39dc: 36c3edc fix: remove several source change forms throughout the log drawer
+- 092a292: fix: autocomplete for key-values complete for v2 lucene
+- 2f626e1: fix: metric name filtering for some metadata
+- f5e9a07: chore: bump node version to v22
+- b16c8e1: feat: compute charts ratio
+- 08009ac: feat: add saved filters for searches
+- db761ba: fix: remove originalWhere tag from view. not used anyways
+- 8c95b9e: Add search history
+- Updated dependencies [092a292]
+- Updated dependencies [2f626e1]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [4865ce7]
+  - @hyperdx/common-utils@0.2.0-beta.3
+
+## 2.0.0-beta.13
+
+### Minor Changes
+
+- 9579251: Stores the collapse vs expand status of the side navigation in local storage so it's carried across browser windows/sessions.
+
+### Patch Changes
+
+- 3be7f4d: fix: input does not overlap with language select button anymore
+- 2e350e2: feat: implement logs > metrics correlation flow + introduce convertV1ChartConfigToV2
+- a6fd5e3: feat: introduce k8s preset dashboard
+- a9dfa14: Added support to CTE rendering where you can now specify a CTE using a full chart config object instance. This CTE capability is then used to avoid the URI too long error for delta event queries.
+- 5a10ae1: fix: delete huge z-value for tooltip
+- 6864836: fix: don't show ellipses on search when query is in-flight
+- b99236d: fix: autocomplete options for dashboard page
+- 5db2767: Fixed CI linting and UI release task.
+- 2580ddd: chore: bump next to v13.5.10
+- 5044083: Session Replay tab for traces is disabled unless the source is configured with a sessionId
+- 6dafb87: fix: View Events not shown for multiple series; grabs where clause when single series
+- decd622: fix: k8s dashboard uptime metrics + warning k8s event body
+- e884d85: fix: metrics > logs correlation flow
+- e5a210a: feat: support search on multi implicit fields (BETA)
+- Updated dependencies [50ce38f]
+- Updated dependencies [2e350e2]
+- Updated dependencies [a6fd5e3]
+- Updated dependencies [a9dfa14]
+- Updated dependencies [e002c2f]
+- Updated dependencies [b9f7d32]
+- Updated dependencies [eaa6bfa]
+- Updated dependencies [bd9dc18]
+- Updated dependencies [5db2767]
+- Updated dependencies [414ff92]
+- Updated dependencies [e884d85]
+- Updated dependencies [e5a210a]
+  - @hyperdx/common-utils@0.2.0-beta.2
+
 ## 2.0.0-beta.12
 
 ### Patch Changes

@@ -1,5 +1,69 @@
 # @hyperdx/api
 
+## 2.0.0-beta.16
+
+### Patch Changes
+
+- 1674ab8: moved swagger to dependencies instead of devDependencies
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+- Updated dependencies [931d738]
+  - @hyperdx/common-utils@0.2.0-beta.5
+
+## 2.0.0-beta.15
+
+### Minor Changes
+
+- 79fe30f: Queries depending on numeric aggregates now use the type's default value (e.g. 0) instead of null when dealing with non-numeric data.
+
+### Patch Changes
+
+- 9a9581b: Adds external API for alerts and dashboards
+- 293a2af: Adds openapidoc annotations for spec generation and swagger route for development
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- Updated dependencies [79fe30f]
+- Updated dependencies [cfdd523]
+- Updated dependencies [92a4800]
+- Updated dependencies [7f0b397]
+  - @hyperdx/common-utils@0.2.0-beta.4
+
+## 2.0.0-beta.14
+
+### Patch Changes
+
+- e5dfefb: Added test cases for the webhook and source routes.
+- f5e9a07: chore: bump node version to v22
+- Updated dependencies [092a292]
+- Updated dependencies [2f626e1]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [4865ce7]
+  - @hyperdx/common-utils@0.2.0-beta.3
+
+## 2.0.0-beta.13
+
+### Patch Changes
+
+- 50ce38f: Histogram metric query test cases
+- 2e350e2: feat: implement logs > metrics correlation flow + introduce convertV1ChartConfigToV2
+- b9f7d32: Refactored renderWith to simplify logic and ship more tests with the changes.
+- 5db2767: Fixed CI linting and UI release task.
+- d326610: feat: introduce RUN_SCHEDULED_TASKS_EXTERNALLY + enable in-app task
+- 414ff92: perf + fix: single clickhouse proxy middleware instance
+- Updated dependencies [50ce38f]
+- Updated dependencies [2e350e2]
+- Updated dependencies [a6fd5e3]
+- Updated dependencies [a9dfa14]
+- Updated dependencies [e002c2f]
+- Updated dependencies [b9f7d32]
+- Updated dependencies [eaa6bfa]
+- Updated dependencies [bd9dc18]
+- Updated dependencies [5db2767]
+- Updated dependencies [414ff92]
+- Updated dependencies [e884d85]
+- Updated dependencies [e5a210a]
+  - @hyperdx/common-utils@0.2.0-beta.2
+
 ## 2.0.0-beta.12
 
 ### Patch Changes

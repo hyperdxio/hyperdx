@@ -99,6 +99,25 @@ export default function OnboardingModal({
                     password: 'demo',
                   },
                 });
+                const metricsSource = await createSourceMutation.mutateAsync({
+                  source: {
+                    kind: SourceKind.Metric,
+                    name: 'Demo Metrics',
+                    connection: 'local',
+                    from: {
+                      databaseName: 'default',
+                      tableName: '',
+                    },
+                    timestampValueExpression: 'TimeUnix',
+                    serviceNameExpression: 'ServiceName',
+                    metricTables: {
+                      gauge: 'otel_metrics_gauge',
+                      histogram: 'otel_metrics_histogram',
+                      sum: 'otel_metrics_sum',
+                    },
+                    resourceAttributesExpression: 'ResourceAttributes',
+                  },
+                });
                 const traceSource = await createSourceMutation.mutateAsync({
                   source: {
                     kind: SourceKind.Trace,
@@ -125,9 +144,10 @@ export default function OnboardingModal({
                     logSourceId: 'l-758211293',
                     statusCodeExpression: 'StatusCode',
                     statusMessageExpression: 'StatusMessage',
+                    metricSourceId: metricsSource.id,
                   },
                 });
-                await createSourceMutation.mutateAsync({
+                const logSource = await createSourceMutation.mutateAsync({
                   source: {
                     kind: SourceKind.Log,
                     name: 'Demo Logs',
@@ -139,6 +159,29 @@ export default function OnboardingModal({
                     timestampValueExpression: 'TimestampTime',
                     defaultTableSelectExpression:
                       'Timestamp, ServiceName, SeverityText, Body',
+                    serviceNameExpression: 'ServiceName',
+                    severityTextExpression: 'SeverityText',
+                    eventAttributesExpression: 'LogAttributes',
+                    resourceAttributesExpression: 'ResourceAttributes',
+                    traceSourceId: traceSource.id,
+                    traceIdExpression: 'TraceId',
+                    spanIdExpression: 'SpanId',
+                    implicitColumnExpression: 'Body',
+                    metricSourceId: metricsSource.id,
+                  },
+                });
+                const sessionSource = await createSourceMutation.mutateAsync({
+                  source: {
+                    kind: SourceKind.Session,
+                    name: 'Demo Sessions',
+                    connection: 'local',
+                    from: {
+                      databaseName: 'default',
+                      tableName: 'hyperdx_sessions',
+                    },
+                    timestampValueExpression: 'TimestampTime',
+                    defaultTableSelectExpression:
+                      'Timestamp, ServiceName, Body',
                     serviceNameExpression: 'ServiceName',
                     severityTextExpression: 'SeverityText',
                     eventAttributesExpression: 'LogAttributes',

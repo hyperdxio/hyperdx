@@ -16,6 +16,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  BarProps,
   CartesianGrid,
   Label,
   Legend,
@@ -32,14 +33,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
-import { useMultiSeriesChartV2 } from '@/api';
-import {
-  convertGranularityToSeconds,
-  Granularity,
-  seriesColumns,
-  seriesToUrlSearchQueryParam,
-} from '@/ChartUtils';
-import type { ChartSeries, NumberFormat } from '@/types';
+import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
 
 import { FormatTime, useFormatTime } from './useFormatTime';
@@ -291,6 +285,20 @@ export const MemoChart = memo(function MemoChart({
 
       const color = lineColors[i] ?? _color;
 
+      const StackedBarWithOverlap = (props: BarProps) => {
+        const { x, y, width, height, fill } = props;
+        // Add a tiny bit to the height to create overlap. Otherwise there's a gap
+        return (
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height && height > 0 ? height + 0.5 : 0}
+            fill={fill}
+          />
+        );
+      };
+
       return displayType === 'stacked_bar' ? (
         <Bar
           key={key}
@@ -301,6 +309,7 @@ export const MemoChart = memo(function MemoChart({
           opacity={opacity}
           stackId="1"
           isAnimationActive={false}
+          shape={<StackedBarWithOverlap dataKey={key} />}
         />
       ) : (
         <Area
@@ -495,7 +504,7 @@ export const MemoChart = memo(function MemoChart({
         <Tooltip
           content={<HDXLineChartTooltip numberFormat={numberFormat} />}
           wrapperStyle={{
-            zIndex: 1000,
+            zIndex: 1,
           }}
           allowEscapeViewBox={{ y: true }}
         />
@@ -532,313 +541,3 @@ export const MemoChart = memo(function MemoChart({
     </ResponsiveContainer>
   );
 });
-
-const HDXMultiSeriesTimeChart = memo(
-  ({
-    config: {
-      series,
-      granularity,
-      dateRange,
-      seriesReturnType = 'column',
-      displayType: displayTypeProp = DisplayType.Line,
-    },
-    onSettled,
-    referenceLines,
-    showDisplaySwitcher = true,
-    setDisplayType,
-    logReferenceTimestamp,
-  }: {
-    config: {
-      series: ChartSeries[];
-      granularity: Granularity;
-      dateRange: [Date, Date] | Readonly<[Date, Date]>;
-      seriesReturnType: 'ratio' | 'column';
-      displayType?: DisplayType;
-    };
-    onSettled?: () => void;
-    referenceLines?: React.ReactNode;
-    showDisplaySwitcher?: boolean;
-    setDisplayType?: (type: DisplayType) => void;
-    logReferenceTimestamp?: number;
-  }) => {
-    const { data, isError, isLoading } = useMultiSeriesChartV2(
-      {
-        series,
-        granularity,
-        endDate: dateRange[1] ?? new Date(),
-        startDate: dateRange[0] ?? new Date(),
-        seriesReturnType,
-      },
-      {
-        enabled:
-          series.length > 0 &&
-          series[0].type === 'time' &&
-          series[0].table === 'metrics' &&
-          series[0].field == null
-            ? false
-            : true,
-      },
-    );
-
-    const tsBucketMap = new Map();
-    let graphResults: {
-      ts_bucket: number;
-      [key: string]: number | undefined;
-    }[] = [];
-
-    // TODO: FIX THIS COUNTER
-    let totalGroups = 0;
-    const groupSet = new Set(); // to count how many unique groups there were
-
-    const lineDataMap: {
-      [seriesGroup: string]: {
-        dataKey: string;
-        displayName: string;
-        color?: string;
-      };
-    } = {};
-
-    const seriesMeta = seriesColumns({
-      series,
-      seriesReturnType,
-    });
-
-    // Each row of data will contain the ts_bucket, group name
-    // and a data value per series, we just need to turn them all into keys
-    if (data != null) {
-      for (const row of data.data) {
-        groupSet.add(`${row.group}`);
-
-        const tsBucket = tsBucketMap.get(row.ts_bucket) ?? {};
-        tsBucketMap.set(row.ts_bucket, {
-          ...tsBucket,
-          ts_bucket: row.ts_bucket,
-          ...seriesMeta.reduce((acc, meta, i) => {
-            // We set an arbitrary data key that is unique
-            // per series/group
-            const dataKey = `series_${i}.data:::${row.group}`;
-
-            const hasGroup = Array.isArray(row.group) && row.group.length > 0;
-
-            const displayName =
-              series.length === 1
-                ? // If there's only one series, just show the group, unless there is no group
-                  hasGroup
-                  ? `${row.group}`
-                  : meta.displayName
-                : // Otherwise, show the series and a group if there is any
-                  `${hasGroup ? `${row.group} • ` : ''}${meta.displayName}`;
-
-            const color = meta.color;
-
-            acc[dataKey] = row[meta.dataKey];
-            lineDataMap[dataKey] = {
-              dataKey,
-              displayName,
-              color,
-            };
-            return acc;
-          }, {} as any),
-        });
-      }
-      graphResults = Array.from(tsBucketMap.values()).sort(
-        (a, b) => a.ts_bucket - b.ts_bucket,
-      );
-      totalGroups = groupSet.size;
-    }
-
-    const groupKeys = Object.values(lineDataMap).map(s => s.dataKey);
-    const lineNames = Object.values(lineDataMap).map(s => s.displayName);
-    const lineColors = Object.values(lineDataMap).map(s => s.color);
-
-    const [activeClickPayload, setActiveClickPayload] = useState<
-      | {
-          x: number;
-          y: number;
-          activeLabel: string;
-          xPerc: number;
-          yPerc: number;
-        }
-      | undefined
-    >(undefined);
-
-    useEffect(() => {
-      const onClickHandler = () => {
-        if (activeClickPayload) {
-          setActiveClickPayload(undefined);
-        }
-      };
-      document.addEventListener('click', onClickHandler);
-      return () => document.removeEventListener('click', onClickHandler);
-    }, [activeClickPayload]);
-
-    const clickedActiveLabelDate =
-      activeClickPayload?.activeLabel != null
-        ? new Date(Number.parseInt(activeClickPayload.activeLabel) * 1000)
-        : undefined;
-
-    let qparams: URLSearchParams | undefined;
-
-    if (clickedActiveLabelDate != null) {
-      const to = add(clickedActiveLabelDate, {
-        seconds: convertGranularityToSeconds(granularity),
-      });
-      qparams = seriesToUrlSearchQueryParam({
-        series,
-        dateRange: [clickedActiveLabelDate, to],
-      });
-    }
-
-    const numberFormat =
-      series[0].type === 'time' ? series[0]?.numberFormat : undefined;
-
-    // To enable backward compatibility, allow non-controlled usage of displayType
-    const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
-
-    const displayType = useMemo(() => {
-      if (setDisplayType) {
-        return displayTypeProp;
-      } else {
-        return displayTypeLocal;
-      }
-    }, [displayTypeLocal, displayTypeProp, setDisplayType]);
-
-    const handleSetDisplayType = (type: DisplayType) => {
-      if (setDisplayType) {
-        setDisplayType(type);
-      } else {
-        setDisplayTypeLocal(type);
-      }
-    };
-
-    return isLoading && !data ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        Loading Chart Data...
-      </div>
-    ) : isError ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        Error loading chart, please try again or contact support.
-      </div>
-    ) : graphResults.length === 0 ? (
-      <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-        No data found within time range.
-      </div>
-    ) : (
-      <div
-        // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
-        style={{
-          position: 'relative',
-          width: '100%',
-          height: '100%',
-          flexGrow: 1,
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            top: 0,
-          }}
-        >
-          {activeClickPayload != null && clickedActiveLabelDate != null ? (
-            <div
-              className="bg-grey px-3 py-2 rounded fs-8"
-              style={{
-                zIndex: 5,
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                visibility: 'visible',
-                transform: `translate(${
-                  activeClickPayload.xPerc > 0.5
-                    ? (activeClickPayload?.x ?? 0) - 130
-                    : (activeClickPayload?.x ?? 0) + 4
-                }px, ${activeClickPayload?.y ?? 0}px)`,
-              }}
-            >
-              <Link
-                href={`/search?${qparams?.toString()}`}
-                className="text-white-hover text-decoration-none"
-              >
-                <i className="bi bi-search me-1"></i> View Events
-              </Link>
-            </div>
-          ) : null}
-          {/* {totalGroups > groupKeys.length ? (
-            <div
-              className="bg-grey px-3 py-2 rounded fs-8"
-              style={{
-                zIndex: 5,
-                position: 'absolute',
-                top: 0,
-                left: 50,
-                visibility: 'visible',
-              }}
-              title={`Only the top ${groupKeys.length} groups are shown, ${
-                totalGroups - groupKeys.length
-              } groups are hidden. Try grouping by a different field.`}
-            >
-              <span className="text-muted-hover text-decoration-none fs-8">
-                <i className="bi bi-exclamation-triangle"></i> Only top{' '}
-                {groupKeys.length} groups shown
-              </span>
-            </div>
-            ) : null*/}
-          {showDisplaySwitcher && (
-            <div
-              className="bg-grey px-3 py-2 rounded fs-8"
-              style={{
-                zIndex: 5,
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                visibility: 'visible',
-              }}
-            >
-              <span
-                className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
-                  'text-success': displayType === 'line',
-                  'text-muted-hover': displayType !== 'line',
-                })}
-                role="button"
-                title="Display as line chart"
-                onClick={() => handleSetDisplayType(DisplayType.Line)}
-              >
-                <i className="bi bi-graph-up"></i>
-              </span>
-              <span
-                className={cx('text-decoration-none fs-7 cursor-pointer', {
-                  'text-success': displayType === DisplayType.StackedBar,
-                  'text-muted-hover': displayType !== DisplayType.StackedBar,
-                })}
-                role="button"
-                title="Display as bar chart"
-                onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
-              >
-                <i className="bi bi-bar-chart"></i>
-              </span>
-            </div>
-          )}
-          <MemoChart
-            isLoading={isLoading}
-            lineNames={lineNames}
-            lineColors={lineColors}
-            graphResults={graphResults}
-            groupKeys={groupKeys}
-            isClickActive={activeClickPayload}
-            setIsClickActive={setActiveClickPayload}
-            dateRange={dateRange}
-            displayType={displayType}
-            numberFormat={numberFormat}
-            logReferenceTimestamp={logReferenceTimestamp}
-            referenceLines={referenceLines}
-          />
-        </div>
-      </div>
-    );
-  },
-);
-
-export default HDXMultiSeriesTimeChart;

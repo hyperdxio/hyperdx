@@ -1,5 +1,10 @@
+import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import { Field, TableMetadata } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnection,
+  TableMetadata,
+} from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -8,6 +13,7 @@ import {
 } from '@tanstack/react-query';
 
 import { getMetadata } from '@/metadata';
+import { toArray } from '@/utils';
 
 export function useColumns(
   {
@@ -36,26 +42,27 @@ export function useColumns(
 }
 
 export function useAllFields(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
+  const tableConnections = Array.isArray(_tableConnections)
+    ? _tableConnections
+    : [_tableConnections];
   const metadata = getMetadata();
   return useQuery<Field[]>({
-    queryKey: ['useMetadata.useAllFields', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useAllFields',
+      ...tableConnections.map(tc => ({ ...tc })),
+    ],
     queryFn: async () => {
-      return metadata.getAllFields({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      const fields2d = await Promise.all(
+        tableConnections.map(tc => metadata.getAllFields(tc)),
+      );
+
+      // skip deduplication if not needed
+      if (fields2d.length === 1) return fields2d[0];
+
+      return deduplicate2dArray<Field>(fields2d);
     },
     ...options,
   });
@@ -88,30 +95,63 @@ export function useTableMetadata(
   });
 }
 
-export function useGetKeyValues({
-  chartConfig,
-  keys,
-  limit,
-  disableRowLimit,
-}: {
-  chartConfig: ChartConfigWithDateRange;
-  keys: string[];
-  limit?: number;
-  disableRowLimit?: boolean;
-}) {
+export function useGetKeyValues(
+  {
+    chartConfigs,
+    keys,
+    limit,
+    disableRowLimit,
+  }: {
+    chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
+    keys: string[];
+    limit?: number;
+    disableRowLimit?: boolean;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
   const metadata = getMetadata();
-  return useQuery({
-    queryKey: ['useMetadata.useGetKeyValues', { chartConfig, keys }],
-    queryFn: async () => {
-      return metadata.getKeyValues({
-        chartConfig,
-        keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
-        limit,
-        disableRowLimit,
-      });
-    },
+  const chartConfigsArr = toArray(chartConfigs);
+  return useQuery<{ key: string; value: string[] }[]>({
+    queryKey: [
+      'useMetadata.useGetKeyValues',
+      ...chartConfigsArr.map(cc => ({ ...cc })),
+      ...keys,
+    ],
+    queryFn: async () =>
+      (
+        await Promise.all(
+          chartConfigsArr.map(chartConfig =>
+            metadata.getKeyValues({
+              chartConfig,
+              keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+              limit,
+              disableRowLimit,
+            }),
+          ),
+        )
+      ).flatMap(v => v),
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
+    ...options,
   });
+}
+
+export function deduplicateArray<T extends object>(array: T[]): T[] {
+  return deduplicate2dArray([array]);
+}
+
+export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
+  // deduplicate common fields
+  const array: T[] = [];
+  const set = new Set<string>();
+  for (const _array of array2d) {
+    for (const elem of _array) {
+      const key = objectHash.sha1(elem);
+      if (set.has(key)) continue;
+      set.add(key);
+      array.push(elem);
+    }
+  }
+  return array;
 }

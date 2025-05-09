@@ -1,11 +1,45 @@
 @import './variables';
 
+/* stylelint-disable selector-pseudo-class-no-unknown */
 .filtersPanel {
-  width: 220px;
-  max-height: 100%;
+  position: relative;
+  min-width: 200px;
+  max-width: 50%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background-color: #00000030;
-  flex-shrink: 0;
   word-break: break-all;
+  flex-shrink: 0;
+  flex-grow: 0;
+  border-right: 1px solid var(--mantine-color-dark-6);
+  overflow: hidden;
+  z-index: 1;
+
+  :global {
+    .mantine-TextInput-wrapper {
+      background-color: transparent;
+    }
+
+    .mantine-TextInput-input {
+      height: 20px;
+      min-height: 20px;
+      background-color: transparent;
+      border: none !important;
+      color: var(--mantine-color-gray-3);
+      font-size: var(--mantine-font-size-xs);
+
+      &::placeholder {
+        color: var(--mantine-color-gray-6);
+        font-weight: bold;
+      }
+
+      &:focus {
+        border: none;
+        outline: none;
+      }
+    }
+  }
 }
 
 .textButton {
@@ -24,7 +58,8 @@
 
 .filterCheckbox {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 20px;
   padding: 2px 6px;
   justify-content: space-between;
   align-items: center;
@@ -36,7 +71,7 @@
     opacity: 0.8;
   }
 
-  .textButton {
+  .filterActions {
     position: absolute;
     right: 0;
     top: 0;
@@ -44,15 +79,25 @@
     display: none;
     z-index: 1;
     backdrop-filter: blur(4px);
-    padding: 0 8px;
     border-radius: 4px;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+    background-color: $slate-950;
 
-    &:hover {
-      background-color: $slate-900;
-    }
+    .textButton {
+      padding: 2px 6px;
+      border-radius: 3px;
 
-    &:active {
-      background-color: $slate-950;
+      &:hover {
+        background-color: $slate-800;
+        color: $slate-200;
+      }
+
+      &:active {
+        background-color: $slate-700;
+        color: $slate-100;
+      }
     }
   }
 
@@ -63,8 +108,17 @@
 
     background-color: $slate-950;
 
-    .textButton {
-      display: block;
+    .filterActions {
+      display: flex;
     }
   }
+}
+
+.searchPageContainer {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
 }

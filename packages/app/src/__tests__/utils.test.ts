@@ -1,11 +1,15 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
+import * as utils from '../utils';
 import {
   formatAttributeClause,
   formatDate,
   formatNumber,
   getMetricTableName,
+  stripTrailingSlash,
+  useQueryHistory,
 } from '../utils';
 
 describe('utils', () => {
@@ -266,5 +270,312 @@ describe('formatNumber', () => {
       };
       expect(formatNumber(1234567, format)).toBe('1m');
     });
+  });
+});
+
+describe('useLocalStorage', () => {
+  // Create a mock for localStorage
+  let localStorageMock: jest.Mocked<Storage>;
+
+  beforeEach(() => {
+    // Clear all mocks between tests
+    jest.clearAllMocks();
+
+    // Create localStorage mock
+    localStorageMock = {
+      getItem: jest.fn().mockImplementation((_: string) => null),
+      setItem: jest.fn(),
+      removeItem: jest.fn(),
+      clear: jest.fn(),
+      key: jest.fn(),
+      length: 0,
+    };
+
+    // Replace window.localStorage with our mock
+    Object.defineProperty(window, 'localStorage', {
+      value: localStorageMock,
+      writable: true,
+    });
+  });
+
+  afterAll(() => {
+    // Restore original implementations
+    jest.restoreAllMocks();
+  });
+
+  test('should initialize with initial value when localStorage is empty', () => {
+    // Mock localStorage.getItem to return null (empty)
+    localStorageMock.getItem.mockReturnValueOnce(null);
+
+    const initialValue = { test: 'value' };
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', initialValue),
+    );
+
+    // Check if initialized with initial value
+    expect(result.current[0]).toEqual(initialValue);
+
+    // Verify localStorage was checked
+    expect(localStorageMock.getItem).toHaveBeenCalledWith('testKey');
+  });
+
+  test('should retrieve existing value from localStorage', () => {
+    // Mock localStorage to return existing value
+    const existingValue = { test: 'existing' };
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(existingValue));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', { test: 'default' }),
+    );
+
+    // Should use the value from localStorage, not the initial value
+    expect(result.current[0]).toEqual(existingValue);
+    expect(localStorageMock.getItem).toHaveBeenCalledWith('testKey');
+  });
+
+  test('should update localStorage when setValue is called', () => {
+    localStorageMock.getItem.mockReturnValueOnce(null);
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
+
+    // Update value
+    const newValue = 'updated';
+    act(() => {
+      result.current[1](newValue);
+    });
+
+    // Check if state updated
+    expect(result.current[0]).toBe(newValue);
+
+    // Check if localStorage was updated
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'testKey',
+      JSON.stringify(newValue),
+    );
+  });
+
+  test('should handle functional updates', () => {
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(0));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage<number>('testKey', 0),
+    );
+
+    // Update using function
+    act(() => {
+      result.current[1](prev => prev + 1);
+    });
+
+    // Check if state updated correctly
+    expect(result.current[0]).toBe(1);
+
+    // Check if localStorage was updated
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'testKey',
+      JSON.stringify(1),
+    );
+  });
+
+  test('should handle storage event from another window', () => {
+    // Initial setup
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial'));
+
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
+
+    // Update mock to return new value when checked after event
+    localStorageMock.getItem.mockReturnValue(JSON.stringify('external update'));
+
+    // Dispatch storage event
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'testKey',
+          newValue: JSON.stringify('external update'),
+        }),
+      );
+    });
+
+    // State should be updated
+    expect(result.current[0]).toBe('external update');
+  });
+
+  test('should handle customStorage event from same window but different hook instance', () => {
+    // First hook instance
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial1'));
+    const { result: result1 } = renderHook(() =>
+      utils.useLocalStorage('sharedKey', 'initial1'),
+    );
+
+    // Second hook instance
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial1'));
+    const { result: result2 } = renderHook(() =>
+      utils.useLocalStorage('sharedKey', 'initial2'),
+    );
+
+    // Clear mock calls count
+    localStorageMock.getItem.mockClear();
+
+    // When the second hook checks localStorage after custom event
+    localStorageMock.getItem.mockReturnValue(
+      JSON.stringify('updated by hook 1'),
+    );
+
+    // Update value in the first instance
+    act(() => {
+      result1.current[1]('updated by hook 1');
+    });
+
+    // Manually trigger custom event (since it's happening within the same test)
+    act(() => {
+      const event = new CustomEvent<utils.CustomStorageChangeDetail>(
+        'customStorage',
+        {
+          detail: {
+            key: 'sharedKey',
+            instanceId: 'some-id', // Different from the instance updating
+          },
+        },
+      );
+      window.dispatchEvent(event);
+    });
+
+    // The second instance should have updated values
+    expect(result2.current[0]).toBe('updated by hook 1');
+  });
+
+  test('should not update if storage event is for a different key', () => {
+    // Initial setup
+    localStorageMock.getItem.mockReturnValueOnce(JSON.stringify('initial'));
+    const { result } = renderHook(() =>
+      utils.useLocalStorage('testKey', 'initial'),
+    );
+
+    // Clear the mock calls counter
+    localStorageMock.getItem.mockClear();
+
+    // Simulate storage event for a different key
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'differentKey',
+          newValue: JSON.stringify('different value'),
+        }),
+      );
+    });
+
+    // State should remain unchanged
+    expect(result.current[0]).toBe('initial');
+    // localStorage should not be accessed since key doesn't match
+    expect(localStorageMock.getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('stripTrailingSlash', () => {
+  it('should throw an error for nullish values', () => {
+    expect(() => stripTrailingSlash(null)).toThrow(
+      'URL must be a non-empty string',
+    );
+    expect(() => stripTrailingSlash(undefined)).toThrow(
+      'URL must be a non-empty string',
+    );
+  });
+
+  it('should throw an error for non-string values', () => {
+    expect(() => stripTrailingSlash(123 as any)).toThrow(
+      'URL must be a non-empty string',
+    );
+    expect(() => stripTrailingSlash({} as any)).toThrow(
+      'URL must be a non-empty string',
+    );
+  });
+
+  it('should remove trailing slash from URLs', () => {
+    expect(stripTrailingSlash('http://example.com/')).toBe(
+      'http://example.com',
+    );
+    expect(stripTrailingSlash('http://example.com/api/')).toBe(
+      'http://example.com/api',
+    );
+  });
+
+  it('should not modify URLs without trailing slash', () => {
+    expect(stripTrailingSlash('http://example.com')).toBe('http://example.com');
+    expect(stripTrailingSlash('http://example.com/api')).toBe(
+      'http://example.com/api',
+    );
+  });
+
+  it('should handle URLs with multiple trailing slashes', () => {
+    expect(stripTrailingSlash('http://example.com///')).toBe(
+      'http://example.com//',
+    );
+  });
+});
+
+describe('useQueryHistory', () => {
+  const mockGetItem = jest.fn();
+  const mockSetItem = jest.fn();
+  const mockRemoveItem = jest.fn();
+  const originalLocalStorage = window.localStorage;
+
+  beforeEach(() => {
+    mockGetItem.mockClear();
+    mockSetItem.mockClear();
+    mockRemoveItem.mockClear();
+    mockGetItem.mockReturnValue('["service = test3","service = test1"]');
+    Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: (...args: string[]) => mockGetItem(...args),
+        setItem: (...args: string[]) => mockSetItem(...args),
+        removeItem: (...args: string[]) => mockRemoveItem(...args),
+      },
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    Object.defineProperty(window, 'localStorage', {
+      value: originalLocalStorage,
+      configurable: true,
+    });
+  });
+
+  it('adds new query', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('service = test2');
+    });
+
+    expect(mockSetItem).toHaveBeenCalledWith(
+      'QuerySearchHistory.searchSQL',
+      '["service = test2","service = test3","service = test1"]',
+    );
+  });
+
+  it('does not add duplicate query, but change the order to front', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('service = test1');
+    });
+
+    expect(mockSetItem).toHaveBeenCalledWith(
+      'QuerySearchHistory.searchSQL',
+      '["service = test1","service = test3"]',
+    );
+  });
+
+  it('does not add empty query', () => {
+    const { result } = renderHook(() => useQueryHistory('searchSQL'));
+    const setQueryHistory = result.current[1];
+    act(() => {
+      setQueryHistory('   '); // empty after trim
+    });
+    expect(mockSetItem).not.toBeCalled();
   });
 });

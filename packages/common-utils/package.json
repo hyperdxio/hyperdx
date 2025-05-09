@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0-beta.5",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,6 +23,7 @@
     "node-sql-parser": "^5.3.5",
     "object-hash": "^3.0.0",
     "semver": "^7.5.2",
+    "sql-formatter": "^15.4.11",
     "sqlstring": "^2.3.3",
     "store2": "^2.14.4",
     "uuid": "^8.3.2",

@@ -24,8 +24,9 @@ export const MINER_API_URL = env.MINER_API_URL as string;
 export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
-export const REDIS_URL = env.REDIS_URL;
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
+export const RUN_SCHEDULED_TASKS_EXTERNALLY =
+  env.RUN_SCHEDULED_TASKS_EXTERNALLY === 'true';
 
 // Only for single container local deployments, disable authentication
 export const IS_LOCAL_APP_MODE =

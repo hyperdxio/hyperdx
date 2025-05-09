@@ -17,6 +17,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
@@ -68,6 +69,7 @@ import DBRowSidePanel from './components/DBRowSidePanel';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useAllFields } from './hooks/useMetadata';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
@@ -506,6 +508,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const { data: sources } = useSources();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
+  const tableConnections = useMemo(() => {
+    if (!dashboard) return [];
+    const tc: TableConnection[] = [];
+
+    for (const { config } of dashboard.tiles) {
+      const source = sources?.find(v => v.id === config.source);
+      if (!source) continue;
+      // TODO: will need to update this when we allow for multiple metrics per chart
+      const firstSelect = config.select[0];
+      const metricType =
+        typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
+      const tableName = getMetricTableName(source, metricType);
+      if (!tableName) continue;
+      tc.push({
+        databaseName: source.from.databaseName,
+        tableName: tableName,
+        connectionId: source.connection,
+      });
+    }
+
+    return tc;
+  }, [dashboard, sources]);
 
   const [granularity, setGranularity] = useQueryState(
     'granularity',
@@ -520,6 +544,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'whereLanguage',
     parseAsString.withDefault('lucene'),
   );
+
+  const [isLive, setIsLive] = useState(false);
 
   const { control, watch, setValue, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
@@ -557,6 +583,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
     // showRelativeInterval: isLive,
+  });
+
+  const {
+    granularityOverride,
+    isRefreshEnabled,
+    manualRefreshCooloff,
+    refresh,
+  } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const onSubmit = () => {
@@ -605,8 +642,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedTile(chart)}
             granularity={
-              granularity ?? undefined
-              // isRefreshEnabled ? granularityOverride : granularityQuery
+              isRefreshEnabled
+                ? granularityOverride
+                : (granularity ?? undefined)
             }
             filters={[
               {
@@ -673,25 +711,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [
       dashboard,
       searchedTimeRange,
-      // isRefreshEnabled,
-      // granularityOverride,
-      // granularityQuery,
+      isRefreshEnabled,
+      granularityOverride,
+      granularity,
       highlightedTileId,
       confirm,
       setDashboard,
-      granularity,
       where,
       whereLanguage,
       onTimeRangeSelect,
     ],
   );
-
-  const uniqueSources = useMemo(() => {
-    return [...new Set(dashboard?.tiles.map(tile => tile.config.source))];
-  }, [dashboard?.tiles]);
-  const { data: defaultSource } = useSource({ id: uniqueSources[0] });
-  const defaultDatabaseName = defaultSource?.from.databaseName;
-  const defaultTableName = defaultSource?.from.tableName;
 
   const deleteDashboard = useDeleteDashboard();
 
@@ -886,9 +916,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           render={({ field }) =>
             field.value === 'sql' ? (
               <SQLInlineEditorControlled
-                connectionId={defaultSource?.connection}
-                database={defaultDatabaseName}
-                table={defaultTableName}
+                tableConnections={tableConnections}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -900,9 +928,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               />
             ) : (
               <SearchInputV2
-                connectionId={defaultSource?.connection}
-                database={defaultDatabaseName}
-                table={defaultTableName}
+                tableConnections={tableConnections}
                 control={control}
                 name="where"
                 onLanguageChange={lang => setValue('whereLanguage', lang)}
@@ -921,6 +947,41 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
         />
         <GranularityPickerControlled control={control} name="granularity" />
+        <Tooltip
+          withArrow
+          label={
+            isRefreshEnabled
+              ? `Auto-refreshing with ${granularityOverride} interval`
+              : 'Enable auto-refresh'
+          }
+          fz="xs"
+          color="gray"
+        >
+          <Button
+            onClick={() => setIsLive(prev => !prev)}
+            color={isLive ? 'green' : 'gray'}
+            mr={6}
+            size="sm"
+            variant="outline"
+            title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+          >
+            Live
+          </Button>
+        </Tooltip>
+        <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+          <Button
+            onClick={refresh}
+            loading={manualRefreshCooloff}
+            disabled={manualRefreshCooloff}
+            color="gray"
+            mr={6}
+            variant="outline"
+            title="Refresh dashboard"
+            px="xs"
+          >
+            <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
+          </Button>
+        </Tooltip>
         <Button variant="outline" type="submit" color="green">
           <i className="bi bi-play"></i>
         </Button>

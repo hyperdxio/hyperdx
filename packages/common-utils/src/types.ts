@@ -43,6 +43,7 @@ export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
   'count_distinct',
+  'last_value',
   'max',
   'min',
   'quantile',
@@ -102,6 +103,12 @@ export const LimitSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
 });
+
+export const ChSqlSchema = z.object({
+  sql: z.string(),
+  params: z.record(z.string(), z.any()),
+});
+
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -115,23 +122,6 @@ export const SelectSQLStatementSchema = z.object({
   havingLanguage: SearchConditionLanguageSchema.optional(),
   orderBy: SortSpecificationListSchema.optional(),
   limit: LimitSchema.optional(),
-  with: z
-    .array(
-      z.object({
-        name: z.string(),
-        sql: z.object({
-          sql: z.string(),
-          params: z.record(z.string(), z.any()),
-        }),
-        // If true, it'll render as WITH ident AS (subquery)
-        // If false, it'll be a "variable" ex. WITH (sql) AS ident
-        // where sql can be any expression, ex. a constant string
-        // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
-        // default assume true
-        isSubquery: z.boolean().optional(),
-      }),
-    )
-    .optional(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -278,9 +268,14 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const AlertSchema = AlertBaseSchema.and(
-  zSavedSearchAlert.or(zTileAlert),
-);
+export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+  threshold: z.number().positive(),
+});
+
+export const AlertSchema = z.union([
+  z.intersection(AlertBaseSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseSchema, zTileAlert),
+]);
 
 export type Alert = z.infer<typeof AlertSchema>;
 
@@ -356,11 +351,47 @@ export const _ChartConfigSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
+  seriesReturnType: z.enum(['ratio', 'column']).optional(),
 });
 
-export const ChartConfigSchema = z.intersection(
-  _ChartConfigSchema,
+// This is a ChartConfig type without the `with` CTE clause included.
+// It needs to be a separate, named schema to avoid use ot z.lazy(...),
+// use of which allows for type mistakes to make it past linting.
+export const CteChartConfigSchema = z.intersection(
+  _ChartConfigSchema.partial({ timestampValueExpression: true }),
   SelectSQLStatementSchema,
+);
+
+export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
+
+// The `with` CTE property needs to be defined at this level, just above the
+// non-recursive chart config so that it can reference a complete chart config
+// schema. This structure does mean that we cannot nest `with` clauses but does
+// ensure the type system can catch more issues in the build pipeline.
+export const ChartConfigSchema = z.intersection(
+  z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
+  z
+    .object({
+      with: z.array(
+        z.object({
+          name: z.string(),
+
+          // Need to specify either a sql or chartConfig instance. To avoid
+          // the schema falling into an any type, the fields are separate
+          // and listed as optional.
+          sql: ChSqlSchema.optional(),
+          chartConfig: CteChartConfigSchema.optional(),
+
+          // If true, it'll render as WITH ident AS (subquery)
+          // If false, it'll be a "variable" ex. WITH (sql) AS ident
+          // where sql can be any expression, ex. a constant string
+          // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+          // default assume true
+          isSubquery: z.boolean().optional(),
+        }),
+      ),
+    })
+    .partial(),
 );
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
@@ -384,7 +415,10 @@ export const SavedChartConfigSchema = z.intersection(
     z.object({
       name: z.string(),
       source: z.string(),
-      alert: AlertBaseSchema.optional(),
+      alert: z.union([
+        AlertBaseSchema.optional(),
+        ChartAlertBaseSchema.optional(),
+      ]),
     }),
     _ChartConfigSchema.omit({
       connection: true,
@@ -425,6 +459,8 @@ export const ConnectionSchema = z.object({
   username: z.string(),
   password: z.string().optional(),
 });
+
+export type Connection = z.infer<typeof ConnectionSchema>;
 
 // --------------------------
 // TABLE SOURCES
@@ -474,6 +510,7 @@ export const SourceSchema = z.object({
   durationPrecision: z.number().min(0).max(9).optional(),
   parentSpanIdExpression: z.string().optional(),
   spanNameExpression: z.string().optional(),
+  spanEventsValueExpression: z.string().optional(),
 
   spanKindExpression: z.string().optional(),
   statusCodeExpression: z.string().optional(),
@@ -482,6 +519,7 @@ export const SourceSchema = z.object({
 
   // OTEL Metrics
   metricTables: MetricTableSchema.optional(),
+  metricSourceId: z.string().optional(),
 });
 
 export type TSource = z.infer<typeof SourceSchema>;

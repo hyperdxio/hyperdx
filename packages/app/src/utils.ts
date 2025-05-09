@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -175,10 +175,70 @@ export const useDebounce = <T>(
   return debouncedValue;
 };
 
+// localStorage key for query
+export const QUERY_LOCAL_STORAGE = {
+  KEY: 'QuerySearchHistory',
+  SEARCH_SQL: 'searchSQL',
+  SEARCH_LUCENE: 'searchLucene',
+  LIMIT: 10, // cache up to 10
+};
+
+export function getLocalStorageValue<T>(key: string): T | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const item = window.localStorage.getItem(key);
+    return item != null ? JSON.parse(item) : null;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.log(error);
+    return null;
+  }
+}
+
+export interface CustomStorageChangeDetail {
+  key: string;
+  instanceId: string;
+}
+
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State to store our value
   // Pass initial state function to useState so logic is only executed once
-  const [storedValue, setStoredValue] = useState<T>(initialValue);
+  const [storedValue, setStoredValue] = useState<T>(
+    getLocalStorageValue<T>(key) ?? initialValue,
+  );
+
+  // Create a unique ID for this hook instance
+  const [instanceId] = useState(() =>
+    Math.random().toString(36).substring(2, 9),
+  );
+
+  useEffect(() => {
+    const handleCustomStorageChange = (event: Event) => {
+      if (
+        event instanceof CustomEvent<CustomStorageChangeDetail> &&
+        event.detail.key === key &&
+        event.detail.instanceId !== instanceId
+      ) {
+        setStoredValue(getLocalStorageValue<T>(key)!);
+      }
+    };
+    const handleStorageChange = (event: Event) => {
+      if (event instanceof StorageEvent && event.key === key) {
+        setStoredValue(getLocalStorageValue<T>(key)!);
+      }
+    };
+    // check if local storage changed from current window
+    window.addEventListener('customStorage', handleCustomStorageChange);
+    // check if local storage changed from another window
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('customStorage', handleCustomStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // Fetch the value on client-side to avoid SSR issues
   useEffect(() => {
@@ -201,7 +261,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // Return a wrapped version of useState's setter function that ...
   // ... persists the new value to localStorage.
-  const setValue = (value: T | Function) => {
+  const setValue = (value: T | ((prevState: T) => T)) => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -213,6 +273,18 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       setStoredValue(valueToStore);
       // Save to local storage
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
+      // Fire off event so other localStorage hooks listening with the same key
+      // will update
+      const event = new CustomEvent<CustomStorageChangeDetail>(
+        'customStorage',
+        {
+          detail: {
+            key,
+            instanceId,
+          },
+        },
+      );
+      window.dispatchEvent(event);
     } catch (error) {
       // A more advanced implementation would handle the error case
       // eslint-disable-next-line no-console
@@ -220,6 +292,40 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   };
   return [storedValue, setValue] as const;
+}
+
+export function useQueryHistory<T>(type: string | undefined) {
+  const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
+  const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
+  const setQueryHistory = (query: string) => {
+    // do not set up anything if there is no type or empty query
+    try {
+      const trimmed = query.trim();
+      if (!type || !trimmed) return null;
+      const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
+      const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
+      _setQueryHistory(limited);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.log(`Failed to cache query history, error ${e.message}`);
+    }
+  };
+  return [queryHistory, setQueryHistory] as const;
+}
+
+export function useIntersectionObserver(onIntersect: () => void) {
+  const observer = useRef<IntersectionObserver | null>(null);
+  const observerRef = useCallback((node: Element | null) => {
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        onIntersect();
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, []);
+
+  return { observerRef };
 }
 
 export function truncateText(
@@ -291,7 +397,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 
 // Accessible chart colors
 export const COLORS = [
-  '#09D99C', // Green
+  '#20c997', // Green
   // '#F81358', // Red
   '#8250dc', // Light Purple
   '#cdad7a', // Tan
@@ -339,6 +445,22 @@ export const semanticKeyedColor = (
 
   return COLORS[index % COLORS.length];
 };
+
+export const logLevelColor = (key: string | number | undefined) => {
+  const logLevel = getLogLevelClass(`${key}`);
+  return logLevel === 'error'
+    ? '#F81358' // red
+    : logLevel === 'warn'
+      ? '#ffc107' // yellow
+      : '#20c997'; // green;
+};
+
+// order of colors for sorting. green on bottom, then yellow, then red
+export const logLevelColorOrder = [
+  logLevelColor('info'),
+  logLevelColor('warn'),
+  logLevelColor('error'),
+];
 
 const getLevelColor = (logLevel?: string) => {
   if (logLevel == null) {
@@ -618,3 +740,18 @@ export function getMetricTableName(
         metricType.toLowerCase() as keyof typeof source.metricTables
       ];
 }
+
+/**
+ * Converts (T | T[]) to T[]. If undefined, empty array
+ */
+export function toArray<T>(obj?: T | T[]): T[] {
+  return !obj ? [] : Array.isArray(obj) ? obj : [obj];
+}
+
+// Helper function to remove trailing slash
+export const stripTrailingSlash = (url: string | undefined | null): string => {
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL must be a non-empty string');
+  }
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+};

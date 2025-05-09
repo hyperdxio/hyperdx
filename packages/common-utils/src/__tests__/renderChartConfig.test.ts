@@ -1,4 +1,4 @@
-import { parameterizedQueryToSql } from '@/clickhouse';
+import { chSql, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 import {
   ChartConfigWithOptDateRange,
@@ -157,5 +157,149 @@ describe('renderChartConfig', () => {
     const generatedSql = await renderChartConfig(config, mockMetadata);
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
+  });
+
+  describe('containing CTE clauses', () => {
+    it('should render a ChSql CTE configuration correctly', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: {
+          databaseName: '',
+          tableName: 'TestCte',
+        },
+        with: [
+          { name: 'TestCte', sql: chSql`SELECT TimeUnix, Line FROM otel_logs` },
+        ],
+        select: [{ valueExpression: 'Line' }],
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should render a chart config CTE configuration correctly', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        with: [
+          {
+            name: 'Parts',
+            chartConfig: {
+              connection: 'test-connection',
+              timestampValueExpression: '',
+              select: '_part, _part_offset',
+              from: { databaseName: 'default', tableName: 'some_table' },
+              where: '',
+              whereLanguage: 'sql',
+              filters: [
+                {
+                  type: 'sql',
+                  condition: `FieldA = 'test'`,
+                },
+              ],
+              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+              limit: { limit: 1000 },
+            },
+          },
+        ],
+        select: '*',
+        filters: [
+          {
+            type: 'sql',
+            condition: `FieldA = 'test'`,
+          },
+          {
+            type: 'sql',
+            condition: `indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts))`,
+          },
+        ],
+        from: {
+          databaseName: '',
+          tableName: 'Parts',
+        },
+        where: '',
+        whereLanguage: 'sql',
+        orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+        limit: { limit: 1000 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should throw if the CTE is missing both sql and chartConfig', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        with: [
+          {
+            name: 'InvalidCTE',
+            // Intentionally omitting both sql and chartConfig properties
+          },
+        ],
+        select: [{ valueExpression: 'Line' }],
+        from: {
+          databaseName: 'default',
+          tableName: 'some_table',
+        },
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
+        "must specify either 'sql' or 'chartConfig' in with clause",
+      );
+    });
+
+    it('should throw if the CTE sql param is invalid', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        with: [
+          {
+            name: 'InvalidCTE',
+            sql: 'SELECT * FROM some_table' as any, // Intentionally not a ChSql object
+          },
+        ],
+        select: [{ valueExpression: 'Line' }],
+        from: {
+          databaseName: 'default',
+          tableName: 'some_table',
+        },
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
+        'non-conforming sql object in CTE',
+      );
+    });
+
+    it('should throw if the CTE chartConfig param is invalid', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        with: [
+          {
+            name: 'InvalidCTE',
+            chartConfig: {
+              // Missing required properties like select, from, etc.
+              connection: 'test-connection',
+            } as any, // Intentionally invalid chartConfig
+          },
+        ],
+        select: [{ valueExpression: 'Line' }],
+        from: {
+          databaseName: 'default',
+          tableName: 'some_table',
+        },
+        where: '',
+        whereLanguage: 'sql',
+      };
+
+      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
+        'non-conforming chartConfig object in CTE',
+      );
+    });
   });
 });

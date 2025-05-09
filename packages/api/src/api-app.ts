@@ -14,10 +14,11 @@ import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
-import externalRoutersV1 from './routers/external-api/v1';
+import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
 import { expressLogger } from './utils/logger';
 import passport from './utils/passport';
+import { setupSwagger } from './utils/swagger';
 
 const app: express.Application = express();
 
@@ -88,13 +89,9 @@ app.use('/', routers.rootRouter);
 // PRIVATE ROUTES
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
-app.use('/logs', isUserAuthenticated, routers.logsRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
-app.use('/metrics', isUserAuthenticated, routers.metricsRouter);
-app.use('/sessions', isUserAuthenticated, routers.sessionsRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
-app.use('/chart', isUserAuthenticated, routers.chartRouter);
 app.use('/datasources', isUserAuthenticated, routers.datasourceRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
@@ -106,8 +103,16 @@ app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 // ---------------------------------------------------------------------
 // ----------------------- External Routers ----------------------------
 // ---------------------------------------------------------------------
-// API v1
-app.use('/api/v1', externalRoutersV1);
+// API v2
+// Only initialize Swagger in development or if explicitly enabled
+if (
+  process.env.NODE_ENV !== 'production' ||
+  process.env.ENABLE_SWAGGER === 'true'
+) {
+  setupSwagger(app);
+}
+
+app.use('/api/v2', externalRoutersV2);
 
 // error handling
 app.use(appErrorHandler);

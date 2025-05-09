@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.0.0-beta.12",
+  "version": "2.0.0-beta.16",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -8,10 +8,12 @@
   },
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.0-beta.1",
+    "@hyperdx/common-utils": "^0.2.0-beta.5",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.1",
     "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/host-metrics": "^0.35.5",
+    "@opentelemetry/sdk-metrics": "^1.30.1",
     "@slack/webhook": "^6.1.0",
     "axios": "^1.6.2",
     "compression": "^1.7.4",
@@ -27,7 +29,7 @@
     "extract-domain": "^2.4.1",
     "handlebars": "^4.7.8",
     "http-graceful-shutdown": "^3.1.13",
-    "http-proxy-middleware": "^3.0.2",
+    "http-proxy-middleware": "^3.0.3",
     "jsonwebtoken": "^9.0.0",
     "lodash": "^4.17.21",
     "minimist": "^1.2.7",
@@ -41,11 +43,11 @@
     "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
     "promised-handlebars": "^2.0.1",
-    "rate-limit-redis": "^3.0.2",
-    "redis": "^4.6.8",
     "semver": "^7.5.2",
     "serialize-error": "^8.1.0",
     "sqlstring": "^2.3.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^8.3.2",
     "winston": "^3.10.0",
     "zod": "^3.24.1",
@@ -71,6 +73,7 @@
     "@types/semver": "^7.3.12",
     "@types/sqlstring": "^2.3.0",
     "@types/supertest": "^2.0.12",
+    "@types/swagger-jsdoc": "^6",
     "@types/uuid": "^8.3.4",
     "jest": "^28.1.3",
     "migrate-mongo": "^11.0.0",
@@ -96,6 +99,7 @@
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
     "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts",
     "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",
-    "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up"
+    "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up",
+    "docgen": "ts-node scripts/generate-api-docs.ts"
   }
 }

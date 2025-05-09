@@ -8,7 +8,10 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { hashCode } from '@hyperdx/common-utils/dist/utils';
+import {
+  hashCode,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -43,7 +46,7 @@ function getLocalSources(): TSource[] {
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return valueExpression.split(',')[0].trim();
+  return splitAndTrimWithBracket(valueExpression)[0];
 }
 
 export function getSpanEventBody(eventModel: TSource) {
@@ -58,14 +61,15 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 }
 
 export function getEventBody(eventModel: TSource) {
-  return (
+  const expression =
     eventModel.bodyExpression ??
     ('spanNameExpression' in eventModel
       ? eventModel?.spanNameExpression
       : undefined) ??
-    eventModel.implicitColumnExpression //??
-    // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
-  );
+    eventModel.implicitColumnExpression; //??
+  // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
+  const multiExpr = splitAndTrimWithBracket(expression ?? '');
+  return multiExpr.length === 1 ? expression : multiExpr[0]; // TODO: check if we want to show multiple columns
 }
 
 export function useSources() {
@@ -214,7 +218,7 @@ export async function inferTableSourceConfig({
       connectionId,
     })
   ).primary_key;
-  const keys = primaryKeys.split(',').map(k => k.trim());
+  const keys = splitAndTrimWithBracket(primaryKeys);
 
   const isOtelLogSchema = hasAllColumns(columns, [
     'Timestamp',
@@ -241,6 +245,9 @@ export async function inferTableSourceConfig({
     'StatusCode',
     'StatusMessage',
   ]);
+
+  // Check if SpanEvents column is available
+  const hasSpanEvents = columns.some(col => col.name === 'Events');
 
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>
@@ -295,17 +302,18 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
           statusCodeExpression: 'StatusCode',
           statusMessageExpression: 'StatusMessage',
+          ...(hasSpanEvents ? { spanEventsValueExpression: 'Events' } : {}),
         }
       : {}),
   };
 }
 
 export function getDurationMsExpression(source: TSource) {
-  return `${source.durationExpression}/1e${(source.durationPrecision ?? 9) - 3}`;
+  return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
 export function getDurationSecondsExpression(source: TSource) {
-  return `${source.durationExpression}/1e${source.durationPrecision ?? 9}`;
+  return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 
 const ReqMetricTableColumns = {

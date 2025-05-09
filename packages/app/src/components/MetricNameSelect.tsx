@@ -1,60 +1,96 @@
 import { useMemo } from 'react';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import { addDays, differenceInDays, subDays } from 'date-fns';
+import {
+  DateRange,
+  MetricsDataType,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
 
-const dateRange = [new Date(Date.now() - 1000 * 60 * 60 * 24), new Date()] as [
-  Date,
-  Date,
-];
-
-const chartConfigByMetricType = (
-  metricSource: TSource,
-  metricType: MetricsDataType,
-) => ({
-  // metricSource,
-  from: {
-    databaseName: metricSource.from.databaseName,
-    tableName: metricSource.metricTables?.[metricType] ?? '',
-  },
-  where: '',
-  whereLanguage: 'sql' as const,
-  select: '',
-  timestampValueExpression: metricSource.timestampValueExpression ?? '',
-  connection: metricSource.connection,
-  // TODO: Set proper date range (optional)
+const chartConfigByMetricType = ({
   dateRange,
-});
+  metricSource,
+  metricType,
+}: {
+  dateRange?: DateRange['dateRange'];
+  metricSource: TSource;
+  metricType: MetricsDataType;
+}) => {
+  const now = new Date();
+  let _dateRange: DateRange['dateRange'] = dateRange
+    ? dateRange
+    : [subDays(now, 1), now];
+  const diffInDays = differenceInDays(_dateRange[1], _dateRange[0]);
 
-function useMetricNames(metricSource: TSource) {
+  if (diffInDays < 1) {
+    const nextDay = addDays(_dateRange[0], 1);
+    if (nextDay > now) {
+      _dateRange = [subDays(_dateRange[1], 1), _dateRange[1]];
+    } else {
+      _dateRange = [_dateRange[0], nextDay];
+    }
+  } else if (diffInDays > 3) {
+    // most recent 3 days
+    _dateRange = [subDays(_dateRange[1], 3), _dateRange[1]];
+  }
+
+  return {
+    // metricSource,
+    from: {
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.[metricType] ?? '',
+    },
+    where: '',
+    whereLanguage: 'sql' as const,
+    select: '',
+    timestampValueExpression: metricSource.timestampValueExpression ?? '',
+    connection: metricSource.connection,
+    dateRange: _dateRange,
+  };
+};
+
+function useMetricNames(
+  metricSource: TSource,
+  dateRange?: DateRange['dateRange'],
+) {
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
     return {
-      gaugeConfig: chartConfigByMetricType(metricSource, MetricsDataType.Gauge),
-      histogramConfig: chartConfigByMetricType(
+      gaugeConfig: chartConfigByMetricType({
+        dateRange,
         metricSource,
-        MetricsDataType.Histogram,
-      ),
-      sumConfig: chartConfigByMetricType(metricSource, MetricsDataType.Sum),
+        metricType: MetricsDataType.Gauge,
+      }),
+      histogramConfig: chartConfigByMetricType({
+        dateRange,
+        metricSource,
+        metricType: MetricsDataType.Histogram,
+      }),
+      sumConfig: chartConfigByMetricType({
+        dateRange,
+        metricSource,
+        metricType: MetricsDataType.Sum,
+      }),
     };
-  }, [metricSource]);
+  }, [metricSource, dateRange]);
 
   const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
+    chartConfigs: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
+  // const { data: histogramMetrics } = useGetKeyValues({
+  //   chartConfigs: histogramConfig,
+  //   keys: ['MetricName'],
+  //   limit: MAX_METRIC_NAME_OPTIONS,
+  //   disableRowLimit: true,
+  // });
   const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
+    chartConfigs: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
@@ -62,12 +98,13 @@ function useMetricNames(metricSource: TSource) {
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
-    histogramMetrics: histogramMetrics?.[0].value,
+    // histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
   };
 }
 
 export function MetricNameSelect({
+  dateRange,
   metricType,
   metricName,
   setMetricType,
@@ -76,6 +113,7 @@ export function MetricNameSelect({
   isError,
   metricSource,
 }: {
+  dateRange?: DateRange['dateRange'];
   metricType: MetricsDataType;
   metricName: string | undefined | null;
   setMetricType: (metricType: MetricsDataType) => void;
@@ -86,8 +124,11 @@ export function MetricNameSelect({
 }) {
   const SEPARATOR = ':::::::';
 
-  const { gaugeMetrics, histogramMetrics, sumMetrics } =
-    useMetricNames(metricSource);
+  const {
+    gaugeMetrics,
+    // , histogramMetrics
+    sumMetrics,
+  } = useMetricNames(metricSource, dateRange);
 
   const options = useMemo(() => {
     return [
@@ -95,16 +136,20 @@ export function MetricNameSelect({
         value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
       })) ?? []),
-      ...(histogramMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}histogram`,
-        label: `${metric} (Histogram)`,
-      })) ?? []),
+      // ...(histogramMetrics?.map(metric => ({
+      //   value: `${metric}${SEPARATOR}histogram`,
+      //   label: `${metric} (Histogram)`,
+      // })) ?? []),
       ...(sumMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}sum`,
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
-  }, [gaugeMetrics, histogramMetrics, sumMetrics]);
+  }, [
+    gaugeMetrics,
+    // histogramMetrics,
+    sumMetrics,
+  ]);
 
   return (
     <Select

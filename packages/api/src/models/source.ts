@@ -52,6 +52,7 @@ export const Source = mongoose.model<ISource>(
       spanIdExpression: String,
       traceSourceId: String,
       sessionSourceId: String,
+      metricSourceId: String,
 
       durationExpression: String,
       durationPrecision: Number,
@@ -62,6 +63,7 @@ export const Source = mongoose.model<ISource>(
       spanKindExpression: String,
       statusCodeExpression: String,
       statusMessageExpression: String,
+      spanEventsValueExpression: String,
 
       metricTables: {
         type: {

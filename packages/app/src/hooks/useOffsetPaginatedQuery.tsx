@@ -256,47 +256,55 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
-    useInfiniteQuery<
-      TQueryFnData,
-      Error | ClickHouseQueryError,
-      TData,
-      Readonly<[string, typeof config]>,
-      TPageParam
-    >({
-      queryKey: key,
-      placeholderData: (prev: TData | undefined) => {
-        // Only preserve previous query in live mode
-        return isLive ? prev : undefined;
-      },
-      enabled,
-      initialPageParam: 0,
-      // TODO: Use initialData derived from cache to do a smarter time range fetch
-      getNextPageParam: (lastPage, allPages) => {
-        if (lastPage == null) {
-          return undefined;
-        }
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isError,
+    error,
+    isLoading,
+  } = useInfiniteQuery<
+    TQueryFnData,
+    Error | ClickHouseQueryError,
+    TData,
+    Readonly<[string, typeof config]>,
+    TPageParam
+  >({
+    queryKey: key,
+    placeholderData: (prev: TData | undefined) => {
+      // Only preserve previous query in live mode
+      return isLive ? prev : undefined;
+    },
+    enabled,
+    initialPageParam: 0,
+    // TODO: Use initialData derived from cache to do a smarter time range fetch
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage == null) {
+        return undefined;
+      }
 
-        const len = lastPage.data.length;
-        if (len === 0) {
-          return undefined;
-        }
+      const len = lastPage.data.length;
+      if (len === 0) {
+        return undefined;
+      }
 
-        const data = flattenPages(allPages);
+      const data = flattenPages(allPages);
 
-        // TODO: Need to configure overlap and account for granularity
-        return data.length;
-      },
-      staleTime: Infinity, // TODO: Pick a correct time
-      meta: {
-        queryClient,
-        hasPreviousQueries,
-      },
-      queryFn,
-      gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
-      retry: 1,
-      refetchOnWindowFocus: false,
-    });
+      // TODO: Need to configure overlap and account for granularity
+      return data.length;
+    },
+    staleTime: Infinity, // TODO: Pick a correct time
+    meta: {
+      queryClient,
+      hasPreviousQueries,
+    },
+    queryFn,
+    gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
+    retry: 1,
+    refetchOnWindowFocus: false,
+    maxPages: isLive ? 5 : undefined, // Limit number of pages kept in cache for live data
+  });
 
   const flattenedData = useMemo(() => flattenData(data), [data]);
 
@@ -307,5 +315,6 @@ export default function useOffsetPaginatedQuery(
     fetchNextPage,
     hasNextPage,
     isFetching,
+    isLoading,
   };
 }

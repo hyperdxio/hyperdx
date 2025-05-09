@@ -4,6 +4,7 @@ import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
@@ -20,13 +21,11 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import * as clickhouse from '@/clickhouse';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
-import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
 import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
@@ -315,7 +314,8 @@ export default function SessionSubpanel({
     [traceSource],
   );
 
-  const filteredEventsFilter = useMemo(
+  // Events shown in the highlighted tab
+  const highlightedEventsFilter = useMemo(
     () => ({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
@@ -364,7 +364,7 @@ export default function SessionSubpanel({
         offset: 0,
       },
       filters: [
-        filteredEventsFilter,
+        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
         ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
@@ -378,7 +378,9 @@ export default function SessionSubpanel({
       end,
       whereLanguage,
       searchedQuery,
-      filteredEventsFilter,
+      tab,
+      highlightedEventsFilter,
+      allEventsFilter,
       where,
     ],
   );
@@ -411,7 +413,7 @@ export default function SessionSubpanel({
         offset: 0,
       },
       filters: [
-        tab === 'highlighted' ? filteredEventsFilter : allEventsFilter,
+        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
         ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
@@ -426,7 +428,7 @@ export default function SessionSubpanel({
       whereLanguage,
       searchedQuery,
       tab,
-      filteredEventsFilter,
+      highlightedEventsFilter,
       allEventsFilter,
       where,
     ],
@@ -488,9 +490,7 @@ export default function SessionSubpanel({
           >
             {whereLanguage === 'sql' ? (
               <SQLInlineEditorControlled
-                connectionId={traceSource?.connection}
-                database={traceSource?.from?.databaseName}
-                table={traceSource?.from?.tableName}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -500,9 +500,7 @@ export default function SessionSubpanel({
               />
             ) : (
               <SearchInputV2
-                connectionId={traceSource?.connection}
-                database={traceSource?.from?.databaseName}
-                table={traceSource?.from?.tableName}
+                tableConnections={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 language="lucene"

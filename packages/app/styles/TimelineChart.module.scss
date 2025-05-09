@@ -5,3 +5,11 @@
     background-color: #aaaaff07;
   }
 }
+
+.labelContainer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+  position: relative;
+}

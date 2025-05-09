@@ -15,6 +15,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   DateRange,
   SearchCondition,
@@ -26,6 +27,7 @@ import {
   Alert,
   Box,
   Button,
+  Flex,
   Grid,
   Group,
   SegmentedControl,
@@ -44,7 +46,6 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
 import { withAppNav } from './layout';
-import SearchInput from './SearchInput';
 import SearchInputV2 from './SearchInputV2';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
@@ -250,7 +251,7 @@ export default function SessionsPage() {
   const where = watch('where');
   const whereLanguage = watch('whereLanguage');
   const sourceId = watch('source');
-  const { data: sessionSource } = useSource({
+  const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
     id: watch('source'),
   });
 
@@ -428,36 +429,39 @@ export default function SessionsPage() {
             return false;
           }}
         >
-          <Group gap="xs">
+          <Flex
+            gap="xs"
+            direction="column"
+            wrap="nowrap"
+            style={{ overflow: 'hidden' }}
+          >
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
               <SourceSelectControlled control={control} name="source" />
               <WhereLanguageControlled
                 name="whereLanguage"
                 control={control}
                 sqlInput={
-                  <SQLInlineEditorControlled
-                    connectionId={traceTrace?.connection}
-                    database={traceTrace?.from?.databaseName}
-                    table={traceTrace?.from?.tableName}
-                    onSubmit={onSubmit}
-                    control={control}
-                    name="where"
-                    placeholder="SQL WHERE clause (ex. column = 'foo')"
-                    onLanguageChange={lang =>
-                      setValue('whereLanguage', lang, {
-                        shouldDirty: true,
-                      })
-                    }
-                    language="sql"
-                    label="WHERE"
-                    enableHotkey
-                  />
+                  <Box style={{ width: '50%', flexGrow: 1 }}>
+                    <SQLInlineEditorControlled
+                      tableConnections={tcFromSource(traceTrace)}
+                      onSubmit={onSubmit}
+                      control={control}
+                      name="where"
+                      placeholder="SQL WHERE clause (ex. column = 'foo')"
+                      onLanguageChange={lang =>
+                        setValue('whereLanguage', lang, {
+                          shouldDirty: true,
+                        })
+                      }
+                      language="sql"
+                      label="WHERE"
+                      enableHotkey
+                    />
+                  </Box>
                 }
                 luceneInput={
                   <SearchInputV2
-                    connectionId={traceTrace?.connection}
-                    database={traceTrace?.from?.databaseName}
-                    table={traceTrace?.from?.tableName}
+                    tableConnections={tcFromSource(traceTrace)}
                     control={control}
                     name="where"
                     onLanguageChange={lang =>
@@ -482,33 +486,44 @@ export default function SessionsPage() {
                 <i className="bi bi-play"></i>
               </Button>
             </Group>
-          </Group>
+          </Flex>
         </form>
-        {isSessionsLoading === false &&
-        (sessionSource?.kind !== SourceKind.Session || traceTrace == null) ? (
-          <>
-            <Alert
-              icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-              color="gray"
-              py="xs"
-              mt="md"
-            >
-              Please select a valid session source
-            </Alert>
-            <SessionSetupInstructions />
-          </>
-        ) : sessions.length === 0 && isSessionsLoading === false ? (
-          <SessionSetupInstructions />
-        ) : (
-          <div style={{ minHeight: 0 }} className="mt-4">
-            <SessionCardList
-              onClick={session => {
-                setSelectedSession(session);
-              }}
-              sessions={sessions}
-              isSessionLoading={isSessionsLoading}
+
+        {isSessionsLoading || isSessionSourceLoading ? (
+          <div className="text-center mt-8">
+            <div
+              className="spinner-border me-2"
+              role="status"
+              style={{ width: 14, height: 14 }}
             />
+            {isSessionSourceLoading ? 'Loading...' : 'Searching sessions...'}
           </div>
+        ) : (
+          <>
+            {sessionSource && sessionSource.kind !== SourceKind.Session && (
+              <Alert
+                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+                color="gray"
+                py="xs"
+                mt="md"
+              >
+                Please select a valid session source
+              </Alert>
+            )}
+            {!sessions.length ? (
+              <SessionSetupInstructions />
+            ) : (
+              <div style={{ minHeight: 0 }} className="mt-4">
+                <SessionCardList
+                  onClick={session => {
+                    setSelectedSession(session);
+                  }}
+                  sessions={sessions}
+                  isSessionLoading={isSessionsLoading}
+                />
+              </div>
+            )}
+          </>
         )}
       </Box>
     </div>

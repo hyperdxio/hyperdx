@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM node:18.20.3-alpine AS base
+FROM node:22.14.0-alpine AS base
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
@@ -7,7 +7,7 @@ WORKDIR /app
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
 COPY ./packages/common-utils ./packages/common-utils
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.test.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
 RUN yarn install --mode=skip-build && yarn cache clean
 
 
@@ -41,7 +41,7 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
 
 
 ## prod ############################################################################################
-FROM node:18.20.3-alpine AS prod
+FROM node:22.14.0-alpine AS prod
 WORKDIR /app
 
 ENV NODE_ENV production

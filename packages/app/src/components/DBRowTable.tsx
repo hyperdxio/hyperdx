@@ -1,12 +1,22 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
+import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
 import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
   chSqlToAliasMap,
   ClickHouseQueryError,
+  ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReference,
   JSDataType,
@@ -15,8 +25,13 @@ import {
   ChartConfigWithDateRange,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text } from '@mantine/core';
-import { FetchNextPageOptions } from '@tanstack/react-query';
+import {
+  FetchNextPageOptions,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   ColumnDef,
   ColumnResizeMode,
@@ -30,6 +45,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useGroupedPatterns } from '@/hooks/usePatterns';
 import useRowWhere from '@/hooks/useRowWhere';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
@@ -76,6 +92,7 @@ function inferLogLevelColumn(rows: Record<string, any>[]) {
       if (
         (value?.length || 0) > 0 &&
         (value?.length || 0) < 512 && // avoid inspecting long strings
+        isString(value) &&
         getLogLevelClass(value) != null
       ) {
         levelCounts[key] = (levelCounts[key] ?? 0) + 1;
@@ -98,6 +115,95 @@ function inferLogLevelColumn(rows: Record<string, any>[]) {
 
   return undefined;
 }
+
+const PatternTrendChartTooltip = (props: any) => {
+  return null;
+};
+
+export const PatternTrendChart = ({
+  data,
+  dateRange,
+  color,
+}: {
+  data: { bucket: string; count: number }[];
+  dateRange: [Date, Date];
+  color?: string;
+}) => {
+  return (
+    <div
+      // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: 0,
+        }}
+      >
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <BarChart
+            width={500}
+            height={300}
+            data={data}
+            syncId="hdx"
+            syncMethod="value"
+            margin={{ top: 4, left: 0, right: 4, bottom: 0 }}
+          >
+            <XAxis
+              dataKey={'bucket'}
+              domain={[
+                dateRange[0].getTime() / 1000,
+                dateRange[1].getTime() / 1000,
+              ]}
+              interval="preserveStartEnd"
+              scale="time"
+              type="number"
+              // tickFormatter={tick =>
+              //   format(new Date(tick * 1000), 'MMM d HH:mm')
+              // }
+              tickFormatter={tick => ''}
+              minTickGap={50}
+              tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+            />
+            <YAxis
+              width={40}
+              minTickGap={25}
+              tickFormatter={(value: number) =>
+                new Intl.NumberFormat('en-US', {
+                  notation: 'compact',
+                  compactDisplay: 'short',
+                }).format(value)
+              }
+              tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+            />
+            <Bar
+              isAnimationActive={false}
+              dataKey="count"
+              stackId="a"
+              fill={color || '#20c997'}
+              maxBarSize={24}
+            />
+            {/* <Line
+              key={'count'}
+              type="monotone"
+              dataKey={'count'}
+              stroke={'#20c997'}
+              dot={false}
+            /> */}
+            <Tooltip content={<PatternTrendChartTooltip />} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
 
 export const RawLogTable = memo(
   ({
@@ -240,6 +346,7 @@ export const RawLogTable = memo(
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
+          const isMaybeSeverityText = column === logLevelColumn;
           return {
             meta: {
               column,
@@ -249,6 +356,18 @@ export const RawLogTable = memo(
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
               const value = info.getValue<any>(); // This can be any type realistically (numbers, strings, etc.)
+
+              if (column === '__hdx_pattern_trend') {
+                return (
+                  <div style={{ height: 50, width: '100%' }}>
+                    <PatternTrendChart
+                      data={value.data}
+                      dateRange={value.dateRange}
+                      // color={color}
+                    />
+                  </div>
+                );
+              }
 
               if (isDate) {
                 const date = new Date(value);
@@ -283,7 +402,8 @@ export const RawLogTable = memo(
             size:
               i === displayedColumns.length - 1
                 ? UNDEFINED_WIDTH // last column is always whatever is left
-                : (columnSizeStorage[column] ?? 150),
+                : (columnSizeStorage[column] ??
+                  (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
           };
         }) as ColumnDef<any>[]),
       ],
@@ -686,7 +806,7 @@ export const RawLogTable = memo(
   },
 );
 
-function mergeSelectWithPrimaryAndPartitionKey(
+function appendSelectWithPrimaryAndPartitionKey(
   select: SelectList,
   primaryKeys: string,
   partitionKey: string,
@@ -696,13 +816,10 @@ function mergeSelectWithPrimaryAndPartitionKey(
     .map(k => extractColumnReference(k.trim()))
     .filter((k): k is string => k != null && k.length > 0);
   const primaryKeyArr =
-    primaryKeys.trim() !== '' ? primaryKeys.split(',').map(k => k.trim()) : [];
+    primaryKeys.trim() !== '' ? splitAndTrimWithBracket(primaryKeys) : [];
   const allKeys = [...partitionKeyArr, ...primaryKeyArr];
   if (typeof select === 'string') {
-    const selectSplit = select
-      .split(',')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
     const additionalKeys = allKeys.filter(k => !selectColumns.has(k));
     return {
@@ -726,25 +843,9 @@ function getSelectLength(select: SelectList): number {
   }
 }
 
-export function DBSqlRowTable({
-  config,
-  onError,
-  onRowExpandClick,
-  highlightedLineId,
-  enabled = true,
-  isLive = false,
-  queryKeyPrefix,
-  onScroll,
-}: {
-  config: ChartConfigWithDateRange;
-  onRowExpandClick?: (where: string) => void;
-  highlightedLineId: string | undefined;
-  queryKeyPrefix?: string;
-  enabled?: boolean;
-  isLive?: boolean;
-  onScroll?: (scrollTop: number) => void;
-  onError?: () => void;
-}) {
+export function useConfigWithPrimaryAndPartitionKey(
+  config: ChartConfigWithDateRange,
+) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
     tableName: config.from.tableName,
@@ -760,13 +861,64 @@ export function DBSqlRowTable({
     }
 
     const { select, additionalKeysLength } =
-      mergeSelectWithPrimaryAndPartitionKey(
+      appendSelectWithPrimaryAndPartitionKey(
         config.select,
         primaryKey,
         partitionKey,
       );
     return { ...config, select, additionalKeysLength };
   }, [primaryKey, partitionKey, config]);
+
+  return mergedConfig;
+}
+
+export function selectColumnMapWithoutAdditionalKeys(
+  selectMeta: ColumnMetaType[] | undefined,
+  additionalKeysLength: number | undefined,
+): Map<
+  string,
+  {
+    _type: JSDataType | null;
+  }
+> {
+  if (selectMeta == null || additionalKeysLength == null) {
+    return new Map();
+  }
+  const sm = selectMeta.slice(0, selectMeta.length - additionalKeysLength);
+
+  return new Map(
+    sm?.map(c => [
+      c.name,
+      {
+        ...c,
+        _type: convertCHDataTypeToJSType(c.type),
+      },
+    ]),
+  );
+}
+
+export function DBSqlRowTable({
+  config,
+  onError,
+  onRowExpandClick,
+  highlightedLineId,
+  enabled = true,
+  isLive = false,
+  queryKeyPrefix,
+  onScroll,
+  denoiseResults = false,
+}: {
+  config: ChartConfigWithDateRange;
+  onRowExpandClick?: (where: string) => void;
+  highlightedLineId: string | undefined;
+  queryKeyPrefix?: string;
+  enabled?: boolean;
+  isLive?: boolean;
+  onScroll?: (scrollTop: number) => void;
+  onError?: (error: Error | ClickHouseQueryError) => void;
+  denoiseResults?: boolean;
+}) {
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey(config);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
@@ -782,32 +934,14 @@ export function DBSqlRowTable({
   // differ from returned columns (eg. SELECT *)
   // we have to subtract the additional key length as the pk merging
   // can dedup the columns between the user select and pk
-  const selectMeta = useMemo(
-    () =>
-      data?.meta?.slice(
-        0,
-        (data?.meta?.length ?? 0) - (mergedConfig?.additionalKeysLength ?? 0),
-      ) ?? [],
-    [data, mergedConfig],
-  );
+  const columnMap = useMemo(() => {
+    return selectColumnMapWithoutAdditionalKeys(
+      data?.meta,
+      mergedConfig?.additionalKeysLength,
+    );
+  }, [data, mergedConfig]);
 
-  const columns = useMemo(
-    () => selectMeta?.map(c => c.name) ?? [],
-    [selectMeta],
-  );
-  const columnMap = useMemo(
-    () =>
-      new Map(
-        selectMeta?.map(c => [
-          c.name,
-          {
-            ...c,
-            _type: convertCHDataTypeToJSType(c.type),
-          },
-        ]),
-      ),
-    [selectMeta],
-  );
+  const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
 
   // FIXME: do this on the db side ?
   // Or, the react-table should render object-type cells as JSON.stringify
@@ -838,7 +972,7 @@ export function DBSqlRowTable({
       });
       return newRow;
     });
-  }, [data, objectTypeColumns]);
+  }, [data, objectTypeColumns, columnMap]);
 
   const aliasMap = chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} });
 
@@ -852,28 +986,122 @@ export function DBSqlRowTable({
   );
 
   useEffect(() => {
-    if (isError && onError) {
-      onError();
+    if (isError && onError && error) {
+      onError(error);
     }
-  }, [isError, onError]);
+  }, [isError, onError, error]);
+
+  const patternColumn = columns[columns.length - 1];
+  const groupedPatterns = useGroupedPatterns({
+    config,
+    samples: 10_000,
+    bodyValueExpression: patternColumn ?? '',
+    totalCount: undefined,
+    enabled: denoiseResults,
+  });
+  const noisyPatterns = useQuery({
+    queryKey: ['noisy-patterns', config],
+    queryFn: async () => {
+      return Object.values(groupedPatterns.data).filter(
+        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+      );
+    },
+    enabled:
+      denoiseResults &&
+      groupedPatterns.data != null &&
+      Object.values(groupedPatterns.data).length > 0 &&
+      groupedPatterns.miner != null,
+  });
+  const noisyPatternIds = useMemo(() => {
+    return noisyPatterns.data?.map(p => p.id) ?? [];
+  }, [noisyPatterns.data]);
+
+  const queryClient = useQueryClient();
+
+  const denoisedRows = useQuery({
+    queryKey: [
+      'denoised-rows',
+      config,
+      processedRows,
+      noisyPatternIds,
+      patternColumn,
+    ],
+    queryFn: async () => {
+      // No noisy patterns, so no need to denoise
+      if (noisyPatternIds.length === 0) {
+        return processedRows;
+      }
+
+      const matchedLogs = await groupedPatterns.miner?.matchLogs(
+        processedRows.map(row => row[patternColumn]),
+      );
+      return processedRows.filter((row, i) => {
+        const match = matchedLogs?.[i];
+        return !noisyPatternIds.includes(`${match}`);
+      });
+    },
+    placeholderData: (previousData, previousQuery) => {
+      // If it's the same search, but new data, return the previous data while we load
+      if (
+        previousQuery?.queryKey?.[0] === 'denoised-rows' &&
+        previousQuery?.queryKey?.[1] === config
+      ) {
+        return previousData;
+      }
+      return undefined;
+    },
+    enabled:
+      denoiseResults &&
+      noisyPatterns.isSuccess &&
+      processedRows.length > 0 &&
+      groupedPatterns.miner != null,
+  });
+
+  const isLoading = denoiseResults
+    ? isFetching ||
+      denoisedRows.isFetching ||
+      noisyPatterns.isFetching ||
+      groupedPatterns.isLoading
+    : isFetching;
 
   return (
-    <RawLogTable
-      isLive={isLive}
-      wrapLines={false}
-      displayedColumns={columns}
-      highlightedLineId={highlightedLineId}
-      rows={processedRows}
-      isLoading={isFetching}
-      fetchNextPage={fetchNextPage}
-      // onPropertySearchClick={onPropertySearchClick}
-      hasNextPage={hasNextPage}
-      onRowExpandClick={_onRowExpandClick}
-      onScroll={onScroll}
-      generateRowId={getRowWhere}
-      isError={isError}
-      error={error ?? undefined}
-      columnTypeMap={columnMap}
-    />
+    <>
+      {denoiseResults && (
+        <Box mb="xxs" px="sm" mt="-24px">
+          <Text fw="bold" fz="xs" mb="xxs">
+            Removed Noisy Event Patterns
+          </Text>
+          <Box mah={100} style={{ overflow: 'auto' }}>
+            {noisyPatterns.data?.map(p => (
+              <Text c="gray.3" fz="xs" key={p.id}>
+                {p.pattern}
+              </Text>
+            ))}
+            {noisyPatternIds.length === 0 && (
+              <Text c="gray.3" fz="xs">
+                No noisy patterns found
+              </Text>
+            )}
+          </Box>
+        </Box>
+      )}
+      <RawLogTable
+        isLive={isLive}
+        wrapLines={false}
+        displayedColumns={columns}
+        highlightedLineId={highlightedLineId}
+        rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        isLoading={isLoading}
+        fetchNextPage={fetchNextPage}
+        // onPropertySearchClick={onPropertySearchClick}
+        hasNextPage={hasNextPage}
+        onRowExpandClick={_onRowExpandClick}
+        onScroll={onScroll}
+        generateRowId={getRowWhere}
+        isError={isError}
+        error={error ?? undefined}
+        columnTypeMap={columnMap}
+      />
+    </>
   );
 }

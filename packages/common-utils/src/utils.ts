@@ -11,10 +11,68 @@ export const isNode: boolean =
   process.versions != null &&
   process.versions.node != null;
 
+export function splitAndTrimCSV(input: string): string[] {
+  return input
+    .split(',')
+    .map(column => column.trim())
+    .filter(column => column.length > 0);
+}
+
+// Replace splitAndTrimCSV, should remove splitAndTrimCSV later
+export function splitAndTrimWithBracket(input: string): string[] {
+  let parenCount: number = 0;
+  let squareCount: number = 0;
+  let inSingleQuote: boolean = false;
+  let inDoubleQuote: boolean = false;
+
+  const res: string[] = [];
+  let cur: string = '';
+  for (const c of input + ',') {
+    if (c === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      cur += c;
+      continue;
+    }
+
+    if (c === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      cur += c;
+      continue;
+    }
+    // Only count brackets when not in quotes
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (c === '(') {
+        parenCount++;
+      } else if (c === ')') {
+        parenCount--;
+      } else if (c === '[') {
+        squareCount++;
+      } else if (c === ']') {
+        squareCount--;
+      }
+    }
+
+    if (
+      c === ',' &&
+      parenCount === 0 &&
+      squareCount === 0 &&
+      !inSingleQuote &&
+      !inDoubleQuote
+    ) {
+      const trimString = cur.trim();
+      if (trimString) res.push(trimString);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  return res;
+}
+
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
-  return valueExpression.split(',')[0].trim();
+  return splitAndTrimWithBracket(valueExpression)[0];
 }
 
 export enum Granularity {

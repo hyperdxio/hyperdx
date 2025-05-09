@@ -6,7 +6,6 @@ import app from '@/api-app';
 import * as config from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
 import logger from '@/utils/logger';
-import redisClient from '@/utils/redis';
 
 export default class Server {
   protected shouldHandleGracefulShutdown = true;
@@ -20,17 +19,9 @@ export default class Server {
   protected async shutdown(signal?: string) {
     let hasError = false;
     logger.info('Closing all db clients...');
-    const [redisCloseResult, mongoCloseResult] = await Promise.allSettled([
-      redisClient.disconnect(),
+    const [mongoCloseResult] = await Promise.allSettled([
       mongooseConnection.close(false),
     ]);
-
-    if (redisCloseResult.status === 'rejected') {
-      hasError = true;
-      logger.error(serializeError(redisCloseResult.reason));
-    } else {
-      logger.info('Redis client closed.');
-    }
 
     if (mongoCloseResult.status === 'rejected') {
       hasError = true;
@@ -71,6 +62,6 @@ export default class Server {
       });
     }
 
-    await Promise.all([connectDB(), redisClient.connect()]);
+    await connectDB();
   }
 }

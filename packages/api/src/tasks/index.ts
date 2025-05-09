@@ -3,29 +3,23 @@ import minimist from 'minimist';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
-import { IS_DEV } from '@/config';
+import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import { connectDB, mongooseConnection } from '@/models';
 import logger from '@/utils/logger';
-import redisClient from '@/utils/redis';
 
 import checkAlerts from './checkAlerts';
-import refreshPropertyTypeMappings from './refreshPropertyTypeMappings';
 
-const shutdown = async () =>
-  Promise.all([redisClient.disconnect(), mongooseConnection.close()]);
+const shutdown = async () => Promise.all([mongooseConnection.close()]);
 
 const main = async (taskName: string) => {
-  // connect dbs + redis
-  await Promise.all([connectDB(), redisClient.connect()]);
+  // connect dbs
+  await Promise.all([connectDB()]);
 
   const t0 = performance.now();
   logger.info(`Task [${taskName}] started at ${new Date()}`);
   switch (taskName) {
     case 'check-alerts':
       await checkAlerts();
-      break;
-    case 'refresh-property-type-mappings':
-      await refreshPropertyTypeMappings();
       break;
     // only for testing
     case 'ping-pong':
@@ -60,10 +54,11 @@ const main = async (taskName: string) => {
 const argv = minimist(process.argv.slice(2));
 const taskName = argv._[0];
 // WARNING: the cron job will be enabled only in development mode
-if (IS_DEV) {
-  // run cron job every 15 seconds
+if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
+  logger.info('In-app cron job is enabled');
+  // run cron job every 1 minute
   const job = CronJob.from({
-    cronTime: '*/15 * * * * *',
+    cronTime: '0 * * * * *',
     waitForCompletion: true,
     onTick: async () => main(taskName),
     errorHandler: async err => {
@@ -74,6 +69,7 @@ if (IS_DEV) {
     timeZone: 'UTC',
   });
 } else {
+  logger.warn('In-app cron job is disabled');
   main(taskName)
     .then(() => {
       process.exit(0);
