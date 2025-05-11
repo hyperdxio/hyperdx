@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
@@ -37,6 +38,7 @@ import {
   Flex,
   Grid,
   Group,
+  Menu,
   Modal,
   Paper,
   Stack,
@@ -746,7 +748,6 @@ function DBSearchPage() {
     [setRowId, setIsLive],
   );
 
-  const [modelFormExpanded, setModelFormExpanded] = useState(false);
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
@@ -1003,17 +1004,36 @@ function DBSearchPage() {
                 setNewSourceModalOpened(true);
               }}
             />
-            <ActionIcon
-              variant="subtle"
-              color="dark.2"
-              size="sm"
-              onClick={() => setModelFormExpanded(v => !v)}
-              title="Edit Source"
-            >
-              <Text size="xs">
-                <i className="bi bi-gear" />
-              </Text>
-            </ActionIcon>
+            <Menu withArrow position="bottom-start">
+              <Menu.Target>
+                <ActionIcon
+                  variant="subtle"
+                  color="dark.2"
+                  size="sm"
+                  title="Edit Source"
+                >
+                  <Text size="xs">
+                    <i className="bi bi-gear" />
+                  </Text>
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Sources</Menu.Label>
+                <Menu.Item
+                  leftSection={<i className="bi bi-plus-circle" />}
+                  onClick={() => setNewSourceModalOpened(true)}
+                >
+                  Create New Source
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={<i className="bi bi-gear" />}
+                  component={Link}
+                  href="/team"
+                >
+                  Edit Sources
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
@@ -1115,16 +1135,6 @@ function DBSearchPage() {
             </>
           )}
         </Flex>
-        <Modal
-          size="xl"
-          opened={modelFormExpanded}
-          onClose={() => {
-            setModelFormExpanded(false);
-          }}
-          title="Edit Source"
-        >
-          <TableSourceForm sourceId={inputSource} />
-        </Modal>
         <Modal
           size="xl"
           opened={newSourceModalOpened}
