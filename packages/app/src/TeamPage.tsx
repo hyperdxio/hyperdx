@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import {
@@ -923,7 +923,8 @@ function IntegrationsSection() {
                 </Stack>
                 <DeleteWebhookButton
                   webhookId={webhook._id}
-                  webhookName={webhook.name}
+                  webhookNa
+                  me={webhook.name}
                   onSuccess={refetchWebhooks}
                 />
               </Group>
@@ -944,6 +945,111 @@ function IntegrationsSection() {
               closeWebhookModal();
             }}
           />
+        )}
+      </Card>
+    </Box>
+  );
+}
+
+function TeamNameSection() {
+  const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const setTeamName = api.useSetTeamName();
+  const { data: me } = api.useMe();
+  const hasAdminAccess =
+    me?.accountAccess === 'admin' || me?.accountAccess === 'readwrite';
+  const [isEditingTeamName, setIsEditingTeamName] = useState(false);
+  const form = useForm<WebhookForm>({
+    defaultValues: {
+      name: team.name,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ name: string }> = useCallback(
+    async values => {
+      setTeamName.mutate(
+        { name: values.name },
+        {
+          onError: e => {
+            notifications.show({
+              color: 'red',
+              message: 'Failed to update team name',
+            });
+          },
+          onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: 'Updated team name',
+            });
+            refetchTeam();
+            setIsEditingTeamName(false);
+          },
+        },
+      );
+    },
+    [refetchTeam, setTeamName, team?.name],
+  );
+  return (
+    <Box>
+      <Text size="md" c="gray.4">
+        Team Name
+      </Text>
+      <Divider my="md" />
+      <Card>
+        {isEditingTeamName ? (
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <Group gap="xs">
+              <TextInput
+                size="xs"
+                placeholder="My Team"
+                required
+                error={form.formState.errors.name?.message}
+                {...form.register('name', { required: true })}
+                miw={300}
+                min={1}
+                max={100}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditingTeamName(false);
+                  }
+                }}
+              />
+              <Button
+                type="submit"
+                size="xs"
+                variant="light"
+                color="green"
+                loading={setTeamName.isPending}
+              >
+                Save
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="default"
+                disabled={setTeamName.isPending}
+                onClick={() => setIsEditingTeamName(false)}
+              >
+                Cancel
+              </Button>
+            </Group>
+          </form>
+        ) : (
+          <Group gap="lg">
+            <div className="text-slate-300 fs-7">{team.name}</div>
+            {hasAdminAccess && (
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<i className="bi bi-pencil text-slate-300" />}
+                onClick={() => {
+                  setIsEditingTeamName(true);
+                }}
+              >
+                Change
+              </Button>
+            )}
+          </Group>
         )}
       </Card>
     </Box>
@@ -975,6 +1081,8 @@ export default function TeamPage() {
               <SourcesSection />
               <ConnectionsSection />
               <IntegrationsSection />
+              <TeamNameSection />
+              {/* <ApiKeySection /> */}
 
               {hasAllowedAuthMethods && (
                 <>
