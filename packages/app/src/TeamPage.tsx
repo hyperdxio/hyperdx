@@ -954,8 +954,7 @@ function TeamNameSection() {
   const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
   const setTeamName = api.useSetTeamName();
   const { data: me } = api.useMe();
-  const hasAdminAccess =
-    me?.accountAccess === 'admin' || me?.accountAccess === 'readwrite';
+  const hasAdminAccess = true;
   const [isEditingTeamName, setIsEditingTeamName] = useState(false);
   const form = useForm<WebhookForm>({
     defaultValues: {
@@ -1092,8 +1091,7 @@ function ApiKeySection() {
   const { data: team, refetch: refetchTeam } = api.useTeam();
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
-  const hasAdminAccess =
-    me?.accountAccess === 'admin' || me?.accountAccess === 'readwrite';
+  const hasAdminAccess = true;
   const [
     rotateApiKeyConfirmationModalShow,
     setRotateApiKeyConfirmationModalShow,
