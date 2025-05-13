@@ -1,7 +1,9 @@
+import { AggregateFunctionSchema } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType as CommonMetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
-import { AggFn, MetricsDataType } from '@/clickhouse';
+import { MetricsDataType } from '@/clickhouse';
 import { AlertSource, AlertThresholdType } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
@@ -19,8 +21,6 @@ export type SourceTable = z.infer<typeof sourceTableSchema>;
 // ==============================
 // Charts
 // ==============================
-
-export const aggFnSchema = z.nativeEnum(AggFn);
 
 export const numberFormatSchema = z.object({
   output: z
@@ -41,54 +41,69 @@ export const numberFormatSchema = z.object({
   unit: z.string().optional(),
 });
 
+export const percentileLevelSchema = z.number().min(0).max(1).optional();
+
 export const timeChartSeriesSchema = z.object({
-  table: z.optional(sourceTableSchema),
+  table: sourceTableSchema.optional(),
   type: z.literal('time'),
-  aggFn: aggFnSchema,
+  aggFn: AggregateFunctionSchema,
+  level: percentileLevelSchema,
   field: z.union([z.string(), z.undefined()]),
   where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
   groupBy: z.array(z.string()).max(10),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
-  displayType: z.optional(
-    z.union([z.literal('stacked_bar'), z.literal('line')]),
-  ),
+  metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
+  metricName: z.string().optional(),
+  displayType: z
+    .union([z.literal('stacked_bar'), z.literal('line')])
+    .optional(),
 });
 
 export const tableChartSeriesSchema = z.object({
   type: z.literal('table'),
-  table: z.optional(sourceTableSchema),
-  aggFn: aggFnSchema,
-  field: z.optional(z.string()),
+  table: sourceTableSchema.optional(),
+  aggFn: AggregateFunctionSchema,
+  level: percentileLevelSchema,
+  field: z.string().optional(),
   where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
   groupBy: z.array(z.string()).max(10),
-  sortOrder: z.optional(z.union([z.literal('desc'), z.literal('asc')])),
+  sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricName: z.string().optional(),
 });
 
 export const numberChartSeriesSchema = z.object({
   type: z.literal('number'),
-  table: z.optional(sourceTableSchema),
-  aggFn: aggFnSchema,
+  table: sourceTableSchema.optional(),
+  aggFn: AggregateFunctionSchema,
+  level: percentileLevelSchema,
   field: z.union([z.string(), z.undefined()]),
   where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricName: z.string().optional(),
 });
 
 export const histogramChartSeriesSchema = z.object({
-  table: z.optional(sourceTableSchema),
+  table: sourceTableSchema.optional(),
   type: z.literal('histogram'),
+  level: percentileLevelSchema,
   field: z.union([z.string(), z.undefined()]),
   where: z.string(),
-  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricName: z.string().optional(),
 });
 
 export const searchChartSeriesSchema = z.object({
   type: z.literal('search'),
   fields: z.array(z.string()),
   where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
 });
 
 export const markdownChartSeriesSchema = z.object({
@@ -97,13 +112,17 @@ export const markdownChartSeriesSchema = z.object({
 });
 
 export const externalQueryChartSeriesSchema = z.object({
+  sourceId: objectIdSchema,
   dataSource: z.enum(['events', 'metrics']).optional(),
-  aggFn: aggFnSchema,
-  field: z.optional(z.string()),
+  aggFn: AggregateFunctionSchema,
+  level: percentileLevelSchema,
+  field: z.string().optional(),
   where: z.string(),
+  whereLanguage: z.enum(['sql', 'lucene']).optional(),
   groupBy: z.array(z.string()).max(10),
-  sortOrder: z.optional(z.union([z.literal('desc'), z.literal('asc')])),
-  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
+  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricName: z.string().optional(),
 });
 
 export const chartSeriesSchema = z.union([
@@ -137,7 +156,7 @@ export const chartSchema = z.object({
         'markdown',
       ]),
       table: z.string().optional(),
-      aggFn: aggFnSchema.optional(),
+      aggFn: AggregateFunctionSchema.optional(),
       field: z.union([z.string(), z.undefined()]).optional(),
       fields: z.array(z.string()).optional(),
       where: z.string().optional(),
@@ -145,7 +164,7 @@ export const chartSchema = z.object({
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
       numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+      metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
       displayType: z.optional(
         z.union([z.literal('stacked_bar'), z.literal('line')]),
       ),
@@ -171,7 +190,7 @@ export const externalChartSchema = z.object({
         'markdown',
       ]),
       dataSource: z.enum(['events', 'metrics']).optional(),
-      aggFn: aggFnSchema.optional(),
+      aggFn: AggregateFunctionSchema.optional(),
       field: z.union([z.string(), z.undefined()]).optional(),
       fields: z.array(z.string()).optional(),
       where: z.string().optional(),
@@ -179,7 +198,7 @@ export const externalChartSchema = z.object({
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
       numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+      metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
     }),
   ),
   asRatio: z.boolean().optional(),
