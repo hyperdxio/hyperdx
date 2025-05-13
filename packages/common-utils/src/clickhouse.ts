@@ -457,9 +457,6 @@ export class ClickhouseClient {
           },
           username: '',
           password: '',
-          compression: {
-            response: true,
-          },
         });
         return clickhouseClient.query<Format>({
           query,
