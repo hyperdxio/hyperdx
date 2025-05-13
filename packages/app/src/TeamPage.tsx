@@ -923,8 +923,7 @@ function IntegrationsSection() {
                 </Stack>
                 <DeleteWebhookButton
                   webhookId={webhook._id}
-                  webhookNa
-                  me={webhook.name}
+                  webhookName={webhook.name}
                   onSuccess={refetchWebhooks}
                 />
               </Group>
