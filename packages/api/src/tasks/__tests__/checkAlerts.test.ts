@@ -420,6 +420,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
                   '',
@@ -481,6 +482,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
                   '',
@@ -585,6 +587,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
                   '  hi i matched',
@@ -613,6 +616,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
                   '  hi i matched',
@@ -766,6 +770,7 @@ describe('checkAlerts', () => {
       );
 
       // check if webhook was triggered
+      // We're only checking the general structure here since the exact text includes timestamps
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
@@ -931,6 +936,7 @@ describe('checkAlerts', () => {
                   `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
                   '',
                   '3 exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -1248,6 +1254,7 @@ describe('checkAlerts', () => {
                   `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
                   '',
                   '6.25 exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
                 type: 'mrkdwn',
