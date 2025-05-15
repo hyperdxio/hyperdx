@@ -3,9 +3,16 @@
 # - App (Frontend)
 
 ARG NODE_VERSION=22.14.0
+ARG CLICKHOUSE_VERSION=24
+ARG OTEL_COLLECTOR_VERSION=0.120.0
 
 # base #############################################################################################
-FROM node:${NODE_VERSION}-alpine AS base
+# == Clickhouse/Base Image ==
+FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS clickhouse_base
+# == Otel Collector Image ==
+FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
+
+FROM node:${NODE_VERSION}-alpine AS node_base
 
 WORKDIR /app/api
 
@@ -24,7 +31,7 @@ RUN yarn install && yarn cache clean
 
 
 ## API Builder Image ###############################################################################
-FROM base AS api_builder
+FROM node_base AS api_builder
 
 WORKDIR /app/api
 
@@ -34,7 +41,7 @@ RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 
 # APP Builder Image ###############################################################################
-FROM base AS app_builder
+FROM node_base AS app_builder
 
 WORKDIR /app/app
 
@@ -74,13 +81,26 @@ COPY --from=app_builder /app/app/node_modules ./node_modules
 COPY --from=app_builder /app/app/package.json ./package.json
 
 # Set up start script
-COPY --chown=node:node --from=fullstack ./entry.sh /etc/local/entry.sh
+COPY --chown=node:node --from=hyperdx ./entry.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # prod-extended ############################################################################################
-FROM prod AS prod-extended
+FROM scratch AS all-in-one
 
-USER root
+# Copy base
+COPY --from=clickhouse_base / /
+COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
+COPY --from=node_base /usr/lib /usr/lib
+COPY --from=node_base /usr/local/lib /usr/local/lib
+COPY --from=node_base /usr/local/include /usr/local/include
+COPY --from=node_base /usr/local/bin /usr/local/bin
+
+# Set up Clickhouse
+COPY --from=clickhouse ./local/*.xml /etc/clickhouse-server
+# overwrite default config
+COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
+# Set up Otel Collector
+COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 
 # == Install MongoDB v4 Deps ==
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories
@@ -89,10 +109,16 @@ RUN apk update
 RUN apk add mongodb yaml-cpp=0.6.2-r2
 
 # Set up Mongo directories with proper permissions
-RUN mkdir -p /data/db && \
-  chown -R node:node /data/db && \
-  chown -R node:node /var/log
+RUN mkdir -p /data/db
 
-USER node
+ENV NODE_ENV production
 
+# Install libs used for the start script
+RUN npm install -g concurrently@9.1.0
+# Set up App
+COPY --from=prod /app/api /app/api
+COPY --from=prod /app/app /app/app
+COPY --from=prod /etc/local/entry.sh /etc/local/entry.sh
+
+WORKDIR /app/app
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
