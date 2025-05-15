@@ -748,6 +748,7 @@ function DBSearchPage() {
     [setRowId, setIsLive],
   );
 
+  const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
@@ -1025,13 +1026,22 @@ function DBSearchPage() {
                 >
                   Create New Source
                 </Menu.Item>
-                <Menu.Item
-                  leftSection={<i className="bi bi-gear" />}
-                  component={Link}
-                  href="/team"
-                >
-                  Edit Sources
-                </Menu.Item>
+                {IS_LOCAL_MODE ? (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-gear" />}
+                    onClick={() => setModelFormExpanded(v => !v)}
+                  >
+                    Edit Source
+                  </Menu.Item>
+                ) : (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-gear" />}
+                    component={Link}
+                    href="/team"
+                  >
+                    Edit Sources
+                  </Menu.Item>
+                )}
               </Menu.Dropdown>
             </Menu>
           </Group>
@@ -1135,6 +1145,16 @@ function DBSearchPage() {
             </>
           )}
         </Flex>
+        <Modal
+          size="xl"
+          opened={modelFormExpanded}
+          onClose={() => {
+            setModelFormExpanded(false);
+          }}
+          title="Edit Source"
+        >
+          <TableSourceForm sourceId={inputSource} />
+        </Modal>
         <Modal
           size="xl"
           opened={newSourceModalOpened}

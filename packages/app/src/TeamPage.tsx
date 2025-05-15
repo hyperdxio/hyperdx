@@ -6,7 +6,7 @@ import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
-import { EditorView, ViewUpdate } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
