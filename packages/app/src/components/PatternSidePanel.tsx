@@ -1,8 +1,10 @@
 import * as React from 'react';
 import Drawer from 'react-modern-drawer';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Card, Stack, Text } from '@mantine/core';
 
+import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { Pattern } from '@/hooks/usePatterns';
@@ -10,6 +12,7 @@ import {
   PATTERN_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
+import useRowWhere from '@/hooks/useRowWhere';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import styles from '../../styles/LogSidePanel.module.scss';
@@ -18,15 +21,23 @@ export default function PatternSidePanel({
   isOpen,
   onClose,
   pattern,
-  serviceNameExpression = 'Service',
+  bodyValueExpression,
+  source,
 }: {
   isOpen: boolean;
   onClose: () => void;
   pattern: Pattern;
-  serviceNameExpression?: string;
+  bodyValueExpression: string;
+  source: TSource;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;
+
+  const [selectedRowWhere, setSelectedRowWhere] = React.useState<string | null>(
+    null,
+  );
+
+  const serviceNameExpression = source?.serviceNameExpression || 'Service';
 
   const columnTypeMap = React.useMemo(() => {
     const map = new Map<string, { _type: JSDataType | null }>([
@@ -41,7 +52,7 @@ export default function PatternSidePanel({
     return {
       [TIMESTAMP_COLUMN_ALIAS]: 'Timestamp',
       [serviceNameExpression]: 'Service',
-      [PATTERN_COLUMN_ALIAS]: 'Message',
+      [PATTERN_COLUMN_ALIAS]: 'Body',
     };
   }, [serviceNameExpression]);
 
@@ -53,20 +64,49 @@ export default function PatternSidePanel({
     ];
   }, [serviceNameExpression]);
 
+  const getRowWhere = useRowWhere({
+    meta: [
+      { name: 'body', type: 'String' },
+      { name: 'ts', type: 'DateTime64(9)' },
+    ],
+    aliasMap: {
+      body: bodyValueExpression,
+      ts: source.timestampValueExpression,
+    },
+  });
+
+  const handleRowClick = React.useCallback(
+    (row: Record<string, any>) => {
+      const whereClause = getRowWhere({
+        body: row[PATTERN_COLUMN_ALIAS],
+        ts: row[TIMESTAMP_COLUMN_ALIAS],
+      });
+      setSelectedRowWhere(whereClause);
+    },
+    [getRowWhere],
+  );
+
+  const handleCloseRowSidePanel = React.useCallback(() => {
+    setSelectedRowWhere(null);
+  }, []);
+
   return (
     <Drawer
       open={isOpen}
-      onClose={onClose}
+      onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
       direction="right"
       size="70vw"
       zIndex={drawerZIndex}
-      enableOverlay={true}
+      enableOverlay={selectedRowWhere == null}
       overlayOpacity={0.1}
       duration={0}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
-          <DrawerHeader header="Pattern" onClose={onClose} />
+          <DrawerHeader
+            header="Pattern"
+            onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
+          />
           <DrawerBody>
             <Stack>
               <Card p="md">
@@ -84,7 +124,7 @@ export default function PatternSidePanel({
                   columnNameMap={columnNameMap}
                   isLoading={false}
                   fetchNextPage={() => {}}
-                  onRowExpandClick={() => {}}
+                  onRowExpandClick={handleRowClick}
                   wrapLines={false}
                   highlightedLineId={''}
                   hasNextPage={false}
@@ -93,6 +133,14 @@ export default function PatternSidePanel({
               </Card>
             </Stack>
           </DrawerBody>
+          {selectedRowWhere && (
+            <DBRowSidePanel
+              source={source}
+              rowId={selectedRowWhere}
+              onClose={handleCloseRowSidePanel}
+              isNestedPanel={true}
+            />
+          )}
         </div>
       </ZIndexContext.Provider>
     </Drawer>

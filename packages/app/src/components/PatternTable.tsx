@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { RawLogTable } from '@/components/DBRowTable';
 import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
@@ -14,13 +17,13 @@ export default function PatternTable({
   totalCountConfig,
   totalCountQueryKeyPrefix,
   bodyValueExpression,
-  serviceNameExpression,
+  source,
 }: {
   config: ChartConfigWithDateRange;
   totalCountConfig: ChartConfigWithDateRange;
   bodyValueExpression: string;
   totalCountQueryKeyPrefix: string;
-  serviceNameExpression?: string;
+  source?: TSource;
 }) {
   const SAMPLES = 10_000;
 
@@ -67,12 +70,13 @@ export default function PatternTable({
           pattern: 'Pattern',
         }}
       />
-      {selectedPattern && (
+      {selectedPattern && source && (
         <PatternSidePanel
           isOpen
-          onClose={() => setSelectedPattern(null)}
+          source={source}
           pattern={selectedPattern}
-          serviceNameExpression={serviceNameExpression}
+          bodyValueExpression={bodyValueExpression}
+          onClose={() => setSelectedPattern(null)}
         />
       )}
     </>

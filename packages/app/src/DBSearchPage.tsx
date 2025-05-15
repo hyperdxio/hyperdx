@@ -1325,6 +1325,7 @@ function DBSearchPage() {
                       </Box>
                     )}
                     <PatternTable
+                      source={searchedSource}
                       config={{
                         ...chartConfig,
                         dateRange: searchedTimeRange,
@@ -1333,9 +1334,6 @@ function DBSearchPage() {
                         searchedSource?.bodyExpression ??
                         chartConfig.implicitColumnExpression ??
                         ''
-                      }
-                      serviceNameExpression={
-                        searchedSource?.serviceNameExpression
                       }
                       totalCountConfig={histogramTimeChartConfig}
                       totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
