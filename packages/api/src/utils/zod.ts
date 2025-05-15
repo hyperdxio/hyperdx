@@ -1,9 +1,8 @@
 import { AggregateFunctionSchema } from '@hyperdx/common-utils/dist/types';
-import { MetricsDataType as CommonMetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
-import { MetricsDataType } from '@/clickhouse';
 import { AlertSource, AlertThresholdType } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
@@ -53,7 +52,7 @@ export const timeChartSeriesSchema = z.object({
   whereLanguage: z.enum(['sql', 'lucene']).optional(),
   groupBy: z.array(z.string()).max(10),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
+  metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
   metricName: z.string().optional(),
   displayType: z
     .union([z.literal('stacked_bar'), z.literal('line')])
@@ -71,7 +70,7 @@ export const tableChartSeriesSchema = z.object({
   groupBy: z.array(z.string()).max(10),
   sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
@@ -84,7 +83,7 @@ export const numberChartSeriesSchema = z.object({
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']).optional(),
   numberFormat: numberFormatSchema.optional(),
-  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
@@ -95,7 +94,7 @@ export const histogramChartSeriesSchema = z.object({
   field: z.union([z.string(), z.undefined()]),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']).optional(),
-  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
@@ -121,7 +120,7 @@ export const externalQueryChartSeriesSchema = z.object({
   whereLanguage: z.enum(['sql', 'lucene']).optional(),
   groupBy: z.array(z.string()).max(10),
   sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-  metricDataType: z.nativeEnum(CommonMetricsDataType).optional(),
+  metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
@@ -164,7 +163,7 @@ export const chartSchema = z.object({
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
       numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
+      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
       displayType: z.optional(
         z.union([z.literal('stacked_bar'), z.literal('line')]),
       ),
@@ -198,7 +197,7 @@ export const externalChartSchema = z.object({
       sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
       content: z.string().optional(),
       numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(CommonMetricsDataType)),
+      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
     }),
   ),
   asRatio: z.boolean().optional(),
