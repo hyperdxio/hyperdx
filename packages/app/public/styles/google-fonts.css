@@ -93,3 +93,19 @@ src: url("./../fonts/ibm-plex-mono-v19-latin-700.woff2") format("woff2");
   font-weight: 900;
   src: url('./../fonts/inter-v18-latin-900.woff2') format('woff2');
 }
+
+@font-face {
+  font-display: swap;
+  font-family: 'Roboto Mono';
+  font-style: normal;
+  font-weight: 100;
+  src: url('./../fonts/roboto-mono-v23-latin-100.woff2') format('woff2');
+}
+
+@font-face {
+  font-display: swap;
+  font-family: 'Roboto Mono';
+  font-style: normal;
+  font-weight: 700;
+  src: url('./../fonts/roboto-mono-v23-latin-700.woff2') format('woff2');
+}
