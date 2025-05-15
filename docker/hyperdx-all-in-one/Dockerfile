@@ -49,8 +49,8 @@ COPY --from=app ./public ./public
 COPY --from=app ./styles ./styles
 
 ENV NEXT_TELEMETRY_DISABLED 1
-ENV NEXT_OUTPUT_STANDALONE true
-ENV NEXT_PUBLIC_IS_LOCAL_MODE true
+ENV NEXT_OUTPUT_STANDALONE false
+ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 # == Clickhouse/Base Image ==
