@@ -1334,6 +1334,9 @@ function DBSearchPage() {
                         chartConfig.implicitColumnExpression ??
                         ''
                       }
+                      serviceNameExpression={
+                        searchedSource?.serviceNameExpression
+                      }
                       totalCountConfig={histogramTimeChartConfig}
                       totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                     />
