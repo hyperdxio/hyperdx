@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`renderChartConfig Query Events simple select + group by query logs 1`] = `
+exports[`renderChartConfig Query Events - Logs simple select + group by query logs 1`] = `
 Array [
   Object {
     "ServiceName": "app",
@@ -13,7 +13,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Events simple select + where query logs 1`] = `
+exports[`renderChartConfig Query Events - Logs simple select + where query logs 1`] = `
 Array [
   Object {
     "Body": "Oh no! Something went wrong!",
@@ -21,55 +21,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: maxSum 1`] = `
-Array [
-  Object {
-    "Value": 24,
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-  },
-  Object {
-    "Value": 134,
-    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics calculates min_rate/max_rate correctly for sum metrics: minSum 1`] = `
-Array [
-  Object {
-    "Value": 15,
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-  },
-  Object {
-    "Value": 52,
-    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics handles counter resets correctly for sum metrics 1`] = `
-Array [
-  Object {
-    "Value": 15,
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-  },
-  Object {
-    "Value": 52,
-    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics should include multiple data points in percentile computation (p50) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 2.9,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics single avg gauge with group-by 1`] = `
+exports[`renderChartConfig Query Metrics - Gauge single avg gauge with group-by 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
@@ -94,7 +46,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics single avg gauge with where 1`] = `
+exports[`renderChartConfig Query Metrics - Gauge single avg gauge with where 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
@@ -107,7 +59,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics single max/avg/sum gauge 1`] = `
+exports[`renderChartConfig Query Metrics - Gauge single max/avg/sum gauge 1`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
@@ -120,7 +72,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics single max/avg/sum gauge 2`] = `
+exports[`renderChartConfig Query Metrics - Gauge single max/avg/sum gauge 2`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
@@ -133,7 +85,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics single max/avg/sum gauge 3`] = `
+exports[`renderChartConfig Query Metrics - Gauge single max/avg/sum gauge 3`] = `
 Array [
   Object {
     "__hdx_time_bucket": "2022-01-05T00:00:00Z",
@@ -146,7 +98,229 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics single sum rate 1`] = `
+exports[`renderChartConfig Query Metrics - Histogram should bucket correctly when grouping by a single attribute 1`] = `
+Array [
+  Object {
+    "Value": 3.5714285714285716,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-b",
+    ],
+  },
+  Object {
+    "Value": 8.382352941176471,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-a",
+    ],
+  },
+  Object {
+    "Value": 3.5,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-b",
+    ],
+  },
+  Object {
+    "Value": 4.95,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-a",
+    ],
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram should bucket correctly when grouping by multiple attributes 1`] = `
+Array [
+  Object {
+    "Value": 2.916666666666667,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-b",
+      "service-2",
+    ],
+  },
+  Object {
+    "Value": 4.852941176470588,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-a",
+      "service-2",
+    ],
+  },
+  Object {
+    "Value": 8.75,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-a",
+      "service-1",
+    ],
+  },
+  Object {
+    "Value": 3.1578947368421053,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-b",
+      "service-1",
+    ],
+  },
+  Object {
+    "Value": 58.33333333333333,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-a",
+      "service-3",
+    ],
+  },
+  Object {
+    "Value": 6.25,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "group": Array [
+      "host-b",
+      "service-3",
+    ],
+  },
+  Object {
+    "Value": 3.4090909090909087,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-b",
+      "service-1",
+    ],
+  },
+  Object {
+    "Value": 7.916666666666667,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-a",
+      "service-1",
+    ],
+  },
+  Object {
+    "Value": 3.25,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-b",
+      "service-3",
+    ],
+  },
+  Object {
+    "Value": 4.25,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-a",
+      "service-3",
+    ],
+  },
+  Object {
+    "Value": 4.75,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-a",
+      "service-2",
+    ],
+  },
+  Object {
+    "Value": 3.888888888888889,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "group": Array [
+      "host-b",
+      "service-2",
+    ],
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram should bucket correctly when no grouping is defined 1`] = `
+Array [
+  Object {
+    "Value": 5.241935483870968,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+  Object {
+    "Value": 4.40625,
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram two_timestamps_bounded histogram (p25) 1`] = `
+Array [
+  Object {
+    "Value": 7.5,
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram two_timestamps_bounded histogram (p50) 1`] = `
+Array [
+  Object {
+    "Value": 20,
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram two_timestamps_bounded histogram (p90) 1`] = `
+Array [
+  Object {
+    "Value": 30,
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Histogram two_timestamps_lower_bound_inf histogram (p50) 1`] = `
+Array [
+  Object {
+    "Value": 0.5,
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Sum calculates min_rate/max_rate correctly for sum metrics: maxSum 1`] = `
+Array [
+  Object {
+    "Value": 24,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+  Object {
+    "Value": 134,
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Sum calculates min_rate/max_rate correctly for sum metrics: minSum 1`] = `
+Array [
+  Object {
+    "Value": 15,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+  Object {
+    "Value": 52,
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Sum handles counter resets correctly for sum metrics 1`] = `
+Array [
+  Object {
+    "Value": 15,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+  Object {
+    "Value": 52,
+    "__hdx_time_bucket": "2022-01-05T00:10:00Z",
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Sum single sum rate 1`] = `
 Array [
   Object {
     "Value": 19,
@@ -167,7 +341,7 @@ Array [
 ]
 `;
 
-exports[`renderChartConfig Query Metrics sum values as without rate computation 1`] = `
+exports[`renderChartConfig Query Metrics - Sum sum values as without rate computation 1`] = `
 Array [
   Object {
     "Value": 950400,
@@ -176,88 +350,6 @@ Array [
   Object {
     "Value": 1641600,
     "__hdx_time_bucket": "2022-01-05T00:10:00Z",
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics three_timestamps_bounded histogram with reset (p50) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 10,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 10,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
-    "sum(toFloat64OrNull(toString(Rate)))": 30,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p25) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 0,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 10,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p50) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 0,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 13.333333333333332,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics two_timestamps_bounded histogram (p90) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 0,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 30,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics two_timestamps_lower_bound_inf histogram (p50) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 0,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 1,
-  },
-]
-`;
-
-exports[`renderChartConfig Query Metrics two_timestamps_upper_bound_inf histogram (p50) 1`] = `
-Array [
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 0,
-  },
-  Object {
-    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
-    "any(toFloat64OrDefault(toString(Rate)))": 30,
   },
 ]
 `;
