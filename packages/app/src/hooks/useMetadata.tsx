@@ -1,7 +1,6 @@
 import objectHash from 'object-hash';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
-  DEFAULT_SAMPLE_SIZE,
   Field,
   TableConnection,
   TableMetadata,
@@ -15,8 +14,6 @@ import {
 
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
-
-export const MAX_ROWS_TO_READ = DEFAULT_SAMPLE_SIZE;
 
 export function useColumns(
   {

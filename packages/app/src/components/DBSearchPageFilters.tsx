@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -19,11 +20,7 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import {
-  MAX_ROWS_TO_READ,
-  useAllFields,
-  useGetKeyValues,
-} from '@/hooks/useMetadata';
+import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { mergePath } from '@/utils';
@@ -349,7 +346,7 @@ export const DBSearchPageFilters = ({
   const { width, startResize } = useResizable(16, 'left');
 
   const { data: countData } = useExplainQuery(chartConfig);
-  const numRows = countData?.[0]?.rows;
+  const numRows: number = countData?.[0]?.rows ?? 0;
 
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
@@ -397,10 +394,8 @@ export const DBSearchPageFilters = ({
 
   useEffect(() => {
     if (!isLive) {
-      setDateRange(() => {
-        setDisableRowLimit(() => false);
-        return chartConfig.dateRange;
-      });
+      setDateRange(chartConfig.dateRange);
+      setDisableRowLimit(false);
     }
   }, [chartConfig.dateRange, isLive]);
 
@@ -419,10 +414,14 @@ export const DBSearchPageFilters = ({
     disableRowLimit,
   });
   useEffect(() => {
-    if (numRows > MAX_ROWS_TO_READ && facets && facets.length < keyLimit) {
-      setDisableRowLimit(() => true);
+    if (
+      numRows > DEFAULT_MAX_ROWS_TO_READ &&
+      facets &&
+      facets.length < keyLimit
+    ) {
+      setDisableRowLimit(true);
     }
-  }, [facets]);
+  }, [numRows, keyLimit, facets]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
