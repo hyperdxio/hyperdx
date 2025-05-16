@@ -90,10 +90,11 @@ FROM scratch AS all-in-one
 # Copy base
 COPY --from=clickhouse_base / /
 COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
+COPY --from=node_base --link /usr/local/bin /usr/local/bin
+COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
-COPY --from=node_base /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/local/include /usr/local/include
-COPY --from=node_base /usr/local/bin /usr/local/bin
+
 
 # Set up Clickhouse
 COPY --from=clickhouse ./local/*.xml /etc/clickhouse-server
@@ -108,17 +109,20 @@ RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repos
 RUN apk update
 RUN apk add mongodb yaml-cpp=0.6.2-r2
 
+# Install libs used for the start script
+RUN apk add curl
+
 # Set up Mongo directories with proper permissions
 RUN mkdir -p /data/db
 
 ENV NODE_ENV production
 
-# Install libs used for the start script
-RUN npm install -g concurrently@9.1.0
 # Set up App
 COPY --from=prod /app/api /app/api
 COPY --from=prod /app/app /app/app
-COPY --from=prod /etc/local/entry.sh /etc/local/entry.sh
+COPY --from=hyperdx ./all-in-one-entry.sh /etc/local/entry.sh
 
 WORKDIR /app/app
+# Expose ports
+EXPOSE 8080 4317 4318 13133 8123 9000
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
