@@ -457,8 +457,9 @@ export class ClickhouseClient {
           },
           username: '',
           password: '',
-          compression: {
-            response: true,
+          // Disable keep-alive to prevent multiple concurrent dashboard requests from exceeding the 64KB payload size limit.
+          keep_alive: {
+            enabled: false,
           },
         });
         return clickhouseClient.query<Format>({

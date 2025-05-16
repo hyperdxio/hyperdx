@@ -646,44 +646,6 @@ export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
 };
 
 // Date formatting
-const TIME_TOKENS = {
-  normal: {
-    '12h': 'MMM d h:mm:ss a',
-    '24h': 'MMM d HH:mm:ss',
-  },
-  short: {
-    '12h': 'MMM d h:mma',
-    '24h': 'MMM d HH:mm',
-  },
-  withMs: {
-    '12h': 'MMM d h:mm:ss.SSS a',
-    '24h': 'MMM d HH:mm:ss.SSS',
-  },
-  time: {
-    '12h': 'h:mm:ss a',
-    '24h': 'HH:mm:ss',
-  },
-};
-
-export const formatDate = (
-  date: Date,
-  {
-    isUTC = false,
-    format = 'normal',
-    clock = '12h',
-  }: {
-    isUTC?: boolean;
-    format?: 'normal' | 'short' | 'withMs' | 'time';
-    clock?: '12h' | '24h';
-  },
-) => {
-  const formatStr = TIME_TOKENS[format][clock];
-
-  return isUTC
-    ? formatInTimeZone(date, 'Etc/UTC', formatStr)
-    : fnsFormat(date, formatStr);
-};
-
 export const mergePath = (path: string[]) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
