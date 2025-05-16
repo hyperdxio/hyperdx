@@ -84,13 +84,13 @@ COPY --from=app_builder /app/app/package.json ./package.json
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
-# prod-extended ############################################################################################
-FROM scratch AS all-in-one
+# all-in-one base ############################################################################################
+FROM scratch AS all-in-one-base
 
 # Copy base
 COPY --from=clickhouse_base / /
 COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
-COPY --from=node_base --link /usrlocal./local/bin /usr/local/bin
+COPY --from=node_base --link /usr/local/bin /usr/local/bin
 COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
@@ -120,9 +120,19 @@ ENV NODE_ENV production
 # Set up App
 COPY --from=prod /app/api /app/api
 COPY --from=prod /app/app /app/app
-COPY --from=hyperdx ./entry.local.sh /etc/local/entry.sh
+COPY --from=hyperdx ./entry.local.sh /etc/local/entry.base.sh
 
 WORKDIR /app/app
 # Expose ports
 EXPOSE 8080 4317 4318 13133 8123 9000
+
+# all-in-one no auth ############################################################################################
+FROM all-in-one-base AS all-in-one-noauth
+COPY --from=hyperdx ./entry.local.noauth.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
+
+# all-in-one with auth ############################################################################################
+FROM all-in-one-base AS all-in-one-auth
+COPY --from=hyperdx ./entry.local.auth.sh /etc/local/entry.sh
+ENTRYPOINT ["sh", "/etc/local/entry.sh"]
+

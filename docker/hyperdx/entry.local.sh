@@ -15,7 +15,9 @@ export CLICKHOUSE_SERVER_ENDPOINT="ch-server:9000"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
-export IS_LOCAL_APP_MODE="DANGEROUSLY_is_local_app_mode💀"
+# IS_LOCAL_APP_MODE should be set by the calling script
+# Default to dangerous mode if not set
+export IS_LOCAL_APP_MODE="${IS_LOCAL_APP_MODE}"
 export NEXT_TELEMETRY_DISABLED="1"
 
 
@@ -24,6 +26,8 @@ echo "127.0.0.1      ch-server" >> /etc/hosts
 echo "127.0.0.1      db" >> /etc/hosts
 
 echo "Visit the HyperDX UI at $FRONTEND_URL/search"
+echo ""
+echo "Local App Mode: $IS_LOCAL_APP_MODE"
 echo ""
 echo "Send OpenTelemetry data via"
 echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
@@ -42,6 +46,7 @@ while ! curl -s "http://ch-server:8123" > /dev/null; do
   echo "Waiting for Clickhouse to be ready..."
   sleep 1
 done
+
 # Start Otel Collector
 otelcol-contrib --config /etc/otelcol-contrib/config.yaml &
 
