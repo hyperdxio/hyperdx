@@ -135,6 +135,21 @@ release-app:
 	 	--cache-from=type=gha \
 		--cache-to=type=gha,mode=max
 
+.PHONY: release-stable
+release-stable:
+	# hyperdx/hyperdx-all-in-one
+	docker pull ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}
+	docker tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+	docker push ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+	# hyperdx/hyperdx
+	docker pull ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}
+	docker tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+	docker push ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+	# hyperdx/hyperdx-local
+	docker pull ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}
+	docker tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+	docker push ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
+
 # DEPRECATED
 # .PHONY: release-local-ui
 # release-local-ui:
