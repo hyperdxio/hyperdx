@@ -96,7 +96,25 @@ release-local:
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target all-in-one \
+		--target all-in-one-noauth \
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
+
+.PHONY: release-all-in-one
+release-all-in-one:
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target all-in-one-auth \
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
@@ -117,6 +135,7 @@ release-app:
 	 	--cache-from=type=gha \
 		--cache-to=type=gha,mode=max
 
+# DEPRECATED
 # .PHONY: release-local-ui
 # release-local-ui:
 # 	docker buildx build . -f ./packages/app/Dockerfile \
