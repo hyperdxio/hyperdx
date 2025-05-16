@@ -399,6 +399,7 @@ export type ChartConfig = z.infer<typeof ChartConfigSchema>;
 export type DateRange = {
   dateRange: [Date, Date];
   dateRangeStartInclusive?: boolean; // default true
+  dateRangeEndInclusive?: boolean; // default true
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;

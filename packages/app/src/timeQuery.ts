@@ -26,6 +26,7 @@ import {
   withDefault,
 } from 'use-query-params';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
+import { formatDate } from '@hyperdx/common-utils/dist/utils';
 
 import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
@@ -34,18 +35,16 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-const formatDate = (
-  date: Date,
-  isUTC: boolean,
-  strFormat = 'MMM d HH:mm:ss',
-) => {
-  return isUTC
-    ? formatInTimeZone(date, 'Etc/UTC', strFormat)
-    : format(date, strFormat);
-};
-
 export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
-  return `${formatDate(range[0], isUTC)} - ${formatDate(range[1], isUTC)}`;
+  return `${formatDate(range[0], {
+    isUTC,
+    format: 'normal',
+    clock: '24h',
+  })} - ${formatDate(range[1], {
+    isUTC,
+    format: 'normal',
+    clock: '24h',
+  })}`;
 };
 
 function isInputTimeQueryLive(inputTimeQuery: string) {

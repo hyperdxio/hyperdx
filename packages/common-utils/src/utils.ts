@@ -1,5 +1,6 @@
 // Port from ChartUtils + source.ts
-import { add } from 'date-fns';
+import { add as fnsAdd, format as fnsFormat } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 import type { SQLInterval } from '@/types';
 
@@ -230,7 +231,7 @@ export function timeBucketByGranularity(
   const granularitySeconds = convertGranularityToSeconds(granularity);
   while (current < end) {
     buckets.push(current);
-    current = add(current, {
+    current = fnsAdd(current, {
       seconds: granularitySeconds,
     });
   }
@@ -253,4 +254,43 @@ export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 export const parseJSON = <T = any>(json: string) => {
   const [error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
+};
+
+// Date formatting
+const TIME_TOKENS = {
+  normal: {
+    '12h': 'MMM d h:mm:ss a',
+    '24h': 'MMM d HH:mm:ss',
+  },
+  short: {
+    '12h': 'MMM d h:mma',
+    '24h': 'MMM d HH:mm',
+  },
+  withMs: {
+    '12h': 'MMM d h:mm:ss.SSS a',
+    '24h': 'MMM d HH:mm:ss.SSS',
+  },
+  time: {
+    '12h': 'h:mm:ss a',
+    '24h': 'HH:mm:ss',
+  },
+};
+
+export const formatDate = (
+  date: Date,
+  {
+    isUTC = false,
+    format = 'normal',
+    clock = '12h',
+  }: {
+    isUTC?: boolean;
+    format?: 'normal' | 'short' | 'withMs' | 'time';
+    clock?: '12h' | '24h';
+  },
+) => {
+  const formatStr = TIME_TOKENS[format][clock];
+
+  return isUTC
+    ? formatInTimeZone(date, 'Etc/UTC', formatStr)
+    : fnsFormat(date, formatStr);
 };
