@@ -1,5 +1,17 @@
 # @hyperdx/app
 
+## 2.0.0-beta.17
+
+### Patch Changes
+
+- 321e24f: fix: alerting time range filtering bug
+- Updated dependencies [321e24f]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [b51e39c]
+- Updated dependencies [0cf5358]
+- Updated dependencies [321e24f]
+  - @hyperdx/common-utils@0.2.0-beta.6
+
 ## 2.0.0-beta.16
 
 ### Patch Changes
