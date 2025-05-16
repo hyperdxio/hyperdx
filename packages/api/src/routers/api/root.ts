@@ -12,6 +12,7 @@ import { createTeam, isTeamExisting } from '@/controllers/team';
 import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user'; // TODO -> do not import model directly
+import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
 import { validatePassword } from '@/utils/validators';
@@ -94,6 +95,16 @@ router.post(
           user.team = team._id;
           user.name = email;
           await user.save();
+
+          // Set up default connections and sources for this new team
+          try {
+            await setupTeamDefaults(team._id.toString());
+          } catch (error) {
+            logger.error(
+              `Failed to setup team defaults: ${serializeError(error)}`,
+            );
+            // Continue with registration even if setup defaults fails
+          }
 
           return passport.authenticate('local')(req, res, () => {
             if (req?.user?.team) {
