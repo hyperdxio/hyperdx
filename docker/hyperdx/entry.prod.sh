@@ -2,6 +2,10 @@
 
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
+# Set to "REQUIRED_AUTH" to enforce API authentication.
+# ⚠️ Do not change this value !!!!
+export IS_LOCAL_APP_MODE="REQUIRED_AUTH"
+
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 

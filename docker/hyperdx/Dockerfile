@@ -81,7 +81,7 @@ COPY --from=app_builder /app/app/node_modules ./node_modules
 COPY --from=app_builder /app/app/package.json ./package.json
 
 # Set up start script
-COPY --chown=node:node --from=hyperdx ./entry.sh /etc/local/entry.sh
+COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # prod-extended ############################################################################################
@@ -90,7 +90,7 @@ FROM scratch AS all-in-one
 # Copy base
 COPY --from=clickhouse_base / /
 COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
-COPY --from=node_base --link /usr/local/bin /usr/local/bin
+COPY --from=node_base --link /usrlocal./local/bin /usr/local/bin
 COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
@@ -120,7 +120,7 @@ ENV NODE_ENV production
 # Set up App
 COPY --from=prod /app/api /app/api
 COPY --from=prod /app/app /app/app
-COPY --from=hyperdx ./all-in-one-entry.sh /etc/local/entry.sh
+COPY --from=hyperdx ./entry.local.sh /etc/local/entry.sh
 
 WORKDIR /app/app
 # Expose ports
