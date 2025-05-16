@@ -253,6 +253,15 @@ const api = {
       queryFn: () => hdxServer(`team/members`).json(),
     });
   },
+  useSetTeamName() {
+    return useMutation<any, HTTPError, { name: string }>({
+      mutationFn: async ({ name }) =>
+        hdxServer(`team/name`, {
+          method: 'PATCH',
+          json: { name },
+        }).json(),
+    });
+  },
   useTags() {
     return useQuery({
       queryKey: [`team/tags`],
