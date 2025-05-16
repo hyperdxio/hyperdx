@@ -1325,6 +1325,7 @@ function DBSearchPage() {
                       </Box>
                     )}
                     <PatternTable
+                      source={searchedSource}
                       config={{
                         ...chartConfig,
                         dateRange: searchedTimeRange,
