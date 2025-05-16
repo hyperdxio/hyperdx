@@ -1,7 +1,7 @@
 import React from 'react';
+import { formatDate } from '@hyperdx/common-utils/dist/utils';
 
 import { useUserPreferences } from './useUserPreferences';
-import { formatDate } from './utils';
 
 type DateLike = number | string | Date;
 

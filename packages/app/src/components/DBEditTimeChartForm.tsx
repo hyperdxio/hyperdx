@@ -405,6 +405,7 @@ export default function EditTimeChartForm({
     handleSubmit(form => {
       setChartConfig(form);
       if (tableSource != null) {
+        const isSelectEmpty = !form.select || form.select.length === 0; // select is string or array
         setQueriedConfig({
           ...structuredClone(form),
           from: tableSource.from,
@@ -413,6 +414,9 @@ export default function EditTimeChartForm({
           connection: tableSource.connection,
           implicitColumnExpression: tableSource.implicitColumnExpression,
           metricTables: tableSource.metricTables,
+          select: isSelectEmpty
+            ? tableSource.defaultTableSelectExpression || ''
+            : form.select,
         });
       }
     })();
