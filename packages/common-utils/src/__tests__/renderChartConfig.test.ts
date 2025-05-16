@@ -124,39 +124,111 @@ describe('renderChartConfig', () => {
     );
   });
 
-  it('should generate sql for a single histogram metric', async () => {
-    const config: ChartConfigWithOptDateRange = {
-      displayType: DisplayType.Line,
-      connection: 'test-connection',
-      // metricTables is added from the Source object via spread operator
-      metricTables: {
-        gauge: 'otel_metrics_gauge',
-        histogram: 'otel_metrics_histogram',
-        sum: 'otel_metrics_sum',
-      },
-      from: {
-        databaseName: 'default',
-        tableName: '',
-      },
-      select: [
-        {
-          aggFn: 'quantile',
-          level: 0.5,
-          valueExpression: 'Value',
-          metricName: 'http.server.duration',
-          metricType: MetricsDataType.Histogram,
+  describe('histogram metric queries', () => {
+    it('should generate a query without grouping or time bucketing', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
         },
-      ],
-      where: '',
-      whereLanguage: 'sql',
-      timestampValueExpression: 'TimeUnix',
-      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
-      limit: { limit: 10 },
-    };
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.5,
+            valueExpression: 'Value',
+            metricName: 'http.server.duration',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        limit: { limit: 10 },
+      };
 
-    const generatedSql = await renderChartConfig(config, mockMetadata);
-    const actual = parameterizedQueryToSql(generatedSql);
-    expect(actual).toMatchSnapshot();
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate a query without grouping but time bucketing', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.5,
+            valueExpression: 'Value',
+            metricName: 'http.server.duration',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '2 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate a query with grouping and time bucketing', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.5,
+            valueExpression: 'Value',
+            metricName: 'http.server.duration',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '2 minute',
+        groupBy: `ResourceAttributes['host']`,
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toMatchSnapshot();
+    });
   });
 
   describe('containing CTE clauses', () => {
