@@ -87,42 +87,42 @@ ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 # all-in-one base ############################################################################################
 FROM scratch AS all-in-one-base
 
-# Copy base
+# Copy from clickhouse and otel collector bases
 COPY --from=clickhouse_base / /
 COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
+
+# Copy Node.js runtime from node base
 COPY --from=node_base --link /usr/local/bin /usr/local/bin
 COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
 
-
 # Set up Clickhouse
 COPY --from=clickhouse ./local/*.xml /etc/clickhouse-server
-# overwrite default config
 COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
+
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 
-# == Install MongoDB v4 Deps ==
-RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories
-RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories
-RUN apk update
-RUN apk add mongodb yaml-cpp=0.6.2-r2
-
-# Install libs used for the start script
-RUN apk add curl
-
-# Set up Mongo directories with proper permissions
-RUN mkdir -p /data/db
+# Install MongoDB and other dependencies (consolidated into a single RUN command)
+RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
+  echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
+  apk update && \
+  apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl && \
+  mkdir -p /data/db && \
+  rm -rf /var/cache/apk/*
 
 ENV NODE_ENV production
 
-# Set up App
+# Set up App (copy from prod stage)
 COPY --from=prod /app/api /app/api
 COPY --from=prod /app/app /app/app
 COPY --from=hyperdx ./entry.local.sh /etc/local/entry.base.sh
 
 WORKDIR /app/app
+
+# Add hosts entry in entrypoint script instead of here
+
 # Expose ports
 EXPOSE 8080 4317 4318 13133 8123 9000
 
