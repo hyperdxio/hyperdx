@@ -1,5 +1,15 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.6
+
+### Patch Changes
+
+- 321e24f: fix: alerting time range filtering bug
+- 7d2cfcf: fix: 'Failed to fetch' errors
+- b51e39c: fix: disable keep_alive on the browser side (ch client)
+- 0cf5358: chore: bump clickhouse client to v1.11.1
+- 321e24f: feat: support 'dateRangeEndInclusive' in timeFilterExpr
+
 ## 0.2.0-beta.5
 
 ### Patch Changes
