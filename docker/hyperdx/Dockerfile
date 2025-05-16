@@ -1,6 +1,11 @@
-# Starts several services in a single container for local use
+# Starts several services in a single container
+# For production build:
 # - API (Node)
 # - App (Frontend)
+# For all-in-one build:
+# - Clickhouse
+# - Mongo
+# - Otel Collector (otelcol)
 
 ARG NODE_VERSION=22.14.0
 ARG CLICKHOUSE_VERSION=24
