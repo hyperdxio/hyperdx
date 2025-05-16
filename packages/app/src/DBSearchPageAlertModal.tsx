@@ -63,6 +63,7 @@ const AlertForm = ({
   sourceId,
   where,
   whereLanguage,
+  select,
   defaultValues,
   loading,
   deleteLoading,
@@ -74,6 +75,7 @@ const AlertForm = ({
   sourceId?: string | null;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  select?: string | null;
   defaultValues?: null | Alert;
   loading?: boolean;
   deleteLoading?: boolean;
@@ -167,15 +169,18 @@ const AlertForm = ({
             <Text size="sm">Threshold chart</Text>
           </Accordion.Control>
           <Accordion.Panel>
-            <AlertPreviewChart
-              sourceId={sourceId}
-              where={where}
-              whereLanguage={whereLanguage}
-              interval={watch('interval')}
-              groupBy={watch('groupBy')}
-              threshold={watch('threshold')}
-              thresholdType={watch('thresholdType')}
-            />
+            {source && (
+              <AlertPreviewChart
+                source={source}
+                where={where}
+                whereLanguage={whereLanguage}
+                select={select}
+                interval={watch('interval')}
+                groupBy={watch('groupBy')}
+                threshold={watch('threshold')}
+                thresholdType={watch('thresholdType')}
+              />
+            )}
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
@@ -397,6 +402,7 @@ export const DBSearchPageAlertModal = ({
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
+          select={searchedConfig?.select}
           defaultValues={
             activeIndex === 'stage'
               ? null
