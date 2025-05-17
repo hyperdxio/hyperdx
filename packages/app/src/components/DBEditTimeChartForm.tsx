@@ -339,7 +339,7 @@ export default function EditTimeChartForm({
 
   const { fields, append, remove } = useFieldArray({
     control: control as Control<SavedChartConfigWithSelectArray>,
-    name: 'select', // TODO: bug with select = "" - it becomes and empty array
+    name: 'select',
   });
 
   const select = watch('select');
@@ -421,6 +421,17 @@ export default function EditTimeChartForm({
       }
     })();
   }, [handleSubmit, setChartConfig, setQueriedConfig, tableSource, dateRange]);
+
+  const handleSave = useCallback(
+    (v: SavedChartConfig) => {
+      // If the chart type is search, we need to ensure the select is a string
+      if (displayType === DisplayType.Search && typeof v.select !== 'string') {
+        v.select = '';
+      }
+      onSave?.(v);
+    },
+    [onSave, displayType],
+  );
 
   watch((_, { name, type }) => {
     // Emulate the granularity picker auto-searching similar to dashboards
@@ -786,11 +797,7 @@ export default function EditTimeChartForm({
             <Button
               loading={isSaving}
               variant="outline"
-              onClick={() => {
-                handleSubmit(v => {
-                  onSave?.(v);
-                })();
-              }}
+              onClick={handleSubmit(handleSave)}
             >
               Save
             </Button>
