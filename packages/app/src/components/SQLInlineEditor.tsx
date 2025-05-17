@@ -361,7 +361,13 @@ export function SQLInlineEditorControlled({
 
   // Guard against wrongly typed values
   const value = field.value || props.defaultValue;
-  const stringValue = typeof value === 'string' ? value : '';
+
+  let stringValue = '';
+  if (typeof value === 'string') {
+    stringValue = value;
+  } else {
+    console.error('SQLInlineEditor: value is not a string', value);
+  }
 
   return (
     <SQLInlineEditor
