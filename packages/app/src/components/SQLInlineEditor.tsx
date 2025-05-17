@@ -359,12 +359,22 @@ export function SQLInlineEditorControlled({
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
   const { field } = useController(props);
 
+  // Guard against wrongly typed values
+  const value = field.value || props.defaultValue;
+
+  let stringValue = '';
+  if (typeof value === 'string') {
+    stringValue = value;
+  } else {
+    console.error('SQLInlineEditor: value is not a string', value);
+  }
+
   return (
     <SQLInlineEditor
       filterField={filterField}
       onChange={field.onChange}
       placeholder={placeholder}
-      value={field.value || props.defaultValue}
+      value={stringValue}
       additionalSuggestions={additionalSuggestions}
       queryHistoryType={queryHistoryType}
       {...props}
