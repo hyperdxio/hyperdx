@@ -12,7 +12,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView, ViewUpdate } from '@codemirror/view';
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Badge,
@@ -198,6 +198,7 @@ function ConnectionsSection() {
 }
 
 function SourcesSection() {
+  const { data: connections } = useConnections();
   const { data: sources } = useSources();
 
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
@@ -216,13 +217,22 @@ function SourcesSection() {
               <Flex key={s.id} justify="space-between" align="center">
                 <div>
                   <Text>{s.name}</Text>
-                  <Text size="xxs" c="dimmed">
+                  <Text size="xxs" c="dimmed" mt="xs">
                     {capitalizeFirstLetter(s.kind)}
+                    <Text px="md" span>
+                      <span className="bi-hdd-stack me-1" />
+                      {connections?.find(c => c.id === s.connection)?.name}
+                    </Text>
                     {s.from && (
                       <>
-                        {' '}
-                        &middot; <span className="bi-database me-1" />
-                        {s.from.databaseName}.{s.from.tableName}
+                        <span className="bi-database me-1" />
+                        {s.from.databaseName}
+                        {
+                          s.kind === SourceKind.Metric
+                            ? ''
+                            : '.' /** Metrics dont have table names */
+                        }
+                        {s.from.tableName}
                       </>
                     )}
                   </Text>

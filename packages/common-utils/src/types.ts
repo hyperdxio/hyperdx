@@ -516,7 +516,7 @@ export const SourceSchema = z.object({
   spanKindExpression: z.string().optional(),
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
-  logSourceId: z.string().optional(),
+  logSourceId: z.string().optional().nullable(),
 
   // OTEL Metrics
   metricTables: MetricTableSchema.optional(),
