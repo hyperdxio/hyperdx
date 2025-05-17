@@ -201,7 +201,11 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     loading={isSubmitting}
                     data-test-id="submit"
                   >
-                    {isRegister ? 'Register' : 'Login'}
+                    {config.IS_OSS && isRegister
+                      ? 'Create'
+                      : isRegister
+                        ? 'Register'
+                        : 'Login'}
                   </Button>
                 </Stack>
               </Paper>

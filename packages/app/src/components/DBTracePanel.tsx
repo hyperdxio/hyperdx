@@ -35,8 +35,8 @@ export default function DBTracePanel({
   focusDate,
   parentSourceId,
 }: {
-  parentSourceId?: string;
-  childSourceId?: string;
+  parentSourceId?: string | null;
+  childSourceId?: string | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;

@@ -779,7 +779,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             pathname.startsWith('/clickhouse'),
                         })}
                       >
-                        Clickhouse
+                        ClickHouse
                       </Link>
                       <Link
                         href={`/services`}

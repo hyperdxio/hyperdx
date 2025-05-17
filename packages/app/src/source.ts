@@ -268,7 +268,7 @@ export async function inferTableSourceConfig({
     ...(isOtelLogSchema
       ? {
           defaultTableSelectExpression:
-            'Timestamp, ServiceName, SeverityText, Body',
+            'Timestamp, ServiceName as service, SeverityText as level, Body',
           serviceNameExpression: 'ServiceName',
           bodyExpression: 'Body',
 
@@ -288,7 +288,7 @@ export async function inferTableSourceConfig({
           implicitColumnExpression: 'SpanName',
           bodyExpression: 'SpanName',
           defaultTableSelectExpression:
-            'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
+            'Timestamp, ServiceName as service, StatusCode as level, round(Duration / 1e6) as duration, SpanName',
           eventAttributesExpression: 'SpanAttributes',
           serviceNameExpression: 'ServiceName',
           resourceAttributesExpression: 'ResourceAttributes',
