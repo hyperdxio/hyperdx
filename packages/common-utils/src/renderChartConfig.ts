@@ -449,25 +449,27 @@ function timeBucketExpr({
 }
 
 async function timeFilterExpr({
-  timestampValueExpression,
-  dateRange,
-  dateRangeStartInclusive,
-  databaseName,
-  tableName,
-  metadata,
   connectionId,
-  with: withClauses,
+  databaseName,
+  dateRange,
+  dateRangeEndInclusive,
+  dateRangeStartInclusive,
   includedDataInterval,
+  metadata,
+  tableName,
+  timestampValueExpression,
+  with: withClauses,
 }: {
-  timestampValueExpression: string;
-  dateRange: [Date, Date];
-  dateRangeStartInclusive: boolean;
-  metadata: Metadata;
   connectionId: string;
   databaseName: string;
-  tableName: string;
-  with?: ChartConfigWithDateRange['with'];
+  dateRange: [Date, Date];
+  dateRangeEndInclusive: boolean;
+  dateRangeStartInclusive: boolean;
   includedDataInterval?: string;
+  metadata: Metadata;
+  tableName: string;
+  timestampValueExpression: string;
+  with?: ChartConfigWithDateRange['with'];
 }) {
   const valueExpressions = splitAndTrimWithBracket(timestampValueExpression);
   const startTime = dateRange[0].getTime();
@@ -507,11 +509,15 @@ async function timeFilterExpr({
       if (columnMeta?.type === 'Date') {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} <= toDate(${endTimeCond}))`;
+        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${
+          dateRangeEndInclusive ? '<=' : '<'
+        } toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } ${startTimeCond} AND ${unsafeTimestampValueExpression} <= ${endTimeCond})`;
+        } ${startTimeCond} AND ${unsafeTimestampValueExpression} ${
+          dateRangeEndInclusive ? '<=' : '<'
+        } ${endTimeCond})`;
       }
     }),
   );
@@ -701,6 +707,7 @@ async function renderWhere(
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
           dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
+          dateRangeEndInclusive: chartConfig.dateRangeEndInclusive ?? true,
           metadata,
           connectionId: chartConfig.connection,
           databaseName: chartConfig.from.databaseName,
