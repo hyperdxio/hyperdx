@@ -257,7 +257,7 @@ class MockServer extends Server {
   protected shouldHandleGracefulShutdown = false;
 
   getHttpServer() {
-    return this.httpServer;
+    return this.appServer;
   }
 
   async start(): Promise<void> {
@@ -274,7 +274,7 @@ class MockServer extends Server {
 
   stop() {
     return new Promise<void>((resolve, reject) => {
-      this.httpServer.close(err => {
+      this.appServer.close(err => {
         if (err) {
           reject(err);
           return;

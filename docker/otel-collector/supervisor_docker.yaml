@@ -1,0 +1,25 @@
+server:
+  endpoint: ${OPAMP_SERVER_URL}/v1/opamp
+  tls:
+    # Disable verification to test locally.
+    # Don't do this in production.
+    insecure_skip_verify: true
+    # For more TLS settings see config/configtls.ClientConfig
+
+capabilities:
+  reports_effective_config: true
+  reports_own_metrics: true
+  reports_own_logs: true
+  reports_own_traces: true
+  reports_health: true
+  accepts_remote_config: true
+  reports_remote_config: true
+
+agent:
+  executable: /otelcontribcol
+  config_files:
+    - /etc/otelcol-contrib/config.yaml
+  # passthrough_logs: true # enable to debug collector logs, can crash collector due to perf issues with this flag enabled
+
+storage:
+  directory: /etc/otel/supervisor-data/
