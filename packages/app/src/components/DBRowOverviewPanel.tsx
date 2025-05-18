@@ -138,9 +138,12 @@ export function RowOverviewPanel({
       Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
     );
   }, [firstRow?.__hdx_events_exception_attributes]);
-  
+
   const hasSpanEvents = useMemo(() => {
-    return Array.isArray(firstRow?.__hdx_span_events) && firstRow?.__hdx_span_events.length > 0;
+    return (
+      Array.isArray(firstRow?.__hdx_span_events) &&
+      firstRow?.__hdx_span_events.length > 0
+    );
   }, [firstRow?.__hdx_span_events]);
 
   const mainContentColumn = getEventBody(source);

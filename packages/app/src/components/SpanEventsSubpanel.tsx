@@ -9,7 +9,8 @@ import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { SectionWrapper, useShowMoreRows } from './ExceptionSubpanel';
 import { Table } from './Table';
 
-interface SpanEventData {
+// Make sure SpanEventData implements Record<string, unknown>
+interface SpanEventData extends Record<string, unknown> {
   Timestamp: string; // DateTime64(9)
   Name: string;
   Attributes: Record<string, string>;
@@ -60,14 +61,24 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
 export const SpanEventsSubpanel = ({
   spanEvents,
 }: {
-  spanEvents?: SpanEventData[] | null;
+  spanEvents?: Record<string, unknown>[] | null;
 }) => {
   const sortedEvents = useMemo(() => {
     if (!spanEvents || spanEvents.length === 0) {
       return [];
     }
+
+    // Ensure events have the right shape with type checking
+    const typedEvents = spanEvents.filter((event): event is SpanEventData => {
+      return (
+        typeof event.Timestamp === 'string' &&
+        typeof event.Name === 'string' &&
+        event.Attributes !== undefined
+      );
+    });
+
     // Sort events by timestamp
-    return [...spanEvents].sort((a, b) => {
+    return [...typedEvents].sort((a, b) => {
       const timeA = new Date(a.Timestamp).getTime();
       const timeB = new Date(b.Timestamp).getTime();
       return timeB - timeA; // Latest first
