@@ -296,7 +296,6 @@ export function DBTraceWaterfallChartContainer({
   useEffect(() => {
     if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
       const initialRowHighlightIndex = rows.findIndex(row => {
-        console.log(row, initialRowHighlightHint);
         return (
           row.Timestamp === initialRowHighlightHint.timestamp &&
           row.SpanId === initialRowHighlightHint.spanId &&
