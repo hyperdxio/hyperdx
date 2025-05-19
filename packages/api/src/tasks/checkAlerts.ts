@@ -22,6 +22,7 @@ import { URLSearchParams } from 'url';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { getConnectionById } from '@/controllers/connection';
+import { LOCAL_APP_TEAM } from '@/controllers/team';
 import Alert, {
   AlertSource,
   AlertState,
@@ -42,10 +43,19 @@ const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
 // TODO(perf): no need to populate the team
-const getAlerts = () =>
-  Alert.find({}).populate<{
+const getAlerts = async () => {
+  const alerts = await Alert.find({}).populate<{
     team: ITeam;
   }>(['team']);
+
+  return config.IS_LOCAL_APP_MODE
+    ? alerts.map(_alert => {
+        // @ts-ignore
+        _alert.team = LOCAL_APP_TEAM;
+        return _alert;
+      })
+    : alerts;
+};
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
