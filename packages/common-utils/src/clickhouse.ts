@@ -330,7 +330,9 @@ export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
 
 const localModeFetch: typeof fetch = (input, init) => {
   if (!init) init = {};
-  const url = new URL(input instanceof URL ? input : input.toString());
+  const url = new URL(
+    input instanceof URL ? input : input instanceof Request ? input.url : input,
+  );
 
   // CORS is unhappy with the authorization header, so we will supply as query params instead
   const auth: string = init.headers?.['Authorization'];
