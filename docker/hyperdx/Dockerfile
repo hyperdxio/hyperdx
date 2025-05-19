@@ -114,7 +114,7 @@ ENV NODE_ENV production
 # Set up App (copy from prod stage)
 COPY --from=prod /app/api /app/api
 COPY --from=prod /app/app /app/app
-COPY --from=hyperdx ./entry.local.sh /etc/local/entry.base.sh
+COPY --from=hyperdx ./entry.local.base.sh /etc/local/entry.base.sh
 
 WORKDIR /app/app
 
