@@ -7,7 +7,7 @@ import { SavedSearch } from '@/models/savedSearch';
 import Team from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
-const LOCAL_APP_TEAM = {
+export const LOCAL_APP_TEAM = {
   _id: LOCAL_APP_TEAM_ID,
   id: LOCAL_APP_TEAM_ID,
   name: 'Local App Team',

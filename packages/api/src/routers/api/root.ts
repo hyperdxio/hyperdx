@@ -45,7 +45,12 @@ const registrationSchema = z
 const router = express.Router();
 
 router.get('/health', async (req, res) => {
-  res.send({ data: 'OK', version: config.CODE_VERSION, ip: req.ip });
+  res.send({
+    data: 'OK',
+    version: config.CODE_VERSION,
+    ip: req.ip,
+    env: config.NODE_ENV,
+  });
 });
 
 router.get('/installation', async (req, res, next) => {
