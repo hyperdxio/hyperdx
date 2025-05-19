@@ -88,6 +88,10 @@ export function useRowData({
                 valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
                 alias: '__hdx_events_exception_attributes',
               },
+              {
+                valueExpression: source.spanEventsValueExpression,
+                alias: '__hdx_span_events',
+              },
             ]
           : []),
       ],
