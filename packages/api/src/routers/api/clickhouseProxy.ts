@@ -69,11 +69,6 @@ const getConnection: RequestHandler =
   // prettier-ignore-next-line
   async (req, res, next) => {
     try {
-      if (req.headers['authorization'] === 'Basic Og==') {
-        // this means username & password === 0, which indicates we must be
-        // doing some other authorization mechanism (probably connection_id)
-        delete req.headers['authorization'];
-      }
       const { teamId } = getNonNullUserWithTeam(req);
       const connection_id = req.headers['x-hyperdx-connection-id']!; // ! because zod already validated
       delete req.headers['x-hyperdx-connection-id'];
