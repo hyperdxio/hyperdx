@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { isString, pickBy } from 'lodash';
+import isString from 'lodash/isString';
+import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
@@ -36,6 +37,32 @@ export function RowOverviewPanel({
     }
     return firstRow;
   }, [data]);
+
+  // TODO: Use source config to select these in SQL, but we'll just
+  // assume OTel column names for now
+  const topLevelAttributeKeys = [
+    'ServiceName',
+    'SpanName',
+    'Duration',
+    'SeverityText',
+    'StatusCode',
+    'StatusMessage',
+    'SpanKind',
+    'TraceId',
+    'SpanId',
+    'ParentSpanId',
+    'ScopeName',
+    'ScopeVersion',
+  ];
+  const topLevelAttributes = pickBy(firstRow, (value, key) => {
+    if (value === '') {
+      return false;
+    }
+    if (topLevelAttributeKeys.includes(key)) {
+      return true;
+    }
+    return false;
+  });
 
   const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
   const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
@@ -138,6 +165,7 @@ export function RowOverviewPanel({
           'network',
           'resourceAttributes',
           'eventAttributes',
+          'topLevelAttributes',
         ]}
         multiple
       >
@@ -176,6 +204,21 @@ export function RowOverviewPanel({
                     timestamp: firstRow?.__hdx_timestamp,
                   }}
                 />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {Object.keys(topLevelAttributes).length > 0 && (
+          <Accordion.Item value="topLevelAttributes">
+            <Accordion.Control>
+              <Text size="sm" c="gray.2" ps="md">
+                Top Level Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <DBRowJsonViewer data={topLevelAttributes} />
               </Box>
             </Accordion.Panel>
           </Accordion.Item>
