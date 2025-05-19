@@ -37,6 +37,7 @@ export default function AggFnSelect({
 
   return (
     <Select
+      withScrollArea={false}
       searchable
       value={value}
       defaultValue={defaultValue}
