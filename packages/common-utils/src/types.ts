@@ -399,6 +399,7 @@ export type ChartConfig = z.infer<typeof ChartConfigSchema>;
 export type DateRange = {
   dateRange: [Date, Date];
   dateRangeStartInclusive?: boolean; // default true
+  dateRangeEndInclusive?: boolean; // default true
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
@@ -515,7 +516,7 @@ export const SourceSchema = z.object({
   spanKindExpression: z.string().optional(),
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
-  logSourceId: z.string().optional(),
+  logSourceId: z.string().optional().nullable(),
 
   // OTEL Metrics
   metricTables: MetricTableSchema.optional(),

@@ -8,6 +8,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import { formatDate } from '@hyperdx/common-utils/dist/utils';
 import * as fns from 'date-fns';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
@@ -487,6 +488,11 @@ export const renderAlertTemplate = async ({
     );
   };
 
+  const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
+    isUTC: true,
+  })} - ${formatDate(view.endTime, {
+    isUTC: true,
+  })})`;
   let rawTemplateBody;
 
   // TODO: support advanced routing with template engine
@@ -548,7 +554,7 @@ ${value} lines found, expected ${
       alert.thresholdType === AlertThresholdType.ABOVE
         ? 'less than'
         : 'greater than'
-    } ${alert.threshold} lines
+    } ${alert.threshold} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
@@ -566,7 +572,7 @@ ${value} ${
         : alert.thresholdType === AlertThresholdType.ABOVE
           ? 'falls below'
           : 'exceeds'
-    } ${alert.threshold}
+    } ${alert.threshold}\n${timeRangeMessage}
 ${targetTemplate}`;
   }
 
@@ -726,6 +732,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         connection: connectionId,
         displayType: DisplayType.Line,
         dateRange: [checkStartTime, checkEndTime],
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: false,
         from: source.from,
         granularity: `${windowSizeInMins} minute`,
         select: [
@@ -782,6 +790,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           chartConfig = {
             connection: connectionId,
             dateRange: [checkStartTime, checkEndTime],
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: false,
             displayType: firstTile.config.displayType,
             from: source.from,
             granularity: `${windowSizeInMins} minute`,
