@@ -279,10 +279,16 @@ class MockServer extends Server {
           reject(err);
           return;
         }
-        super
-          .shutdown()
-          .then(() => resolve())
-          .catch(err => reject(err));
+        this.opampServer.close(err => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          super
+            .shutdown()
+            .then(() => resolve())
+            .catch(err => reject(err));
+        });
       });
     });
   }
