@@ -6,7 +6,7 @@ load 'test_helpers/assertions.bash'
 setup_file() {
     validate_env
     docker compose up --build --detach
-    wait_for_ready "otel-collector" "http://localhost:4318"
+    wait_for_ready "otel-collector"
 }
 
 teardown_file() {
