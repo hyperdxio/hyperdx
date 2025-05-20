@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -111,9 +111,12 @@ export default function OnboardingModal({
                     timestampValueExpression: 'TimeUnix',
                     serviceNameExpression: 'ServiceName',
                     metricTables: {
-                      gauge: 'otel_metrics_gauge',
-                      histogram: 'otel_metrics_histogram',
-                      sum: 'otel_metrics_sum',
+                      [MetricsDataType.Gauge]: 'otel_metrics_gauge',
+                      [MetricsDataType.Histogram]: 'otel_metrics_histogram',
+                      [MetricsDataType.Sum]: 'otel_metrics_sum',
+                      [MetricsDataType.Summary]: 'otel_metrics_summary',
+                      [MetricsDataType.ExponentialHistogram]:
+                        'otel_metrics_exponential_history',
                     },
                     resourceAttributesExpression: 'ResourceAttributes',
                   },
