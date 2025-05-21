@@ -116,7 +116,7 @@ export default function OnboardingModal({
                       [MetricsDataType.Sum]: 'otel_metrics_sum',
                       [MetricsDataType.Summary]: 'otel_metrics_summary',
                       [MetricsDataType.ExponentialHistogram]:
-                        'otel_metrics_exponential_history',
+                        'otel_metrics_exponential_histogram',
                     },
                     resourceAttributesExpression: 'ResourceAttributes',
                   },
