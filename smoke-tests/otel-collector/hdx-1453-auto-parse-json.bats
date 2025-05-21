@@ -3,16 +3,6 @@
 load 'test_helpers/utilities.bash'
 load 'test_helpers/assertions.bash'
 
-setup_file() {
-    validate_env
-    docker compose up --build --detach
-    wait_for_ready "otel-collector"
-}
-
-teardown_file() {
-    attempt_env_cleanup
-}
-
 @test "JSON string body content should be parsed and stored as log attributes" {
     emit_otel_data "http://localhost:4318" "data/auto-parse/json-string"
     sleep 1
