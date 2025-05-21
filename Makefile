@@ -109,6 +109,7 @@ release-all-in-one:
 		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
+		--build-arg CODE_VERSION=${CODE_VERSION} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \

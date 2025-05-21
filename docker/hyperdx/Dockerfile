@@ -54,6 +54,9 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api @hyperdx/app --pro
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
 
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
 ENV NODE_ENV production
 
 # Install libs used for the start script
