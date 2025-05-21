@@ -121,7 +121,7 @@ export function RowDataPanel({
 
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
-      <Box mx="md" my="sm">
+      <Box mx="md" my="sm" data-testid="log-detail-content">
         <DBRowJsonViewer data={firstRow} />
       </Box>
     </div>

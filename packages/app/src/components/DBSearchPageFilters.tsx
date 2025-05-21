@@ -65,7 +65,7 @@ export const FilterCheckbox = ({
   onClickPin,
 }: FilterCheckboxProps) => {
   return (
-    <div className={classes.filterCheckbox}>
+    <div className={classes.filterCheckbox} data-testid="applied-filter">
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
@@ -243,6 +243,7 @@ export const FilterGroup = ({
           onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
             setSearch(event.currentTarget.value)
           }
+          data-testid="filter-value-input"
           leftSectionWidth={27}
           leftSection={<IconSearch size={15} stroke={2} />}
           rightSection={
@@ -483,9 +484,19 @@ export const DBSearchPageFilters = ({
                 />
               )}
             </Flex>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="gray"
+              data-testid="add-filter-button"
+              onClick={() => setShowMoreFields(!showMoreFields)}
+            >
+              <i className="bi bi-plus"></i> Add Filter
+            </Button>
             {showClearAllButton && (
               <TextButton
                 label="Clear all"
+                data-testid="remove-filter"
                 onClick={() => {
                   clearAllFilters();
                 }}

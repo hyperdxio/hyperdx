@@ -88,6 +88,7 @@ export default function OnboardingModal({
             variant="outline"
             w="100%"
             color="gray.4"
+            data-testid="connect-demo-server"
             onClick={async () => {
               try {
                 await createConnectionMutation.mutateAsync({

@@ -111,6 +111,7 @@ const LineMenu = React.memo(
             key={action.key}
             title={action.title}
             className={styles.lineMenuBtn}
+            data-testid={`${action.key}-action`}
             onClick={e => {
               action.onClick();
               e.stopPropagation();
@@ -228,7 +229,7 @@ const Line = React.memo(
           key={keyName}
         >
           <div className={styles.keyContainer}>
-            <div className={styles.key}>
+            <div className={styles.key} data-testid="field-row">
               {isExpandable &&
                 (isExpanded ? (
                   <i className="bi bi-caret-down-fill fs-9"></i>
@@ -236,7 +237,10 @@ const Line = React.memo(
                   <i className="bi bi-caret-right-fill fs-9"></i>
                 ))}
               {keyName}
-              <div className={styles.hoverContent}>
+              <div
+                className={styles.hoverContent}
+                data-testid="field-actions-button"
+              >
                 <i className="bi bi-clipboard" />
               </div>
             </div>
@@ -256,7 +260,12 @@ const Line = React.memo(
             )}
           </div>
           {hovered && !disableMenu && !isSelectingValue && (
-            <LineMenu keyName={keyName} keyPath={keyPath} value={value} />
+            <LineMenu
+              keyName={keyName}
+              keyPath={keyPath}
+              value={value}
+              data-testid="field-actions-menu"
+            />
           )}
         </div>
         {isExpanded && isExpandable && (
@@ -360,6 +369,7 @@ const HyperJson = ({
             [styles.withTabulate]: tabulate,
             [styles.withLineWrap]: lineWrap,
           })}
+          data-testid="json-content"
         >
           {isEmpty ? (
             <div className="text-slate-400">Empty</div>

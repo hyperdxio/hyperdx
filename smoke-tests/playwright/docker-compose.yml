@@ -1,0 +1,128 @@
+name: hdx-playwright-tests
+services:
+  db:
+    image: mongo:5.0.14-focal
+    # Using tmpfs for ephemeral storage
+    tmpfs:
+      - /data/db
+    ports:
+      - 27017:27017
+    networks:
+      - internal
+    healthcheck:
+      test: mongosh --eval 'db.runCommand("ping").ok' localhost:27017/test --quiet
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    environment:
+      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
+      CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
+    volumes:
+      - ../../docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - '13133:13133' # health_check extension
+      - '24225:24225' # fluentd receiver
+      - '4317:4317' # OTLP gRPC receiver
+      - '4318:4318' # OTLP http receiver
+      - '8888:8888' # metrics extension
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      ch-server:
+        condition: service_healthy
+
+  ch-server:
+    image: clickhouse/clickhouse-server:24-alpine
+    # Using tmpfs for ephemeral storage
+    tmpfs:
+      - /var/lib/clickhouse
+      - /var/log/clickhouse-server
+    ports:
+      - 8123:8123 # http api
+      - 9000:9000 # native
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ../../docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
+      - ../../docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
+    restart: on-failure
+    networks:
+      - internal
+    healthcheck:
+      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  app:
+    image: hyperdx-playwright-app:latest
+    build:
+      context: ../../
+      dockerfile: ./smoke-tests/playwright/Dockerfile
+      target: prod-extended
+    ports:
+      - ${HYPERDX_API_PORT:-8000}:${HYPERDX_API_PORT:-8000}
+      - ${HYPERDX_APP_PORT:-8080}:${HYPERDX_APP_PORT:-8080}
+    environment:
+      # App settings
+      NODE_ENV: production
+      FRONTEND_URL: http://localhost:${HYPERDX_APP_PORT:-8080}
+      HYPERDX_API_PORT: ${HYPERDX_API_PORT:-8000}
+      HYPERDX_APP_PORT: ${HYPERDX_APP_PORT:-8080}
+      
+      # MongoDB settings
+      MONGO_URI: mongodb://db:27017/hyperdx
+      
+      # ClickHouse settings - correct format for client
+      CLICKHOUSE_HOST: http://ch-server:8123
+      CLICKHOUSE_PASSWORD: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
+      
+      # Other required settings
+      EXPRESS_SESSION_SECRET: test-session-secret-for-playwright
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: hdx-oss-playwright-test
+      
+      # API settings
+      APP_TYPE: api
+      SERVER_URL: http://localhost:${HYPERDX_API_PORT:-8000}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
+      USAGE_STATS_ENABLED: false
+      
+      # Additional settings from main compose file
+      AGGREGATOR_API_URL: http://localhost:8001
+      MINER_API_URL: http://localhost:5123
+      HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
+      HDX_NODE_BETA_MODE: 1
+      HDX_NODE_CONSOLE_CAPTURE: 1
+    # Using tmpfs for ephemeral storage in the container
+    tmpfs:
+      - /data/db
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+      ch-server:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    restart: on-failure
+    healthcheck:
+      test: wget --no-verbose --tries=1 http://127.0.0.1:${HYPERDX_APP_PORT:-8080} || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  internal:
+    name: 'hyperdx-playwright-test-network'

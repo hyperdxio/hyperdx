@@ -392,6 +392,7 @@ const EditTileModal = ({
       centered
       size="90%"
       padding="xs"
+      data-testid="edit-tile-modal"
     >
       {chart != null && (
         <EditTimeChartForm
@@ -829,6 +830,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               This is a temporary dashboard and can not be saved.
             </Text>
             <Button
+              data-testid="create-dashboard-button"
               variant="outline"
               color="green"
               fw={400}
@@ -873,7 +875,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             </Tags>
           )}
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-            <Menu width={250}>
+            <Menu width={250} data-testid="dashboard-menu">
               <Menu.Target>
                 <Button variant="outline" color="dark.2" px="xs" size="xs">
                   <i className="bi bi-three-dots-vertical" />
@@ -883,6 +885,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               <Menu.Dropdown>
                 <Menu.Item
                   leftSection={<i className="bi bi-trash-fill" />}
+                  data-testid="delete-dashboard-button"
                   onClick={() =>
                     deleteDashboard.mutate(dashboard?.id ?? '', {
                       onSuccess: () => {
@@ -1044,6 +1047,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         fw={400}
         onClick={onAddTile}
         w="100%"
+        data-testid="add-new-tile-button"
       >
         + Add New Tile
       </Button>

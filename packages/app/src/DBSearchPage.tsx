@@ -301,7 +301,11 @@ function SaveSearchModal({
             <Text c="gray.4" size="xs" mb="xs">
               Name
             </Text>
-            <InputControlled control={control} name="name" />
+            <InputControlled
+              control={control}
+              name="name"
+              data-testid="save-search-name-input"
+            />
           </Box>
           <Box mb="sm">
             <Text c="gray.4" size="xs" mb="xs">
@@ -339,7 +343,12 @@ function SaveSearchModal({
               </Tags>
             </Group>
           </Box>
-          <Button variant="outline" color="green" type="submit">
+          <Button
+            variant="outline"
+            color="green"
+            type="submit"
+            data-testid="confirm-save-search-button"
+          >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
         </Stack>
@@ -863,6 +872,21 @@ function DBSearchPage() {
     setDisplayedTimeInputValue('Live Tail');
     onSearch('Live Tail');
   }, [onSearch, setIsLive]);
+
+  // Add a button for resuming live tail
+  const ResumeButton = () =>
+    shouldShowLiveModeHint ? (
+      <Button
+        size="xs"
+        variant="default"
+        color="green"
+        leftSection={<i className="bi bi-lightning" />}
+        onClick={handleResumeLiveTail}
+        data-testid="resume-live-tail-button"
+      >
+        Resume Live Tail
+      </Button>
+    ) : null;
 
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1573,6 +1597,7 @@ function DBSearchPage() {
                               size="compact-xs"
                               variant="outline"
                               onClick={handleResumeLiveTail}
+                              data-testid="resume-live-tail-button"
                             >
                               <i className="bi text-success bi-lightning-charge-fill me-2" />
                               Resume Live Tail

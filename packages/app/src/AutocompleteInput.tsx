@@ -199,7 +199,10 @@ export default function AutocompleteInput({
           )}
           <div>
             {showSearchHistory && (
-              <div className="border-top border-dark fs-8 py-2">
+              <div
+                className="border-top border-dark fs-8 py-2"
+                data-testid="search-history-dropdown"
+              >
                 <div className="text-muted fs-8 fw-bold me-1 px-3">
                   Search History:
                 </div>
@@ -242,6 +245,7 @@ export default function AutocompleteInput({
         className="border-0 fs-8"
         value={value}
         size={size}
+        data-testid="search-input"
         onChange={e => onChange(e.target.value)}
         onFocus={() => {
           setSelectedAutocompleteIndex(-1);

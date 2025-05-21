@@ -1,15 +1,15 @@
 // tests/search/live-tail.spec.ts
-import { expect, test } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
 
 import login from '../utils/loginHelper';
 
-test('Test live search', async ({ page }) => {
+test('Test live search', async ({ page }: { page: Page }) => {
   await login(page);
   await page.waitForURL('**/search?isLive=true*');
 
   const tableContainer = page.locator('[data-testid="search-table-container"]');
   await expect(tableContainer).toBeVisible();
-  await tableContainer.evaluate((container) => {
+  await tableContainer.evaluate((container: HTMLElement) => {
     setTimeout(() => {
       container.scrollTop += 200;
     }, 100);

@@ -143,3 +143,9 @@ release-extended-app:
 		--push \
 	 	--cache-from=type=gha \
 		--cache-to=type=gha,mode=max
+
+.PHONY: test-e2e
+test-e2e:
+	docker compose -f smoke-tests/playwright/docker-compose.yml up -d
+	npx playwright test smoke-tests/playwright/tests
+	docker compose -f smoke-tests/playwright/docker-compose.yml down

@@ -3,12 +3,12 @@ import { expect, test } from '@playwright/test';
 
 import login from '../utils/loginHelper';
 
-import { 
-  addToResultsTable, 
-  assertColumnBoxChanged, 
-  clickFirstSearchResult, 
-  propertyInteractions, 
-  searchForLinesWithLogAttributes 
+import {
+  addToResultsTable,
+  assertColumnBoxChanged,
+  clickFirstSearchResult,
+  propertyInteractions,
+  searchForLinesWithLogAttributes,
 } from './utils/search-helpers';
 
 test('Test Search Result Attribute Interactions', async ({ page }) => {
@@ -28,7 +28,7 @@ test('Test Search Result Attribute Interactions', async ({ page }) => {
 
   await Promise.all([
     page.click('[title="Search for this value only"]'),
-    page.waitForNavigation()
+    page.waitForNavigation(),
   ]);
 
   await clickFirstSearchResult(page);
@@ -41,11 +41,13 @@ test('Test Search Result Attribute Interactions', async ({ page }) => {
 
   await Promise.all([
     page.click('[title="Add to Filters"]'),
-    page.waitForNavigation()
+    page.waitForNavigation(),
   ]);
 
   await page.click('[class*="SearchPage_filtersPanel"]');
-  const filterCheckbox = page.locator('[class*="SearchPage_filterCheckbox"] input[type="checkbox"]:checked');
+  const filterCheckbox = page.locator(
+    '[class*="SearchPage_filterCheckbox"] input[type="checkbox"]:checked',
+  );
   await expect(filterCheckbox).toBeVisible();
   await expect(filterCheckbox).toHaveCount(1);
 });

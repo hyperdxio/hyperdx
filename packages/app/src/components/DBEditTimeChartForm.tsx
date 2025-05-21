@@ -542,6 +542,7 @@ export default function EditTimeChartForm({
           w="100%"
           type="text"
           placeholder="My Chart Name"
+          data-testid="chart-name-input"
         />
       </Flex>
       <Divider my="md" />
@@ -573,7 +574,12 @@ export default function EditTimeChartForm({
             <Text c="gray.4" pe="md" size="sm">
               Data Source
             </Text>
-            <SourceSelectControlled size="xs" control={control} name="source" />
+            <SourceSelectControlled
+              size="xs"
+              control={control}
+              name="source"
+              data-testid="data-source-select"
+            />
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -698,6 +704,7 @@ export default function EditTimeChartForm({
                 defaultValue={tableSource?.defaultTableSelectExpression}
                 onSubmit={onSubmit}
                 label="SELECT"
+                data-testid="select-sql-editor"
               />
               {whereLanguage === 'sql' ? (
                 <SQLInlineEditorControlled
@@ -708,6 +715,7 @@ export default function EditTimeChartForm({
                   onLanguageChange={lang => setValue('whereLanguage', lang)}
                   language="sql"
                   onSubmit={onSubmit}
+                  data-testid="where-sql-editor"
                 />
               ) : (
                 <SearchInputV2
@@ -722,6 +730,7 @@ export default function EditTimeChartForm({
                   language="lucene"
                   placeholder="Search your events w/ Lucene ex. column:foo"
                   onSubmit={onSubmit}
+                  data-testid="where-lucene-editor"
                 />
               )}
             </Flex>
@@ -786,6 +795,7 @@ export default function EditTimeChartForm({
             <Button
               loading={isSaving}
               variant="outline"
+              data-testid="save-chart-button"
               onClick={() => {
                 handleSubmit(v => {
                   onSave?.(v);

@@ -2,7 +2,9 @@
 import { expect, Page } from '@playwright/test';
 
 export async function propertyInteractions(page: Page) {
-  const LogElement = page.locator('[class*="HyperJson_valueContainer__"]').nth(1);
+  const LogElement = page
+    .locator('[class*="HyperJson_valueContainer__"]')
+    .nth(1);
   await expect(LogElement).toBeVisible();
   await LogElement.hover();
 }
@@ -18,7 +20,10 @@ export async function addToResultsTable(page: Page) {
   await page.click('[class*="SearchPage_filtersPanel"]');
 }
 
-export async function assertColumnBoxChanged(page: Page, initialContent: string | null) {
+export async function assertColumnBoxChanged(
+  page: Page,
+  initialContent: string | null,
+) {
   const columnBox = page.locator('.cm-line').first();
   const newContent = await columnBox.textContent();
   await expect(columnBox).toBeVisible();
@@ -29,7 +34,10 @@ export async function searchForLinesWithLogAttributes(page: Page) {
   await page.waitForURL('**/search?isLive=true*source=*');
   const url = new URL(page.url());
   url.searchParams.set('where', 'notEmpty(LogAttributes)');
-  url.searchParams.set('select', 'Timestamp, ServiceName, SeverityText, Body, LogAttributes');
+  url.searchParams.set(
+    'select',
+    'Timestamp, ServiceName, SeverityText, Body, LogAttributes',
+  );
   url.searchParams.set('whereLanguage', 'sql');
   await page.goto(url.toString());
 }

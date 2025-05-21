@@ -56,6 +56,7 @@ packages/public/openapi.json
 e2e/cypress/screenshots/
 e2e/cypress/videos/
 e2e/cypress/results
+test-results/
 
 # scripts
 scripts/*.csv

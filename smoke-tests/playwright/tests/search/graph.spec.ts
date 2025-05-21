@@ -25,12 +25,14 @@ test.describe.serial('Results graph functionality', () => {
     const barCount = await graphBars.count();
     expect(barCount).toBeGreaterThan(0);
 
-    const hasData = await graphBars.evaluateAll((elements: (SVGElement | HTMLElement)[]) => {
-      return elements.some((el) => {
-        const height = parseFloat(el.getAttribute('height') ?? '0');
-        return height > 0;
-      });
-    });
+    const hasData = await graphBars.evaluateAll(
+      (elements: (SVGElement | HTMLElement)[]) => {
+        return elements.some(el => {
+          const height = parseFloat(el.getAttribute('height') ?? '0');
+          return height > 0;
+        });
+      },
+    );
     expect(hasData).toBe(true);
   });
 
@@ -38,7 +40,7 @@ test.describe.serial('Results graph functionality', () => {
     await login(page);
     await page.waitForURL('**/search?isLive=true*');
     await disableLiveTail(page);
-    
+
     await setupGraphTest(page);
     await page.waitForURL('**/search?*from=*&*to=*');
 
@@ -55,7 +57,7 @@ test.describe.serial('Results graph functionality', () => {
     await login(page);
     await page.waitForURL('**/search?isLive=true*');
     await disableLiveTail(page);
-    
+
     await setupGraphTest(page);
 
     const resultsTable = page.locator('[data-testid="search-table-container"]');

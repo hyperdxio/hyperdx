@@ -14,7 +14,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box } from '@mantine/core';
+import { Box, Button } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
@@ -255,8 +255,24 @@ export default function DBRowSidePanel({
       enableOverlay={subDrawerOpen}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel} ref={drawerRef}>
+        <div
+          className={styles.panel}
+          ref={drawerRef}
+          data-testid="log-detail-panel"
+        >
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
+          <Box
+            data-testid="close-panel-button"
+            onClick={_onClose}
+            style={{
+              cursor: 'pointer',
+              position: 'absolute',
+              top: 8,
+              right: 8,
+            }}
+          >
+            <i className="bi bi-x"></i>
+          </Box>
           {isRowLoading && (
             <div className={styles.loadingState}>Loading...</div>
           )}
@@ -270,6 +286,29 @@ export default function DBRowSidePanel({
                   mainContentHeader={mainContentColumn}
                   severityText={severityText}
                 />
+                <Box mt={4} style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    data-testid="previous-log-button"
+                    variant="outline"
+                    size="xs"
+                  >
+                    <i className="bi bi-chevron-left"></i> Previous
+                  </Button>
+                  <Button
+                    data-testid="next-log-button"
+                    variant="outline"
+                    size="xs"
+                  >
+                    Next <i className="bi bi-chevron-right"></i>
+                  </Button>
+                  <Button
+                    data-testid="find-pattern-button"
+                    variant="outline"
+                    size="xs"
+                  >
+                    Find Pattern
+                  </Button>
+                </Box>
               </Box>
               {/* <SidePanelHeader
                 logData={logData}
@@ -320,6 +359,7 @@ export default function DBRowSidePanel({
                 ]}
                 activeItem={displayedTab}
                 onClick={(v: any) => setTab(v)}
+                data-testid="tab-bar"
               />
               {displayedTab === Tab.Overview && (
                 <ErrorBoundary
@@ -372,7 +412,10 @@ export default function DBRowSidePanel({
                     </div>
                   )}
                 >
-                  <RowDataPanel source={source} rowId={rowId} />
+                  <div data-testid="json-view-tab">
+                    <div data-testid="log-detail-id">{rowId}</div>
+                    <RowDataPanel source={source} rowId={rowId} />
+                  </div>
                 </ErrorBoundary>
               )}
               {displayedTab === Tab.Context && (

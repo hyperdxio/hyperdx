@@ -709,6 +709,7 @@ export const RawLogTable = memo(
                       highlightedLineId === row.original.__hyperdx_id,
                   })}
                   data-index={virtualRow.index}
+                  data-testid="log-row"
                   ref={rowVirtualizer.measureElement}
                 >
                   {row.getVisibleCells().map(cell => {
