@@ -5,6 +5,8 @@ export enum MetricsDataType {
   Gauge = 'gauge',
   Histogram = 'histogram',
   Sum = 'sum',
+  Summary = 'summary',
+  ExponentialHistogram = 'exponential histogram',
 }
 
 // --------------------------
@@ -20,11 +22,15 @@ export enum DisplayType {
   Markdown = 'markdown',
 }
 
-export const MetricTableSchema = z.object({
-  [MetricsDataType.Gauge]: z.string(),
-  [MetricsDataType.Histogram]: z.string(),
-  [MetricsDataType.Sum]: z.string(),
-});
+export const MetricTableSchema = z.object(
+  Object.values(MetricsDataType).reduce(
+    (acc, key) => ({
+      ...acc,
+      [key]: z.string(),
+    }),
+    {} as Record<MetricsDataType, z.ZodString>,
+  ),
+);
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 

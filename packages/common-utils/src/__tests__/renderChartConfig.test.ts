@@ -31,6 +31,8 @@ describe('renderChartConfig', () => {
         gauge: 'otel_metrics_gauge',
         histogram: 'otel_metrics_histogram',
         sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
       },
       from: {
         databaseName: 'default',
@@ -69,6 +71,8 @@ describe('renderChartConfig', () => {
         gauge: 'otel_metrics_gauge',
         histogram: 'otel_metrics_histogram',
         sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
       },
       from: {
         databaseName: 'default',
@@ -105,6 +109,8 @@ describe('renderChartConfig', () => {
         gauge: 'otel_metrics_gauge',
         histogram: 'otel_metrics_histogram',
         sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
       },
       from: {
         databaseName: 'default',
@@ -133,6 +139,8 @@ describe('renderChartConfig', () => {
           gauge: 'otel_metrics_gauge',
           histogram: 'otel_metrics_histogram',
           sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
         },
         from: {
           databaseName: 'default',
@@ -167,6 +175,8 @@ describe('renderChartConfig', () => {
           gauge: 'otel_metrics_gauge',
           histogram: 'otel_metrics_histogram',
           sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
         },
         from: {
           databaseName: 'default',
@@ -202,6 +212,8 @@ describe('renderChartConfig', () => {
           gauge: 'otel_metrics_gauge',
           histogram: 'otel_metrics_histogram',
           sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
         },
         from: {
           databaseName: 'default',

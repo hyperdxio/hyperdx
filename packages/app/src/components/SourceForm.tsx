@@ -79,7 +79,7 @@ function FormRow({
         }}
       >
         {typeof label === 'string' ? (
-          <Text c="gray.6" size="sm">
+          <Text tt="capitalize" c="gray.6" size="sm">
             {label}
           </Text>
         ) : (
@@ -821,11 +821,16 @@ export function MetricTableModelForm({
             name={`from.databaseName`}
           />
         </FormRow>
-        {Object.keys(MetricsDataType).map(metricType => (
+        {Object.values(MetricsDataType).map(metricType => (
           <FormRow
             key={metricType.toLowerCase()}
             label={`${metricType} Table`}
-            helpText={`Table containing ${metricType.toLowerCase()} metrics data`}
+            helpText={
+              metricType === MetricsDataType.ExponentialHistogram ||
+              metricType === MetricsDataType.Summary
+                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by HyperDX`
+                : `Table containing ${metricType.toLowerCase()} metrics data`
+            }
           >
             <DBTableSelectControlled
               connectionId={connectionId}

@@ -32,6 +32,8 @@ const TEST_METRIC_TABLES = {
   sum: DEFAULT_METRICS_TABLE.SUM,
   gauge: DEFAULT_METRICS_TABLE.GAUGE,
   histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+  summary: DEFAULT_METRICS_TABLE.SUMMARY,
+  'exponential histogram': DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
 };
 
 describe('renderChartConfig', () => {

@@ -70,6 +70,8 @@ export const Source = mongoose.model<ISource>(
           [MetricsDataType.Gauge]: String,
           [MetricsDataType.Histogram]: String,
           [MetricsDataType.Sum]: String,
+          [MetricsDataType.Summary]: String,
+          [MetricsDataType.ExponentialHistogram]: String,
         },
         default: undefined,
       },
