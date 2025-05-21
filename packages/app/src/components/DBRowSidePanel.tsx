@@ -104,7 +104,12 @@ export default function DBRowSidePanel({
     return false;
   }, [source.eventAttributesExpression, source.resourceAttributesExpression]);
 
-  const defaultTab = hasOverviewPanel ? Tab.Overview : Tab.Parsed;
+  const defaultTab =
+    source.kind === 'trace'
+      ? Tab.Trace
+      : hasOverviewPanel
+        ? Tab.Overview
+        : Tab.Parsed;
 
   const [queryTab, setQueryTab] = useQueryState(
     'tab',
@@ -238,6 +243,16 @@ export default function DBRowSidePanel({
       return false;
     }
   }, [source, normalizedRow]);
+
+  const initialRowHighlightHint = useMemo(() => {
+    if (normalizedRow) {
+      return {
+        timestamp: normalizedRow['__hdx_timestamp'],
+        spanId: normalizedRow['__hdx_span_id'],
+        body: normalizedRow['__hdx_body'],
+      };
+    }
+  }, [normalizedRow]);
 
   return (
     <Drawer
@@ -397,6 +412,7 @@ export default function DBRowSidePanel({
                       traceId={traceId}
                       dateRange={oneHourRange}
                       focusDate={focusDate}
+                      initialRowHighlightHint={initialRowHighlightHint}
                     />
                   </Box>
                 </ErrorBoundary>

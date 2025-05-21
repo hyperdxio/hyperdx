@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -18,6 +19,7 @@ import {
 } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 
+import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
@@ -344,6 +346,9 @@ export const DBSearchPageFilters = ({
   );
   const { width, startResize } = useResizable(16, 'left');
 
+  const { data: countData } = useExplainQuery(chartConfig);
+  const numRows: number = countData?.[0]?.rows ?? 0;
+
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -391,19 +396,33 @@ export const DBSearchPageFilters = ({
   useEffect(() => {
     if (!isLive) {
       setDateRange(chartConfig.dateRange);
+      setDisableRowLimit(false);
     }
   }, [chartConfig.dateRange, isLive]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
+  const [disableRowLimit, setDisableRowLimit] = useState(false);
+  const keyLimit = 100;
   const {
     data: facets,
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
     chartConfigs: { ...chartConfig, dateRange },
+    limit: keyLimit,
     keys: datum,
+    disableRowLimit,
   });
+  useEffect(() => {
+    if (
+      numRows > DEFAULT_MAX_ROWS_TO_READ &&
+      facets &&
+      facets.length < keyLimit
+    ) {
+      setDisableRowLimit(true);
+    }
+  }, [numRows, keyLimit, facets]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];

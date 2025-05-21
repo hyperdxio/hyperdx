@@ -71,38 +71,6 @@ dev-migrate-db:
 version:
 	sh ./version.sh
 
-.PHONY: release-local
-release-local:
-	docker buildx build --squash . -f ./docker/local/Dockerfile \
-		--build-context clickhouse=./docker/clickhouse \
-		--build-context otel-collector=./docker/otel-collector \
-		--build-context local=./docker/local \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--push \
-   	--cache-from=type=gha \
-    --cache-to=type=gha,mode=max
-
-.PHONY: release-local-ui
-release-local-ui:
-	docker buildx build . -f ./packages/app/Dockerfile \
-		--build-arg IS_LOCAL_MODE=true \
-		--build-arg PORT=${HYPERDX_APP_PORT} \
-		--target prod \
-		--platform ${BUILD_PLATFORMS} \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}-ui \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG}-ui \
-		--push \
-   	--cache-from=type=gha \
-    --cache-to=type=gha,mode=max
-
 .PHONY: release-otel-collector
 release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
@@ -115,10 +83,46 @@ release-otel-collector:
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
 
+.PHONY: release-local
+release-local:
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target all-in-one-noauth \
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
+
+.PHONY: release-all-in-one
+release-all-in-one:
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target all-in-one-auth \
+		--push \
+   	--cache-from=type=gha \
+    --cache-to=type=gha,mode=max
+
 .PHONY: release-app
 release-app:
-	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
-		--build-context fullstack=./docker/fullstack \
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--platform ${BUILD_PLATFORMS} \
@@ -131,18 +135,21 @@ release-app:
 	 	--cache-from=type=gha \
 		--cache-to=type=gha,mode=max
 
-.PHONY: release-extended-app
-release-extended-app:
-	docker buildx build --squash . -f ./docker/fullstack/Dockerfile \
-		--build-context fullstack=./docker/fullstack \
-		--build-context api=./packages/api \
-		--build-context app=./packages/app \
-		--platform ${BUILD_PLATFORMS} \
-		-t ${IMAGE_NAME_DOCKERHUB}:latest \
-		--target prod-extended \
-		--push \
-	 	--cache-from=type=gha \
-		--cache-to=type=gha,mode=max
+# DEPRECATED
+# .PHONY: release-local-ui
+# release-local-ui:
+# 	docker buildx build . -f ./packages/app/Dockerfile \
+# 		--build-arg IS_LOCAL_MODE=true \
+# 		--build-arg PORT=${HYPERDX_APP_PORT} \
+# 		--target prod \
+# 		--platform ${BUILD_PLATFORMS} \
+# 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
+# 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}-ui \
+# 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
+# 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_NIGHTLY_TAG}-ui \
+# 		--push \
+#    	--cache-from=type=gha \
+#     --cache-to=type=gha,mode=max
 
 .PHONY: test-e2e
 test-e2e:

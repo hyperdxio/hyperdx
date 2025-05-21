@@ -34,12 +34,21 @@ export default function DBTracePanel({
   dateRange,
   focusDate,
   parentSourceId,
+  initialRowHighlightHint,
 }: {
-  parentSourceId?: string;
-  childSourceId?: string;
+  parentSourceId?: string | null;
+  childSourceId?: string | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
+  // Passed in from side panel to try to identify which
+  // span in the chart to highlight first without constructing
+  // a full row where clause
+  initialRowHighlightHint?: {
+    timestamp: string;
+    spanId: string;
+    body: string;
+  };
 }) {
   const { control, watch, setValue } = useForm({
     defaultValues: {
@@ -191,6 +200,7 @@ export default function DBTracePanel({
           focusDate={focusDate}
           highlightedRowWhere={eventRowWhere?.id}
           onClick={setEventRowWhere}
+          initialRowHighlightHint={initialRowHighlightHint}
         />
       )}
       {traceSourceData != null && eventRowWhere != null && (

@@ -1,8 +1,9 @@
 import Connection, { IConnection } from '@/models/connection';
 
-export function getConnections(team: string) {
+export function getConnections() {
   // Never return password back to the user
-  return Connection.find({ team });
+  // Return all connections in current tenant
+  return Connection.find({});
 }
 
 export function getConnectionById(
