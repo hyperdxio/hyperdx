@@ -63,6 +63,11 @@ processors:
           # Infer: else
           - set(log.severity_text, "info") where log.severity_number == 0
           - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.severity_number == 0
+      - context: log
+        error_mode: ignore
+        statements:
+          # Normalize the severity_text case
+          - set(log.severity_text, ConvertCase(log.severity_text, "lower"))
   resourcedetection:
     detectors:
       - env
