@@ -83,12 +83,12 @@ function useMetricNames(
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  // const { data: histogramMetrics } = useGetKeyValues({
-  //   chartConfigs: histogramConfig,
-  //   keys: ['MetricName'],
-  //   limit: MAX_METRIC_NAME_OPTIONS,
-  //   disableRowLimit: true,
-  // });
+  const { data: histogramMetrics } = useGetKeyValues({
+    chartConfigs: histogramConfig,
+    keys: ['MetricName'],
+    limit: MAX_METRIC_NAME_OPTIONS,
+    disableRowLimit: true,
+  });
   const { data: sumMetrics } = useGetKeyValues({
     chartConfigs: sumConfig,
     keys: ['MetricName'],
@@ -98,7 +98,7 @@ function useMetricNames(
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
-    // histogramMetrics: histogramMetrics?.[0].value,
+    histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
   };
 }
@@ -124,11 +124,8 @@ export function MetricNameSelect({
 }) {
   const SEPARATOR = ':::::::';
 
-  const {
-    gaugeMetrics,
-    // , histogramMetrics
-    sumMetrics,
-  } = useMetricNames(metricSource, dateRange);
+  const { gaugeMetrics, histogramMetrics, sumMetrics } =
+    useMetricNames(metricSource);
 
   const options = useMemo(() => {
     return [
@@ -136,20 +133,16 @@ export function MetricNameSelect({
         value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
       })) ?? []),
-      // ...(histogramMetrics?.map(metric => ({
-      //   value: `${metric}${SEPARATOR}histogram`,
-      //   label: `${metric} (Histogram)`,
-      // })) ?? []),
+      ...(histogramMetrics?.map(metric => ({
+        value: `${metric}${SEPARATOR}histogram`,
+        label: `${metric} (Histogram)`,
+      })) ?? []),
       ...(sumMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}sum`,
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
-  }, [
-    gaugeMetrics,
-    // histogramMetrics,
-    sumMetrics,
-  ]);
+  }, [gaugeMetrics, histogramMetrics, sumMetrics]);
 
   return (
     <Select
