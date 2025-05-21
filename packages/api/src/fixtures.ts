@@ -28,6 +28,8 @@ export const DEFAULT_METRICS_TABLE = {
   GAUGE: 'otel_metrics_gauge',
   SUM: 'otel_metrics_sum',
   HISTOGRAM: 'otel_metrics_histogram',
+  SUMMARY: 'otel_metrics_summary',
+  EXPONENTIAL_HISTOGRAM: 'otel_metrics_exponential_histogram',
 };
 
 const connectClickhouse = async () => {

@@ -116,6 +116,7 @@ export function useGetKeyValues(
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      disableRowLimit,
     ],
     queryFn: async () =>
       (

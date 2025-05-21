@@ -50,11 +50,10 @@ jobs:
     strategy:
       matrix:
         release:
+          - release-all-in-one
           - release-app
-          - release-otel-collector
           - release-local
-          - release-local-ui
-          # - release-extended-app
+          - release-otel-collector
     steps:
       - name: Checkout
         uses: actions/checkout@v4

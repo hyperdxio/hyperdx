@@ -8,6 +8,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import { formatDate } from '@hyperdx/common-utils/dist/utils';
 import * as fns from 'date-fns';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
@@ -21,6 +22,7 @@ import { URLSearchParams } from 'url';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { getConnectionById } from '@/controllers/connection';
+import { LOCAL_APP_TEAM } from '@/controllers/team';
 import Alert, {
   AlertSource,
   AlertState,
@@ -41,10 +43,19 @@ const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
 // TODO(perf): no need to populate the team
-const getAlerts = () =>
-  Alert.find({}).populate<{
+const getAlerts = async () => {
+  const alerts = await Alert.find({}).populate<{
     team: ITeam;
   }>(['team']);
+
+  return config.IS_LOCAL_APP_MODE
+    ? alerts.map(_alert => {
+        // @ts-ignore
+        _alert.team = LOCAL_APP_TEAM;
+        return _alert;
+      })
+    : alerts;
+};
 
 type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
 
@@ -477,6 +488,11 @@ export const renderAlertTemplate = async ({
     );
   };
 
+  const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
+    isUTC: true,
+  })} - ${formatDate(view.endTime, {
+    isUTC: true,
+  })})`;
   let rawTemplateBody;
 
   // TODO: support advanced routing with template engine
@@ -538,7 +554,7 @@ ${value} lines found, expected ${
       alert.thresholdType === AlertThresholdType.ABOVE
         ? 'less than'
         : 'greater than'
-    } ${alert.threshold} lines
+    } ${alert.threshold} lines\n${timeRangeMessage}
 ${targetTemplate}
 \`\`\`
 ${truncatedResults}
@@ -556,7 +572,7 @@ ${value} ${
         : alert.thresholdType === AlertThresholdType.ABOVE
           ? 'falls below'
           : 'exceeds'
-    } ${alert.threshold}
+    } ${alert.threshold}\n${timeRangeMessage}
 ${targetTemplate}`;
   }
 
@@ -716,6 +732,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
         connection: connectionId,
         displayType: DisplayType.Line,
         dateRange: [checkStartTime, checkEndTime],
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: false,
         from: source.from,
         granularity: `${windowSizeInMins} minute`,
         select: [
@@ -772,6 +790,8 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           chartConfig = {
             connection: connectionId,
             dateRange: [checkStartTime, checkEndTime],
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: false,
             displayType: firstTile.config.displayType,
             from: source.from,
             granularity: `${windowSizeInMins} minute`,

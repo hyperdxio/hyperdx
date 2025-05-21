@@ -205,4 +205,12 @@ Array [
 
     expect(resp2.body.data).toHaveLength(0);
   });
+
+  it('PATCH /team/apiKey', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const resp = await agent.patch('/team/apiKey').expect(200);
+
+    expect(resp.body.newApiKey.length).toBeGreaterThan(0);
+  });
 });

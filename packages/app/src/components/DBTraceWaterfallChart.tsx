@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import _ from 'lodash';
 import TimestampNano from 'timestamp-nano';
 import {
@@ -244,6 +244,7 @@ export function DBTraceWaterfallChartContainer({
   focusDate,
   onClick,
   highlightedRowWhere,
+  initialRowHighlightHint,
 }: {
   traceTableSource: TSource;
   logTableSource: TSource | null;
@@ -252,6 +253,11 @@ export function DBTraceWaterfallChartContainer({
   focusDate: Date;
   onClick?: (rowWhere: { id: string; type: string }) => void;
   highlightedRowWhere?: string | null;
+  initialRowHighlightHint?: {
+    timestamp: string;
+    spanId: string;
+    body: string;
+  };
 }) {
   const { rows: traceRowsData, isFetching: traceIsFetching } =
     useEventsAroundFocus({
@@ -286,6 +292,25 @@ export function DBTraceWaterfallChartContainer({
       return secDiff;
     }
   });
+
+  useEffect(() => {
+    if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
+      const initialRowHighlightIndex = rows.findIndex(row => {
+        return (
+          row.Timestamp === initialRowHighlightHint.timestamp &&
+          row.SpanId === initialRowHighlightHint.spanId &&
+          row.Body === initialRowHighlightHint.body
+        );
+      });
+
+      if (initialRowHighlightIndex !== -1) {
+        onClick?.({
+          id: rows[initialRowHighlightIndex].id,
+          type: rows[initialRowHighlightIndex].type ?? '',
+        });
+      }
+    }
+  }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)

@@ -3,7 +3,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { getEventBody, getFirstTimestampValueExpression } from '@/source';
+import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 
@@ -17,6 +17,7 @@ export function useRowData({
   const eventBodyExpr = getEventBody(source);
 
   const searchedTraceIdExpr = source.traceIdExpression;
+  const searchedSpanIdExpr = source.spanIdExpression;
 
   const severityTextExpr =
     source.severityTextExpression || source.statusCodeExpression;
@@ -29,9 +30,7 @@ export function useRowData({
           valueExpression: '*',
         },
         {
-          valueExpression: getFirstTimestampValueExpression(
-            source.timestampValueExpression,
-          ),
+          valueExpression: getDisplayedTimestampValueExpression(source),
           alias: '__hdx_timestamp',
         },
         ...(eventBodyExpr
@@ -47,6 +46,14 @@ export function useRowData({
               {
                 valueExpression: searchedTraceIdExpr,
                 alias: '__hdx_trace_id',
+              },
+            ]
+          : []),
+        ...(searchedSpanIdExpr
+          ? [
+              {
+                valueExpression: searchedSpanIdExpr,
+                alias: '__hdx_span_id',
               },
             ]
           : []),
@@ -87,6 +94,10 @@ export function useRowData({
               {
                 valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
                 alias: '__hdx_events_exception_attributes',
+              },
+              {
+                valueExpression: source.spanEventsValueExpression,
+                alias: '__hdx_span_events',
               },
             ]
           : []),

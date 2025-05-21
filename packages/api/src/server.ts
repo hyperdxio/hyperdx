@@ -57,7 +57,7 @@ export default class Server {
         },
         onShutdown: this.shutdown,
         finally: () => {
-          logger.info('Server gracefulls shutted down...');
+          logger.info('Server gracefully shut down...');
         }, // finally function (sync) - e.g. for logging
       });
     }

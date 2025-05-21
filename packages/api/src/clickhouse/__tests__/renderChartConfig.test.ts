@@ -32,6 +32,8 @@ const TEST_METRIC_TABLES = {
   sum: DEFAULT_METRICS_TABLE.SUM,
   gauge: DEFAULT_METRICS_TABLE.GAUGE,
   histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+  summary: DEFAULT_METRICS_TABLE.SUMMARY,
+  'exponential histogram': DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
 };
 
 describe('renderChartConfig', () => {
@@ -40,6 +42,8 @@ describe('renderChartConfig', () => {
   const now = new Date('2022-01-05').getTime();
   let team, connection, logSource, metricSource, metadata;
   let clickhouseClient: ClickhouseClient;
+
+  const nowPlus = time_val => new Date(now + ms(time_val));
 
   const queryData = async (chsql: ChSql) => {
     try {
@@ -104,6 +108,7 @@ describe('renderChartConfig', () => {
   });
 
   afterEach(async () => {
+    console.log('running db cleanup code');
     await server.clearDBs();
     jest.clearAllMocks();
   });
@@ -192,7 +197,7 @@ describe('renderChartConfig', () => {
     });
   });
 
-  describe('Query Events', () => {
+  describe('Query Events - Logs', () => {
     it('simple select + where query logs', async () => {
       const now = new Date('2023-11-16T22:12:00.000Z');
       await bulkInsertLogs([
@@ -275,7 +280,7 @@ describe('renderChartConfig', () => {
     // TODO: add more tests (including events chart, using filters, etc)
   });
 
-  describe('Query Metrics', () => {
+  describe('Query Metrics - Gauge', () => {
     beforeEach(async () => {
       const gaugePointsA = [
         { value: 50, timestamp: now },
@@ -315,6 +320,128 @@ describe('renderChartConfig', () => {
         Value: point.value,
         TimeUnix: new Date(point.timestamp),
       }));
+      await bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]);
+    });
+
+    it('single max/avg/sum gauge', async () => {
+      const avgQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(avgQuery)).toMatchSnapshot();
+      const maxQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(maxQuery)).toMatchSnapshot();
+      const sumQuery = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(sumQuery)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with where', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: 'ServiceName:"db" AND ResourceAttributes.host:"host1"',
+          whereLanguage: 'lucene',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    it('single avg gauge with group-by', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          groupBy: `ResourceAttributes['host']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+  });
+
+  describe('Query Metrics - Sum', () => {
+    beforeEach(async () => {
       // Rate: 8, 1, 8, 25
       const sumPointsA = [
         { value: 0, timestamp: now - ms('1m') }, // 0
@@ -450,256 +577,14 @@ describe('renderChartConfig', () => {
         AggregationTemporality: 2,
         ...point,
       }));
-      const histPointsA = [
-        {
-          BucketCounts: [0, 0, 0],
-          ExplicitBounds: [10, 30],
-          TimeUnix: new Date(now),
-        },
-        {
-          BucketCounts: [10, 10, 10],
-          ExplicitBounds: [10, 30],
-          TimeUnix: new Date(now + ms('1m')),
-        },
-      ].map(point => ({
-        MetricName: 'test.two_timestamps_lower_bound',
-        ResourceAttributes: {
-          host: 'test2',
-          ip: '127.0.0.1',
-        },
-        AggregationTemporality: 2, // Cumulative
-        ...point,
-      }));
-      const histPointsB = [
-        {
-          BucketCounts: [0, 0, 0],
-          ExplicitBounds: [1, 30],
-          TimeUnix: new Date(now),
-        },
-        {
-          BucketCounts: [10, 0, 0],
-          ExplicitBounds: [1, 30],
-          TimeUnix: new Date(now + ms('1m')),
-        },
-      ].map(point => ({
-        MetricName: 'test.two_timestamps_lower_bound_inf',
-        ResourceAttributes: {
-          host: 'test2',
-          ip: '127.0.0.1',
-        },
-        AggregationTemporality: 2, // Cumulative
-        ...point,
-      }));
-      const histPointsC = [
-        {
-          BucketCounts: [0, 0, 0],
-          ExplicitBounds: [0, 30],
-          TimeUnix: new Date(now),
-        },
-        {
-          BucketCounts: [0, 0, 10],
-          ExplicitBounds: [0, 30],
-          TimeUnix: new Date(now + ms('1m')),
-        },
-      ].map(point => ({
-        MetricName: 'test.two_timestamps_upper_bound_inf',
-        ResourceAttributes: {
-          host: 'test2',
-          ip: '127.0.0.1',
-        },
-        AggregationTemporality: 2, // Cumulative
-        ...point,
-      }));
-      const histPointsD = [
-        {
-          BucketCounts: [5, 5, 5],
-          ExplicitBounds: [10, 30],
-          TimeUnix: new Date(now),
-        },
-        {
-          BucketCounts: [0, 0, 0],
-          ExplicitBounds: [10, 30],
-          TimeUnix: new Date(now + ms('1m')),
-        },
-        {
-          BucketCounts: [10, 10, 10],
-          ExplicitBounds: [10, 30],
-          TimeUnix: new Date(now + ms('2m')),
-        },
-      ].map(point => ({
-        MetricName: 'test.three_timestamps_bounded',
-        ResourceAttributes: {
-          host: 'test3',
-          ip: '127.0.0.1',
-        },
-        AggregationTemporality: 2, // Cumulative
-        ...point,
-      }));
-      const histPointsE = [
-        {
-          BucketCounts: [1, 1, 1, 1, 1, 1],
-          ExplicitBounds: [1, 2, 5, 8, 13],
-          TimeUnix: new Date(now),
-          ResourceAttributes: { host: 'test-a' },
-        },
-        {
-          BucketCounts: [2, 2, 2, 2, 2, 2],
-          ExplicitBounds: [1, 2, 5, 8, 13],
-          TimeUnix: new Date(now + ms('5s')),
-          ResourceAttributes: { host: 'test-b' },
-        },
-        {
-          BucketCounts: [2, 1, 2, 1, 2, 1],
-          ExplicitBounds: [1, 2, 5, 8, 13],
-          TimeUnix: new Date(now + ms('1m')),
-          ResourceAttributes: { host: 'test-a' },
-        },
-        {
-          BucketCounts: [3, 3, 2, 2, 3, 3],
-          ExplicitBounds: [1, 2, 5, 8, 13],
-          TimeUnix: new Date(now + ms('65s')),
-          ResourceAttributes: { host: 'test-b' },
-        },
-      ].map(point => ({
-        MetricName: 'test.multiple_series',
-        AggregationTemporality: 2, // Cumulative
-        ...point,
-      }));
-
-      await Promise.all([
-        bulkInsertMetricsGauge([...gaugePointsA, ...gaugePointsB]),
-        bulkInsertMetricsSum([
-          ...sumPointsA,
-          ...sumPointsB,
-          ...sumPointsC,
-          ...sumPointsD,
-          ...sumPointsE,
-          ...podAgePoints,
-        ]),
-        bulkInsertMetricsHistogram([
-          ...histPointsA,
-          ...histPointsB,
-          ...histPointsC,
-          ...histPointsD,
-          ...histPointsE,
-        ]),
+      await bulkInsertMetricsSum([
+        ...sumPointsA,
+        ...sumPointsB,
+        ...sumPointsC,
+        ...sumPointsD,
+        ...sumPointsE,
+        ...podAgePoints,
       ]);
-    });
-
-    it('single max/avg/sum gauge', async () => {
-      const avgQuery = await renderChartConfig(
-        {
-          select: [
-            {
-              aggFn: 'avg',
-              metricName: 'test.cpu',
-              metricType: MetricsDataType.Gauge,
-              valueExpression: 'Value',
-            },
-          ],
-          from: metricSource.from,
-          where: '',
-          metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('10m'))],
-          granularity: '5 minute',
-          timestampValueExpression: metricSource.timestampValueExpression,
-          connection: connection.id,
-        },
-        metadata,
-      );
-      expect(await queryData(avgQuery)).toMatchSnapshot();
-      const maxQuery = await renderChartConfig(
-        {
-          select: [
-            {
-              aggFn: 'max',
-              metricName: 'test.cpu',
-              metricType: MetricsDataType.Gauge,
-              valueExpression: 'Value',
-            },
-          ],
-          from: metricSource.from,
-          where: '',
-          metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('10m'))],
-          granularity: '5 minute',
-          timestampValueExpression: metricSource.timestampValueExpression,
-          connection: connection.id,
-        },
-        metadata,
-      );
-      expect(await queryData(maxQuery)).toMatchSnapshot();
-      const sumQuery = await renderChartConfig(
-        {
-          select: [
-            {
-              aggFn: 'sum',
-              metricName: 'test.cpu',
-              metricType: MetricsDataType.Gauge,
-              valueExpression: 'Value',
-            },
-          ],
-          from: metricSource.from,
-          where: '',
-          metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('10m'))],
-          granularity: '5 minute',
-          timestampValueExpression: metricSource.timestampValueExpression,
-          connection: connection.id,
-        },
-        metadata,
-      );
-      expect(await queryData(sumQuery)).toMatchSnapshot();
-    });
-
-    it('single avg gauge with where', async () => {
-      const query = await renderChartConfig(
-        {
-          select: [
-            {
-              aggFn: 'avg',
-              metricName: 'test.cpu',
-              metricType: MetricsDataType.Gauge,
-              valueExpression: 'Value',
-            },
-          ],
-          from: metricSource.from,
-          where: 'ServiceName:"db" AND ResourceAttributes.host:"host1"',
-          whereLanguage: 'lucene',
-          metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('10m'))],
-          granularity: '5 minute',
-          timestampValueExpression: metricSource.timestampValueExpression,
-          connection: connection.id,
-        },
-        metadata,
-      );
-      expect(await queryData(query)).toMatchSnapshot();
-    });
-
-    it('single avg gauge with group-by', async () => {
-      const query = await renderChartConfig(
-        {
-          select: [
-            {
-              aggFn: 'avg',
-              metricName: 'test.cpu',
-              metricType: MetricsDataType.Gauge,
-              valueExpression: 'Value',
-            },
-          ],
-          from: metricSource.from,
-          where: '',
-          metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('10m'))],
-          granularity: '5 minute',
-          groupBy: `ResourceAttributes['host']`,
-          timestampValueExpression: metricSource.timestampValueExpression,
-          connection: connection.id,
-        },
-        metadata,
-      );
-      expect(await queryData(query)).toMatchSnapshot();
     });
 
     it('single sum rate', async () => {
@@ -839,6 +724,348 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
+  });
+
+  describe('Query Metrics - Histogram', () => {
+    beforeEach(async () => {
+      const histPointsA = [
+        {
+          BucketCounts: [0, 0, 0],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [10, 10, 10],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_lower_bound',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ExplicitBounds: [10, 30],
+        ...point,
+      }));
+      const histPointsB = [
+        {
+          BucketCounts: [0, 0, 0],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [10, 0, 0],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_lower_bound_inf',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ExplicitBounds: [1, 30],
+        ...point,
+      }));
+      const histPointsC = [
+        {
+          BucketCounts: [0, 0, 0],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [0, 0, 10],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.two_timestamps_upper_bound_inf',
+        ResourceAttributes: {
+          host: 'test2',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ExplicitBounds: [0, 30],
+        ...point,
+      }));
+      const histPointsD = [
+        {
+          BucketCounts: [5, 5, 5],
+          TimeUnix: new Date(now),
+        },
+        {
+          BucketCounts: [0, 0, 0],
+          TimeUnix: new Date(now + ms('1m')),
+        },
+        {
+          BucketCounts: [10, 10, 10],
+          TimeUnix: new Date(now + ms('2m')),
+        },
+      ].map(point => ({
+        MetricName: 'test.three_timestamps_bounded',
+        ResourceAttributes: {
+          host: 'test3',
+          ip: '127.0.0.1',
+        },
+        AggregationTemporality: 2, // Cumulative
+        ExplicitBounds: [10, 30],
+        ...point,
+      }));
+      const histPointsE = [
+        {
+          BucketCounts: [1, 1, 1, 1, 1, 1],
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'test-a' },
+        },
+        {
+          BucketCounts: [2, 2, 2, 2, 2, 2],
+          TimeUnix: new Date(now + ms('5s')),
+          ResourceAttributes: { host: 'test-b' },
+        },
+        {
+          BucketCounts: [2, 1, 2, 1, 2, 1],
+          TimeUnix: new Date(now + ms('1m')),
+          ResourceAttributes: { host: 'test-a' },
+        },
+        {
+          BucketCounts: [3, 3, 2, 2, 3, 3],
+          TimeUnix: new Date(now + ms('65s')),
+          ResourceAttributes: { host: 'test-b' },
+        },
+      ].map(point => ({
+        MetricName: 'test.multiple_series',
+        AggregationTemporality: 2, // Cumulative
+        ExplicitBounds: [1, 2, 5, 8, 13],
+        ...point,
+      }));
+      const histPointsF = [
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-a', service: 'service-1' },
+          BucketCounts: [5, 2, 0, 0, 0, 0],
+          Count: 7,
+          Sum: 18,
+        },
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-a', service: 'service-2' },
+          BucketCounts: [11, 0, 0, 0, 0, 0],
+          Count: 11,
+          Sum: 22,
+        },
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-a', service: 'service-3' },
+          BucketCounts: [0, 5, 0, 0, 0, 0],
+          Count: 5,
+          Sum: 31,
+        },
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-b', service: 'service-1' },
+          BucketCounts: [6, 3, 0, 0, 0, 0],
+          Count: 9,
+          Sum: 37,
+        },
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-b', service: 'service-2' },
+          BucketCounts: [1, 0, 0, 0, 0, 0],
+          Count: 1,
+          Sum: 3,
+        },
+        {
+          TimeUnix: new Date(now),
+          ResourceAttributes: { host: 'host-b', service: 'service-3' },
+          BucketCounts: [4, 2, 0, 0, 0, 0],
+          Count: 6,
+          Sum: 25,
+        },
+        //----------
+        {
+          TimeUnix: nowPlus('30s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-1' },
+          BucketCounts: [9, 3, 1, 0, 0, 0],
+          Count: 13,
+          Sum: 54,
+        },
+        {
+          TimeUnix: nowPlus('34s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-2' },
+          BucketCounts: [17, 2, 0, 0, 0, 0],
+          Count: 19,
+          Sum: 52,
+        },
+        {
+          TimeUnix: nowPlus('38s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-3' },
+          BucketCounts: [1, 7, 0, 0, 0, 0],
+          Count: 8,
+          Sum: 51,
+        },
+        {
+          TimeUnix: nowPlus('29s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-1' },
+          BucketCounts: [12, 3, 0, 0, 0, 0],
+          Count: 15,
+          Sum: 52,
+        },
+        {
+          TimeUnix: nowPlus('31s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-2' },
+          BucketCounts: [9, 1, 0, 0, 0, 0],
+          Count: 10,
+          Sum: 52,
+        },
+        {
+          TimeUnix: nowPlus('45s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-3' },
+          BucketCounts: [4, 6, 0, 0, 0, 0],
+          Count: 10,
+          Sum: 61,
+        },
+        //----------
+        {
+          TimeUnix: nowPlus('90s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-1' },
+          BucketCounts: [9, 6, 6, 4, 2, 0],
+          Count: 27,
+          Sum: 1015,
+        },
+        {
+          TimeUnix: nowPlus('94s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-2' },
+          BucketCounts: [17, 4, 5, 7, 0, 0],
+          Count: 33,
+          Sum: 655,
+        },
+        {
+          TimeUnix: nowPlus('98s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-3' },
+          BucketCounts: [1, 7, 0, 3, 2, 4],
+          Count: 17,
+          Sum: 3741,
+        },
+        {
+          TimeUnix: nowPlus('89s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-1' },
+          BucketCounts: [19, 5, 0, 0, 0, 0],
+          Count: 24,
+          Sum: 85,
+        },
+        {
+          TimeUnix: nowPlus('91s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-2' },
+          BucketCounts: [12, 1, 1, 0, 0, 0],
+          Count: 14,
+          Sum: 109,
+        },
+        {
+          TimeUnix: nowPlus('105s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-3' },
+          BucketCounts: [4, 8, 0, 0, 0, 0],
+          Count: 12,
+          Sum: 79,
+        },
+        //----------
+        {
+          TimeUnix: nowPlus('150s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-1' },
+          BucketCounts: [9, 9, 11, 8, 4, 0],
+          Count: 41,
+          Sum: 1955,
+        },
+        {
+          TimeUnix: nowPlus('154s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-2' },
+          BucketCounts: [17, 6, 10, 14, 0, 0],
+          Count: 47,
+          Sum: 1292,
+        },
+        {
+          TimeUnix: nowPlus('158s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-3' },
+          BucketCounts: [1, 7, 0, 3, 2, 18],
+          Count: 31,
+          Sum: 22459,
+        },
+        {
+          TimeUnix: nowPlus('149s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-1' },
+          BucketCounts: [26, 7, 0, 0, 0, 0],
+          Count: 33,
+          Sum: 120,
+        },
+        {
+          TimeUnix: nowPlus('151s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-2' },
+          BucketCounts: [15, 1, 2, 0, 0, 0],
+          Count: 18,
+          Sum: 155,
+        },
+        {
+          TimeUnix: nowPlus('165s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-3' },
+          BucketCounts: [4, 10, 0, 0, 0, 0],
+          Count: 14,
+          Sum: 95,
+        },
+        //----------
+        {
+          TimeUnix: nowPlus('210s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-1' },
+          BucketCounts: [19, 12, 11, 8, 4, 0],
+          Count: 54,
+          Sum: 2003,
+        },
+        {
+          TimeUnix: nowPlus('214s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-2' },
+          BucketCounts: [37, 10, 10, 14, 0, 0],
+          Count: 71,
+          Sum: 1337,
+        },
+        {
+          TimeUnix: nowPlus('218s'),
+          ResourceAttributes: { host: 'host-a', service: 'service-3' },
+          BucketCounts: [20, 0, 0, 0, 0, 0],
+          Count: 20,
+          Sum: 29,
+        },
+        {
+          TimeUnix: nowPlus('209s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-1' },
+          BucketCounts: [30, 9, 0, 0, 0, 0],
+          Count: 39,
+          Sum: 139,
+        },
+        {
+          TimeUnix: nowPlus('211s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-2' },
+          BucketCounts: [21, 4, 3, 0, 0, 0],
+          Count: 28,
+          Sum: 223,
+        },
+        {
+          TimeUnix: nowPlus('225s'),
+          ResourceAttributes: { host: 'host-b', service: 'service-3' },
+          BucketCounts: [14, 11, 0, 0, 0, 0],
+          Count: 25,
+          Sum: 121,
+        },
+      ].map(point => ({
+        MetricName: 'test.send_latency',
+        AggregationTemporality: 2,
+        ExplicitBounds: [5, 10, 50, 100, 500],
+        ...point,
+      }));
+
+      await bulkInsertMetricsHistogram([
+        ...histPointsA,
+        ...histPointsB,
+        ...histPointsC,
+        ...histPointsD,
+        ...histPointsE,
+        ...histPointsF,
+      ]);
+    });
 
     it('two_timestamps_bounded histogram (p50)', async () => {
       /*
@@ -852,7 +1079,7 @@ describe('renderChartConfig', () => {
         We need to interpolate between the lower and upper bounds of the second bucket:
           cum sum = [10, 20, 30]
           rank = 0.5 * 30 = 15 (between bounds 10 - 30)
-          interpolate: 10 + ((15 - 10) / 30) * (30 - 10) = 13.3333
+          interpolate: 10 + (30 - 10) * ((15 - 10) / (20 - 10)) = 20
        */
       const query = await renderChartConfig(
         {
@@ -1022,32 +1249,14 @@ describe('renderChartConfig', () => {
       expect(res).toMatchSnapshot();
     });
 
-    it('two_timestamps_upper_bound_inf histogram (p50)', async () => {
-      /*
-      This test starts with 2 data points with bounds of [0, 30]:
-        t0: [0, 0, 0]
-        t1: [0, 0, 10]
-
-      Since the AggregationTemporality is 2(cumulative), we need to calculate the delta between the two points:
-        delta: [0, 0, 10] - [0, 0, 0] = [0, 0, 10]
-
-      Total observations: 0 + 0 + 10 = 10
-      Cumulative counts: [0, 0, 10]
-      p50 point:
-        Rank = 0.5 * 10 = 5
-        This falls in the third bucket
-
-      Since all observations are in the third bucket which has no upper bound (infinity):
-        For the third bucket (> 30), the algorithm would return the upper bound of the previous bucket, which is 30
-        Thus the value columns in res should be [0, 30]
-      */
+    it('should bucket correctly when no grouping is defined', async () => {
       const query = await renderChartConfig(
         {
           select: [
             {
               aggFn: 'quantile',
               level: 0.5,
-              metricName: 'test.two_timestamps_upper_bound_inf',
+              metricName: 'test.send_latency',
               metricType: MetricsDataType.Histogram,
               valueExpression: 'Value',
             },
@@ -1055,8 +1264,8 @@ describe('renderChartConfig', () => {
           from: metricSource.from,
           where: '',
           metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('2m'))],
-          granularity: '1 minute',
+          dateRange: [new Date(now), new Date(now + ms('5m'))],
+          granularity: '2 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
           connection: connection.id,
         },
@@ -1066,39 +1275,14 @@ describe('renderChartConfig', () => {
       expect(res).toMatchSnapshot();
     });
 
-    it('should include multiple data points in percentile computation (p50)', async () => {
-      /*
-        bounds: [1, 2, 5, 8, 13]
-        host = test-a:
-          p1 = [1, 1, 1, 1, 1, 1]
-          p2 = [2, 1, 2, 1, 2, 1]
-        host = test-b:
-          p1 = [2, 2, 2, 2, 2, 2]
-          p2 = [3, 3, 2, 2, 3, 3]
-
-        Compute the diff between adjacent points for each unique host (deltaSumForEach)
-          host = test-a, diff = [1, 0, 1, 0, 1, 0]
-          host = test-b, diff = [1, 1, 0, 0, 1, 1]
-
-        Sum the diffs together to obtain a combined count for the different series
-          sum elements(d) = [2, 1, 1, 0, 2, 1]
-
-        Now compute the p50 value:
-          sum(d) = 7
-          cum sum = [2, 3, 4, 4, 6, 7]
-          rank = 0.5 * 7 = 3.5 (between bounds 2 - 5)
-          interpolate: 2 + ((3.5 - 2) / 5) * (5 - 2) = 2.9
-
-        Since all the points fall within a single granularity interval the result should be a single row
-        with the value 2.9.
-       */
+    it('should bucket correctly when grouping by a single attribute', async () => {
       const query = await renderChartConfig(
         {
           select: [
             {
               aggFn: 'quantile',
               level: 0.5,
-              metricName: 'test.multiple_series',
+              metricName: 'test.send_latency',
               metricType: MetricsDataType.Histogram,
               valueExpression: 'Value',
             },
@@ -1106,8 +1290,9 @@ describe('renderChartConfig', () => {
           from: metricSource.from,
           where: '',
           metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('2m'))],
-          granularity: '5 minute',
+          dateRange: [new Date(now), new Date(now + ms('5m'))],
+          groupBy: `ResourceAttributes['host']`,
+          granularity: '2 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
           connection: connection.id,
         },
@@ -1117,41 +1302,14 @@ describe('renderChartConfig', () => {
       expect(res).toMatchSnapshot();
     });
 
-    // HDX-1515: Handle counter reset in histogram metric in the same way that the counter reset
-    // is handled for sum metrics.
-    it.skip('three_timestamps_bounded histogram with reset (p50)', async () => {
-      /*
-        For the following histogram values:
-          b = [10, 30]
-          t0 = [5, 5, 5]
-          t1 = [0, 0, 0]
-          t2 = [10, 10, 10]
-
-        The computed value at each point would be:
-          t0 = 10
-            cum values = [5, 10, 15]
-            rank = 0.5 * 15 = 7.5
-
-          t1 = 0
-            cum values = [0, 0, 0]
-            rank = 0.5 * 0 = 0
-
-          t2 = 20
-            cum values = [10, 20, 30]
-            rank = 0.5 * 30 = 15
-            Position in bucket: (15 - 10) / (20 - 10) = 0.5
-            Interpolated value: 10 + (30 - 10) * 0.5 = 10 + 10 = 20
-
-        Ignoring the counter reset of zeros:
-          [10, 0, 20] is interpolated as [10, 10, 30]
-       */
+    it('should bucket correctly when grouping by multiple attributes', async () => {
       const query = await renderChartConfig(
         {
           select: [
             {
               aggFn: 'quantile',
               level: 0.5,
-              metricName: 'test.three_timestamps_bounded',
+              metricName: 'test.send_latency',
               metricType: MetricsDataType.Histogram,
               valueExpression: 'Value',
             },
@@ -1159,8 +1317,9 @@ describe('renderChartConfig', () => {
           from: metricSource.from,
           where: '',
           metricTables: TEST_METRIC_TABLES,
-          dateRange: [new Date(now), new Date(now + ms('2m'))],
-          granularity: '1 minute',
+          dateRange: [new Date(now), new Date(now + ms('5m'))],
+          groupBy: `ResourceAttributes['host'], ResourceAttributes['service']`,
+          granularity: '2 minute',
           timestampValueExpression: metricSource.timestampValueExpression,
           connection: connection.id,
         },

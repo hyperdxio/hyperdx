@@ -96,8 +96,21 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
   };
 }
 
-const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
-const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
+export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
+export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
+
+export type SampleLog = {
+  [PATTERN_COLUMN_ALIAS]: string;
+  [TIMESTAMP_COLUMN_ALIAS]: string;
+  [key: string]: any;
+};
+
+export type Pattern = {
+  id: string;
+  pattern: string;
+  count: number;
+  samples: SampleLog[];
+};
 
 export function usePatterns({
   config,
