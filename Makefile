@@ -76,8 +76,8 @@ release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
-		# -t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		# -t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION} \
 		--target prod \
 		--push \
    	--cache-from=type=gha \
@@ -94,8 +94,8 @@ release-local:
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		# -t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION} \
-		# -t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target all-in-one-noauth \
 		--push \
    	--cache-from=type=gha \
@@ -112,8 +112,8 @@ release-all-in-one:
 		--platform ${BUILD_PLATFORMS} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		# -t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION} \
-		# -t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${ALL_IN_ONE_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target all-in-one-auth \
 		--push \
    	--cache-from=type=gha \
@@ -128,8 +128,8 @@ release-app:
 		--platform ${BUILD_PLATFORMS} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
-		# -t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		# -t ${IMAGE_NAME}:${IMAGE_VERSION} \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${IMAGE_NAME}:${IMAGE_VERSION} \
 		--target prod \
 		--push \
 	 	--cache-from=type=gha \
@@ -186,20 +186,4 @@ release-all-in-one-nightly:
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
-
-# DEPRECATED
-# .PHONY: release-local-ui
-# release-local-ui:
-# 	docker buildx build . -f ./packages/app/Dockerfile \
-# 		--build-arg IS_LOCAL_MODE=true \
-# 		--build-arg PORT=${HYPERDX_APP_PORT} \
-# 		--target prod \
-# 		--platform ${BUILD_PLATFORMS} \
-# 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-# 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}-ui \
-# 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG}-ui \
-# 		-t ${LOCAL_IMAGE_NAME}:${IMAGE_VERSION}-ui \
-# 		--push \
-#    	--cache-from=type=gha \
-#     --cache-to=type=gha,mode=max
 
