@@ -103,6 +103,10 @@ function useMetricNames(
   };
 }
 
+function capitalize(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.substring(1)}`;
+}
+
 export function MetricNameSelect({
   dateRange,
   metricType,
@@ -131,7 +135,7 @@ export function MetricNameSelect({
   } = useMetricNames(metricSource, dateRange);
 
   const options = useMemo(() => {
-    return [
+    const metricsFromQuery = [
       ...(gaugeMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
@@ -145,6 +149,20 @@ export function MetricNameSelect({
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
+    // if saved metric does not exist in the available options, assume it exists
+    // and add it to options
+    if (
+      metricName &&
+      !metricsFromQuery.find(
+        metric => metric.value !== `${metricName}${SEPARATOR}${metricType}`,
+      )
+    ) {
+      metricsFromQuery.push({
+        value: `${metricName}${SEPARATOR}${metricType}`,
+        label: `${metricName} (${capitalize(metricType)})`,
+      });
+    }
+    return metricsFromQuery;
   }, [
     gaugeMetrics,
     // histogramMetrics,
