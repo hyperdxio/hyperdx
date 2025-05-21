@@ -23,7 +23,6 @@ validate_env() {
 
 wait_for_ready() {
     local container_name=$1
-    local endpoint=$2
     local max_attempts=10
     local wait_time=0
 
