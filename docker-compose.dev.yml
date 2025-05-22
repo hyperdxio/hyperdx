@@ -55,8 +55,9 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data:/var/lib/clickhouse
-      - .volumes/ch_logs:/var/log/clickhouse-server
+      - ./docker/clickhouse/local/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - .volumes/ch_data_test:/var/lib/clickhouse
+      - .volumes/ch_logs_test:/var/log/clickhouse-server
     restart: on-failure
     networks:
       - internal
