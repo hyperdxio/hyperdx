@@ -52,6 +52,7 @@ import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
   getLogLevelClass,
+  logLevelColor,
   useLocalStorage,
   usePrevious,
   useWindowSize,
@@ -363,7 +364,7 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      // color={color}
+                      color={logLevelColor(info.row.original.severityText)}
                     />
                   </div>
                 );

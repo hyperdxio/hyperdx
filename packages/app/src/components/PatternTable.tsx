@@ -57,7 +57,12 @@ export default function PatternTable({
         wrapLines={true}
         isLoading={isLoading}
         rows={sortedGroupedResults ?? []}
-        displayedColumns={['__hdx_pattern_trend', 'countStr', 'pattern']}
+        displayedColumns={[
+          '__hdx_pattern_trend',
+          'countStr',
+          'severityText',
+          'pattern',
+        ]}
         onRowExpandClick={row => setSelectedPattern(row as Pattern)}
         hasNextPage={false}
         fetchNextPage={() => {}}
@@ -68,6 +73,7 @@ export default function PatternTable({
           __hdx_pattern_trend: 'Trend',
           countStr: 'Count',
           pattern: 'Pattern',
+          severityText: 'level',
         }}
       />
       {selectedPattern && source && (
