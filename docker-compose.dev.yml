@@ -22,7 +22,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.120.0
     environment:
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
-      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     volumes:
@@ -58,8 +58,8 @@ services:
     healthcheck:
       # "clickhouse", "client", "-u ${CLICKHOUSE_USER}", "--password ${CLICKHOUSE_PASSWORD}", "-q 'SELECT 1'"
       test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
-      interval: 3s
-      timeout: 3s
-      retries: 3
+      interval: 1s
+      timeout: 1s
+      retries: 60
 networks:
   internal:

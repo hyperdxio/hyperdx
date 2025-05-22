@@ -11,7 +11,7 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
-const DEFAULT_SAMPLE_SIZE = 1e6;
+export const DEFAULT_MAX_ROWS_TO_READ = 1e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -268,7 +268,7 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+            max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
             read_overflow_mode: 'break',
           },
         })
@@ -341,7 +341,7 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
+              max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
               read_overflow_mode: 'break',
             },
           })
@@ -438,36 +438,41 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
   }) {
-    const sql = await renderChartConfig(
-      {
-        ...chartConfig,
-        select: keys
-          .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-          .join(', '),
+    return this.cache.getOrFetch(
+      `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      async () => {
+        const sql = await renderChartConfig(
+          {
+            ...chartConfig,
+            select: keys
+              .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+              .join(', '),
+          },
+          this,
+        );
+
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId: chartConfig.connection,
+            clickhouse_settings: !disableRowLimit
+              ? {
+                  max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+                  read_overflow_mode: 'break',
+                }
+              : undefined,
+          })
+          .then(res => res.json<any>());
+
+        // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
+        // string[], sometimes it's { [key: string]: string; }
+        return Object.entries(json?.data?.[0]).map(([key, value]) => ({
+          key: keys[parseInt(key.replace('param', ''))],
+          value: (value as string[])?.filter(Boolean), // remove nulls
+        }));
       },
-      this,
     );
-
-    const json = await this.clickhouseClient
-      .query<'JSON'>({
-        query: sql.sql,
-        query_params: sql.params,
-        connectionId: chartConfig.connection,
-        clickhouse_settings: !disableRowLimit
-          ? {
-              max_rows_to_read: DEFAULT_SAMPLE_SIZE,
-              read_overflow_mode: 'break',
-            }
-          : undefined,
-      })
-      .then(res => res.json<any>());
-
-    // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
-    // string[], sometimes it's { [key: string]: string; }
-    return Object.entries(json.data[0]).map(([key, value]) => ({
-      key: keys[parseInt(key.replace('param', ''))],
-      value: (value as string[])?.filter(Boolean), // remove nulls
-    }));
   }
 }
 

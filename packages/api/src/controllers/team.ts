@@ -7,7 +7,7 @@ import { SavedSearch } from '@/models/savedSearch';
 import Team from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
-const LOCAL_APP_TEAM = {
+export const LOCAL_APP_TEAM = {
   _id: LOCAL_APP_TEAM_ID,
   id: LOCAL_APP_TEAM_ID,
   name: 'Local App Team',
@@ -58,6 +58,10 @@ export function getTeamByApiKey(apiKey: string) {
 
 export function rotateTeamApiKey(teamId: ObjectId) {
   return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { new: true });
+}
+
+export function setTeamName(teamId: ObjectId, name: string) {
+  return Team.findByIdAndUpdate(teamId, { name }, { new: true });
 }
 
 export async function getTags(teamId: ObjectId) {
