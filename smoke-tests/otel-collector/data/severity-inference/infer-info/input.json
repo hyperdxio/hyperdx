@@ -6,13 +6,13 @@
           {
             "key": "suite-id",
             "value": {
-              "stringValue": "hdx-1514"
+              "stringValue": "severity-inference"
             }
           },
           {
             "key": "test-id",
             "value": {
-              "stringValue": "skip-infer"
+              "stringValue": "infer-info"
             }
           }
         ]
@@ -23,17 +23,14 @@
           "logRecords": [
             {
               "timeUnixNano": "1901999580000000000",
-              "severity_number": 0,
-              "severity_text": "debug",
               "body": {
-                "stringValue": "2025-05-03T03:23:14Z [INFO] this should skip because the severity_text is already set"
+                "stringValue": "default behavior if nothing is specified"
               }
             },
             {
               "timeUnixNano": "1901999580000000001",
-              "severity_number": 9,
               "body": {
-                "stringValue": "[warn] this should also be skipped because a severity_number was set even if it's missing text"
+                "stringValue": "2025-05-03T03:23:14Z [thread-1234] c.b.e.b.e.AbstractDatabaseConnectionAdapterFactor - request_id= the rules should only infer a logging level if the substring is within the first 255 characters so that stuff later in the message doesn't trigger the inference behavior like FATAL or ERROR"
               }
             }
           ]

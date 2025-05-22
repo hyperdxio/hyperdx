@@ -6,13 +6,13 @@
           {
             "key": "suite-id",
             "value": {
-              "stringValue": "hdx-1514"
+              "stringValue": "severity-inference"
             }
           },
           {
             "key": "test-id",
             "value": {
-              "stringValue": "infer-debug"
+              "stringValue": "infer-warn"
             }
           }
         ]
@@ -22,15 +22,15 @@
           "scope": {},
           "logRecords": [
             {
-              "timeUnixNano": "1901999580000000008",
+              "timeUnixNano": "1901999580000000006",
               "body": {
-                "stringValue": "debug - checkpoint a"
+                "stringValue": "app=1, notice: that things are not going well"
               }
             },
             {
-              "timeUnixNano": "1901999580000000009",
+              "timeUnixNano": "1901999580000000007",
               "body": {
-                "stringValue": "dbug: value=1,found=false"
+                "stringValue": "warn: something something"
               }
             }
           ]
