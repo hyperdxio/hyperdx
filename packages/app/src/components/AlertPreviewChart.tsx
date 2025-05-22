@@ -4,43 +4,56 @@ import {
   SearchCondition,
   SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { useSource } from '@/source';
+import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
 
 export type AlertPreviewChartProps = {
-  sourceId?: string | null;
+  source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
   interval: AlertInterval;
   groupBy?: string;
   thresholdType: 'above' | 'below';
   threshold: number;
+  select?: string | null;
 };
 
 export const AlertPreviewChart = ({
-  sourceId,
+  source,
   where,
   whereLanguage,
   interval,
   groupBy,
   threshold,
   thresholdType,
+  select,
 }: AlertPreviewChartProps) => {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: aliasMap } = useAliasMapFromChartConfig({
+    select: select || '',
+    where: where || '',
+    connection: source.connection,
+    from: source.from,
+  });
 
-  if (!sourceId || !source) {
-    return null;
-  }
+  const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
+    name: key,
+    sql: {
+      sql: value,
+      params: {},
+    },
+    isSubquery: false,
+  }));
 
   return (
     <Paper w="100%" h={200}>
       <DBTimeChart
-        sourceId={sourceId}
+        sourceId={source.id}
         showDisplaySwitcher={false}
         referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
         config={{
@@ -50,6 +63,7 @@ export const AlertPreviewChart = ({
           granularity: intervalToGranularity(interval),
           implicitColumnExpression: source.implicitColumnExpression,
           groupBy,
+          with: aliasWith,
           select: [
             {
               aggFn: 'count' as const,
