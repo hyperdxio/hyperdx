@@ -123,7 +123,7 @@ function usePatterns({
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
-  severityTextExpression: string;
+  severityTextExpression?: string;
   enabled?: boolean;
 }) {
   const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
@@ -132,7 +132,9 @@ function usePatterns({
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
       `${config.timestampValueExpression} as ${TIMESTAMP_COLUMN_ALIAS}`,
-      `${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`,
+      ...(severityTextExpression
+        ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
+        : []),
     ].join(','),
     // TODO: Proper sampling
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
@@ -197,7 +199,7 @@ export function useGroupedPatterns({
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
-  severityTextExpression: string;
+  severityTextExpression?: string;
   totalCount?: number;
   enabled?: boolean;
 }) {

@@ -1002,7 +1002,7 @@ export function DBSqlRowTable({
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression: source?.severityTextExpression ?? '',
     totalCount: undefined,
-    enabled: !!source && denoiseResults,
+    enabled: denoiseResults,
   });
   const noisyPatterns = useQuery({
     queryKey: ['noisy-patterns', config],
