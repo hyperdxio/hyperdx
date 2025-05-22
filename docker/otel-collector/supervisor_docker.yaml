@@ -1,3 +1,4 @@
+# https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/cmd/opampsupervisor/specification/README.md#supervisor-configuration
 server:
   endpoint: ${OPAMP_SERVER_URL}/v1/opamp
   tls:

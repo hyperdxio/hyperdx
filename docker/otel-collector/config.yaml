@@ -144,15 +144,15 @@ service:
   extensions: [health_check]
   pipelines:
     traces:
-      receivers: [otlp/hyperdx]
+      # receivers: [otlp/hyperdx]
       processors: [memory_limiter, batch]
       exporters: [clickhouse]
     metrics:
-      receivers: [otlp/hyperdx, prometheus]
+      # receivers: [otlp/hyperdx, prometheus]
       processors: [memory_limiter, batch]
       exporters: [clickhouse]
     logs/in:
-      receivers: [otlp/hyperdx, fluentforward]
+      # receivers: [otlp/hyperdx, fluentforward]
       exporters: [routing/logs]
     logs/out-default:
       receivers: [routing/logs]

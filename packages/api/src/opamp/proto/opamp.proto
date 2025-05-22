@@ -1,3 +1,6 @@
+// v0.12.0
+// From: https://github.com/open-telemetry/opamp-spec/blob/5ba31a0ee6f9cc3dc768ef43c913d6c6c479c522/proto/opamp.proto
+
 // Copyright 2021, OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

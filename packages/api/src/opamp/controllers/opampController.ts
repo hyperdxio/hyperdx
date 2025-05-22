@@ -11,6 +11,42 @@ import {
   serverCapabilities,
 } from '../utils/protobuf';
 
+type CollectorConfig = {
+  extensions: Record<string, any>;
+  receivers: {
+    'otlp/hyperdx'?: {
+      protocols: {
+        grpc: {
+          endpoint: string;
+          include_metadata: boolean;
+          auth?: {
+            authenticator: string;
+          };
+        };
+        http: {
+          endpoint: string;
+          cors: {
+            allowed_origins: string[];
+            allowed_headers: string[];
+          };
+          include_metadata: boolean;
+          auth?: {
+            authenticator: string;
+          };
+        };
+      };
+    };
+    nop?: null;
+  };
+  service: {
+    extensions: string[];
+    pipelines: {
+      [key: string]: {
+        receivers: string[];
+      };
+    };
+  };
+};
 export class OpampController {
   /**
    * Handle an OpAMP message from an agent
@@ -50,65 +86,77 @@ export class OpampController {
       // Check if we should send a remote configuration
       if (agentService.agentAcceptsRemoteConfig(agent)) {
         const team = await getTeam();
-        const config: {
-          extensions: Record<string, any>;
-          receivers: {
-            'otlp/hyperdx': {
-              protocols: {
-                grpc: {
-                  endpoint: string;
-                  include_metadata: boolean;
-                  auth?: {
-                    authenticator: string;
-                  };
-                };
-                http: {
-                  endpoint: string;
-                  cors: {
-                    allowed_origins: string[];
-                    allowed_headers: string[];
-                  };
-                  include_metadata: boolean;
-                  auth?: {
-                    authenticator: string;
-                  };
-                };
-              };
-            };
-          };
-          service: {
-            extensions: string[];
-          };
-        } = {
+        // This is later merged with otel-collector/config.yaml
+        // we need to instantiate a valid config so the collector
+        // can at least start up
+        const NOP_CONFIG: CollectorConfig = {
           extensions: {},
           receivers: {
-            'otlp/hyperdx': {
-              protocols: {
-                grpc: {
-                  endpoint: '0.0.0.0:4317',
-                  include_metadata: true,
-                },
-                http: {
-                  endpoint: '0.0.0.0:4318',
-                  cors: {
-                    allowed_origins: ['*'],
-                    allowed_headers: ['*'],
-                  },
-                  include_metadata: true,
-                },
-              },
-            },
+            nop: null,
           },
           service: {
             extensions: [],
+            pipelines: {
+              traces: {
+                receivers: ['nop'],
+              },
+              metrics: {
+                receivers: ['nop'],
+              },
+              'logs/in': {
+                receivers: ['nop'],
+              },
+            },
           },
         };
+        let config = NOP_CONFIG;
 
         // If team is not found, don't send a remoteConfig, we aren't ready
         // to collect telemetry yet
         if (team) {
+          config = {
+            extensions: {},
+            receivers: {
+              'otlp/hyperdx': {
+                protocols: {
+                  grpc: {
+                    endpoint: '0.0.0.0:4317',
+                    include_metadata: true,
+                  },
+                  http: {
+                    endpoint: '0.0.0.0:4318',
+                    cors: {
+                      allowed_origins: ['*'],
+                      allowed_headers: ['*'],
+                    },
+                    include_metadata: true,
+                  },
+                },
+              },
+            },
+            service: {
+              extensions: [],
+              pipelines: {
+                traces: {
+                  receivers: ['otlp/hyperdx'],
+                },
+                metrics: {
+                  receivers: ['otlp/hyperdx', 'prometheus'],
+                },
+                'logs/in': {
+                  receivers: ['otlp/hyperdx', 'fluentforward'],
+                },
+              },
+            },
+          };
+
           if (team.collectorAuthenticationEnforced) {
             const ingestionKey = team.apiKey;
+
+            if (config.receivers['otlp/hyperdx'] == null) {
+              // should never happen
+              throw new Error('otlp/hyperdx receiver not found');
+            }
 
             config.extensions['bearertokenauth/hyperdx'] = {
               scheme: '',
@@ -122,19 +170,21 @@ export class OpampController {
             };
             config.service.extensions = ['bearertokenauth/hyperdx'];
           }
-
-          const remoteConfig = createRemoteConfig(
-            new Map([['config.yaml', Buffer.from(JSON.stringify(config))]]),
-            'application/json',
-          );
-
-          serverToAgent.remoteConfig = remoteConfig;
-          logger.debug(
-            `Sending remote config to agent: ${agent.instanceUid.toString(
-              'hex',
-            )}`,
-          );
         }
+
+        console.log(JSON.stringify(config, null, 2));
+
+        const remoteConfig = createRemoteConfig(
+          new Map([['config.json', Buffer.from(JSON.stringify(config))]]),
+          'application/json',
+        );
+
+        serverToAgent.remoteConfig = remoteConfig;
+        logger.debug(
+          `Sending remote config to agent: ${agent.instanceUid.toString(
+            'hex',
+          )}`,
+        );
       }
 
       // Encode and send the response
