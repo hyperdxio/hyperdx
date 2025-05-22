@@ -71,6 +71,84 @@ dev-migrate-db:
 version:
 	sh ./version.sh
 
+# Build targets (local builds only)
+
+.PHONY: build-otel-collector
+build-otel-collector:
+	docker build ./docker/otel-collector \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target prod
+
+.PHONY: build-local
+build-local:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target all-in-one-noauth
+
+.PHONY: build-all-in-one
+build-all-in-one:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target all-in-one-auth
+
+.PHONY: build-app
+build-app:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		--target prod
+
+.PHONY: build-otel-collector-nightly
+build-otel-collector-nightly:
+	docker build ./docker/otel-collector \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target prod
+
+.PHONY: build-app-nightly
+build-app-nightly:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target prod
+
+.PHONY: build-local-nightly
+build-local-nightly:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target all-in-one-noauth
+
+.PHONY: build-all-in-one-nightly
+build-all-in-one-nightly:
+	docker build . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target all-in-one-auth
+
+# Release targets (with multi-platform build and push)
+
 .PHONY: release-otel-collector
 release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
@@ -186,4 +264,3 @@ release-all-in-one-nightly:
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
-
