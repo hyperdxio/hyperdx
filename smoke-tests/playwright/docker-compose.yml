@@ -10,7 +10,8 @@ services:
     networks:
       - internal
     healthcheck:
-      test: mongosh --eval 'db.runCommand("ping").ok' localhost:27017/test --quiet
+      test:
+        mongosh --eval 'db.runCommand("ping").ok' localhost:27017/test --quiet
       interval: 5s
       timeout: 3s
       retries: 5
@@ -65,8 +66,8 @@ services:
     image: hyperdx-playwright-app:latest
     build:
       context: ../../
-      dockerfile: ./smoke-tests/playwright/Dockerfile
-      target: prod-extended
+      dockerfile: ./docker/hyperdx/Dockerfile
+      target: all-in-one-auth
     ports:
       - ${HYPERDX_API_PORT:-8000}:${HYPERDX_API_PORT:-8000}
       - ${HYPERDX_APP_PORT:-8080}:${HYPERDX_APP_PORT:-8080}
@@ -82,7 +83,7 @@ services:
 
       # ClickHouse settings - correct format for client
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_PASSWORD: ''
       CLICKHOUSE_USER: default
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
 
@@ -105,7 +106,25 @@ services:
 
       # Onboarding settings
       DEFAULT_CONNECTIONS: '[{"name":"Demo","host":"http://ch-server:8123","username":"default","password":""}]'
-      DEFAULT_SOURCES: '[{"from":{"databaseName":"default","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Demo Logs","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, SeverityText, Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo Traces","metricSourceId":"Demo Metrics"},{"from":{"databaseName":"default","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Demo Traces","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanKindExpression":"SpanKind","spanNameExpression":"SpanName","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Demo","logSourceId":"Demo Logs","metricSourceId":"Demo Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Demo Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum"},"connection":"Demo","logSourceId":"Demo Logs","traceSourceId":"Demo Traces"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Demo Sessions","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo Traces"}]'
+      DEFAULT_SOURCES:
+        '[{"from":{"databaseName":"default","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Demo
+        Logs","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,
+        ServiceName, SeverityText,
+        Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo
+        Traces","metricSourceId":"Demo
+        Metrics"},{"from":{"databaseName":"default","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Demo
+        Traces","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,
+        ServiceName, StatusCode, round(Duration / 1e6),
+        SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanKindExpression":"SpanKind","spanNameExpression":"SpanName","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Demo","logSourceId":"Demo
+        Logs","metricSourceId":"Demo
+        Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Demo
+        Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum"},"connection":"Demo","logSourceId":"Demo
+        Logs","traceSourceId":"Demo
+        Traces"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Demo
+        Sessions","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,
+        ServiceName,
+        Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo
+        Traces"}]'
     # Using tmpfs for ephemeral storage in the container
     tmpfs:
       - /data/db
@@ -120,7 +139,9 @@ services:
         condition: service_started
     restart: on-failure
     healthcheck:
-      test: wget --no-verbose --tries=1 http://127.0.0.1:${HYPERDX_APP_PORT:-8080} || exit 1
+      test:
+        wget --no-verbose --tries=1 http://127.0.0.1:${HYPERDX_APP_PORT:-8080}
+        || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
