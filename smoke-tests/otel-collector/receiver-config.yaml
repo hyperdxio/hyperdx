@@ -26,3 +26,16 @@ receivers:
           allowed_headers: ['*']
         include_metadata: true
         endpoint: '0.0.0.0:4318'
+
+pipelines:
+  traces:
+    receivers:
+      - otlp/hyperdx
+  metrics:
+    receivers:
+      - otlp/hyperdx
+      - prometheus
+  logs/in:
+    receivers:
+      - otlp/hyperdx
+      - fluentforward
