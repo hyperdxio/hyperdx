@@ -91,7 +91,7 @@ exporters:
     sampling_initial: 5
     sampling_thereafter: 200
   clickhouse/rrweb:
-    endpoint: ${env:CLICKHOUSE_SERVER_ENDPOINT}
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
     database: default
     username: ${env:CLICKHOUSE_USER}
     password: ${env:CLICKHOUSE_PASSWORD}
@@ -104,7 +104,7 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
   clickhouse:
-    endpoint: ${env:CLICKHOUSE_SERVER_ENDPOINT}
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
     database: default
     username: ${env:CLICKHOUSE_USER}
     password: ${env:CLICKHOUSE_PASSWORD}

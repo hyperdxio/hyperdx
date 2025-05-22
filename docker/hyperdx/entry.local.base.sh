@@ -11,7 +11,7 @@ export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}"
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
 
 # Internal Services
-export CLICKHOUSE_SERVER_ENDPOINT="tcp://ch-server:9000?dial_timeout=10s"
+export CLICKHOUSE_ENDPOINT="tcp://ch-server:9000?dial_timeout=10s"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"

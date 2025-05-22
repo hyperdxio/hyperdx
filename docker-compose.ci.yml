@@ -5,7 +5,7 @@ services:
       context: ./docker/otel-collector
       target: dev
     environment:
-      CLICKHOUSE_SERVER_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     volumes:
