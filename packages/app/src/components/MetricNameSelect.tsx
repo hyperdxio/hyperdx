@@ -8,6 +8,7 @@ import {
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
+import { capitalizeFirstLetter } from '@/utils';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
 
@@ -103,10 +104,6 @@ function useMetricNames(
   };
 }
 
-function capitalize(text: string): string {
-  return `${text.charAt(0).toUpperCase()}${text.substring(1)}`;
-}
-
 export function MetricNameSelect({
   dateRange,
   metricType,
@@ -156,7 +153,7 @@ export function MetricNameSelect({
     ) {
       metricsFromQuery.push({
         value: `${metricName}${SEPARATOR}${metricType}`,
-        label: `${metricName} (${capitalize(metricType)})`,
+        label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
       });
     }
     return metricsFromQuery;
