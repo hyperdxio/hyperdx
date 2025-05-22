@@ -6,13 +6,13 @@
           {
             "key": "suite-id",
             "value": {
-              "stringValue": "hdx-1514"
+              "stringValue": "severity-inference"
             }
           },
           {
             "key": "test-id",
             "value": {
-              "stringValue": "infer-trace"
+              "stringValue": "infer-debug"
             }
           }
         ]
@@ -22,9 +22,15 @@
           "scope": {},
           "logRecords": [
             {
-              "timeUnixNano": "1901999580000000010",
+              "timeUnixNano": "1901999580000000008",
               "body": {
-                "stringValue": "this is a trace through logic"
+                "stringValue": "debug - checkpoint a"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000009",
+              "body": {
+                "stringValue": "dbug: value=1,found=false"
               }
             }
           ]

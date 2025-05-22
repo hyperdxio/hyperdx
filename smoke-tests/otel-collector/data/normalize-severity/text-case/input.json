@@ -1,0 +1,205 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "normalize-severity"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "text-case"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "severity_number": 1,
+              "severity_text": "TrAcE",
+              "body": {
+                "stringValue": "trace log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000001",
+              "severity_number": 1,
+              "severity_text": "trace",
+              "body": {
+                "stringValue": "trace log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000002",
+              "severity_number": 1,
+              "severity_text": "TRACE",
+              "body": {
+                "stringValue": "trace log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "severity_number": 5,
+              "severity_text": "DeBuG",
+              "body": {
+                "stringValue": "debug log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000004",
+              "severity_number": 5,
+              "severity_text": "debug",
+              "body": {
+                "stringValue": "debug log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000005",
+              "severity_number": 5,
+              "severity_text": "DEBUG",
+              "body": {
+                "stringValue": "debug log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000006",
+              "severity_number": 9,
+              "severity_text": "InFo",
+              "body": {
+                "stringValue": "info log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000007",
+              "severity_number": 9,
+              "severity_text": "info",
+              "body": {
+                "stringValue": "info log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000008",
+              "severity_number": 9,
+              "severity_text": "INFO",
+              "body": {
+                "stringValue": "info log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000009",
+              "severity_number": 13,
+              "severity_text": "WaRn",
+              "body": {
+                "stringValue": "warn log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000010",
+              "severity_number": 13,
+              "severity_text": "warn",
+              "body": {
+                "stringValue": "warn log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000011",
+              "severity_number": 13,
+              "severity_text": "WARN",
+              "body": {
+                "stringValue": "warn log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000012",
+              "severity_number": 13,
+              "severity_text": "warning",
+              "body": {
+                "stringValue": "warn log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000013",
+              "severity_number": 13,
+              "severity_text": "WARNING",
+              "body": {
+                "stringValue": "warn log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000014",
+              "severity_number": 17,
+              "severity_text": "ErRoR",
+              "body": {
+                "stringValue": "error log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000015",
+              "severity_number": 17,
+              "severity_text": "error",
+              "body": {
+                "stringValue": "error log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000016",
+              "severity_number": 17,
+              "severity_text": "ERROR",
+              "body": {
+                "stringValue": "error log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000017",
+              "severity_number": 21,
+              "severity_text": "FaTaL",
+              "body": {
+                "stringValue": "fatal log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000018",
+              "severity_number": 21,
+              "severity_text": "fatal",
+              "body": {
+                "stringValue": "fatal log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000019",
+              "severity_number": 21,
+              "severity_text": "FATAL",
+              "body": {
+                "stringValue": "fatal log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000020",
+              "severity_number": 21,
+              "severity_text": "critical",
+              "body": {
+                "stringValue": "fatal log message"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000021",
+              "severity_number": 21,
+              "severity_text": "CRITICAL",
+              "body": {
+                "stringValue": "fatal log message"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
