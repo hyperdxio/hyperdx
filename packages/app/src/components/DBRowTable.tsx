@@ -47,6 +47,7 @@ import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
 import useRowWhere from '@/hooks/useRowWhere';
+import { useSource } from '@/source';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
@@ -899,6 +900,7 @@ export function selectColumnMapWithoutAdditionalKeys(
 
 export function DBSqlRowTable({
   config,
+  sourceId,
   onError,
   onRowExpandClick,
   highlightedLineId,
@@ -909,6 +911,7 @@ export function DBSqlRowTable({
   denoiseResults = false,
 }: {
   config: ChartConfigWithDateRange;
+  sourceId?: string;
   onRowExpandClick?: (where: string) => void;
   highlightedLineId: string | undefined;
   queryKeyPrefix?: string;
@@ -991,13 +994,15 @@ export function DBSqlRowTable({
     }
   }, [isError, onError, error]);
 
+  const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
     samples: 10_000,
     bodyValueExpression: patternColumn ?? '',
+    severityTextExpression: source?.severityTextExpression ?? '',
     totalCount: undefined,
-    enabled: denoiseResults,
+    enabled: !!source && denoiseResults,
   });
   const noisyPatterns = useQuery({
     queryKey: ['noisy-patterns', config],

@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { useQueryState } from 'nuqs';
 import stripAnsi from 'strip-ansi';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +13,6 @@ import {
   useConfigWithPrimaryAndPartitionKey,
 } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useSource } from '@/source';
 
 // We don't want to load pyodide over and over again, use react query to cache the async instance
 function usePyodide(options: { enabled: boolean }) {
@@ -115,26 +113,26 @@ export type Pattern = {
   samples: SampleLog[];
 };
 
-export function usePatterns({
+function usePatterns({
   config,
   samples,
   bodyValueExpression,
+  severityTextExpression,
   enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
+  severityTextExpression: string;
   enabled?: boolean;
 }) {
-  const [sourceId] = useQueryState('source');
-  const { data: source } = useSource({ id: sourceId });
   const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
     ...config,
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
       `${config.timestampValueExpression} as ${TIMESTAMP_COLUMN_ALIAS}`,
-      `${source?.severityTextExpression ?? ''} as ${SEVERITY_TEXT_COLUMN_ALIAS}`,
+      `${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`,
     ].join(','),
     // TODO: Proper sampling
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
@@ -192,12 +190,14 @@ export function useGroupedPatterns({
   config,
   samples,
   bodyValueExpression,
+  severityTextExpression,
   totalCount,
   enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
+  severityTextExpression: string;
   totalCount?: number;
   enabled?: boolean;
 }) {
@@ -205,6 +205,7 @@ export function useGroupedPatterns({
     config,
     samples,
     bodyValueExpression,
+    severityTextExpression,
     enabled,
   });
   const columnMap = useMemo(() => {

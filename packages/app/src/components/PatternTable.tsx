@@ -39,6 +39,7 @@ export default function PatternTable({
       config,
       samples: SAMPLES,
       bodyValueExpression,
+      severityTextExpression: source?.severityTextExpression ?? '',
       totalCount,
     });
 

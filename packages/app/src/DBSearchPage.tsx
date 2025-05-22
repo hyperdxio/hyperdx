@@ -1579,6 +1579,7 @@ function DBSearchPage() {
                       analysisMode === 'results' && (
                         <DBSqlRowTable
                           config={dbSqlRowTableConfig}
+                          sourceId={searchedConfig.source ?? ''}
                           onRowExpandClick={onRowExpandClick}
                           highlightedLineId={rowId ?? undefined}
                           enabled={isReady}
