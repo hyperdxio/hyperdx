@@ -8,16 +8,16 @@ FROM node:${NODE_VERSION}-alpine AS base
 
 WORKDIR /app/api
 
-COPY ../../yarn.lock ../../.yarnrc.yml ./
-COPY ../../.yarn ./.yarn
-COPY ../../packages/api/package.json ./
+COPY yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+COPY packages/api/package.json ./
 RUN yarn install && yarn cache clean
 
 WORKDIR /app/app
 
-COPY ../../yarn.lock ../../.yarnrc.yml ./
-COPY ../../.yarn ./.yarn
-COPY ../../packages/app/package.json ./
+COPY yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+COPY packages/app/package.json ./
 
 RUN yarn install && yarn cache clean
 
@@ -27,8 +27,8 @@ FROM base AS api_builder
 
 WORKDIR /app/api
 
-COPY ../../packages/api/tsconfig.json ./
-COPY ../../packages/api/src ./src
+COPY packages/api/tsconfig.json ./
+COPY packages/api/src ./src
 RUN yarn build && rm -rf node_modules && yarn workspaces focus --production
 
 
@@ -37,11 +37,11 @@ FROM base AS app_builder
 
 WORKDIR /app/app
 
-COPY ../../packages/app/.eslintrc.js ../../packages/app/next.config.js ../../packages/app/tsconfig.json ../../packages/app/next.config.js ../../packages/app/mdx.d.ts ../../packages/app/.eslintrc.js ./
-COPY ../../packages/app/src ./src 
-COPY ../../packages/app/pages ./pages 
-COPY ../../packages/app/public ./public 
-COPY ../../packages/app/styles ./styles
+COPY packages/app/.eslintrc.js packages/app/next.config.js packages/app/tsconfig.json packages/app/next.config.js packages/app/mdx.d.ts packages/app/.eslintrc.js ./
+COPY packages/app/src ./src 
+COPY packages/app/pages ./pages 
+COPY packages/app/public ./public 
+COPY packages/app/styles ./styles
 
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE false
@@ -73,7 +73,7 @@ COPY --from=app_builder /app/app/node_modules ./node_modules
 COPY --from=app_builder /app/app/package.json ./package.json
 
 # Set up start script
-COPY --chown=node:node ../../docker/fullstack/entry.sh /etc/local/entry.sh
+COPY --chown=node:node docker/hyperdx/entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # prod-extended ############################################################################################

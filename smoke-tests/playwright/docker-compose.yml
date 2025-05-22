@@ -72,37 +72,40 @@ services:
       - ${HYPERDX_APP_PORT:-8080}:${HYPERDX_APP_PORT:-8080}
     environment:
       # App settings
-      NODE_ENV: production
+      NODE_ENV: development
       FRONTEND_URL: http://localhost:${HYPERDX_APP_PORT:-8080}
       HYPERDX_API_PORT: ${HYPERDX_API_PORT:-8000}
       HYPERDX_APP_PORT: ${HYPERDX_APP_PORT:-8080}
-      
+
       # MongoDB settings
       MONGO_URI: mongodb://db:27017/hyperdx
-      
+
       # ClickHouse settings - correct format for client
       CLICKHOUSE_HOST: http://ch-server:8123
-      CLICKHOUSE_PASSWORD: default
+      CLICKHOUSE_PASSWORD: ""
       CLICKHOUSE_USER: default
       CLICKHOUSE_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
-      
+
       # Other required settings
       EXPRESS_SESSION_SECRET: test-session-secret-for-playwright
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: hdx-oss-playwright-test
-      
+
       # API settings
       APP_TYPE: api
       SERVER_URL: http://localhost:${HYPERDX_API_PORT:-8000}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL:-info}
       USAGE_STATS_ENABLED: false
-      
+
       # Additional settings from main compose file
-      AGGREGATOR_API_URL: http://localhost:8001
-      MINER_API_URL: http://localhost:5123
       HDX_NODE_ADVANCED_NETWORK_CAPTURE: 1
       HDX_NODE_BETA_MODE: 1
       HDX_NODE_CONSOLE_CAPTURE: 1
+      HYPERDX_API_KEY: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+      # Onboarding settings
+      DEFAULT_CONNECTIONS: '[{"name":"Demo","host":"http://ch-server:8123","username":"default","password":""}]'
+      DEFAULT_SOURCES: '[{"from":{"databaseName":"default","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Demo Logs","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, SeverityText, Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo Traces","metricSourceId":"Demo Metrics"},{"from":{"databaseName":"default","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Demo Traces","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanKindExpression":"SpanKind","spanNameExpression":"SpanName","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Demo","logSourceId":"Demo Logs","metricSourceId":"Demo Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Demo Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum"},"connection":"Demo","logSourceId":"Demo Logs","traceSourceId":"Demo Traces"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Demo Sessions","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp, ServiceName, Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Demo","traceSourceId":"Demo Traces"}]'
     # Using tmpfs for ephemeral storage in the container
     tmpfs:
       - /data/db

@@ -1,19 +1,16 @@
 // tests/auth/register.spec.ts
 import { expect, test } from '@playwright/test';
-import { register, generateTestUser, setupDemoSources } from '../utils/registerHelper';
+import { register, generateTestUser } from '../utils/registerHelper';
 
 test.describe('User Registration and Initial Setup', () => {
-  test('should register a new user and set up demo sources', async ({ page }) => {
+  test('should register a new user and auto-setup demo sources', async ({ page }) => {
     // Register a new user
     const testUser = generateTestUser();
     await register(page, testUser);
 
     // Verify we're redirected to the search page
     await page.waitForURL('http://localhost:8080/search');
-
-    // Set up demo sources
-    await setupDemoSources(page);
-
+    
     // Verify we can access the sources
     // Click the source selector in the search bar
     const sourceSelect = page.locator('[data-testid="search-source-select"]');
