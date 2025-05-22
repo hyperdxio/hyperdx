@@ -51,7 +51,7 @@ services:
   otel-collector:
     image: ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}
     environment:
-      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     ports:
       - '13133:13133' # health_check extension
