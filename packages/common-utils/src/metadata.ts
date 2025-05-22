@@ -439,7 +439,7 @@ export class Metadata {
     disableRowLimit?: boolean;
   }) {
     return this.cache.getOrFetch(
-      `${chartConfig.from.databaseName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
         const sql = await renderChartConfig(
           {
