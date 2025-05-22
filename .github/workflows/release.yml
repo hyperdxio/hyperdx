@@ -8,8 +8,8 @@ permissions:
   packages: write
   pull-requests: write
 jobs:
-  publish_common_utils:
-    name: Publish @hyperdx/common-utils
+  check_changesets:
+    name: Check Changesets
     runs-on: ubuntu-24.04
     outputs:
       changeset_outputs_hasChangesets:
@@ -45,7 +45,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
   release:
     name: Release
-    needs: publish_common_utils
+    needs: check_changesets
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -76,16 +76,15 @@ jobs:
         uses: xom9ikk/dotenv@v2
       - name: Publish Images
         if:
-          needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
+          needs.check_changesets.outputs.changeset_outputs_hasChangesets ==
           'false'
         run: make ${{ matrix.release }}
   notify_downstream:
     name: Notify Downstream
-    needs: [publish_common_utils, release]
+    needs: [check_changesets, release]
     runs-on: ubuntu-24.04
     if:
-      needs.publish_common_utils.outputs.changeset_outputs_hasChangesets ==
-      'false'
+      needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
