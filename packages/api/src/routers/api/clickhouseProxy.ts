@@ -3,6 +3,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
@@ -120,7 +121,9 @@ const proxyMiddleware: RequestHandler =
     },
     on: {
       proxyReq: (proxyReq, _req) => {
-        const newPath = _req.params[0];
+        // set user-agent to the hyperdx version identifier
+        proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
+
         // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
         const qparams = new URLSearchParams(_req.query);
         if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
@@ -134,6 +137,7 @@ const proxyMiddleware: RequestHandler =
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(_req.body);
         }
+        const newPath = _req.params[0];
         proxyReq.path = `/${newPath}?${qparams}`;
       },
       proxyRes: (proxyRes, _req, res) => {
