@@ -100,11 +100,11 @@ export const DBSessionPanel = ({
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
   const { data: traceSource } = useSource({ id: traceSourceId });
-  const { data: sessionSource, isFetched: isSessionSourceFetched } = useSource({
+  const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id: traceSource?.sessionSourceId,
   });
 
-  if (!traceSource || (!sessionSource && !isSessionSourceFetched)) {
+  if (!traceSource || (!sessionSource && isSessionSourceLoading)) {
     return <Loader />;
   }
 
