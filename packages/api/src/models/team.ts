@@ -9,6 +9,7 @@ export interface ITeam {
   allowedAuthMethods?: 'password'[];
   apiKey: string;
   hookId: string;
+  collectorAuthenticationEnforced: boolean;
 }
 
 export default mongoose.model<ITeam>(
@@ -28,6 +29,10 @@ export default mongoose.model<ITeam>(
         default: function genUUID() {
           return uuidv4();
         },
+      },
+      collectorAuthenticationEnforced: {
+        type: Boolean,
+        default: false,
       },
     },
     {
