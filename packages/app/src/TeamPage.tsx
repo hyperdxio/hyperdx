@@ -105,7 +105,7 @@ function ConnectionsSection() {
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
 
   return (
-    <Box>
+    <Box id="connections">
       <Text size="md" c="gray.4">
         Connections
       </Text>
@@ -205,7 +205,7 @@ function SourcesSection() {
   const [isCreatingSource, setIsCreatingSource] = useState(false);
 
   return (
-    <Box>
+    <Box id="sources">
       <Text size="md" c="gray.4">
         Sources
       </Text>
@@ -479,7 +479,7 @@ function TeamMembersSection() {
   };
 
   return (
-    <Box>
+    <Box id="team_members">
       <Text size="md" c="gray.4">
         Team
       </Text>
@@ -906,7 +906,7 @@ function IntegrationsSection() {
   ] = useDisclosure();
 
   return (
-    <Box>
+    <Box id="integrations">
       <Text size="md" c="gray.4">
         Integrations
       </Text>
@@ -997,7 +997,7 @@ function TeamNameSection() {
     [refetchTeam, setTeamName, team?.name],
   );
   return (
-    <Box>
+    <Box id="team_name">
       <Text size="md" c="gray.4">
         Team Name
       </Text>
@@ -1097,7 +1097,7 @@ const APIKeyCopyButton = ({
   );
 };
 
-function ApiKeySection() {
+function ApiKeysSection() {
   const { data: team, refetch: refetchTeam } = api.useTeam();
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const rotateTeamApiKey = api.useRotateTeamApiKey();
@@ -1130,7 +1130,7 @@ function ApiKeySection() {
   };
 
   return (
-    <Box>
+    <Box id="api_keys">
       <Text size="md" c="gray.4">
         API Keys
       </Text>
@@ -1233,7 +1233,7 @@ export default function TeamPage() {
               <ConnectionsSection />
               <IntegrationsSection />
               <TeamNameSection />
-              <ApiKeySection />
+              <ApiKeysSection />
 
               {hasAllowedAuthMethods && (
                 <>
