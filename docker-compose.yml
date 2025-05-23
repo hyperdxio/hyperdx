@@ -14,29 +14,6 @@ services:
   #     - internal
   #   depends_on:
   #     - app
-  # go-parser:
-  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-go-parser
-  #   environment:
-  #     AGGREGATOR_API_URL: 'http://aggregator:8001'
-  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-  #     OTEL_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_SERVICE_NAME: hdx-oss-go-parser
-  #     PORT: 7777
-  #   ports:
-  #     - 7777:7777
-  #   networks:
-  #     - internal
-  # hostmetrics:
-  #   image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}-hostmetrics
-  #   environment:
-  #     HYPERDX_API_KEY: ${HYPERDX_API_KEY}
-  #     HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-  #     OTEL_SERVICE_NAME: hostmetrics
-  #   restart: always
-  #   networks:
-  #     - internal
   db:
     image: mongo:5.0.14-focal
     volumes:
@@ -49,9 +26,9 @@ services:
     networks:
       - internal
   otel-collector:
-    image: ${OTEL_COLLECTOR_IMAGE_NAME}:${IMAGE_VERSION}
+    image: ${HDX_IMAGE_REPO}/${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
     environment:
-      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     ports:
       - '13133:13133' # health_check extension
@@ -65,7 +42,7 @@ services:
     depends_on:
       - ch-server
   app:
-    image: ${IMAGE_NAME_HDX}:${IMAGE_VERSION}
+    image: ${HDX_IMAGE_REPO}/${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
     ports:
       - ${HYPERDX_API_PORT}:${HYPERDX_API_PORT}
       - ${HYPERDX_APP_PORT}:${HYPERDX_APP_PORT}

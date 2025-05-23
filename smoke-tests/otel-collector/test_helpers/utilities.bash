@@ -13,7 +13,7 @@ validate_env() {
 
     # Check if clickhouse-client is installed
     if ! command -v clickhouse-client &> /dev/null; then
-        echo "❌ Error: clickhouse-client is not installed. Please install clickhouse-client to continue." >&3
+        echo "❌ Error: clickhouse-client is not installed. Please install clickhouse-client to continue. (Did you run `clickhouse install` yet?)" >&3
         return 1
     fi
 

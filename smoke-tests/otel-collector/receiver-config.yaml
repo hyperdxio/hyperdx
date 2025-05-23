@@ -1,0 +1,42 @@
+# Usually added via OpAMP
+receivers:
+  # Troubleshooting
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otelcol'
+          scrape_interval: 30s
+          static_configs:
+            - targets:
+                - '0.0.0.0:8888'
+                - ${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}
+  # Data sources: logs
+  fluentforward:
+    endpoint: '0.0.0.0:24225'
+  # Configured via OpAMP w/ authentication
+  # Data sources: traces, metrics, logs
+  otlp/hyperdx:
+    protocols:
+      grpc:
+        include_metadata: true
+        endpoint: '0.0.0.0:4317'
+      http:
+        cors:
+          allowed_origins: ['*']
+          allowed_headers: ['*']
+        include_metadata: true
+        endpoint: '0.0.0.0:4318'
+
+service:
+  pipelines:
+    traces:
+      receivers:
+        - otlp/hyperdx
+    metrics:
+      receivers:
+        - otlp/hyperdx
+        - prometheus
+    logs/in:
+      receivers:
+        - otlp/hyperdx
+        - fluentforward

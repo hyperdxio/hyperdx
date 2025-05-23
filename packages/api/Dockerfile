@@ -1,5 +1,5 @@
 ## base #############################################################################################
-FROM node:22.14.0-alpine AS base
+FROM node:22.16.0-alpine AS base
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 ## prod ############################################################################################
 
-FROM node:22.14.0-alpine AS prod
+FROM node:22.16.0-alpine AS prod
 
 ARG CODE_VERSION
 

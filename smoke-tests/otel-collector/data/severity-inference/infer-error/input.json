@@ -1,0 +1,41 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-error"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000004",
+              "body": {
+                "stringValue": "error: things aren't good"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000005",
+              "body": {
+                "stringValue": "err 00019: something went wrong"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
