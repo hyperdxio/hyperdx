@@ -11,15 +11,23 @@ services:
     networks:
       - internal
     healthcheck:
-      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
+      test:
+        wget -O /dev/null --no-verbose --tries=1 http://127.0.0.1:8123/ping ||
+        exit 1
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
   otel-collector:
-    extends:
-      file: ../../docker-compose.ci.yml
-      service: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.126.0
+    volumes:
+      - ../../docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./receiver-config.yaml:/etc/otelcol-contrib/receiver-config.yaml
+    command:
+      [
+        '--config=/etc/otelcol-contrib/receiver-config.yaml',
+        '--config=/etc/otelcol-contrib/config.yaml',
+      ]
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
