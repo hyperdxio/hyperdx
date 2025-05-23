@@ -3,9 +3,7 @@
   "description": "Common utilities for HyperDX application",
   "version": "0.2.0-beta.5",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "files": [
     "dist/*"
   ],
