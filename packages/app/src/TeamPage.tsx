@@ -1,12 +1,7 @@
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
-import {
-  Button as BSButton,
-  Form,
-  Modal as BSModal,
-  Spinner,
-} from 'react-bootstrap';
+import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
@@ -19,10 +14,12 @@ import {
   Box,
   Button,
   Card,
+  Center,
   Container,
   Divider,
   Flex,
   Group,
+  Loader,
   Modal as MModal,
   Radio,
   Stack,
@@ -45,8 +42,6 @@ import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
-
-import styles from '../styles/TeamPage.module.scss';
 
 const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
@@ -1223,9 +1218,9 @@ export default function TeamPage() {
       <div>
         <Container>
           {isLoading && (
-            <Spinner animation="border" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </Spinner>
+            <Center mt="xl">
+              <Loader color="dimmed" />
+            </Center>
           )}
           {!isLoading && team != null && (
             <Stack my={20} gap="xl">
