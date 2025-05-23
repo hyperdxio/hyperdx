@@ -2,7 +2,7 @@
 set -e
 
 clickhouse client -n <<'EOSQL'
-CREATE TABLE default.otel_logs
+CREATE TABLE IF NOT EXISTS default.otel_logs
 (
   `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
   `TimestampTime` DateTime DEFAULT toDateTime(Timestamp),
@@ -43,7 +43,7 @@ ORDER BY (ServiceName, TimestampTime, Timestamp)
 TTL TimestampTime + toIntervalDay(3)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
-CREATE TABLE default.otel_traces
+CREATE TABLE IF NOT EXISTS default.otel_traces
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     `TraceId` String CODEC(ZSTD(1)),
