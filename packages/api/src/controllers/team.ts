@@ -14,6 +14,7 @@ export const LOCAL_APP_TEAM = {
   // Placeholder keys
   hookId: uuidv4(),
   apiKey: uuidv4(),
+  collectorAuthenticationEnforced: false,
   toJSON() {
     return this;
   },
@@ -28,24 +29,30 @@ export async function isTeamExisting() {
   return teamCount > 0;
 }
 
-export async function createTeam({ name }: { name: string }) {
+export async function createTeam({
+  name,
+  collectorAuthenticationEnforced = true,
+}: {
+  name: string;
+  collectorAuthenticationEnforced?: boolean;
+}) {
   if (await isTeamExisting()) {
     throw new Error('Team already exists');
   }
 
-  const team = new Team({ name });
+  const team = new Team({ name, collectorAuthenticationEnforced });
 
   await team.save();
 
   return team;
 }
 
-export function getTeam(id: string | ObjectId, fields?: string[]) {
+export function getTeam(id?: string | ObjectId, fields?: string[]) {
   if (config.IS_LOCAL_APP_MODE) {
     return LOCAL_APP_TEAM;
   }
 
-  return Team.findById(id, fields);
+  return Team.findOne({}, fields);
 }
 
 export function getTeamByApiKey(apiKey: string) {
