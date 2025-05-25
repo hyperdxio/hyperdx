@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
@@ -54,14 +54,12 @@ export default function SearchInputV2({
   const ref = useRef<HTMLInputElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
-  const autoCompleteOptions = useAutoCompleteOptions(
-    new LuceneLanguageFormatter(),
-    value,
-    {
-      tableConnections,
-      additionalSuggestions,
-    },
-  );
+  const luceneFormatter = useMemo(() => new LuceneLanguageFormatter(), []);
+
+  const autoCompleteOptions = useAutoCompleteOptions(luceneFormatter, value, {
+    tableConnections,
+    additionalSuggestions,
+  });
 
   useEffect(() => {
     genEnglishExplanation(value).then(q => {
