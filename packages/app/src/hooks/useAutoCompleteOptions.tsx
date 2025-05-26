@@ -68,12 +68,10 @@ export function useAutoCompleteOptions(
   // clear search field if no key matches anymore
   useEffect(() => {
     if (!searchField) return;
-    if (
-      !(value as string).startsWith(formatter.formatFieldValue(searchField))
-    ) {
+    if (!value.startsWith(formatter.formatFieldValue(searchField))) {
       setSearchField(null);
     }
-  }, [searchField, setSearchField, value]);
+  }, [searchField, setSearchField, value, formatter]);
   const searchKeys = useMemo(
     () =>
       searchField
