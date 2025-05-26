@@ -129,15 +129,14 @@ export function useSessions(
             dateRange,
             where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId')`,
             whereLanguage: 'sql',
-            ...(whereLanguage &&
-              where && {
-                filters: [
-                  {
-                    type: whereLanguage,
-                    condition: where,
-                  },
-                ],
-              }),
+            ...(where && {
+              filters: [
+                {
+                  type: whereLanguage ?? 'lucene',
+                  condition: where,
+                },
+              ],
+            }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
             connection: traceSource.connection,
