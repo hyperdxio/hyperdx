@@ -138,6 +138,77 @@ export function useGetKeyValues(
   });
 }
 
+export function useSmartFields(
+  _tableConnections: TableConnection | TableConnection[],
+  options?: Partial<UseQueryOptions<Field[]>>,
+) {
+  const tableConnections = Array.isArray(_tableConnections)
+    ? _tableConnections
+    : [_tableConnections];
+  const metadata = getMetadata();
+  return useQuery<Field[]>({
+    queryKey: [
+      'useMetadata.useSmartFields',
+      ...tableConnections.map(tc => ({ ...tc })),
+    ],
+    queryFn: async () => {
+      const fields2d = await Promise.all(
+        tableConnections.map(tc => metadata.getSmartFields(tc)),
+      );
+
+      // skip deduplication if not needed
+      if (fields2d.length === 1) return fields2d[0];
+
+      return deduplicate2dArray<Field>(fields2d);
+    },
+    staleTime: 1000 * 60 * 5, // Cache every 5 min
+    ...options,
+  });
+}
+
+export function useMoreKeyValues(
+  {
+    chartConfig,
+    key,
+    limit,
+    searchTerm,
+    disableRowLimit,
+    enabled = true,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    limit?: number;
+    searchTerm?: string;
+    disableRowLimit?: boolean;
+    enabled?: boolean;
+  },
+  options?: Omit<UseQueryOptions<string[]>, 'queryKey'>,
+) {
+  const metadata = getMetadata();
+  return useQuery<string[]>({
+    queryKey: [
+      'useMetadata.useMoreKeyValues',
+      { ...chartConfig },
+      key,
+      limit,
+      searchTerm,
+      disableRowLimit,
+    ],
+    queryFn: async () =>
+      metadata.getMoreKeyValues({
+        chartConfig,
+        key,
+        limit,
+        searchTerm,
+        disableRowLimit,
+      }),
+    staleTime: 1000 * 60 * 1, // Cache every 1 min for more dynamic searches
+    enabled: enabled && !!key,
+    placeholderData: keepPreviousData,
+    ...options,
+  });
+}
+
 export function deduplicateArray<T extends object>(array: T[]): T[] {
   return deduplicate2dArray([array]);
 }

@@ -401,6 +401,80 @@ export class Metadata {
     return fields;
   }
 
+  async getSmartFields({
+    databaseName,
+    tableName,
+    connectionId,
+    metricName,
+    limit = 20,
+  }: TableConnection & { limit?: number }) {
+    const [allFields, tableMetadata] = await Promise.all([
+      this.getAllFields({ databaseName, tableName, connectionId, metricName }),
+      this.getTableMetadata({ databaseName, tableName, connectionId }),
+    ]);
+
+    // Get primary key and sorting key fields
+    const primaryKeyFields = new Set<string>();
+    const sortingKeyFields = new Set<string>();
+
+    if (tableMetadata.primary_key) {
+      tableMetadata.primary_key.split(',').forEach(key => {
+        primaryKeyFields.add(key.trim());
+      });
+    }
+
+    if (tableMetadata.sorting_key) {
+      tableMetadata.sorting_key.split(',').forEach(key => {
+        sortingKeyFields.add(key.trim());
+      });
+    }
+
+    // Sort fields by priority:
+    // 1. Primary key fields
+    // 2. Sorting key fields
+    // 3. Low cardinality fields
+    // 4. Other string fields
+    const prioritizedFields = allFields
+      .filter(field => {
+        // Only include string fields for filtering
+        return field.jsType === 'string';
+      })
+      .filter(field => {
+        // Exclude system fields
+        const fieldName = field.path.join('.');
+        return !['Body', 'Timestamp'].includes(fieldName);
+      })
+      .sort((a, b) => {
+        const aFieldName = a.path[0];
+        const bFieldName = b.path[0];
+
+        const aIsPrimary = primaryKeyFields.has(aFieldName);
+        const bIsPrimary = primaryKeyFields.has(bFieldName);
+        const aIsSorting = sortingKeyFields.has(aFieldName);
+        const bIsSorting = sortingKeyFields.has(bFieldName);
+        const aIsLowCard = a.type.includes('LowCardinality');
+        const bIsLowCard = b.type.includes('LowCardinality');
+
+        // Primary key fields first
+        if (aIsPrimary && !bIsPrimary) return -1;
+        if (!aIsPrimary && bIsPrimary) return 1;
+
+        // Sorting key fields second
+        if (aIsSorting && !bIsSorting) return -1;
+        if (!aIsSorting && bIsSorting) return 1;
+
+        // Low cardinality fields third
+        if (aIsLowCard && !bIsLowCard) return -1;
+        if (!aIsLowCard && bIsLowCard) return 1;
+
+        // Alphabetical for the rest
+        return aFieldName.localeCompare(bFieldName);
+      })
+      .slice(0, limit);
+
+    return prioritizedFields;
+  }
+
   async getTableMetadata({
     databaseName,
     tableName,
@@ -473,6 +547,57 @@ export class Metadata {
         }));
       },
     );
+  }
+
+  async getMoreKeyValues({
+    chartConfig,
+    key,
+    limit = 100,
+    searchTerm,
+    disableRowLimit = false,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    limit?: number;
+    searchTerm?: string;
+    disableRowLimit?: boolean;
+  }) {
+    const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${key}.${chartConfig.dateRange.toString()}.${searchTerm || 'all'}.${limit}.${disableRowLimit}.moreValues`;
+
+    return this.cache.getOrFetch(cacheKey, async () => {
+      const selectClause = `groupUniqArray(${limit})(${key}) AS values`;
+
+      // Build the updated config with search filter if provided
+      const updatedConfig = {
+        ...chartConfig,
+        select: selectClause,
+      };
+
+      if (searchTerm) {
+        const searchWhere = `${key} ILIKE '%${searchTerm.replace(/'/g, "''")}%'`;
+        updatedConfig.where = chartConfig.where
+          ? `${chartConfig.where} AND ${searchWhere}`
+          : searchWhere;
+      }
+
+      const sql = await renderChartConfig(updatedConfig, this);
+
+      const json = await this.clickhouseClient
+        .query<'JSON'>({
+          query: sql.sql,
+          query_params: sql.params,
+          connectionId: chartConfig.connection,
+          clickhouse_settings: !disableRowLimit
+            ? {
+                max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+                read_overflow_mode: 'break',
+              }
+            : undefined,
+        })
+        .then(res => res.json<any>());
+
+      return (json?.data?.[0]?.values as string[])?.filter(Boolean) || [];
+    });
   }
 }
 

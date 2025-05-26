@@ -5,7 +5,7 @@ export const tsup: Options = {
   clean: true, // clean up the dist folder
   dts: true, // generate dts files
   format: ['cjs', 'esm'], // generate cjs and esm files
-  minify: true,
+  minify: false, // for some reason this introduces a bug in our build
   bundle: true,
   skipNodeModulesBundle: true,
   outDir: 'dist',

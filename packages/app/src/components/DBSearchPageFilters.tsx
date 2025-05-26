@@ -20,7 +20,12 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  useAllFields,
+  useGetKeyValues,
+  useMoreKeyValues,
+  useSmartFields,
+} from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { mergePath } from '@/utils';
@@ -136,9 +141,12 @@ export type FilterGroupProps = {
   onExcludeClick: (value: string) => void;
   onPinClick: (value: string) => void;
   isPinned: (value: string) => boolean;
+  chartConfig?: ChartConfigWithDateRange;
+  enableMoreValues?: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
+const MAX_MORE_VALUES = 500;
 
 export const FilterGroup = ({
   name,
@@ -151,22 +159,62 @@ export const FilterGroup = ({
   onExcludeClick,
   isPinned,
   onPinClick,
+  chartConfig,
+  enableMoreValues = false,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
+  const [showMoreValues, setShowMoreValues] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Debounced search term
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch more values when needed
+  const { data: moreValues, isLoading: moreValuesLoading } = useMoreKeyValues({
+    chartConfig: chartConfig!,
+    key: name,
+    limit: MAX_MORE_VALUES,
+    searchTerm: debouncedSearchTerm || undefined,
+    enabled:
+      enableMoreValues &&
+      chartConfig &&
+      (showMoreValues || !!debouncedSearchTerm),
+  });
 
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
       ...selectedValues.included,
       ...selectedValues.excluded,
     ]);
-    return [
+
+    // Start with selected values that aren't in the current options
+    let baseOptions = [
       ...Array.from(selectedSet)
         .filter(value => !options.find(option => option.value === value))
         .map(value => ({ value, label: value })),
       ...options,
     ];
-  }, [options, selectedValues]);
+
+    // If we have more values and are showing them, merge them in
+    if (showMoreValues && moreValues) {
+      const existingValues = new Set(baseOptions.map(opt => opt.value));
+      const additionalValues = moreValues
+        .filter(value => !existingValues.has(value))
+        .map(value => ({ value, label: value }));
+      baseOptions = [...baseOptions, ...additionalValues];
+    }
+
+    return baseOptions;
+  }, [options, selectedValues, showMoreValues, moreValues]);
 
   const displayedOptions = useMemo(() => {
     if (search) {
@@ -242,9 +290,15 @@ export const FilterGroup = ({
           size="xs"
           placeholder={name}
           value={search}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-            setSearch(event.currentTarget.value)
-          }
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+            const value = event.currentTarget.value;
+            setSearch(value);
+
+            // If we have chartConfig and enableMoreValues, also use this as search term for fetching
+            if (enableMoreValues && chartConfig) {
+              setSearchTerm(value);
+            }
+          }}
           leftSectionWidth={27}
           leftSection={<IconSearch size={15} stroke={2} />}
           rightSection={
@@ -255,6 +309,7 @@ export const FilterGroup = ({
                 onClick={() => {
                   onClearClick();
                   setSearch('');
+                  setSearchTerm('');
                 }}
               />
             ) : null
@@ -280,7 +335,7 @@ export const FilterGroup = ({
             onClickPin={() => onPinClick(option.value)}
           />
         ))}
-        {optionsLoading ? (
+        {optionsLoading || moreValuesLoading ? (
           <Group m={6} gap="xs">
             <Loader size={12} color="gray.6" />
             <Text c="dimmed" size="xs">
@@ -312,11 +367,54 @@ export const FilterGroup = ({
             />
           </div>
         )}
+        {enableMoreValues &&
+          chartConfig &&
+          !showMoreValues &&
+          !debouncedSearchTerm && (
+            <div className="d-flex m-1">
+              <TextButton
+                label={
+                  <>
+                    <span className="bi-chevron-down" /> Load more values
+                  </>
+                }
+                onClick={() => setShowMoreValues(true)}
+              />
+            </div>
+          )}
+        {showMoreValues && (
+          <div className="d-flex m-1">
+            <TextButton
+              label={
+                <>
+                  <span className="bi-chevron-up" /> Less values
+                </>
+              }
+              onClick={() => {
+                setShowMoreValues(false);
+                setSearchTerm('');
+              }}
+            />
+          </div>
+        )}
       </Stack>
     </Stack>
   );
 };
 
+/*
+We want to improve the DBSearchPageFilters to be more intelligent about what keys and values to show.
+We want to reduce the amount of data fetched up front but let users to expand
+what filter values are shown in the UI.
+
+- Select keys for initial filters (primary keys, low cardinality columns) up to 20
+- Select initial values for those keys (first 5 values)
+- If users hits "show more" in filter values, we scan that column further
+  - maybe need to limit to a few hundred results... otherwise the UI will be unhappy
+  - if user searches, we can try to scan all? (debounce)
+- If user hits "show more" in filter keys, we try to show all keys
+  - Not sure what to do about maps, this can get bad/crazy, maybe another option to "show all"?
+*/
 export const DBSearchPageFilters = ({
   filters: filterState,
   clearAllFilters,
@@ -344,30 +442,39 @@ export const DBSearchPageFilters = ({
     sourceId ?? null,
   );
   const { width, startResize } = useResizable(16, 'left');
+  const [showMoreFields, setShowMoreFields] = useState(false);
 
   const { data: countData } = useExplainQuery(chartConfig);
   const numRows: number = countData?.[0]?.rows ?? 0;
 
-  const { data, isLoading } = useAllFields({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
+  // Use smart fields for initial load (primary keys + low cardinality)
+  const { data: smartFieldsData, isLoading: smartFieldsLoading } =
+    useSmartFields({
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+    });
 
-  const [showMoreFields, setShowMoreFields] = useState(false);
+  // Use all fields when user wants to see more
+  const { data: allFieldsData, isLoading: allFieldsLoading } = useAllFields(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+    },
+    {
+      enabled: showMoreFields,
+    },
+  );
 
   const datum = useMemo(() => {
-    if (!data) {
+    const fieldsToUse = showMoreFields ? allFieldsData : smartFieldsData;
+
+    if (!fieldsToUse) {
       return [];
     }
 
-    const strings = data
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
-      })
+    const strings = fieldsToUse
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
@@ -385,7 +492,9 @@ export const DBSearchPageFilters = ({
       .filter(path => !['Body', 'Timestamp'].includes(path));
 
     return strings;
-  }, [data, filterState, showMoreFields]);
+  }, [smartFieldsData, allFieldsData, filterState, showMoreFields]);
+
+  const isLoading = showMoreFields ? allFieldsLoading : smartFieldsLoading;
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -571,6 +680,8 @@ export const DBSearchPageFilters = ({
               }}
               onPinClick={value => toggleFilterPin(facet.key, value)}
               isPinned={value => isFilterPinned(facet.key, value)}
+              chartConfig={chartConfig}
+              enableMoreValues={true}
             />
           ))}
 
@@ -578,13 +689,13 @@ export const DBSearchPageFilters = ({
             color="gray"
             variant="light"
             size="compact-xs"
-            loading={isFacetsFetching}
+            loading={isFacetsFetching || allFieldsLoading}
             rightSection={
               <i className={`bi-chevron-${showMoreFields ? 'up' : 'down'}`} />
             }
             onClick={() => setShowMoreFields(!showMoreFields)}
           >
-            {showMoreFields ? 'Less filters' : 'More filters'}
+            {showMoreFields ? 'Smart filters only' : 'Show all filters'}
           </Button>
         </Stack>
       </ScrollArea>
