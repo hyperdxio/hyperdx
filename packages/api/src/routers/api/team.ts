@@ -40,6 +40,7 @@ router.get('/', async (req, res, next) => {
       'archive',
       'name',
       'slackAlert',
+      'createdAt',
     ]);
     if (team == null) {
       throw new Error(`Team ${teamId} not found for user ${userId}`);

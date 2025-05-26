@@ -24,7 +24,10 @@ describe('team router', () => {
 
     const resp = await agent.get('/team').expect(200);
 
-    expect(_.omit(resp.body, ['_id', 'apiKey'])).toMatchInlineSnapshot(`
+    expect(new Date(resp.body.createdAt).toString()).not.toBe('Invalid Date');
+
+    expect(_.omit(resp.body, ['_id', 'apiKey', 'createdAt']))
+      .toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
   "name": "fake@deploysentinel.com's Team",
