@@ -39,6 +39,7 @@ export const AlertPreviewChart = ({
     where: where || '',
     connection: source.connection,
     from: source.from,
+    whereLanguage: whereLanguage || undefined,
   });
 
   const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
