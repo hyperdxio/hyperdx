@@ -9,17 +9,18 @@ export CLICKHOUSE_LOG_LEVEL="error"
 # Same applies to the frontend/app
 export SERVER_URL="http://127.0.0.1:${HYPERDX_API_PORT:-8000}"
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
+export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 
 # Internal Services
 export CLICKHOUSE_ENDPOINT="tcp://ch-server:9000?dial_timeout=10s"
 export MONGO_URI="mongodb://db:27017/hyperdx"
+export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
 
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 # IS_LOCAL_APP_MODE should be set by the calling script
 # Default to dangerous mode if not set
 export IS_LOCAL_APP_MODE="${IS_LOCAL_APP_MODE}"
 export NEXT_TELEMETRY_DISABLED="1"
-
 
 # Simulate Docker Service DNS
 echo "127.0.0.1      ch-server" >> /etc/hosts
@@ -48,7 +49,7 @@ while ! curl -s "http://ch-server:8123" > /dev/null; do
 done
 
 # Start Otel Collector
-otelcol-contrib --config /etc/otelcol-contrib/config.yaml &
+opampsupervisor --config /etc/otel/supervisor.yaml > /var/log/otel-collector.log 2>&1 &
 
 # Start HyperDX app
 npx concurrently \

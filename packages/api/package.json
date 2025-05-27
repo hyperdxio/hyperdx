@@ -92,7 +92,7 @@
     "start": "node ./build/index.js",
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
-    "build": "rimraf ./build && tsc && tsc-alias",
+    "build": "rimraf ./build && tsc && tsc-alias && cp -r src/opamp/proto build/opamp/",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
