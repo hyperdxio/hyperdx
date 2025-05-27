@@ -12,7 +12,7 @@ export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPE
 export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 
 # Internal Services
-export CLICKHOUSE_ENDPOINT="tcp://ch-server:9000?dial_timeout=10s"
+export CLICKHOUSE_ENDPOINT="${CLICKHOUSE_ENDPOINT:-tcp://ch-server:9000?dial_timeout=10s}"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
 
@@ -34,6 +34,7 @@ echo "Send OpenTelemetry data via"
 echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
 echo "gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
 echo ""
+echo "Export data to clickhouse endpoint: $CLICKHOUSE_ENDPOINT"
 echo ""
 
 # Start Clickhouse Server
