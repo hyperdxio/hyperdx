@@ -126,13 +126,18 @@ const proxyMiddleware: RequestHandler =
 
         // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
         const qparams = new URLSearchParams(_req.query);
-        if (_req._hdx_connection?.username && _req._hdx_connection?.password) {
+
+        if (_req._hdx_connection?.username) {
           proxyReq.setHeader(
             'X-ClickHouse-User',
             _req._hdx_connection.username,
           );
+        }
+        // Passwords can be empty
+        if (_req._hdx_connection?.password) {
           proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
         }
+
         if (_req.method === 'POST') {
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(_req.body);
