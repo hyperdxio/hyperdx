@@ -12,6 +12,7 @@ export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPE
 export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 
 # Internal Services
+export HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE="default"
 export CLICKHOUSE_ENDPOINT="${CLICKHOUSE_ENDPOINT:-tcp://ch-server:9000?dial_timeout=10s}"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
