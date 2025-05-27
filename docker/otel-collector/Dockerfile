@@ -1,6 +1,6 @@
 ## base #############################################################################################
 FROM otel/opentelemetry-collector-contrib:0.126.0 AS col
-FROM ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-opampsupervisor:0.126.0 AS supervisor 
+FROM otel/opentelemetry-collector-opampsupervisor:0.126.0 AS supervisor
 
 # From: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/aa5c3aa4c7ec174361fcaf908de8eaca72263078/cmd/opampsupervisor/Dockerfile#L18
 FROM alpine:latest@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c AS prep
