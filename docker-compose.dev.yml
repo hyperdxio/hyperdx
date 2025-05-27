@@ -11,7 +11,7 @@ services:
       service.name: 'hdx-oss-dev-db'
     image: mongo:5.0.14-focal
     volumes:
-      - .volumes/db:/data/db
+      - .volumes/db_dev:/data/db
     ports:
       - 27017:27017
     networks:
@@ -56,8 +56,8 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data:/var/lib/clickhouse
-      - .volumes/ch_logs:/var/log/clickhouse-server
+      - .volumes/ch_data_dev:/var/lib/clickhouse
+      - .volumes/ch_logs_dev:/var/log/clickhouse-server
     restart: on-failure
     networks:
       - internal
