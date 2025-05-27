@@ -1,11 +1,11 @@
 import type { ResponseJSON } from '@clickhouse/client';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';
 import winston from 'winston';
 
-import { MetricsDataType, SourceKind } from '@/../../common-utils/dist/types';
 import * as config from '@/config';
 import Connection from '@/models/connection';
 import { Source, SourceDocument } from '@/models/source';
