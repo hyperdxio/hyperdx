@@ -14,6 +14,7 @@ import {
   DisplayType,
   MetricsDataType as MetricsDataTypeV2,
   SavedChartConfig,
+  SourceKind,
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -507,8 +508,12 @@ export function formatResponseForTimeChart({
 
       let color: string | undefined = undefined;
       if (
+        source &&
         groupColumns.length === 1 &&
-        groupColumns[0].name === source?.severityTextExpression
+        groupColumns[0].name ===
+          (source.kind === SourceKind.Log
+            ? source.severityTextExpression
+            : source.statusCodeExpression)
       ) {
         color = logLevelColor(row[groupColumns[0].name]);
       }
