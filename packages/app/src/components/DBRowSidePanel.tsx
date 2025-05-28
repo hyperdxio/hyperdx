@@ -355,7 +355,7 @@ export default function DBRowSidePanel({
                     text: 'Surrounding Context',
                     value: Tab.Context,
                   },
-                  ...(rumSessionId != null && source.sessionSourceId
+                  ...(rumSessionId != null
                     ? [
                         {
                           text: 'Session Replay',

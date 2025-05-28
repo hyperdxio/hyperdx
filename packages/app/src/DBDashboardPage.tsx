@@ -51,6 +51,7 @@ import { useHover, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBSqlRowTable } from '@/components/DBRowTable';
@@ -752,8 +753,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           () => {
             notifications.show({
               color: 'red',
-              message:
-                'An error occurred. Please contact support for more details.',
+              message: (
+                <>
+                  An error occurred. <ContactSupportText />
+                </>
+              ),
             });
           },
         );

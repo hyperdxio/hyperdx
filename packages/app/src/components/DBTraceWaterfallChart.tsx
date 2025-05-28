@@ -9,6 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
+import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import {
@@ -56,7 +57,9 @@ function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
   } else if (tableModel?.kind === SourceKind.Log) {
-    return tableModel.implicitColumnExpression ?? '';
+    return (
+      (tableModel.bodyExpression || tableModel.implicitColumnExpression) ?? ''
+    );
   } else {
     return '';
   }
@@ -223,6 +226,7 @@ export function useEventsAroundFocus({
       const { SpanAttributes, ...rowData } = cd;
       return {
         ...cd, // Keep all fields available for display
+        SpanId: cd?.SpanId, // for typing
         id: rowWhere(rowData), // But only use fields except SpanAttributes for identification
         type,
       };
@@ -321,11 +325,11 @@ export function DBTraceWaterfallChartContainer({
   type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
   const validSpanID = useMemo(() => {
     return new Set(
-      rows
+      traceRowsData // only spans in traces can define valid span ids
         ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
         .map(row => row.SpanId) ?? [],
     );
-  }, [rows]);
+  }, [traceRowsData]);
   const rootNodes: Node[] = [];
   const nodesMap = new Map();
 
@@ -429,7 +433,13 @@ export function DBTraceWaterfallChartContainer({
     const start = startOffset - minOffset;
     const end = start + tookMs;
 
-    const { Body: body, ServiceName: serviceName, id, type } = result;
+    const { Body: _body, ServiceName: serviceName, id, type } = result;
+    let body = `${_body}`;
+    try {
+      body = typeof _body === 'string' ? _body : JSON.stringify(_body);
+    } catch (e) {
+      console.warn("DBTraceWaterfallChart: Couldn't JSON stringify Body", e);
+    }
 
     // Extract HTTP-related logic
     const eventAttributes = result.SpanAttributes || {};
@@ -546,7 +556,9 @@ export function DBTraceWaterfallChartContainer({
       {isFetching ? (
         <div className="my-3">Loading Traces...</div>
       ) : rows == null ? (
-        <div>An unknown error occurred, please contact support.</div>
+        <div>
+          An unknown error occurred. <ContactSupportText />
+        </div>
       ) : (
         <TimelineChart
           style={{

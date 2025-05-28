@@ -96,6 +96,7 @@ router.post(
 
           const team = await createTeam({
             name: `${email}'s Team`,
+            collectorAuthenticationEnforced: true,
           });
           user.team = team._id;
           user.name = email;

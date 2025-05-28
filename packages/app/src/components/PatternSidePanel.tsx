@@ -10,6 +10,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { Pattern } from '@/hooks/usePatterns';
 import {
   PATTERN_COLUMN_ALIAS,
+  SEVERITY_TEXT_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 import useRowWhere from '@/hooks/useRowWhere';
@@ -43,6 +44,7 @@ export default function PatternSidePanel({
     const map = new Map<string, { _type: JSDataType | null }>([
       [TIMESTAMP_COLUMN_ALIAS, { _type: JSDataType.Date }],
       [PATTERN_COLUMN_ALIAS, { _type: JSDataType.String }],
+      [SEVERITY_TEXT_COLUMN_ALIAS, { _type: JSDataType.String }],
       [serviceNameExpression, { _type: JSDataType.String }],
     ]);
     return map;
@@ -52,6 +54,7 @@ export default function PatternSidePanel({
     return {
       [TIMESTAMP_COLUMN_ALIAS]: 'Timestamp',
       [serviceNameExpression]: 'Service',
+      [SEVERITY_TEXT_COLUMN_ALIAS]: 'level',
       [PATTERN_COLUMN_ALIAS]: 'Body',
     };
   }, [serviceNameExpression]);
@@ -60,6 +63,7 @@ export default function PatternSidePanel({
     return [
       TIMESTAMP_COLUMN_ALIAS,
       serviceNameExpression,
+      SEVERITY_TEXT_COLUMN_ALIAS,
       PATTERN_COLUMN_ALIAS,
     ];
   }, [serviceNameExpression]);

@@ -1,0 +1,41 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "infer-warn"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000006",
+              "body": {
+                "stringValue": "app=1, notice: that things are not going well"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000007",
+              "body": {
+                "stringValue": "warn: something something"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
