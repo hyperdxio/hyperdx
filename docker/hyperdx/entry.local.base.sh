@@ -40,7 +40,6 @@ echo "Exporting data to ClickHouse:
   Endpoint: $CLICKHOUSE_ENDPOINT
   Database: $HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE
 "
-echo ""
 
 # Start Clickhouse Server
 /entrypoint.sh > /var/log/clickhouse.log 2>&1 &
