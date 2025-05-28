@@ -6,7 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
-import { useCreateSource, useSources } from '@/source';
+import { useCreateSource, useSources, useUpdateSource } from '@/source';
 
 import { TableSourceForm } from './SourceForm';
 
@@ -39,6 +39,7 @@ export default function OnboardingModal({
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
+  const updateSourceMutation = useUpdateSource();
 
   return (
     <Modal
@@ -147,6 +148,7 @@ export default function OnboardingModal({
                     logSourceId: 'l-758211293',
                     statusCodeExpression: 'StatusCode',
                     statusMessageExpression: 'StatusMessage',
+                    spanEventsValueExpression: 'Events',
                     metricSourceId: metricsSource.id,
                   },
                 });
@@ -171,6 +173,19 @@ export default function OnboardingModal({
                     spanIdExpression: 'SpanId',
                     implicitColumnExpression: 'Body',
                     metricSourceId: metricsSource.id,
+                    displayedTimestampValueExpression: 'Timestamp',
+                  },
+                });
+                await updateSourceMutation.mutateAsync({
+                  source: {
+                    ...traceSource,
+                    logSourceId: logSource.id,
+                  },
+                });
+                await updateSourceMutation.mutateAsync({
+                  source: {
+                    ...metricsSource,
+                    logSourceId: logSource.id,
                   },
                 });
                 const sessionSource = await createSourceMutation.mutateAsync({
