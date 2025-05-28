@@ -53,6 +53,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { useTimeChartSettings } from '@/ChartUtils';
+import { ContactSupportText } from '@/components/ContactSupportText';
 import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart from '@/components/DBHeatmapChart';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
@@ -821,8 +822,11 @@ function DBSearchPage() {
             onError: () => {
               notifications.show({
                 color: 'red',
-                message:
-                  'An error occurred. Please contact support for more details.',
+                message: (
+                  <>
+                    An error occurred. <ContactSupportText />
+                  </>
+                ),
               });
             },
           },
