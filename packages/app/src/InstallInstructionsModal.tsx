@@ -62,12 +62,16 @@ export default function InstallInstructionModal({
       show={show}
       size="lg"
     >
-      <Modal.Body className="bg-hdx-dark rounded">
-        <div className="fs-4 mb-4">Install HyperDX</div>
+      <Modal.Body className="bg-hdx-dark rounded inter">
+        <div className="fs-4 mb-4">Start Sending Telemetry</div>
         {team != null && (
           <div className="mb-4">
             <CopyableValue
-              label={<span className="text-muted me-2">Your API Key: </span>}
+              label={
+                <span className="text-muted me-2">
+                  Your Ingestion API Key:{' '}
+                </span>
+              }
               value={team.apiKey}
             />
           </div>
@@ -77,7 +81,7 @@ export default function InstallInstructionModal({
           application.
         </div>
         <div className="fs-5 mb-2">Backend</div>
-        <div className="fs-6 mb-2">
+        <div className="fs-6.5 mb-2">
           <a
             href="https://hyperdx.io/docs/install/javascript"
             target="_blank"

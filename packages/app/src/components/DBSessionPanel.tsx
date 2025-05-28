@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import Link from 'next/link';
 import { Loader } from '@mantine/core';
 
 import SessionSubpanel from '@/SessionSubpanel';
@@ -99,11 +100,11 @@ export const DBSessionPanel = ({
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
   const { data: traceSource } = useSource({ id: traceSourceId });
-  const { data: sessionSource } = useSource({
+  const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id: traceSource?.sessionSourceId,
   });
 
-  if (!traceSource || !sessionSource) {
+  if (!traceSource || (!sessionSource && isSessionSourceLoading)) {
     return <Loader />;
   }
 
@@ -113,10 +114,9 @@ export const DBSessionPanel = ({
         <div className="m-2 fs-8 p-4">
           No correlated session source found.
           <br />
-          Go to Team Settings and update <strong>
-            {traceSource?.name}
-          </strong>{' '}
-          source to include the correlated session source.
+          Go to <Link href="/team#sources">Team Settings</Link> and update the{' '}
+          <strong>{traceSource?.name}</strong> source to include the correlated
+          session source.
         </div>
       ) : rumSessionId && traceSource ? (
         <SessionSubpanel

@@ -25,6 +25,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
@@ -959,6 +960,16 @@ function DBSearchPage() {
       return undefined;
     }
 
+    const variableConfig: any = {};
+    switch (searchedSource?.kind) {
+      case SourceKind.Log:
+        variableConfig.groupBy = searchedSource?.severityTextExpression;
+        break;
+      case SourceKind.Trace:
+        variableConfig.groupBy = searchedSource?.statusCodeExpression;
+        break;
+    }
+
     return {
       ...chartConfig,
       select: [
@@ -972,8 +983,8 @@ function DBSearchPage() {
       granularity: 'auto',
       dateRange: searchedTimeRange,
       displayType: DisplayType.StackedBar,
-      groupBy: searchedSource?.severityTextExpression,
       with: aliasWith,
+      ...variableConfig,
     };
   }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
 
