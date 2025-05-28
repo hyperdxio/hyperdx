@@ -52,6 +52,7 @@ while ! curl -s "http://ch-server:8123" > /dev/null; do
   echo "Waiting for ClickHouse to be ready..."
   sleep 1
 done
+echo "ClickHouse is ready!"
 
 # Start Otel Collector
 opampsupervisor --config /etc/otel/supervisor.yaml > /var/log/otel-collector.log 2>&1 &
