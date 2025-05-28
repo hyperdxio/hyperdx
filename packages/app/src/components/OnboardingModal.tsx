@@ -178,12 +178,6 @@ export default function OnboardingModal({
                 });
                 await updateSourceMutation.mutateAsync({
                   source: {
-                    ...traceSource,
-                    logSourceId: logSource.id,
-                  },
-                });
-                await updateSourceMutation.mutateAsync({
-                  source: {
                     ...metricsSource,
                     logSourceId: logSource.id,
                   },
@@ -208,6 +202,13 @@ export default function OnboardingModal({
                     traceIdExpression: 'TraceId',
                     spanIdExpression: 'SpanId',
                     implicitColumnExpression: 'Body',
+                  },
+                });
+                await updateSourceMutation.mutateAsync({
+                  source: {
+                    ...traceSource,
+                    logSourceId: logSource.id,
+                    sessionSourceId: sessionSource.id,
                   },
                 });
                 notifications.show({
