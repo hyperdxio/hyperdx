@@ -7,6 +7,7 @@ export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 # ⚠️ Do not change this value !!!!
 export IS_LOCAL_APP_MODE="REQUIRED_AUTH"
 
+echo ""
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 
