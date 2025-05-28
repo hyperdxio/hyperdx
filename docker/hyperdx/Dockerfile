@@ -89,6 +89,9 @@ ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 # all-in-one base ############################################################################################
 FROM scratch AS all-in-one-base
 
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
 # Copy from clickhouse and otel collector bases
 COPY --from=clickhouse_base / /
 COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
