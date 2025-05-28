@@ -2,7 +2,6 @@ import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
 import session from 'express-session';
-import ms from 'ms';
 import onHeaders from 'on-headers';
 
 import * as config from './config';
@@ -72,10 +71,7 @@ app.use(defaultCors);
 // ----------------------- Background Jobs -----------------------------
 // ---------------------------------------------------------------------
 if (config.USAGE_STATS_ENABLED) {
-  void usageStats();
-  setInterval(() => {
-    void usageStats();
-  }, ms('4h'));
+  usageStats();
 }
 // ---------------------------------------------------------------------
 

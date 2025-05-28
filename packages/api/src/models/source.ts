@@ -12,6 +12,8 @@ export interface ISource extends Omit<TSource, 'connection'> {
   connection: ObjectId | string;
 }
 
+export type SourceDocument = mongoose.HydratedDocument<ISource>;
+
 export const Source = mongoose.model<ISource>(
   'Source',
   new Schema<ISource>(

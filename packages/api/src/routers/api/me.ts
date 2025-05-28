@@ -1,5 +1,6 @@
 import express from 'express';
 
+import { USAGE_STATS_ENABLED } from '@/config';
 import { getTeam } from '@/controllers/team';
 import { Api404Error } from '@/utils/errors';
 
@@ -29,6 +30,7 @@ router.get('/', async (req, res, next) => {
       id,
       name,
       team,
+      usageStatsEnabled: USAGE_STATS_ENABLED,
     });
   } catch (e) {
     next(e);

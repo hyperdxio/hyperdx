@@ -10,7 +10,7 @@ export const NODE_ENV = env.NODE_ENV as string;
 export const APP_TYPE = (env.APP_TYPE || DEFAULT_APP_TYPE) as
   | 'api'
   | 'scheduled-task';
-export const CODE_VERSION = env.CODE_VERSION as string;
+export const CODE_VERSION = env.CODE_VERSION ?? '';
 export const EXPRESS_SESSION_SECRET = (env.EXPRESS_SESSION_SECRET ||
   DEFAULT_EXPRESS_SESSION) as string;
 export const FRONTEND_URL = (env.FRONTEND_URL ||
