@@ -31,12 +31,13 @@ export DEFAULT_SOURCES='[{"from":{"databaseName":"default","tableName":"otel_log
 echo "127.0.0.1      ch-server" >> /etc/hosts
 echo "127.0.0.1      db" >> /etc/hosts
 
-echo "Visit the HyperDX UI at $FRONTEND_URL/search"
 echo ""
-echo "Send OpenTelemetry data via"
-echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
-echo "gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
+echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
+echo "Send OpenTelemetry data via:
+  http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+  gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+"
 echo "Exporting data to ClickHouse:
   Endpoint: $CLICKHOUSE_ENDPOINT
   Database: $HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE
@@ -44,7 +45,7 @@ echo "Exporting data to ClickHouse:
 echo ""
 
 # Start Clickhouse Server
-/entrypoint.sh &
+/entrypoint.sh > /var/log/clickhouse.log 2>&1 &
 
 # Start Mongo Server
 mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
