@@ -112,7 +112,7 @@ exporters:
     sampling_initial: 5
     sampling_thereafter: 200
   clickhouse/rrweb:
-    database: ${env:HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+    database: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
     endpoint: ${env:CLICKHOUSE_ENDPOINT}
     password: ${env:CLICKHOUSE_PASSWORD}
     username: ${env:CLICKHOUSE_USER}
@@ -125,7 +125,7 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
   clickhouse:
-    database: ${env:HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+    database: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
     endpoint: ${env:CLICKHOUSE_ENDPOINT}
     password: ${env:CLICKHOUSE_PASSWORD}
     username: ${env:CLICKHOUSE_USER}

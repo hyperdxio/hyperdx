@@ -31,7 +31,7 @@ services:
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
-      - HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=default
+      - HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=default
       - HYPERDX_LOG_LEVEL=info
     ports:
       - 4318:4318 # OTLP http receiver
