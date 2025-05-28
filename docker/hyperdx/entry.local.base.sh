@@ -32,8 +32,6 @@ echo "127.0.0.1      ch-server" >> /etc/hosts
 echo "127.0.0.1      db" >> /etc/hosts
 
 echo ""
-echo "Visit the HyperDX UI at $FRONTEND_URL"
-echo ""
 echo "Send OpenTelemetry data via:
   http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
   gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
@@ -67,6 +65,10 @@ npx concurrently \
   "HYPERDX_API_PORT=${HYPERDX_API_PORT:-8000} /app/app/node_modules/.bin/next start -p ${HYPERDX_APP_PORT:-8080}" \
   "node -r /app/api/node_modules/@hyperdx/node-opentelemetry/build/src/tracing /app/api/packages/api/build/tasks/index.js check-alerts" \
   > /var/log/app.log 2>&1 &
+
+echo ""
+echo "Visit the HyperDX UI at $FRONTEND_URL"
+echo ""
 
 # Wait for any process to exit
 wait -n
