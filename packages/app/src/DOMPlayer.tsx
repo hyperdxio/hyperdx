@@ -513,18 +513,17 @@ export default function DOMPlayer({
             No replay available for this session, most likely due to this
             session starting and ending in a background tab.
           </div>
-        ) : (
-          <div
-            ref={wrapper}
-            className={cx(styles.domPlayerWrapper, 'overflow-hidden', {
-              'd-none': isLoading || isBuffering,
-              started: (replayer.current?.getCurrentTime() ?? 0) > 0,
-              [styles.domPlayerWrapperPaused]: playerState === 'paused',
-            })}
-          >
-            <div className="player rr-block" ref={playerContainer} />
-          </div>
-        )}
+        ) : null}
+        <div
+          ref={wrapper}
+          className={cx(styles.domPlayerWrapper, 'overflow-hidden', {
+            'd-none': isLoading || isBuffering,
+            started: (replayer.current?.getCurrentTime() ?? 0) > 0,
+            [styles.domPlayerWrapperPaused]: playerState === 'paused',
+          })}
+        >
+          <div className="player rr-block" ref={playerContainer} />
+        </div>
       </div>
     </>
   );
