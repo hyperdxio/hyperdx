@@ -94,9 +94,9 @@ export default function OnboardingModal({
                   connection: {
                     id: 'local',
                     name: 'Demo',
-                    host: 'https://demo-ch.hyperdx.io',
-                    username: 'demo',
-                    password: 'demo',
+                    host: 'https://sql-clickhouse.clickhouse.com',
+                    username: 'otel_demo',
+                    password: '',
                   },
                 });
                 const metricsSource = await createSourceMutation.mutateAsync({
@@ -105,7 +105,7 @@ export default function OnboardingModal({
                     name: 'Demo Metrics',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: '',
                     },
                     timestampValueExpression: 'TimeUnix',
@@ -127,7 +127,7 @@ export default function OnboardingModal({
                     name: 'Demo Traces',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'otel_traces',
                     },
                     timestampValueExpression: 'Timestamp',
@@ -156,7 +156,7 @@ export default function OnboardingModal({
                     name: 'Demo Logs',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'otel_logs',
                     },
                     timestampValueExpression: 'TimestampTime',
@@ -179,7 +179,7 @@ export default function OnboardingModal({
                     name: 'Demo Sessions',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'hyperdx_sessions',
                     },
                     timestampValueExpression: 'TimestampTime',
