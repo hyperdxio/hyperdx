@@ -12,7 +12,8 @@ export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPE
 export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 
 # Internal Services
-export CLICKHOUSE_ENDPOINT="tcp://ch-server:9000?dial_timeout=10s"
+export HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE="${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE:-default}"
+export CLICKHOUSE_ENDPOINT="${CLICKHOUSE_ENDPOINT:-tcp://ch-server:9000?dial_timeout=10s}"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
 
@@ -32,12 +33,14 @@ echo "127.0.0.1      db" >> /etc/hosts
 
 echo "Visit the HyperDX UI at $FRONTEND_URL/search"
 echo ""
-echo "Local App Mode: $IS_LOCAL_APP_MODE"
-echo ""
 echo "Send OpenTelemetry data via"
 echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
 echo "gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
 echo ""
+echo "Exporting data to ClickHouse:
+  Endpoint: $CLICKHOUSE_ENDPOINT
+  Database: $HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE
+"
 echo ""
 
 # Start Clickhouse Server
