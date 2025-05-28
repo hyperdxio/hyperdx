@@ -29,14 +29,14 @@ echo "127.0.0.1      db" >> /etc/hosts
 
 echo "Visit the HyperDX UI at $FRONTEND_URL/search"
 echo ""
-echo "Local App Mode: $IS_LOCAL_APP_MODE"
-echo ""
 echo "Send OpenTelemetry data via"
 echo "http/protobuf: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
 echo "gRPC: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"
 echo ""
-echo "Export data to ClickHouse endpoint: $CLICKHOUSE_ENDPOINT"
-echo "Database: $HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE"
+echo "Exporting data to ClickHouse:
+  Endpoint: $CLICKHOUSE_ENDPOINT
+  Database: $HDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE
+"
 echo ""
 
 # Start Clickhouse Server
