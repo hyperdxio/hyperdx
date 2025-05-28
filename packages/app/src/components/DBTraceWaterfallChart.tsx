@@ -9,6 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
+import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import {
@@ -555,7 +556,9 @@ export function DBTraceWaterfallChartContainer({
       {isFetching ? (
         <div className="my-3">Loading Traces...</div>
       ) : rows == null ? (
-        <div>An unknown error occurred, please contact support.</div>
+        <div>
+          An unknown error occurred. <ContactSupportText />
+        </div>
       ) : (
         <TimelineChart
           style={{
