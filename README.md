@@ -205,6 +205,15 @@ Here's a high-level list of support we're working on delivering as part of v2:
 - [ ] v1 Migration Tooling
 - [ ] Public API
 
+## HyperDX Usage Data
+
+HyperDX collects anonymized usage data for open source deployments. This data
+supports our mission for observability to be available to any team and helps
+support our open source product run in a variety of different environments.
+While we hope you will continue to support our mission in this way, you may opt
+out of usage data collection by setting the `USAGE_STATS_ENABLED` environment
+variable to `false`. Thank you for supporting the development of HyperDX!
+
 ## License
 
 [MIT](/LICENSE)
