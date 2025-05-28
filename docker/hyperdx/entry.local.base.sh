@@ -50,7 +50,7 @@ mongod --quiet --dbpath /data/db > /var/log/mongod.log 2>&1 &
 
 # Wait for Clickhouse to be ready
 while ! curl -s "http://ch-server:8123" > /dev/null; do
-  echo "Waiting for Clickhouse to be ready..."
+  echo "Waiting for ClickHouse to be ready..."
   sleep 1
 done
 
