@@ -353,7 +353,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage,
+      whereLanguage: 'lucene',
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -365,7 +365,7 @@ export default function SessionSubpanel({
       },
       filters: [
         tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
-        ...(where ? [{ type: whereLanguage, condition: where }] : []),
+        // ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
     [
@@ -376,12 +376,12 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
-      whereLanguage,
+      // whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
       allEventsFilter,
-      where,
+      // where,
     ],
   );
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
@@ -402,7 +402,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage,
+      whereLanguage: 'lucene',
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -414,7 +414,7 @@ export default function SessionSubpanel({
       },
       filters: [
         tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
-        ...(where ? [{ type: whereLanguage, condition: where }] : []),
+        // ...(where ? [{ type: whereLanguage, condition: where }] : []),
       ],
     }),
     [
@@ -425,12 +425,10 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
-      whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
       allEventsFilter,
-      where,
     ],
   );
 
