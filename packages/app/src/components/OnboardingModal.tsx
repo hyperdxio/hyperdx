@@ -100,26 +100,26 @@ export default function OnboardingModal({
                     password: '',
                   },
                 });
-                const metricsSource = await createSourceMutation.mutateAsync({
+                const logSource = await createSourceMutation.mutateAsync({
                   source: {
-                    kind: SourceKind.Metric,
-                    name: 'Demo Metrics',
+                    kind: SourceKind.Log,
+                    name: 'Demo Logs',
                     connection: 'local',
                     from: {
                       databaseName: 'otel_v2',
-                      tableName: '',
+                      tableName: 'otel_logs',
                     },
-                    timestampValueExpression: 'TimeUnix',
+                    timestampValueExpression: 'TimestampTime',
+                    defaultTableSelectExpression:
+                      'Timestamp, ServiceName, SeverityText, Body',
                     serviceNameExpression: 'ServiceName',
-                    metricTables: {
-                      [MetricsDataType.Gauge]: 'otel_metrics_gauge',
-                      [MetricsDataType.Histogram]: 'otel_metrics_histogram',
-                      [MetricsDataType.Sum]: 'otel_metrics_sum',
-                      [MetricsDataType.Summary]: 'otel_metrics_summary',
-                      [MetricsDataType.ExponentialHistogram]:
-                        'otel_metrics_exponential_histogram',
-                    },
+                    severityTextExpression: 'SeverityText',
+                    eventAttributesExpression: 'LogAttributes',
                     resourceAttributesExpression: 'ResourceAttributes',
+                    traceIdExpression: 'TraceId',
+                    spanIdExpression: 'SpanId',
+                    implicitColumnExpression: 'Body',
+                    displayedTimestampValueExpression: 'Timestamp',
                   },
                 });
                 const traceSource = await createSourceMutation.mutateAsync({
@@ -149,36 +149,28 @@ export default function OnboardingModal({
                     statusCodeExpression: 'StatusCode',
                     statusMessageExpression: 'StatusMessage',
                     spanEventsValueExpression: 'Events',
-                    metricSourceId: metricsSource.id,
                   },
                 });
-                const logSource = await createSourceMutation.mutateAsync({
+                const metricsSource = await createSourceMutation.mutateAsync({
                   source: {
-                    kind: SourceKind.Log,
-                    name: 'Demo Logs',
+                    kind: SourceKind.Metric,
+                    name: 'Demo Metrics',
                     connection: 'local',
                     from: {
                       databaseName: 'otel_v2',
-                      tableName: 'otel_logs',
+                      tableName: '',
                     },
-                    timestampValueExpression: 'TimestampTime',
-                    defaultTableSelectExpression:
-                      'Timestamp, ServiceName, SeverityText, Body',
+                    timestampValueExpression: 'TimeUnix',
                     serviceNameExpression: 'ServiceName',
-                    severityTextExpression: 'SeverityText',
-                    eventAttributesExpression: 'LogAttributes',
+                    metricTables: {
+                      [MetricsDataType.Gauge]: 'otel_metrics_gauge',
+                      [MetricsDataType.Histogram]: 'otel_metrics_histogram',
+                      [MetricsDataType.Sum]: 'otel_metrics_sum',
+                      [MetricsDataType.Summary]: 'otel_metrics_summary',
+                      [MetricsDataType.ExponentialHistogram]:
+                        'otel_metrics_exponential_histogram',
+                    },
                     resourceAttributesExpression: 'ResourceAttributes',
-                    traceSourceId: traceSource.id,
-                    traceIdExpression: 'TraceId',
-                    spanIdExpression: 'SpanId',
-                    implicitColumnExpression: 'Body',
-                    metricSourceId: metricsSource.id,
-                    displayedTimestampValueExpression: 'Timestamp',
-                  },
-                });
-                await updateSourceMutation.mutateAsync({
-                  source: {
-                    ...metricsSource,
                     logSourceId: logSource.id,
                   },
                 });
@@ -204,13 +196,22 @@ export default function OnboardingModal({
                     implicitColumnExpression: 'Body',
                   },
                 });
-                await updateSourceMutation.mutateAsync({
-                  source: {
-                    ...traceSource,
-                    logSourceId: logSource.id,
-                    sessionSourceId: sessionSource.id,
-                  },
-                });
+                await Promise.all([
+                  updateSourceMutation.mutateAsync({
+                    source: {
+                      ...logSource,
+                      traceSourceId: traceSource.id,
+                      metricSourceId: metricsSource.id,
+                    },
+                  }),
+                  updateSourceMutation.mutateAsync({
+                    source: {
+                      ...traceSource,
+                      logSourceId: logSource.id,
+                      sessionSourceId: sessionSource.id,
+                    },
+                  }),
+                ]);
                 notifications.show({
                   title: 'Success',
                   message: 'Connected to HyperDX demo server.',
