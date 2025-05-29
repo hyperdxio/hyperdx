@@ -6,7 +6,7 @@ export default function ConfirmDeleteMenu({
   onDelete: () => void;
 }) {
   return (
-    <Menu>
+    <Menu withArrow>
       <Menu.Target>
         <Button variant="outline" color="gray.4" size="xs">
           Delete
