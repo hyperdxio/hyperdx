@@ -1,7 +1,7 @@
 name: Release
 on:
   push:
-    branches: [v2]
+    branches: [main]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
