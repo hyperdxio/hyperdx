@@ -68,12 +68,13 @@ export function useCreateConnection() {
           );
         }
 
-        const connections = getLocalConnections();
-        connections[0] = {
-          ...connection,
-          id: 'local',
-        };
-        setLocalConnections(connections);
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            id: 'local',
+          },
+        ]);
         return;
       }
 
@@ -102,12 +103,13 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = getLocalConnections();
-        connections[0] = {
-          ...connection,
-          id: 'local',
-        };
-        setLocalConnections(connections);
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            id: 'local',
+          },
+        ]);
 
         return;
       }
