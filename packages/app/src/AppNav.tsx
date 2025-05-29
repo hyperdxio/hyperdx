@@ -853,7 +853,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             pointerEvents: 'none',
           }}
         >
-          <AppNavHelpMenu version={version} />
+          <AppNavHelpMenu
+            version={version}
+            onAddDataClick={openInstallInstructions}
+          />
           <AppNavUserMenu
             userName={meData?.name}
             teamName={meData?.team?.name}
