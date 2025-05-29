@@ -6,7 +6,7 @@ import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
-const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
+export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
 export type Connection = {
   id: string;
@@ -17,7 +17,17 @@ export type Connection = {
 };
 
 function setLocalConnections(newConnections: Connection[]) {
+  // sessing sessionStorage doesn't send a storage event to the open tab, only
+  // another tab. Let's send one anyways for any listeners in other components
+  const storageEvent = new StorageEvent('storage', {
+    key: LOCAL_STORE_CONNECTIONS_KEY,
+    oldValue: store.session.get(LOCAL_STORE_CONNECTIONS_KEY),
+    newValue: JSON.stringify(newConnections),
+    storageArea: window.sessionStorage,
+    url: window.location.href,
+  });
   store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
+  window.dispatchEvent(storageEvent);
 }
 
 export function getLocalConnections(): Connection[] {
