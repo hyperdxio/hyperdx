@@ -1,5 +1,34 @@
 # @hyperdx/api
 
+## 2.0.0-beta.17
+
+### Patch Changes
+
+- c60b975: chore: bump node to v22.16.0
+- 9004826: fix: remove total number of webhook limit
+- 321e24f: fix: alerting time range filtering bug
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- 59ee6d2: bring usage stats up to date
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- d72d1d2: Add ingestion key authentication in OTel collector via OpAMP
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- d63deed: fix: support otelcol opamp for aio build
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- 96b8c50: Fix histogram query metric to support grouping and correct issues with value computation.
+- Updated dependencies [e935bb6]
+- Updated dependencies [321e24f]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [fa7875c]
+- Updated dependencies [86465a2]
+- Updated dependencies [b51e39c]
+- Updated dependencies [43a9ca1]
+- Updated dependencies [0cf5358]
+- Updated dependencies [a762203]
+- Updated dependencies [e7262d1]
+- Updated dependencies [321e24f]
+- Updated dependencies [96b8c50]
+  - @hyperdx/common-utils@0.2.0-beta.6
+
 ## 2.0.0-beta.16
 
 ### Patch Changes

@@ -1,5 +1,35 @@
 # @hyperdx/app
 
+## 2.0.0-beta.17
+
+### Patch Changes
+
+- c60b975: chore: bump node to v22.16.0
+- d176b54: fix: chartpage querying too on every keystroke after initial query
+- fe8ed22: fix: color display on search page for traces
+- 321e24f: fix: alerting time range filtering bug
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- 84a9119: fix: Session replay intermittently showing "No replay available for this session"
+- 8d534da: fixed ui state on session panel to be inline with ui
+- a762203: fix: metadata getAllKeyValues query key scoped to table now
+- 1211386: add severitytext coloring to event patterns
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- Updated dependencies [e935bb6]
+- Updated dependencies [321e24f]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [fa7875c]
+- Updated dependencies [86465a2]
+- Updated dependencies [b51e39c]
+- Updated dependencies [43a9ca1]
+- Updated dependencies [0cf5358]
+- Updated dependencies [a762203]
+- Updated dependencies [e7262d1]
+- Updated dependencies [321e24f]
+- Updated dependencies [96b8c50]
+  - @hyperdx/common-utils@0.2.0-beta.6
+
 ## 2.0.0-beta.16
 
 ### Patch Changes

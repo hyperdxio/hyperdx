@@ -1,5 +1,22 @@
 # @hyperdx/common-utils
 
+## 0.2.0-beta.6
+
+### Patch Changes
+
+- e935bb6: ci: introduce release-nightly workflow
+- 321e24f: fix: alerting time range filtering bug
+- 7d2cfcf: fix: 'Failed to fetch' errors
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- b51e39c: fix: disable keep_alive on the browser side (ch client)
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- 0cf5358: chore: bump clickhouse client to v1.11.1
+- a762203: fix: metadata getAllKeyValues query key scoped to table now
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- 321e24f: feat: support 'dateRangeEndInclusive' in timeFilterExpr
+- 96b8c50: Fix histogram query metric to support grouping and correct issues with value computation.
+
 ## 0.2.0-beta.5
 
 ### Patch Changes
