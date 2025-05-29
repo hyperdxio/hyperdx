@@ -660,7 +660,7 @@ function DBSearchPage() {
   }>({});
 
   useEffect(() => {
-    if (!isBrowser) return;
+    if (!isBrowser || !IS_LOCAL_MODE) return;
     const nullQueryErrors = (event: StorageEvent) => {
       if (event.key === LOCAL_STORE_CONNECTIONS_KEY) {
         setQueryErrors({});
