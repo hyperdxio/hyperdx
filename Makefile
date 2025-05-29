@@ -237,7 +237,7 @@ release-app-nightly:
 		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
@@ -253,7 +253,7 @@ release-local-nightly:
 		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-noauth \
@@ -269,7 +269,7 @@ release-all-in-one-nightly:
 		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
-		--build-arg CODE_VERSION=${CODE_VERSION} \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-auth \
