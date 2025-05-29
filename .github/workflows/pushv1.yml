@@ -1,7 +1,7 @@
-name: Push Downstream V2
+name: Push Downstream V1
 on:
   push:
-    branches: [main]
+    branches: [v1]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -13,22 +13,20 @@ jobs:
       - uses: actions/github-script@v7
         env:
           ACTOR: ${{ github.actor }}
-          AUTHOR: ${{ github.event.head_commit.author.name }}
           MESSAGE: ${{ github.event.head_commit.message }}
           SHA: ${{ github.sha }}
         with:
           github-token: ${{ secrets.DOWNSTREAM_TOKEN }}
           script: |
-            const { ACTOR, AUTHOR, MESSAGE, SHA } = process.env;
+            const { ACTOR, MESSAGE, SHA } = process.env;
             const result = await github.rest.actions.createWorkflowDispatch({
               owner: '${{ secrets.DOWNSTREAM_OWNER }}',
-              repo: '${{ secrets.DOWNSTREAM_REPO_V2 }}',
-              workflow_id: '${{ secrets.DOWNSTREAM_WORKFLOW_ID_V2 }}',
+              repo: '${{ secrets.DOWNSTREAM_REPO }}',
+              workflow_id: '${{ secrets.DOWNSTREAM_WORKFLOW_ID }}',
               ref: 'main',
               inputs: {
+                sha: SHA,
                 actor: ACTOR,
-                author: AUTHOR,
-                message: MESSAGE,
-                sha: SHA
+                message: MESSAGE
               }
             });
