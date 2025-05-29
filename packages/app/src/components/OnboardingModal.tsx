@@ -200,6 +200,7 @@ export default function OnboardingModal({
                   updateSourceMutation.mutateAsync({
                     source: {
                       ...logSource,
+                      sessionSourceId: sessionSource.id,
                       traceSourceId: traceSource.id,
                       metricSourceId: metricsSource.id,
                     },
@@ -209,6 +210,7 @@ export default function OnboardingModal({
                       ...traceSource,
                       logSourceId: logSource.id,
                       sessionSourceId: sessionSource.id,
+                      metricSourceId: metricsSource.id,
                     },
                   }),
                 ]);
