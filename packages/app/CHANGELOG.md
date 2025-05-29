@@ -1,5 +1,114 @@
 # @hyperdx/app
 
+## 2.0.0
+
+### Major Changes
+
+- 3fb3169: bumps to v2 beta
+
+### Minor Changes
+
+- 759da7a: Support multiple OTEL metric types in source configuration setup.
+- 9579251: Stores the collapse vs expand status of the side navigation in local storage so it's carried across browser windows/sessions.
+- 57a6bc3: feat: BETA metrics support (sum + gauge)
+
+### Patch Changes
+
+- 56e39dc: 36c3edc fix: remove several source change forms throughout the log drawer
+- c60b975: chore: bump node to v22.16.0
+- ab617c1: feat: support multiseries metrics chart
+- 7de8916: Removes trailing slash for connection urls
+- 3be7f4d: fix: input does not overlap with language select button anymore
+- d176b54: fix: chartpage querying too on every keystroke after initial query
+- 459267a: feat: introduce session table model form
+- fe8ed22: fix: color display on search page for traces
+- b3f3151: Allow to create Slack Webhooks from Team Settings page
+- 2e350e2: feat: implement logs > metrics correlation flow + introduce convertV1ChartConfigToV2
+- 321e24f: fix: alerting time range filtering bug
+- 092a292: fix: autocomplete for key-values complete for v2 lucene
+- a6fd5e3: feat: introduce k8s preset dashboard
+- 2f626e1: fix: metric name filtering for some metadata
+- cfdd523: feat: clickhouse queries are by default conducted through the clickhouse library via POST request. localMode still uses GET for CORS purposes
+- 6dc6989: feat: Automatically use last used source when loading search page
+- a9dfa14: Added support to CTE rendering where you can now specify a CTE using a full chart config object instance. This CTE capability is then used to avoid the URI too long error for delta event queries.
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- 5a10ae1: fix: delete huge z-value for tooltip
+- f5e9a07: chore: bump node version to v22
+- b16c8e1: feat: compute charts ratio
+- 6864836: fix: don't show ellipses on search when query is in-flight
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- 08009ac: feat: add saved filters for searches
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- b99236d: fix: autocomplete options for dashboard page
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- b690db8: Introduce event panel overview tab
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- 5db2767: Fixed CI linting and UI release task.
+- 000458d: chore: GA v2
+- 84a9119: fix: Session replay intermittently showing "No replay available for this session"
+- 4514f2c: Remove connection health hook - too noisy
+- 8d534da: fixed ui state on session panel to be inline with ui
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+- 2580ddd: chore: bump next to v13.5.10
+- db761ba: fix: remove originalWhere tag from view. not used anyways
+- 184402d: fix: use quote for aliases for sql compatibility
+- 5044083: Session Replay tab for traces is disabled unless the source is configured with a sessionId
+- 8c95b9e: Add search history
+- a762203: fix: metadata getAllKeyValues query key scoped to table now
+- cd0e4fd: fix: correct handling of gauge metrics in renderChartConfig
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- 1211386: add severitytext coloring to event patterns
+- 6dafb87: fix: View Events not shown for multiple series; grabs where clause when single series
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- decd622: fix: k8s dashboard uptime metrics + warning k8s event body
+- e884d85: fix: metrics > logs correlation flow
+- e5a210a: feat: support search on multi implicit fields (BETA)
+- Updated dependencies [50ce38f]
+- Updated dependencies [79fe30f]
+- Updated dependencies [e935bb6]
+- Updated dependencies [8acc725]
+- Updated dependencies [2e350e2]
+- Updated dependencies [321e24f]
+- Updated dependencies [092a292]
+- Updated dependencies [a6fd5e3]
+- Updated dependencies [2f626e1]
+- Updated dependencies [cfdd523]
+- Updated dependencies [9c5c239]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [a9dfa14]
+- Updated dependencies [fa7875c]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [c50c42d]
+- Updated dependencies [86465a2]
+- Updated dependencies [e002c2f]
+- Updated dependencies [b51e39c]
+- Updated dependencies [759da7a]
+- Updated dependencies [b9f7d32]
+- Updated dependencies [92a4800]
+- Updated dependencies [eaa6bfa]
+- Updated dependencies [e80630c]
+- Updated dependencies [4865ce7]
+- Updated dependencies [29e8f37]
+- Updated dependencies [43a9ca1]
+- Updated dependencies [7f0b397]
+- Updated dependencies [bd9dc18]
+- Updated dependencies [5db2767]
+- Updated dependencies [414ff92]
+- Updated dependencies [000458d]
+- Updated dependencies [0cf5358]
+- Updated dependencies [99b60d5]
+- Updated dependencies [931d738]
+- Updated dependencies [57a6bc3]
+- Updated dependencies [184402d]
+- Updated dependencies [a762203]
+- Updated dependencies [cd0e4fd]
+- Updated dependencies [e7262d1]
+- Updated dependencies [321e24f]
+- Updated dependencies [96b8c50]
+- Updated dependencies [e884d85]
+- Updated dependencies [e5a210a]
+  - @hyperdx/common-utils@0.2.0
+
 ## 2.0.0-beta.17
 
 ### Patch Changes
