@@ -158,8 +158,8 @@ build-all-in-one-nightly:
 .PHONY: release-otel-collector
 release-otel-collector:
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
-		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod \
 		--push \
    	--cache-from=type=gha \
@@ -207,8 +207,8 @@ release-app:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		--platform ${BUILD_PLATFORMS} \
-		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod \
 		--push \
 	 	--cache-from=type=gha \
