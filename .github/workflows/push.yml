@@ -1,7 +1,7 @@
 name: Push Downstream V1
 on:
   push:
-    branches: [main]
+    branches: [v1]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
