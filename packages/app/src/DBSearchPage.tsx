@@ -27,7 +27,10 @@ import {
   Filter,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
+import {
+  isBrowser,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -99,6 +102,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
 
@@ -654,6 +658,20 @@ function DBSearchPage() {
   const [_queryErrors, setQueryErrors] = useState<{
     [key: string]: Error | ClickHouseQueryError;
   }>({});
+
+  useEffect(() => {
+    if (!isBrowser || !IS_LOCAL_MODE) return;
+    const nullQueryErrors = (event: StorageEvent) => {
+      if (event.key === LOCAL_STORE_CONNECTIONS_KEY) {
+        setQueryErrors({});
+      }
+    };
+
+    window.addEventListener('storage', nullQueryErrors);
+    return () => {
+      window.removeEventListener('storage', nullQueryErrors);
+    };
+  }, []);
 
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
