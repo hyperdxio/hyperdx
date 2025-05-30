@@ -1,9 +1,9 @@
 name: Main
 on:
   push:
-    branches: [main, v2]
+    branches: [main, v1]
   pull_request:
-    branches: [main, v2]
+    branches: [main, v1]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
