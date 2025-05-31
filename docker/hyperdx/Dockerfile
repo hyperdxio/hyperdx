@@ -26,7 +26,7 @@ WORKDIR /app
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
 COPY ./packages/common-utils ./packages/common-utils
-COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./packages/api/
+COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./packages/api/build.js ./packages/api/
 COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.test.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
 
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
@@ -68,10 +68,7 @@ USER node
 
 # Set up API
 WORKDIR /app/api
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
-COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
-COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
+COPY --chown=node:node --from=builder /app/packages/api/dist ./dist
 
 # Set up App
 WORKDIR /app/app

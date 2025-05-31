@@ -3,10 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as protobuf from 'protobufjs';
 
+import { IS_PROD } from '@/config';
 import logger from '@/utils/logger';
 
 // Define the root path of the proto file
-const PROTO_PATH = path.resolve(__dirname, '../proto/opamp.proto');
+const PROTO_PATH = path.resolve(
+  __dirname,
+  IS_PROD ? 'opamp/opamp.proto' : '../proto/opamp.proto',
+);
 
 // Load the OpAMP proto definition
 let root: protobuf.Root;
