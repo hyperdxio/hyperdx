@@ -1,5 +1,11 @@
 # @hyperdx/app
 
+## 2.1.0
+
+### Patch Changes
+
+- dfdb2d7: Better loading state for events patterns table
+
 ## 2.0.0
 
 ### Major Changes
