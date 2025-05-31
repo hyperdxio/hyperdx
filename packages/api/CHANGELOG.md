@@ -1,5 +1,11 @@
 # @hyperdx/api
 
+## 2.1.0
+
+### Minor Changes
+
+- d1dc2ec: Bumped mongodb driver support to allow for AWS IAM authentication. This drops support for MongoDB 3.6.
+
 ## 2.0.0
 
 ### Minor Changes
