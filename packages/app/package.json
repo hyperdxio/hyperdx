@@ -53,7 +53,7 @@
     "date-fns": "^2.28.0",
     "date-fns-tz": "^2.0.0",
     "fuse.js": "^6.6.2",
-    "http-proxy-middleware": "^3.0.3",
+    "http-proxy-middleware": "^3.0.5",
     "immer": "^9.0.21",
     "jotai": "^2.5.1",
     "ky": "^0.30.0",
