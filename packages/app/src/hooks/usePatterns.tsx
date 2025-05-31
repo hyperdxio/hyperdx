@@ -146,9 +146,11 @@ function usePatterns({
     { enabled: configWithPrimaryAndPartitionKey != null && enabled },
   );
 
-  const { data: pyodide } = usePyodide({ enabled });
+  const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
+    enabled,
+  });
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['patterns', config],
     queryFn: () => {
       if (configWithPrimaryAndPartitionKey == null) {
@@ -186,6 +188,11 @@ function usePatterns({
     refetchOnWindowFocus: false,
     enabled: sampleRows != null && pyodide != null && enabled,
   });
+
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingPyodide,
+  };
 }
 
 export function useGroupedPatterns({
@@ -203,7 +210,7 @@ export function useGroupedPatterns({
   totalCount?: number;
   enabled?: boolean;
 }) {
-  const { data: results, isFetching } = usePatterns({
+  const { data: results, isLoading } = usePatterns({
     config,
     samples,
     bodyValueExpression,
@@ -291,7 +298,7 @@ export function useGroupedPatterns({
 
   return {
     data: groupedResults,
-    isLoading: isFetching,
+    isLoading,
     miner: results?.miner,
     sampledRowCount,
   };
