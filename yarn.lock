@@ -4459,7 +4459,7 @@ __metadata:
     timestamp-nano: "npm:^1.0.1"
     ts-jest: "npm:^29.2.6"
     typescript: "npm:^4.9.5"
-    uplot: "npm:^1.6.30"
+    uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
     use-query-params: "npm:^2.1.2"
     zod: "npm:^3.24.1"
@@ -28091,10 +28091,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"uplot@npm:^1.6.30":
-  version: 1.6.30
-  resolution: "uplot@npm:1.6.30"
-  checksum: 10c0/af803fc23b9614979596c06dec55aa6967e748071b118fb960c5604b6095bb1dc511c1fa33d7d4990159db886475a617decf15e19691381f73f159fed4b1f32b
+"uplot@npm:^1.6.31":
+  version: 1.6.32
+  resolution: "uplot@npm:1.6.32"
+  checksum: 10c0/4d9cdd5f53371656cfc178ea4ae0d8c9bdbe4c98c99df847926d7e5f5a5bcb8043561219da2979fee7616aabe3619d80fee093befdfe39aae65e6621284c39b1
   languageName: node
   linkType: hard
 

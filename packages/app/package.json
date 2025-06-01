@@ -95,7 +95,7 @@
     "store2": "^2.14.3",
     "strip-ansi": "^6.0.1",
     "timestamp-nano": "^1.0.1",
-    "uplot": "^1.6.30",
+    "uplot": "^1.6.31",
     "uplot-react": "^1.2.2",
     "use-query-params": "^2.1.2",
     "zod": "^3.24.1"
