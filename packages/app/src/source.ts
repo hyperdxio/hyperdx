@@ -1,4 +1,4 @@
-import omit from 'lodash/omit';
+import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import store from 'store2';
 import {
@@ -137,10 +137,16 @@ export function useCreateSource() {
       if (IS_LOCAL_MODE) {
         const localSources = getLocalSources();
         const existingSource = localSources.find(
-          stored => objectHash(omit(stored, 'id')) === objectHash(source),
+          stored =>
+            objectHash(pick(stored, ['kind', 'name', 'connection'])) ===
+            objectHash(pick(source, ['kind', 'name', 'connection'])),
         );
         if (existingSource) {
-          return existingSource;
+          // replace the existing source with the new one
+          return {
+            ...source,
+            id: existingSource.id,
+          };
         }
         const newSource = {
           ...source,

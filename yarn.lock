@@ -4307,8 +4307,8 @@ __metadata:
     lodash: "npm:^4.17.21"
     migrate-mongo: "npm:^11.0.0"
     minimist: "npm:^1.2.7"
-    mongodb: "npm:^6.3.0"
-    mongoose: "npm:^6.12.0"
+    mongodb: "npm:^6.15.0"
+    mongoose: "npm:^6.13.8"
     ms: "npm:^2.1.3"
     nodemon: "npm:^2.0.20"
     object-hash: "npm:^3.0.0"
@@ -4459,7 +4459,7 @@ __metadata:
     timestamp-nano: "npm:^1.0.1"
     ts-jest: "npm:^29.2.6"
     typescript: "npm:^4.9.5"
-    uplot: "npm:^1.6.30"
+    uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
     use-query-params: "npm:^2.1.2"
     zod: "npm:^3.24.1"
@@ -5532,6 +5532,15 @@ __metadata:
   dependencies:
     sparse-bitfield: "npm:^3.0.3"
   checksum: 10c0/2d923da9ec1e09cf68cff448fcaea3791bbb3f51610ed093893519003376c9f9c1bf8c32ad76ba4f894aa8abd591eafeb5325097394f2699f6294dec9f58d897
+  languageName: node
+  linkType: hard
+
+"@mongodb-js/saslprep@npm:^1.1.9":
+  version: 1.2.2
+  resolution: "@mongodb-js/saslprep@npm:1.2.2"
+  dependencies:
+    sparse-bitfield: "npm:^3.0.3"
+  checksum: 10c0/6ea882034fe99c6abe033d843dfa0f90fcec105ef538c04ee32aca9d2cda7cc8f2dd45c94c2dbf30f14668524ed076f7072bce857f9ee321ad5b0bc1f930c423
   languageName: node
   linkType: hard
 
@@ -12317,10 +12326,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"bson@npm:^6.2.0":
-  version: 6.2.0
-  resolution: "bson@npm:6.2.0"
-  checksum: 10c0/90f447dbafc97cf84cadcb75fa0fe1eecdcb396492ce3d47b1fbf2e6e2ce88bfcf92d62e491e1a70c2fc4a1bf7825d6ce53ba75ed3359c772c41b93ff84db410
+"bson@npm:^6.10.3":
+  version: 6.10.3
+  resolution: "bson@npm:6.10.3"
+  checksum: 10c0/15ad7a9b3bf8090add5fea1761b1ba7d75e5256efcfbb8c9ca448ca98e59c3b079c37c36c7aca0cc916236bd2d4684a5525c68f3d76da8a13d55dc230abbdd21
   languageName: node
   linkType: hard
 
@@ -21218,9 +21227,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mongodb@npm:4.17.1":
-  version: 4.17.1
-  resolution: "mongodb@npm:4.17.1"
+"mongodb@npm:4.17.2":
+  version: 4.17.2
+  resolution: "mongodb@npm:4.17.2"
   dependencies:
     "@aws-sdk/credential-providers": "npm:^3.186.0"
     "@mongodb-js/saslprep": "npm:^1.1.0"
@@ -21232,20 +21241,20 @@ __metadata:
       optional: true
     "@mongodb-js/saslprep":
       optional: true
-  checksum: 10c0/63f5487a54ca8c1c5cbb508383d1977900e4a71bac92c2ec5e0896caf5978ebe3a8bfa4c115bbe602e363a1edf1cce432cf110f0f5d71f3d88a3949fd85090bc
+  checksum: 10c0/5434d995dc2173d78218ca858555c132a8354e30ac3e7ca4852ccaf5e8d3fdab4dc51a16db2a2b4096d9b8e6df799645eb9ffb0fb54cb814e4493996a4cd2b05
   languageName: node
   linkType: hard
 
-"mongodb@npm:^6.3.0":
-  version: 6.3.0
-  resolution: "mongodb@npm:6.3.0"
+"mongodb@npm:^6.15.0":
+  version: 6.16.0
+  resolution: "mongodb@npm:6.16.0"
   dependencies:
-    "@mongodb-js/saslprep": "npm:^1.1.0"
-    bson: "npm:^6.2.0"
+    "@mongodb-js/saslprep": "npm:^1.1.9"
+    bson: "npm:^6.10.3"
     mongodb-connection-string-url: "npm:^3.0.0"
   peerDependencies:
     "@aws-sdk/credential-providers": ^3.188.0
-    "@mongodb-js/zstd": ^1.1.0
+    "@mongodb-js/zstd": ^1.1.0 || ^2.0.0
     gcp-metadata: ^5.2.0
     kerberos: ^2.0.1
     mongodb-client-encryption: ">=6.0.0 <7"
@@ -21266,22 +21275,22 @@ __metadata:
       optional: true
     socks:
       optional: true
-  checksum: 10c0/e846c941b739c503b34c02500db56f966fdb8930420db24214d4305ac987415464ebc9eefaf5da1ffb7521844fc733177433b4cc7ba43c423f55eed4f2670cfe
+  checksum: 10c0/daf54347181d50ff6207a78f545bd1bea856505efa61a1bb29fc200b412fad84971c49e7d8a57e96a09bb6eab9625a6d6ad1d84884afa3a16041d5dba1b18b38
   languageName: node
   linkType: hard
 
-"mongoose@npm:^6.12.0":
-  version: 6.12.0
-  resolution: "mongoose@npm:6.12.0"
+"mongoose@npm:^6.13.8":
+  version: 6.13.8
+  resolution: "mongoose@npm:6.13.8"
   dependencies:
     bson: "npm:^4.7.2"
     kareem: "npm:2.5.1"
-    mongodb: "npm:4.17.1"
+    mongodb: "npm:4.17.2"
     mpath: "npm:0.9.0"
     mquery: "npm:4.0.3"
     ms: "npm:2.1.3"
     sift: "npm:16.0.1"
-  checksum: 10c0/af9ed5e206539a6062e0bcc1d3670ff206382e9ce6a53763741160f55dc56f6a6f4b8acba10401e453596cd7bb9faea7540190b226632acd7e1baaf14eb1d952
+  checksum: 10c0/37c21ca020991952e189cbdf18fa232531f650ed5a709aa45afc75d4c066be0c3c4158a51f20d903b020aa4146a61fec8a0da3de99bce1f92381b32d0357aebf
   languageName: node
   linkType: hard
 
@@ -28082,10 +28091,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"uplot@npm:^1.6.30":
-  version: 1.6.30
-  resolution: "uplot@npm:1.6.30"
-  checksum: 10c0/af803fc23b9614979596c06dec55aa6967e748071b118fb960c5604b6095bb1dc511c1fa33d7d4990159db886475a617decf15e19691381f73f159fed4b1f32b
+"uplot@npm:^1.6.31":
+  version: 1.6.32
+  resolution: "uplot@npm:1.6.32"
+  checksum: 10c0/4d9cdd5f53371656cfc178ea4ae0d8c9bdbe4c98c99df847926d7e5f5a5bcb8043561219da2979fee7616aabe3619d80fee093befdfe39aae65e6621284c39b1
   languageName: node
   linkType: hard
 
