@@ -58,7 +58,7 @@ echo "ClickHouse is ready!"
 opampsupervisor --config /etc/otel/supervisor.yaml > /var/log/otel-collector.log 2>&1 &
 
 # Start HyperDX app
-cd /app && npx concurrently \
+npx concurrently \
   "--kill-others" \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./node_modules/@hyperdx/node-opentelemetry/build/src/tracing ./packages/api/build/index.js" \
