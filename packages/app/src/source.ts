@@ -268,7 +268,7 @@ export async function inferTableSourceConfig({
     ...(isOtelLogSchema
       ? {
           defaultTableSelectExpression:
-            'Timestamp, ServiceName, SeverityText, Body',
+            'Timestamp, ServiceName as service, SeverityText as level, Body',
           serviceNameExpression: 'ServiceName',
           bodyExpression: 'Body',
 
@@ -288,7 +288,7 @@ export async function inferTableSourceConfig({
           implicitColumnExpression: 'SpanName',
           bodyExpression: 'SpanName',
           defaultTableSelectExpression:
-            'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
+            'Timestamp, ServiceName as service, StatusCode as level, round(Duration / 1e6) as duration, SpanName',
           eventAttributesExpression: 'SpanAttributes',
           serviceNameExpression: 'ServiceName',
           resourceAttributesExpression: 'ResourceAttributes',
@@ -316,6 +316,8 @@ export function getDurationSecondsExpression(source: TSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 
+// defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto
+// NOTE: We don't follow the standard perfectly, we enforce the required fields + a few more (ServiceName, MetricName, and ResourceAttributes primarily)
 const ReqMetricTableColumns = {
   [MetricsDataType.Gauge]: [
     'TimeUnix',
@@ -342,6 +344,34 @@ const ReqMetricTableColumns = {
     'MetricName',
     'Value',
     'Attributes',
+    'ResourceAttributes',
+  ],
+  [MetricsDataType.Summary]: [
+    'Attributes',
+    'TimeUnix',
+    'Count',
+    'Sum',
+    'ValueAtQuantiles.Quantile',
+    'ValueAtQuantiles.Value',
+    'Flags',
+    'ServiceName',
+    'MetricName',
+    'ResourceAttributes',
+  ],
+  [MetricsDataType.ExponentialHistogram]: [
+    'Attributes',
+    'TimeUnix',
+    'Count',
+    'Sum',
+    'Scale',
+    'ZeroCount',
+    'PositiveOffset',
+    'PositiveBucketCounts',
+    'NegativeOffset',
+    'NegativeBucketCounts',
+    'Flags',
+    'ServiceName',
+    'MetricName',
     'ResourceAttributes',
   ],
 };

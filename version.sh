@@ -21,10 +21,10 @@ sed -i '' 's/\("version":\s*"\)[^"]*/\"$API_LATEST_VERSION\"/' package.json
 echo "Updated root package.json version to $API_LATEST_VERSION"
 
 # update tags in .env 
-sed -i '' -e "s/CHANGESET_TAG=.*/CHANGESET_TAG=$API_LATEST_VERSION/g" ./.env
-echo "Updated .env CHANGESET_TAG to $API_LATEST_VERSION"
+sed -i '' -e "s/CODE_VERSION=.*/CODE_VERSION=$API_LATEST_VERSION/g" ./.env
+echo "Updated .env CODE_VERSION to $API_LATEST_VERSION"
 
-sed -i '' -e "s/IMAGE_VERSION_SUB_TAG=.*/IMAGE_VERSION_SUB_TAG=${API_LATEST_VERSION##*-beta}/g" ./.env
-echo "Updated .env IMAGE_VERSION_SUB_TAG to ${API_LATEST_VERSION##*-beta}"
+sed -i '' -e "s/IMAGE_VERSION_SUB_TAG=.*/IMAGE_VERSION_SUB_TAG=.${API_LATEST_VERSION#*.}/g" ./.env
+echo "Updated .env IMAGE_VERSION_SUB_TAG to .${API_LATEST_VERSION#*.}"
 
 echo "Run 'make release' to publish images"

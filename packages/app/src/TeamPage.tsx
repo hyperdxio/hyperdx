@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import {
@@ -12,7 +12,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView, ViewUpdate } from '@codemirror/view';
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Badge,
@@ -105,7 +105,7 @@ function ConnectionsSection() {
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
 
   return (
-    <Box>
+    <Box id="connections">
       <Text size="md" c="gray.4">
         Connections
       </Text>
@@ -198,13 +198,14 @@ function ConnectionsSection() {
 }
 
 function SourcesSection() {
+  const { data: connections } = useConnections();
   const { data: sources } = useSources();
 
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
   const [isCreatingSource, setIsCreatingSource] = useState(false);
 
   return (
-    <Box>
+    <Box id="sources">
       <Text size="md" c="gray.4">
         Sources
       </Text>
@@ -216,13 +217,22 @@ function SourcesSection() {
               <Flex key={s.id} justify="space-between" align="center">
                 <div>
                   <Text>{s.name}</Text>
-                  <Text size="xxs" c="dimmed">
+                  <Text size="xxs" c="dimmed" mt="xs">
                     {capitalizeFirstLetter(s.kind)}
+                    <Text px="md" span>
+                      <span className="bi-hdd-stack me-1" />
+                      {connections?.find(c => c.id === s.connection)?.name}
+                    </Text>
                     {s.from && (
                       <>
-                        {' '}
-                        &middot; <span className="bi-database me-1" />
-                        {s.from.databaseName}.{s.from.tableName}
+                        <span className="bi-database me-1" />
+                        {s.from.databaseName}
+                        {
+                          s.kind === SourceKind.Metric
+                            ? ''
+                            : '.' /** Metrics dont have table names */
+                        }
+                        {s.from.tableName}
                       </>
                     )}
                   </Text>
@@ -469,7 +479,7 @@ function TeamMembersSection() {
   };
 
   return (
-    <Box>
+    <Box id="team_members">
       <Text size="md" c="gray.4">
         Team
       </Text>
@@ -896,7 +906,7 @@ function IntegrationsSection() {
   ] = useDisclosure();
 
   return (
-    <Box>
+    <Box id="integrations">
       <Text size="md" c="gray.4">
         Integrations
       </Text>
@@ -950,6 +960,253 @@ function IntegrationsSection() {
   );
 }
 
+function TeamNameSection() {
+  const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const setTeamName = api.useSetTeamName();
+  const { data: me } = api.useMe();
+  const hasAdminAccess = true;
+  const [isEditingTeamName, setIsEditingTeamName] = useState(false);
+  const form = useForm<WebhookForm>({
+    defaultValues: {
+      name: team.name,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ name: string }> = useCallback(
+    async values => {
+      setTeamName.mutate(
+        { name: values.name },
+        {
+          onError: e => {
+            notifications.show({
+              color: 'red',
+              message: 'Failed to update team name',
+            });
+          },
+          onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: 'Updated team name',
+            });
+            refetchTeam();
+            setIsEditingTeamName(false);
+          },
+        },
+      );
+    },
+    [refetchTeam, setTeamName, team?.name],
+  );
+  return (
+    <Box id="team_name">
+      <Text size="md" c="gray.4">
+        Team Name
+      </Text>
+      <Divider my="md" />
+      <Card>
+        {isEditingTeamName ? (
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <Group gap="xs">
+              <TextInput
+                size="xs"
+                placeholder="My Team"
+                required
+                error={form.formState.errors.name?.message}
+                {...form.register('name', { required: true })}
+                miw={300}
+                min={1}
+                max={100}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditingTeamName(false);
+                  }
+                }}
+              />
+              <Button
+                type="submit"
+                size="xs"
+                variant="light"
+                color="green"
+                loading={setTeamName.isPending}
+              >
+                Save
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="default"
+                disabled={setTeamName.isPending}
+                onClick={() => setIsEditingTeamName(false)}
+              >
+                Cancel
+              </Button>
+            </Group>
+          </form>
+        ) : (
+          <Group gap="lg">
+            <div className="text-slate-300 fs-7">{team.name}</div>
+            {hasAdminAccess && (
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<i className="bi bi-pencil text-slate-300" />}
+                onClick={() => {
+                  setIsEditingTeamName(true);
+                }}
+              >
+                Change
+              </Button>
+            )}
+          </Group>
+        )}
+      </Card>
+    </Box>
+  );
+}
+
+const APIKeyCopyButton = ({
+  value,
+  dataTestId,
+}: {
+  value: string;
+  dataTestId?: string;
+}) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <CopyToClipboard text={value}>
+      <Button
+        onClick={() => setCopied(true)}
+        variant={copied ? 'light' : 'default'}
+        color="gray"
+        rightSection={
+          <div className="text-slate-300 ms-2 text-nowrap">
+            {copied ? (
+              <i className="bi bi-check-lg me-2" />
+            ) : (
+              <i className="bi bi-clipboard-fill me-2" />
+            )}
+            {copied ? 'Copied!' : 'Copy'}
+          </div>
+        }
+      >
+        <div data-test-id={dataTestId} className="text-wrap text-break">
+          {value}
+        </div>
+      </Button>
+    </CopyToClipboard>
+  );
+};
+
+function ApiKeysSection() {
+  const { data: team, refetch: refetchTeam } = api.useTeam();
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const rotateTeamApiKey = api.useRotateTeamApiKey();
+  const hasAdminAccess = true;
+  const [
+    rotateApiKeyConfirmationModalShow,
+    setRotateApiKeyConfirmationModalShow,
+  ] = useState(false);
+  const rotateTeamApiKeyAction = () => {
+    rotateTeamApiKey.mutate(undefined, {
+      onSuccess: () => {
+        notifications.show({
+          color: 'green',
+          message: 'Revoked old API key and generated new key.',
+        });
+        refetchTeam();
+      },
+      onError: e => {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+          autoClose: 5000,
+        });
+      },
+    });
+  };
+  const onConfirmUpdateTeamApiKey = () => {
+    rotateTeamApiKeyAction();
+    setRotateApiKeyConfirmationModalShow(false);
+  };
+
+  return (
+    <Box id="api_keys">
+      <Text size="md" c="gray.4">
+        API Keys
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Text c="gray.3" mb="md">
+          Ingestion API Key
+        </Text>
+        <Group gap="xs">
+          {team?.apiKey && (
+            <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
+          )}
+          {hasAdminAccess && (
+            <Button
+              variant="light"
+              color="red"
+              onClick={() => setRotateApiKeyConfirmationModalShow(true)}
+            >
+              Rotate API Key
+            </Button>
+          )}
+        </Group>
+        <MModal
+          aria-labelledby="contained-modal-title-vcenter"
+          centered
+          onClose={() => setRotateApiKeyConfirmationModalShow(false)}
+          opened={rotateApiKeyConfirmationModalShow}
+          size="lg"
+          title={
+            <Text size="xl">
+              <b>Rotate API Key</b>
+            </Text>
+          }
+        >
+          <MModal.Body>
+            <Text size="md">
+              Rotating the API key will invalidate your existing API key and
+              generate a new one for you. This action is <b>not reversible</b>.
+            </Text>
+            <Group justify="end">
+              <Button
+                variant="outline"
+                color="gray.5"
+                className="mt-2 px-4 ms-2 float-end"
+                size="sm"
+                onClick={() => setRotateApiKeyConfirmationModalShow(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                color="red.6"
+                className="mt-2 px-4 float-end"
+                size="sm"
+                onClick={onConfirmUpdateTeamApiKey}
+              >
+                Confirm
+              </Button>
+            </Group>
+          </MModal.Body>
+        </MModal>
+      </Card>
+      {!isLoadingMe && me != null && (
+        <Card>
+          <Card.Section p="md">
+            <Text c="gray.3" mb="md">
+              Personal API Access Key
+            </Text>
+            <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
+          </Card.Section>
+        </Card>
+      )}
+    </Box>
+  );
+}
+
 export default function TeamPage() {
   const { data: team, isLoading } = api.useTeam();
   const hasAllowedAuthMethods =
@@ -975,6 +1232,8 @@ export default function TeamPage() {
               <SourcesSection />
               <ConnectionsSection />
               <IntegrationsSection />
+              <TeamNameSection />
+              <ApiKeysSection />
 
               {hasAllowedAuthMethods && (
                 <>

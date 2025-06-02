@@ -5,7 +5,12 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
-import { getTags, getTeam, rotateTeamApiKey } from '@/controllers/team';
+import {
+  getTags,
+  getTeam,
+  rotateTeamApiKey,
+  setTeamName,
+} from '@/controllers/team';
 import {
   deleteTeamMember,
   findUserByEmail,
@@ -35,6 +40,7 @@ router.get('/', async (req, res, next) => {
       'archive',
       'name',
       'slackAlert',
+      'createdAt',
     ]);
     if (team == null) {
       throw new Error(`Team ${teamId} not found for user ${userId}`);
@@ -58,6 +64,28 @@ router.patch('/apiKey', async (req, res, next) => {
     next(e);
   }
 });
+
+router.patch(
+  '/name',
+  validateRequest({
+    body: z.object({
+      name: z.string().min(1).max(100),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+      const { name } = req.body;
+      const team = await setTeamName(teamId, name);
+      res.json({ name: team?.name });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   '/invitation',

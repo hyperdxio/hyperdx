@@ -28,6 +28,8 @@ export const DEFAULT_METRICS_TABLE = {
   GAUGE: 'otel_metrics_gauge',
   SUM: 'otel_metrics_sum',
   HISTOGRAM: 'otel_metrics_histogram',
+  SUMMARY: 'otel_metrics_summary',
+  EXPONENTIAL_HISTOGRAM: 'otel_metrics_exponential_histogram',
 };
 
 const connectClickhouse = async () => {
@@ -257,7 +259,7 @@ class MockServer extends Server {
   protected shouldHandleGracefulShutdown = false;
 
   getHttpServer() {
-    return this.httpServer;
+    return this.appServer;
   }
 
   async start(): Promise<void> {
@@ -274,15 +276,21 @@ class MockServer extends Server {
 
   stop() {
     return new Promise<void>((resolve, reject) => {
-      this.httpServer.close(err => {
+      this.appServer.close(err => {
         if (err) {
           reject(err);
           return;
         }
-        super
-          .shutdown()
-          .then(() => resolve())
-          .catch(err => reject(err));
+        this.opampServer.close(err => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          super
+            .shutdown()
+            .then(() => resolve())
+            .catch(err => reject(err));
+        });
       });
     });
   }

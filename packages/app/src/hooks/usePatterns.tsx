@@ -96,18 +96,34 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
   };
 }
 
-const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
-const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
+export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
+export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
+export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
 
-export function usePatterns({
+export type SampleLog = {
+  [PATTERN_COLUMN_ALIAS]: string;
+  [TIMESTAMP_COLUMN_ALIAS]: string;
+  [key: string]: any;
+};
+
+export type Pattern = {
+  id: string;
+  pattern: string;
+  count: number;
+  samples: SampleLog[];
+};
+
+function usePatterns({
   config,
   samples,
   bodyValueExpression,
+  severityTextExpression,
   enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
+  severityTextExpression?: string;
   enabled?: boolean;
 }) {
   const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
@@ -116,6 +132,9 @@ export function usePatterns({
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
       `${config.timestampValueExpression} as ${TIMESTAMP_COLUMN_ALIAS}`,
+      ...(severityTextExpression
+        ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
+        : []),
     ].join(','),
     // TODO: Proper sampling
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
@@ -173,12 +192,14 @@ export function useGroupedPatterns({
   config,
   samples,
   bodyValueExpression,
+  severityTextExpression,
   totalCount,
   enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
+  severityTextExpression?: string;
   totalCount?: number;
   enabled?: boolean;
 }) {
@@ -186,6 +207,7 @@ export function useGroupedPatterns({
     config,
     samples,
     bodyValueExpression,
+    severityTextExpression,
     enabled,
   });
   const columnMap = useMemo(() => {
@@ -245,6 +267,7 @@ export function useGroupedPatterns({
         pattern: rows[rows.length - 1].__hdx_pattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
+        severityText: rows[rows.length - 1].__hdx_severity_text, // last severitytext is usually representative of the entire pattern set
         samples: rows,
         __hdx_pattern_trend: {
           data: Object.entries(bucketCounts).map(([bucket, count]) => ({

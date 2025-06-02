@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
-import { useCreateSource, useSources } from '@/source';
+import { useCreateSource, useSources, useUpdateSource } from '@/source';
 
 import { TableSourceForm } from './SourceForm';
 
@@ -39,6 +39,7 @@ export default function OnboardingModal({
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
+  const updateSourceMutation = useUpdateSource();
 
   return (
     <Modal
@@ -94,9 +95,9 @@ export default function OnboardingModal({
                   connection: {
                     id: 'local',
                     name: 'Demo',
-                    host: 'https://demo-ch.hyperdx.io',
-                    username: 'demo',
-                    password: 'demo',
+                    host: 'https://sql-clickhouse.clickhouse.com',
+                    username: 'otel_demo',
+                    password: '',
                   },
                 });
                 const metricsSource = await createSourceMutation.mutateAsync({
@@ -105,15 +106,18 @@ export default function OnboardingModal({
                     name: 'Demo Metrics',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: '',
                     },
                     timestampValueExpression: 'TimeUnix',
                     serviceNameExpression: 'ServiceName',
                     metricTables: {
-                      gauge: 'otel_metrics_gauge',
-                      histogram: 'otel_metrics_histogram',
-                      sum: 'otel_metrics_sum',
+                      [MetricsDataType.Gauge]: 'otel_metrics_gauge',
+                      [MetricsDataType.Histogram]: 'otel_metrics_histogram',
+                      [MetricsDataType.Sum]: 'otel_metrics_sum',
+                      [MetricsDataType.Summary]: 'otel_metrics_summary',
+                      [MetricsDataType.ExponentialHistogram]:
+                        'otel_metrics_exponential_histogram',
                     },
                     resourceAttributesExpression: 'ResourceAttributes',
                   },
@@ -124,7 +128,7 @@ export default function OnboardingModal({
                     name: 'Demo Traces',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'otel_traces',
                     },
                     timestampValueExpression: 'Timestamp',
@@ -144,6 +148,7 @@ export default function OnboardingModal({
                     logSourceId: 'l-758211293',
                     statusCodeExpression: 'StatusCode',
                     statusMessageExpression: 'StatusMessage',
+                    spanEventsValueExpression: 'Events',
                     metricSourceId: metricsSource.id,
                   },
                 });
@@ -153,7 +158,7 @@ export default function OnboardingModal({
                     name: 'Demo Logs',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'otel_logs',
                     },
                     timestampValueExpression: 'TimestampTime',
@@ -168,6 +173,13 @@ export default function OnboardingModal({
                     spanIdExpression: 'SpanId',
                     implicitColumnExpression: 'Body',
                     metricSourceId: metricsSource.id,
+                    displayedTimestampValueExpression: 'Timestamp',
+                  },
+                });
+                await updateSourceMutation.mutateAsync({
+                  source: {
+                    ...metricsSource,
+                    logSourceId: logSource.id,
                   },
                 });
                 const sessionSource = await createSourceMutation.mutateAsync({
@@ -176,7 +188,7 @@ export default function OnboardingModal({
                     name: 'Demo Sessions',
                     connection: 'local',
                     from: {
-                      databaseName: 'default',
+                      databaseName: 'otel_v2',
                       tableName: 'hyperdx_sessions',
                     },
                     timestampValueExpression: 'TimestampTime',
@@ -190,6 +202,13 @@ export default function OnboardingModal({
                     traceIdExpression: 'TraceId',
                     spanIdExpression: 'SpanId',
                     implicitColumnExpression: 'Body',
+                  },
+                });
+                await updateSourceMutation.mutateAsync({
+                  source: {
+                    ...traceSource,
+                    logSourceId: logSource.id,
+                    sessionSourceId: sessionSource.id,
                   },
                 });
                 notifications.show({

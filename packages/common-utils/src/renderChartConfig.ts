@@ -449,25 +449,27 @@ function timeBucketExpr({
 }
 
 async function timeFilterExpr({
-  timestampValueExpression,
-  dateRange,
-  dateRangeStartInclusive,
-  databaseName,
-  tableName,
-  metadata,
   connectionId,
-  with: withClauses,
+  databaseName,
+  dateRange,
+  dateRangeEndInclusive,
+  dateRangeStartInclusive,
   includedDataInterval,
+  metadata,
+  tableName,
+  timestampValueExpression,
+  with: withClauses,
 }: {
-  timestampValueExpression: string;
-  dateRange: [Date, Date];
-  dateRangeStartInclusive: boolean;
-  metadata: Metadata;
   connectionId: string;
   databaseName: string;
-  tableName: string;
-  with?: ChartConfigWithDateRange['with'];
+  dateRange: [Date, Date];
+  dateRangeEndInclusive: boolean;
+  dateRangeStartInclusive: boolean;
   includedDataInterval?: string;
+  metadata: Metadata;
+  tableName: string;
+  timestampValueExpression: string;
+  with?: ChartConfigWithDateRange['with'];
 }) {
   const valueExpressions = splitAndTrimWithBracket(timestampValueExpression);
   const startTime = dateRange[0].getTime();
@@ -507,11 +509,15 @@ async function timeFilterExpr({
       if (columnMeta?.type === 'Date') {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} <= toDate(${endTimeCond}))`;
+        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${
+          dateRangeEndInclusive ? '<=' : '<'
+        } toDate(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${
           dateRangeStartInclusive ? '>=' : '>'
-        } ${startTimeCond} AND ${unsafeTimestampValueExpression} <= ${endTimeCond})`;
+        } ${startTimeCond} AND ${unsafeTimestampValueExpression} ${
+          dateRangeEndInclusive ? '<=' : '<'
+        } ${endTimeCond})`;
       }
     }),
   );
@@ -701,6 +707,7 @@ async function renderWhere(
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
           dateRangeStartInclusive: chartConfig.dateRangeStartInclusive ?? true,
+          dateRangeEndInclusive: chartConfig.dateRangeEndInclusive ?? true,
           metadata,
           connectionId: chartConfig.connection,
           databaseName: chartConfig.from.databaseName,
@@ -785,6 +792,7 @@ function renderLimit(
 // for metric SQL generation.
 type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
+  settings?: ChSql;
 };
 
 async function renderWith(
@@ -1137,76 +1145,123 @@ async function translateMetricChartConfig(
         })
       : chSql``;
     const where = await renderWhere(cteChartConfig, metadata);
-    const groupBy = (await renderGroupBy(chartConfig, metadata)) || chSql``;
+
+    // Time bucket grouping is being handled separately, so make sure to ignore the granularity
+    // logic for histograms specifically.
+    let groupBy: ChSql | undefined;
+    if (isUsingGroupBy(chartConfig)) {
+      groupBy = concatChSql(
+        ',',
+        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
+      );
+    }
 
     return {
       ...restChartConfig,
       with: [
         {
-          name: 'Source',
+          name: 'source',
           sql: chSql`
           SELECT
-            *,
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
-            IF(AggregationTemporality = 1,
-              sumForEach(BucketCounts) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-              deltaSumForEach(BucketCounts) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-            ) AS MonoBucketCounts
-          FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
-          WHERE ${where}
-          ORDER BY AttributesHash ASC
+            MetricName,
+            ExplicitBounds,
+            ${timeBucketSelect.sql ? chSql`${timeBucketSelect},` : 'TimeUnix AS `__hdx_time_bucket`'}
+            ${groupBy ? chSql`[${groupBy}] as group,` : ''}
+            sumForEach(deltas) as rates
+          FROM (
+            SELECT
+              TimeUnix,
+              MetricName,
+              ResourceAttributes,
+              Attributes,
+              ExplicitBounds,
+              attr_hash,
+              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
+              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
+              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              counts,
+              IF(
+                  AggregationTemporality = 1 ${'' /* denotes a metric that is not monotonic e.g. already a delta */}
+                      OR prev_attr_hash != attr_hash ${'' /* the attributes have changed so this is a different metric */}
+                      OR bounds_hash != prev_bounds_hash ${'' /* the bucketing has changed so should be treated as different metric */}
+                      OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), ${'' /* a data point has gone down, probably a reset event */}
+                  counts,
+                  counts - prev_counts
+              ) AS deltas
+            FROM (
+              SELECT
+                  TimeUnix,
+                  MetricName,
+                  AggregationTemporality,
+                  ExplicitBounds,
+                  ResourceAttributes,
+                  Attributes,
+                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ExplicitBounds) AS bounds_hash,
+                  CAST(BucketCounts AS Array(Int64)) counts
+              FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
+              WHERE ${where}
+              ORDER BY attr_hash, TimeUnix ASC
+            )
+          )
+          GROUP BY \`__hdx_time_bucket\`, MetricName, ${groupBy ? 'group, ' : ''}ExplicitBounds
+          ORDER BY \`__hdx_time_bucket\`
           `,
         },
         {
-          name: 'Bucketed',
+          name: 'points',
           sql: chSql`
-            SELECT
-              ${timeBucketSelect.sql ? chSql`${timeBucketSelect},` : ''}
-              any(Source.ExplicitBounds) AS ExplicitBounds,
-              sumForEach(MonoBucketCounts) AS TotalBucketCounts,
-              arrayCumSum(TotalBucketCounts) AS BucketCumCounts,
-              ${{ Float64: level }} * arraySum(TotalBucketCounts) AS Rank,
-              arrayFirstIndex(x -> if(x > Rank, 1, 0), BucketCumCounts) AS BucketLowIdx,
-              CASE
-                WHEN BucketLowIdx = 0 THEN 0
-                WHEN BucketLowIdx = 1 THEN ExplicitBounds[BucketLowIdx]
-                WHEN BucketLowIdx = length(TotalBucketCounts) THEN ExplicitBounds[length(ExplicitBounds)]
-                ELSE
-                  ExplicitBounds[BucketLowIdx - 1] +
-                    ((Rank - ExplicitBounds[BucketLowIdx - 1]) / (ExplicitBounds[BucketLowIdx])) * (ExplicitBounds[BucketLowIdx] - ExplicitBounds[BucketLowIdx - 1])
-              END AS Value
-            FROM Source
-            GROUP BY ${groupBy}
-            ORDER BY ${groupBy} ASC
+          SELECT
+            \`__hdx_time_bucket\`,
+            MetricName,
+            ${groupBy ? 'group,' : ''}
+            arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
+            length(point) as n
+          FROM source
           `,
         },
         {
-          name: 'Rates',
+          name: 'metrics',
           sql: chSql`
-            SELECT
-              \`__hdx_time_bucket\`,
-              any(Bucketed.Value) AS \`__hdx_value_high\`,
-              any(\`__hdx_value_high\`) OVER (ORDER BY \`__hdx_time_bucket\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_prev_high\`,
-              \`__hdx_value_high\` - \`__hdx_prev_high\` AS Rate
-            FROM Bucketed
-            GROUP BY \`__hdx_time_bucket\`
+          SELECT
+            \`__hdx_time_bucket\`,
+            MetricName,
+            ${groupBy ? 'group,' : ''}
+            point[n].1 AS total,
+            ${{ Float64: level }} * total AS rank,
+            arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
+            point[upper_idx].1 AS upper_count,
+            ifNull(point[upper_idx].2, inf) AS upper_bound,
+            CASE
+              WHEN upper_idx > 1 THEN point[upper_idx - 1].2
+              WHEN point[upper_idx].2 > 0 THEN 0
+              ELSE inf
+            END AS lower_bound,
+            if (
+              lower_bound = 0,
+              0,
+              point[upper_idx - 1].1
+            ) AS lower_count,
+            CASE
+                WHEN upper_bound = inf THEN point[upper_idx - 1].2
+                WHEN lower_bound = inf THEN point[1].2
+                ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
+            END AS Value
+          FROM points
+          WHERE length(point) > 1 AND total > 0
           `,
         },
       ],
-      select: [
-        {
-          ..._selectRest,
-          aggFn: 'any', // groupings happen further in the CTE stack, just need to grab the value
-          aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE
-          valueExpression: 'Rate',
-        },
-      ],
+      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, Value`,
       from: {
         databaseName: '',
-        tableName: 'Rates',
+        tableName: 'metrics',
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
+      groupBy: undefined,
+      granularity: undefined, // time bucketing and granularity is applied at the source CTE
       timestampValueExpression: '`__hdx_time_bucket`',
+      settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
   }
 
@@ -1241,6 +1296,7 @@ export async function renderChartConfig(
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
     //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
+    chSql`${'settings' in chartConfig ? chSql`SETTINGS ${chartConfig.settings as ChSql}` : []}`,
   ]);
 }
 

@@ -14,6 +14,7 @@ import HyperDX from '@hyperdx/browser';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
+  Box,
   Button,
   CloseButton,
   Collapse,
@@ -43,7 +44,9 @@ import {
 } from './AppNav.components';
 import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from './config';
 import Icon from './Icon';
+import InstallInstructionModal from './InstallInstructionsModal';
 import Logo from './Logo';
+import OnboardingChecklist from './OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
 import type { SavedSearch, ServerDashboard } from './types';
 import { UserPreferencesModal } from './UserPreferencesModal';
@@ -61,7 +64,7 @@ function NewDashboardButton() {
     return (
       <Link href="/dashboards">
         <Button variant="transparent" py="0px" px="sm" fw={400} color="gray.2">
-          + Create Dashboard
+          <span className="pe-2">+</span> Create Dashboard
         </Button>
       </Link>
     );
@@ -89,7 +92,7 @@ function NewDashboardButton() {
         )
       }
     >
-      + Create Dashboard
+      <span className="pe-2">+</span> Create Dashboard
     </Button>
   );
 }
@@ -551,15 +554,25 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     userPreferences: { isUTC },
   } = useUserPreferences();
 
+  const [
+    showInstallInstructions,
+    { open: openInstallInstructions, close: closeInstallInstructions },
+  ] = useDisclosure(false);
+
   return (
     <AppNavContext.Provider value={{ isCollapsed, pathname }}>
       {fixed && (
         <div style={{ width: navWidth + 1, minWidth: navWidth + 1 }}></div>
       )}
+      <InstallInstructionModal
+        show={showInstallInstructions}
+        onHide={closeInstallInstructions}
+      />
       <div
-        className={styles.wrapper}
+        className={`${styles.wrapper} inter`}
         style={{
           position: fixed ? 'fixed' : 'initial',
+          letterSpacing: '0.05em',
         }}
       >
         <div style={{ width: navWidth }}>
@@ -620,9 +633,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 iconName="bi-layout-text-sidebar-reverse"
                 href="/search"
                 className={cx({
-                  'text-success fw-bold':
+                  'text-success fw-600':
                     pathname.includes('/search') && query.savedSearchId == null,
-                  'fw-bold':
+                  'fw-600':
                     pathname.includes('/search') && query.savedSearchId != null,
                 })}
                 isExpanded={isSearchExpanded}
@@ -779,7 +792,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             pathname.startsWith('/clickhouse'),
                         })}
                       >
-                        Clickhouse
+                        ClickHouse
                       </Link>
                       <Link
                         href={`/services`}
@@ -809,11 +822,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               )}
 
               {!IS_LOCAL_MODE && (
-                <AppNavLink
-                  label="Team Settings"
-                  href="/team"
-                  iconName="bi-gear"
-                />
+                <Box mt="sm">
+                  <AppNavLink
+                    label="Team Settings"
+                    href="/team"
+                    iconName="bi-gear"
+                  />
+                </Box>
               )}
             </div>
           </div>
@@ -823,6 +838,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 style={{ width: navWidth, paddingBottom: 80 }}
                 className="px-3 mb-2 mt-4"
               >
+                <OnboardingChecklist onAddDataClick={openInstallInstructions} />
                 <AppNavCloudBanner />
               </div>
             </>
@@ -837,13 +853,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             pointerEvents: 'none',
           }}
         >
-          <AppNavHelpMenu version={version} />
+          <AppNavHelpMenu
+            version={version}
+            onAddDataClick={openInstallInstructions}
+          />
           <AppNavUserMenu
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
+          {meData && meData.usageStatsEnabled && (
+            <img
+              referrerPolicy="no-referrer-when-downgrade"
+              src="https://static.scarf.sh/a.png?x-pxid=bbc99c42-7a75-4eee-9fb9-2b161fc4acd6"
+            />
+          )}
         </div>
       </div>
       <UserPreferencesModal

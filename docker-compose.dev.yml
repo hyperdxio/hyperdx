@@ -11,7 +11,7 @@ services:
       service.name: 'hdx-oss-dev-db'
     image: mongo:5.0.14-focal
     volumes:
-      - .volumes/db:/data/db
+      - .volumes/db_dev:/data/db
     ports:
       - 27017:27017
     networks:
@@ -19,14 +19,20 @@ services:
     depends_on:
       - otel-collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.120.0
+    # image: otel/opentelemetry-collector-contrib:0.120.0
+    build:
+      context: ./docker/otel-collector
+      target: dev
     environment:
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
-      CLICKHOUSE_SERVER_ENDPOINT: 'ch-server:9000'
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./docker/otel-collector/supervisor_docker.yaml:/etc/otel/supervisor.yaml
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
@@ -50,16 +56,18 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data:/var/lib/clickhouse
-      - .volumes/ch_logs:/var/log/clickhouse-server
+      - .volumes/ch_data_dev:/var/lib/clickhouse
+      - .volumes/ch_logs_dev:/var/log/clickhouse-server
     restart: on-failure
     networks:
       - internal
     healthcheck:
       # "clickhouse", "client", "-u ${CLICKHOUSE_USER}", "--password ${CLICKHOUSE_PASSWORD}", "-q 'SELECT 1'"
-      test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
-      interval: 3s
-      timeout: 3s
-      retries: 3
+      test:
+        wget -O /dev/null --no-verbose --tries=1 http://127.0.0.1:8123/ping ||
+        exit 1
+      interval: 1s
+      timeout: 1s
+      retries: 60
 networks:
   internal:

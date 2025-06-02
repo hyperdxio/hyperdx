@@ -420,6 +420,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
                   '',
@@ -481,6 +482,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   'Custom body ',
                   '```',
                   '',
@@ -585,6 +587,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
                   '  hi i matched',
@@ -613,6 +616,7 @@ describe('checkAlerts', () => {
                   '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
+                  'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
                   '',
                   '  Runbook URL: https://example.com',
                   '  hi i matched',
@@ -657,25 +661,33 @@ describe('checkAlerts', () => {
       const team = await createTeam({ name: 'My Team' });
 
       const now = new Date('2023-11-16T22:12:00.000Z');
-      // Send events in the last alert window 22:05 - 22:10
-      const eventMs = now.getTime() - ms('5m');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
 
       await bulkInsertLogs([
+        // logs from 22:05 - 22:10
         {
           ServiceName: 'api',
-          Timestamp: new Date(eventMs),
+          Timestamp: eventMs,
           SeverityText: 'error',
           Body: 'Oh no! Something went wrong!',
         },
         {
           ServiceName: 'api',
-          Timestamp: new Date(eventMs),
+          Timestamp: eventMs,
           SeverityText: 'error',
           Body: 'Oh no! Something went wrong!',
         },
         {
           ServiceName: 'api',
-          Timestamp: new Date(eventMs),
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // logs from 22:10 - 22:15
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
           SeverityText: 'error',
           Body: 'Oh no! Something went wrong!',
         },
@@ -745,6 +757,11 @@ describe('checkAlerts', () => {
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
       await processAlert(nextWindow, enhancedAlert);
       // alert should be in ok state
+      expect(enhancedAlert.state).toBe('ALERT');
+
+      const nextNextWindow = new Date('2023-11-16T22:20:00.000Z');
+      await processAlert(nextNextWindow, enhancedAlert);
+      // alert should be in ok state
       expect(enhancedAlert.state).toBe('OK');
 
       // check alert history
@@ -753,24 +770,43 @@ describe('checkAlerts', () => {
       }).sort({
         createdAt: 1,
       });
-      expect(alertHistories.length).toBe(2);
+      expect(alertHistories.length).toBe(3);
       expect(alertHistories[0].state).toBe('ALERT');
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].createdAt).toEqual(
         new Date('2023-11-16T22:10:00.000Z'),
       );
-      expect(alertHistories[1].state).toBe('OK');
-      expect(alertHistories[1].counts).toBe(0);
+      expect(alertHistories[1].state).toBe('ALERT');
+      expect(alertHistories[1].counts).toBe(1);
       expect(alertHistories[1].createdAt).toEqual(
         new Date('2023-11-16T22:15:00.000Z'),
       );
+      expect(alertHistories[2].state).toBe('OK');
+      expect(alertHistories[2].counts).toBe(0);
+      expect(alertHistories[2].createdAt).toEqual(
+        new Date('2023-11-16T22:20:00.000Z'),
+      );
 
       // check if webhook was triggered
+      // We're only checking the general structure here since the exact text includes timestamps
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
         1,
         'https://hooks.slack.com/services/123',
         {
           text: 'Alert for "My Search" - 3 lines found',
+          blocks: [
+            {
+              text: expect.any(Object),
+              type: 'section',
+            },
+          ],
+        },
+      );
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        2,
+        'https://hooks.slack.com/services/123',
+        {
+          text: 'Alert for "My Search" - 1 lines found',
           blocks: [
             {
               text: expect.any(Object),
@@ -931,6 +967,7 @@ describe('checkAlerts', () => {
                   `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
                   '',
                   '3 exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
                 type: 'mrkdwn',
@@ -1248,6 +1285,7 @@ describe('checkAlerts', () => {
                   `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
                   '',
                   '6.25 exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
                 type: 'mrkdwn',

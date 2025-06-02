@@ -62,12 +62,16 @@ export default function InstallInstructionModal({
       show={show}
       size="lg"
     >
-      <Modal.Body className="bg-hdx-dark rounded">
-        <div className="fs-4 mb-4">Install HyperDX</div>
+      <Modal.Body className="bg-hdx-dark rounded inter">
+        <div className="fs-4 mb-4">Start Sending Telemetry</div>
         {team != null && (
           <div className="mb-4">
             <CopyableValue
-              label={<span className="text-muted me-2">Your API Key: </span>}
+              label={
+                <span className="text-muted me-2">
+                  Your Ingestion API Key:{' '}
+                </span>
+              }
               value={team.apiKey}
             />
           </div>
@@ -79,7 +83,7 @@ export default function InstallInstructionModal({
         <div className="fs-5 mb-2">Backend</div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/javascript"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nodejs"
             target="_blank"
             rel="noreferrer"
           >
@@ -89,7 +93,7 @@ export default function InstallInstructionModal({
         </div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/golang"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/golang"
             target="_blank"
             rel="noreferrer"
           >
@@ -99,7 +103,7 @@ export default function InstallInstructionModal({
         </div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/python"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/python"
             target="_blank"
             rel="noreferrer"
           >
@@ -109,7 +113,7 @@ export default function InstallInstructionModal({
         </div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/java"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/java"
             target="_blank"
             rel="noreferrer"
           >
@@ -119,7 +123,7 @@ export default function InstallInstructionModal({
         </div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/elixir"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/elixir"
             target="_blank"
             rel="noreferrer"
           >
@@ -129,7 +133,7 @@ export default function InstallInstructionModal({
         </div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/ruby"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/ruby-on-rails"
             target="_blank"
             rel="noreferrer"
           >
@@ -140,27 +144,7 @@ export default function InstallInstructionModal({
         <div className="fs-5 mb-2 mt-4">Platform</div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/fly"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fly.io
-          </a>
-          <span className="ms-2 text-muted">(Logs)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/cloudflare"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Cloudflare Workers
-          </a>
-          <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/kubernetes"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/kubernetes"
             target="_blank"
             rel="noreferrer"
           >
@@ -171,7 +155,7 @@ export default function InstallInstructionModal({
         <div className="fs-5 mb-2 mt-4">Browser</div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/browser"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
             target="_blank"
             rel="noreferrer"
           >
@@ -182,23 +166,13 @@ export default function InstallInstructionModal({
         <div className="fs-5 mb-2 mt-4">Data Collector</div>
         <div className="fs-6 mb-2">
           <a
-            href="https://hyperdx.io/docs/install/opentelemetry"
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/opentelemetry#sending-otel-data"
             target="_blank"
             rel="noreferrer"
           >
             OpenTelemetry
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
-        </div>
-        <div className="fs-6 mb-2">
-          <a
-            href="https://hyperdx.io/docs/install/fluentd"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fluentd
-          </a>
-          <span className="ms-2 text-muted">(Logs)</span>
         </div>
         <div className="mt-4">
           <Button variant="dark" onClick={() => onHide()}>

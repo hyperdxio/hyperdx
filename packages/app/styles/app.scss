@@ -14,6 +14,9 @@
 .roboto {
   font-family: 'Roboto', sans-serif;
 }
+.roboto-mono {
+  font-family: 'Roboto Mono', monospace;
+}
 .mono {
   font-family: 'IBM Plex Mono', monospace;
 }
@@ -72,6 +75,9 @@ html[class~='dark'] body {
 
 .fw-500 {
   font-weight: 500;
+}
+.fw-600 {
+  font-weight: 600;
 }
 
 .text-success {

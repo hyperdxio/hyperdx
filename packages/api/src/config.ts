@@ -10,7 +10,7 @@ export const NODE_ENV = env.NODE_ENV as string;
 export const APP_TYPE = (env.APP_TYPE || DEFAULT_APP_TYPE) as
   | 'api'
   | 'scheduled-task';
-export const CODE_VERSION = env.CODE_VERSION as string;
+export const CODE_VERSION = env.CODE_VERSION ?? '';
 export const EXPRESS_SESSION_SECRET = (env.EXPRESS_SESSION_SECRET ||
   DEFAULT_EXPRESS_SESSION) as string;
 export const FRONTEND_URL = (env.FRONTEND_URL ||
@@ -24,6 +24,7 @@ export const MINER_API_URL = env.MINER_API_URL as string;
 export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
+export const OPAMP_PORT = Number.parseInt(env.OPAMP_PORT as string);
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 export const RUN_SCHEDULED_TASKS_EXTERNALLY =
   env.RUN_SCHEDULED_TASKS_EXTERNALLY === 'true';
@@ -31,6 +32,10 @@ export const RUN_SCHEDULED_TASKS_EXTERNALLY =
 // Only for single container local deployments, disable authentication
 export const IS_LOCAL_APP_MODE =
   env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
+
+// Only used to bootstrap empty instances
+export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
+export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;

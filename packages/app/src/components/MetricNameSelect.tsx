@@ -8,6 +8,7 @@ import {
 import { Select } from '@mantine/core';
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
+import { capitalizeFirstLetter } from '@/utils';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
 
@@ -83,12 +84,12 @@ function useMetricNames(
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
-  // const { data: histogramMetrics } = useGetKeyValues({
-  //   chartConfigs: histogramConfig,
-  //   keys: ['MetricName'],
-  //   limit: MAX_METRIC_NAME_OPTIONS,
-  //   disableRowLimit: true,
-  // });
+  const { data: histogramMetrics } = useGetKeyValues({
+    chartConfigs: histogramConfig,
+    keys: ['MetricName'],
+    limit: MAX_METRIC_NAME_OPTIONS,
+    disableRowLimit: true,
+  });
   const { data: sumMetrics } = useGetKeyValues({
     chartConfigs: sumConfig,
     keys: ['MetricName'],
@@ -98,7 +99,7 @@ function useMetricNames(
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
-    // histogramMetrics: histogramMetrics?.[0].value,
+    histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
   };
 }
@@ -124,32 +125,39 @@ export function MetricNameSelect({
 }) {
   const SEPARATOR = ':::::::';
 
-  const {
-    gaugeMetrics,
-    // , histogramMetrics
-    sumMetrics,
-  } = useMetricNames(metricSource, dateRange);
+  const { gaugeMetrics, histogramMetrics, sumMetrics } =
+    useMetricNames(metricSource);
 
   const options = useMemo(() => {
-    return [
+    const metricsFromQuery = [
       ...(gaugeMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}gauge`,
         label: `${metric} (Gauge)`,
       })) ?? []),
-      // ...(histogramMetrics?.map(metric => ({
-      //   value: `${metric}${SEPARATOR}histogram`,
-      //   label: `${metric} (Histogram)`,
-      // })) ?? []),
+      ...(histogramMetrics?.map(metric => ({
+        value: `${metric}${SEPARATOR}histogram`,
+        label: `${metric} (Histogram)`,
+      })) ?? []),
       ...(sumMetrics?.map(metric => ({
         value: `${metric}${SEPARATOR}sum`,
         label: `${metric} (Sum)`,
       })) ?? []),
     ];
-  }, [
-    gaugeMetrics,
-    // histogramMetrics,
-    sumMetrics,
-  ]);
+    // if saved metric does not exist in the available options, assume it exists
+    // and add it to options
+    if (
+      metricName &&
+      !metricsFromQuery.find(
+        metric => metric.value !== `${metricName}${SEPARATOR}${metricType}`,
+      )
+    ) {
+      metricsFromQuery.push({
+        value: `${metricName}${SEPARATOR}${metricType}`,
+        label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
+      });
+    }
+    return metricsFromQuery;
+  }, [gaugeMetrics, histogramMetrics, sumMetrics]);
 
   return (
     <Select
