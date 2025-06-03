@@ -171,7 +171,9 @@ export class OpampController {
               {
                 authenticator: 'bearertokenauth/hyperdx',
               };
-            otelCollectorConfig.extensions = ['bearertokenauth/hyperdx'];
+            otelCollectorConfig.service.extensions = [
+              'bearertokenauth/hyperdx',
+            ];
           }
         }
 
