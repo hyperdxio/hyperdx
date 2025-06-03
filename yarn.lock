@@ -13554,6 +13554,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"crypto-randomuuid@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "crypto-randomuuid@npm:1.0.0"
+  checksum: 10c0/6c8f7513f3b0c38b876b5011d91e21c284f7a695d27b6ef25a2a1ca89c362af23e321bf47953069b9fe56bc384de7880a13c390a4663ac5dcf525a1b4f937a1f
+  languageName: node
+  linkType: hard
+
 "css-functions-list@npm:^3.2.2":
   version: 3.2.2
   resolution: "css-functions-list@npm:3.2.2"
@@ -17550,6 +17557,7 @@ __metadata:
     "@typescript-eslint/eslint-plugin": "npm:^8.7.0"
     "@typescript-eslint/parser": "npm:^8.7.0"
     concurrently: "npm:^9.1.2"
+    crypto-randomuuid: "npm:^1.0.0"
     dotenv: "npm:^16.4.7"
     dotenv-cli: "npm:^8.0.0"
     dotenv-expand: "npm:^12.0.1"
