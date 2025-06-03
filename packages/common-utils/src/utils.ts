@@ -294,3 +294,18 @@ export const formatDate = (
     ? formatInTimeZone(date, 'Etc/UTC', formatStr)
     : fnsFormat(date, formatStr);
 };
+
+export async function* streamToAsyncIterator<T = any>(
+  stream: ReadableStream<T>,
+): AsyncIterableIterator<T> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}

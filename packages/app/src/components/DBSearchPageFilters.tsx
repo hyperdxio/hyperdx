@@ -412,6 +412,7 @@ export const DBSearchPageFilters = ({
     limit: keyLimit,
     keys: datum,
     disableRowLimit,
+    stream: true,
   });
   useEffect(() => {
     if (

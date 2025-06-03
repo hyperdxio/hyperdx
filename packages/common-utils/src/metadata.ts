@@ -11,6 +11,8 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
+import { streamToAsyncIterator } from './utils';
+
 export const DEFAULT_MAX_ROWS_TO_READ = 1e6;
 
 export class MetadataCache {
@@ -427,7 +429,7 @@ export class Metadata {
     return tableMetadata;
   }
 
-  async getKeyValues({
+  getKeyValues({
     chartConfig,
     keys,
     limit = 20,
@@ -437,42 +439,114 @@ export class Metadata {
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
-  }) {
-    return this.cache.getOrFetch(
-      `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
-      async () => {
+  }): {
+    stream(): AsyncGenerator<
+      {
+        key: string;
+        value: string;
+      }[],
+      void,
+      void
+    >;
+    json(): Promise<
+      {
+        key: string;
+        value: string[];
+      }[]
+    >;
+  } {
+    const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`;
+    const cachedValue: any = this.cache.get(cacheKey);
+    if (cachedValue) {
+      return cachedValue;
+    }
+
+    // eslint-disable-next-line
+    const metadata = this;
+
+    return {
+      async *stream() {
         const sql = await renderChartConfig(
           {
             ...chartConfig,
-            select: keys
-              .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-              .join(', '),
+            select: `DISTINCT ${keys
+              .map((k, i) => `${k} AS param${i}`)
+              .join(', ')}`,
+            with: undefined,
           },
-          this,
+          metadata,
         );
 
-        const json = await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId: chartConfig.connection,
-            clickhouse_settings: !disableRowLimit
-              ? {
-                  max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
-                  read_overflow_mode: 'break',
-                }
-              : undefined,
-          })
-          .then(res => res.json<any>());
+        const res = await metadata.clickhouseClient.query({
+          query: sql.sql,
+          query_params: sql.params,
+          connectionId: chartConfig.connection,
+          format: 'JSONEachRow',
+          clickhouse_settings: !disableRowLimit
+            ? {
+                max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+                read_overflow_mode: 'break',
+              }
+            : undefined,
+        });
 
-        // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
-        // string[], sometimes it's { [key: string]: string; }
-        return Object.entries(json?.data?.[0]).map(([key, value]) => ({
-          key: keys[parseInt(key.replace('param', ''))],
-          value: (value as string[])?.filter(Boolean), // remove nulls
-        }));
+        const stream = res.stream();
+        // TODO: Add a UNION option to the renderChartConfig so we can get
+        // the distinct keys instead of making them unique on the frontend
+        const prevKeyVals = new Map<string, Set<string>>();
+        for await (const chunk of streamToAsyncIterator(stream)) {
+          try {
+            for (const row of chunk) {
+              // json = column:value
+              const columns: Record<string, string> = row.json();
+              const output: { key: string; value: string }[] = [];
+              for (const [keyAlias, value] of Object.entries(columns)) {
+                if (!value) continue;
+                const key = keys[parseInt(keyAlias.substring('param'.length))];
+                let set = prevKeyVals.get(key);
+                if (!set) {
+                  set = new Set();
+                  prevKeyVals.set(key, set);
+                }
+                if (set.has(value)) {
+                  continue;
+                }
+                set.add(value);
+                output.push({ key, value });
+              }
+              if (output.length > 0) {
+                yield output;
+              }
+            }
+          } catch (error) {
+            console.error(error);
+          }
+        }
       },
-    );
+      async json(): Promise<
+        {
+          key: string;
+          value: string[];
+        }[]
+      > {
+        const m = new Map<string, string[]>();
+        for await (const row of this.stream()) {
+          for (const { key, value } of row) {
+            let entry = m.get(key);
+            if (!entry) {
+              m.set(key, []);
+              entry = m.get(key);
+            }
+            entry!.push(value);
+          }
+        }
+        const built: { key: string; value: string[] }[] = [];
+        for (const [key, value] of m.entries()) {
+          built.push({ key, value });
+        }
+        return built;
+      },
+    };
   }
 }
 

@@ -10,6 +10,7 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { streamToAsyncIterator } from '@hyperdx/common-utils/dist/utils';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { getMetadata } from '@/metadata';
@@ -238,21 +239,6 @@ class RetriableError extends Error {}
 class FatalError extends Error {}
 class TimeoutError extends Error {}
 const EventStreamContentType = 'text/event-stream';
-
-async function* streamToAsyncIterator<T = any>(
-  stream: ReadableStream<T>,
-): AsyncIterableIterator<T> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
 
 // OPTIMIZATION STRATEGY
 //
