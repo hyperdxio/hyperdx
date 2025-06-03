@@ -4399,6 +4399,7 @@ __metadata:
     chrono-node: "npm:^2.7.8"
     classnames: "npm:^2.3.1"
     crypto-js: "npm:^4.2.0"
+    crypto-randomuuid: "npm:^1.0.0"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     fuse.js: "npm:^6.6.2"
@@ -13551,6 +13552,13 @@ __metadata:
   dependencies:
     type-fest: "npm:^1.0.1"
   checksum: 10c0/16e11a3c8140398f5408b7fded35a961b9423c5dac39a60cbbd08bd3f0e07d7de130e87262adea7db03ec1a7a4b7551054e0db07ee5408b012bac5400cfc07a5
+  languageName: node
+  linkType: hard
+
+"crypto-randomuuid@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "crypto-randomuuid@npm:1.0.0"
+  checksum: 10c0/6c8f7513f3b0c38b876b5011d91e21c284f7a695d27b6ef25a2a1ca89c362af23e321bf47953069b9fe56bc384de7880a13c390a4663ac5dcf525a1b4f937a1f
   languageName: node
   linkType: hard
 
