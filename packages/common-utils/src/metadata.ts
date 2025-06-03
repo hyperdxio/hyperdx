@@ -462,6 +462,9 @@ export class Metadata {
               .map((k, i) => `${k} AS param${i}`)
               .join(', ')}`,
             with: undefined,
+            limit: {
+              limit: 1000,
+            },
           },
           metadata,
         );

@@ -233,21 +233,20 @@ export function useGetKeyValues(
       );
       return queryFn(context);
     } else {
-      return async () =>
-        (
-          await Promise.all(
-            chartConfigsArr.map(chartConfig =>
-              metadata
-                .getKeyValues({
-                  chartConfig,
-                  keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
-                  limit,
-                  disableRowLimit,
-                })
-                .json(),
-            ),
-          )
-        ).flatMap(v => v);
+      return (
+        await Promise.all(
+          chartConfigsArr.map(chartConfig =>
+            metadata
+              .getKeyValues({
+                chartConfig,
+                keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
+                limit,
+                disableRowLimit,
+              })
+              .json(),
+          ),
+        )
+      ).flatMap(v => v);
     }
   };
 
