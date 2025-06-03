@@ -17,7 +17,7 @@ if [ "$API_LATEST_VERSION" != "$APP_LATEST_VERSION" ]; then
 fi
 
 # update root package.json version
-sed -i '' 's/\("version":\s*"\)[^"]*/\"$API_LATEST_VERSION\"/' package.json
+sed -i '' "s/^  \"version\": \"[^\"]*\"/  \"version\": \"$API_LATEST_VERSION\"/" package.json
 echo "Updated root package.json version to $API_LATEST_VERSION"
 
 # update tags in .env 
