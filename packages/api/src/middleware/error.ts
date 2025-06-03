@@ -11,9 +11,7 @@ export const appErrorHandler = (
   res: Response,
   next: NextFunction,
 ) => {
-  if (!IS_PROD) {
-    console.error(err);
-  }
+  console.error(err);
 
   const userFacingErrorMessage = isOperationalError(err)
     ? err.name || err.message

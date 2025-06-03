@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 
+import * as config from '@/config';
 import { getTeam } from '@/controllers/team';
 import logger from '@/utils/logger';
 
@@ -109,12 +110,12 @@ export class OpampController {
             },
           },
         };
-        let config = NOP_CONFIG;
+        let otelCollectorConfig = NOP_CONFIG;
 
         // If team is not found, don't send a remoteConfig, we aren't ready
         // to collect telemetry yet
         if (team) {
-          config = {
+          otelCollectorConfig = {
             extensions: {},
             receivers: {
               'otlp/hyperdx': {
@@ -153,29 +154,37 @@ export class OpampController {
           if (team.collectorAuthenticationEnforced) {
             const ingestionKey = team.apiKey;
 
-            if (config.receivers['otlp/hyperdx'] == null) {
+            if (otelCollectorConfig.receivers['otlp/hyperdx'] == null) {
               // should never happen
               throw new Error('otlp/hyperdx receiver not found');
             }
 
-            config.extensions['bearertokenauth/hyperdx'] = {
+            otelCollectorConfig.extensions['bearertokenauth/hyperdx'] = {
               scheme: '',
               tokens: [ingestionKey],
             };
-            config.receivers['otlp/hyperdx'].protocols.grpc.auth = {
-              authenticator: 'bearertokenauth/hyperdx',
-            };
-            config.receivers['otlp/hyperdx'].protocols.http.auth = {
-              authenticator: 'bearertokenauth/hyperdx',
-            };
-            config.service.extensions = ['bearertokenauth/hyperdx'];
+            otelCollectorConfig.receivers['otlp/hyperdx'].protocols.grpc.auth =
+              {
+                authenticator: 'bearertokenauth/hyperdx',
+              };
+            otelCollectorConfig.receivers['otlp/hyperdx'].protocols.http.auth =
+              {
+                authenticator: 'bearertokenauth/hyperdx',
+              };
+            otelCollectorConfig.service.extensions = [
+              'bearertokenauth/hyperdx',
+            ];
           }
         }
 
-        console.log(JSON.stringify(config, null, 2));
+        if (config.IS_DEV) {
+          console.log(JSON.stringify(otelCollectorConfig, null, 2));
+        }
 
         const remoteConfig = createRemoteConfig(
-          new Map([['config.json', Buffer.from(JSON.stringify(config))]]),
+          new Map([
+            ['config.json', Buffer.from(JSON.stringify(otelCollectorConfig))],
+          ]),
           'application/json',
         );
 

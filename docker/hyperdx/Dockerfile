@@ -45,6 +45,7 @@ COPY --from=app ./src ./packages/app/src
 COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
+COPY --from=app ./types ./packages/app/types
 
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE false
