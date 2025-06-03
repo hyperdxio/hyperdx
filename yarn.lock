@@ -4399,6 +4399,7 @@ __metadata:
     chrono-node: "npm:^2.7.8"
     classnames: "npm:^2.3.1"
     crypto-js: "npm:^4.2.0"
+    crypto-randomuuid: "npm:^1.0.0"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     fuse.js: "npm:^6.6.2"

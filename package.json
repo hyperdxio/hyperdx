@@ -47,8 +47,5 @@
       "prettier --write --ignore-unknown"
     ]
   },
-  "packageManager": "yarn@4.5.1",
-  "dependencies": {
-    "crypto-randomuuid": "^1.0.0"
-  }
+  "packageManager": "yarn@4.5.1"
 }
