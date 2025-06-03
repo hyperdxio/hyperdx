@@ -270,7 +270,7 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+            max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
           },
         })
@@ -343,7 +343,7 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+              max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
             },
           })
@@ -484,7 +484,7 @@ export class Metadata {
           format: 'JSONEachRow',
           clickhouse_settings: !disableRowLimit
             ? {
-                max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+                max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
                 read_overflow_mode: 'break',
               }
             : undefined,

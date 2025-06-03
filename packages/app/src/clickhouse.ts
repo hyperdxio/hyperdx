@@ -18,7 +18,7 @@ import { getLocalConnections } from '@/connection';
 
 const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
-export const getClickhouseClient = () => {
+function _getClickhouseClient() {
   if (IS_LOCAL_MODE) {
     const localConnections = getLocalConnections();
     if (localConnections.length === 0) {
@@ -36,6 +36,14 @@ export const getClickhouseClient = () => {
   return new ClickhouseClient({
     host: PROXY_CLICKHOUSE_HOST,
   });
+}
+
+let clickhouseClient: ClickhouseClient | null = null;
+export const getClickhouseClient = () => {
+  if (!clickhouseClient) {
+    clickhouseClient = _getClickhouseClient();
+  }
+  return clickhouseClient;
 };
 
 export function useDatabasesDirect(
