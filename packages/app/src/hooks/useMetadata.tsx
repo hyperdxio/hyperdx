@@ -8,7 +8,6 @@ import {
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
-  QueryFunction,
   QueryFunctionContext,
   useQuery,
   UseQueryOptions,
@@ -98,23 +97,28 @@ export function useTableMetadata(
 }
 
 type UseGetKeyValuesData = { key: string; value: string[] }[];
+type StreamedValue = { key: string; value: string | string[] };
 function addToResult(
-  _items: UseGetKeyValuesData,
-  item: { key: string; value: string }[],
+  existingItems: UseGetKeyValuesData,
+  newItems: StreamedValue[],
 ) {
-  const items = structuredClone(_items);
-  for (const entry of item) {
-    let foundItem = items.find(v => v.key === entry.key);
+  const items = structuredClone(existingItems);
+  for (const item of newItems) {
+    let foundItem = items.find(v => v.key === item.key);
     if (!foundItem) {
-      foundItem = { key: entry.key, value: [] };
+      foundItem = { key: item.key, value: [] };
       items.push(foundItem);
     }
-    foundItem.value.push(entry.value);
+    if (Array.isArray(item.value)) {
+      foundItem.value.push(...item.value);
+    } else {
+      foundItem.value.push(item.value);
+    }
   }
   return items;
 }
 
-export function useGetKeyValues<UseGetKeyValuesData>(
+export function useGetKeyValues(
   {
     chartConfigs,
     keys,
@@ -166,8 +170,10 @@ export function useGetKeyValues<UseGetKeyValuesData>(
   }
 
   // inspired by @tanstack/react-query's experimental streamedQuery
-  function streamedQuery(queryFn: QueryFunction) {
-    return async (context: QueryFunctionContext<string[]>) => {
+  function streamedQuery(
+    queryFn: (context: QueryFunctionContext) => AsyncGenerator<StreamedValue[]>,
+  ) {
+    return async (context: QueryFunctionContext) => {
       const query = context.client
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -179,17 +185,29 @@ export function useGetKeyValues<UseGetKeyValuesData>(
           fetchStatus: 'fetching',
         });
       }
+      const dispatchInterval = 100; // ms
       let result: any[] = [];
-      const stream: any = await queryFn(context);
-      for await (const chunk of stream) {
+      let pendingData: UseGetKeyValuesData = [];
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+      for await (const chunk of queryFn(context)) {
         if (context.signal.aborted) {
           break;
         }
-        context.client.setQueryData(context.queryKey, (prev: any) => {
-          return addToResult(prev ?? [], chunk);
-        });
-        result = addToResult(result, chunk);
+        const newData = addToResult(pendingData, chunk);
+        pendingData = newData;
+        if (!timeout) {
+          timeout = setTimeout(() => {
+            context.client.setQueryData(context.queryKey, (prev: any) => {
+              result = addToResult(prev ?? [], pendingData);
+              return result;
+            });
+            pendingData = [];
+            timeout = null;
+          }, dispatchInterval);
+        }
       }
+      // wait until the previous timeout is done
+      await new Promise(resolve => setTimeout(resolve, dispatchInterval));
       if (!context.signal.aborted) {
         context.client.setQueryData(context.queryKey, result);
       }
@@ -197,8 +215,9 @@ export function useGetKeyValues<UseGetKeyValuesData>(
     };
   }
 
-  const queryFn = stream
-    ? streamedQuery(() =>
+  const queryFn = async (context: QueryFunctionContext) => {
+    if (stream) {
+      const queryFn = streamedQuery(() =>
         generatorFunnel(
           chartConfigsArr.map(chartConfig =>
             metadata
@@ -211,8 +230,10 @@ export function useGetKeyValues<UseGetKeyValuesData>(
               .stream(),
           ),
         ),
-      )
-    : async () =>
+      );
+      return queryFn(context);
+    } else {
+      return async () =>
         (
           await Promise.all(
             chartConfigsArr.map(chartConfig =>
@@ -227,8 +248,10 @@ export function useGetKeyValues<UseGetKeyValuesData>(
             ),
           )
         ).flatMap(v => v);
+    }
+  };
 
-  return useQuery({
+  return useQuery<UseGetKeyValuesData>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),

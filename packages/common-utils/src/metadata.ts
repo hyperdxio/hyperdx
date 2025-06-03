@@ -13,7 +13,7 @@ import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 import { streamToAsyncIterator } from './utils';
 
-export const DEFAULT_MAX_ROWS_TO_READ = 1e6;
+export const DEFAULT_MAX_ROWS_TO_READ = 5e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -440,26 +440,15 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
   }): {
-    stream(): AsyncGenerator<
-      {
-        key: string;
-        value: string;
-      }[],
-      void,
-      void
-    >;
-    json(): Promise<
-      {
-        key: string;
-        value: string[];
-      }[]
-    >;
+    stream(): AsyncGenerator<{ key: string; value: string }[], void, void>;
+    json(): Promise<{ key: string; value: string[] }[]>;
   } {
-    const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`;
-    const cachedValue: any = this.cache.get(cacheKey);
-    if (cachedValue) {
-      return cachedValue;
-    }
+    // TODO: how do we cache this metadata? Should we just let react query cache it?
+    // const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`;
+    // const cachedValue: any = this.cache.get(cacheKey);
+    // if (cachedValue) {
+    //   return cachedValue;
+    // }
 
     // eslint-disable-next-line
     const metadata = this;
