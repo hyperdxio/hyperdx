@@ -5,7 +5,10 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  KeyValue,
+} from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   QueryFunctionContext,
@@ -96,8 +99,8 @@ export function useTableMetadata(
   });
 }
 
-type UseGetKeyValuesData = { key: string; value: string[] }[];
-type StreamedValue = { key: string; value: string | string[] };
+type UseGetKeyValuesData = KeyValue<string, string[]>[];
+type StreamedValue = KeyValue<string, string | string[]>;
 function addToResult(
   existingItems: UseGetKeyValuesData,
   newItems: StreamedValue[],
@@ -138,14 +141,7 @@ export function useGetKeyValues(
   const chartConfigsArr = toArray(chartConfigs);
 
   async function* generatorFunnel(
-    iterators: AsyncGenerator<
-      {
-        key: string;
-        value: string;
-      }[],
-      void,
-      unknown
-    >[],
+    iterators: AsyncGenerator<KeyValue[], void, unknown>[],
   ) {
     const pending = new Set(iterators);
     while (pending.size > 0) {
@@ -193,8 +189,7 @@ export function useGetKeyValues(
         if (context.signal.aborted) {
           break;
         }
-        const newData = addToResult(pendingData, chunk);
-        pendingData = newData;
+        pendingData = addToResult(pendingData, chunk);
         if (!timeout) {
           timeout = setTimeout(() => {
             context.client.setQueryData(context.queryKey, (prev: any) => {

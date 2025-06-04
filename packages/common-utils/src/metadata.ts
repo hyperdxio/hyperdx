@@ -9,7 +9,12 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  KeyValue,
+  TSource,
+} from '@/types';
 
 import { streamToAsyncIterator } from './utils';
 
@@ -440,8 +445,8 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
   }): {
-    stream(): AsyncGenerator<{ key: string; value: string }[], void, void>;
-    json(): Promise<{ key: string; value: string[] }[]>;
+    stream(): AsyncGenerator<KeyValue[], void, void>;
+    json(): Promise<KeyValue<string, string[]>[]>;
   } {
     // TODO: how do we cache this metadata? Should we just let react query cache it?
     // const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.values`;
@@ -491,7 +496,7 @@ export class Metadata {
             for (const row of chunk) {
               // json = column:value
               const columns: Record<string, string> = row.json();
-              const output: { key: string; value: string }[] = [];
+              const output: KeyValue[] = [];
               for (const [keyAlias, value] of Object.entries(columns)) {
                 if (!value) continue;
                 const key = keys[parseInt(keyAlias.substring('param'.length))];
@@ -515,12 +520,7 @@ export class Metadata {
           }
         }
       },
-      async json(): Promise<
-        {
-          key: string;
-          value: string[];
-        }[]
-      > {
+      async json(): Promise<KeyValue<string, string[]>[]> {
         const m = new Map<string, string[]>();
         for await (const row of this.stream()) {
           for (const { key, value } of row) {
@@ -532,7 +532,7 @@ export class Metadata {
             entry!.push(value);
           }
         }
-        const built: { key: string; value: string[] }[] = [];
+        const built: KeyValue<string, string[]>[] = [];
         for (const [key, value] of m.entries()) {
           built.push({ key, value });
         }
