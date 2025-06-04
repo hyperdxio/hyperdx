@@ -11,7 +11,7 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
-export const DEFAULT_MAX_ROWS_TO_READ = 1e6;
+export const DEFAULT_MAX_ROWS_TO_READ = 3e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -268,7 +268,7 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+            max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
           },
         })
@@ -341,7 +341,7 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+              max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
             },
           })
@@ -458,7 +458,7 @@ export class Metadata {
             connectionId: chartConfig.connection,
             clickhouse_settings: !disableRowLimit
               ? {
-                  max_rows_to_read: DEFAULT_MAX_ROWS_TO_READ,
+                  max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
                   read_overflow_mode: 'break',
                 }
               : undefined,

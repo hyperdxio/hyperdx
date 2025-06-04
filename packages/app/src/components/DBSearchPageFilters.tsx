@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { DEFAULT_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -22,11 +21,14 @@ import { IconSearch } from '@tabler/icons-react';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
+import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
+
+const metadata = getMetadata();
 
 type FilterCheckboxProps = {
   label: string;
@@ -42,13 +44,19 @@ export const TextButton = ({
   onClick,
   label,
   ms,
+  display,
 }: {
   onClick?: VoidFunction;
   label: React.ReactNode;
   ms?: MantineStyleProps['ms'];
+  display?: MantineStyleProps['display'];
 }) => {
   return (
-    <UnstyledButton onClick={onClick} className={classes.textButton}>
+    <UnstyledButton
+      display={display}
+      onClick={onClick}
+      className={classes.textButton}
+    >
       <Text size="xxs" c="gray.6" lh={1} ms={ms}>
         {label}
       </Text>
@@ -136,6 +144,9 @@ export type FilterGroupProps = {
   onExcludeClick: (value: string) => void;
   onPinClick: (value: string) => void;
   isPinned: (value: string) => boolean;
+  onLoadMore: (key: string) => void;
+  loadMoreLoading: boolean;
+  hasLoadedMore: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -151,6 +162,9 @@ export const FilterGroup = ({
   onExcludeClick,
   isPinned,
   onPinClick,
+  onLoadMore,
+  loadMoreLoading,
+  hasLoadedMore,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
@@ -201,8 +215,8 @@ export const FilterGroup = ({
       if (aExcluded && !bExcluded) return -1;
       if (!aExcluded && bExcluded) return 1;
 
-      // Finally sort alphabetically
-      return a.value.localeCompare(b.value);
+      // Finally sort alphabetically/numerically
+      return a.value.localeCompare(b.value, undefined, { numeric: true });
     };
 
     // If expanded or small list, sort everything
@@ -312,6 +326,24 @@ export const FilterGroup = ({
             />
           </div>
         )}
+        {onLoadMore && (!showExpandButton || isExpanded) && (
+          <div className="d-flex m-1">
+            {loadMoreLoading ? (
+              <Group m={6} gap="xs">
+                <Loader size={12} color="gray.6" />
+                <Text c="dimmed" size="xs">
+                  Loading more...
+                </Text>
+              </Group>
+            ) : (
+              <TextButton
+                display={hasLoadedMore ? 'none' : undefined}
+                label="Load more"
+                onClick={() => onLoadMore(name)}
+              />
+            )}
+          </div>
+        )}
       </Stack>
     </Stack>
   );
@@ -382,7 +414,10 @@ export const DBSearchPageFilters = ({
           Object.keys(filterState).includes(field.path), // keep selected fields
       )
       .map(({ path }) => path)
-      .filter(path => !['Body', 'Timestamp'].includes(path));
+      .filter(
+        path =>
+          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
+      );
 
     return strings;
   }, [data, filterState, showMoreFields]);
@@ -395,14 +430,15 @@ export const DBSearchPageFilters = ({
   useEffect(() => {
     if (!isLive) {
       setDateRange(chartConfig.dateRange);
-      setDisableRowLimit(false);
+      setExtraFacets({});
+      loadedMoreKeys.clear();
+      setLoadedMoreKeys(new Set());
     }
   }, [chartConfig.dateRange, isLive]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
-  const [disableRowLimit, setDisableRowLimit] = useState(false);
-  const keyLimit = 100;
+  const keyLimit = 20;
   const {
     data: facets,
     isLoading: isFacetsLoading,
@@ -411,18 +447,46 @@ export const DBSearchPageFilters = ({
     chartConfigs: { ...chartConfig, dateRange },
     limit: keyLimit,
     keys: datum,
-    disableRowLimit,
   });
-  useEffect(() => {
-    if (
-      numRows > DEFAULT_MAX_ROWS_TO_READ &&
-      facets &&
-      facets.length < keyLimit
-    ) {
-      setDisableRowLimit(true);
-    }
-  }, [numRows, keyLimit, facets]);
 
+  const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
+  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [loadedMoreKeys, setLoadedMoreKeys] = useState<Set<string>>(new Set());
+  const loadMoreFilterValuesForKey = useCallback(
+    async (key: string) => {
+      setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
+      try {
+        const newKeyVals = await metadata.getKeyValues({
+          chartConfig: {
+            ...chartConfig,
+            dateRange,
+          },
+          keys: [key],
+          limit: 200,
+          disableRowLimit: true,
+        });
+        const newValues = newKeyVals[0].value;
+        if (newValues.length > 0) {
+          setExtraFacets(prev => ({
+            ...prev,
+            [key]: [...(prev[key] || []), ...newValues],
+          }));
+        }
+        setLoadedMoreKeys(prev => new Set(prev).add(key));
+      } catch (error) {
+        console.error('failed to fetch more keys', error);
+      } finally {
+        setLoadMoreLoadingKeys(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(key);
+          return newSet;
+        });
+      }
+    },
+    [chartConfig, setExtraFacets],
+  );
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
     for (const facet of facets ?? []) {
@@ -431,11 +495,25 @@ export const DBSearchPageFilters = ({
       const hasSelectedValues =
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
       if (facet.value?.length > 0 || hasSelectedValues) {
-        _facets.push(facet);
+        const extraValues = extraFacets[facet.key];
+        if (extraValues && extraValues.length > 0) {
+          const allValues = facet.value.slice();
+          for (const extraValue of extraValues) {
+            if (!allValues.includes(extraValue)) {
+              allValues.push(extraValue);
+            }
+          }
+          _facets.push({
+            key: facet.key,
+            value: allValues,
+          });
+        } else {
+          _facets.push(facet);
+        }
       }
     }
     return _facets;
-  }, [facets, filterState]);
+  }, [facets, filterState, extraFacets]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -571,6 +649,9 @@ export const DBSearchPageFilters = ({
               }}
               onPinClick={value => toggleFilterPin(facet.key, value)}
               isPinned={value => isFilterPinned(facet.key, value)}
+              onLoadMore={loadMoreFilterValuesForKey}
+              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+              hasLoadedMore={loadedMoreKeys.has(facet.key)}
             />
           ))}
 
