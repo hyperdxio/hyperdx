@@ -432,7 +432,7 @@ export class Metadata {
   getKeyValues({
     chartConfig,
     keys,
-    limit = 20,
+    limit = 200,
     disableRowLimit = false,
   }: {
     chartConfig: ChartConfigWithDateRange;
@@ -444,7 +444,7 @@ export class Metadata {
     json(): Promise<{ key: string; value: string[] }[]>;
   } {
     // TODO: how do we cache this metadata? Should we just let react query cache it?
-    // const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`;
+    // const cacheKey = `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.values`;
     // const cachedValue: any = this.cache.get(cacheKey);
     // if (cachedValue) {
     //   return cachedValue;
@@ -463,7 +463,7 @@ export class Metadata {
               .join(', ')}`,
             with: undefined,
             limit: {
-              limit: 1000,
+              limit,
             },
           },
           metadata,
