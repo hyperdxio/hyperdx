@@ -493,10 +493,10 @@ export class Metadata {
         const prevKeyVals = new Map<string, Set<string>>();
         for await (const chunk of streamToAsyncIterator(stream)) {
           try {
+            const output: KeyValue[] = [];
             for (const row of chunk) {
               // json = column:value
               const columns: Record<string, string> = row.json();
-              const output: KeyValue[] = [];
               for (const [keyAlias, value] of Object.entries(columns)) {
                 if (!value) continue;
                 const key = keys[parseInt(keyAlias.substring('param'.length))];
@@ -511,9 +511,9 @@ export class Metadata {
                 set.add(value);
                 output.push({ key, value });
               }
-              if (output.length > 0) {
-                yield output;
-              }
+            }
+            if (output.length > 0) {
+              yield output;
             }
           } catch (error) {
             console.error(error);
