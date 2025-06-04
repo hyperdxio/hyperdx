@@ -63,7 +63,10 @@ describe('useGetKeyValues', () => {
       },
     ];
 
-    jest.spyOn(mockMetadata, 'getKeyValues').mockResolvedValue(mockKeyValues);
+    jest.spyOn(mockMetadata, 'getKeyValues').mockReturnValue({
+      json: jest.fn().mockResolvedValue(mockKeyValues),
+      stream: jest.fn(),
+    });
 
     // Act
     const { result } = renderHook(
@@ -102,18 +105,24 @@ describe('useGetKeyValues', () => {
 
     jest
       .spyOn(mockMetadata, 'getKeyValues')
-      .mockResolvedValueOnce([
-        {
-          key: "ResourceAttributes['service.name']",
-          value: ['frontend', 'backend'],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          key: "ResourceAttributes['environment']",
-          value: ['production', 'staging'],
-        },
-      ]);
+      .mockReturnValueOnce({
+        json: jest.fn().mockResolvedValue([
+          {
+            key: "ResourceAttributes['service.name']",
+            value: ['frontend', 'backend'],
+          },
+        ]),
+        stream: jest.fn(),
+      })
+      .mockReturnValueOnce({
+        json: jest.fn().mockResolvedValue([
+          {
+            key: "ResourceAttributes['environment']",
+            value: ['production', 'staging'],
+          },
+        ]),
+        stream: jest.fn(),
+      });
 
     // Act
     const { result } = renderHook(
@@ -174,7 +183,10 @@ describe('useGetKeyValues', () => {
       },
     ];
 
-    jest.spyOn(mockMetadata, 'getKeyValues').mockResolvedValue(mockKeyValues);
+    jest.spyOn(mockMetadata, 'getKeyValues').mockReturnValue({
+      json: jest.fn().mockResolvedValue(mockKeyValues),
+      stream: jest.fn(),
+    });
 
     // Act
     const { result } = renderHook(
@@ -198,9 +210,9 @@ describe('useGetKeyValues', () => {
     const mockChartConfig = createMockChartConfig();
     const mockKeys = ['ResourceAttributes.service.name'];
 
-    jest
-      .spyOn(mockMetadata, 'getKeyValues')
-      .mockRejectedValue(new Error('Fetch failed'));
+    jest.spyOn(mockMetadata, 'getKeyValues').mockImplementation(() => {
+      throw new Error('Fetch failed');
+    });
 
     // Act
     const { result } = renderHook(

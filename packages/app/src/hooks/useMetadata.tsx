@@ -107,7 +107,9 @@ function addToResult(
 ) {
   const items = structuredClone(existingItems);
   for (const item of newItems) {
-    let foundItem = items.find(v => v.key === item.key);
+    let foundItem = items.find(
+      (v: KeyValue<string, string[]>) => v.key === item.key,
+    );
     if (!foundItem) {
       foundItem = { key: item.key, value: [] };
       items.push(foundItem);

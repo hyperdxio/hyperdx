@@ -491,7 +491,9 @@ export class Metadata {
         // TODO: Add a UNION option to the renderChartConfig so we can get
         // the distinct keys instead of making them unique on the frontend
         const prevKeyVals = new Map<string, Set<string>>();
-        for await (const chunk of streamToAsyncIterator(stream)) {
+        for await (const chunk of streamToAsyncIterator<
+          { json: () => KeyValue<string> }[]
+        >(stream)) {
           try {
             const output: KeyValue[] = [];
             for (const row of chunk) {

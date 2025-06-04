@@ -240,31 +240,46 @@ describe('Metadata', () => {
 
     beforeEach(() => {
       // Mock the renderChartConfig result
-      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                param0: ['value1', 'value2'],
-                param1: ['type1', 'type2'],
-              },
-            ],
+      const mockChunkData = [
+        {
+          json: jest.fn().mockReturnValue({
+            param0: 'value1',
+            param1: 'type1',
           }),
+        },
+        {
+          json: jest.fn().mockReturnValue({
+            param0: 'value2',
+            param1: 'type2',
+          }),
+        },
+      ];
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        stream: () => ({
+          getReader: () => ({
+            read: jest
+              .fn()
+              .mockResolvedValueOnce({ done: false, value: mockChunkData })
+              .mockResolvedValue({ done: true, value: undefined }),
+            releaseLock: jest.fn(),
+          }),
+        }),
       });
     });
 
     it('should apply row limit when disableRowLimit is false', async () => {
-      await metadata.getKeyValues({
+      const kvMethods = metadata.getKeyValues({
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
         disableRowLimit: false,
       });
+      await kvMethods.json();
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: 1e6,
+            max_rows_to_read: String(5e6),
             read_overflow_mode: 'break',
           },
         }),
@@ -272,12 +287,13 @@ describe('Metadata', () => {
     });
 
     it('should not apply row limit when disableRowLimit is true', async () => {
-      await metadata.getKeyValues({
+      const kvMethods = metadata.getKeyValues({
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
         disableRowLimit: true,
       });
+      await kvMethods.json();
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -287,16 +303,17 @@ describe('Metadata', () => {
     });
 
     it('should apply row limit by default when disableRowLimit is not specified', async () => {
-      await metadata.getKeyValues({
+      const kvMethods = metadata.getKeyValues({
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
       });
+      await kvMethods.json();
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: 1e6,
+            max_rows_to_read: String(5e6),
             read_overflow_mode: 'break',
           },
         }),
@@ -304,11 +321,12 @@ describe('Metadata', () => {
     });
 
     it('should correctly transform the response data', async () => {
-      const result = await metadata.getKeyValues({
+      const kvMethods = metadata.getKeyValues({
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
       });
+      const result = await kvMethods.json();
 
       expect(result).toEqual([
         { key: 'column1', value: ['value1', 'value2'] },
@@ -317,22 +335,46 @@ describe('Metadata', () => {
     });
 
     it('should filter out falsy values from the response', async () => {
-      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
-        json: () =>
-          Promise.resolve({
-            data: [
-              {
-                param0: ['value1', null, '', 'value2', undefined],
-              },
-            ],
+      const mockData = [
+        {
+          json: jest.fn().mockReturnValue({
+            param0: 'value1',
           }),
+        },
+        {
+          json: jest.fn().mockReturnValue({
+            param0: null,
+          }),
+        },
+        {
+          json: jest.fn().mockReturnValue({
+            param0: 'value2',
+          }),
+        },
+        {
+          json: jest.fn().mockReturnValue({
+            param0: undefined,
+          }),
+        },
+      ];
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        stream: () => ({
+          getReader: () => ({
+            read: jest
+              .fn()
+              .mockResolvedValueOnce({ done: false, value: mockData })
+              .mockResolvedValue({ done: true, value: undefined }),
+            releaseLock: jest.fn(),
+          }),
+        }),
       });
 
-      const result = await metadata.getKeyValues({
+      const kvMethods = metadata.getKeyValues({
         chartConfig: mockChartConfig,
         keys: ['column1'],
         limit: 10,
       });
+      const result = await kvMethods.json();
 
       expect(result).toEqual([{ key: 'column1', value: ['value1', 'value2'] }]);
     });
