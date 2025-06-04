@@ -1,7 +1,4 @@
-import {
-  DashboardSchema,
-  DashboardWithoutIdSchema,
-} from '@hyperdx/common-utils/dist/types';
+import { DashboardWithoutIdSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { groupBy } from 'lodash';
 import _ from 'lodash';
@@ -59,7 +56,7 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial(),
+    body: DashboardWithoutIdSchema.partial(),
   }),
   async (req, res, next) => {
     try {
