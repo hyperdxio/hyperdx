@@ -6,9 +6,13 @@ import { getClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 
 export function useExplainQuery(
-  config: ChartConfigWithDateRange,
+  _config: ChartConfigWithDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
+  const config = {
+    ..._config,
+    with: undefined,
+  };
   const clickhouseClient = getClickhouseClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['explain', config],

@@ -353,6 +353,16 @@ const standardModeFetch: typeof fetch = (input, init) => {
   return fetch(input, init);
 };
 
+interface QueryInputs<Format extends DataFormat> {
+  query: string;
+  format?: Format;
+  abort_signal?: AbortSignal;
+  query_params?: Record<string, any>;
+  clickhouse_settings?: ClickHouseSettings;
+  connectionId?: string;
+  queryId?: string;
+}
+
 export type ClickhouseClientOptions = {
   host: string;
   username?: string;
@@ -363,31 +373,57 @@ export class ClickhouseClient {
   private readonly host: string;
   private readonly username?: string;
   private readonly password?: string;
+  /*
+   * Some clickhouse db's (the demo instance for example) make the
+   * max_rows_to_read setting readonly and the query will fail if you try to
+   * query with max_rows_to_read specified
+   */
+  private maxRowReadOnly: boolean;
 
   constructor({ host, username, password }: ClickhouseClientOptions) {
     this.host = host;
     this.username = username;
     this.password = password;
+    this.maxRowReadOnly = false;
+  }
+
+  async query<Format extends DataFormat>(
+    props: QueryInputs<Format>,
+  ): Promise<BaseResultSet<ReadableStream, Format>> {
+    let attempts = 0;
+    // retry query if fails
+    while (attempts < 2) {
+      try {
+        const res = await this.__query(props);
+        return res;
+      } catch (error: any) {
+        if (
+          !this.maxRowReadOnly &&
+          error.type === 'READONLY' &&
+          error.message.includes('max_rows_to_read')
+        ) {
+          // Indicate that the CH instance does not accept the max_rows_to_read setting
+          this.maxRowReadOnly = true;
+        } else {
+          throw error;
+        }
+      }
+      attempts++;
+    }
+    // should never get here
+    throw new Error('ClickHouseClient query impossible codepath');
   }
 
   // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L151
-  async query<Format extends DataFormat>({
+  private async __query<Format extends DataFormat>({
     query,
     format = 'JSON' as Format,
     query_params = {},
     abort_signal,
-    clickhouse_settings,
+    clickhouse_settings: external_clickhouse_settings,
     connectionId,
     queryId,
-  }: {
-    query: string;
-    format?: Format;
-    abort_signal?: AbortSignal;
-    query_params?: Record<string, any>;
-    clickhouse_settings?: Record<string, any>;
-    connectionId?: string;
-    queryId?: string;
-  }): Promise<BaseResultSet<ReadableStream, Format>> {
+  }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
@@ -403,14 +439,22 @@ export class ClickhouseClient {
     // eslint-disable-next-line no-console
     console.log('--------------------------------------------------------');
 
+    let clickhouse_settings = structuredClone(
+      external_clickhouse_settings || {},
+    );
+    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
+      delete clickhouse_settings['max_rows_to_read'];
+    }
+
     if (isBrowser) {
       // TODO: check if we can use the client-web directly
       const { createClient } = await import('@clickhouse/client-web');
 
-      const clickhouse_settings: ClickHouseSettings = {
+      clickhouse_settings = {
         date_time_output_format: 'iso',
         wait_end_of_query: 0,
         cancel_http_readonly_queries_on_client_close: 1,
+        ...clickhouse_settings,
       };
       const http_headers = {
         ...(connectionId && connectionId !== 'local'
@@ -455,11 +499,6 @@ export class ClickhouseClient {
         url: this.host,
         username: this.username,
         password: this.password,
-        clickhouse_settings: {
-          date_time_output_format: 'iso',
-          wait_end_of_query: 0,
-          cancel_http_readonly_queries_on_client_close: 1,
-        },
       });
 
       // TODO: Custom error handling
@@ -468,7 +507,12 @@ export class ClickhouseClient {
         query_params,
         format,
         abort_signal,
-        clickhouse_settings,
+        clickhouse_settings: {
+          date_time_output_format: 'iso',
+          wait_end_of_query: 0,
+          cancel_http_readonly_queries_on_client_close: 1,
+          ...clickhouse_settings,
+        },
         query_id: queryId,
       }) as unknown as Promise<BaseResultSet<ReadableStream, Format>>;
     } else {

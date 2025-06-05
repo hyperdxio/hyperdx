@@ -22,6 +22,8 @@ export enum DisplayType {
   Markdown = 'markdown',
 }
 
+export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
+
 export const MetricTableSchema = z.object(
   Object.values(MetricsDataType).reduce(
     (acc, key) => ({
