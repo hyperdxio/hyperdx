@@ -11,6 +11,8 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
+// If filters initially are taking too long to load, decrease this number.
+// Between 1e6 - 5e6 is a good range.
 export const DEFAULT_MAX_ROWS_TO_READ = 3e6;
 
 export class MetadataCache {

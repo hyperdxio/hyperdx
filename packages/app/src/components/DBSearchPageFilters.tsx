@@ -481,7 +481,7 @@ export const DBSearchPageFilters = ({
         });
       }
     },
-    [chartConfig, setExtraFacets],
+    [chartConfig, setExtraFacets, dateRange],
   );
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
