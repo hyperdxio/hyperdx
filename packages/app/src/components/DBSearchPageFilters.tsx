@@ -336,7 +336,11 @@ export const FilterGroup = ({
             ) : (
               <TextButton
                 display={hasLoadedMore ? 'none' : undefined}
-                label="Load more"
+                label={
+                  <>
+                    <span className="bi-chevron-down" /> Load more
+                  </>
+                }
                 onClick={() => onLoadMore(name)}
               />
             )}
