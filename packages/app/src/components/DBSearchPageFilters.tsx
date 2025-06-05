@@ -431,8 +431,6 @@ export const DBSearchPageFilters = ({
     if (!isLive) {
       setDateRange(chartConfig.dateRange);
       setExtraFacets({});
-      loadedMoreKeys.clear();
-      setLoadedMoreKeys(new Set());
     }
   }, [chartConfig.dateRange, isLive]);
 
@@ -453,7 +451,6 @@ export const DBSearchPageFilters = ({
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
     new Set(),
   );
-  const [loadedMoreKeys, setLoadedMoreKeys] = useState<Set<string>>(new Set());
   const loadMoreFilterValuesForKey = useCallback(
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
@@ -474,7 +471,6 @@ export const DBSearchPageFilters = ({
             [key]: [...(prev[key] || []), ...newValues],
           }));
         }
-        setLoadedMoreKeys(prev => new Set(prev).add(key));
       } catch (error) {
         console.error('failed to fetch more keys', error);
       } finally {
@@ -651,7 +647,7 @@ export const DBSearchPageFilters = ({
               isPinned={value => isFilterPinned(facet.key, value)}
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-              hasLoadedMore={loadedMoreKeys.has(facet.key)}
+              hasLoadedMore={Boolean(extraFacets[facet.key])}
             />
           ))}
 

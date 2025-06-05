@@ -439,7 +439,9 @@ export class ClickhouseClient {
     // eslint-disable-next-line no-console
     console.log('--------------------------------------------------------');
 
-    let clickhouse_settings = structuredClone(external_clickhouse_settings);
+    let clickhouse_settings = structuredClone(
+      external_clickhouse_settings || {},
+    );
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
     }
