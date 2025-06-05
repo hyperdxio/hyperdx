@@ -323,7 +323,9 @@ export const FilterGroup = ({
               }
               onClick={() => {
                 setExpanded(!isExpanded);
-                onLoadMore(name);
+                if (!hasLoadedMore) {
+                  onLoadMore(name);
+                }
               }}
             />
           </div>
