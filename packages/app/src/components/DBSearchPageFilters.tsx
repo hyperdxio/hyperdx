@@ -236,9 +236,10 @@ export const FilterGroup = ({
 
   const showExpandButton =
     !search &&
-    augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
-    selectedValues.included.size + selectedValues.excluded.size <
-      augmentedOptions.length;
+    ((augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
+      selectedValues.included.size + selectedValues.excluded.size <
+        augmentedOptions.length) ||
+      !hasLoadedMore);
 
   return (
     <Stack gap={0}>
@@ -320,32 +321,23 @@ export const FilterGroup = ({
                   </>
                 )
               }
-              onClick={() => setExpanded(!isExpanded)}
+              onClick={() => {
+                setExpanded(!isExpanded);
+                onLoadMore(name);
+              }}
             />
           </div>
         )}
-        {onLoadMore && (!showExpandButton || isExpanded) && (
-          <div className="d-flex m-1">
-            {loadMoreLoading ? (
-              <Group m={6} gap="xs">
-                <Loader size={12} color="gray.6" />
-                <Text c="dimmed" size="xs">
-                  Loading more...
-                </Text>
-              </Group>
-            ) : (
-              <TextButton
-                display={hasLoadedMore ? 'none' : undefined}
-                label={
-                  <>
-                    <span className="bi-chevron-down" /> Load more
-                  </>
-                }
-                onClick={() => onLoadMore(name)}
-              />
-            )}
-          </div>
-        )}
+        <div className="d-flex m-1">
+          {loadMoreLoading && (
+            <Group m={6} gap="xs">
+              <Loader size={12} color="gray.6" />
+              <Text c="dimmed" size="xs">
+                Loading more...
+              </Text>
+            </Group>
+          )}
+        </div>
       </Stack>
     </Stack>
   );
