@@ -28,8 +28,6 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
-const metadata = getMetadata();
-
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
@@ -455,6 +453,7 @@ export const DBSearchPageFilters = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
+        const metadata = getMetadata();
         const newKeyVals = await metadata.getKeyValues({
           chartConfig: {
             ...chartConfig,
