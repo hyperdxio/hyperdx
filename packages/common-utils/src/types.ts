@@ -454,7 +454,7 @@ export type Tile = z.infer<typeof TileSchema>;
 
 export const DashboardSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
 });
