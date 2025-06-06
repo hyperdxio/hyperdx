@@ -48,10 +48,10 @@ COPY --from=app ./styles ./packages/app/styles
 COPY --from=app ./types ./packages/app/types
 
 ENV NEXT_TELEMETRY_DISABLED 1
-ENV NEXT_OUTPUT_STANDALONE false
+ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api @hyperdx/app --production
+RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
 # prod ############################################################################################
@@ -73,10 +73,9 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
 COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
-COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/public
-COPY --chown=node:node --from=builder /app/packages/app/.next ./packages/app/.next
-COPY --from=builder /app/packages/app/next.config.js ./packages/app/next.config.js
-COPY --from=builder /app/packages/app/package.json ./packages/app/package.json
+COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packages/app
+COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
+COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
 
 # Set up start script
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
