@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.0.1
+
+### Patch Changes
+
+- ab3b5cb: perf: merge api + app packages to dedupe node_modules
+- ab387e1: fix: missing types in app build
+- d1dc2ec: Bumped mongodb driver support to allow for AWS IAM authentication. This drops support for MongoDB 3.6.
+- 43edac8: chore: bump @hyperdx/node-opentelemetry to v0.8.2
+- fa11fbb: fix: usage stats missing cluster id
+- Updated dependencies [ab3b5cb]
+- Updated dependencies [ab387e1]
+- Updated dependencies [fce5ee5]
+  - @hyperdx/common-utils@0.2.1
+
 ## 2.0.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @hyperdx/common-utils
 
+## 0.2.1
+
+### Patch Changes
+
+- ab3b5cb: perf: merge api + app packages to dedupe node_modules
+- ab387e1: fix: missing types in app build
+- fce5ee5: feat: add load more to features and improve querying
+
 ## 0.2.0
 
 ### Minor Changes
