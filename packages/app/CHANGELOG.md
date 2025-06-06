@@ -1,5 +1,21 @@
 # @hyperdx/app
 
+## 2.0.1
+
+### Patch Changes
+
+- ab3b5cb: perf: merge api + app packages to dedupe node_modules
+- ab387e1: fix: missing types in app build
+- fce5ee5: feat: add load more to features and improve querying
+- dfdb2d7: Better loading state for events patterns table
+- 3eeb530: fix: date range undefined error causing issue loading keyvals for autocomplete
+- 8874648: fix: Pollyfill crypto.randomUUID
+- 43edac8: chore: bump @hyperdx/node-opentelemetry to v0.8.2
+- Updated dependencies [ab3b5cb]
+- Updated dependencies [ab387e1]
+- Updated dependencies [fce5ee5]
+  - @hyperdx/common-utils@0.2.1
+
 ## 2.0.0
 
 ### Major Changes
