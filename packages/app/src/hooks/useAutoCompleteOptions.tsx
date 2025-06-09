@@ -85,19 +85,24 @@ export function useAutoCompleteOptions(
   );
 
   // hooks to get key values
-  const chartConfigs = toArray(tableConnections).map(
-    ({ databaseName, tableName, connectionId }) =>
-      ({
-        connection: connectionId,
-        from: {
-          databaseName,
-          tableName,
-        },
-        timestampValueExpression: '',
-        select: '',
-        where: '',
-      }) as ChartConfigWithDateRange,
-  );
+  const chartConfigs: ChartConfigWithDateRange[] = toArray(
+    tableConnections,
+  ).map(({ databaseName, tableName, connectionId }) => ({
+    connection: connectionId,
+    from: {
+      databaseName,
+      tableName,
+    },
+    timestampValueExpression: '',
+    select: '',
+    where: '',
+    // TODO: Pull in date for query as arg
+    // just assuming 1/2 day is okay to query over right now
+    dateRange: [
+      new Date(Date.now() - (86400 * 1000) / 2),
+      new Date(Date.now()),
+    ],
+  }));
   const { data: keyVals } = useGetKeyValues({
     chartConfigs,
     keys: searchKeys,

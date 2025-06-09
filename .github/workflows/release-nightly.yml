@@ -1,7 +1,7 @@
 name: Release Nightly
 on:
   push:
-    branches: [v2]
+    branches: [main]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

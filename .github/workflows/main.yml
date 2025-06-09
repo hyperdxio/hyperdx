@@ -1,9 +1,9 @@
 name: Main
 on:
   push:
-    branches: [main, v2]
+    branches: [main, v1]
   pull_request:
-    branches: [main, v2]
+    branches: [main, v1]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -76,7 +76,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Get changed OTEL collector files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            docker/otel-collector/**
+            smoke-tests/otel-ccollector/**
       - name: Install required tooling
+        if: steps.changed-files.outputs.any_changed == 'true'
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -87,5 +95,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes curl bats clickhouse-client
       - name: Run Smoke Tests
+        if: steps.changed-files.outputs.any_changed == 'true'
         working-directory: ./smoke-tests/otel-collector
         run: bats .
