@@ -116,7 +116,7 @@ exporters:
     endpoint: ${env:CLICKHOUSE_ENDPOINT}
     password: ${env:CLICKHOUSE_PASSWORD}
     username: ${env:CLICKHOUSE_USER}
-    ttl: 72h
+    ttl: 720h
     logs_table_name: hyperdx_sessions
     timeout: 5s
     retry_on_failure:
@@ -129,7 +129,7 @@ exporters:
     endpoint: ${env:CLICKHOUSE_ENDPOINT}
     password: ${env:CLICKHOUSE_PASSWORD}
     username: ${env:CLICKHOUSE_USER}
-    ttl: 72h
+    ttl: 720h
     timeout: 5s
     retry_on_failure:
       enabled: true
