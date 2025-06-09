@@ -59,7 +59,8 @@ services:
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
       OPAMP_PORT: ${HYPERDX_OPAMP_PORT}
-      OTEL_SERVICE_NAME: 'hdx-oss-api'
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      OTEL_SERVICE_NAME: 'hdx-oss-app'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
