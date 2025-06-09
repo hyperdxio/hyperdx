@@ -36,6 +36,7 @@ COPY ./packages/app/src ./packages/app/src
 COPY ./packages/app/pages ./packages/app/pages
 COPY ./packages/app/public ./packages/app/public
 COPY ./packages/app/styles ./packages/app/styles
+COPY ./packages/app/types ./packages/app/types
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/app 
 RUN rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
 

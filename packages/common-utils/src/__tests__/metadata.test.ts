@@ -264,7 +264,7 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: 1e6,
+            max_rows_to_read: String(3e6),
             read_overflow_mode: 'break',
           },
         }),
@@ -296,7 +296,7 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: 1e6,
+            max_rows_to_read: String(3e6),
             read_overflow_mode: 'break',
           },
         }),
