@@ -16,5 +16,5 @@ npx concurrently \
   "--kill-others" \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./node_modules/@hyperdx/node-opentelemetry/build/src/tracing ./packages/api/build/index.js" \
-  "cd ./packages/app && HYPERDX_API_PORT=${HYPERDX_API_PORT:-8000} ../../node_modules/.bin/next start -p ${HYPERDX_APP_PORT:-8080}" \
+  "cd ./packages/app/packages/app && HOSTNAME='0.0.0.0' HYPERDX_API_PORT=${HYPERDX_API_PORT:-8000} PORT=${HYPERDX_APP_PORT:-8080} node server.js" \
   "node -r ./node_modules/@hyperdx/node-opentelemetry/build/src/tracing ./packages/api/build/tasks/index.js check-alerts"
