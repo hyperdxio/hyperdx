@@ -423,6 +423,23 @@ describe('External API v2 Charts', () => {
       expect(response.body).toHaveProperty('error');
     });
 
+    it('should handle sql query errors gracefully', async () => {
+      const payload = createSeriesRequestPayload(logSource.id.toString(), {
+        series: [
+          {
+            aggFn: 'count',
+            where: 'invalid query',
+            whereLanguage: 'sql',
+            groupBy: [],
+          },
+        ],
+      });
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(500);
+      expect(response.body).toHaveProperty('error');
+    });
+
     it('should return data grouped by a single field', async () => {
       const payload = createSeriesRequestPayload(logSource.id.toString(), {
         series: [

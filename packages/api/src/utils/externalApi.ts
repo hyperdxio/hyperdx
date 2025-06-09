@@ -95,7 +95,7 @@ export const translateExternalSeriesToInternalSeries = (
       return series;
     }
     case 'histogram': {
-      const { field } = rest;
+      const { aggFn, level, field } = rest;
       const series: z.infer<typeof histogramChartSeriesSchema> = {
         type: 'histogram',
         table,
