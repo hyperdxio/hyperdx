@@ -251,7 +251,6 @@ const fastifySQL = ({
 
     return parser.sqlify(ast);
   } catch (e) {
-    console.debug('[renderWhereExpression]feat: Failed to parse SQL AST', e);
     return rawSQL;
   }
 };
