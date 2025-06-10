@@ -11,6 +11,15 @@ const withNextra = require('nextra')({
 module.exports = {
   experimental: {
     instrumentationHook: true,
+    // External packages to prevent bundling issues with Next.js 14
+    // https://github.com/open-telemetry/opentelemetry-js/issues/4297#issuecomment-2285070503
+    serverComponentsExternalPackages: [
+      '@opentelemetry/instrumentation',
+      '@opentelemetry/sdk-node',
+      '@opentelemetry/auto-instrumentations-node',
+      '@hyperdx/node-opentelemetry',
+      '@hyperdx/instrumentation-sentry-node',
+    ],
   },
   // Ignore otel pkgs warnings
   // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
@@ -45,8 +54,8 @@ module.exports = {
     productionBrowserSourceMaps: false,
     ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
       ? {
-          output: 'standalone',
-        }
+        output: 'standalone',
+      }
       : {}),
   }),
 };
