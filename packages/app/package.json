@@ -149,9 +149,9 @@
     "typescript": "^4.9.5"
   },
   "resolutions": {
-    "react": "^18.2.0",
-    "@types/react-dom": "^18.2.18",
-    "@types/react": "18.2.23"
+    "react": "18.3.1",
+    "@types/react-dom": "18.3.1",
+    "@types/react": "18.3.1"
   },
   "nx": {
     "targets": {
