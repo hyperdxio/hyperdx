@@ -24,15 +24,20 @@ export enum DisplayType {
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
 
-export const MetricTableSchema = z.object(
-  Object.values(MetricsDataType).reduce(
-    (acc, key) => ({
-      ...acc,
-      [key]: z.string(),
-    }),
-    {} as Record<MetricsDataType, z.ZodString>,
-  ),
-);
+export const MetricTableSchema = z
+  .object(
+    Object.values(MetricsDataType).reduce(
+      (acc, key) => ({
+        ...acc,
+        [key]: z.string().optional(),
+      }),
+      {} as Record<MetricsDataType, z.ZodString>,
+    ),
+  )
+  .refine(
+    tables => Object.values(tables).some(table => table && table.length > 0),
+    { message: 'At least one metric table must be specified' },
+  );
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 
@@ -532,3 +537,132 @@ export const SourceSchema = z.object({
 });
 
 export type TSource = z.infer<typeof SourceSchema>;
+
+// --------------------------
+// TABLE SOURCE FORM VALIDATION
+// --------------------------
+
+// Base schema with fields common to all source types
+const SourceFormBaseSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, 'Name is required'),
+  kind: z.nativeEnum(SourceKind),
+  connection: z.string().min(1, 'Server Connection is required'),
+  from: z.object({
+    databaseName: z.string().min(1, 'Database is required'),
+    tableName: z.string().min(1, 'Table is required'),
+  }),
+  timestampValueExpression: z.string().min(1, 'Timestamp Column is required'),
+});
+
+// Log source form schema
+const LogSourceFormAugmentation = {
+  kind: z.literal(SourceKind.Log),
+  defaultTableSelectExpression: z.string({
+    message: 'Default Table Select Expression is required',
+  }),
+
+  // Optional fields for logs
+  serviceNameExpression: z.string().optional(),
+  severityTextExpression: z.string().optional(),
+  bodyExpression: z.string().optional(),
+  eventAttributesExpression: z.string().optional(),
+  resourceAttributesExpression: z.string().optional(),
+  displayedTimestampValueExpression: z.string().optional(),
+  metricSourceId: z.string().optional(),
+  traceSourceId: z.string().optional(),
+  traceIdExpression: z.string().optional(),
+  spanIdExpression: z.string().optional(),
+  implicitColumnExpression: z.string().optional(),
+  uniqueRowIdExpression: z.string().optional(),
+  tableFilterExpression: z.string().optional(),
+};
+
+// Trace source form schema
+const TraceSourceFormAugmentation = {
+  kind: z.literal(SourceKind.Trace),
+  defaultTableSelectExpression: z.string().optional(),
+
+  // Required fields for traces
+  durationExpression: z.string().min(1, 'Duration Expression is required'),
+  durationPrecision: z.number().min(0).max(9).default(3),
+  traceIdExpression: z.string().min(1, 'Trace ID Expression is required'),
+  spanIdExpression: z.string().min(1, 'Span ID Expression is required'),
+  parentSpanIdExpression: z
+    .string()
+    .min(1, 'Parent span ID expression is required'),
+  spanNameExpression: z.string().min(1, 'Span Name Expression is required'),
+  spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
+
+  // Optional fields for traces
+  logSourceId: z.string().optional().nullable(),
+  sessionSourceId: z.string().optional(),
+  metricSourceId: z.string().optional(),
+  statusCodeExpression: z.string().optional(),
+  statusMessageExpression: z.string().optional(),
+  serviceNameExpression: z.string().optional(),
+  resourceAttributesExpression: z.string().optional(),
+  eventAttributesExpression: z.string().optional(),
+  spanEventsValueExpression: z.string().optional(),
+  implicitColumnExpression: z.string().optional(),
+};
+
+// Session source form schema
+const SessionSourceFormAugmentation = {
+  kind: z.literal(SourceKind.Session),
+
+  // Required fields for sessions
+  eventAttributesExpression: z
+    .string()
+    .min(1, 'Log Attributes Expression is required'),
+  resourceAttributesExpression: z
+    .string()
+    .min(1, 'Resource Attributes Expression is required'),
+  traceSourceId: z
+    .string({ message: 'Correlated Trace Source is required' })
+    .min(1, 'Correlated Trace Source is required'),
+
+  // Optional fields for sessions
+  implicitColumnExpression: z.string().optional(),
+};
+
+// Metric source form schema
+const MetricSourceFormAugmentation = {
+  kind: z.literal(SourceKind.Metric),
+  // override from SourceFormBaseSchema
+  from: z.object({
+    databaseName: z.string().min(1, 'Database is required'),
+  }),
+
+  // Metric tables - at least one should be provided
+  metricTables: MetricTableSchema,
+  resourceAttributesExpression: z
+    .string()
+    .min(1, 'Resource Attributes is required'),
+
+  // Optional fields for metrics
+  logSourceId: z.string().optional(),
+};
+
+// Union of all source form schemas for validation
+export const SourceFormSchema = z.discriminatedUnion('kind', [
+  SourceFormBaseSchema.extend(LogSourceFormAugmentation),
+  SourceFormBaseSchema.extend(TraceSourceFormAugmentation),
+  SourceFormBaseSchema.extend(SessionSourceFormAugmentation),
+  SourceFormBaseSchema.extend(MetricSourceFormAugmentation),
+]);
+export type TSourceForm = z.infer<typeof SourceFormSchema>;
+
+// This function exists to perform schema validation with omission of a certain
+// value. It is not possible to do on the discriminatedUnion directly
+export function sourceFormSchemaWithout(
+  omissions: { [k in keyof z.infer<typeof SourceFormBaseSchema>]?: true } = {},
+) {
+  // TODO: Make these types work better if possible
+  return z.discriminatedUnion('kind', [
+    SourceFormBaseSchema.omit(omissions).extend(LogSourceFormAugmentation),
+    SourceFormBaseSchema.omit(omissions).extend(TraceSourceFormAugmentation),
+    SourceFormBaseSchema.omit(omissions).extend(SessionSourceFormAugmentation),
+    SourceFormBaseSchema.omit(omissions).extend(MetricSourceFormAugmentation),
+  ]);
+}

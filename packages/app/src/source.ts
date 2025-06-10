@@ -1,3 +1,5 @@
+// TODO: HDX-1768 Change TSource here to TSourceForm and adjust as needed. Then, go to
+// SourceForm.tsx and remove type assertions for TSource and TSourceForm
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import store from 'store2';
