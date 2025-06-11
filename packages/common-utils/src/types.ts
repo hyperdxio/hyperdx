@@ -491,7 +491,7 @@ export enum SourceKind {
 // --------------------------
 
 // Base schema with fields common to all source types
-const SourceFormBaseSchema = z.object({
+const SourceBaseSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
@@ -504,7 +504,7 @@ const SourceFormBaseSchema = z.object({
 });
 
 // Log source form schema
-const LogSourceFormAugmentation = {
+const LogSourceAugmentation = {
   kind: z.literal(SourceKind.Log),
   defaultTableSelectExpression: z.string({
     message: 'Default Table Select Expression is required',
@@ -527,7 +527,7 @@ const LogSourceFormAugmentation = {
 };
 
 // Trace source form schema
-const TraceSourceFormAugmentation = {
+const TraceSourceAugmentation = {
   kind: z.literal(SourceKind.Trace),
   defaultTableSelectExpression: z.string().optional(),
 
@@ -556,7 +556,7 @@ const TraceSourceFormAugmentation = {
 };
 
 // Session source form schema
-const SessionSourceFormAugmentation = {
+const SessionSourceAugmentation = {
   kind: z.literal(SourceKind.Session),
 
   // Required fields for sessions
@@ -575,9 +575,9 @@ const SessionSourceFormAugmentation = {
 };
 
 // Metric source form schema
-const MetricSourceFormAugmentation = {
+const MetricSourceAugmentation = {
   kind: z.literal(SourceKind.Metric),
-  // override from SourceFormBaseSchema
+  // override from SourceBaseSchema
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string(),
@@ -594,25 +594,25 @@ const MetricSourceFormAugmentation = {
 };
 
 // Union of all source form schemas for validation
-export const SourceFormSchema = z.discriminatedUnion('kind', [
-  SourceFormBaseSchema.extend(LogSourceFormAugmentation),
-  SourceFormBaseSchema.extend(TraceSourceFormAugmentation),
-  SourceFormBaseSchema.extend(SessionSourceFormAugmentation),
-  SourceFormBaseSchema.extend(MetricSourceFormAugmentation),
+export const SourceSchema = z.discriminatedUnion('kind', [
+  SourceBaseSchema.extend(LogSourceAugmentation),
+  SourceBaseSchema.extend(TraceSourceAugmentation),
+  SourceBaseSchema.extend(SessionSourceAugmentation),
+  SourceBaseSchema.extend(MetricSourceAugmentation),
 ]);
-export type TSourceForm = z.infer<typeof SourceFormSchema>;
+export type TSourceUnion = z.infer<typeof SourceSchema>;
 
 // This function exists to perform schema validation with omission of a certain
 // value. It is not possible to do on the discriminatedUnion directly
-export function sourceFormSchemaWithout(
-  omissions: { [k in keyof z.infer<typeof SourceFormBaseSchema>]?: true } = {},
+export function sourceSchemaWithout(
+  omissions: { [k in keyof z.infer<typeof SourceBaseSchema>]?: true } = {},
 ) {
   // TODO: Make these types work better if possible
   return z.discriminatedUnion('kind', [
-    SourceFormBaseSchema.omit(omissions).extend(LogSourceFormAugmentation),
-    SourceFormBaseSchema.omit(omissions).extend(TraceSourceFormAugmentation),
-    SourceFormBaseSchema.omit(omissions).extend(SessionSourceFormAugmentation),
-    SourceFormBaseSchema.omit(omissions).extend(MetricSourceFormAugmentation),
+    SourceBaseSchema.omit(omissions).extend(LogSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(TraceSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(SessionSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(MetricSourceAugmentation),
   ]);
 }
 
@@ -642,7 +642,7 @@ type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
     : false
   : never;
 
-// This type gathers the Required Keys across the discriminated union TSourceForm
+// This type gathers the Required Keys across the discriminated union TSourceUnion
 // and keeps them as required in a non-unionized type, and also gathers all possible
 // optional keys from the union branches and brings them into one unified flattened type.
 // This is done to maintain compatibility with the legacy zod schema.
@@ -658,4 +658,4 @@ type FlattenUnion<T> = {
     ? never
     : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
 };
-export type TSource = FlattenUnion<z.infer<typeof SourceFormSchema>>;
+export type TSource = FlattenUnion<z.infer<typeof SourceSchema>>;

@@ -1,6 +1,6 @@
 import {
-  SourceFormSchema,
-  sourceFormSchemaWithout,
+  SourceSchema,
+  sourceSchemaWithout,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
@@ -29,12 +29,12 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-const SourceFormSchemaNoId = sourceFormSchemaWithout({ id: true });
+const SourceSchemaNoId = sourceSchemaWithout({ id: true });
 
 router.post(
   '/',
   validateRequest({
-    body: SourceFormSchemaNoId,
+    body: SourceSchemaNoId,
   }),
   async (req, res, next) => {
     try {
@@ -56,7 +56,7 @@ router.post(
 router.put(
   '/:id',
   validateRequest({
-    body: SourceFormSchema,
+    body: SourceSchema,
     params: z.object({
       id: objectIdSchema,
     }),

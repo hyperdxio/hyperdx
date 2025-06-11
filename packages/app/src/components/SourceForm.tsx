@@ -9,10 +9,10 @@ import {
 import { z } from 'zod';
 import {
   MetricsDataType,
-  sourceFormSchemaWithout,
   SourceKind,
+  sourceSchemaWithout,
   TSource,
-  TSourceForm,
+  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -674,9 +674,9 @@ export function SessionTableModelForm({ control, watch }: TableModelProps) {
 }
 
 interface TableModelProps {
-  control: Control<TSourceForm>;
-  watch: UseFormWatch<TSourceForm>;
-  setValue: UseFormSetValue<TSourceForm>;
+  control: Control<TSourceUnion>;
+  watch: UseFormWatch<TSourceUnion>;
+  setValue: UseFormSetValue<TSourceUnion>;
 }
 
 export function MetricTableModelForm({
@@ -768,9 +768,9 @@ function TableModelForm({
   setValue,
   kind,
 }: {
-  control: Control<TSourceForm>;
-  watch: UseFormWatch<TSourceForm>;
-  setValue: UseFormSetValue<TSourceForm>;
+  control: Control<TSourceUnion>;
+  watch: UseFormWatch<TSourceUnion>;
+  setValue: UseFormSetValue<TSourceUnion>;
   kind: SourceKind;
 }) {
   switch (kind) {
@@ -836,7 +836,7 @@ export function TableSourceForm({
     resetField,
     setError,
     clearErrors,
-  } = useForm<TSourceForm>({
+  } = useForm<TSourceUnion>({
     defaultValues: {
       kind: SourceKind.Log,
       name: defaultName,
@@ -847,7 +847,7 @@ export function TableSourceForm({
       },
     },
     // TODO: HDX-1768 remove type assertion
-    values: source as TSourceForm,
+    values: source as TSourceUnion,
     resetOptions: {
       keepDirtyValues: true,
       keepErrors: true,
@@ -858,7 +858,7 @@ export function TableSourceForm({
     const { unsubscribe } = watch(async (_value, { name, type }) => {
       try {
         // TODO: HDX-1768 get rid of this type assertion
-        const value = _value as TSourceForm;
+        const value = _value as TSourceUnion;
         if (
           value.connection != null &&
           value.from?.databaseName != null &&
@@ -906,8 +906,8 @@ export function TableSourceForm({
   const updateSource = useUpdateSource();
   const deleteSource = useDeleteSource();
 
-  const sourceFormSchema = sourceFormSchemaWithout({ id: true });
-  const handleError = (error: z.ZodError<TSourceForm>) => {
+  const sourceFormSchema = sourceSchemaWithout({ id: true });
+  const handleError = (error: z.ZodError<TSourceUnion>) => {
     const errors = error.errors;
     for (const err of errors) {
       const errorPath: string = err.path.join('.');
