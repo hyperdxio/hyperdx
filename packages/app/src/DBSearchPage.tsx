@@ -1037,15 +1037,29 @@ function DBSearchPage() {
     [setQueryErrors],
   );
 
-  const filtersChartConfig = useMemo(
-    () => ({
-      ...chartConfig,
+  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+    const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,
       with: aliasWith,
-    }),
-    [chartConfig, searchedTimeRange, aliasWith],
-  );
+    } as const;
+    return chartConfig
+      ? {
+          ...chartConfig,
+          ...overrides,
+        }
+      : {
+          timestampValueExpression: '',
+          connection: '',
+          from: {
+            databaseName: '',
+            tableName: '',
+          },
+          where: '',
+          select: '',
+          ...overrides,
+        };
+  }, [chartConfig, searchedTimeRange, aliasWith]);
 
   const openNewSourceModal = useCallback(() => {
     setNewSourceModalOpened(true);
