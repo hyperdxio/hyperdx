@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -350,7 +350,7 @@ export default function SQLInlineEditor({
   );
 }
 
-export function SQLInlineEditorControlled({
+function SQLInlineEditorControlledComponent({
   placeholder,
   filterField,
   additionalSuggestions,
@@ -381,3 +381,6 @@ export function SQLInlineEditorControlled({
     />
   );
 }
+export const SQLInlineEditorControlled = memo(
+  SQLInlineEditorControlledComponent,
+);
