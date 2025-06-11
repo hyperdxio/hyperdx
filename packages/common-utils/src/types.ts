@@ -486,65 +486,13 @@ export enum SourceKind {
   Metric = 'metric',
 }
 
-export const SourceSchema = z.object({
-  from: z.object({
-    databaseName: z.string(),
-    tableName: z.string(),
-  }),
-  timestampValueExpression: z.string(),
-  connection: z.string(),
-
-  // Common
-  kind: z.nativeEnum(SourceKind),
-  id: z.string(),
-  name: z.string(),
-  displayedTimestampValueExpression: z.string().optional(),
-  implicitColumnExpression: z.string().optional(),
-  serviceNameExpression: z.string().optional(),
-  bodyExpression: z.string().optional(),
-  tableFilterExpression: z.string().optional(),
-  eventAttributesExpression: z.string().optional(),
-  resourceAttributesExpression: z.string().optional(),
-  defaultTableSelectExpression: z.string().optional(),
-
-  // Logs
-  uniqueRowIdExpression: z.string().optional(),
-  severityTextExpression: z.string().optional(),
-  traceSourceId: z.string().optional(),
-
-  // Traces & Logs
-  traceIdExpression: z.string().optional(),
-  spanIdExpression: z.string().optional(),
-
-  // Sessions
-  sessionSourceId: z.string().optional(),
-
-  // Traces
-  durationExpression: z.string().optional(),
-  durationPrecision: z.number().min(0).max(9).optional(),
-  parentSpanIdExpression: z.string().optional(),
-  spanNameExpression: z.string().optional(),
-  spanEventsValueExpression: z.string().optional(),
-
-  spanKindExpression: z.string().optional(),
-  statusCodeExpression: z.string().optional(),
-  statusMessageExpression: z.string().optional(),
-  logSourceId: z.string().optional().nullable(),
-
-  // OTEL Metrics
-  metricTables: MetricTableSchema.optional(),
-  metricSourceId: z.string().optional(),
-});
-
-export type TSource = z.infer<typeof SourceSchema>;
-
 // --------------------------
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
 // Base schema with fields common to all source types
 const SourceFormBaseSchema = z.object({
-  id: z.string().optional(),
+  id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
   connection: z.string().min(1, 'Server Connection is required'),
@@ -632,6 +580,7 @@ const MetricSourceFormAugmentation = {
   // override from SourceFormBaseSchema
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
+    tableName: z.string(),
   }),
 
   // Metric tables - at least one should be provided
@@ -666,3 +615,47 @@ export function sourceFormSchemaWithout(
     SourceFormBaseSchema.omit(omissions).extend(MetricSourceFormAugmentation),
   ]);
 }
+
+// Helper types for better union flattening
+type AllKeys<T> = T extends any ? keyof T : never;
+// This is Claude Opus's explanation of this type magic to extract the required
+// parameters:
+//
+// 1. [K in keyof T]-?:
+//   Maps over all keys in T. The -? removes the optional modifier, making all
+//   properties required in this mapped type
+// 2. {} extends Pick<T, K> ? never : K
+//   Pick<T, K> creates a type with just property K from T.
+//   {} extends Pick<T, K> checks if an empty object can satisfy the picked property.
+//   If the property is optional, {} can extend it (returns never)
+//   If the property is required, {} cannot extend it (returns K)
+// 3. [keyof T]
+//    Indexes into the mapped type to get the union of all non-never values
+type NonOptionalKeysPresentInEveryUnionBranch<T> = {
+  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
+}[keyof T];
+
+// Helper to check if a key is required in ALL branches of the union
+type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
+  ? K extends NonOptionalKeysPresentInEveryUnionBranch<T>
+    ? true
+    : false
+  : never;
+
+// This type gathers the Required Keys across the discriminated union TSourceForm
+// and keeps them as required in a non-unionized type, and also gathers all possible
+// optional keys from the union branches and brings them into one unified flattened type.
+// This is done to maintain compatibility with the legacy zod schema.
+type FlattenUnion<T> = {
+  // If a key is required in all branches of a union, make it a required key
+  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
+    ? K
+    : never]: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+} & {
+  // If a key is not required in all branches of a union, make it an optional
+  // key and join the possible types
+  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
+    ? never
+    : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+};
+export type TSource = FlattenUnion<z.infer<typeof SourceFormSchema>>;
