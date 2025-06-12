@@ -1,5 +1,16 @@
 # @hyperdx/app
 
+## 2.0.2
+
+### Patch Changes
+
+- 8ab3b42: fix: fix demo instances for those with stale sources
+- 31e22dc: feat: introduce clickhouse db init script
+- 2063774: perf: build next app in standalone mode to cut down images size
+- Updated dependencies [31e22dc]
+- Updated dependencies [2063774]
+  - @hyperdx/common-utils@0.2.2
+
 ## 2.0.1
 
 ### Patch Changes
