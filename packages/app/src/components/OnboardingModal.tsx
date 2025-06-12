@@ -6,7 +6,12 @@ import { notifications } from '@mantine/notifications';
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
-import { useCreateSource, useSources, useUpdateSource } from '@/source';
+import {
+  useCreateSource,
+  useDeleteSource,
+  useSources,
+  useUpdateSource,
+} from '@/source';
 
 import { TableSourceForm } from './SourceForm';
 
@@ -40,9 +45,24 @@ export default function OnboardingModal({
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
   const updateSourceMutation = useUpdateSource();
+  const deleteSourceMutation = useDeleteSource();
 
   const handleDemoServerClick = useCallback(async () => {
     try {
+      if (sources) {
+        for (const source of sources) {
+          // Clean out old demo sources. All new ones use the otel_v2 database
+          if (
+            source.connection === 'local' &&
+            source.name.startsWith('Demo') &&
+            source.from.databaseName !== 'otel_v2'
+          ) {
+            await deleteSourceMutation.mutateAsync({
+              id: source.id,
+            });
+          }
+        }
+      }
       await createConnectionMutation.mutateAsync({
         connection: {
           id: 'local',
