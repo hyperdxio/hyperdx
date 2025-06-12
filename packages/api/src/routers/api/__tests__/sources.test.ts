@@ -1,10 +1,10 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSourceUnion } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import { Source } from '@/models/source';
 
-const MOCK_SOURCE = {
+const MOCK_SOURCE: Omit<Extract<TSourceUnion, { kind: 'log' }>, 'id'> = {
   kind: SourceKind.Log,
   name: 'Test Source',
   connection: new Types.ObjectId().toString(),
@@ -13,6 +13,7 @@ const MOCK_SOURCE = {
     tableName: 'test_table',
   },
   timestampValueExpression: 'timestamp',
+  defaultTableSelectExpression: 'body',
 };
 
 describe('sources router', () => {
