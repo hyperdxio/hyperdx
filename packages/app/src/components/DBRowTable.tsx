@@ -898,7 +898,7 @@ export function selectColumnMapWithoutAdditionalKeys(
   );
 }
 
-export function DBSqlRowTable({
+function DBSqlRowTableComponent({
   config,
   sourceId,
   onError,
@@ -977,7 +977,10 @@ export function DBSqlRowTable({
     });
   }, [data, objectTypeColumns, columnMap]);
 
-  const aliasMap = chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} });
+  const aliasMap = useMemo(
+    () => chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} }),
+    [data],
+  );
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
@@ -1110,3 +1113,4 @@ export function DBSqlRowTable({
     </>
   );
 }
+export const DBSqlRowTable = memo(DBSqlRowTableComponent);
