@@ -330,6 +330,26 @@ export const getColumns = async ({
   database: string;
   table: string;
 }) => {
+  if (!database || !table) {
+    return {
+      data: [],
+      meta: [],
+      rows: 0,
+      statistics: {
+        elapsed: 0,
+        rows_read: 0,
+        bytes_read: 0,
+      },
+    } as ResponseJSON<{
+      name: string;
+      type: string;
+      default_type: string;
+      default_expression: string;
+      comment: string;
+      codec_expression: string;
+      ttl_expression: string;
+    }>;
+  }
   const rows = await client.query({
     query: 'DESCRIBE {database:Identifier}.{table:Identifier}',
     format: 'JSON',
