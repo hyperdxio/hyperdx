@@ -1,7 +1,7 @@
 import React from 'react';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { Connection } from '../../connection';
 import { ConnectionForm } from '../ConnectionForm';
 
 import '@testing-library/jest-dom';

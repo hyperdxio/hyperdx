@@ -1,5 +1,6 @@
 import store from 'store2';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -7,14 +8,6 @@ import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
 export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
-
-export type Connection = {
-  id: string;
-  name: string;
-  host: string;
-  username: string;
-  password: string;
-};
 
 function setLocalConnections(newConnections: Connection[]) {
   // sessing sessionStorage doesn't send a storage event to the open tab, only
@@ -69,7 +62,7 @@ export function useCreateConnection() {
         const isValid = await testLocalConnection({
           host: connection.host,
           username: connection.username,
-          password: connection.password,
+          password: connection.password ?? '',
         });
 
         if (!isValid) {
