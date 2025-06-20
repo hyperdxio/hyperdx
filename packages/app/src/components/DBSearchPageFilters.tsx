@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -351,7 +351,7 @@ export const FilterGroup = ({
   );
 };
 
-export const DBSearchPageFilters = ({
+const DBSearchPageFiltersComponent = ({
   filters: filterState,
   clearAllFilters,
   clearFilter,
@@ -671,3 +671,5 @@ export const DBSearchPageFilters = ({
     </Box>
   );
 };
+
+export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);

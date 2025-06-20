@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 
 import { Granularity } from './ChartUtils';
@@ -63,7 +64,9 @@ export default function GranularityPicker({
   );
 }
 
-export function GranularityPickerControlled(props: UseControllerProps<any>) {
+export function GranularityPickerControlledComponent(
+  props: UseControllerProps<any>,
+) {
   const {
     field,
     fieldState: { invalid, isTouched, isDirty },
@@ -72,3 +75,7 @@ export function GranularityPickerControlled(props: UseControllerProps<any>) {
 
   return <GranularityPicker value={field.value} onChange={field.onChange} />;
 }
+
+export const GranularityPickerControlled = memo(
+  GranularityPickerControlledComponent,
+);

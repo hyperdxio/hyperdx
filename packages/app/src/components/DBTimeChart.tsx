@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
@@ -22,7 +22,7 @@ import { SQLPreview } from './ChartSQLPreview';
 
 // TODO: Support clicking in to view matched events
 
-export function DBTimeChart({
+function DBTimeChartComponent({
   config,
   enabled = true,
   logReferenceTimestamp,
@@ -322,3 +322,5 @@ export function DBTimeChart({
     </div>
   );
 }
+
+export const DBTimeChart = memo(DBTimeChartComponent);
