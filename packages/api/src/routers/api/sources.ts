@@ -1,4 +1,7 @@
-import { SourceSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceSchema,
+  sourceSchemaWithout,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -26,19 +29,22 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+const SourceSchemaNoId = sourceSchemaWithout({ id: true });
+
 router.post(
   '/',
   validateRequest({
-    body: SourceSchema.omit({ id: true }),
+    body: SourceSchemaNoId,
   }),
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
+      // TODO: HDX-1768 Eliminate type assertion
       const source = await createSource(teamId.toString(), {
         ...req.body,
         team: teamId,
-      });
+      } as any);
 
       res.json(source);
     } catch (e) {
@@ -59,10 +65,11 @@ router.put(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
+      // TODO: HDX-1768 Eliminate type assertion
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
         team: teamId,
-      });
+      } as any);
 
       if (!source) {
         res.status(404).send('Source not found');
