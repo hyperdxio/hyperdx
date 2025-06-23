@@ -1,6 +1,7 @@
 import {
   createContext,
-  MouseEventHandler,
+  Dispatch,
+  SetStateAction,
   useCallback,
   useContext,
   useMemo,
@@ -14,7 +15,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box } from '@mantine/core';
+import { Box, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
@@ -55,24 +56,31 @@ export const RowSidePanelContext = createContext<{
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
 }>({});
 
-export default function DBRowSidePanel({
-  rowId: rowId,
-  source,
-  // where,
-  q,
-  onClose,
-  isNestedPanel = false,
-}: {
-  // where?: string;
+enum Tab {
+  Overview = 'overview',
+  Parsed = 'parsed',
+  Debug = 'debug',
+  Trace = 'trace',
+  Context = 'context',
+  Replay = 'replay',
+  Infrastructure = 'infrastructure',
+}
+
+type DBRowSidePanelProps = {
   source: TSource;
-  q?: string;
   rowId: string | undefined;
   onClose: () => void;
   isNestedPanel?: boolean;
-}) {
-  const contextZIndex = useZIndex();
-  const drawerZIndex = contextZIndex + 10;
+};
 
+const DBRowSidePanel = ({
+  rowId: rowId,
+  source,
+  isNestedPanel = false,
+  setSubDrawerOpen,
+}: DBRowSidePanelProps & {
+  setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
+}) => {
   const {
     data: rowData,
     isLoading: isRowLoading,
@@ -83,16 +91,6 @@ export default function DBRowSidePanel({
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
-
-  enum Tab {
-    Overview = 'overview',
-    Parsed = 'parsed',
-    Debug = 'debug',
-    Trace = 'trace',
-    Context = 'context',
-    Replay = 'replay',
-    Infrastructure = 'infrastructure',
-  }
 
   const hasOverviewPanel = useMemo(() => {
     if (
@@ -116,21 +114,6 @@ export default function DBRowSidePanel({
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
-  const initialWidth = 80;
-  const { width, startResize } = useResizable(initialWidth);
-
-  // const [queryTab, setQueryTab] = useQueryParam(
-  //   'tb',
-  //   withDefault(StringParam, undefined),
-  //   {
-  //     updateType: 'pushIn',
-  //     // Workaround for qparams not being set properly: https://github.com/pbeshai/use-query-params/issues/233
-  //     enableBatching: true,
-  //   },
-  // );
-  // Keep track of sub-drawers so we can disable closing this root drawer
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
-
   const [stateTab, setStateTab] = useState<Tab>(defaultTab);
   // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
   // We'll need to handle this properly eventually...
@@ -139,33 +122,9 @@ export default function DBRowSidePanel({
 
   const displayedTab = tab;
 
-  const _onClose = useCallback(() => {
-    // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
-    // (which might not be valid, ex session replay)
-    if (!isNestedPanel) {
-      setQueryTab(null);
-    }
-    onClose();
-  }, [setQueryTab, isNestedPanel, onClose]);
-
-  useHotkeys(
-    ['esc'],
-    () => {
-      _onClose();
-    },
-    {
-      enabled: subDrawerOpen === false,
-    },
-  );
-
-  const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && rowId != null) {
-      _onClose();
-    }
-  }, ['mouseup', 'touchend']);
-
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
+
   // TODO: Improve parsing
   let timestampDate: Date;
   if (typeof timestampValue === 'number') {
@@ -254,6 +213,230 @@ export default function DBRowSidePanel({
     }
   }, [normalizedRow]);
 
+  if (isRowLoading) {
+    return <div className={styles.loadingState}>Loading...</div>;
+  }
+
+  if (!isRowSuccess) {
+    return <div className={styles.loadingState}>Error loading row data</div>;
+  }
+
+  return (
+    <>
+      <Box p="sm">
+        <DBRowSidePanelHeader
+          date={timestampDate}
+          tags={tags}
+          mainContent={mainContent}
+          mainContentHeader={mainContentColumn}
+          severityText={severityText}
+        />
+      </Box>
+      {/* <SidePanelHeader
+                logData={logData}
+                generateShareUrl={generateShareUrl}
+                onPropertyAddClick={onPropertyAddClick}
+                generateSearchUrl={generateSearchUrl}
+                onClose={_onClose}
+              /> */}
+      <TabBar
+        className="fs-8 mt-2"
+        items={[
+          ...(hasOverviewPanel
+            ? [
+                {
+                  text: 'Overview',
+                  value: Tab.Overview,
+                },
+              ]
+            : []),
+          {
+            text: 'Column Values',
+            value: Tab.Parsed,
+          },
+          {
+            text: 'Trace',
+            value: Tab.Trace,
+          },
+          {
+            text: 'Surrounding Context',
+            value: Tab.Context,
+          },
+          ...(rumSessionId != null
+            ? [
+                {
+                  text: 'Session Replay',
+                  value: Tab.Replay,
+                },
+              ]
+            : []),
+          ...(hasK8sContext
+            ? [
+                {
+                  text: 'Infrastructure',
+                  value: Tab.Infrastructure,
+                },
+              ]
+            : []),
+        ]}
+        activeItem={displayedTab}
+        onClick={(v: any) => setTab(v)}
+      />
+      {displayedTab === Tab.Overview && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <RowOverviewPanel source={source} rowId={rowId} hideHeader={true} />
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Trace && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
+            <DBTracePanel
+              parentSourceId={source.id}
+              childSourceId={childSourceId}
+              traceId={traceId}
+              dateRange={oneHourRange}
+              focusDate={focusDate}
+              initialRowHighlightHint={initialRowHighlightHint}
+            />
+          </Box>
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Parsed && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <RowDataPanel source={source} rowId={rowId} />
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Context && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <ContextSubpanel
+            source={source}
+            dbSqlRowTableConfig={dbSqlRowTableConfig}
+            rowData={normalizedRow}
+            rowId={rowId}
+          />
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Replay && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <div className="overflow-hidden flex-grow-1">
+            <DBSessionPanel
+              dateRange={fourHourRange}
+              focusDate={focusDate}
+              setSubDrawerOpen={setSubDrawerOpen}
+              traceSourceId={traceSourceId}
+              serviceName={rumServiceName}
+              rumSessionId={rumSessionId}
+            />
+          </div>
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Infrastructure && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
+            <DBInfraPanel
+              source={source}
+              rowData={normalizedRow}
+              rowId={rowId}
+            />
+          </Box>
+        </ErrorBoundary>
+      )}
+      <LogSidePanelKbdShortcuts />
+    </>
+  );
+};
+
+export default function DBRowSidePanelErrorBoundary({
+  onClose,
+  rowId,
+  source,
+  isNestedPanel,
+}: DBRowSidePanelProps) {
+  const contextZIndex = useZIndex();
+  const drawerZIndex = contextZIndex + 10;
+
+  const initialWidth = 80;
+  const { width, startResize } = useResizable(initialWidth);
+
+  // Keep track of sub-drawers so we can disable closing this root drawer
+  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+
+  const [_, setQueryTab] = useQueryState(
+    'tab',
+    parseAsStringEnum<Tab>(Object.values(Tab)),
+  );
+
+  const _onClose = useCallback(() => {
+    // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
+    // (which might not be valid, ex session replay)
+    if (!isNestedPanel) {
+      setQueryTab(null);
+    }
+    onClose();
+  }, [setQueryTab, isNestedPanel, onClose]);
+
+  useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
+
+  const drawerRef = useClickOutside(() => {
+    if (!subDrawerOpen && rowId != null) {
+      _onClose();
+    }
+  }, ['mouseup', 'touchend']);
+
   return (
     <Drawer
       customIdSuffix={`log-side-panel-${rowId}`}
@@ -272,190 +455,28 @@ export default function DBRowSidePanel({
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel} ref={drawerRef}>
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
-          {isRowLoading && (
-            <div className={styles.loadingState}>Loading...</div>
-          )}
-          {isRowSuccess ? (
-            <>
-              <Box p="sm">
-                <DBRowSidePanelHeader
-                  date={timestampDate}
-                  tags={tags}
-                  mainContent={mainContent}
-                  mainContentHeader={mainContentColumn}
-                  severityText={severityText}
-                />
-              </Box>
-              {/* <SidePanelHeader
-                logData={logData}
-                generateShareUrl={generateShareUrl}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                onClose={_onClose}
-              /> */}
-              <TabBar
-                className="fs-8 mt-2"
-                items={[
-                  ...(hasOverviewPanel
-                    ? [
-                        {
-                          text: 'Overview',
-                          value: Tab.Overview,
-                        },
-                      ]
-                    : []),
-                  {
-                    text: 'Column Values',
-                    value: Tab.Parsed,
-                  },
-                  {
-                    text: 'Trace',
-                    value: Tab.Trace,
-                  },
-                  {
-                    text: 'Surrounding Context',
-                    value: Tab.Context,
-                  },
-                  ...(rumSessionId != null && source.sessionSourceId
-                    ? [
-                        {
-                          text: 'Session Replay',
-                          value: Tab.Replay,
-                        },
-                      ]
-                    : []),
-                  ...(hasK8sContext
-                    ? [
-                        {
-                          text: 'Infrastructure',
-                          value: Tab.Infrastructure,
-                        },
-                      ]
-                    : []),
-                ]}
-                activeItem={displayedTab}
-                onClick={(v: any) => setTab(v)}
-              />
-              {displayedTab === Tab.Overview && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <RowOverviewPanel
-                    source={source}
-                    rowId={rowId}
-                    hideHeader={true}
-                  />
-                </ErrorBoundary>
-              )}
-              {displayedTab === Tab.Trace && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-                    <DBTracePanel
-                      parentSourceId={source.id}
-                      childSourceId={childSourceId}
-                      traceId={traceId}
-                      dateRange={oneHourRange}
-                      focusDate={focusDate}
-                      initialRowHighlightHint={initialRowHighlightHint}
-                    />
-                  </Box>
-                </ErrorBoundary>
-              )}
-              {displayedTab === Tab.Parsed && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <RowDataPanel source={source} rowId={rowId} />
-                </ErrorBoundary>
-              )}
-              {displayedTab === Tab.Context && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <ContextSubpanel
-                    source={source}
-                    dbSqlRowTableConfig={dbSqlRowTableConfig}
-                    rowData={normalizedRow}
-                    rowId={rowId}
-                  />
-                </ErrorBoundary>
-              )}
-              {displayedTab === Tab.Replay && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <div className="overflow-hidden flex-grow-1">
-                    <DBSessionPanel
-                      dateRange={fourHourRange}
-                      focusDate={focusDate}
-                      setSubDrawerOpen={setSubDrawerOpen}
-                      traceSourceId={traceSourceId}
-                      serviceName={rumServiceName}
-                      rumSessionId={rumSessionId}
-                    />
-                  </div>
-                </ErrorBoundary>
-              )}
-              {displayedTab === Tab.Infrastructure && (
-                <ErrorBoundary
-                  onError={err => {
-                    console.error(err);
-                  }}
-                  fallbackRender={() => (
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                  )}
-                >
-                  <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-                    <DBInfraPanel
-                      source={source}
-                      rowData={normalizedRow}
-                      rowId={rowId}
-                    />
-                  </Box>
-                </ErrorBoundary>
-              )}
-              <LogSidePanelKbdShortcuts />
-            </>
-          ) : null}
+
+          <ErrorBoundary
+            fallbackRender={error => (
+              <Stack>
+                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                  An error occurred while rendering this event.
+                </div>
+
+                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-dark-grey p-4">
+                  {error?.error?.message}
+                </div>
+              </Stack>
+            )}
+          >
+            <DBRowSidePanel
+              source={source}
+              rowId={rowId}
+              onClose={_onClose}
+              isNestedPanel={isNestedPanel}
+              setSubDrawerOpen={setSubDrawerOpen}
+            />
+          </ErrorBoundary>
         </div>
       </ZIndexContext.Provider>
     </Drawer>

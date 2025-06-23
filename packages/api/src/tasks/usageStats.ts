@@ -1,10 +1,14 @@
 import type { ResponseJSON } from '@clickhouse/client';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
+import ms from 'ms';
 import os from 'os';
 import winston from 'winston';
 
-import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
+import Connection from '@/models/connection';
+import { Source, SourceDocument } from '@/models/source';
 import Team from '@/models/team';
 import User from '@/models/user';
 
@@ -13,45 +17,104 @@ const logger = winston.createLogger({
   format: winston.format.json(),
   transports: [
     HyperDX.getWinstonTransport('info', {
-      apiKey: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
+      headers: {
+        Authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
+      },
       baseUrl: 'https://in-otel.hyperdx.io/v1/logs',
       maxLevel: 'info',
       service: 'hyperdx-oss-usage-stats',
-    } as any),
+    }),
   ],
 });
 
+function extractTableNames(source: SourceDocument): string[] {
+  const tables: string[] = [];
+  if (source.kind === SourceKind.Metric) {
+    for (const key of Object.values(MetricsDataType)) {
+      const metricTable = source.metricTables?.[key];
+      if (!metricTable) continue;
+      tables.push(metricTable);
+    }
+  } else {
+    tables.push(source.from.tableName);
+  }
+  return tables;
+}
+
 const getClickhouseTableSize = async () => {
-  const rows = await clickhouse.client.query({
-    query: `
-      SELECT
-          table,
-          sum(bytes) AS size,
-          sum(rows) AS rows,
-          min(min_time) AS min_time,
-          max(max_time) AS max_time,
-          max(modification_time) AS latestModification,
-          toUInt32((max_time - min_time) / 86400) AS days,
-          size / ((max_time - min_time) / 86400) AS avgDaySize
-      FROM system.parts
-      WHERE active
-      AND database = 'default'
-      AND (table = {table1: String} OR table = {table2: String} OR table = {table3: String})
-      GROUP BY table
-      ORDER BY rows DESC
-    `,
-    format: 'JSON',
-    query_params: {
-      table1: clickhouse.TableName.LogStream,
-      table2: clickhouse.TableName.Rrweb,
-      table3: clickhouse.TableName.Metric,
-    },
-  });
-  const result = await rows.json<ResponseJSON<any>>();
-  return result.data;
+  // fetch mongo data
+  const connections = await Connection.find();
+  const sources = await Source.find();
+
+  // build map for each db instance
+  const distributedTableMap = new Map<string, string[]>();
+  for (const source of sources) {
+    const key = `${source.connection.toString()},${source.from.databaseName}`;
+    if (distributedTableMap.has(key)) {
+      distributedTableMap.get(key)?.push(...extractTableNames(source));
+    } else {
+      distributedTableMap.set(key, extractTableNames(source));
+    }
+  }
+
+  // fetch usage data
+  const results: any[] = [];
+  for (const [key, tables] of distributedTableMap) {
+    const [connectionId, dbName] = key.split(',');
+    const tableListString = tables
+      .map((_, idx) => `table = {table${idx}: String}`)
+      .join(' OR ');
+    const query_params = tables.reduce(
+      (acc, table, idx) => {
+        acc[`table${idx}`] = table;
+        return acc;
+      },
+      {} as { [key: string]: string },
+    );
+    query_params.dbName = dbName;
+
+    // find connection
+    const connection = connections.find(c => c.id === connectionId);
+    if (!connection) continue;
+
+    // query clickhouse
+    try {
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+      const _rows = await clickhouseClient.query({
+        query: `
+        SELECT
+            table,
+            sum(bytes) AS size,
+            sum(rows) AS rows,
+            min(min_time) AS min_time,
+            max(max_time) AS max_time,
+            max(modification_time) AS latestModification,
+            toUInt32((max_time - min_time) / 86400) AS days,
+            size / ((max_time - min_time) / 86400) AS avgDaySize
+        FROM system.parts
+        WHERE active
+        AND database = {dbName: String}
+        AND (${tableListString})
+        GROUP BY table
+        ORDER BY rows DESC
+      `,
+        format: 'JSON',
+        query_params,
+      });
+      const res = await _rows.json<ResponseJSON<any>>();
+      results.push(...res.data);
+    } catch (error) {
+      // ignore
+    }
+  }
+  return results;
 };
 
-export default async () => {
+async function getUsageStats() {
   try {
     const nowInMs = Date.now();
     const [userCounts, team, chTables] = await Promise.all([
@@ -99,4 +162,11 @@ export default async () => {
   } catch (err) {
     // ignore
   }
-};
+}
+
+export default function () {
+  void getUsageStats();
+  setInterval(() => {
+    void getUsageStats();
+  }, ms('4h'));
+}

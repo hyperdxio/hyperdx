@@ -1,11 +1,13 @@
 #!/bin/bash
 
 export FRONTEND_URL="${FRONTEND_URL:-${HYPERDX_APP_URL:-http://localhost}:${HYPERDX_APP_PORT:-8080}}"
+export OPAMP_PORT=${HYPERDX_OPAMP_PORT:-4320}
 
 # Set to "REQUIRED_AUTH" to enforce API authentication.
 # ⚠️ Do not change this value !!!!
 export IS_LOCAL_APP_MODE="REQUIRED_AUTH"
 
+echo ""
 echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 

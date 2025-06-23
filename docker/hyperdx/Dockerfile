@@ -9,13 +9,15 @@
 
 ARG NODE_VERSION=22.16.0
 ARG CLICKHOUSE_VERSION=24
-ARG OTEL_COLLECTOR_VERSION=0.120.0
+ARG OTEL_COLLECTOR_VERSION=0.126.0
+ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.126.0
 
 # base #############################################################################################
 # == Clickhouse/Base Image ==
 FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS clickhouse_base
 # == Otel Collector Image ==
 FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
+FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
 
 FROM node:${NODE_VERSION}-alpine AS node_base
 
@@ -54,6 +56,9 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api @hyperdx/app --pro
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
 
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
 ENV NODE_ENV production
 
 # Install libs used for the start script
@@ -84,9 +89,13 @@ ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 # all-in-one base ############################################################################################
 FROM scratch AS all-in-one-base
 
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
 # Copy from clickhouse and otel collector bases
 COPY --from=clickhouse_base / /
-COPY --from=otel_collector_base /otelcol-contrib /usr/local/bin/otelcol-contrib
+COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
+COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
 
 # Copy Node.js runtime from node base
 COPY --from=node_base --link /usr/local/bin /usr/local/bin
@@ -100,13 +109,15 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --from=otel-collector ./supervisor_docker.yaml  /etc/otel/supervisor.yaml
 
 # Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
-  apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl && \
+  apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl ca-certificates && \
   mkdir -p /data/db && \
+  mkdir -p /etc/otel/supervisor-data && \
   rm -rf /var/cache/apk/*
 
 ENV NODE_ENV production

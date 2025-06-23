@@ -162,7 +162,13 @@ const useIsTeamHasNoData = () => {
   return Array.isArray(sources) && sources?.length > 0 ? false : true;
 };
 
-export const AppNavHelpMenu = ({ version }: { version?: string }) => {
+export const AppNavHelpMenu = ({
+  version,
+  onAddDataClick,
+}: {
+  version?: string;
+  onAddDataClick?: () => void;
+}) => {
   const { isCollapsed } = React.useContext(AppNavContext);
 
   const [
@@ -230,6 +236,12 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
             >
               Discord Community
             </Menu.Item>
+            <Menu.Item
+              leftSection={<Icon name="lightbulb" />}
+              onClick={onAddDataClick}
+            >
+              Setup Instructions
+            </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Paper>
@@ -259,17 +271,17 @@ export const AppNavLink = ({
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
   return (
-    <Group justify="space-between" px="md" py="xs">
+    <Group justify="space-between" px="md" py="6px">
       <Link
         href={href}
         className={cx(
           className,
           'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-          { 'fw-bold text-success': pathname?.includes(href) },
+          { 'fw-600 text-success': pathname?.includes(href) },
         )}
       >
         <span>
-          <i className={`bi ${iconName} pe-1 text-slate-300`} />{' '}
+          <i className={`bi ${iconName} pe-2 text-slate-300`} />{' '}
           {!isCollapsed && <span>{label}</span>}
         </span>
       </Link>

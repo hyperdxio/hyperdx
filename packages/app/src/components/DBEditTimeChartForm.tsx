@@ -406,8 +406,8 @@ export default function EditTimeChartForm({
       setChartConfig(form);
       if (tableSource != null) {
         const isSelectEmpty = !form.select || form.select.length === 0; // select is string or array
-        setQueriedConfig({
-          ...structuredClone(form),
+        const newConfig = {
+          ...form,
           from: tableSource.from,
           timestampValueExpression: tableSource.timestampValueExpression,
           dateRange,
@@ -417,7 +417,14 @@ export default function EditTimeChartForm({
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
             : form.select,
-        });
+        };
+        setQueriedConfig(
+          // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
+          // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
+          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERYTIME
+          // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
+          structuredClone(newConfig),
+        );
       }
     })();
   }, [handleSubmit, setChartConfig, setQueriedConfig, tableSource, dateRange]);
