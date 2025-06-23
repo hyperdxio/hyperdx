@@ -110,8 +110,8 @@ jobs:
 
       - name: Wait for Vercel deployment
         run: |
-          echo "Waiting 2 minutes for Vercel deployment to complete..."
-          sleep 120
+          echo "Waiting 3 minutes for Vercel deployment to complete..."
+          sleep 180
 
       - name: Set deployment URL
         id: set-url
