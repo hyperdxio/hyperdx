@@ -98,3 +98,45 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         working-directory: ./smoke-tests/otel-collector
         run: bats .
+
+  stably-test-action:
+    name: Stably Test Runner
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for Vercel deployment
+        run: |
+          echo "Waiting 2 minutes for Vercel deployment to complete..."
+          sleep 120
+
+      - name: Set deployment URL
+        id: set-url
+        run: |
+          # For PR: use preview URL pattern
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+            # Clean branch name for URL (replace / with -)
+            CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
+            URL="https://hyperdx-v2-oss-app-git-${CLEAN_BRANCH}-hyperdx.vercel.app"
+          else
+            # For push to master: use production URL
+            URL="https://play.hyperdx.io"
+          fi
+          echo "Using URL: $URL"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Stably Runner Action
+        uses: stablyhq/stably-runner-action@v3
+        with:
+          test-suite-id: cmc548u5u0001la04q7y8ddj2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-key: ${{ secrets.STABLY_API_KEY }}
+          environment: PRODUCTION
+          variable-overrides: |
+            {
+              "SITE_URL": "${{ steps.set-url.outputs.url }}"
+            }
