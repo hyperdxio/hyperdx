@@ -15,7 +15,7 @@ export default (req: NextApiRequest, res: NextApiResponse) => {
     changeOrigin: true,
     // logger: console, // DEBUG
     pathRewrite: { '^/api': '' },
-    target: process.env.NEXT_PUBLIC_SERVER_URL || DEFAULT_SERVER_URL,
+    target: process.env.SERVER_URL || DEFAULT_SERVER_URL,
     autoRewrite: true,
     // ...(IS_DEV && {
     //   logger: console,
