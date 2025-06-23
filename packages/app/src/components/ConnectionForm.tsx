@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -11,7 +12,6 @@ import {
 } from '@/components/InputControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import {
-  Connection,
   useCreateConnection,
   useDeleteConnection,
   useUpdateConnection,
