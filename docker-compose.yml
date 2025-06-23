@@ -29,8 +29,9 @@ services:
     image: ${HDX_IMAGE_REPO}/${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
-      OPAMP_SERVER_URL: http://app:4320
+      OPAMP_SERVER_URL: 'http://app:${HYPERDX_OPAMP_PORT}'
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
@@ -57,6 +58,7 @@ services:
       MINER_API_URL: 'http://miner:5123'
       MONGO_URI: 'mongodb://db:27017/hyperdx'
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:${HYPERDX_API_PORT}
+      OPAMP_PORT: ${HYPERDX_OPAMP_PORT}
       OTEL_SERVICE_NAME: 'hdx-oss-api'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
       DEFAULT_CONNECTIONS:
@@ -68,7 +70,6 @@ services:
         ClickHouse","logSourceId":"Logs","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"default","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum","_id":"682586a8b1f81924e628e808","id":"682586a8b1f81924e628e808"},"connection":"Local
         ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","sessionSourceId":"Sessions"},{"from":{"databaseName":"default","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Sessions","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Local
         ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","metricSourceId":"Metrics"}]'
-      OPAMP_PORT: 4320
     networks:
       - internal
     depends_on:

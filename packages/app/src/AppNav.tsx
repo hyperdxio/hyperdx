@@ -853,13 +853,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             pointerEvents: 'none',
           }}
         >
-          <AppNavHelpMenu version={version} />
+          <AppNavHelpMenu
+            version={version}
+            onAddDataClick={openInstallInstructions}
+          />
           <AppNavUserMenu
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
+          {meData && meData.usageStatsEnabled && (
+            <img
+              referrerPolicy="no-referrer-when-downgrade"
+              src="https://static.scarf.sh/a.png?x-pxid=bbc99c42-7a75-4eee-9fb9-2b161fc4acd6"
+            />
+          )}
         </div>
       </div>
       <UserPreferencesModal

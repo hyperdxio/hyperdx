@@ -162,7 +162,13 @@ const useIsTeamHasNoData = () => {
   return Array.isArray(sources) && sources?.length > 0 ? false : true;
 };
 
-export const AppNavHelpMenu = ({ version }: { version?: string }) => {
+export const AppNavHelpMenu = ({
+  version,
+  onAddDataClick,
+}: {
+  version?: string;
+  onAddDataClick?: () => void;
+}) => {
   const { isCollapsed } = React.useContext(AppNavContext);
 
   const [
@@ -229,6 +235,12 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
               target="_blank"
             >
               Discord Community
+            </Menu.Item>
+            <Menu.Item
+              leftSection={<Icon name="lightbulb" />}
+              onClick={onAddDataClick}
+            >
+              Setup Instructions
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

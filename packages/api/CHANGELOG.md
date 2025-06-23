@@ -1,5 +1,120 @@
 # @hyperdx/api
 
+## 2.0.0
+
+### Minor Changes
+
+- 79fe30f: Queries depending on numeric aggregates now use the type's default value (e.g. 0) instead of null when dealing with non-numeric data.
+- 759da7a: Support multiple OTEL metric types in source configuration setup.
+
+### Patch Changes
+
+- c60b975: chore: bump node to v22.16.0
+- 50ce38f: Histogram metric query test cases
+- 9004826: fix: remove total number of webhook limit
+- 2e350e2: feat: implement logs > metrics correlation flow + introduce convertV1ChartConfigToV2
+- 321e24f: fix: alerting time range filtering bug
+- 9a9581b: Adds external API for alerts and dashboards
+- e5dfefb: Added test cases for the webhook and source routes.
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- f5e9a07: chore: bump node version to v22
+- 59ee6d2: bring usage stats up to date
+- 1674ab8: moved swagger to dependencies instead of devDependencies
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- d72d1d2: Add ingestion key authentication in OTel collector via OpAMP
+- b9f7d32: Refactored renderWith to simplify logic and ship more tests with the changes.
+- 293a2af: Adds openapidoc annotations for spec generation and swagger route for development
+- 92a4800: feat: move rrweb event fetching to the client instead of an api route
+- adc2a0b: fix: Ensure errors from proxy are shown to the user
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- 7f0b397: feat: queryChartConfig method + events chart ratio
+- 5db2767: Fixed CI linting and UI release task.
+- 000458d: chore: GA v2
+- 99b60d5: Fixed sum metric query to pass integration test case from v1.
+- 931d738: fix: bugs with showing non otel spans (ex. clickhouse opentelemetry span logs)
+- 184402d: fix: use quote for aliases for sql compatibility
+- cd0e4fd: fix: correct handling of gauge metrics in renderChartConfig
+- d63deed: fix: support otelcol opamp for aio build
+- b4b5f6b: style: remove unused routes/components + clickhouse utils (api)
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- d326610: feat: introduce RUN_SCHEDULED_TASKS_EXTERNALLY + enable in-app task
+- 96b8c50: Fix histogram query metric to support grouping and correct issues with value computation.
+- 414ff92: perf + fix: single clickhouse proxy middleware instance
+- Updated dependencies [50ce38f]
+- Updated dependencies [79fe30f]
+- Updated dependencies [e935bb6]
+- Updated dependencies [8acc725]
+- Updated dependencies [2e350e2]
+- Updated dependencies [321e24f]
+- Updated dependencies [092a292]
+- Updated dependencies [a6fd5e3]
+- Updated dependencies [2f626e1]
+- Updated dependencies [cfdd523]
+- Updated dependencies [9c5c239]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [a9dfa14]
+- Updated dependencies [fa7875c]
+- Updated dependencies [b16c8e1]
+- Updated dependencies [c50c42d]
+- Updated dependencies [86465a2]
+- Updated dependencies [e002c2f]
+- Updated dependencies [b51e39c]
+- Updated dependencies [759da7a]
+- Updated dependencies [b9f7d32]
+- Updated dependencies [92a4800]
+- Updated dependencies [eaa6bfa]
+- Updated dependencies [e80630c]
+- Updated dependencies [4865ce7]
+- Updated dependencies [29e8f37]
+- Updated dependencies [43a9ca1]
+- Updated dependencies [7f0b397]
+- Updated dependencies [bd9dc18]
+- Updated dependencies [5db2767]
+- Updated dependencies [414ff92]
+- Updated dependencies [000458d]
+- Updated dependencies [0cf5358]
+- Updated dependencies [99b60d5]
+- Updated dependencies [931d738]
+- Updated dependencies [57a6bc3]
+- Updated dependencies [184402d]
+- Updated dependencies [a762203]
+- Updated dependencies [cd0e4fd]
+- Updated dependencies [e7262d1]
+- Updated dependencies [321e24f]
+- Updated dependencies [96b8c50]
+- Updated dependencies [e884d85]
+- Updated dependencies [e5a210a]
+  - @hyperdx/common-utils@0.2.0
+
+## 2.0.0-beta.17
+
+### Patch Changes
+
+- c60b975: chore: bump node to v22.16.0
+- 9004826: fix: remove total number of webhook limit
+- 321e24f: fix: alerting time range filtering bug
+- fa7875c: feat: add summary and exponential histogram metrics to the source form and database storage
+- 59ee6d2: bring usage stats up to date
+- 86465a2: fix: map CLICKHOUSE_SERVER_ENDPOINT to otelcol ch exporter 'endpoint' field
+- d72d1d2: Add ingestion key authentication in OTel collector via OpAMP
+- 43a9ca1: adopt clickhouse-js for all client side queries
+- d63deed: fix: support otelcol opamp for aio build
+- e7262d1: feat: introduce all-one-one (auth vs noauth) multi-stage build
+- 96b8c50: Fix histogram query metric to support grouping and correct issues with value computation.
+- Updated dependencies [e935bb6]
+- Updated dependencies [321e24f]
+- Updated dependencies [7d2cfcf]
+- Updated dependencies [fa7875c]
+- Updated dependencies [86465a2]
+- Updated dependencies [b51e39c]
+- Updated dependencies [43a9ca1]
+- Updated dependencies [0cf5358]
+- Updated dependencies [a762203]
+- Updated dependencies [e7262d1]
+- Updated dependencies [321e24f]
+- Updated dependencies [96b8c50]
+  - @hyperdx/common-utils@0.2.0-beta.6
+
 ## 2.0.0-beta.16
 
 ### Patch Changes
