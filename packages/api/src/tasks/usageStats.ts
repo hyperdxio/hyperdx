@@ -127,7 +127,7 @@ async function getUsageStats() {
       ).limit(1),
       getClickhouseTableSize(),
     ]);
-    const clusterId = team[0]?._id;
+    const clusterId = team[0]?._id.toString();
     logger.info({
       message: 'track-hyperdx-oss-usage-stats',
       clusterId,

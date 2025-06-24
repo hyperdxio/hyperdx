@@ -45,12 +45,13 @@ COPY --from=app ./src ./packages/app/src
 COPY --from=app ./pages ./packages/app/pages
 COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
+COPY --from=app ./types ./packages/app/types
 
 ENV NEXT_TELEMETRY_DISABLED 1
-ENV NEXT_OUTPUT_STANDALONE false
+ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api @hyperdx/app --production
+RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 
 
 # prod ############################################################################################
@@ -66,21 +67,15 @@ RUN npm install -g concurrently@9.1.0
 
 USER node
 
-# Set up API
-WORKDIR /app/api
+# Set up API and App
+WORKDIR /app
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
 COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
-
-# Set up App
-WORKDIR /app/app
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/packages/app/public ./public
-COPY --chown=node:node --from=builder /app/packages/app/.next ./.next
-# COPY --chown=node:node --from=builder /app/packages/app/node_modules ./packages/app/node_modules
-COPY --from=builder /app/packages/app/next.config.js ./next.config.js
-COPY --from=builder /app/packages/app/package.json ./package.json
+COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packages/app
+COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
+COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
 
 # Set up start script
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
@@ -123,11 +118,10 @@ RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositori
 ENV NODE_ENV production
 
 # Set up App (copy from prod stage)
-COPY --from=prod /app/api /app/api
-COPY --from=prod /app/app /app/app
+COPY --from=prod /app /app
 COPY --from=hyperdx ./entry.local.base.sh /etc/local/entry.base.sh
 
-WORKDIR /app/app
+WORKDIR /app
 
 # Add hosts entry in entrypoint script instead of here
 

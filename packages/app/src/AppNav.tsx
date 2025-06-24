@@ -32,7 +32,7 @@ import {
 } from '@/dashboard';
 import { useUserPreferences } from '@/useUserPreferences';
 
-import { version } from '../package.json';
+import packageJson from '../package.json';
 
 import api from './api';
 import {
@@ -854,7 +854,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           }}
         >
           <AppNavHelpMenu
-            version={version}
+            version={packageJson.version}
             onAddDataClick={openInstallInstructions}
           />
           <AppNavUserMenu
