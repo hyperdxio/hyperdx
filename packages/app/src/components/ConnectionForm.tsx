@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
-import { InputControlled } from '@/components/InputControlled';
+import {
+  InputControlled,
+  PasswordInputControlled,
+} from '@/components/InputControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import {
-  Connection,
   useCreateConnection,
   useDeleteConnection,
   useUpdateConnection,
@@ -252,7 +255,7 @@ export function ConnectionForm({
           )}
           {(showUpdatePassword || isNew) && (
             <Flex align="center" gap="sm">
-              <InputControlled
+              <PasswordInputControlled
                 style={{ flexGrow: 1 }}
                 name="password"
                 control={control}

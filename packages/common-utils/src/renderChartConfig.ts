@@ -85,7 +85,7 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: `${s.aggFn}(${s.metricName})`,
+        alias: s.alias ?? `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
       })),
     };
   }
@@ -251,7 +251,6 @@ const fastifySQL = ({
 
     return parser.sqlify(ast);
   } catch (e) {
-    console.debug('[renderWhereExpression]feat: Failed to parse SQL AST', e);
     return rawSQL;
   }
 };
@@ -1105,14 +1104,18 @@ async function translateMetricChartConfig(
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
     // histograms are only valid for quantile selections
-    const { aggFn, level, ..._selectRest } = _select as {
+    const { aggFn, level, alias, ..._selectRest } = _select as {
       aggFn: string;
       level?: number;
+      alias?: string;
     };
 
     if (aggFn !== 'quantile' || level == null) {
       throw new Error('quantile must be specified for histogram metrics');
     }
+
+    // Use the alias from the select, defaulting to 'Value' for backwards compatibility
+    const valueAlias = alias || 'Value';
 
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
@@ -1246,13 +1249,13 @@ async function translateMetricChartConfig(
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS Value
+            END AS ${valueAlias}
           FROM points
           WHERE length(point) > 1 AND total > 0
           `,
         },
       ],
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, Value`,
+      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, ${valueAlias}`,
       from: {
         databaseName: '',
         tableName: 'metrics',

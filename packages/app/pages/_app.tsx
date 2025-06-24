@@ -3,6 +3,7 @@ import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
+import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
 import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryParamProvider } from 'use-query-params';
@@ -28,6 +29,11 @@ import '@mantine/dates/styles.css';
 import '@styles/globals.css';
 import '@styles/app.scss';
 import 'uplot/dist/uPlot.min.css';
+
+// Polyfill crypto.randomUUID for non-HTTPS environments
+if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
+  crypto.randomUUID = randomUUID;
+}
 
 enableMapSet();
 
@@ -101,21 +107,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <React.Fragment>
       <Head>
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"
-        />
         <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        ></link>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=0.75"

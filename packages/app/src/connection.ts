@@ -1,23 +1,26 @@
 import store from 'store2';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
-const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
-
-export type Connection = {
-  id: string;
-  name: string;
-  host: string;
-  username: string;
-  password: string;
-};
+export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
 function setLocalConnections(newConnections: Connection[]) {
+  // sessing sessionStorage doesn't send a storage event to the open tab, only
+  // another tab. Let's send one anyways for any listeners in other components
+  const storageEvent = new StorageEvent('storage', {
+    key: LOCAL_STORE_CONNECTIONS_KEY,
+    oldValue: store.session.get(LOCAL_STORE_CONNECTIONS_KEY),
+    newValue: JSON.stringify(newConnections),
+    storageArea: window.sessionStorage,
+    url: window.location.href,
+  });
   store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
+  window.dispatchEvent(storageEvent);
 }
 
 export function getLocalConnections(): Connection[] {
@@ -59,7 +62,7 @@ export function useCreateConnection() {
         const isValid = await testLocalConnection({
           host: connection.host,
           username: connection.username,
-          password: connection.password,
+          password: connection.password ?? '',
         });
 
         if (!isValid) {
@@ -68,12 +71,13 @@ export function useCreateConnection() {
           );
         }
 
-        const connections = getLocalConnections();
-        connections[0] = {
-          ...connection,
-          id: 'local',
-        };
-        setLocalConnections(connections);
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            id: 'local',
+          },
+        ]);
         return;
       }
 
@@ -102,12 +106,13 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const connections = getLocalConnections();
-        connections[0] = {
-          ...connection,
-          id: 'local',
-        };
-        setLocalConnections(connections);
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            id: 'local',
+          },
+        ]);
 
         return;
       }

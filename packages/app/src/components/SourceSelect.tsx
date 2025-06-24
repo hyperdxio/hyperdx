@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { UseControllerProps } from 'react-hook-form';
 
 import SelectControlled from '@/components/SelectControlled';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { useSources } from '@/source';
 
-export function SourceSelectControlled({
+function SourceSelectControlledComponent({
   size,
   onCreate,
   ...props
@@ -46,3 +46,5 @@ export function SourceSelectControlled({
     />
   );
 }
+
+export const SourceSelectControlled = memo(SourceSelectControlledComponent);
