@@ -98,3 +98,32 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         working-directory: ./smoke-tests/otel-collector
         run: bats .
+  app-smoke-test:
+    name: HyperDX App Smoke Test
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v4
+      - name: Waiting for vercel preview to be ready
+        uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
+        id: waitFor200
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          max_timeout: 180
+      - run: echo ${{steps.waitFor200.outputs.url}}
+
+      - name: Stably Runner Action
+        uses: stablyhq/stably-runner-action@v3
+        with:
+          test-suite-id: cmc548u5u0001la04q7y8ddj2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-key: ${{ secrets.STABLY_API_KEY }}
+          environment: PRODUCTION
+          variable-overrides: |
+            {
+              "SITE_URL": "${{ steps.waitFor200.outputs.url }}"
+            }
