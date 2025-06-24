@@ -1,6 +1,5 @@
 import { memo, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { CSVLink } from 'react-csv';
 import { Flex, Text } from '@mantine/core';
 import {
   flexRender,
@@ -13,28 +12,11 @@ import {
 import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { CsvExportButton } from './components/CsvExportButton';
+import { useCsvExport } from './hooks/useCsvExport';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
-
-export const generateCsvData = (
-  data: any[],
-  columns: {
-    dataKey: string;
-    displayName: string;
-    sortOrder?: 'asc' | 'desc';
-    numberFormat?: NumberFormat;
-    columnWidthPercent?: number;
-  }[],
-  groupColumnName?: string,
-) => {
-  return data.map(row => ({
-    ...(groupColumnName != null ? { [groupColumnName]: row.group } : {}),
-    ...Object.fromEntries(
-      columns.map(({ displayName, dataKey }) => [displayName, row[dataKey]]),
-    ),
-  }));
-};
 
 export const Table = ({
   data,
@@ -177,9 +159,14 @@ export const Table = ({
     [items, rowVirtualizer.options.scrollMargin, totalSize],
   );
 
-  const csvData = useMemo(() => {
-    return generateCsvData(data, columns, groupColumnName);
-  }, [data, columns, groupColumnName]);
+  const { csvData } = useCsvExport(
+    data,
+    columns.map(col => ({
+      dataKey: col.dataKey,
+      displayName: col.displayName,
+    })),
+    { groupColumnName },
+  );
 
   return (
     <div
@@ -257,18 +244,14 @@ export const Table = ({
                           )}
                           {headerIndex === headerGroup.headers.length - 1 && (
                             <div className="d-flex align-items-center">
-                              <CSVLink
+                              <CsvExportButton
                                 data={csvData}
-                                filename={`HyperDX_table_results`}
+                                filename="HyperDX_table_results"
+                                className="fs-8 text-muted-hover ms-2"
+                                title="Download table as CSV"
                               >
-                                <div
-                                  className="fs-8 text-muted-hover ms-2"
-                                  role="button"
-                                  title="Download table as CSV"
-                                >
-                                  <i className="bi bi-download" />
-                                </div>
-                              </CSVLink>
+                                <i className="bi bi-download" />
+                              </CsvExportButton>
                             </div>
                           )}
                         </Flex>
