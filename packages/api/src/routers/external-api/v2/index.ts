@@ -2,6 +2,7 @@ import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
 import alertsRouter from '@/routers/external-api/v2/alerts';
+import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
 import { Api400Error, Api403Error } from '@/utils/errors';
 import rateLimiter from '@/utils/rateLimiter';
@@ -28,6 +29,8 @@ router.get('/', validateUserAccessKey, (req, res, next) => {
 });
 
 router.use('/alerts', defaultRateLimiter, validateUserAccessKey, alertsRouter);
+
+router.use('/charts', defaultRateLimiter, validateUserAccessKey, chartsRouter);
 
 router.use(
   '/dashboards',

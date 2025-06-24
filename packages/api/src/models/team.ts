@@ -12,6 +12,8 @@ export interface ITeam {
   collectorAuthenticationEnforced: boolean;
 }
 
+export type TeamDocument = mongoose.HydratedDocument<ITeam>;
+
 export default mongoose.model<ITeam>(
   'Team',
   new Schema<ITeam>(
