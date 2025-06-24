@@ -1,0 +1,95 @@
+name: Post-Deployment Tests
+on:
+  repository_dispatch:
+    types:
+      - 'vercel.deployment.success'
+      - 'vercel.deployment.error'
+      - 'vercel.deployment.canceled'
+
+jobs:
+  stably-test-action:
+    name: Stably Test Runner
+    runs-on: ubuntu-latest
+    # Only run tests for successful deployments
+    if: github.event.action == 'vercel.deployment.success'
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Debug Event Information
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Action: ${{ github.event.action }}"
+          echo "Client Payload URL: ${{ github.event.client_payload.url }}"
+          echo "Client Payload Git SHA: ${{ github.event.client_payload.git.sha }}"
+          echo "Client Payload Environment: ${{ github.event.client_payload.deployment.environment }}"
+          echo "Full Payload:"
+          echo '${{ toJson(github.event.client_payload) }}'
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Checkout the exact commit that was deployed
+          ref: ${{ github.event.client_payload.git.sha }}
+
+      - name: Validate Deployment Success
+        run: |
+          # Double-check that this is a successful deployment
+          if [ "${{ github.event.action }}" != "vercel.deployment.success" ]; then
+            echo "ERROR: This job should only run on successful deployments"
+            echo "Received event: ${{ github.event.action }}"
+            exit 1
+          fi
+
+          # Validate we have a deployment URL
+          if [ -z "${{ github.event.client_payload.url }}" ]; then
+            echo "ERROR: No deployment URL found in payload"
+            exit 1
+          fi
+
+          echo "✅ Deployment validation passed"
+          echo "Event: ${{ github.event.action }}"
+          echo "URL: ${{ github.event.client_payload.url }}"
+
+      - name: Set deployment URL
+        id: set-url
+        run: |
+          URL="${{ github.event.client_payload.url }}"
+          echo "Using Vercel deployment URL: $URL"
+
+          # Validate URL format
+          if [[ ! "$URL" =~ ^https:// ]]; then
+            echo "ERROR: Invalid deployment URL format: $URL"
+            exit 1
+          fi
+
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Stably Runner Action
+        uses: stablyhq/stably-runner-action@v3
+        with:
+          test-suite-id: cmc548u5u0001la04q7y8ddj2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          api-key: ${{ secrets.STABLY_API_KEY }}
+          environment: PRODUCTION
+          variable-overrides: |
+            {
+              "SITE_URL": "${{ steps.set-url.outputs.url }}"
+            }
+
+  # Debug job for failed deployments
+  debug-deployment-failure:
+    name: Debug Failed Deployment
+    runs-on: ubuntu-latest
+    # Only run for failed/canceled deployments
+    if: |
+      github.event.action == 'vercel.deployment.error' || 
+      github.event.action == 'vercel.deployment.canceled'
+    steps:
+      - name: Log Deployment Failure
+        run: |
+          echo "❌ Vercel deployment failed or was canceled"
+          echo "Event: ${{ github.event.action }}"
+          echo "SHA: ${{ github.event.client_payload.git.sha }}"
+          echo "Environment: ${{ github.event.client_payload.deployment.environment }}"
+          echo "Not running Stably tests due to deployment failure"
