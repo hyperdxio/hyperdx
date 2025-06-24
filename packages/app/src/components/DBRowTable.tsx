@@ -3,7 +3,6 @@ import cx from 'classnames';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
-import { CSVLink } from 'react-csv';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -43,6 +42,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
@@ -60,9 +60,11 @@ import {
 } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import { CsvExportButton } from './CsvExportButton';
 import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
+
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
 
@@ -314,6 +316,14 @@ export const RawLogTable = memo(
     const logLevelColumn = useMemo(() => {
       return inferLogLevelColumn(dedupedRows);
     }, [dedupedRows]);
+
+    const { csvData, maxRows, isLimited } = useCsvExport(
+      dedupedRows,
+      displayedColumns.map(col => ({
+        dataKey: col,
+        displayName: columnNameMap?.[col] ?? col,
+      })),
+    );
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -671,6 +681,14 @@ export const RawLogTable = memo(
                                 <i className="bi bi-arrow-clockwise" />
                               </div>
                             )}
+                          <CsvExportButton
+                            data={csvData}
+                            filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                            className="fs-6 text-muted-hover ms-2"
+                            title={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                          >
+                            <i className="bi bi-download" />
+                          </CsvExportButton>
                           {onSettingsClick != null && (
                             <div
                               className="fs-8 text-muted-hover ms-2"
