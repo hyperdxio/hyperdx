@@ -22,6 +22,8 @@ export enum DisplayType {
   Markdown = 'markdown',
 }
 
+export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
+
 export const MetricTableSchema = z.object(
   Object.values(MetricsDataType).reduce(
     (acc, key) => ({
@@ -452,7 +454,7 @@ export type Tile = z.infer<typeof TileSchema>;
 
 export const DashboardSchema = z.object({
   id: z.string(),
-  name: z.string(),
+  name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -6,7 +6,12 @@ import { notifications } from '@mantine/notifications';
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
-import { useCreateSource, useSources, useUpdateSource } from '@/source';
+import {
+  useCreateSource,
+  useDeleteSource,
+  useSources,
+  useUpdateSource,
+} from '@/source';
 
 import { TableSourceForm } from './SourceForm';
 
@@ -40,6 +45,161 @@ export default function OnboardingModal({
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
   const updateSourceMutation = useUpdateSource();
+  const deleteSourceMutation = useDeleteSource();
+
+  const handleDemoServerClick = useCallback(async () => {
+    try {
+      if (sources) {
+        for (const source of sources) {
+          // Clean out old demo sources. All new ones use the otel_v2 database
+          if (
+            source.connection === 'local' &&
+            source.name.startsWith('Demo') &&
+            source.from.databaseName !== 'otel_v2'
+          ) {
+            await deleteSourceMutation.mutateAsync({
+              id: source.id,
+            });
+          }
+        }
+      }
+      await createConnectionMutation.mutateAsync({
+        connection: {
+          id: 'local',
+          name: 'Demo',
+          host: 'https://sql-clickhouse.clickhouse.com',
+          username: 'otel_demo',
+          password: '',
+        },
+      });
+      const logSource = await createSourceMutation.mutateAsync({
+        source: {
+          kind: SourceKind.Log,
+          name: 'Demo Logs',
+          connection: 'local',
+          from: {
+            databaseName: 'otel_v2',
+            tableName: 'otel_logs',
+          },
+          timestampValueExpression: 'TimestampTime',
+          defaultTableSelectExpression:
+            'Timestamp, ServiceName, SeverityText, Body',
+          serviceNameExpression: 'ServiceName',
+          severityTextExpression: 'SeverityText',
+          eventAttributesExpression: 'LogAttributes',
+          resourceAttributesExpression: 'ResourceAttributes',
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          implicitColumnExpression: 'Body',
+          displayedTimestampValueExpression: 'Timestamp',
+        },
+      });
+      const traceSource = await createSourceMutation.mutateAsync({
+        source: {
+          kind: SourceKind.Trace,
+          name: 'Demo Traces',
+          connection: 'local',
+          from: {
+            databaseName: 'otel_v2',
+            tableName: 'otel_traces',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression:
+            'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
+          serviceNameExpression: 'ServiceName',
+          eventAttributesExpression: 'SpanAttributes',
+          resourceAttributesExpression: 'ResourceAttributes',
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          implicitColumnExpression: 'SpanName',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          parentSpanIdExpression: 'ParentSpanId',
+          spanKindExpression: 'SpanKind',
+          spanNameExpression: 'SpanName',
+          logSourceId: 'l-758211293',
+          statusCodeExpression: 'StatusCode',
+          statusMessageExpression: 'StatusMessage',
+          spanEventsValueExpression: 'Events',
+        },
+      });
+      const metricsSource = await createSourceMutation.mutateAsync({
+        source: {
+          kind: SourceKind.Metric,
+          name: 'Demo Metrics',
+          connection: 'local',
+          from: {
+            databaseName: 'otel_v2',
+            tableName: '',
+          },
+          timestampValueExpression: 'TimeUnix',
+          serviceNameExpression: 'ServiceName',
+          metricTables: {
+            [MetricsDataType.Gauge]: 'otel_metrics_gauge',
+            [MetricsDataType.Histogram]: 'otel_metrics_histogram',
+            [MetricsDataType.Sum]: 'otel_metrics_sum',
+            [MetricsDataType.Summary]: 'otel_metrics_summary',
+            [MetricsDataType.ExponentialHistogram]:
+              'otel_metrics_exponential_histogram',
+          },
+          resourceAttributesExpression: 'ResourceAttributes',
+          logSourceId: logSource.id,
+        },
+      });
+      const sessionSource = await createSourceMutation.mutateAsync({
+        source: {
+          kind: SourceKind.Session,
+          name: 'Demo Sessions',
+          connection: 'local',
+          from: {
+            databaseName: 'otel_v2',
+            tableName: 'hyperdx_sessions',
+          },
+          timestampValueExpression: 'TimestampTime',
+          defaultTableSelectExpression: 'Timestamp, ServiceName, Body',
+          serviceNameExpression: 'ServiceName',
+          severityTextExpression: 'SeverityText',
+          eventAttributesExpression: 'LogAttributes',
+          resourceAttributesExpression: 'ResourceAttributes',
+          traceSourceId: traceSource.id,
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          implicitColumnExpression: 'Body',
+        },
+      });
+      await Promise.all([
+        updateSourceMutation.mutateAsync({
+          source: {
+            ...logSource,
+            sessionSourceId: sessionSource.id,
+            traceSourceId: traceSource.id,
+            metricSourceId: metricsSource.id,
+          },
+        }),
+        updateSourceMutation.mutateAsync({
+          source: {
+            ...traceSource,
+            logSourceId: logSource.id,
+            sessionSourceId: sessionSource.id,
+            metricSourceId: metricsSource.id,
+          },
+        }),
+      ]);
+      notifications.show({
+        title: 'Success',
+        message: 'Connected to HyperDX demo server.',
+      });
+      setStep(undefined);
+    } catch (err) {
+      console.error(err);
+      notifications.show({
+        color: 'red',
+        title: 'Error',
+        message:
+          'Could not connect to the HyperDX demo server, please try again later.',
+      });
+    }
+  }, [createSourceMutation, createConnectionMutation, updateSourceMutation]);
 
   return (
     <Modal
@@ -89,143 +249,7 @@ export default function OnboardingModal({
             variant="outline"
             w="100%"
             color="gray.4"
-            onClick={async () => {
-              try {
-                await createConnectionMutation.mutateAsync({
-                  connection: {
-                    id: 'local',
-                    name: 'Demo',
-                    host: 'https://sql-clickhouse.clickhouse.com',
-                    username: 'otel_demo',
-                    password: '',
-                  },
-                });
-                const metricsSource = await createSourceMutation.mutateAsync({
-                  source: {
-                    kind: SourceKind.Metric,
-                    name: 'Demo Metrics',
-                    connection: 'local',
-                    from: {
-                      databaseName: 'otel_v2',
-                      tableName: '',
-                    },
-                    timestampValueExpression: 'TimeUnix',
-                    serviceNameExpression: 'ServiceName',
-                    metricTables: {
-                      [MetricsDataType.Gauge]: 'otel_metrics_gauge',
-                      [MetricsDataType.Histogram]: 'otel_metrics_histogram',
-                      [MetricsDataType.Sum]: 'otel_metrics_sum',
-                      [MetricsDataType.Summary]: 'otel_metrics_summary',
-                      [MetricsDataType.ExponentialHistogram]:
-                        'otel_metrics_exponential_histogram',
-                    },
-                    resourceAttributesExpression: 'ResourceAttributes',
-                  },
-                });
-                const traceSource = await createSourceMutation.mutateAsync({
-                  source: {
-                    kind: SourceKind.Trace,
-                    name: 'Demo Traces',
-                    connection: 'local',
-                    from: {
-                      databaseName: 'otel_v2',
-                      tableName: 'otel_traces',
-                    },
-                    timestampValueExpression: 'Timestamp',
-                    defaultTableSelectExpression:
-                      'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
-                    serviceNameExpression: 'ServiceName',
-                    eventAttributesExpression: 'SpanAttributes',
-                    resourceAttributesExpression: 'ResourceAttributes',
-                    traceIdExpression: 'TraceId',
-                    spanIdExpression: 'SpanId',
-                    implicitColumnExpression: 'SpanName',
-                    durationExpression: 'Duration',
-                    durationPrecision: 9,
-                    parentSpanIdExpression: 'ParentSpanId',
-                    spanKindExpression: 'SpanKind',
-                    spanNameExpression: 'SpanName',
-                    logSourceId: 'l-758211293',
-                    statusCodeExpression: 'StatusCode',
-                    statusMessageExpression: 'StatusMessage',
-                    spanEventsValueExpression: 'Events',
-                    metricSourceId: metricsSource.id,
-                  },
-                });
-                const logSource = await createSourceMutation.mutateAsync({
-                  source: {
-                    kind: SourceKind.Log,
-                    name: 'Demo Logs',
-                    connection: 'local',
-                    from: {
-                      databaseName: 'otel_v2',
-                      tableName: 'otel_logs',
-                    },
-                    timestampValueExpression: 'TimestampTime',
-                    defaultTableSelectExpression:
-                      'Timestamp, ServiceName, SeverityText, Body',
-                    serviceNameExpression: 'ServiceName',
-                    severityTextExpression: 'SeverityText',
-                    eventAttributesExpression: 'LogAttributes',
-                    resourceAttributesExpression: 'ResourceAttributes',
-                    traceSourceId: traceSource.id,
-                    traceIdExpression: 'TraceId',
-                    spanIdExpression: 'SpanId',
-                    implicitColumnExpression: 'Body',
-                    metricSourceId: metricsSource.id,
-                    displayedTimestampValueExpression: 'Timestamp',
-                  },
-                });
-                await updateSourceMutation.mutateAsync({
-                  source: {
-                    ...metricsSource,
-                    logSourceId: logSource.id,
-                  },
-                });
-                const sessionSource = await createSourceMutation.mutateAsync({
-                  source: {
-                    kind: SourceKind.Session,
-                    name: 'Demo Sessions',
-                    connection: 'local',
-                    from: {
-                      databaseName: 'otel_v2',
-                      tableName: 'hyperdx_sessions',
-                    },
-                    timestampValueExpression: 'TimestampTime',
-                    defaultTableSelectExpression:
-                      'Timestamp, ServiceName, Body',
-                    serviceNameExpression: 'ServiceName',
-                    severityTextExpression: 'SeverityText',
-                    eventAttributesExpression: 'LogAttributes',
-                    resourceAttributesExpression: 'ResourceAttributes',
-                    traceSourceId: traceSource.id,
-                    traceIdExpression: 'TraceId',
-                    spanIdExpression: 'SpanId',
-                    implicitColumnExpression: 'Body',
-                  },
-                });
-                await updateSourceMutation.mutateAsync({
-                  source: {
-                    ...traceSource,
-                    logSourceId: logSource.id,
-                    sessionSourceId: sessionSource.id,
-                  },
-                });
-                notifications.show({
-                  title: 'Success',
-                  message: 'Connected to HyperDX demo server.',
-                });
-                setStep(undefined);
-              } catch (err) {
-                console.error(err);
-                notifications.show({
-                  color: 'red',
-                  title: 'Error',
-                  message:
-                    'Could not connect to the HyperDX demo server, please try again later.',
-                });
-              }
-            }}
+            onClick={handleDemoServerClick}
           >
             Connect to Demo Server
           </Button>

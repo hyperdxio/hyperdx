@@ -1,7 +1,7 @@
 {
   "name": "hyperdx",
   "private": true,
-  "version": "2-beta",
+  "version": "2.0.0",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -47,5 +47,9 @@
       "prettier --write --ignore-unknown"
     ]
   },
-  "packageManager": "yarn@4.5.1"
+  "packageManager": "yarn@4.5.1",
+  "resolutions": {
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.1"
+  }
 }

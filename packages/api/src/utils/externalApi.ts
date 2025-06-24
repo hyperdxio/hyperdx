@@ -21,98 +21,118 @@ export const translateExternalSeriesToInternalSeries = (
   const {
     type,
     dataSource,
-    aggFn,
-    field,
-    fields,
     where,
-    groupBy,
-    sortOrder,
-    content,
-    numberFormat,
+    whereLanguage,
+    metricName,
     metricDataType,
+    ...rest
   } = s;
 
+  // Determine common properties first
   const table = dataSource === 'metrics' ? 'metrics' : 'logs';
+  const commonWhere = where ?? '';
+  const commonWhereLanguage = whereLanguage ?? 'lucene';
 
-  if (type === 'time') {
-    if (aggFn == null) {
-      throw new Error('aggFn must be set for time chart');
+  switch (type) {
+    case 'time': {
+      const { aggFn, level, field, groupBy, numberFormat } = rest;
+      if (aggFn == null) {
+        throw new Error('aggFn must be set for time chart');
+      }
+      const series: z.infer<typeof timeChartSeriesSchema> = {
+        type: 'time',
+        table,
+        aggFn,
+        level,
+        where: commonWhere,
+        whereLanguage: commonWhereLanguage,
+        groupBy: groupBy ?? [],
+        field: field ?? undefined,
+        numberFormat: numberFormat ?? undefined,
+        metricDataType: metricDataType ?? undefined,
+        metricName: metricName ?? undefined,
+      };
+      return series;
     }
-
-    const series: z.infer<typeof timeChartSeriesSchema> = {
-      type: 'time',
-      table,
-      aggFn,
-      where: where ?? '',
-      groupBy: groupBy ?? [],
-      ...(field ? { field } : {}),
-      ...(numberFormat ? { numberFormat } : {}),
-      ...(metricDataType ? { metricDataType } : {}),
-    };
-
-    return series;
-  } else if (type === 'table') {
-    if (aggFn == null) {
-      throw new Error('aggFn must be set for table chart');
+    case 'table': {
+      const { aggFn, level, field, groupBy, sortOrder, numberFormat } = rest;
+      if (aggFn == null) {
+        throw new Error('aggFn must be set for table chart');
+      }
+      const series: z.infer<typeof tableChartSeriesSchema> = {
+        type: 'table',
+        table,
+        aggFn,
+        level,
+        where: commonWhere,
+        whereLanguage: commonWhereLanguage,
+        groupBy: groupBy ?? [],
+        sortOrder: sortOrder ?? 'desc',
+        field: field ?? undefined,
+        numberFormat: numberFormat ?? undefined,
+        metricDataType: metricDataType ?? undefined,
+        metricName: metricName ?? undefined,
+      };
+      return series;
     }
-
-    const series: z.infer<typeof tableChartSeriesSchema> = {
-      type: 'table',
-      table,
-      aggFn,
-      where: where ?? '',
-      groupBy: groupBy ?? [],
-      sortOrder: sortOrder ?? 'desc',
-      ...(field ? { field } : {}),
-      ...(numberFormat ? { numberFormat } : {}),
-      ...(metricDataType ? { metricDataType } : {}),
-    };
-
-    return series;
-  } else if (type === 'number') {
-    if (aggFn == null) {
-      throw new Error('aggFn must be set for number chart');
+    case 'number': {
+      const { aggFn, level, field, numberFormat } = rest;
+      if (aggFn == null) {
+        throw new Error('aggFn must be set for number chart');
+      }
+      const series: z.infer<typeof numberChartSeriesSchema> = {
+        type: 'number',
+        table,
+        aggFn,
+        level,
+        where: commonWhere,
+        whereLanguage: commonWhereLanguage,
+        field: field ?? undefined,
+        numberFormat: numberFormat ?? undefined,
+        metricDataType: metricDataType ?? undefined,
+        metricName: metricName ?? undefined,
+      };
+      return series;
     }
-
-    const series: z.infer<typeof numberChartSeriesSchema> = {
-      type: 'number',
-      table,
-      aggFn,
-      where: where ?? '',
-      ...(field ? { field } : {}),
-      ...(numberFormat ? { numberFormat } : {}),
-      ...(metricDataType ? { metricDataType } : {}),
-    };
-
-    return series;
-  } else if (type === 'histogram') {
-    const series: z.infer<typeof histogramChartSeriesSchema> = {
-      type: 'histogram',
-      table,
-      where: where ?? '',
-      ...(field ? { field } : {}),
-      ...(metricDataType ? { metricDataType } : {}),
-    };
-
-    return series;
-  } else if (type === 'search') {
-    const series: z.infer<typeof searchChartSeriesSchema> = {
-      type: 'search',
-      fields: fields ?? [],
-      where: where ?? '',
-    };
-
-    return series;
-  } else if (type === 'markdown') {
-    const series: z.infer<typeof markdownChartSeriesSchema> = {
-      type: 'markdown',
-      content: content ?? '',
-    };
-
-    return series;
+    case 'histogram': {
+      const { aggFn, level, field } = rest;
+      const series: z.infer<typeof histogramChartSeriesSchema> = {
+        type: 'histogram',
+        table,
+        level,
+        aggFn,
+        where: commonWhere,
+        whereLanguage: commonWhereLanguage,
+        field: field ?? undefined,
+        metricDataType: metricDataType ?? undefined,
+        metricName: metricName ?? undefined,
+      };
+      return series;
+    }
+    case 'search': {
+      const { fields } = rest;
+      const series: z.infer<typeof searchChartSeriesSchema> = {
+        type: 'search',
+        fields: fields ?? [],
+        where: commonWhere,
+        whereLanguage: commonWhereLanguage,
+      };
+      return series;
+    }
+    case 'markdown': {
+      const { content } = rest;
+      const series: z.infer<typeof markdownChartSeriesSchema> = {
+        type: 'markdown',
+        content: content ?? '',
+      };
+      return series;
+    }
+    default: {
+      // Ensure exhaustive check at compile time
+      const _exhaustiveCheck: never = type;
+      throw new Error(`Invalid chart type: ${_exhaustiveCheck}`);
+    }
   }
-
-  throw new Error(`Invalid chart type ${type}`);
 };
 
 export const translateExternalChartToInternalChart = (
@@ -148,6 +168,7 @@ const translateChartDocumentToExternalChart = (
         type,
         table,
         aggFn,
+        level,
         field,
         where,
         groupBy,
@@ -160,6 +181,7 @@ const translateChartDocumentToExternalChart = (
         type,
         dataSource: table === 'metrics' ? 'metrics' : 'events',
         aggFn,
+        level,
         field,
         where,
         groupBy,

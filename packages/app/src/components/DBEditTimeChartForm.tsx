@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Control,
   Controller,
@@ -106,7 +106,7 @@ const NumberFormatInputControlled = ({
   );
 };
 
-function ChartSeriesEditor({
+function ChartSeriesEditorComponent({
   control,
   databaseName,
   dateRange,
@@ -124,9 +124,9 @@ function ChartSeriesEditor({
   databaseName: string;
   dateRange?: DateRange['dateRange'];
   connectionId?: string;
-  index?: number;
+  index: number;
   namePrefix: string;
-  onRemoveSeries: () => void;
+  onRemoveSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
@@ -168,7 +168,7 @@ function ChartSeriesEditor({
                 variant="subtle"
                 color="gray"
                 size="xs"
-                onClick={() => onRemoveSeries()}
+                onClick={() => onRemoveSeries(index)}
               >
                 <i className="bi bi-trash me-2" />
                 Remove Series
@@ -286,6 +286,7 @@ function ChartSeriesEditor({
     </>
   );
 }
+const ChartSeriesEditor = memo(ChartSeriesEditorComponent);
 
 // Autocomplete can focus on column/map keys
 
@@ -337,7 +338,11 @@ export default function EditTimeChartForm({
       resolver: zodResolver(zSavedChartConfig),
     });
 
-  const { fields, append, remove } = useFieldArray({
+  const {
+    fields,
+    append,
+    remove: removeSeries,
+  } = useFieldArray({
     control: control as Control<SavedChartConfigWithSelectArray>,
     name: 'select',
   });
@@ -604,7 +609,7 @@ export default function EditTimeChartForm({
                   index={index}
                   key={field.id}
                   namePrefix={`select.${index}.`}
-                  onRemoveSeries={() => remove(index)}
+                  onRemoveSeries={removeSeries}
                   onSubmit={onSubmit}
                   setValue={setValue}
                   connectionId={tableSource?.connection}
