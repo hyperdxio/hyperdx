@@ -1,7 +1,7 @@
 name: Release Nightly
 on:
   push:
-    branches: [aaron/docker-build-fix]
+    branches: [main]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,10 +18,10 @@ jobs:
       fail-fast: true
       matrix:
         release:
-          - build-all-in-one-nightly
-          - build-app-nightly
-          - build-local-nightly
-          - build-otel-collector-nightly
+          - release-all-in-one-nightly
+          - release-app-nightly
+          - release-local-nightly
+          - release-otel-collector-nightly
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
