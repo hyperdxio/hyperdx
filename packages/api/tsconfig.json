@@ -4,6 +4,7 @@
     "paths": {
       "@/*": ["./*"]
     },
+    "rootDir": ".",
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
     "esModuleInterop": true,

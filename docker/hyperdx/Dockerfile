@@ -13,8 +13,6 @@ ARG OTEL_COLLECTOR_VERSION=0.126.0
 ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.126.0
 
 # base #############################################################################################
-# == Clickhouse/Base Image ==
-FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS clickhouse_base
 # == Otel Collector Image ==
 FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
 FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
@@ -51,8 +49,6 @@ ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
-RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
-
 
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
@@ -69,10 +65,7 @@ USER node
 
 # Set up API and App
 WORKDIR /app
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
-COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
-COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
+COPY --chown=node:node --from=builder /app/packages/api/dist ./packages/api
 COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packages/app
 COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
 COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
@@ -82,13 +75,12 @@ COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one base ############################################################################################
-FROM scratch AS all-in-one-base
+FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base 
 
 ARG CODE_VERSION
 
 ENV CODE_VERSION=$CODE_VERSION
-# Copy from clickhouse and otel collector bases
-COPY --from=clickhouse_base / /
+# Copy from otel collector bases
 COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
 COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
 
@@ -97,6 +89,9 @@ COPY --from=node_base --link /usr/local/bin /usr/local/bin
 COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
+
+# Install libs used for the start script
+RUN npm install -g concurrently@9.1.0
 
 # Set up Clickhouse
 COPY --from=clickhouse ./local/*.xml /etc/clickhouse-server
