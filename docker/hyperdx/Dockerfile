@@ -51,6 +51,34 @@ ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 ENV NX_DAEMON=false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
 
+# local mode builder image ############################################################################################
+FROM node_base AS local-builder
+
+WORKDIR /app
+
+COPY .yarn ./.yarn
+COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
+COPY ./packages/common-utils ./packages/common-utils
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.test.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
+
+# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
+RUN apk add --no-cache libc6-compat
+
+RUN yarn install --mode=skip-build && yarn cache clean
+
+COPY --from=app ./src ./packages/app/src
+COPY --from=app ./pages ./packages/app/pages
+COPY --from=app ./public ./packages/app/public
+COPY --from=app ./styles ./packages/app/styles
+COPY --from=app ./types ./packages/app/types
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_OUTPUT_STANDALONE=true
+ENV NEXT_PUBLIC_IS_LOCAL_MODE=true
+ENV NX_DAEMON=false
+RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/app
+
+
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
 
@@ -124,13 +152,33 @@ WORKDIR /app
 # Expose ports
 EXPOSE 8080 4317 4318 13133 8123 9000
 
-# all-in-one no auth ############################################################################################
-FROM all-in-one-base AS all-in-one-noauth
-COPY --from=hyperdx ./entry.local.noauth.sh /etc/local/entry.sh
-ENTRYPOINT ["sh", "/etc/local/entry.sh"]
+
+# Local image ############################################################################################
+FROM node:${NODE_VERSION}-alpine AS local
+
+ARG CODE_VERSION
+
+ENV CODE_VERSION=$CODE_VERSION
+ENV NODE_ENV=production
+
+# Install libs used for the start script
+RUN npm install -g concurrently@9.1.0
+
+USER node
+
+# Set up API and App
+WORKDIR /app
+COPY --chown=node:node --from=local-builder /app/packages/app/.next/standalone ./packages/app
+COPY --chown=node:node --from=local-builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
+COPY --chown=node:node --from=local-builder /app/packages/app/public ./packages/app/packages/app/public
+
+WORKDIR /app/packages/app/packages/app
+ENV HOSTNAME='0.0.0.0' 
+ENV PORT=8080
+ENTRYPOINT ["node", "server.js"]
+
 
 # all-in-one with auth ############################################################################################
 FROM all-in-one-base AS all-in-one-auth
 COPY --from=hyperdx ./entry.local.auth.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
-

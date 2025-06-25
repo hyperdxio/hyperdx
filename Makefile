@@ -89,7 +89,7 @@ build-local:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
-		--target all-in-one-noauth
+		--target local
 
 .PHONY: build-all-in-one
 build-all-in-one:
@@ -139,7 +139,7 @@ build-local-nightly:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target all-in-one-noauth
+		--target local
 
 .PHONY: build-all-in-one-nightly
 build-all-in-one-nightly:
@@ -179,7 +179,7 @@ release-local:
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
-		--target all-in-one-noauth \
+		--target local \
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
@@ -252,7 +252,7 @@ release-local-nightly:
 		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-		--target all-in-one-noauth \
+		--target local \
 		--push \
    	--cache-from=type=gha \
     --cache-to=type=gha,mode=max
