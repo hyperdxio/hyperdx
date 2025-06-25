@@ -24,15 +24,20 @@ export enum DisplayType {
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
 
-export const MetricTableSchema = z.object(
-  Object.values(MetricsDataType).reduce(
-    (acc, key) => ({
-      ...acc,
-      [key]: z.string(),
-    }),
-    {} as Record<MetricsDataType, z.ZodString>,
-  ),
-);
+export const MetricTableSchema = z
+  .object(
+    Object.values(MetricsDataType).reduce(
+      (acc, key) => ({
+        ...acc,
+        [key]: z.string().optional(),
+      }),
+      {} as Record<MetricsDataType, z.ZodString>,
+    ),
+  )
+  .refine(
+    tables => Object.values(tables).some(table => table && table.length > 0),
+    { message: 'At least one metric table must be specified' },
+  );
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 
@@ -481,54 +486,176 @@ export enum SourceKind {
   Metric = 'metric',
 }
 
-export const SourceSchema = z.object({
-  from: z.object({
-    databaseName: z.string(),
-    tableName: z.string(),
-  }),
-  timestampValueExpression: z.string(),
-  connection: z.string(),
+// --------------------------
+// TABLE SOURCE FORM VALIDATION
+// --------------------------
 
-  // Common
-  kind: z.nativeEnum(SourceKind),
+// Base schema with fields common to all source types
+const SourceBaseSchema = z.object({
   id: z.string(),
-  name: z.string(),
-  displayedTimestampValueExpression: z.string().optional(),
-  implicitColumnExpression: z.string().optional(),
-  serviceNameExpression: z.string().optional(),
-  bodyExpression: z.string().optional(),
-  tableFilterExpression: z.string().optional(),
-  eventAttributesExpression: z.string().optional(),
-  resourceAttributesExpression: z.string().optional(),
-  defaultTableSelectExpression: z.string().optional(),
-
-  // Logs
-  uniqueRowIdExpression: z.string().optional(),
-  severityTextExpression: z.string().optional(),
-  traceSourceId: z.string().optional(),
-
-  // Traces & Logs
-  traceIdExpression: z.string().optional(),
-  spanIdExpression: z.string().optional(),
-
-  // Sessions
-  sessionSourceId: z.string().optional(),
-
-  // Traces
-  durationExpression: z.string().optional(),
-  durationPrecision: z.number().min(0).max(9).optional(),
-  parentSpanIdExpression: z.string().optional(),
-  spanNameExpression: z.string().optional(),
-  spanEventsValueExpression: z.string().optional(),
-
-  spanKindExpression: z.string().optional(),
-  statusCodeExpression: z.string().optional(),
-  statusMessageExpression: z.string().optional(),
-  logSourceId: z.string().optional().nullable(),
-
-  // OTEL Metrics
-  metricTables: MetricTableSchema.optional(),
-  metricSourceId: z.string().optional(),
+  name: z.string().min(1, 'Name is required'),
+  kind: z.nativeEnum(SourceKind),
+  connection: z.string().min(1, 'Server Connection is required'),
+  from: z.object({
+    databaseName: z.string().min(1, 'Database is required'),
+    tableName: z.string().min(1, 'Table is required'),
+  }),
+  timestampValueExpression: z.string().min(1, 'Timestamp Column is required'),
 });
 
-export type TSource = z.infer<typeof SourceSchema>;
+// Log source form schema
+const LogSourceAugmentation = {
+  kind: z.literal(SourceKind.Log),
+  defaultTableSelectExpression: z.string({
+    message: 'Default Table Select Expression is required',
+  }),
+
+  // Optional fields for logs
+  serviceNameExpression: z.string().optional(),
+  severityTextExpression: z.string().optional(),
+  bodyExpression: z.string().optional(),
+  eventAttributesExpression: z.string().optional(),
+  resourceAttributesExpression: z.string().optional(),
+  displayedTimestampValueExpression: z.string().optional(),
+  metricSourceId: z.string().optional(),
+  traceSourceId: z.string().optional(),
+  traceIdExpression: z.string().optional(),
+  spanIdExpression: z.string().optional(),
+  implicitColumnExpression: z.string().optional(),
+  uniqueRowIdExpression: z.string().optional(),
+  tableFilterExpression: z.string().optional(),
+};
+
+// Trace source form schema
+const TraceSourceAugmentation = {
+  kind: z.literal(SourceKind.Trace),
+  defaultTableSelectExpression: z.string().optional(),
+
+  // Required fields for traces
+  durationExpression: z.string().min(1, 'Duration Expression is required'),
+  durationPrecision: z.number().min(0).max(9).default(3),
+  traceIdExpression: z.string().min(1, 'Trace ID Expression is required'),
+  spanIdExpression: z.string().min(1, 'Span ID Expression is required'),
+  parentSpanIdExpression: z
+    .string()
+    .min(1, 'Parent span ID expression is required'),
+  spanNameExpression: z.string().min(1, 'Span Name Expression is required'),
+  spanKindExpression: z.string().min(1, 'Span Kind Expression is required'),
+
+  // Optional fields for traces
+  logSourceId: z.string().optional().nullable(),
+  sessionSourceId: z.string().optional(),
+  metricSourceId: z.string().optional(),
+  statusCodeExpression: z.string().optional(),
+  statusMessageExpression: z.string().optional(),
+  serviceNameExpression: z.string().optional(),
+  resourceAttributesExpression: z.string().optional(),
+  eventAttributesExpression: z.string().optional(),
+  spanEventsValueExpression: z.string().optional(),
+  implicitColumnExpression: z.string().optional(),
+};
+
+// Session source form schema
+const SessionSourceAugmentation = {
+  kind: z.literal(SourceKind.Session),
+
+  // Required fields for sessions
+  eventAttributesExpression: z
+    .string()
+    .min(1, 'Log Attributes Expression is required'),
+  resourceAttributesExpression: z
+    .string()
+    .min(1, 'Resource Attributes Expression is required'),
+  traceSourceId: z
+    .string({ message: 'Correlated Trace Source is required' })
+    .min(1, 'Correlated Trace Source is required'),
+
+  // Optional fields for sessions
+  implicitColumnExpression: z.string().optional(),
+};
+
+// Metric source form schema
+const MetricSourceAugmentation = {
+  kind: z.literal(SourceKind.Metric),
+  // override from SourceBaseSchema
+  from: z.object({
+    databaseName: z.string().min(1, 'Database is required'),
+    tableName: z.string(),
+  }),
+
+  // Metric tables - at least one should be provided
+  metricTables: MetricTableSchema,
+  resourceAttributesExpression: z
+    .string()
+    .min(1, 'Resource Attributes is required'),
+
+  // Optional fields for metrics
+  logSourceId: z.string().optional(),
+};
+
+// Union of all source form schemas for validation
+export const SourceSchema = z.discriminatedUnion('kind', [
+  SourceBaseSchema.extend(LogSourceAugmentation),
+  SourceBaseSchema.extend(TraceSourceAugmentation),
+  SourceBaseSchema.extend(SessionSourceAugmentation),
+  SourceBaseSchema.extend(MetricSourceAugmentation),
+]);
+export type TSourceUnion = z.infer<typeof SourceSchema>;
+
+// This function exists to perform schema validation with omission of a certain
+// value. It is not possible to do on the discriminatedUnion directly
+export function sourceSchemaWithout(
+  omissions: { [k in keyof z.infer<typeof SourceBaseSchema>]?: true } = {},
+) {
+  // TODO: Make these types work better if possible
+  return z.discriminatedUnion('kind', [
+    SourceBaseSchema.omit(omissions).extend(LogSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(TraceSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(SessionSourceAugmentation),
+    SourceBaseSchema.omit(omissions).extend(MetricSourceAugmentation),
+  ]);
+}
+
+// Helper types for better union flattening
+type AllKeys<T> = T extends any ? keyof T : never;
+// This is Claude Opus's explanation of this type magic to extract the required
+// parameters:
+//
+// 1. [K in keyof T]-?:
+//   Maps over all keys in T. The -? removes the optional modifier, making all
+//   properties required in this mapped type
+// 2. {} extends Pick<T, K> ? never : K
+//   Pick<T, K> creates a type with just property K from T.
+//   {} extends Pick<T, K> checks if an empty object can satisfy the picked property.
+//   If the property is optional, {} can extend it (returns never)
+//   If the property is required, {} cannot extend it (returns K)
+// 3. [keyof T]
+//    Indexes into the mapped type to get the union of all non-never values
+type NonOptionalKeysPresentInEveryUnionBranch<T> = {
+  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
+}[keyof T];
+
+// Helper to check if a key is required in ALL branches of the union
+type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
+  ? K extends NonOptionalKeysPresentInEveryUnionBranch<T>
+    ? true
+    : false
+  : never;
+
+// This type gathers the Required Keys across the discriminated union TSourceUnion
+// and keeps them as required in a non-unionized type, and also gathers all possible
+// optional keys from the union branches and brings them into one unified flattened type.
+// This is done to maintain compatibility with the legacy zod schema.
+type FlattenUnion<T> = {
+  // If a key is required in all branches of a union, make it a required key
+  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
+    ? K
+    : never]: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+} & {
+  // If a key is not required in all branches of a union, make it an optional
+  // key and join the possible types
+  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
+    ? never
+    : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
+};
+export type TSource = FlattenUnion<z.infer<typeof SourceSchema>>;
