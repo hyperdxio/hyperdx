@@ -56,8 +56,12 @@ export function useConnections() {
 export function useCreateConnection() {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, { connection: Connection }>({
-    mutationFn: async ({ connection }: { connection: Connection }) => {
+  return useMutation<
+    { id: string },
+    Error,
+    { connection: Omit<Connection, 'id'> }
+  >({
+    mutationFn: async ({ connection }) => {
       if (IS_LOCAL_MODE) {
         const isValid = await testLocalConnection({
           host: connection.host,
@@ -71,22 +75,23 @@ export function useCreateConnection() {
           );
         }
 
+        const createdConnection = { id: 'local' };
         // should be only one connection
         setLocalConnections([
           {
             ...connection,
-            id: 'local',
+            ...createdConnection,
           },
         ]);
-        return;
+        return createdConnection;
       }
 
-      await hdxServer('connections', {
+      const res = await hdxServer('connections', {
         method: 'POST',
         json: connection,
-      });
+      }).json<{ id: string }>();
 
-      return;
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
