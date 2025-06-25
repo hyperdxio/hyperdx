@@ -114,6 +114,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           max_timeout: 1200
+          check_interval: 10
       - run: echo ${{steps.waitFor200.outputs.url}}
 
       - name: Stably Runner Action
