@@ -146,8 +146,9 @@ export function ConnectionForm({
     };
 
     if (isNew) {
+      const { id, ...connection } = normalizedData;
       createConnection.mutate(
-        { connection: normalizedData },
+        { connection },
         {
           onSuccess: () => {
             notifications.show({

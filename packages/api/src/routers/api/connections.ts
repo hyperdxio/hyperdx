@@ -26,19 +26,19 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   validateRequest({
-    body: ConnectionSchema,
+    body: ConnectionSchema.omit({ id: true }),
   }),
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      await createConnection(teamId.toString(), {
+      const connection = await createConnection(teamId.toString(), {
         ...req.body,
         password: req.body.password ?? '',
         team: teamId,
       });
 
-      res.status(200).send();
+      res.status(200).send({ id: connection._id.toString() });
     } catch (e) {
       next(e);
     }

@@ -30,8 +30,10 @@
   "scripts": {
     "setup": "yarn install && husky install",
     "app:dev": "npx concurrently -k -n 'API,APP,ALERTS-TASK,COMMON-UTILS' -c 'green.bold,blue.bold,yellow.bold,magenta' 'nx run @hyperdx/api:dev' 'nx run @hyperdx/app:dev' 'nx run @hyperdx/api:dev-task check-alerts' 'nx run @hyperdx/common-utils:dev'",
+    "app:dev:local": "npx concurrently -k -n 'APP,COMMON-UTILS' -c 'blue.bold,magenta' 'nx run @hyperdx/app:dev:local' 'nx run @hyperdx/common-utils:dev'",
     "app:lint": "nx run @hyperdx/app:ci:lint",
     "dev": "docker compose -f docker-compose.dev.yml up -d && yarn app:dev && docker compose -f docker-compose.dev.yml down",
+    "dev:local": "IS_LOCAL_APP_MODE='DANGEROUSLY_is_local_app_mode💀' yarn dev",
     "dev:down": "docker compose -f docker-compose.dev.yml down",
     "dev:compose": "docker compose -f docker-compose.dev.yml",
     "lint": "npx nx run-many -t ci:lint",

@@ -63,7 +63,7 @@ npx concurrently \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./packages/api/tracing ./packages/api/index" \
   "cd ./packages/app/packages/app && HOSTNAME='0.0.0.0' HYPERDX_API_PORT=${HYPERDX_API_PORT:-8000} PORT=${HYPERDX_APP_PORT:-8080} node server.js" \
-  "node -r ./packages/api/tracing ./packages/api/tasks/index check-alerts"
+  "node -r ./packages/api/tracing ./packages/api/tasks/index check-alerts" \
   > /var/log/app.log 2>&1 &
 
 echo ""
