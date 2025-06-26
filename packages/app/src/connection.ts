@@ -75,7 +75,9 @@ export function useCreateConnection() {
           );
         }
 
+        // id key in local connection and return value
         const createdConnection = { id: 'local' };
+
         // should be only one connection
         setLocalConnections([
           {
