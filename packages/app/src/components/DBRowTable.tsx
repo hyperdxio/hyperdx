@@ -642,24 +642,25 @@ export const RawLogTable = memo(
                           )}
                         </div>
                       )}
-                      {header.column.getCanResize() && (
-                        <div
-                          onMouseDown={header.getResizeHandler()}
-                          onTouchStart={header.getResizeHandler()}
-                          className={`resizer text-gray-600 cursor-col-resize ${
-                            header.column.getIsResizing() ? 'isResizing' : ''
-                          }`}
-                          style={{
-                            position: 'absolute',
-                            right: 4,
-                            top: 0,
-                            bottom: 0,
-                            width: 12,
-                          }}
-                        >
-                          <i className="bi bi-three-dots-vertical" />
-                        </div>
-                      )}
+                      {header.column.getCanResize() &&
+                        headerIndex !== headerGroup.headers.length - 1 && (
+                          <div
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                            className={`resizer text-gray-600 cursor-col-resize ${
+                              header.column.getIsResizing() ? 'isResizing' : ''
+                            }`}
+                            style={{
+                              position: 'absolute',
+                              right: 4,
+                              top: 0,
+                              bottom: 0,
+                              width: 12,
+                            }}
+                          >
+                            <i className="bi bi-three-dots-vertical" />
+                          </div>
+                        )}
                       {headerIndex === headerGroup.headers.length - 1 && (
                         <div
                           className="d-flex align-items-center"

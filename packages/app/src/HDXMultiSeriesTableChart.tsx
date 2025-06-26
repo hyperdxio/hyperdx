@@ -229,19 +229,20 @@ export const Table = ({
                               )}
                             </div>
                           )}
-                          {header.column.getCanResize() && (
-                            <div
-                              onMouseDown={header.getResizeHandler()}
-                              onTouchStart={header.getResizeHandler()}
-                              className={`resizer text-gray-600 cursor-grab ${
-                                header.column.getIsResizing()
-                                  ? 'isResizing'
-                                  : ''
-                              }`}
-                            >
-                              <i className="bi bi-three-dots-vertical" />
-                            </div>
-                          )}
+                          {header.column.getCanResize() &&
+                            headerIndex !== headerGroup.headers.length - 1 && (
+                              <div
+                                onMouseDown={header.getResizeHandler()}
+                                onTouchStart={header.getResizeHandler()}
+                                className={`resizer text-gray-600 cursor-grab ${
+                                  header.column.getIsResizing()
+                                    ? 'isResizing'
+                                    : ''
+                                }`}
+                              >
+                                <i className="bi bi-three-dots-vertical" />
+                              </div>
+                            )}
                           {headerIndex === headerGroup.headers.length - 1 && (
                             <div className="d-flex align-items-center">
                               <CsvExportButton
