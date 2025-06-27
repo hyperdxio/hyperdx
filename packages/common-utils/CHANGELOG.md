@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.2.3
+
+### Patch Changes
+
+- b75d7c0: feat: add robust source form validation and error reporting
+- 93e36b5: fix: remove id from post for connection creation endpoint
+
 ## 0.2.2
 
 ### Patch Changes
