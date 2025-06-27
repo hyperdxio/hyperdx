@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 2.0.2
+
+### Patch Changes
+
+- ad68877: feat: bundle api via esbuild for smaller image distribution
+- 707ba7f: chore: update deps for http-proxy-middleware
+- 31e22dc: feat: introduce clickhouse db init script
+- 2063774: perf: build next app in standalone mode to cut down images size
+- Updated dependencies [31e22dc]
+- Updated dependencies [2063774]
+  - @hyperdx/common-utils@0.2.2
+
 ## 2.0.1
 
 ### Patch Changes

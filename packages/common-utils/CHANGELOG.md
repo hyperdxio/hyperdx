@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.2.2
+
+### Patch Changes
+
+- 31e22dc: feat: introduce clickhouse db init script
+- 2063774: perf: build next app in standalone mode to cut down images size
+
 ## 0.2.1
 
 ### Patch Changes

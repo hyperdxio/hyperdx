@@ -63,20 +63,31 @@ export default function OnboardingModal({
           }
         }
       }
-      await createConnectionMutation.mutateAsync({
-        connection: {
-          id: 'local',
-          name: 'Demo',
-          host: 'https://sql-clickhouse.clickhouse.com',
-          username: 'otel_demo',
-          password: '',
+      let createdConnectionId = '';
+      await createConnectionMutation.mutateAsync(
+        {
+          connection: {
+            name: 'Demo',
+            host: 'https://sql-clickhouse.clickhouse.com',
+            username: 'otel_demo',
+            password: '',
+          },
         },
-      });
+        {
+          onSuccess(data) {
+            createdConnectionId = data.id;
+          },
+          onError(error) {
+            console.error('Failed to create demo connection: ', error);
+            return;
+          },
+        },
+      );
       const logSource = await createSourceMutation.mutateAsync({
         source: {
           kind: SourceKind.Log,
           name: 'Demo Logs',
-          connection: 'local',
+          connection: createdConnectionId,
           from: {
             databaseName: 'otel_v2',
             tableName: 'otel_logs',
@@ -98,7 +109,7 @@ export default function OnboardingModal({
         source: {
           kind: SourceKind.Trace,
           name: 'Demo Traces',
-          connection: 'local',
+          connection: createdConnectionId,
           from: {
             databaseName: 'otel_v2',
             tableName: 'otel_traces',
@@ -127,7 +138,7 @@ export default function OnboardingModal({
         source: {
           kind: SourceKind.Metric,
           name: 'Demo Metrics',
-          connection: 'local',
+          connection: createdConnectionId,
           from: {
             databaseName: 'otel_v2',
             tableName: '',
@@ -150,7 +161,7 @@ export default function OnboardingModal({
         source: {
           kind: SourceKind.Session,
           name: 'Demo Sessions',
-          connection: 'local',
+          connection: createdConnectionId,
           from: {
             databaseName: 'otel_v2',
             tableName: 'hyperdx_sessions',

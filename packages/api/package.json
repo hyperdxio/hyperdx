@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.1",
+    "@hyperdx/common-utils": "^0.2.2",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@opentelemetry/api": "^1.8.0",
@@ -75,6 +75,7 @@
     "@types/supertest": "^2.0.12",
     "@types/swagger-jsdoc": "^6",
     "@types/uuid": "^8.3.4",
+    "esbuild": "^0.25.5",
     "jest": "^28.1.3",
     "migrate-mongo": "^11.0.0",
     "nodemon": "^2.0.20",
@@ -89,10 +90,10 @@
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "start": "node ./build/index.js",
+    "start": "node ./dist/index.js",
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
-    "build": "rimraf ./build && tsc && tsc-alias && cp -r src/opamp/proto build/opamp/",
+    "build": "tsc && tsc-alias && esbuild ../../node_modules/@hyperdx/node-opentelemetry/build/src/tracing --bundle --minify --platform=node --outfile=dist/tracing.js && esbuild ./build/src/index.js ./build/src/tasks/index.js --bundle --minify --platform=node --target=node22 --outdir=dist --alias:@='./src' && mkdir -p dist/opamp && cp -r src/opamp/proto dist/opamp/proto && rimraf ./build",
     "lint": "eslint --quiet . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",

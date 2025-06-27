@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  FormEventHandler,
   useCallback,
   useEffect,
   useMemo,
@@ -7,6 +8,7 @@ import {
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
@@ -41,6 +43,7 @@ import {
   Flex,
   Grid,
   Group,
+  Menu,
   Modal,
   Paper,
   Stack,
@@ -766,7 +769,7 @@ function DBSearchPage() {
     [setRowId, setIsLive],
   );
 
-  const [modelFormExpanded, setModelFormExpanded] = useState(false);
+  const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
   const [saveSearchModalState, setSaveSearchModalState] = useState<
     'create' | 'update' | undefined
   >(undefined);
@@ -964,14 +967,18 @@ function DBSearchPage() {
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-    name: key,
-    sql: {
-      sql: value,
-      params: {},
-    },
-    isSubquery: false,
-  }));
+  const aliasWith = useMemo(
+    () =>
+      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
+        name: key,
+        sql: {
+          sql: value,
+          params: {},
+        },
+        isSubquery: false,
+      })),
+    [aliasMap],
+  );
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1006,6 +1013,60 @@ function DBSearchPage() {
     };
   }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
 
+  const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
+    e => {
+      e.preventDefault();
+      onSubmit();
+      return false;
+    },
+    [onSubmit],
+  );
+
+  const handleTimeRangeSelect = useCallback(
+    (d1: Date, d2: Date) => {
+      onTimeRangeSelect(d1, d2);
+      setIsLive(false);
+    },
+    [onTimeRangeSelect],
+  );
+
+  const onTimeChartError = useCallback(
+    (error: Error | ClickHouseQueryError) =>
+      setQueryErrors(prev => ({
+        ...prev,
+        DBTimeChart: error,
+      })),
+    [setQueryErrors],
+  );
+
+  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+    const overrides = {
+      orderBy: undefined,
+      dateRange: searchedTimeRange,
+      with: aliasWith,
+    } as const;
+    return chartConfig
+      ? {
+          ...chartConfig,
+          ...overrides,
+        }
+      : {
+          timestampValueExpression: '',
+          connection: '',
+          from: {
+            databaseName: '',
+            tableName: '',
+          },
+          where: '',
+          select: '',
+          ...overrides,
+        };
+  }, [chartConfig, searchedTimeRange, aliasWith]);
+
+  const openNewSourceModal = useCallback(() => {
+    setNewSourceModalOpened(true);
+  }, []);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1017,13 +1078,7 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <form
-        onSubmit={e => {
-          e.preventDefault();
-          onSubmit();
-          return false;
-        }}
-      >
+      <form onSubmit={onFormSubmit}>
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
           <Group gap="4px" wrap="nowrap">
@@ -1032,21 +1087,47 @@ function DBSearchPage() {
               size="xs"
               control={control}
               name="source"
-              onCreate={() => {
-                setNewSourceModalOpened(true);
-              }}
+              onCreate={openNewSourceModal}
             />
-            <ActionIcon
-              variant="subtle"
-              color="dark.2"
-              size="sm"
-              onClick={() => setModelFormExpanded(v => !v)}
-              title="Edit Source"
-            >
-              <Text size="xs">
-                <i className="bi bi-gear" />
-              </Text>
-            </ActionIcon>
+            <Menu withArrow position="bottom-start">
+              <Menu.Target>
+                <ActionIcon
+                  variant="subtle"
+                  color="dark.2"
+                  size="sm"
+                  title="Edit Source"
+                >
+                  <Text size="xs">
+                    <i className="bi bi-gear" />
+                  </Text>
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Sources</Menu.Label>
+                <Menu.Item
+                  leftSection={<i className="bi bi-plus-circle" />}
+                  onClick={() => setNewSourceModalOpened(true)}
+                >
+                  Create New Source
+                </Menu.Item>
+                {IS_LOCAL_MODE ? (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-gear" />}
+                    onClick={() => setModelFormExpanded(v => !v)}
+                  >
+                    Edit Source
+                  </Menu.Item>
+                ) : (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-gear" />}
+                    component={Link}
+                    href="/team"
+                  >
+                    Edit Sources
+                  </Menu.Item>
+                )}
+              </Menu.Dropdown>
+            </Menu>
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
@@ -1297,12 +1378,7 @@ function DBSearchPage() {
                   isLive={isLive}
                   analysisMode={analysisMode}
                   setAnalysisMode={setAnalysisMode}
-                  chartConfig={{
-                    ...chartConfig,
-                    orderBy: undefined,
-                    dateRange: searchedTimeRange,
-                    with: aliasWith,
-                  }}
+                  chartConfig={filtersChartConfig}
                   sourceId={inputSourceObj?.id}
                   showDelta={!!searchedSource?.durationExpression}
                   {...searchFilters}
@@ -1344,16 +1420,8 @@ function DBSearchPage() {
                           enabled={isReady}
                           showDisplaySwitcher={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onTimeRangeSelect={(d1, d2) => {
-                            onTimeRangeSelect(d1, d2);
-                            setIsLive(false);
-                          }}
-                          onError={error =>
-                            setQueryErrors(prev => ({
-                              ...prev,
-                              DBTimeChart: error,
-                            }))
-                          }
+                          onTimeRangeSelect={handleTimeRangeSelect}
+                          onError={onTimeChartError}
                         />
                       </Box>
                     )}
@@ -1464,16 +1532,8 @@ function DBSearchPage() {
                             enabled={isReady}
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={(d1, d2) => {
-                              onTimeRangeSelect(d1, d2);
-                              setIsLive(false);
-                            }}
-                            onError={error =>
-                              setQueryErrors(prev => ({
-                                ...prev,
-                                DBTimeChart: error,
-                              }))
-                            }
+                            onTimeRangeSelect={handleTimeRangeSelect}
+                            onError={onTimeChartError}
                           />
                         </Box>
                       )}

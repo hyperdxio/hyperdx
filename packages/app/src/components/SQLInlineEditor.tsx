@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -106,6 +106,7 @@ type SQLInlineEditorProps = {
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
   onSubmit?: () => void;
+  error?: React.ReactNode;
   size?: string;
   label?: React.ReactNode;
   disableKeywordAutocomplete?: boolean;
@@ -134,6 +135,7 @@ export default function SQLInlineEditor({
   onLanguageChange,
   language,
   onSubmit,
+  error,
   value,
   size,
   label,
@@ -260,7 +262,7 @@ export default function SQLInlineEditor({
       shadow="none"
       bg="dark.6"
       style={{
-        border: '1px solid var(--mantine-color-gray-7)',
+        border: `1px solid ${error ? 'var(--mantine-color-red-7)' : 'var(--mantine-color-gray-7)'}`,
         display: 'flex',
         alignItems: 'center',
         minHeight: size === 'xs' ? 30 : 36,
@@ -350,14 +352,14 @@ export default function SQLInlineEditor({
   );
 }
 
-export function SQLInlineEditorControlled({
+function SQLInlineEditorControlledComponent({
   placeholder,
   filterField,
   additionalSuggestions,
   queryHistoryType,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
-  const { field } = useController(props);
+  const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values
   const value = field.value || props.defaultValue;
@@ -375,9 +377,13 @@ export function SQLInlineEditorControlled({
       onChange={field.onChange}
       placeholder={placeholder}
       value={stringValue}
+      error={fieldState.error?.message}
       additionalSuggestions={additionalSuggestions}
       queryHistoryType={queryHistoryType}
       {...props}
     />
   );
 }
+export const SQLInlineEditorControlled = memo(
+  SQLInlineEditorControlledComponent,
+);
