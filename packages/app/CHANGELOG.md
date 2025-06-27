@@ -1,5 +1,21 @@
 # @hyperdx/app
 
+## 2.0.2
+
+### Patch Changes
+
+- d1f4184: perf: improve performance on chart page and search page
+- 8ab3b42: fix: fix demo instances for those with stale sources
+- d1fc0c7: fix: change NEXT_PUBLIC_SERVER_URL to SERVER_URL
+- eb9d009: feat: DBRowSidePanel global error boundary
+- 73aff77: feat: Improve source editing UX
+- 31e22dc: feat: introduce clickhouse db init script
+- 2063774: perf: build next app in standalone mode to cut down images size
+- 86fa929: Removed duplicate type definition.
+- Updated dependencies [31e22dc]
+- Updated dependencies [2063774]
+  - @hyperdx/common-utils@0.2.2
+
 ## 2.0.1
 
 ### Patch Changes

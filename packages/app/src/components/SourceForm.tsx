@@ -6,10 +6,13 @@ import {
   UseFormSetValue,
   UseFormWatch,
 } from 'react-hook-form';
+import { z } from 'zod';
 import {
   MetricsDataType,
   SourceKind,
+  sourceSchemaWithout,
   TSource,
+  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -18,17 +21,12 @@ import {
   Divider,
   Flex,
   Group,
-  Menu,
   Radio,
-  SegmentedControl,
-  Select,
   Slider,
   Stack,
-  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDebouncedCallback } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -117,15 +115,7 @@ function FormRow({
 // OR traceModel.logModel = 'log_id_blah'
 // custom always points towards the url param
 
-export function LogTableModelForm({
-  control,
-  watch,
-  setValue,
-}: {
-  control: Control<TSource>;
-  watch: UseFormWatch<TSource>;
-  setValue: UseFormSetValue<TSource>;
-}) {
+export function LogTableModelForm({ control, watch }: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -135,25 +125,6 @@ export function LogTableModelForm({
   return (
     <>
       <Stack gap="sm">
-        <FormRow label={'Server Connection'}>
-          <ConnectionSelectControlled control={control} name={`connection`} />
-        </FormRow>
-        <FormRow label={'Database'}>
-          <DatabaseSelectControlled
-            control={control}
-            name={`from.databaseName`}
-            connectionId={connectionId}
-          />
-        </FormRow>
-        <FormRow label={'Table'}>
-          <DBTableSelectControlled
-            database={databaseName}
-            control={control}
-            name={`from.tableName`}
-            connectionId={connectionId}
-            rules={{ required: 'Table is required' }}
-          />
-        </FormRow>
         <FormRow
           label={'Timestamp Column'}
           helpText="DateTime column or expression that is part of your table's primary key."
@@ -379,40 +350,13 @@ export function LogTableModelForm({
   );
 }
 
-export function TraceTableModelForm({
-  control,
-  watch,
-  setValue,
-}: {
-  control: Control<TSource>;
-  watch: UseFormWatch<TSource>;
-  setValue: UseFormSetValue<TSource>;
-}) {
+export function TraceTableModelForm({ control, watch }: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
 
   return (
     <Stack gap="sm">
-      <FormRow label={'Server Connection'}>
-        <ConnectionSelectControlled control={control} name={`connection`} />
-      </FormRow>
-      <FormRow label={'Database'}>
-        <DatabaseSelectControlled
-          connectionId={connectionId}
-          control={control}
-          name={`from.databaseName`}
-        />
-      </FormRow>
-      <FormRow label={'Table'}>
-        <DBTableSelectControlled
-          connectionId={connectionId}
-          database={databaseName}
-          control={control}
-          name={`from.tableName`}
-          rules={{ required: 'Table is required' }}
-        />
-      </FormRow>
       <FormRow
         label={'Timestamp Column'}
         helpText="DateTime column or expression defines the start of the span"
@@ -462,7 +406,7 @@ export function TraceTableModelForm({
           <Controller
             control={control}
             name="durationPrecision"
-            render={({ field: { onChange, onBlur, value, ref } }) => (
+            render={({ field: { onChange, value } }) => (
               <div style={{ width: '90%', marginBottom: 8 }}>
                 <Slider
                   color="green"
@@ -656,43 +600,14 @@ export function TraceTableModelForm({
   );
 }
 
-export function SessionTableModelForm({
-  control,
-  watch,
-  setValue,
-}: {
-  control: Control<TSource>;
-  watch: UseFormWatch<TSource>;
-  setValue: UseFormSetValue<TSource>;
-}) {
+export function SessionTableModelForm({ control, watch }: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
 
-  const [showOptionalFields, setShowOptionalFields] = useState(false);
-
   return (
     <>
       <Stack gap="sm">
-        <FormRow label={'Server Connection'}>
-          <ConnectionSelectControlled control={control} name={`connection`} />
-        </FormRow>
-        <FormRow label={'Database'}>
-          <DatabaseSelectControlled
-            control={control}
-            name={`from.databaseName`}
-            connectionId={connectionId}
-          />
-        </FormRow>
-        <FormRow label={'Table'}>
-          <DBTableSelectControlled
-            database={databaseName}
-            control={control}
-            name={`from.tableName`}
-            connectionId={connectionId}
-            rules={{ required: 'Table is required' }}
-          />
-        </FormRow>
         <FormRow
           label={'Timestamp Column'}
           helpText="DateTime column or expression that is part of your table's primary key."
@@ -758,15 +673,17 @@ export function SessionTableModelForm({
   );
 }
 
+interface TableModelProps {
+  control: Control<TSourceUnion>;
+  watch: UseFormWatch<TSourceUnion>;
+  setValue: UseFormSetValue<TSourceUnion>;
+}
+
 export function MetricTableModelForm({
   control,
   watch,
   setValue,
-}: {
-  control: Control<TSource>;
-  watch: UseFormWatch<TSource>;
-  setValue: UseFormSetValue<TSource>;
-}) {
+}: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const connectionId = watch(`connection`);
 
@@ -780,7 +697,11 @@ export function MetricTableModelForm({
           const [prefix, suffix] = name.split('.');
           if (prefix === 'metricTables') {
             const tableName =
-              value?.metricTables?.[suffix as keyof typeof value.metricTables];
+              value.kind === SourceKind.Metric
+                ? value?.metricTables?.[
+                    suffix as keyof typeof value.metricTables
+                  ]
+                : '';
             const metricType = suffix as MetricsDataType;
             const isValid = await isValidMetricTable({
               databaseName,
@@ -811,16 +732,6 @@ export function MetricTableModelForm({
   return (
     <>
       <Stack gap="sm">
-        <FormRow label={'Server Connection'}>
-          <ConnectionSelectControlled control={control} name={`connection`} />
-        </FormRow>
-        <FormRow label={'Database'}>
-          <DatabaseSelectControlled
-            connectionId={connectionId}
-            control={control}
-            name={`from.databaseName`}
-          />
-        </FormRow>
         {Object.values(MetricsDataType).map(metricType => (
           <FormRow
             key={metricType.toLowerCase()}
@@ -857,9 +768,9 @@ function TableModelForm({
   setValue,
   kind,
 }: {
-  control: Control<TSource>;
-  watch: UseFormWatch<TSource>;
-  setValue: UseFormSetValue<TSource>;
+  control: Control<TSourceUnion>;
+  watch: UseFormWatch<TSourceUnion>;
+  setValue: UseFormSetValue<TSourceUnion>;
   kind: SourceKind;
 }) {
   switch (kind) {
@@ -916,37 +827,49 @@ export function TableSourceForm({
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
 
-  const { watch, control, setValue, handleSubmit, resetField, formState } =
-    useForm<TSource>({
-      defaultValues: {
-        kind: SourceKind.Log,
-        name: defaultName,
-        connection: connections?.[0]?.id,
-        from: {
-          databaseName: 'default',
-          tableName: '',
-        },
+  const {
+    watch,
+    control,
+    setValue,
+    formState,
+    handleSubmit,
+    resetField,
+    setError,
+    clearErrors,
+  } = useForm<TSourceUnion>({
+    defaultValues: {
+      kind: SourceKind.Log,
+      name: defaultName,
+      connection: connections?.[0]?.id,
+      from: {
+        databaseName: 'default',
+        tableName: '',
       },
-      values: source,
-      resetOptions: {
-        keepDirtyValues: true,
-        keepErrors: true,
-      },
-    });
+    },
+    // TODO: HDX-1768 remove type assertion
+    values: source as TSourceUnion,
+    resetOptions: {
+      keepDirtyValues: true,
+      keepErrors: true,
+    },
+  });
 
   useEffect(() => {
-    const { unsubscribe } = watch(async (value, { name, type }) => {
+    const { unsubscribe } = watch(async (_value, { name, type }) => {
       try {
+        // TODO: HDX-1768 get rid of this type assertion
+        const value = _value as TSourceUnion;
         if (
           value.connection != null &&
           value.from?.databaseName != null &&
-          value.from.tableName != null &&
+          (value.kind === SourceKind.Metric || value.from.tableName != null) &&
           name === 'from.tableName' &&
           type === 'change'
         ) {
           const config = await inferTableSourceConfig({
             databaseName: value.from.databaseName,
-            tableName: value.from.tableName,
+            tableName:
+              value.kind !== SourceKind.Metric ? value.from.tableName : '',
             connectionId: value.connection,
           });
           if (Object.keys(config).length > 0) {
@@ -983,10 +906,42 @@ export function TableSourceForm({
   const updateSource = useUpdateSource();
   const deleteSource = useDeleteSource();
 
+  const sourceFormSchema = sourceSchemaWithout({ id: true });
+  const handleError = (error: z.ZodError<TSourceUnion>) => {
+    const errors = error.errors;
+    for (const err of errors) {
+      const errorPath: string = err.path.join('.');
+      // TODO: HDX-1768 get rid of this type assertion if possible
+      setError(errorPath as any, { ...err });
+    }
+    notifications.show({
+      color: 'red',
+      message: (
+        <Stack>
+          <Text size="sm">
+            <b>Failed to create source</b>
+          </Text>
+          {errors.map((err, i) => (
+            <Text key={i} size="sm">
+              ✖ {err.message}
+            </Text>
+          ))}
+        </Stack>
+      ),
+    });
+  };
+
   const _onCreate = useCallback(() => {
+    clearErrors();
     handleSubmit(data => {
+      const parseResult = sourceFormSchema.safeParse(data);
+      if (parseResult.error) {
+        handleError(parseResult.error);
+        return;
+      }
       createSource.mutate(
-        { source: data },
+        // TODO: HDX-1768 get rid of this type assertion
+        { source: data as TSource },
         {
           onSuccess: data => {
             onCreate?.(data);
@@ -995,21 +950,28 @@ export function TableSourceForm({
               message: 'Source created',
             });
           },
-          onError: () => {
+          onError: error => {
             notifications.show({
               color: 'red',
-              message: 'Failed to create source',
+              message: `Failed to create source - ${error.message}`,
             });
           },
         },
       );
     })();
-  }, [handleSubmit, createSource, onCreate]);
+  }, [handleSubmit, createSource, onCreate, kind, formState]);
 
   const _onSave = useCallback(() => {
+    clearErrors();
     handleSubmit(data => {
+      const parseResult = sourceFormSchema.safeParse(data);
+      if (parseResult.error) {
+        handleError(parseResult.error);
+        return;
+      }
       updateSource.mutate(
-        { source: data },
+        // TODO: HDX-1768 get rid of this type assertion
+        { source: data as TSource },
         {
           onSuccess: () => {
             onSave?.();
@@ -1028,6 +990,9 @@ export function TableSourceForm({
       );
     })();
   }, [handleSubmit, updateSource, onSave]);
+
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const connectionId = watch(`connection`);
 
   return (
     <div
@@ -1110,6 +1075,27 @@ export function TableSourceForm({
             )}
           />
         </FormRow>
+        <FormRow label={'Server Connection'}>
+          <ConnectionSelectControlled control={control} name={`connection`} />
+        </FormRow>
+        <FormRow label={'Database'}>
+          <DatabaseSelectControlled
+            control={control}
+            name={`from.databaseName`}
+            connectionId={connectionId}
+          />
+        </FormRow>
+        {kind !== SourceKind.Metric && (
+          <FormRow label={'Table'}>
+            <DBTableSelectControlled
+              database={databaseName}
+              control={control}
+              name={`from.tableName`}
+              connectionId={connectionId}
+              rules={{ required: 'Table is required' }}
+            />
+          </FormRow>
+        )}
       </Stack>
       <TableModelForm
         control={control}
