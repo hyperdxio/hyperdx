@@ -1,5 +1,16 @@
 # @hyperdx/app
 
+## 2.0.3
+
+### Patch Changes
+
+- b75d7c0: feat: add robust source form validation and error reporting
+- a06c8cd: feat: Add download csv functionality to search tables
+- 93e36b5: fix: remove id from post for connection creation endpoint
+- Updated dependencies [b75d7c0]
+- Updated dependencies [93e36b5]
+  - @hyperdx/common-utils@0.2.3
+
 ## 2.0.2
 
 ### Patch Changes

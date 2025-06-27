@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.0.3
+
+### Patch Changes
+
+- 93e36b5: fix: remove id from post for connection creation endpoint
+- Updated dependencies [b75d7c0]
+- Updated dependencies [93e36b5]
+  - @hyperdx/common-utils@0.2.3
+
 ## 2.0.2
 
 ### Patch Changes
