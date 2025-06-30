@@ -23,6 +23,7 @@ ENTRYPOINT ["npx", "nx", "run", "@hyperdx/api:dev"]
 
 FROM base AS builder
 
+ENV NX_DAEMON=false
 COPY ./packages/api/src ./packages/api/src
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api
 RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
