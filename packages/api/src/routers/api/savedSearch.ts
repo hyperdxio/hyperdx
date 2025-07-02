@@ -31,7 +31,7 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   validateRequest({
-    body: SavedSearchSchema.omit({ id: true }),
+    body: SavedSearchSchema.omit({ id: true }).extend({ name: z.string().trim().min(1) }),
   }),
   async (req, res, next) => {
     try {
@@ -49,7 +49,7 @@ router.post(
 router.patch(
   '/:id',
   validateRequest({
-    body: SavedSearchSchema.partial(),
+    body: SavedSearchSchema.partial().extend({ name: z.string().trim().min(1).optional() }),
     params: z.object({
       id: objectIdSchema,
     }),
