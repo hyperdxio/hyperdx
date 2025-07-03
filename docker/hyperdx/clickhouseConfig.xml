@@ -26,7 +26,12 @@
     <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
     <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
 
-    <users_config>users.xml</users_config>
+    <user_directories>
+        <users_xml>
+            <path>users.xml</path>
+        </users_xml>
+    </user_directories>
+    <!-- <users_config>users.xml</users_config> -->
     <default_profile>default</default_profile>
     <default_database>default</default_database>
     <timezone>UTC</timezone>
@@ -39,7 +44,8 @@
         <flush_interval_milliseconds>7500</flush_interval_milliseconds>
     </query_log>
 
-    <!-- Metric log contains rows with current values of ProfileEvents, CurrentMetrics collected with "collect_interval_milliseconds" interval. -->
+    <!-- Metric log contains rows with current values of ProfileEvents, CurrentMetrics collected
+    with "collect_interval_milliseconds" interval. -->
     <metric_log>
         <database>system</database>
         <table>metric_log</table>
@@ -106,7 +112,8 @@
     </processors_profile_log>
 
     <!-- Uncomment if use part log.
-         Part log contains information about all actions with parts in MergeTree tables (creation, deletion, merges, downloads).-->
+         Part log contains information about all actions with parts in MergeTree tables (creation, deletion,
+    merges, downloads).-->
     <part_log>
         <database>system</database>
         <table>part_log</table>
