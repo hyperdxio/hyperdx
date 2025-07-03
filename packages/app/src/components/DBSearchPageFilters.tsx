@@ -511,6 +511,13 @@ const DBSearchPageFiltersComponent = ({
         }
       }
     }
+    // get remaining filterState that are not in _facets
+    const remainingFilterState = Object.keys(filterState).filter(
+      key => !_facets.some(facet => facet.key === key),
+    );
+    for (const key of remainingFilterState) {
+      _facets.push({ key, value: Array.from(filterState[key].included) });
+    }
     return _facets;
   }, [facets, filterState, extraFacets]);
 
