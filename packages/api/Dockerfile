@@ -23,6 +23,8 @@ ENTRYPOINT ["npx", "nx", "run", "@hyperdx/api:dev"]
 
 FROM base AS builder
 
+ENV NX_DAEMON false
+
 COPY ./packages/api/src ./packages/api/src
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api
 RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
@@ -46,9 +48,6 @@ USER node
 
 WORKDIR /app
 
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
-COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
-COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
-COPY --chown=node:node --from=base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
+COPY --chown=node:node --from=builder /app/packages/api/dist ./
 
-ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./packages/api/build/index.js"]
+ENTRYPOINT ["node", "-r", "./tracing", "./index"]
