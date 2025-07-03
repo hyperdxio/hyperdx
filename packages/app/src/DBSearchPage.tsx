@@ -182,7 +182,12 @@ function SaveSearchModal({
     },
   );
 
-  const { control, handleSubmit, formState, reset: resetForm } = useForm({
+  const {
+    control,
+    handleSubmit,
+    formState,
+    reset: resetForm,
+  } = useForm({
     ...(isUpdate
       ? {
           values: {
@@ -199,9 +204,10 @@ function SaveSearchModal({
   const closeAndReset = () => {
     resetForm();
     onClose();
-  }
+  };
 
-  const isValidName = (name?: string): boolean => Boolean(name && name.trim().length > 0);
+  const isValidName = (name?: string): boolean =>
+    Boolean(name && name.trim().length > 0);
   const [tags, setTags] = useState<string[]>(savedSearch?.tags || []);
 
   // Update tags when savedSearch changes
@@ -315,7 +321,11 @@ function SaveSearchModal({
             <Text c="gray.4" size="xs" mb="xs">
               Name
             </Text>
-            <InputControlled control={control} name="name" rules={{ required: true, validate: isValidName }}/>
+            <InputControlled
+              control={control}
+              name="name"
+              rules={{ required: true, validate: isValidName }}
+            />
           </Box>
           <Box mb="sm">
             <Text c="gray.4" size="xs" mb="xs">
@@ -353,7 +363,12 @@ function SaveSearchModal({
               </Tags>
             </Group>
           </Box>
-          <Button variant="outline" color="green" type="submit" disabled={!formState.isValid}>
+          <Button
+            variant="outline"
+            color="green"
+            type="submit"
+            disabled={!formState.isValid}
+          >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
         </Stack>
