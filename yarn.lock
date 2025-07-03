@@ -4476,8 +4476,10 @@ __metadata:
     axios: "npm:^1.6.2"
     compression: "npm:^1.7.4"
     connect-mongo: "npm:^4.6.0"
+    cookie-parser: "npm:^1.4.7"
     cors: "npm:^2.8.5"
     cron: "npm:^3.5.0"
+    csrf-csrf: "npm:^4.0.3"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     esbuild: "npm:^0.25.5"
@@ -13746,6 +13748,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cookie-parser@npm:^1.4.7":
+  version: 1.4.7
+  resolution: "cookie-parser@npm:1.4.7"
+  dependencies:
+    cookie: "npm:0.7.2"
+    cookie-signature: "npm:1.0.6"
+  checksum: 10c0/46bef553de409031b69a6074ce512d131a98e4fa12612669f1a9c3dd98d56897a31db86a3f4338d4a3a895c6f8d5cfd6fa4d99cdf588e0e8eda655efc3f384dc
+  languageName: node
+  linkType: hard
+
 "cookie-signature@npm:1.0.6":
   version: 1.0.6
   resolution: "cookie-signature@npm:1.0.6"
@@ -13764,6 +13776,13 @@ __metadata:
   version: 0.6.0
   resolution: "cookie@npm:0.6.0"
   checksum: 10c0/f2318b31af7a31b4ddb4a678d024514df5e705f9be5909a192d7f116cfb6d45cbacf96a473fa733faa95050e7cff26e7832bb3ef94751592f1387b71c8956686
+  languageName: node
+  linkType: hard
+
+"cookie@npm:0.7.2":
+  version: 0.7.2
+  resolution: "cookie@npm:0.7.2"
+  checksum: 10c0/9596e8ccdbf1a3a88ae02cf5ee80c1c50959423e1022e4e60b91dd87c622af1da309253d8abdb258fb5e3eacb4f08e579dc58b4897b8087574eee0fd35dfa5d2
   languageName: node
   linkType: hard
 
@@ -13998,6 +14017,15 @@ __metadata:
   version: 1.0.0
   resolution: "crypto-randomuuid@npm:1.0.0"
   checksum: 10c0/6c8f7513f3b0c38b876b5011d91e21c284f7a695d27b6ef25a2a1ca89c362af23e321bf47953069b9fe56bc384de7880a13c390a4663ac5dcf525a1b4f937a1f
+  languageName: node
+  linkType: hard
+
+"csrf-csrf@npm:^4.0.3":
+  version: 4.0.3
+  resolution: "csrf-csrf@npm:4.0.3"
+  dependencies:
+    http-errors: "npm:^2.0.0"
+  checksum: 10c0/29a73ca1448226233dc48669f9b02b19e27d5e2238af284d72ba938cf8619971fc1dac3a2c5f7d6f1a23f9b0ed0fc9941e1328900c498df63ecea9a6b3b93db5
   languageName: node
   linkType: hard
 
@@ -18084,7 +18112,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"http-errors@npm:2.0.0":
+"http-errors@npm:2.0.0, http-errors@npm:^2.0.0":
   version: 2.0.0
   resolution: "http-errors@npm:2.0.0"
   dependencies:

@@ -23,6 +23,7 @@ const shouldSkipCsrf = (path: string): boolean => {
   if (path.startsWith('/api/v1')) return true;
   if (path.includes('/webhook')) return true;
   if (path.startsWith('/heroku')) return true;
+  if (path.startsWith('/clickhouse-proxy')) return true;
 
   const authRoutes = ['/login', '/logout', '/register', '/password-reset'];
   return authRoutes.some(route => path.includes(route));
