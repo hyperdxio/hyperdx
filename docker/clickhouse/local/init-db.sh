@@ -2,7 +2,7 @@
 set -e
 
 # We don't have a JSON schema yet, so let's let the collector create the tables
-if [ "$CH_OTEL_JSON_SCHEMA_ENABLED" = "true" ]; then
+if [ "$BETA_CH_OTEL_JSON_SCHEMA_ENABLED" = "true" ]; then
   exit 0
 fi
 
