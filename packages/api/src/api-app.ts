@@ -1,5 +1,6 @@
 import compression from 'compression';
 import MongoStore from 'connect-mongo';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import session from 'express-session';
 import onHeaders from 'on-headers';
@@ -7,6 +8,7 @@ import onHeaders from 'on-headers';
 import * as config from './config';
 import { isUserAuthenticated } from './middleware/auth';
 import defaultCors from './middleware/cors';
+import { csrfProtection, csrfToken } from './middleware/csrf';
 import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
 import clickhouseProxyRouter from './routers/api/clickhouseProxy';
@@ -27,6 +29,8 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   cookie: {
     secure: false,
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+    sameSite: 'lax',
+    httpOnly: true,
   },
   rolling: true,
   store: new MongoStore({ mongoUrl: config.MONGO_URI }),
@@ -46,6 +50,7 @@ app.use(compression());
 app.use(express.json({ limit: '32mb' }));
 app.use(express.text({ limit: '32mb' }));
 app.use(express.urlencoded({ extended: false, limit: '32mb' }));
+app.use(cookieParser());
 app.use(session(sess));
 
 if (!config.IS_LOCAL_APP_MODE) {
@@ -66,6 +71,10 @@ app.use(function (req, res, next) {
   next();
 });
 app.use(defaultCors);
+
+// CSRF Protection
+app.use(csrfToken);
+app.use(csrfProtection);
 
 // ---------------------------------------------------------------------
 // ----------------------- Background Jobs -----------------------------

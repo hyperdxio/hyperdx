@@ -323,8 +323,24 @@ export const getLoggedInAgent = async (server: MockServer) => {
   // login app
   await agent.post('/login/password').send(MOCK_USER).expect(302);
 
+  // Get CSRF token for subsequent requests
+  const csrfResponse = await agent.get('/me');
+  const csrfToken = csrfResponse.headers['x-csrf-token'];
+
+  // Create enhanced agent with CSRF support
+  const enhancedAgent = {
+    ...agent,
+    post: (url: string) => agent.post(url).set('x-csrf-token', csrfToken || ''),
+    put: (url: string) => agent.put(url).set('x-csrf-token', csrfToken || ''),
+    patch: (url: string) =>
+      agent.patch(url).set('x-csrf-token', csrfToken || ''),
+    delete: (url: string) =>
+      agent.delete(url).set('x-csrf-token', csrfToken || ''),
+    get: (url: string) => agent.get(url),
+  };
+
   return {
-    agent,
+    agent: enhancedAgent,
     team,
     user,
   };

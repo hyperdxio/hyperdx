@@ -47,11 +47,28 @@ export function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
+let csrfToken: string | null = null;
+
 export const server = ky.create({
   prefixUrl: '/api',
   credentials: 'include',
   hooks: {
-    afterResponse: [loginHook],
+    beforeRequest: [
+      request => {
+        if (csrfToken) {
+          request.headers.set('x-csrf-token', csrfToken);
+        }
+      },
+    ],
+    afterResponse: [
+      loginHook,
+      (request, options, response) => {
+        const token = response.headers.get('X-CSRF-Token');
+        if (token) {
+          csrfToken = token;
+        }
+      },
+    ],
   },
   timeout: false,
 });
