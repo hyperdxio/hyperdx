@@ -40,6 +40,14 @@ describe('savedSearch router', () => {
     expect(savedSearch.body.source).toBe(MOCK_SAVED_SEARCH.source);
   });
 
+  it('cannot create a saved search with empty name', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await agent
+      .post('/saved-search')
+      .send({ ...MOCK_SAVED_SEARCH, name: ' ' }) // Trimmed string will be empty and invalid
+      .expect(400);
+  });
+
   it('can update a saved search', async () => {
     const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
@@ -51,6 +59,31 @@ describe('savedSearch router', () => {
       .send({ name: 'warning' })
       .expect(200);
     expect(updatedSavedSearch.body.name).toBe('warning');
+  });
+
+  it('cannot update a saved search with empty name', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const savedSearch = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
+    await agent
+      .patch(`/saved-search/${savedSearch.body._id}`)
+      .send({ name: ' ' }) // Trimmed string will be empty and invalid
+      .expect(400);
+  });
+
+  it('can update a saved search with undefined name', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const savedSearch = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
+    const updatedSavedSearch = await agent
+      .patch(`/saved-search/${savedSearch.body._id}`)
+      .send({ name: undefined, select: 'SELECT 1' }) // Name is optional
+      .expect(200);
+    expect(updatedSavedSearch.body.select).toBe('SELECT 1');
   });
 
   it('can get saved searches', async () => {
