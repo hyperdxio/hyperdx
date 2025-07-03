@@ -8,9 +8,9 @@
 # - Otel Collector (otelcol)
 
 ARG NODE_VERSION=22.16.0
-ARG CLICKHOUSE_VERSION=24
-ARG OTEL_COLLECTOR_VERSION=0.126.0
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.126.0
+ARG CLICKHOUSE_VERSION=25.6
+ARG OTEL_COLLECTOR_VERSION=0.129.1
+ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.128.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
