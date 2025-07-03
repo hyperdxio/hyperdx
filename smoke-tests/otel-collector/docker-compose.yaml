@@ -19,7 +19,7 @@ services:
       retries: 5
       start_period: 10s
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.126.0
+    image: otel/opentelemetry-collector-contrib:0.129.1
     volumes:
       - ../../docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./receiver-config.yaml:/etc/otelcol-contrib/receiver-config.yaml

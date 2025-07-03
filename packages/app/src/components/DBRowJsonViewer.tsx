@@ -122,7 +122,13 @@ function HyperJsonMenu() {
   );
 }
 
-export function DBRowJsonViewer({ data }: { data: any }) {
+export function DBRowJsonViewer({
+  data,
+  jsonColumns = [],
+}: {
+  data: any;
+  jsonColumns?: string[];
+}) {
   const {
     onPropertyAddClick,
     generateSearchUrl,
@@ -152,7 +158,19 @@ export function DBRowJsonViewer({ data }: { data: any }) {
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
-      const fieldPath = mergePath(keyPath);
+      let fieldPath = mergePath(keyPath);
+      const isJsonColumn =
+        keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
+
+      if (isJsonColumn) {
+        fieldPath = keyPath.join('.');
+        if (keyPath.length > 1) {
+          fieldPath = `${keyPath[0]}.${keyPath
+            .slice(1)
+            .map(k => `\`${k}\``)
+            .join('.')}`;
+        }
+      }
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
@@ -173,7 +191,10 @@ export function DBRowJsonViewer({ data }: { data: any }) {
           ),
           title: 'Add to Filters',
           onClick: () => {
-            onPropertyAddClick(fieldPath, value);
+            onPropertyAddClick(
+              isJsonColumn ? `toString(${fieldPath})` : fieldPath,
+              value,
+            );
             notifications.show({
               color: 'green',
               message: `Added "${fieldPath} = ${value}" to filters`,
@@ -305,6 +326,7 @@ export function DBRowJsonViewer({ data }: { data: any }) {
       onPropertyAddClick,
       rowData,
       toggleColumn,
+      jsonColumns,
     ],
   );
 

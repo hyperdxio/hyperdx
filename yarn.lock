@@ -4589,6 +4589,7 @@ __metadata:
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     eslint-config-next: "npm:^14.2.29"
+    flat: "npm:^6.0.1"
     fuse.js: "npm:^6.6.2"
     http-proxy-middleware: "npm:^3.0.5"
     identity-obj-proxy: "npm:^3.0.0"
@@ -16834,6 +16835,15 @@ __metadata:
   bin:
     flat: cli.js
   checksum: 10c0/f178b13482f0cd80c7fede05f4d10585b1f2fdebf26e12edc138e32d3150c6ea6482b7f12813a1091143bad52bb6d3596bca51a162257a21163c0ff438baa5fe
+  languageName: node
+  linkType: hard
+
+"flat@npm:^6.0.1":
+  version: 6.0.1
+  resolution: "flat@npm:6.0.1"
+  bin:
+    flat: cli.js
+  checksum: 10c0/9dc0dbe6e2acc012512a53130d9ba1c82c1a596cdca91b23d11716348361c4a68928409bb4433c4493a17595c3efd0cab9f09e23dd3f9962a58af225c3efc23a
   languageName: node
   linkType: hard
 

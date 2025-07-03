@@ -8,7 +8,7 @@ module.exports = {
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
-  transformIgnorePatterns: ['/node_modules/(?!(ky|ky-universal))'],
+  transformIgnorePatterns: ['/node_modules/(?!(ky|ky-universal|flat))'],
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',
