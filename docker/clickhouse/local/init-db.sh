@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# We don't have a JSON schema yet, so let's let the collector create the tables
+if [ "$BETA_CH_OTEL_JSON_SCHEMA_ENABLED" = "true" ]; then
+  exit 0
+fi
+
 DATABASE=${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE:-default}
 
 clickhouse client -n <<EOFSQL
