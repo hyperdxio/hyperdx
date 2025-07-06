@@ -214,6 +214,8 @@ export default function ContextSubpanel({
                     placeholder="Lucene where clause (ex. column:value)"
                     enableHotkey
                     size="sm"
+                    dateRange={newDateRange}
+                    source={source}
                   />
                 )
               }

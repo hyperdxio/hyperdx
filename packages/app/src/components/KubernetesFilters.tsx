@@ -239,6 +239,8 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         control={control}
         size="xs"
         enableHotkey
+        dateRange={dateRange}
+        source={metricSource}
       />
     </Group>
   );
