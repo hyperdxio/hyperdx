@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.0.4
+
+### Patch Changes
+
+- 52ca182: feat: Add ClickHouse JSON Type Support
+- 808145b: feat: specify NODE_ENV in api build (prod stage)
+- Updated dependencies [52ca182]
+  - @hyperdx/common-utils@0.2.4
+
 ## 2.0.3
 
 ### Patch Changes
