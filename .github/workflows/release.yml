@@ -111,7 +111,7 @@ jobs:
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.DOWNSTREAM_TOKEN }}
           script: |
             const { TAG } = process.env;
             const result = await github.rest.actions.createWorkflowDispatch({
