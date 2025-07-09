@@ -961,7 +961,7 @@ function TeamNameSection() {
   const setTeamName = api.useSetTeamName();
   const hasAdminAccess = true;
   const [isEditingTeamName, setIsEditingTeamName] = useState(false);
-  const form = useForm({
+  const form = useForm<{ name: string }>({
     defaultValues: {
       name: team.name,
     },
@@ -1065,7 +1065,7 @@ function TeamQueryConfigSection() {
   const hasAdminAccess = true;
   const [isEditingQueryLimits, setIsEditingQueryLimits] = useState(false);
   const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
-  const form = useForm({
+  const form = useForm<{ searchRowLimit: number }>({
     defaultValues: {
       searchRowLimit,
     },
