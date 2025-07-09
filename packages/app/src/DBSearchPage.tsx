@@ -108,7 +108,6 @@ import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
-import { searchChartConfigDefaults } from './defaults';
 import { SearchConfig } from './types';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
@@ -919,7 +918,6 @@ function DBSearchPage() {
     }
 
     return {
-      ...searchChartConfigDefaults(me?.team),
       ...chartConfig,
       dateRange: searchedTimeRange,
     };

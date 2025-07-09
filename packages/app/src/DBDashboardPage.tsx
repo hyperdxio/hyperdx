@@ -75,7 +75,6 @@ import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
-import { searchChartConfigDefaults } from './defaults';
 import GranularityPicker, {
   GranularityPickerControlled,
 } from './GranularityPicker';
@@ -341,7 +340,6 @@ const Tile = forwardRef(
               <DBSqlRowTable
                 enabled
                 config={{
-                  ...searchChartConfigDefaults(me?.team),
                   ...queriedConfig,
                   orderBy: [
                     {

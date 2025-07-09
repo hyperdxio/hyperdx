@@ -4,7 +4,7 @@ import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types'
 export const DEFAULT_SEARCH_ROW_LIMIT = 200;
 
 export function searchChartConfigDefaults(
-  team: any,
+  team: any | undefined | null,
 ): Partial<ChartConfigWithDateRange> {
   return {
     limit: {
