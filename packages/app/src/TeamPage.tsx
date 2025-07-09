@@ -19,6 +19,7 @@ import {
   Divider,
   Flex,
   Group,
+  InputLabel,
   Loader,
   Modal as MModal,
   Radio,
@@ -33,7 +34,7 @@ import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { TableSourceForm } from '@/components/SourceForm';
-import { IS_LOCAL_MODE } from '@/config';
+import { DEFAULT_SEARCH_ROW_LIMIT, IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
 import api from './api';
@@ -958,10 +959,9 @@ function IntegrationsSection() {
 function TeamNameSection() {
   const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
   const setTeamName = api.useSetTeamName();
-  const { data: me } = api.useMe();
   const hasAdminAccess = true;
   const [isEditingTeamName, setIsEditingTeamName] = useState(false);
-  const form = useForm<WebhookForm>({
+  const form = useForm({
     defaultValues: {
       name: team.name,
     },
@@ -1054,6 +1054,127 @@ function TeamNameSection() {
             )}
           </Group>
         )}
+      </Card>
+    </Box>
+  );
+}
+
+function TeamQueryConfigSection() {
+  const setSearchRowLimit = api.useSetTeamSearchRowLimit();
+  const { data: me, refetch: refetchMe } = api.useMe();
+  const hasAdminAccess = true;
+  const [isEditingQueryLimits, setIsEditingQueryLimits] = useState(false);
+  const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
+  const form = useForm({
+    defaultValues: {
+      searchRowLimit,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ searchRowLimit: number }> = useCallback(
+    async values => {
+      try {
+        setSearchRowLimit.mutate(
+          { searchRowLimit: Number(values.searchRowLimit) },
+          {
+            onError: e => {
+              notifications.show({
+                color: 'red',
+                message: 'Failed to update Search Row Limit',
+              });
+            },
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: 'Updated Search Row Limit',
+              });
+              refetchMe();
+              setIsEditingQueryLimits(false);
+            },
+          },
+        );
+      } catch (e) {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    },
+    [refetchMe, setSearchRowLimit, me?.team?.searchRowLimit],
+  );
+
+  return (
+    <Box id="team_name">
+      <Text size="md" c="gray.4">
+        Team Query Limits
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Stack>
+          <InputLabel c="gray.3" size="md">
+            Search Row Limit
+          </InputLabel>
+          {isEditingQueryLimits && hasAdminAccess ? (
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <Group>
+                <TextInput
+                  size="xs"
+                  type="number"
+                  placeholder={searchRowLimit}
+                  required
+                  readOnly={!isEditingQueryLimits}
+                  error={form.formState.errors.searchRowLimit?.message}
+                  {...form.register('searchRowLimit', {
+                    required: true,
+                  })}
+                  miw={300}
+                  min={1}
+                  max={100000}
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      setIsEditingQueryLimits(false);
+                    }
+                  }}
+                />
+                <Button
+                  type="submit"
+                  size="xs"
+                  variant="light"
+                  color="green"
+                  loading={setSearchRowLimit.isPending}
+                >
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="default"
+                  disabled={setSearchRowLimit.isPending}
+                  onClick={() => {
+                    setIsEditingQueryLimits(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Group>
+            </form>
+          ) : (
+            <Group>
+              <Text className="text-white">{searchRowLimit}</Text>
+              {hasAdminAccess && (
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<i className="bi bi-pencil text-slate-300" />}
+                  onClick={() => setIsEditingQueryLimits(true)}
+                >
+                  Change
+                </Button>
+              )}
+            </Group>
+          )}
+        </Stack>
       </Card>
     </Box>
   );
@@ -1228,6 +1349,7 @@ export default function TeamPage() {
               <ConnectionsSection />
               <IntegrationsSection />
               <TeamNameSection />
+              <TeamQueryConfigSection />
               <ApiKeysSection />
 
               {hasAllowedAuthMethods && (

@@ -6,12 +6,12 @@ type ObjectId = mongoose.Types.ObjectId;
 export interface ITeam {
   _id: ObjectId;
   name: string;
+  searchRowLimit?: string;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
   hookId: string;
   collectorAuthenticationEnforced: boolean;
 }
-
 export type TeamDocument = mongoose.HydratedDocument<ITeam>;
 
 export default mongoose.model<ITeam>(
@@ -19,6 +19,7 @@ export default mongoose.model<ITeam>(
   new Schema<ITeam>(
     {
       name: String,
+      searchRowLimit: String,
       allowedAuthMethods: [String],
       hookId: {
         type: String,

@@ -78,7 +78,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
-import { IS_LOCAL_MODE } from '@/config';
+import { DEFAULT_SEARCH_ROW_LIMIT, IS_LOCAL_MODE } from '@/config';
 import {
   useAliasMapFromChartConfig,
   useQueriedChartConfig,
@@ -105,6 +105,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -904,6 +905,7 @@ function DBSearchPage() {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
 
+  const { data: me } = api.useMe();
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
     setDisplayedTimeInputValue('Live Tail');
@@ -918,9 +920,9 @@ function DBSearchPage() {
     return {
       ...chartConfig,
       dateRange: searchedTimeRange,
-      limit: { limit: 200 },
+      limit: { limit: me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT },
     };
-  }, [chartConfig, searchedTimeRange]);
+  }, [me?.team.searchRowLimit, chartConfig, searchedTimeRange]);
 
   const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
