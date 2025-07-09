@@ -367,7 +367,7 @@ function SQLInlineEditorControlledComponent({
   let stringValue = '';
   if (typeof value === 'string') {
     stringValue = value;
-  } else {
+  } else if (value !== undefined) {
     console.error('SQLInlineEditor: value is not a string', value);
   }
 
