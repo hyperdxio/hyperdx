@@ -6,7 +6,7 @@ type ObjectId = mongoose.Types.ObjectId;
 export interface ITeam {
   _id: ObjectId;
   name: string;
-  searchRowLimit?: string;
+  searchRowLimit?: number;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
   hookId: string;
@@ -19,7 +19,7 @@ export default mongoose.model<ITeam>(
   new Schema<ITeam>(
     {
       name: String,
-      searchRowLimit: String,
+      searchRowLimit: Number,
       allowedAuthMethods: [String],
       hookId: {
         type: String,
