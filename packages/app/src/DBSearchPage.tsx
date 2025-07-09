@@ -78,7 +78,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
-import { DEFAULT_SEARCH_ROW_LIMIT, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import {
   useAliasMapFromChartConfig,
   useQueriedChartConfig,
@@ -108,6 +108,7 @@ import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
+import { searchChartConfigDefaults } from './defaults';
 import { SearchConfig } from './types';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
@@ -918,11 +919,11 @@ function DBSearchPage() {
     }
 
     return {
+      ...searchChartConfigDefaults(me?.team),
       ...chartConfig,
       dateRange: searchedTimeRange,
-      limit: { limit: me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT },
     };
-  }, [me?.team.searchRowLimit, chartConfig, searchedTimeRange]);
+  }, [me?.team, chartConfig, searchedTimeRange]);
 
   const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??

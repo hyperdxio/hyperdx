@@ -34,11 +34,12 @@ import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { TableSourceForm } from '@/components/SourceForm';
-import { DEFAULT_SEARCH_ROW_LIMIT, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
 import api from './api';
 import { useConnections } from './connection';
+import { DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';

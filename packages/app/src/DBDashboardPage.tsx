@@ -71,9 +71,11 @@ import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useAllFields } from './hooks/useMetadata';
+import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
+import { searchChartConfigDefaults } from './defaults';
 import GranularityPicker, {
   GranularityPickerControlled,
 } from './GranularityPicker';
@@ -221,6 +223,8 @@ const Tile = forwardRef(
       return 'red';
     }, [alert]);
 
+    const { data: me } = api.useMe();
+
     return (
       <div
         className={`p-2 ${className} d-flex flex-column ${
@@ -337,6 +341,7 @@ const Tile = forwardRef(
               <DBSqlRowTable
                 enabled
                 config={{
+                  ...searchChartConfigDefaults(me?.team),
                   ...queriedConfig,
                   orderBy: [
                     {
@@ -347,7 +352,6 @@ const Tile = forwardRef(
                     },
                   ],
                   dateRange,
-                  limit: { limit: 200 },
                   select:
                     queriedConfig.select ||
                     source?.defaultTableSelectExpression ||
