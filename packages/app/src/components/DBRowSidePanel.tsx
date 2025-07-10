@@ -18,7 +18,9 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
-import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
+import DBRowSidePanelHeader, {
+  BreadcrumbPath,
+} from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
@@ -66,11 +68,17 @@ enum Tab {
   Infrastructure = 'infrastructure',
 }
 
+export type {
+  BreadcrumbEntry,
+  BreadcrumbPath,
+} from '@/components/DBRowSidePanelHeader';
+
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   onClose: () => void;
   isNestedPanel?: boolean;
+  breadcrumbPath?: BreadcrumbPath;
 };
 
 const DBRowSidePanel = ({
@@ -78,6 +86,8 @@ const DBRowSidePanel = ({
   source,
   isNestedPanel = false,
   setSubDrawerOpen,
+  onClose,
+  breadcrumbPath = [],
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
@@ -230,6 +240,8 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          breadcrumbPath={breadcrumbPath}
+          onBreadcrumbClick={onClose}
         />
       </Box>
       {/* <SidePanelHeader
@@ -349,6 +361,7 @@ const DBRowSidePanel = ({
             dbSqlRowTableConfig={dbSqlRowTableConfig}
             rowData={normalizedRow}
             rowId={rowId}
+            breadcrumbPath={breadcrumbPath}
           />
         </ErrorBoundary>
       )}
@@ -405,6 +418,7 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   source,
   isNestedPanel,
+  breadcrumbPath = [],
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -474,6 +488,7 @@ export default function DBRowSidePanelErrorBoundary({
               rowId={rowId}
               onClose={_onClose}
               isNestedPanel={isNestedPanel}
+              breadcrumbPath={breadcrumbPath}
               setSubDrawerOpen={setSubDrawerOpen}
             />
           </ErrorBoundary>

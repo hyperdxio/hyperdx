@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
+import { parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
@@ -13,8 +14,10 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import SearchInputV2 from '@/SearchInputV2';
+import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
+import DBRowSidePanel from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
@@ -31,6 +34,7 @@ interface ContextSubpanelProps {
   dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
+  breadcrumbPath?: Array<{ label: string; rowData?: Record<string, any> }>;
 }
 
 export default function ContextSubpanel({
@@ -38,6 +42,7 @@ export default function ContextSubpanel({
   dbSqlRowTableConfig,
   rowData,
   rowId,
+  breadcrumbPath = [],
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const { Timestamp: origTimestamp } = rowData;
@@ -54,6 +59,56 @@ export default function ContextSubpanel({
 
   const formWhere = watch('where');
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
+
+  // State management for nested panels
+  const isNested = breadcrumbPath.length > 0;
+
+  // For root level, use query state (URL-based)
+  const [queryContextRowId, setQueryContextRowId] = useQueryState(
+    'contextRowId',
+    parseAsString,
+  );
+  const [queryContextRowSource, setQueryContextRowSource] = useQueryState(
+    'contextRowSource',
+    parseAsString,
+  );
+
+  // For nested levels, use local state
+  const [localContextRowId, setLocalContextRowId] = useState<string | null>(
+    null,
+  );
+  const [localContextRowSource, setLocalContextRowSource] = useState<
+    string | null
+  >(null);
+
+  // Choose which state to use based on nesting level
+  const contextRowId = isNested ? localContextRowId : queryContextRowId;
+  const contextRowSource = isNested
+    ? localContextRowSource
+    : queryContextRowSource;
+  const setContextRowId = isNested
+    ? setLocalContextRowId
+    : setQueryContextRowId;
+  const setContextRowSource = isNested
+    ? setLocalContextRowSource
+    : setQueryContextRowSource;
+
+  const { data: contextRowSidePanelSource } = useSource({
+    id: contextRowSource || '',
+  });
+
+  const handleContextSidePanelClose = useCallback(() => {
+    setContextRowId(null);
+    setContextRowSource(null);
+  }, [setContextRowId, setContextRowSource]);
+
+  const handleRowExpandClick = useCallback(
+    (rowWhere: string) => {
+      setContextRowId(rowWhere);
+      setContextRowSource(source.id);
+    },
+    [source.id, setContextRowId, setContextRowSource],
+  );
 
   const date = useMemo(() => new Date(origTimestamp), [origTimestamp]);
 
@@ -175,89 +230,109 @@ export default function ContextSubpanel({
     contextBy,
   ]);
 
-  return (
-    config && (
-      <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
-        <Group justify="space-between" p="sm">
-          <SegmentedControl
-            bg="dark.7"
-            color="dark.5"
-            size="xs"
-            data={generateSegmentedControlData()}
-            value={contextBy}
-            onChange={v => setContextBy(v as ContextBy)}
+  const contextComponent = config && (
+    <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
+      <Group justify="space-between" p="sm">
+        <SegmentedControl
+          bg="dark.7"
+          color="dark.5"
+          size="xs"
+          data={generateSegmentedControlData()}
+          value={contextBy}
+          onChange={v => setContextBy(v as ContextBy)}
+        />
+        {contextBy === ContextBy.Custom && (
+          <WhereLanguageControlled
+            name="whereLanguage"
+            control={control}
+            sqlInput={
+              originalLanguage === 'lucene' ? null : (
+                <SQLInlineEditorControlled
+                  tableConnections={tcFromSource(source)}
+                  control={control}
+                  name="where"
+                  placeholder="SQL WHERE clause (ex. column = 'foo')"
+                  language="sql"
+                  enableHotkey
+                  size="sm"
+                />
+              )
+            }
+            luceneInput={
+              originalLanguage === 'sql' ? null : (
+                <SearchInputV2
+                  tableConnections={tcFromSource(source)}
+                  control={control}
+                  name="where"
+                  language="lucene"
+                  placeholder="Lucene where clause (ex. column:value)"
+                  enableHotkey
+                  size="sm"
+                />
+              )
+            }
           />
-          {contextBy === ContextBy.Custom && (
-            <WhereLanguageControlled
-              name="whereLanguage"
-              control={control}
-              sqlInput={
-                originalLanguage === 'lucene' ? null : (
-                  <SQLInlineEditorControlled
-                    tableConnections={tcFromSource(source)}
-                    control={control}
-                    name="where"
-                    placeholder="SQL WHERE clause (ex. column = 'foo')"
-                    language="sql"
-                    enableHotkey
-                    size="sm"
-                  />
-                )
-              }
-              luceneInput={
-                originalLanguage === 'sql' ? null : (
-                  <SearchInputV2
-                    tableConnections={tcFromSource(source)}
-                    control={control}
-                    name="where"
-                    language="lucene"
-                    placeholder="Lucene where clause (ex. column:value)"
-                    enableHotkey
-                    size="sm"
-                  />
-                )
-              }
-            />
-          )}
-          <SegmentedControl
-            bg="dark.7"
-            color="dark.5"
-            size="xs"
-            data={[
-              { label: '100ms', value: ms('100ms').toString() },
-              { label: '500ms', value: ms('500ms').toString() },
-              { label: '1s', value: ms('1s').toString() },
-              { label: '5s', value: ms('5s').toString() },
-              { label: '30s', value: ms('30s').toString() },
-              { label: '1m', value: ms('1m').toString() },
-              { label: '5m', value: ms('5m').toString() },
-              { label: '15m', value: ms('15m').toString() },
-            ]}
-            value={range.toString()}
-            onChange={value => setRange(Number(value))}
-          />
-        </Group>
-        <Group p="sm">
-          <div>
-            {contextBy !== ContextBy.All && (
-              <Badge size="md" variant="default">
-                {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-              </Badge>
-            )}
+        )}
+        <SegmentedControl
+          bg="dark.7"
+          color="dark.5"
+          size="xs"
+          data={[
+            { label: '100ms', value: ms('100ms').toString() },
+            { label: '500ms', value: ms('500ms').toString() },
+            { label: '1s', value: ms('1s').toString() },
+            { label: '5s', value: ms('5s').toString() },
+            { label: '30s', value: ms('30s').toString() },
+            { label: '1m', value: ms('1m').toString() },
+            { label: '5m', value: ms('5m').toString() },
+            { label: '15m', value: ms('15m').toString() },
+          ]}
+          value={range.toString()}
+          onChange={value => setRange(Number(value))}
+        />
+      </Group>
+      <Group p="sm">
+        <div>
+          {contextBy !== ContextBy.All && (
             <Badge size="md" variant="default">
-              Time range: ±{ms(range / 2)}
+              {contextBy}:{CONTEXT_MAPPING[contextBy].value}
             </Badge>
-          </div>
-        </Group>
-        <div style={{ height: '100%', overflow: 'auto' }}>
-          <DBSqlRowTable
-            highlightedLineId={rowId}
-            isLive={false}
-            config={config}
-            queryKeyPrefix={QUERY_KEY_PREFIX}
-          />
+          )}
+          <Badge size="md" variant="default">
+            Time range: ±{ms(range / 2)}
+          </Badge>
         </div>
-      </Flex>
-    )
+      </Group>
+      <div style={{ height: '100%', overflow: 'auto' }}>
+        <DBSqlRowTable
+          highlightedLineId={rowId}
+          isLive={false}
+          config={config}
+          queryKeyPrefix={QUERY_KEY_PREFIX}
+          onRowExpandClick={handleRowExpandClick}
+        />
+      </div>
+    </Flex>
+  );
+
+  return (
+    <>
+      {contextComponent}
+      {contextRowId && contextRowSidePanelSource && (
+        <DBRowSidePanel
+          source={contextRowSidePanelSource}
+          rowId={contextRowId}
+          onClose={handleContextSidePanelClose}
+          isNestedPanel={true}
+          breadcrumbPath={[
+            ...breadcrumbPath,
+            {
+              label: `Surrounding Context (${new Date().toLocaleTimeString()})`,
+              rowData,
+            },
+          ]}
+        />
+      )}
+    </>
   );
 }

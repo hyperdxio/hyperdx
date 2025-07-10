@@ -5,7 +5,15 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Button, Flex, Paper, Text } from '@mantine/core';
+import {
+  Box,
+  Breadcrumbs,
+  Button,
+  Flex,
+  Paper,
+  Text,
+  UnstyledButton,
+} from '@mantine/core';
 
 import EventTag from '@/components/EventTag';
 import { FormatTime } from '@/useFormatTime';
@@ -19,18 +27,44 @@ const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
 
 const MAX_MAIN_CONTENT_LENGTH = 2000;
 
+// Types for breadcrumb navigation
+export type BreadcrumbEntry = {
+  label: string;
+  rowData?: Record<string, any>;
+};
+
+export type BreadcrumbPath = BreadcrumbEntry[];
+
+// Function to extract clean body text for hover tooltip
+const getBodyTextForTooltip = (rowData: Record<string, any>): string => {
+  const body = rowData.__hdx_body || rowData.Body || rowData.body || '';
+  const bodyText = typeof body === 'string' ? body : String(body);
+  const cleanBody = bodyText.trim();
+
+  if (!cleanBody) return '';
+
+  // Truncate to ~200 characters for tooltip readability
+  return cleanBody.length > 200
+    ? `${cleanBody.substring(0, 197)}...`
+    : cleanBody;
+};
+
 export default function DBRowSidePanelHeader({
   tags,
   mainContent = '',
   mainContentHeader,
   date,
   severityText,
+  breadcrumbPath = [],
+  onBreadcrumbClick,
 }: {
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
   tags: Record<string, string>;
   severityText?: string;
+  breadcrumbPath?: BreadcrumbPath;
+  onBreadcrumbClick?: () => void;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { onPropertyAddClick, generateSearchUrl } =
@@ -83,8 +117,54 @@ export default function DBRowSidePanelHeader({
     [generateSearchUrl],
   );
 
+  // Create breadcrumb navigation
+  const breadcrumbItems = React.useMemo(() => {
+    if (breadcrumbPath.length === 0) return [];
+
+    const items = [];
+
+    // Add all previous levels from breadcrumbPath
+    breadcrumbPath.forEach((crumb, index) => {
+      const tooltipText = crumb.rowData
+        ? getBodyTextForTooltip(crumb.rowData)
+        : '';
+
+      items.push(
+        <UnstyledButton
+          key={`crumb-${index}`}
+          onClick={() => onBreadcrumbClick?.()}
+          style={{ textDecoration: 'none' }}
+          title={tooltipText}
+        >
+          <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+            {crumb.label}
+          </Text>
+        </UnstyledButton>,
+      );
+    });
+
+    // Add current level
+    items.push(
+      <Text key="current" size="sm" c="gray.2">
+        Event Details
+      </Text>,
+    );
+
+    return items;
+  }, [breadcrumbPath, onBreadcrumbClick]);
+
   return (
     <>
+      {/* Breadcrumb navigation */}
+      {breadcrumbPath.length > 0 && (
+        <Box mb="sm" pb="sm" className="border-bottom border-dark">
+          <Breadcrumbs separator="›" separatorMargin="xs">
+            {breadcrumbItems}
+          </Breadcrumbs>
+        </Box>
+      )}
+
+      {/* Event timestamp and severity */}
       <Flex>
         {severityText && <LogLevel level={severityText} />}
         {severityText && isValidDate(date) && (
