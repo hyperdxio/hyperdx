@@ -286,7 +286,7 @@ function ChartSeriesEditorComponent({
     </>
   );
 }
-const ChartSeriesEditor = memo(ChartSeriesEditorComponent);
+const ChartSeriesEditor = ChartSeriesEditorComponent;
 
 // Autocomplete can focus on column/map keys
 
