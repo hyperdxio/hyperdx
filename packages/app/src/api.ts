@@ -262,6 +262,15 @@ const api = {
         }).json(),
     });
   },
+  useSetTeamSearchRowLimit() {
+    return useMutation<any, HTTPError, { searchRowLimit: number }>({
+      mutationFn: async ({ searchRowLimit }) =>
+        hdxServer(`team/search-row-limit`, {
+          method: 'PATCH',
+          json: { searchRowLimit },
+        }).json(),
+    });
+  },
   useTags() {
     return useQuery({
       queryKey: [`team/tags`],

@@ -42,6 +42,8 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import api from '@/api';
+import { searchChartConfigDefaults } from '@/defaults';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -940,7 +942,11 @@ function DBSqlRowTableComponent({
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
 }) {
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey(config);
+  const { data: me } = api.useMe();
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey({
+    ...searchChartConfigDefaults(me?.team),
+    ...config,
+  });
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
