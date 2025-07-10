@@ -37,6 +37,16 @@ export type BreadcrumbEntry = {
 
 export type BreadcrumbPath = BreadcrumbEntry[];
 
+function getBodyTextForBreadcrumb(rowData: Record<string, any>): string {
+  const bodyText = (rowData.__hdx_body || '').trim();
+  const BREADCRUMB_TOOLTIP_MAX_LENGTH = 200;
+  const BREADCRUMB_TOOLTIP_TRUNCATED_LENGTH = 197;
+
+  return bodyText.length > BREADCRUMB_TOOLTIP_MAX_LENGTH
+    ? `${bodyText.substring(0, BREADCRUMB_TOOLTIP_TRUNCATED_LENGTH)}...`
+    : bodyText;
+}
+
 function BreadcrumbNavigation({
   breadcrumbPath,
   onBreadcrumbClick,
@@ -44,14 +54,6 @@ function BreadcrumbNavigation({
   breadcrumbPath: BreadcrumbPath;
   onBreadcrumbClick?: () => void;
 }) {
-  // Function to extract clean body text for hover tooltip
-  const getBodyTextForBreadcrumb = (rowData: Record<string, any>): string => {
-    const bodyText = (rowData.__hdx_body || '').trim();
-
-    return bodyText.length > 200
-      ? `${bodyText.substring(0, 197)}...`
-      : bodyText;
-  };
   const breadcrumbItems = useMemo(() => {
     if (breadcrumbPath.length === 0) return [];
 

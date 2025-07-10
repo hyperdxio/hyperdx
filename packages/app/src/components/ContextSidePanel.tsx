@@ -18,6 +18,7 @@ import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
 import DBRowSidePanel from './DBRowSidePanel';
+import { BreadcrumbPath } from './DBRowSidePanelHeader';
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
@@ -34,7 +35,7 @@ interface ContextSubpanelProps {
   dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
-  breadcrumbPath?: Array<{ label: string; rowData?: Record<string, any> }>;
+  breadcrumbPath?: BreadcrumbPath;
 }
 
 // Custom hook to manage nested panel state
