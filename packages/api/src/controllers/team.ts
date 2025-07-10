@@ -71,6 +71,13 @@ export function setTeamName(teamId: ObjectId, name: string) {
   return Team.findByIdAndUpdate(teamId, { name }, { new: true });
 }
 
+export function setTeamSearchRowLimit(
+  teamId: ObjectId,
+  searchRowLimit: number,
+) {
+  return Team.findByIdAndUpdate(teamId, { searchRowLimit }, { new: true });
+}
+
 export async function getTags(teamId: ObjectId) {
   const [dashboardTags, savedSearchTags] = await Promise.all([
     Dashboard.aggregate([

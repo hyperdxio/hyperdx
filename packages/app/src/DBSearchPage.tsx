@@ -105,6 +105,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -904,6 +905,7 @@ function DBSearchPage() {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
 
+  const { data: me } = api.useMe();
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
     setDisplayedTimeInputValue('Live Tail');
@@ -918,9 +920,8 @@ function DBSearchPage() {
     return {
       ...chartConfig,
       dateRange: searchedTimeRange,
-      limit: { limit: 200 },
     };
-  }, [chartConfig, searchedTimeRange]);
+  }, [me?.team, chartConfig, searchedTimeRange]);
 
   const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??

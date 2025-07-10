@@ -10,6 +10,7 @@ import {
   getTeam,
   rotateTeamApiKey,
   setTeamName,
+  setTeamSearchRowLimit,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -81,6 +82,28 @@ router.patch(
       const { name } = req.body;
       const team = await setTeamName(teamId, name);
       res.json({ name: team?.name });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/search-row-limit',
+  validateRequest({
+    body: z.object({
+      searchRowLimit: z.number(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+      const { searchRowLimit } = req.body;
+      const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
+      res.json({ searchRowLimit: team?.searchRowLimit });
     } catch (e) {
       next(e);
     }
