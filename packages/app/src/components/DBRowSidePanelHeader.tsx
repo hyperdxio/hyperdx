@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -35,19 +36,66 @@ export type BreadcrumbEntry = {
 
 export type BreadcrumbPath = BreadcrumbEntry[];
 
-// Function to extract clean body text for hover tooltip
-const getBodyTextForTooltip = (rowData: Record<string, any>): string => {
-  const body = rowData.__hdx_body || rowData.Body || rowData.body || '';
-  const bodyText = typeof body === 'string' ? body : String(body);
-  const cleanBody = bodyText.trim();
+function BreadcrumbNavigation({
+  breadcrumbPath,
+  onBreadcrumbClick,
+}: {
+  breadcrumbPath: BreadcrumbPath;
+  onBreadcrumbClick?: () => void;
+}) {
+  // Function to extract clean body text for hover tooltip
+  const getBodyTextForBreadcrumb = (rowData: Record<string, any>): string => {
+    const bodyText = (rowData.__hdx_body || '').trim();
 
-  if (!cleanBody) return '';
+    return bodyText.length > 200
+      ? `${bodyText.substring(0, 197)}...`
+      : bodyText;
+  };
+  const breadcrumbItems = useMemo(() => {
+    if (breadcrumbPath.length === 0) return [];
 
-  // Truncate to ~200 characters for tooltip readability
-  return cleanBody.length > 200
-    ? `${cleanBody.substring(0, 197)}...`
-    : cleanBody;
-};
+    const items = [];
+
+    // Add all previous levels from breadcrumbPath
+    breadcrumbPath.forEach((crumb, index) => {
+      const tooltipText = crumb.rowData
+        ? getBodyTextForBreadcrumb(crumb.rowData)
+        : '';
+
+      items.push(
+        <UnstyledButton
+          key={`crumb-${index}`}
+          onClick={() => onBreadcrumbClick?.()}
+          style={{ textDecoration: 'none' }}
+          title={tooltipText}
+        >
+          <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+            {crumb.label}
+          </Text>
+        </UnstyledButton>,
+      );
+    });
+
+    // Add current level
+    items.push(
+      <Text key="current" size="sm" c="gray.2">
+        Event Details
+      </Text>,
+    );
+
+    return items;
+  }, [breadcrumbPath, onBreadcrumbClick]);
+
+  if (breadcrumbPath.length === 0) return null;
+
+  return (
+    <Box mb="sm" pb="sm" className="border-bottom border-dark">
+      <Breadcrumbs separator="›" separatorMargin="xs">
+        {breadcrumbItems}
+      </Breadcrumbs>
+    </Box>
+  );
+}
 
 export default function DBRowSidePanelHeader({
   tags,
@@ -117,52 +165,13 @@ export default function DBRowSidePanelHeader({
     [generateSearchUrl],
   );
 
-  // Create breadcrumb navigation
-  const breadcrumbItems = React.useMemo(() => {
-    if (breadcrumbPath.length === 0) return [];
-
-    const items = [];
-
-    // Add all previous levels from breadcrumbPath
-    breadcrumbPath.forEach((crumb, index) => {
-      const tooltipText = crumb.rowData
-        ? getBodyTextForTooltip(crumb.rowData)
-        : '';
-
-      items.push(
-        <UnstyledButton
-          key={`crumb-${index}`}
-          onClick={() => onBreadcrumbClick?.()}
-          style={{ textDecoration: 'none' }}
-          title={tooltipText}
-        >
-          <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
-            {crumb.label}
-          </Text>
-        </UnstyledButton>,
-      );
-    });
-
-    // Add current level
-    items.push(
-      <Text key="current" size="sm" c="gray.2">
-        Event Details
-      </Text>,
-    );
-
-    return items;
-  }, [breadcrumbPath, onBreadcrumbClick]);
-
   return (
     <>
       {/* Breadcrumb navigation */}
-      {breadcrumbPath.length > 0 && (
-        <Box mb="sm" pb="sm" className="border-bottom border-dark">
-          <Breadcrumbs separator="›" separatorMargin="xs">
-            {breadcrumbItems}
-          </Breadcrumbs>
-        </Box>
-      )}
+      <BreadcrumbNavigation
+        breadcrumbPath={breadcrumbPath}
+        onBreadcrumbClick={onBreadcrumbClick}
+      />
 
       {/* Event timestamp and severity */}
       <Flex>
