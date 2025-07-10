@@ -38,6 +38,7 @@ import {
   useCreateSource,
   useDeleteSource,
   useSource,
+  useSources,
   useUpdateSource,
 } from '@/source';
 
@@ -54,6 +55,39 @@ const DEFAULT_DATABASE = 'default';
 const OTEL_CLICKHOUSE_EXPRESSIONS = {
   timestampValueExpression: 'TimeUnix',
   resourceAttributesExpression: 'ResourceAttributes',
+};
+
+const CORRELATION_FIELD_MAP: Record<
+  SourceKind,
+  Record<string, { targetKind: SourceKind; targetField: string }[]>
+> = {
+  [SourceKind.Log]: {
+    metricSourceId: [
+      { targetKind: SourceKind.Metric, targetField: 'logSourceId' },
+    ],
+    traceSourceId: [
+      { targetKind: SourceKind.Trace, targetField: 'logSourceId' },
+    ],
+  },
+  [SourceKind.Trace]: {
+    logSourceId: [{ targetKind: SourceKind.Log, targetField: 'traceSourceId' }],
+    sessionSourceId: [
+      { targetKind: SourceKind.Session, targetField: 'traceSourceId' },
+    ],
+    metricSourceId: [
+      { targetKind: SourceKind.Metric, targetField: 'logSourceId' },
+    ],
+  },
+  [SourceKind.Session]: {
+    traceSourceId: [
+      { targetKind: SourceKind.Trace, targetField: 'sessionSourceId' },
+    ],
+  },
+  [SourceKind.Metric]: {
+    logSourceId: [
+      { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
+    ],
+  },
 };
 
 function FormRow({
@@ -906,6 +940,64 @@ export function TableSourceForm({
   const updateSource = useUpdateSource();
   const deleteSource = useDeleteSource();
 
+  // Bidirectional source linking
+  const { data: sources } = useSources();
+  const currentSourceId = watch('id');
+
+  useEffect(() => {
+    const { unsubscribe } = watch(async (_value, { name, type }) => {
+      const value = _value as TSourceUnion;
+      if (!currentSourceId || !sources || type !== 'change') return;
+
+      const correlationFields = CORRELATION_FIELD_MAP[kind];
+      if (!correlationFields || !name || !(name in correlationFields)) return;
+
+      const fieldName = name as keyof typeof correlationFields;
+      const newTargetSourceId = (value as any)[fieldName] as string | undefined;
+      const targetConfigs = correlationFields[fieldName];
+
+      for (const { targetKind, targetField } of targetConfigs) {
+        // Find the previously linked source if any
+        const previouslyLinkedSource = sources.find(
+          s =>
+            s.kind === targetKind &&
+            (s as any)[targetField] === currentSourceId,
+        );
+
+        // If there was a previously linked source and it's different from the new one, unlink it
+        if (
+          previouslyLinkedSource &&
+          previouslyLinkedSource.id !== newTargetSourceId
+        ) {
+          await updateSource.mutateAsync({
+            source: {
+              ...previouslyLinkedSource,
+              [targetField]: undefined,
+            } as TSource,
+          });
+        }
+
+        // If a new source is selected, link it back
+        if (newTargetSourceId) {
+          const targetSource = sources.find(s => s.id === newTargetSourceId);
+          if (targetSource && targetSource.kind === targetKind) {
+            // Only update if the target field is empty to avoid overwriting existing correlations
+            if (!(targetSource as any)[targetField]) {
+              await updateSource.mutateAsync({
+                source: {
+                  ...targetSource,
+                  [targetField]: currentSourceId,
+                } as TSource,
+              });
+            }
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [watch, kind, currentSourceId, sources, updateSource]);
+
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = (error: z.ZodError<TSourceUnion>) => {
     const errors = error.errors;
@@ -933,18 +1025,47 @@ export function TableSourceForm({
 
   const _onCreate = useCallback(() => {
     clearErrors();
-    handleSubmit(data => {
+    handleSubmit(async data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error);
         return;
       }
+
       createSource.mutate(
         // TODO: HDX-1768 get rid of this type assertion
         { source: data as TSource },
         {
-          onSuccess: data => {
-            onCreate?.(data);
+          onSuccess: async newSource => {
+            // Handle bidirectional linking for new sources
+            const correlationFields = CORRELATION_FIELD_MAP[newSource.kind];
+            if (correlationFields && sources) {
+              for (const [fieldName, targetConfigs] of Object.entries(
+                correlationFields,
+              )) {
+                const targetSourceId = (newSource as any)[fieldName];
+                if (targetSourceId) {
+                  for (const { targetKind, targetField } of targetConfigs) {
+                    const targetSource = sources.find(
+                      s => s.id === targetSourceId,
+                    );
+                    if (targetSource && targetSource.kind === targetKind) {
+                      // Only update if the target field is empty to avoid overwriting existing correlations
+                      if (!(targetSource as any)[targetField]) {
+                        await updateSource.mutateAsync({
+                          source: {
+                            ...targetSource,
+                            [targetField]: newSource.id,
+                          } as TSource,
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            onCreate?.(newSource);
             notifications.show({
               color: 'green',
               message: 'Source created',
@@ -959,7 +1080,15 @@ export function TableSourceForm({
         },
       );
     })();
-  }, [handleSubmit, createSource, onCreate, kind, formState]);
+  }, [
+    handleSubmit,
+    createSource,
+    onCreate,
+    kind,
+    formState,
+    sources,
+    updateSource,
+  ]);
 
   const _onSave = useCallback(() => {
     clearErrors();
