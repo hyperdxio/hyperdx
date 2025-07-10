@@ -13,6 +13,7 @@ import {
   Flex,
   Paper,
   Text,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 
@@ -63,16 +64,22 @@ function BreadcrumbNavigation({
         : '';
 
       items.push(
-        <UnstyledButton
+        <Tooltip
           key={`crumb-${index}`}
-          onClick={() => onBreadcrumbClick?.()}
-          style={{ textDecoration: 'none' }}
-          title={tooltipText}
+          label={tooltipText}
+          disabled={!tooltipText}
+          position="bottom"
+          withArrow
         >
-          <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
-            {crumb.label}
-          </Text>
-        </UnstyledButton>,
+          <UnstyledButton
+            onClick={() => onBreadcrumbClick?.()}
+            style={{ textDecoration: 'none' }}
+          >
+            <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+              {crumb.label}
+            </Text>
+          </UnstyledButton>
+        </Tooltip>,
       );
     });
 
