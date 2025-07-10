@@ -37,6 +37,31 @@ interface ContextSubpanelProps {
   breadcrumbPath?: Array<{ label: string; rowData?: Record<string, any> }>;
 }
 
+// Custom hook to manage nested panel state
+function useNestedPanelState(isNested: boolean) {
+  // Query state (URL-based) for root level
+  const queryState = {
+    contextRowId: useQueryState('contextRowId', parseAsString),
+    contextRowSource: useQueryState('contextRowSource', parseAsString),
+  };
+
+  // Local state for nested levels
+  const localState = {
+    contextRowId: useState<string | null>(null),
+    contextRowSource: useState<string | null>(null),
+  };
+
+  // Choose which state to use based on nesting level
+  const activeState = isNested ? localState : queryState;
+
+  return {
+    contextRowId: activeState.contextRowId[0],
+    contextRowSource: activeState.contextRowSource[0],
+    setContextRowId: activeState.contextRowId[1],
+    setContextRowSource: activeState.contextRowSource[1],
+  };
+}
+
 export default function ContextSubpanel({
   source,
   dbSqlRowTableConfig,
@@ -63,35 +88,12 @@ export default function ContextSubpanel({
   // State management for nested panels
   const isNested = breadcrumbPath.length > 0;
 
-  // For root level, use query state (URL-based)
-  const [queryContextRowId, setQueryContextRowId] = useQueryState(
-    'contextRowId',
-    parseAsString,
-  );
-  const [queryContextRowSource, setQueryContextRowSource] = useQueryState(
-    'contextRowSource',
-    parseAsString,
-  );
-
-  // For nested levels, use local state
-  const [localContextRowId, setLocalContextRowId] = useState<string | null>(
-    null,
-  );
-  const [localContextRowSource, setLocalContextRowSource] = useState<
-    string | null
-  >(null);
-
-  // Choose which state to use based on nesting level
-  const contextRowId = isNested ? localContextRowId : queryContextRowId;
-  const contextRowSource = isNested
-    ? localContextRowSource
-    : queryContextRowSource;
-  const setContextRowId = isNested
-    ? setLocalContextRowId
-    : setQueryContextRowId;
-  const setContextRowSource = isNested
-    ? setLocalContextRowSource
-    : setQueryContextRowSource;
+  const {
+    contextRowId,
+    contextRowSource,
+    setContextRowId,
+    setContextRowSource,
+  } = useNestedPanelState(isNested);
 
   const { data: contextRowSidePanelSource } = useSource({
     id: contextRowSource || '',
@@ -327,7 +329,7 @@ export default function ContextSubpanel({
           breadcrumbPath={[
             ...breadcrumbPath,
             {
-              label: `Surrounding Context (${new Date().toLocaleTimeString()})`,
+              label: `Surrounding Context`,
               rowData,
             },
           ]}

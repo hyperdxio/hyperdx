@@ -68,11 +68,6 @@ enum Tab {
   Infrastructure = 'infrastructure',
 }
 
-export type {
-  BreadcrumbEntry,
-  BreadcrumbPath,
-} from '@/components/DBRowSidePanelHeader';
-
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
