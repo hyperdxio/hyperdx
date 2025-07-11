@@ -1,5 +1,15 @@
 # @hyperdx/app
 
+## 2.0.5
+
+### Patch Changes
+
+- 973b9e8: feat: Add any aggFn support, fix select field input not showing up
+- 844f74c: fix: validate name for saved searches
+- f7eb1ef: feat: configurable search row limit
+- Updated dependencies [973b9e8]
+  - @hyperdx/common-utils@0.2.5
+
 ## 2.0.4
 
 ### Patch Changes
