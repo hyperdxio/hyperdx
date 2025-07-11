@@ -26,6 +26,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   secret: config.EXPRESS_SESSION_SECRET,
   cookie: {
     secure: false,
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
   rolling: true,
