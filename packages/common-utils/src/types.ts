@@ -61,6 +61,7 @@ export const AggregateFunctionSchema = z.enum([
   'min',
   'quantile',
   'sum',
+  'any',
 ]);
 export const AggregateFunctionWithCombinatorsSchema = z
   .string()

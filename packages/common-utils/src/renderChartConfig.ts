@@ -266,11 +266,12 @@ const aggFnExpr = ({
   quantileLevel?: number;
   where?: string;
 }) => {
+  const isAny = fn === 'any';
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
-    UNSAFE_RAW_SQL: `toFloat64OrDefault(toString(${expr}))`,
+    UNSAFE_RAW_SQL: isAny ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
   };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
