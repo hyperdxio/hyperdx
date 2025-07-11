@@ -21,9 +21,13 @@ export function useAutoCompleteOptions(
   {
     tableConnections,
     additionalSuggestions,
+    dateRange,
+    source,
   }: {
     tableConnections?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
+    dateRange?: [Date, Date];
+    source?: any; // TSource 类型，外部传入
   },
 ) {
   // Fetch and gather all field options
@@ -87,22 +91,19 @@ export function useAutoCompleteOptions(
   // hooks to get key values
   const chartConfigs: ChartConfigWithDateRange[] = toArray(
     tableConnections,
-  ).map(({ databaseName, tableName, connectionId }) => ({
-    connection: connectionId,
-    from: {
-      databaseName,
-      tableName,
-    },
-    timestampValueExpression: '',
-    select: '',
-    where: '',
-    // TODO: Pull in date for query as arg
-    // just assuming 1/2 day is okay to query over right now
-    dateRange: [
-      new Date(Date.now() - (86400 * 1000) / 2),
-      new Date(Date.now()),
-    ],
-  }));
+  ).map(({ databaseName, tableName, connectionId }) => {
+    return {
+      connection: connectionId,
+      from: {
+        databaseName,
+        tableName,
+      },
+      timestampValueExpression: source?.timestampValueExpression,
+      select: '',
+      where: '',
+      dateRange: dateRange,
+    };
+  });
   const { data: keyVals } = useGetKeyValues({
     chartConfigs,
     keys: searchKeys,
