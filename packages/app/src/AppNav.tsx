@@ -569,7 +569,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         onHide={closeInstallInstructions}
       />
       <div
-        className={`${styles.wrapper} inter`}
+        className={styles.wrapper}
         style={{
           position: fixed ? 'fixed' : 'initial',
           letterSpacing: '0.05em',
