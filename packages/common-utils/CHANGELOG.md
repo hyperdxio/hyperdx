@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.2.5
+
+### Patch Changes
+
+- 973b9e8: feat: Add any aggFn support, fix select field input not showing up
+
 ## 0.2.4
 
 ### Patch Changes
