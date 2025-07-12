@@ -276,7 +276,8 @@ function usePinnedFilterBySource(sourceId: string | null) {
 }
 
 export function usePinnedFilters(sourceId: string | null) {
-  const { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields } = usePinnedFilterBySource(sourceId);
+  const { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields } =
+    usePinnedFilterBySource(sourceId);
 
   const toggleFilterPin = React.useCallback(
     (property: string, value: string) => {

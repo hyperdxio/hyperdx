@@ -449,8 +449,6 @@ const DBSearchPageFiltersComponent = ({
     return strings;
   }, [data, filterState, showMoreFields]);
 
-  console.log('datum', keysToFetch);
-
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
     chartConfig.dateRange,
@@ -514,7 +512,6 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, setExtraFacets, dateRange],
   );
 
-  console.log('getPinnedFields', getPinnedFields());
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
     for (const facet of facets ?? []) {
