@@ -1110,6 +1110,7 @@ function DBSearchPage() {
               control={control}
               name="source"
               onCreate={openNewSourceModal}
+              allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
             />
             <Menu withArrow position="bottom-start">
               <Menu.Target>

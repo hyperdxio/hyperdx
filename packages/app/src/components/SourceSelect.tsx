@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import { UseControllerProps } from 'react-hook-form';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import SelectControlled from '@/components/SelectControlled';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
@@ -8,17 +9,27 @@ import { useSources } from '@/source';
 function SourceSelectControlledComponent({
   size,
   onCreate,
+  allowedSourceKinds,
   ...props
-}: { size?: string; onCreate?: () => void } & UseControllerProps<any>) {
+}: {
+  size?: string;
+  onCreate?: () => void;
+  allowedSourceKinds?: SourceKind[];
+} & UseControllerProps<any>) {
   const { data } = useSources();
   const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
 
   const values = useMemo(
     () => [
-      ...(data?.map(d => ({
-        value: d.id,
-        label: d.name,
-      })) ?? []),
+      ...(data
+        ?.filter(
+          source =>
+            !allowedSourceKinds || allowedSourceKinds.includes(source.kind),
+        )
+        .map(d => ({
+          value: d.id,
+          label: d.name,
+        })) ?? []),
       ...(onCreate && !hasLocalDefaultSources
         ? [
             {
@@ -28,7 +39,7 @@ function SourceSelectControlledComponent({
           ]
         : []),
     ],
-    [data, onCreate],
+    [data, onCreate, allowedSourceKinds, hasLocalDefaultSources],
   );
 
   return (
