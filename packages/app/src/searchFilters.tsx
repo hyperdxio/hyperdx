@@ -220,17 +220,28 @@ type PinnedFilters = {
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
 
 function usePinnedFilterBySource(sourceId: string | null) {
-  // Eventually replace pinnedFilters with a GET from api/mongo
-  // Eventually replace setPinnedFilters with a POST to api/mongo
+  // Keep the original structure for backwards compatibility
   const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
     [sourceId: string]: PinnedFilters;
   }>('hdx-pinned-search-filters', {});
+
+  // Separate storage for pinned fields
+  const [_pinnedFields, _setPinnedFields] = useLocalStorage<{
+    [sourceId: string]: string[];
+  }>('hdx-pinned-fields', {});
 
   const pinnedFilters = React.useMemo<PinnedFilters>(
     () =>
       !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
     [_pinnedFilters, sourceId],
   );
+
+  const pinnedFields = React.useMemo<string[]>(
+    () =>
+      !sourceId || !_pinnedFields[sourceId] ? [] : _pinnedFields[sourceId],
+    [_pinnedFields, sourceId],
+  );
+
   const setPinnedFilters = React.useCallback<
     (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => void
   >(
@@ -245,30 +256,69 @@ function usePinnedFilterBySource(sourceId: string | null) {
     },
     [sourceId, _setPinnedFilters],
   );
-  return { pinnedFilters, setPinnedFilters };
+
+  const setPinnedFields = React.useCallback<
+    (val: string[] | ((pf: string[]) => string[])) => void
+  >(
+    val => {
+      if (!sourceId) return;
+      _setPinnedFields(prev =>
+        produce(prev, draft => {
+          draft[sourceId] =
+            val instanceof Function ? val(draft[sourceId] ?? []) : val;
+        }),
+      );
+    },
+    [sourceId, _setPinnedFields],
+  );
+
+  return { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields };
 }
 
 export function usePinnedFilters(sourceId: string | null) {
-  const { pinnedFilters, setPinnedFilters } = usePinnedFilterBySource(sourceId);
+  const { pinnedFilters, setPinnedFilters, pinnedFields, setPinnedFields } =
+    usePinnedFilterBySource(sourceId);
 
   const toggleFilterPin = React.useCallback(
     (property: string, value: string) => {
-      setPinnedFilters(prevPins =>
-        produce(prevPins, draft => {
+      setPinnedFilters(prevFilters =>
+        produce(prevFilters, draft => {
           if (!draft[property]) {
             draft[property] = [];
           }
           const idx = draft[property].findIndex(v => v === value);
           if (idx >= 0) {
-            draft[property].splice(idx);
+            draft[property].splice(idx, 1);
           } else {
             draft[property].push(value);
           }
           return draft;
         }),
       );
+
+      // When pinning a value, also pin the field if not already pinned
+      setPinnedFields(prevFields => {
+        if (!prevFields.includes(property)) {
+          return [...prevFields, property];
+        }
+        return prevFields;
+      });
     },
-    [setPinnedFilters],
+    [setPinnedFilters, setPinnedFields],
+  );
+
+  const toggleFieldPin = React.useCallback(
+    (field: string) => {
+      setPinnedFields(prevFields => {
+        const fieldIndex = prevFields.findIndex(f => f === field);
+        if (fieldIndex >= 0) {
+          return prevFields.filter((_, i) => i !== fieldIndex);
+        } else {
+          return [...prevFields, field];
+        }
+      });
+    },
+    [setPinnedFields],
   );
 
   const isFilterPinned = React.useCallback(
@@ -281,8 +331,22 @@ export function usePinnedFilters(sourceId: string | null) {
     [pinnedFilters],
   );
 
+  const isFieldPinned = React.useCallback(
+    (field: string): boolean => {
+      return pinnedFields.includes(field);
+    },
+    [pinnedFields],
+  );
+
+  const getPinnedFields = React.useCallback((): string[] => {
+    return pinnedFields;
+  }, [pinnedFields]);
+
   return {
     toggleFilterPin,
+    toggleFieldPin,
     isFilterPinned,
+    isFieldPinned,
+    getPinnedFields,
   };
 }
