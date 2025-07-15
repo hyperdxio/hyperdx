@@ -436,7 +436,11 @@ export default function SessionsPage() {
             style={{ overflow: 'hidden' }}
           >
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
-              <SourceSelectControlled control={control} name="source" />
+              <SourceSelectControlled
+                control={control}
+                name="source"
+                allowedSourceKinds={[SourceKind.Session]}
+              />
               <WhereLanguageControlled
                 name="whereLanguage"
                 control={control}

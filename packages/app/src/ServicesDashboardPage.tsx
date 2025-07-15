@@ -8,7 +8,12 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import { DisplayType, Filter, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  Filter,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -905,7 +910,11 @@ function ServicesDashboardPage() {
       >
         <Group gap="xs">
           <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
-            <SourceSelectControlled control={control} name="source" />
+            <SourceSelectControlled
+              control={control}
+              name="source"
+              allowedSourceKinds={[SourceKind.Trace]}
+            />
             <ServiceSelectControlled
               sourceId={sourceId}
               control={control}
