@@ -5,6 +5,8 @@ import {
   InputProps,
   PasswordInput,
   PasswordInputProps,
+  TextInput,
+  TextInputProps,
 } from '@mantine/core';
 
 interface InputControlledProps<T extends FieldValues>
@@ -21,6 +23,32 @@ interface PasswordInputControlledProps<T extends FieldValues>
   name: Path<T>;
   control: Control<T>;
   rules?: Parameters<Control<T>['register']>[1];
+}
+
+interface TextInputControlledProps<T extends FieldValues>
+  extends Omit<TextInputProps, 'name' | 'style'>,
+    Omit<React.InputHTMLAttributes<HTMLInputElement>, 'name' | 'size'> {
+  name: Path<T>;
+  control: Control<T>;
+  rules?: Parameters<Control<T>['register']>[1];
+}
+
+export function TextInputControlled<T extends FieldValues>({
+  name,
+  control,
+  rules,
+  ...props
+}: TextInputControlledProps<T>) {
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      render={({ field, fieldState: { error } }) => (
+        <TextInput {...props} {...field} error={error?.message} />
+      )}
+    />
+  );
 }
 
 export function InputControlled<T extends FieldValues>({
