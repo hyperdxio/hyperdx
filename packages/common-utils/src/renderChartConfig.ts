@@ -85,7 +85,7 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: s.alias ?? `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
+        alias: s.alias || `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
       })),
     };
   }
@@ -396,7 +396,7 @@ async function renderSelectList(
       }
 
       return chSql`${expr}${
-        select.alias != null
+        select.alias != null && select.alias.trim() !== ''
           ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
           : []
       }`;
