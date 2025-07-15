@@ -32,9 +32,15 @@ export const AppNavContext = React.createContext<{
 export const AppNavCloudBanner = () => {
   return (
     <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-      <span className="text-slate-300 fs-8">Ready to use HyperDX Cloud?</span>
+      <span className="text-slate-300 fs-8">
+        Ready to deploy on ClickHouse Cloud?
+      </span>
       <div className="mt-2 mb-2">
-        <Link href="https://www.hyperdx.io/register" passHref legacyBehavior>
+        <Link
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
+          passHref
+          legacyBehavior
+        >
           <Button
             variant="light"
             size="xs"
