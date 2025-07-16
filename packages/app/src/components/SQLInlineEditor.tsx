@@ -144,11 +144,7 @@ export default function SQLInlineEditor({
   additionalSuggestions = [],
   queryHistoryType,
 }: SQLInlineEditorProps) {
-  const { data: fields } = useAllFields(tableConnections ?? [], {
-    enabled:
-      !!tableConnections &&
-      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
-  });
+  const { data: fields } = useAllFields(tableConnections ?? []);
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);

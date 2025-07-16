@@ -37,6 +37,7 @@ export function useColumns(
         connectionId,
       });
     },
+    enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
 }
@@ -64,6 +65,11 @@ export function useAllFields(
 
       return deduplicate2dArray<Field>(fields2d);
     },
+    enabled:
+      tableConnections.length > 0 &&
+      tableConnections.every(
+        tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
+      ),
     ...options,
   });
 }
@@ -91,6 +97,7 @@ export function useTableMetadata(
       });
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
+    enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
 }
