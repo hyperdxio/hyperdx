@@ -340,6 +340,7 @@ const localModeFetch: typeof fetch = (input, init) => {
     .atob(auth.substring('Bearer'.length))
     .split(':');
   delete init.headers?.['Authorization'];
+  delete init.headers?.['authorization'];
   if (username) url.searchParams.set('user', username);
   if (password) url.searchParams.set('password', password);
 
@@ -350,6 +351,7 @@ const standardModeFetch: typeof fetch = (input, init) => {
   if (!init) init = {};
   // authorization is handled on the backend, don't send this header
   delete init.headers?.['Authorization'];
+  delete init.headers?.['authorization'];
   return fetch(input, init);
 };
 
