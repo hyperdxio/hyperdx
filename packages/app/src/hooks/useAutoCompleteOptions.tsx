@@ -27,11 +27,7 @@ export function useAutoCompleteOptions(
   },
 ) {
   // Fetch and gather all field options
-  const { data: fields } = useAllFields(tableConnections ?? [], {
-    enabled:
-      !!tableConnections &&
-      (Array.isArray(tableConnections) ? tableConnections.length > 0 : true),
-  });
+  const { data: fields } = useAllFields(tableConnections ?? []);
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 

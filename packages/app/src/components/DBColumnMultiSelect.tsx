@@ -68,16 +68,11 @@ export default function DBColumnMultiSelect({
   values: string[];
   setValues: (value: string[]) => void;
 }) {
-  const { data: columns, isLoading: isColumnsLoading } = useColumns(
-    {
-      databaseName: database ?? '',
-      tableName: table ?? '',
-      connectionId: connectionId ?? '',
-    },
-    {
-      enabled: !!database && !!table && !!connectionId,
-    },
-  );
+  const { data: columns } = useColumns({
+    databaseName: database ?? '',
+    tableName: table ?? '',
+    connectionId: connectionId ?? '',
+  });
 
   const propertyOptions = (columns ?? []).map((column: { name: string }) => ({
     value: column.name,
