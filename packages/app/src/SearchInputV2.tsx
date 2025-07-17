@@ -35,6 +35,8 @@ export default function SearchInputV2({
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  dateRange,
+  source,
   ...props
 }: {
   tableConnections?: TableConnection | TableConnection[];
@@ -47,6 +49,8 @@ export default function SearchInputV2({
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  dateRange?: [Date, Date];
+  source?: any;
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -61,6 +65,8 @@ export default function SearchInputV2({
     {
       tableConnections,
       additionalSuggestions,
+      dateRange,
+      source,
     },
   );
 
