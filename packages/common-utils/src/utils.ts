@@ -270,6 +270,10 @@ const TIME_TOKENS = {
     '12h': 'MMM d h:mm:ss.SSS a',
     '24h': 'MMM d HH:mm:ss.SSS',
   },
+  withYear: {
+    '12h': 'MMM d yyyy h:mm:ss a',
+    '24h': 'MMM d yyyy HH:mm:ss',
+  },
   time: {
     '12h': 'h:mm:ss a',
     '24h': 'HH:mm:ss',
@@ -284,7 +288,7 @@ export const formatDate = (
     clock = '12h',
   }: {
     isUTC?: boolean;
-    format?: 'normal' | 'short' | 'withMs' | 'time';
+    format?: 'normal' | 'short' | 'withMs' | 'time' | 'withYear';
     clock?: '12h' | '24h';
   },
 ) => {
