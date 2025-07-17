@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.2.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+
 ## 0.2.5
 
 ### Patch Changes
