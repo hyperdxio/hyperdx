@@ -1,5 +1,13 @@
 # @hyperdx/api
 
+## 2.0.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+- Updated dependencies [33fc071]
+  - @hyperdx/common-utils@0.2.6
+
 ## 2.0.5
 
 ### Patch Changes
