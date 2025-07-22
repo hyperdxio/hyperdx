@@ -25,6 +25,7 @@ export enum JSDataType {
   Map = 'map',
   Number = 'number',
   String = 'string',
+  Tuple = 'tuple',
   Bool = 'bool',
   JSON = 'json',
   Dynamic = 'dynamic', // json type will store anything as Dynamic type by default
@@ -43,6 +44,8 @@ export const convertCHDataTypeToJSType = (
 ): JSDataType | null => {
   if (dataType.startsWith('Date')) {
     return JSDataType.Date;
+  } else if (dataType.startsWith('Tuple')) {
+    return JSDataType.Tuple;
   } else if (dataType.startsWith('Map')) {
     return JSDataType.Map;
   } else if (dataType.startsWith('Array')) {

@@ -50,6 +50,11 @@ export function processRowToWhereClause(
             value,
             chType,
           ]);
+        case JSDataType.Tuple:
+          return SqlString.format(`toJSONString(?)=?`, [
+            SqlString.raw(valueExpr),
+            JSON.stringify(value),
+          ]);
         case JSDataType.JSON:
           // Handle case for whole json object, ex: json
           return SqlString.format(`lower(hex(MD5(toString(?))))=?`, [
