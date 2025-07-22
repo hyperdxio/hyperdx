@@ -22,6 +22,7 @@ jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
       JSON: JSDataType.JSON,
       Dynamic: JSDataType.Dynamic,
       Int32: JSDataType.Number,
+      'Tuple(String, Int32)': JSDataType.Tuple,
     };
     return typeMap[type] || JSDataType.String;
   }),
@@ -243,6 +244,65 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe("original_column='test'");
+  });
+
+  it('should handle Tuple columns', () => {
+    const columnMap = new Map([
+      [
+        'coordinates',
+        {
+          name: 'coordinates',
+          type: 'Tuple(String, Int32)',
+          valueExpr: 'coordinates',
+          jsType: JSDataType.Tuple,
+        },
+      ],
+    ]);
+
+    const row = { coordinates: '{"s": "city", "i": 123}' };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe(
+      'toJSONString(coordinates)=\'{\\"s\\": \\"city\\", \\"i\\": 123}\'',
+    );
+  });
+
+  it('should handle null value in default block', () => {
+    const columnMap = new Map([
+      [
+        'name',
+        {
+          name: 'name',
+          type: 'String',
+          valueExpr: 'name',
+          jsType: JSDataType.String,
+        },
+      ],
+    ]);
+
+    const row = { name: null };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe('isNull(name)');
+  });
+
+  it('should handle undefined value in default block', () => {
+    const columnMap = new Map([
+      [
+        'description',
+        {
+          name: 'description',
+          type: 'String',
+          valueExpr: 'description',
+          jsType: JSDataType.String,
+        },
+      ],
+    ]);
+
+    const row = { description: undefined };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe('isNull(description)');
   });
 
   it('should throw error when column type not found', () => {
