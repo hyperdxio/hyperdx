@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Checkbox,
@@ -142,6 +143,8 @@ export type FilterGroupProps = {
   onExcludeClick: (value: string) => void;
   onPinClick: (value: string) => void;
   isPinned: (value: string) => boolean;
+  onFieldPinClick?: VoidFunction;
+  isFieldPinned?: boolean;
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
@@ -160,6 +163,8 @@ export const FilterGroup = ({
   onExcludeClick,
   isPinned,
   onPinClick,
+  onFieldPinClick,
+  isFieldPinned,
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
@@ -260,16 +265,31 @@ export const FilterGroup = ({
           leftSectionWidth={27}
           leftSection={<IconSearch size={15} stroke={2} />}
           rightSection={
-            selectedValues.included.size + selectedValues.excluded.size > 0 ? (
-              <TextButton
-                ms="xs"
-                label="Clear"
-                onClick={() => {
-                  onClearClick();
-                  setSearch('');
-                }}
-              />
-            ) : null
+            <Group gap="xs">
+              {onFieldPinClick && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={onFieldPinClick}
+                  title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                >
+                  <i
+                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
+                  />
+                </ActionIcon>
+              )}
+              {selectedValues.included.size + selectedValues.excluded.size >
+                0 && (
+                <TextButton
+                  label="Clear"
+                  onClick={() => {
+                    onClearClick();
+                    setSearch('');
+                  }}
+                />
+              )}
+            </Group>
           }
         />
       </Tooltip>
@@ -374,9 +394,13 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
-  const { toggleFilterPin, isFilterPinned } = usePinnedFilters(
-    sourceId ?? null,
-  );
+  const {
+    toggleFilterPin,
+    toggleFieldPin,
+    isFilterPinned,
+    isFieldPinned,
+    getPinnedFields,
+  } = usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
 
   const { data: countData } = useExplainQuery(chartConfig);
@@ -390,7 +414,7 @@ const DBSearchPageFiltersComponent = ({
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 
-  const datum = useMemo(() => {
+  const keysToFetch = useMemo(() => {
     if (!data) {
       return [];
     }
@@ -413,7 +437,8 @@ const DBSearchPageFiltersComponent = ({
         field =>
           showMoreFields ||
           field.type.includes('LowCardinality') || // query only low cardinality fields by default
-          Object.keys(filterState).includes(field.path), // keep selected fields
+          Object.keys(filterState).includes(field.path) || // keep selected fields
+          isFieldPinned(field.path), // keep pinned fields
       )
       .map(({ path }) => path)
       .filter(
@@ -446,7 +471,7 @@ const DBSearchPageFiltersComponent = ({
   } = useGetKeyValues({
     chartConfigs: { ...chartConfig, dateRange },
     limit: keyLimit,
-    keys: datum,
+    keys: keysToFetch,
   });
 
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
@@ -486,6 +511,7 @@ const DBSearchPageFiltersComponent = ({
     },
     [chartConfig, setExtraFacets, dateRange],
   );
+
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
     for (const facet of facets ?? []) {
@@ -518,8 +544,23 @@ const DBSearchPageFiltersComponent = ({
     for (const key of remainingFilterState) {
       _facets.push({ key, value: Array.from(filterState[key].included) });
     }
+
+    // Any other keys, let's add them in with empty values
+    for (const key of keysToFetch) {
+      if (!_facets.some(facet => facet.key === key)) {
+        _facets.push({ key, value: [] });
+      }
+    }
+
+    // reorder facets to put pinned fields first
+    _facets.sort((a, b) => {
+      const aPinned = isFieldPinned(a.key);
+      const bPinned = isFieldPinned(b.key);
+      return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
+    });
+
     return _facets;
-  }, [facets, filterState, extraFacets]);
+  }, [facets, filterState, extraFacets, keysToFetch, isFieldPinned]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -655,6 +696,8 @@ const DBSearchPageFiltersComponent = ({
               }}
               onPinClick={value => toggleFilterPin(facet.key, value)}
               isPinned={value => isFilterPinned(facet.key, value)}
+              onFieldPinClick={() => toggleFieldPin(facet.key)}
+              isFieldPinned={isFieldPinned(facet.key)}
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
               hasLoadedMore={Boolean(extraFacets[facet.key])}
