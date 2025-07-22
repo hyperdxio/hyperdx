@@ -82,10 +82,19 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
+export const isJSDataTypePrimitive = (dataType: JSDataType | null) => {
+  return (
+    dataType === JSDataType.Number ||
+    dataType === JSDataType.String ||
+    dataType === JSDataType.Date ||
+    dataType === JSDataType.Bool
+  );
+};
+
 export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
   const jsType = convertCHDataTypeToJSType(dataType);
 
-  if (jsType === JSDataType.Map || jsType === JSDataType.Array) {
+  if (!isJSDataTypePrimitive(jsType)) {
     throw new Error('Map type is not a primitive type');
   } else if (jsType === JSDataType.Date) {
     return JSDataType.Number;
