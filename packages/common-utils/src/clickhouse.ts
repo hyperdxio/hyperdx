@@ -82,7 +82,9 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
-export const isJSDataTypePrimitive = (dataType: JSDataType | null) => {
+export const isJSDataTypePrimitive = (
+  dataType: JSDataType | null | undefined,
+) => {
   return (
     dataType === JSDataType.Number ||
     dataType === JSDataType.String ||
