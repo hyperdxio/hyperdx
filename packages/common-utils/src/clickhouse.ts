@@ -82,22 +82,27 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
-export const isJSDataTypePrimitive = (
+export const isJSDataTypeJSONStringifiable = (
   dataType: JSDataType | null | undefined,
 ) => {
   return (
-    dataType === JSDataType.Number ||
-    dataType === JSDataType.String ||
-    dataType === JSDataType.Date ||
-    dataType === JSDataType.Bool
+    dataType === JSDataType.Map ||
+    dataType === JSDataType.Array ||
+    dataType === JSDataType.JSON ||
+    dataType === JSDataType.Tuple ||
+    dataType === JSDataType.Dynamic
   );
 };
 
 export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
   const jsType = convertCHDataTypeToJSType(dataType);
 
-  if (!isJSDataTypePrimitive(jsType)) {
-    throw new Error('Map type is not a primitive type');
+  if (
+    jsType === JSDataType.Map ||
+    jsType === JSDataType.Array ||
+    jsType === JSDataType.Tuple
+  ) {
+    throw new Error('Map, Array or Tuple type is not a primitive type');
   } else if (jsType === JSDataType.Date) {
     return JSDataType.Number;
   }

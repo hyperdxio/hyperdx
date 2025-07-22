@@ -19,7 +19,7 @@ import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReference,
-  isJSDataTypePrimitive,
+  isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -1014,7 +1014,7 @@ function DBSqlRowTableComponent({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return !isJSDataTypePrimitive(columnType);
+      return isJSDataTypeJSONStringifiable(columnType);
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {
