@@ -59,7 +59,7 @@ const OTEL_CLICKHOUSE_EXPRESSIONS = {
 
 const CORRELATION_FIELD_MAP: Record<
   SourceKind,
-  Record<string, { targetKind: SourceKind; targetField: string }[]>
+  Record<string, { targetKind: SourceKind; targetField: keyof TSource }[]>
 > = {
   [SourceKind.Log]: {
     metricSourceId: [
@@ -952,16 +952,14 @@ export function TableSourceForm({
       const correlationFields = CORRELATION_FIELD_MAP[kind];
       if (!correlationFields || !name || !(name in correlationFields)) return;
 
-      const fieldName = name as keyof typeof correlationFields;
-      const newTargetSourceId = (value as any)[fieldName] as string | undefined;
+      const fieldName = name as keyof TSourceUnion;
+      const newTargetSourceId = value[fieldName] as string | undefined;
       const targetConfigs = correlationFields[fieldName];
 
       for (const { targetKind, targetField } of targetConfigs) {
         // Find the previously linked source if any
         const previouslyLinkedSource = sources.find(
-          s =>
-            s.kind === targetKind &&
-            (s as any)[targetField] === currentSourceId,
+          s => s.kind === targetKind && s[targetField] === currentSourceId,
         );
 
         // If there was a previously linked source and it's different from the new one, unlink it
@@ -982,7 +980,7 @@ export function TableSourceForm({
           const targetSource = sources.find(s => s.id === newTargetSourceId);
           if (targetSource && targetSource.kind === targetKind) {
             // Only update if the target field is empty to avoid overwriting existing correlations
-            if (!(targetSource as any)[targetField]) {
+            if (!targetSource[targetField]) {
               await updateSource.mutateAsync({
                 source: {
                   ...targetSource,
@@ -1051,7 +1049,7 @@ export function TableSourceForm({
                     );
                     if (targetSource && targetSource.kind === targetKind) {
                       // Only update if the target field is empty to avoid overwriting existing correlations
-                      if (!(targetSource as any)[targetField]) {
+                      if (!targetSource[targetField]) {
                         await updateSource.mutateAsync({
                           source: {
                             ...targetSource,
