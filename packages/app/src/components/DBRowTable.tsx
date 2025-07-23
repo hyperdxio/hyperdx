@@ -19,6 +19,7 @@ import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReference,
+  isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -1013,12 +1014,7 @@ function DBSqlRowTableComponent({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return (
-        columnType === JSDataType.Map ||
-        columnType === JSDataType.Array ||
-        columnType === JSDataType.JSON ||
-        columnType === JSDataType.Dynamic
-      );
+      return isJSDataTypeJSONStringifiable(columnType);
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {
