@@ -70,7 +70,9 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
     timeZone: 'UTC',
   });
 } else {
-  logger.warn('In-app cron job is disabled');
+  logger.warn(
+    'In-app cron job is disabled. If you want to run the task manually, use the --manual flag',
+  );
   if (manual) {
     logger.info('Running task in manual mode');
     main(taskName)
