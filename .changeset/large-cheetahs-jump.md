@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: introduce '-m' flag to run the cron task manually + use '--kill-others-on-fail'
+fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled

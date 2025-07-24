@@ -53,7 +53,6 @@ const main = async (taskName: string) => {
 // Entry point
 const argv = minimist(process.argv.slice(2));
 const taskName = argv._[0];
-const manual = argv.m || argv.manual;
 // WARNING: the cron job will be enabled only in development mode
 if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.info('In-app cron job is enabled');
@@ -70,21 +69,16 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
     timeZone: 'UTC',
   });
 } else {
-  logger.warn(
-    'In-app cron job is disabled. If you want to run the task manually, use the --manual flag',
-  );
-  if (manual) {
-    logger.info('Running task in manual mode');
-    main(taskName)
-      .then(() => {
-        process.exit(0);
-      })
-      .catch(err => {
-        console.log(err);
-        logger.error(serializeError(err));
-        process.exit(1);
-      });
-  }
+  logger.warn('In-app cron job is disabled');
+  main(taskName)
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(err => {
+      console.log(err);
+      logger.error(serializeError(err));
+      process.exit(1);
+    });
 }
 
 process.on('uncaughtException', (err: Error) => {
