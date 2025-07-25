@@ -52,7 +52,20 @@ see them reflected in real-time.
 The development stack mounts volumes locally for persisting storage under
 `.volumes`. Clear this directory to reset ClickHouse and MongoDB storage.
 
+### Windows
+
+If you are running WSL 2, Hot module reload on Nextjs (Frontend) does not work
+out of the box on windows when run natively on docker. The fix here is to open
+project directory in WSL and run the above docker compose commands directly in
+WSL. Note that the project directory should not be under /mnt/c/ directory. You
+can clone the git repo in /home/{username} for example.
+
+To develop from WSL, follow instructions
+[here](https://code.visualstudio.com/docs/remote/wsl).
+
 ## Testing
+
+### Integration Tests
 
 To run the tests locally, you can run the following command:
 
@@ -66,16 +79,14 @@ If you want to run a specific test file, you can run the following command:
 make dev-int FILE=checkAlerts
 ```
 
-### Windows
+### Unit Tests
 
-If you are running WSL 2, Hot module reload on Nextjs (Frontend) does not work
-out of the box on windows when run natively on docker. The fix here is to open
-project directory in WSL and run the above docker compose commands directly in
-WSL. Note that the project directory should not be under /mnt/c/ directory. You
-can clone the git repo in /home/{username} for example.
+To run unit tests or update snapshots, you can go to the package you want (ex.
+common-utils) to test and run:
 
-To develop from WSL, follow instructions
-[here](https://code.visualstudio.com/docs/remote/wsl).
+```bash
+yarn dev:unit
+```
 
 ## Additional support
 
