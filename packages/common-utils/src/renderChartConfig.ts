@@ -1250,13 +1250,13 @@ async function translateMetricChartConfig(
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS ${valueAlias}
+            END AS "${valueAlias}"
           FROM points
           WHERE length(point) > 1 AND total > 0
           `,
         },
       ],
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, ${valueAlias}`,
+      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
       from: {
         databaseName: '',
         tableName: 'metrics',
