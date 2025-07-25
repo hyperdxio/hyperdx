@@ -1,3 +1,4 @@
+import { PublicEnvScript } from 'next-runtime-env';
 import { Head, Html, Main, NextScript } from 'next/document';
 
 export default function Document() {
@@ -20,6 +21,7 @@ export default function Document() {
           href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        <PublicEnvScript />
       </Head>
       <body>
         <Main />
