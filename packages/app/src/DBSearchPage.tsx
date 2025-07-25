@@ -1318,6 +1318,8 @@ function DBSearchPage() {
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
+                dateRange={searchedTimeRange}
+                source={inputSourceObj}
               />
             }
           />

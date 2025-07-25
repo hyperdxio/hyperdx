@@ -267,6 +267,8 @@ function ChartSeriesEditorComponent({
             placeholder="Search your events w/ Lucene ex. column:foo"
             onSubmit={onSubmit}
             additionalSuggestions={attributeKeys}
+            dateRange={dateRange}
+            source={tableSource}
           />
         )}
         {showGroupBy && (
@@ -757,6 +759,8 @@ export default function EditTimeChartForm({
                   language="lucene"
                   placeholder="Search your events w/ Lucene ex. column:foo"
                   onSubmit={onSubmit}
+                  dateRange={dateRange}
+                  source={tableSource}
                 />
               )}
             </Flex>
