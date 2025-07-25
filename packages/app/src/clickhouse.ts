@@ -25,6 +25,8 @@ export const getClickhouseClient = () => {
       console.warn('No local connection found');
       return new ClickhouseClient({
         host: '',
+        username: '',
+        password: '',
       });
     }
     return new ClickhouseClient({
