@@ -1,7 +1,17 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
-function getDefaults() {
+function getDefaults(jsonColumns: string[] = []) {
   const spanAttributeField = 'SpanAttributes';
+  const isJsonColumn = jsonColumns.includes(spanAttributeField);
+
+  // Helper function to format field access based on column type
+  const formatFieldAccess = (field: string, key: string) => {
+    if (isJsonColumn) {
+      return `${field}.\`${key}\``;
+    } else {
+      return `${field}['${key}']`;
+    }
+  };
 
   return {
     duration: 'Duration',
@@ -11,17 +21,17 @@ function getDefaults() {
     spanName: 'SpanName',
     spanKind: 'SpanKind',
     severityText: 'StatusCode',
-    k8sResourceName: `${spanAttributeField}['k8s.resource.name']`,
-    k8sPodName: `${spanAttributeField}['k8s.pod.name']`,
-    httpScheme: `${spanAttributeField}['http.scheme']`,
-    serverAddress: `${spanAttributeField}['server.address']`,
-    httpHost: `${spanAttributeField}['http.host']`,
-    dbStatement: `coalesce(nullif(${spanAttributeField}['db.query.text'], ''), nullif(${spanAttributeField}['db.statement'], ''))`,
+    k8sResourceName: formatFieldAccess(spanAttributeField, 'k8s.resource.name'),
+    k8sPodName: formatFieldAccess(spanAttributeField, 'k8s.pod.name'),
+    httpScheme: formatFieldAccess(spanAttributeField, 'http.scheme'),
+    serverAddress: formatFieldAccess(spanAttributeField, 'server.address'),
+    httpHost: formatFieldAccess(spanAttributeField, 'http.host'),
+    dbStatement: `coalesce(nullif(${formatFieldAccess(spanAttributeField, 'db.query.text')}, ''), nullif(${formatFieldAccess(spanAttributeField, 'db.statement')}, ''))`,
   };
 }
 
-export function getExpressions(source?: TSource) {
-  const defaults = getDefaults();
+export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
+  const defaults = getDefaults(jsonColumns);
 
   const fieldExpressions = {
     // General

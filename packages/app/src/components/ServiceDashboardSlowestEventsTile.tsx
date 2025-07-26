@@ -8,6 +8,7 @@ import { ChartBox } from '@/components/ChartBox';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
 import { useSource } from '@/source';
 
@@ -30,7 +31,12 @@ export default function SlowestEventsTile({
   enabled?: boolean;
   extraFilters?: Filter[];
 }) {
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [rowId, setRowId] = useQueryState('rowId', parseAsString);
   const [rowSource, setRowSource] = useQueryState('rowSource', parseAsString);

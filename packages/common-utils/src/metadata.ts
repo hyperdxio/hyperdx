@@ -147,6 +147,26 @@ export class Metadata {
     );
   }
 
+  async getJsonColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }) {
+    const columns = await this.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+
+    return columns
+      .filter(column => column.type.startsWith('JSON'))
+      .map(column => column.name);
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,
