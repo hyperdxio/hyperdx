@@ -68,21 +68,22 @@ export default function ServiceDashboardEndpointPerformanceChart({
   // existence of the serverAddress/httpHost to build the span name
   if (jsonColumns.includes(spanAttributesExpression)) {
     spanNameColSql = `
-    concat(
-      ${expressions.spanName}, ' ',
-      if(
-        has(['HTTP DELETE', 'DELETE', 'HTTP GET', 'GET', 'HTTP HEAD', 'HEAD', 'HTTP OPTIONS', 'OPTIONS', 'HTTP PATCH', 'PATCH', 'HTTP POST', 'POST', 'HTTP PUT', 'PUT'], ${expressions.spanName}),
+      concat(
+        ${expressions.spanName}, ' ',
         if(
-            toString(${expressions.serverAddress}) != '',
-            toString(${expressions.serverAddress}),
-            if(
-              toString(${expressions.httpHost}) != '', 
-              toString(${expressions.httpHost}), 
-              ''
-            )
-          ),
-        ''
-    ))`;
+          has(['HTTP DELETE', 'DELETE', 'HTTP GET', 'GET', 'HTTP HEAD', 'HEAD', 'HTTP OPTIONS', 'OPTIONS', 'HTTP PATCH', 'PATCH', 'HTTP POST', 'POST', 'HTTP PUT', 'PUT'], ${expressions.spanName}),
+          if(
+              toString(${expressions.serverAddress}) != '',
+              toString(${expressions.serverAddress}),
+              if(
+                toString(${expressions.httpHost}) != '', 
+                toString(${expressions.httpHost}), 
+                ''
+              )
+            ),
+          ''
+        )
+      )`;
   }
 
   return (

@@ -162,6 +162,7 @@ export class Metadata {
       connectionId,
     });
 
+    // TODO: should we use .includes() to handle Array(JSON) and other variants?
     return columns
       .filter(column => column.type.startsWith('JSON'))
       .map(column => column.name);

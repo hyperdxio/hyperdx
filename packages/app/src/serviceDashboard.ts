@@ -4,7 +4,6 @@ function getDefaults(jsonColumns: string[] = []) {
   const spanAttributeField = 'SpanAttributes';
   const isJsonColumn = jsonColumns.includes(spanAttributeField);
 
-  // Helper function to format field access based on column type
   const formatFieldAccess = (field: string, key: string) => {
     if (isJsonColumn) {
       return `${field}.\`${key}\``;
@@ -12,6 +11,27 @@ function getDefaults(jsonColumns: string[] = []) {
       return `${field}['${key}']`;
     }
   };
+
+  let dbStatement = `coalesce(nullif(${formatFieldAccess(spanAttributeField, 'db.query.text')}, ''), nullif(${formatFieldAccess(spanAttributeField, 'db.statement')}, ''))`;
+
+  // ClickHouse does not support NULLIF(some_dynamic_column)
+  // so we instead use toString() and an empty string check to check for
+  // existence of the serverAddress/httpHost to build the span name
+  if (isJsonColumn) {
+    dbStatement = `
+      coalesce(
+        if(
+          toString(${formatFieldAccess(spanAttributeField, 'db.query.text')}) != '',
+          toString(${formatFieldAccess(spanAttributeField, 'db.query.text')}),
+          if(
+            toString(${formatFieldAccess(spanAttributeField, 'db.statement')}) != '',
+            toString(${formatFieldAccess(spanAttributeField, 'db.statement')}), 
+            ''
+          )
+        )
+      )
+    `;
+  }
 
   return {
     duration: 'Duration',
@@ -26,7 +46,7 @@ function getDefaults(jsonColumns: string[] = []) {
     httpScheme: formatFieldAccess(spanAttributeField, 'http.scheme'),
     serverAddress: formatFieldAccess(spanAttributeField, 'server.address'),
     httpHost: formatFieldAccess(spanAttributeField, 'http.host'),
-    dbStatement: `coalesce(nullif(${formatFieldAccess(spanAttributeField, 'db.query.text')}, ''), nullif(${formatFieldAccess(spanAttributeField, 'db.statement')}, ''))`,
+    dbStatement,
   };
 }
 
