@@ -43,6 +43,33 @@ export function useColumns(
   });
 }
 
+export function useJsonColumns(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  },
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  return useQuery<string[]>({
+    queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
+    queryFn: async () => {
+      const metadata = getMetadata();
+      return metadata.getJsonColumns({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+    },
+    enabled: !!databaseName && !!tableName && !!connectionId,
+    ...options,
+  });
+}
+
 export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
