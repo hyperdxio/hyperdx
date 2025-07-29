@@ -51,7 +51,7 @@ export function useAllFields(
     ? _tableConnections
     : [_tableConnections];
   const metadata = getMetadata();
-  const { data: me } = api.useMe();
+  const { data: me, isFetched } = api.useMe();
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useAllFields',
@@ -76,7 +76,7 @@ export function useAllFields(
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
-      !!me,
+      isFetched,
     ...options,
   });
 }
