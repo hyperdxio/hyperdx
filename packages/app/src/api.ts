@@ -271,6 +271,15 @@ const api = {
         }).json(),
     });
   },
+  useSetFieldMetadataDisabled() {
+    return useMutation<any, HTTPError, { fieldMetadataDisabled: boolean }>({
+      mutationFn: async ({ fieldMetadataDisabled }) =>
+        hdxServer(`team/field-metadata`, {
+          method: 'PATCH',
+          json: { fieldMetadataDisabled },
+        }).json(),
+    });
+  },
   useTags() {
     return useQuery({
       queryKey: [`team/tags`],

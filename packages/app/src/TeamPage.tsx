@@ -30,9 +30,11 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { UseQueryResult } from '@tanstack/react-query';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
+import SelectControlled from '@/components/SelectControlled';
 import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
@@ -1060,11 +1062,11 @@ function TeamNameSection() {
   );
 }
 
-function TeamQueryConfigSection() {
-  const setSearchRowLimit = api.useSetTeamSearchRowLimit();
+function SearchRowLimitForm() {
   const { data: me, refetch: refetchMe } = api.useMe();
+  const setSearchRowLimit = api.useSetTeamSearchRowLimit();
   const hasAdminAccess = true;
-  const [isEditingQueryLimits, setIsEditingQueryLimits] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
   const form = useForm<{ searchRowLimit: number }>({
     defaultValues: {
@@ -1090,7 +1092,7 @@ function TeamQueryConfigSection() {
                 message: 'Updated Search Row Limit',
               });
               refetchMe();
-              setIsEditingQueryLimits(false);
+              setIsEditing(false);
             },
           },
         );
@@ -1105,6 +1107,178 @@ function TeamQueryConfigSection() {
   );
 
   return (
+    <Stack gap="xs" mb="md">
+      <InputLabel c="gray.3" size="md">
+        Search Row Limit
+      </InputLabel>
+      {isEditing && hasAdminAccess ? (
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <Group>
+            <TextInput
+              size="xs"
+              type="number"
+              placeholder={searchRowLimit}
+              required
+              readOnly={!isEditing}
+              error={form.formState.errors.searchRowLimit?.message}
+              {...form.register('searchRowLimit', {
+                required: true,
+              })}
+              miw={300}
+              min={1}
+              max={100000}
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  setIsEditing(false);
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="light"
+              color="green"
+              loading={setSearchRowLimit.isPending}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={setSearchRowLimit.isPending}
+              onClick={() => {
+                setIsEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      ) : (
+        <Group>
+          <Text className="text-white">{searchRowLimit}</Text>
+          {hasAdminAccess && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              onClick={() => setIsEditing(true)}
+            >
+              Change
+            </Button>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
+function FieldMetadataForm() {
+  const { data: me, refetch: refetchMe } = api.useMe();
+  const setFieldMetadataDisabled = api.useSetFieldMetadataDisabled();
+  const hasAdminAccess = true;
+  const [isEditing, setIsEditing] = useState(false);
+  const fieldMetadataDisabled = me?.team.fieldMetadataDisabled ?? false;
+  const fieldMetadata = fieldMetadataDisabled ? 'Disabled' : 'Enabled';
+  const form = useForm<{ fieldMetadata: string }>({
+    defaultValues: {
+      fieldMetadata: fieldMetadata,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ fieldMetadata: string }> = useCallback(
+    async values => {
+      try {
+        setFieldMetadataDisabled.mutate(
+          {
+            fieldMetadataDisabled: values.fieldMetadata === 'Disabled',
+          },
+          {
+            onError: e => {
+              notifications.show({
+                color: 'red',
+                message: 'Failed to update Field Metadata Queries',
+              });
+            },
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: `${values.fieldMetadata} Field Metadata queries`,
+              });
+              refetchMe();
+              setIsEditing(false);
+            },
+          },
+        );
+      } catch (e) {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    },
+    [refetchMe, setFieldMetadataDisabled, me?.team?.searchRowLimit],
+  );
+
+  return (
+    <Stack gap="xs">
+      <InputLabel c="gray.3" size="md">
+        Field Metadata Queries
+      </InputLabel>
+      {isEditing && hasAdminAccess ? (
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <Group>
+            <SelectControlled
+              control={form.control}
+              name="fieldMetadata"
+              value={fieldMetadata}
+              data={['Enabled', 'Disabled']}
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="light"
+              color="green"
+              loading={setFieldMetadataDisabled.isPending}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={setFieldMetadataDisabled.isPending}
+              onClick={() => {
+                setIsEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      ) : (
+        <Group>
+          <Text className="text-white">{fieldMetadata}</Text>
+          {hasAdminAccess && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              onClick={() => setIsEditing(true)}
+            >
+              Change
+            </Button>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
+function TeamQueryConfigSection() {
+  return (
     <Box id="team_name">
       <Text size="md" c="gray.4">
         Team Query Limits
@@ -1112,69 +1286,8 @@ function TeamQueryConfigSection() {
       <Divider my="md" />
       <Card>
         <Stack>
-          <InputLabel c="gray.3" size="md">
-            Search Row Limit
-          </InputLabel>
-          {isEditingQueryLimits && hasAdminAccess ? (
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <Group>
-                <TextInput
-                  size="xs"
-                  type="number"
-                  placeholder={searchRowLimit}
-                  required
-                  readOnly={!isEditingQueryLimits}
-                  error={form.formState.errors.searchRowLimit?.message}
-                  {...form.register('searchRowLimit', {
-                    required: true,
-                  })}
-                  miw={300}
-                  min={1}
-                  max={100000}
-                  autoFocus
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') {
-                      setIsEditingQueryLimits(false);
-                    }
-                  }}
-                />
-                <Button
-                  type="submit"
-                  size="xs"
-                  variant="light"
-                  color="green"
-                  loading={setSearchRowLimit.isPending}
-                >
-                  Save
-                </Button>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="default"
-                  disabled={setSearchRowLimit.isPending}
-                  onClick={() => {
-                    setIsEditingQueryLimits(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </Group>
-            </form>
-          ) : (
-            <Group>
-              <Text className="text-white">{searchRowLimit}</Text>
-              {hasAdminAccess && (
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<i className="bi bi-pencil text-slate-300" />}
-                  onClick={() => setIsEditingQueryLimits(true)}
-                >
-                  Change
-                </Button>
-              )}
-            </Group>
-          )}
+          <SearchRowLimitForm />
+          <FieldMetadataForm />
         </Stack>
       </Card>
     </Box>

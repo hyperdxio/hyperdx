@@ -9,6 +9,7 @@ import {
   getTags,
   getTeam,
   rotateTeamApiKey,
+  setTeamFieldMetadataDisabled,
   setTeamName,
   setTeamSearchRowLimit,
 } from '@/controllers/team';
@@ -104,6 +105,31 @@ router.patch(
       const { searchRowLimit } = req.body;
       const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
       res.json({ searchRowLimit: team?.searchRowLimit });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/field-metadata',
+  validateRequest({
+    body: z.object({
+      fieldMetadataDisabled: z.boolean(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+      const { fieldMetadataDisabled } = req.body;
+      const team = await setTeamFieldMetadataDisabled(
+        teamId,
+        fieldMetadataDisabled,
+      );
+      res.json({ fieldMetadataDisabled: team?.fieldMetadataDisabled });
     } catch (e) {
       next(e);
     }
