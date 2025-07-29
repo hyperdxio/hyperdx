@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
+import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import { Button, Modal } from 'react-bootstrap';
@@ -18,6 +19,7 @@ import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReference,
+  isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -25,7 +27,7 @@ import {
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
-import { Box, Code, Flex, Text } from '@mantine/core';
+import { Box, Code, Flex, Text, UnstyledButton } from '@mantine/core';
 import {
   FetchNextPageOptions,
   useQuery,
@@ -42,6 +44,8 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import api from '@/api';
+import { searchChartConfigDefaults } from '@/defaults';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -226,13 +230,14 @@ export const RawLogTable = memo(
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
-    wrapLines,
+    wrapLines = false,
     columnNameMap,
     showServiceColumn = true,
     dedupRows,
     isError,
     error,
     columnTypeMap,
+    dateRange,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -260,6 +265,7 @@ export const RawLogTable = memo(
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
+    dateRange?: [Date, Date];
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -521,6 +527,7 @@ export const RawLogTable = memo(
     // Scroll to log id if it's not in window yet
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
+    const [wrapLinesEnabled, setWrapLinesEnabled] = useState(wrapLines);
 
     useEffect(() => {
       if (
@@ -682,6 +689,11 @@ export const RawLogTable = memo(
                                 <i className="bi bi-arrow-clockwise" />
                               </div>
                             )}
+                          <UnstyledButton
+                            onClick={() => setWrapLinesEnabled(prev => !prev)}
+                          >
+                            <i className="bi bi-text-wrap" />
+                          </UnstyledButton>
                           <CsvExportButton
                             data={csvData}
                             filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
@@ -736,8 +748,8 @@ export const RawLogTable = memo(
                       <td
                         key={cell.id}
                         className={cx('align-top overflow-hidden', {
-                          'text-break': wrapLines,
-                          'text-truncate': !wrapLines,
+                          'text-break': wrapLinesEnabled,
+                          'text-truncate': !wrapLinesEnabled,
                         })}
                       >
                         {flexRender(
@@ -758,7 +770,25 @@ export const RawLogTable = memo(
                       <div className="spin-animate d-inline-block">
                         <i className="bi bi-arrow-repeat" />
                       </div>{' '}
-                      Loading results...
+                      Loading results
+                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                        <>
+                          {' '}
+                          across{' '}
+                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
+                          <FormatTime
+                            value={dateRange?.[0]}
+                            format="withYear"
+                          />{' '}
+                          to{' '}
+                          <FormatTime
+                            value={dateRange?.[1]}
+                            format="withYear"
+                          />
+                          {')'}
+                        </>
+                      ) : null}
+                      ...
                     </div>
                   ) : hasNextPage == false &&
                     isLoading == false &&
@@ -803,10 +833,26 @@ export const RawLogTable = memo(
                     dedupedRows.length === 0 ? (
                     <div className="my-3">
                       No results found.
-                      <div className="text-muted mt-3">
+                      <Text mt="sm" c="gray.3">
                         Try checking the query explainer in the search bar if
                         there are any search syntax issues.
-                      </div>
+                      </Text>
+                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                        <Text mt="sm" c="gray.3">
+                          Searched Time Range:{' '}
+                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
+                          <FormatTime
+                            value={dateRange?.[0]}
+                            format="withYear"
+                          />{' '}
+                          to{' '}
+                          <FormatTime
+                            value={dateRange?.[1]}
+                            format="withYear"
+                          />
+                          {')'}
+                        </Text>
+                      ) : null}
                     </div>
                   ) : (
                     <div />
@@ -940,7 +986,11 @@ function DBSqlRowTableComponent({
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
 }) {
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey(config);
+  const { data: me } = api.useMe();
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey({
+    ...searchChartConfigDefaults(me?.team),
+    ...config,
+  });
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
@@ -970,12 +1020,7 @@ function DBSqlRowTableComponent({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return (
-        columnType === JSDataType.Map ||
-        columnType === JSDataType.Array ||
-        columnType === JSDataType.JSON ||
-        columnType === JSDataType.Dynamic
-      );
+      return isJSDataTypeJSONStringifiable(columnType);
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {
@@ -1128,6 +1173,7 @@ function DBSqlRowTableComponent({
         isError={isError}
         error={error ?? undefined}
         columnTypeMap={columnMap}
+        dateRange={config.dateRange}
       />
     </>
   );

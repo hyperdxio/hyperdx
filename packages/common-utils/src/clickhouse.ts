@@ -25,6 +25,7 @@ export enum JSDataType {
   Map = 'map',
   Number = 'number',
   String = 'string',
+  Tuple = 'tuple',
   Bool = 'bool',
   JSON = 'json',
   Dynamic = 'dynamic', // json type will store anything as Dynamic type by default
@@ -43,6 +44,8 @@ export const convertCHDataTypeToJSType = (
 ): JSDataType | null => {
   if (dataType.startsWith('Date')) {
     return JSDataType.Date;
+  } else if (dataType.startsWith('Tuple')) {
+    return JSDataType.Tuple;
   } else if (dataType.startsWith('Map')) {
     return JSDataType.Map;
   } else if (dataType.startsWith('Array')) {
@@ -79,11 +82,27 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
+export const isJSDataTypeJSONStringifiable = (
+  dataType: JSDataType | null | undefined,
+) => {
+  return (
+    dataType === JSDataType.Map ||
+    dataType === JSDataType.Array ||
+    dataType === JSDataType.JSON ||
+    dataType === JSDataType.Tuple ||
+    dataType === JSDataType.Dynamic
+  );
+};
+
 export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
   const jsType = convertCHDataTypeToJSType(dataType);
 
-  if (jsType === JSDataType.Map || jsType === JSDataType.Array) {
-    throw new Error('Map type is not a primitive type');
+  if (
+    jsType === JSDataType.Map ||
+    jsType === JSDataType.Array ||
+    jsType === JSDataType.Tuple
+  ) {
+    throw new Error('Map, Array or Tuple type is not a primitive type');
   } else if (jsType === JSDataType.Date) {
     return JSDataType.Number;
   }
@@ -340,6 +359,7 @@ const localModeFetch: typeof fetch = (input, init) => {
     .atob(auth.substring('Bearer'.length))
     .split(':');
   delete init.headers?.['Authorization'];
+  delete init.headers?.['authorization'];
   if (username) url.searchParams.set('user', username);
   if (password) url.searchParams.set('password', password);
 
@@ -350,6 +370,7 @@ const standardModeFetch: typeof fetch = (input, init) => {
   if (!init) init = {};
   // authorization is handled on the backend, don't send this header
   delete init.headers?.['Authorization'];
+  delete init.headers?.['authorization'];
   return fetch(input, init);
 };
 

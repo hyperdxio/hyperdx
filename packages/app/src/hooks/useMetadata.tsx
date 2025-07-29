@@ -12,6 +12,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
+import { IS_METADATA_FIELD_FETCH_DISABLED } from '@/config';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
@@ -37,6 +38,7 @@ export function useColumns(
         connectionId,
       });
     },
+    enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
 }
@@ -55,6 +57,10 @@ export function useAllFields(
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
+      if (IS_METADATA_FIELD_FETCH_DISABLED) {
+        return [];
+      }
+
       const fields2d = await Promise.all(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
@@ -64,6 +70,11 @@ export function useAllFields(
 
       return deduplicate2dArray<Field>(fields2d);
     },
+    enabled:
+      tableConnections.length > 0 &&
+      tableConnections.every(
+        tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
+      ),
     ...options,
   });
 }
@@ -91,6 +102,7 @@ export function useTableMetadata(
       });
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
+    enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
 }

@@ -1,5 +1,35 @@
 # @hyperdx/api
 
+## 2.1.0
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 21b5df6: fix: Hotfix to prevent the app from crashing due to a strict mode exception
+- 6c13403: fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+- Updated dependencies [4ce81d4]
+- Updated dependencies [61c79a1]
+  - @hyperdx/common-utils@0.2.7
+
+## 2.0.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+- Updated dependencies [33fc071]
+  - @hyperdx/common-utils@0.2.6
+
+## 2.0.5
+
+### Patch Changes
+
+- a4f2afa: fix: Add samesite to cookies for better security
+- 844f74c: fix: validate name for saved searches
+- f7eb1ef: feat: configurable search row limit
+- Updated dependencies [973b9e8]
+  - @hyperdx/common-utils@0.2.5
+
 ## 2.0.4
 
 ### Patch Changes

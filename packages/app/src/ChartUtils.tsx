@@ -54,6 +54,7 @@ export const AGG_FNS = [
   { value: 'max' as const, label: 'Maximum' },
   { value: 'min' as const, label: 'Minimum' },
   { value: 'count_distinct' as const, label: 'Count Distinct' },
+  { value: 'any' as const, label: 'Any' },
 ];
 
 export const getMetricAggFns = (
@@ -482,6 +483,9 @@ export function formatResponseForTimeChart({
     };
   } = {};
 
+  const isSingleValueColumn = valueColumns.length === 1;
+  const hasGroupColumns = groupColumns.length > 0;
+
   for (const row of data) {
     const date = new Date(row[timestampColumn.name]);
     const ts = date.getTime() / 1000;
@@ -490,7 +494,8 @@ export function formatResponseForTimeChart({
       const tsBucket = tsBucketMap.get(ts) ?? {};
 
       const keyName = [
-        valueColumn.name,
+        // Simplify the display name if there's only one series and a group by
+        ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
         ...groupColumns.map(g => row[g.name]),
       ].join(' · ');
 

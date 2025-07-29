@@ -1,5 +1,42 @@
 # @hyperdx/app
 
+## 2.1.0
+
+### Minor Changes
+
+- bb37520: Correlated source field links are bidirectional by default and no link exists.
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 6c13403: fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+- Updated dependencies [4ce81d4]
+- Updated dependencies [61c79a1]
+  - @hyperdx/common-utils@0.2.7
+
+## 2.0.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+- b9ad3bd: fix: Limit source selector to only display the supported types in search, sessions and dashboards
+- 10abadd: feat: Add verbose time range used for search in results table
+- 40d0439: feat: Allow pinning a field in the filter panel
+- 4581a68: fix: queries firing before having a valid table or connection id
+- Updated dependencies [33fc071]
+  - @hyperdx/common-utils@0.2.6
+
+## 2.0.5
+
+### Patch Changes
+
+- 973b9e8: feat: Add any aggFn support, fix select field input not showing up
+- 844f74c: fix: validate name for saved searches
+- f7eb1ef: feat: configurable search row limit
+- Updated dependencies [973b9e8]
+  - @hyperdx/common-utils@0.2.5
+
 ## 2.0.4
 
 ### Patch Changes

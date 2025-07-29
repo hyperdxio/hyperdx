@@ -8,6 +8,9 @@ export const HDX_LOCAL_DEFAULT_CONNECTIONS = env(
 export const HDX_LOCAL_DEFAULT_SOURCES = env(
   'NEXT_PUBLIC_HDX_LOCAL_DEFAULT_SOURCES',
 );
+export const HDX_DISABLE_METADATA_FIELD_FETCH = env(
+  'NEXT_PUBLIC_HDX_DISABLE_METADATA_FIELD_FETCH',
+);
 
 export const NODE_ENV = process.env.NODE_ENV as string;
 export const HDX_API_KEY = process.env.HYPERDX_API_KEY as string; // for nextjs server
@@ -24,6 +27,8 @@ export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 export const IS_LOCAL_MODE = //true;
   // @ts-ignore
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
+export const IS_METADATA_FIELD_FETCH_DISABLED =
+  HDX_DISABLE_METADATA_FIELD_FETCH === 'true';
 
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;

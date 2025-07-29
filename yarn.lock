@@ -4444,9 +4444,10 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
-    "@hyperdx/common-utils": "npm:^0.2.4"
+    "@hyperdx/common-utils": "npm:^0.2.7"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.2"
+    "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@opentelemetry/api": "npm:^1.8.0"
     "@opentelemetry/host-metrics": "npm:^0.35.5"
     "@opentelemetry/sdk-metrics": "npm:^1.30.1"
@@ -4502,7 +4503,6 @@ __metadata:
     on-headers: "npm:^1.0.2"
     passport: "npm:^0.6.0"
     passport-local: "npm:^1.0.0"
-    passport-local-mongoose: "npm:^6.1.0"
     pluralize: "npm:^8.0.0"
     promised-handlebars: "npm:^2.0.1"
     protobufjs: "npm:^7.5.2"
@@ -4537,7 +4537,7 @@ __metadata:
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/common-utils": "npm:^0.2.4"
+    "@hyperdx/common-utils": "npm:^0.2.7"
     "@hyperdx/node-opentelemetry": "npm:^0.8.2"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4665,7 +4665,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@npm:^0.2.4, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.2.7, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -4831,6 +4831,16 @@ __metadata:
     shimmer: "npm:^1.2.1"
     web-vitals: "npm:^3.3.2"
   checksum: 10c0/f2e43ad530162dcad0cc1f81b0836a1c6c8cd512e07c069165f3c7c67f9051f6002ce4f7a266ca8de9579345064e95af57ace4b46b35d16c85f79b15c96f3353
+  languageName: node
+  linkType: hard
+
+"@hyperdx/passport-local-mongoose@npm:^9.0.1":
+  version: 9.0.1
+  resolution: "@hyperdx/passport-local-mongoose@npm:9.0.1"
+  dependencies:
+    passport-local: "npm:^1.0.0"
+    scmp: "npm:^2.1.0"
+  checksum: 10c0/beba3eae1c827609ad2318f5660e6e91d9195430ed00d807570a63eca82cc1bf123d19ad5526d9855ecdf2c376348f28f0bda411f1dc33eb1b56316e3699c3d3
   languageName: node
   linkType: hard
 
@@ -17207,13 +17217,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"generaterr@npm:^1.5.0":
-  version: 1.5.0
-  resolution: "generaterr@npm:1.5.0"
-  checksum: 10c0/4aaeea63672abd3d3301ffbc1387ed8532efb522e5afd86b9ed3ea8fbedd78df134670ed4a439dd1b439e119e3f6ca6f0bd51ff9b1a1875d8eeb04e1b59c3a33
-  languageName: node
-  linkType: hard
-
 "gensync@npm:^1.0.0-beta.2":
   version: 1.0.0-beta.2
   resolution: "gensync@npm:1.0.0-beta.2"
@@ -23331,17 +23334,6 @@ __metadata:
     no-case: "npm:^3.0.4"
     tslib: "npm:^2.0.3"
   checksum: 10c0/05ff7c344809fd272fc5030ae0ee3da8e4e63f36d47a1e0a4855ca59736254192c5a27b5822ed4bae96e54048eec5f6907713cfcfff7cdf7a464eaf7490786d8
-  languageName: node
-  linkType: hard
-
-"passport-local-mongoose@npm:^6.1.0":
-  version: 6.3.0
-  resolution: "passport-local-mongoose@npm:6.3.0"
-  dependencies:
-    generaterr: "npm:^1.5.0"
-    passport-local: "npm:^1.0.0"
-    scmp: "npm:^2.1.0"
-  checksum: 10c0/2be9d4458ce7dbe29ab2508ea98d75744d54c63a4cb5d06dd7bbc6a8aaf20501c9320dc2d5105a95ada971f2ded669c18d420578d7408a2b9af9c6b8d807c0a2
   languageName: node
   linkType: hard
 

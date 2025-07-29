@@ -1,16 +1,17 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "license": "MIT",
   "private": true,
   "engines": {
-    "node": ">=18.12.0"
+    "node": ">=22.16.0"
   },
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.4",
+    "@hyperdx/common-utils": "^0.2.7",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.2",
+    "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@opentelemetry/api": "^1.8.0",
     "@opentelemetry/host-metrics": "^0.35.5",
     "@opentelemetry/sdk-metrics": "^1.30.1",
@@ -41,7 +42,6 @@
     "on-headers": "^1.0.2",
     "passport": "^0.6.0",
     "passport-local": "^1.0.0",
-    "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
     "promised-handlebars": "^2.0.1",
     "protobufjs": "^7.5.2",

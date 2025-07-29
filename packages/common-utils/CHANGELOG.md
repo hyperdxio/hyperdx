@@ -1,5 +1,24 @@
 # @hyperdx/common-utils
 
+## 0.2.7
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+
+## 0.2.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+
+## 0.2.5
+
+### Patch Changes
+
+- 973b9e8: feat: Add any aggFn support, fix select field input not showing up
+
 ## 0.2.4
 
 ### Patch Changes

@@ -67,7 +67,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
-import { InputControlled } from './InputControlled';
+import { InputControlled, TextInputControlled } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
@@ -163,6 +163,17 @@ function ChartSeriesEditorComponent({
       <Divider
         label={
           <Group gap="xs">
+            <Text size="xxs">Alias</Text>
+
+            <div style={{ width: 150 }}>
+              <TextInputControlled
+                name={`${namePrefix}alias`}
+                control={control}
+                placeholder="Series alias"
+                onChange={() => onSubmit()}
+                size="xs"
+              />
+            </div>
             {(index ?? -1) > 0 && (
               <Button
                 variant="subtle"
@@ -179,6 +190,7 @@ function ChartSeriesEditorComponent({
         c="dark.2"
         labelPosition="right"
         mb={8}
+        mt="sm"
       />
       <Flex gap="sm" mt="xs" align="center">
         <div
@@ -286,7 +298,7 @@ function ChartSeriesEditorComponent({
     </>
   );
 }
-const ChartSeriesEditor = memo(ChartSeriesEditorComponent);
+const ChartSeriesEditor = ChartSeriesEditorComponent;
 
 // Autocomplete can focus on column/map keys
 
