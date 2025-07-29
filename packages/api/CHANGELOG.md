@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.1.1
+
+### Patch Changes
+
+- 1dc1c82: feat: add team setting to disable field metadata queries in app
+- eed38e8: bump node version to 22.16.0
+- Updated dependencies [eed38e8]
+  - @hyperdx/common-utils@0.2.8
+
 ## 2.1.0
 
 ### Patch Changes

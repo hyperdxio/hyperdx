@@ -1,5 +1,16 @@
 # @hyperdx/app
 
+## 2.1.1
+
+### Patch Changes
+
+- 1dc1c82: feat: add team setting to disable field metadata queries in app
+- dc4a32c: feat: add text wrap to tables
+- eed38e8: bump node version to 22.16.0
+- 3bb11af: fix: Allow users to disable field fetching
+- Updated dependencies [eed38e8]
+  - @hyperdx/common-utils@0.2.8
+
 ## 2.1.0
 
 ### Minor Changes
