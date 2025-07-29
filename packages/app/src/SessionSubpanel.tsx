@@ -505,6 +505,8 @@ export default function SessionSubpanel({
                 size="xs"
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 enableHotkey
+                dateRange={[start, end]}
+                traceSource={traceSource}
               />
             )}
           </form>
