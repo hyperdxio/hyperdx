@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.2.8
+
+### Patch Changes
+
+- eed38e8: bump node version to 22.16.0
+
 ## 0.2.7
 
 ### Patch Changes
