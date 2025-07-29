@@ -233,94 +233,97 @@ export default function ContextSubpanel({
     contextBy,
   ]);
 
-  const contextComponent = config && (
-    <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
-      <Group justify="space-between" p="sm">
-        <SegmentedControl
-          bg="dark.7"
-          color="dark.5"
-          size="xs"
-          data={generateSegmentedControlData()}
-          value={contextBy}
-          onChange={v => setContextBy(v as ContextBy)}
-        />
-        {contextBy === ContextBy.Custom && (
-          <WhereLanguageControlled
-            name="whereLanguage"
-            control={control}
-            sqlInput={
-              originalLanguage === 'lucene' ? null : (
-                <SQLInlineEditorControlled
-                  tableConnections={tcFromSource(source)}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  language="sql"
-                  enableHotkey
-                  size="sm"
-                />
-              )
-            }
-            luceneInput={
-              originalLanguage === 'sql' ? null : (
-                <SearchInputV2
-                  tableConnections={tcFromSource(source)}
-                  control={control}
-                  name="where"
-                  language="lucene"
-                  placeholder="Lucene where clause (ex. column:value)"
-                  enableHotkey
-                  size="sm"
-                />
-              )
-            }
+  const ContextComponent = () =>
+    config ? (
+      <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
+        <Group justify="space-between" p="sm">
+          <SegmentedControl
+            bg="dark.7"
+            color="dark.5"
+            size="xs"
+            data={generateSegmentedControlData()}
+            value={contextBy}
+            onChange={v => setContextBy(v as ContextBy)}
           />
-        )}
-        <SegmentedControl
-          bg="dark.7"
-          color="dark.5"
-          size="xs"
-          data={[
-            { label: '100ms', value: ms('100ms').toString() },
-            { label: '500ms', value: ms('500ms').toString() },
-            { label: '1s', value: ms('1s').toString() },
-            { label: '5s', value: ms('5s').toString() },
-            { label: '30s', value: ms('30s').toString() },
-            { label: '1m', value: ms('1m').toString() },
-            { label: '5m', value: ms('5m').toString() },
-            { label: '15m', value: ms('15m').toString() },
-          ]}
-          value={range.toString()}
-          onChange={value => setRange(Number(value))}
-        />
-      </Group>
-      <Group p="sm">
-        <div>
-          {contextBy !== ContextBy.All && (
-            <Badge size="md" variant="default">
-              {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-            </Badge>
+          {contextBy === ContextBy.Custom && (
+            <WhereLanguageControlled
+              name="whereLanguage"
+              control={control}
+              sqlInput={
+                originalLanguage === 'lucene' ? null : (
+                  <SQLInlineEditorControlled
+                    tableConnections={tcFromSource(source)}
+                    control={control}
+                    name="where"
+                    placeholder="SQL WHERE clause (ex. column = 'foo')"
+                    language="sql"
+                    enableHotkey
+                    size="sm"
+                  />
+                )
+              }
+              luceneInput={
+                originalLanguage === 'sql' ? null : (
+                  <SearchInputV2
+                    tableConnections={tcFromSource(source)}
+                    control={control}
+                    name="where"
+                    language="lucene"
+                    placeholder="Lucene where clause (ex. column:value)"
+                    enableHotkey
+                    size="sm"
+                  />
+                )
+              }
+            />
           )}
-          <Badge size="md" variant="default">
-            Time range: ±{ms(range / 2)}
-          </Badge>
+          <SegmentedControl
+            bg="dark.7"
+            color="dark.5"
+            size="xs"
+            data={[
+              { label: '100ms', value: ms('100ms').toString() },
+              { label: '500ms', value: ms('500ms').toString() },
+              { label: '1s', value: ms('1s').toString() },
+              { label: '5s', value: ms('5s').toString() },
+              { label: '30s', value: ms('30s').toString() },
+              { label: '1m', value: ms('1m').toString() },
+              { label: '5m', value: ms('5m').toString() },
+              { label: '15m', value: ms('15m').toString() },
+            ]}
+            value={range.toString()}
+            onChange={value => setRange(Number(value))}
+          />
+        </Group>
+        <Group p="sm">
+          <div>
+            {contextBy !== ContextBy.All && (
+              <Badge size="md" variant="default">
+                {contextBy}:{CONTEXT_MAPPING[contextBy].value}
+              </Badge>
+            )}
+            <Badge size="md" variant="default">
+              Time range: ±{ms(range / 2)}
+            </Badge>
+          </div>
+        </Group>
+        <div style={{ height: '100%', overflow: 'auto' }}>
+          <DBSqlRowTable
+            highlightedLineId={rowId}
+            isLive={false}
+            config={config}
+            queryKeyPrefix={QUERY_KEY_PREFIX}
+            onRowExpandClick={handleRowExpandClick}
+          />
         </div>
-      </Group>
-      <div style={{ height: '100%', overflow: 'auto' }}>
-        <DBSqlRowTable
-          highlightedLineId={rowId}
-          isLive={false}
-          config={config}
-          queryKeyPrefix={QUERY_KEY_PREFIX}
-          onRowExpandClick={handleRowExpandClick}
-        />
-      </div>
-    </Flex>
-  );
+      </Flex>
+    ) : (
+      <></>
+    );
 
   return (
     <>
-      {contextComponent}
+      <ContextComponent />
       {contextRowId && contextRowSidePanelSource && (
         <DBRowSidePanel
           source={contextRowSidePanelSource}
