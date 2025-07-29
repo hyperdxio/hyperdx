@@ -1,6 +1,7 @@
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Flex, Text } from '@mantine/core';
+import cx from 'classnames';
+import { Flex, Text, UnstyledButton } from '@mantine/core';
 import {
   flexRender,
   getCoreRowModel,
@@ -158,6 +159,7 @@ export const Table = ({
         : [0, 0],
     [items, rowVirtualizer.options.scrollMargin, totalSize],
   );
+  const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
   const { csvData } = useCsvExport(
     data,
@@ -245,6 +247,13 @@ export const Table = ({
                             )}
                           {headerIndex === headerGroup.headers.length - 1 && (
                             <div className="d-flex align-items-center">
+                              <UnstyledButton
+                                onClick={() =>
+                                  setWrapLinesEnabled(prev => !prev)
+                                }
+                              >
+                                <i className="bi bi-text-wrap" />
+                              </UnstyledButton>
                               <CsvExportButton
                                 data={csvData}
                                 filename="HyperDX_table_results"
@@ -283,7 +292,12 @@ export const Table = ({
                   return (
                     <td key={cell.id} title={`${cell.getValue()}`}>
                       {getRowSearchLink == null ? (
-                        <div className="align-top overflow-hidden py-1 pe-3">
+                        <div
+                          className={cx('align-top overflow-hidden py-1 pe-3', {
+                            'text-break': wrapLinesEnabled,
+                            'text-truncate': !wrapLinesEnabled,
+                          })}
+                        >
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext(),
