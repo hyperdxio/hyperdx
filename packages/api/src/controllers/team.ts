@@ -78,6 +78,17 @@ export function setTeamSearchRowLimit(
   return Team.findByIdAndUpdate(teamId, { searchRowLimit }, { new: true });
 }
 
+export function setTeamFieldMetadataDisabled(
+  teamId: ObjectId,
+  fieldMetadataDisabled: boolean,
+) {
+  return Team.findByIdAndUpdate(
+    teamId,
+    { fieldMetadataDisabled },
+    { new: true },
+  );
+}
+
 export async function getTags(teamId: ObjectId) {
   const [dashboardTags, savedSearchTags] = await Promise.all([
     Dashboard.aggregate([

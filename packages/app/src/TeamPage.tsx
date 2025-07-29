@@ -34,6 +34,7 @@ import { UseQueryResult } from '@tanstack/react-query';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
+import SelectControlled from '@/components/SelectControlled';
 import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
@@ -1061,16 +1062,11 @@ function TeamNameSection() {
   );
 }
 
-function SearchRowLimitForm({
-  me,
-  refetchMe,
-}: {
-  me: UseQueryResult<any, Error>['data'];
-  refetchMe: UseQueryResult<any, Error>['refetch'];
-}) {
+function SearchRowLimitForm() {
+  const { data: me, refetch: refetchMe } = api.useMe();
   const setSearchRowLimit = api.useSetTeamSearchRowLimit();
   const hasAdminAccess = true;
-  const [isEditingQueryLimits, setIsEditingQueryLimits] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
   const form = useForm<{ searchRowLimit: number }>({
     defaultValues: {
@@ -1096,7 +1092,7 @@ function SearchRowLimitForm({
                 message: 'Updated Search Row Limit',
               });
               refetchMe();
-              setIsEditingQueryLimits(false);
+              setIsEditing(false);
             },
           },
         );
@@ -1115,7 +1111,7 @@ function SearchRowLimitForm({
       <InputLabel c="gray.3" size="md">
         Search Row Limit
       </InputLabel>
-      {isEditingQueryLimits && hasAdminAccess ? (
+      {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
             <TextInput
@@ -1123,7 +1119,7 @@ function SearchRowLimitForm({
               type="number"
               placeholder={searchRowLimit}
               required
-              readOnly={!isEditingQueryLimits}
+              readOnly={!isEditing}
               error={form.formState.errors.searchRowLimit?.message}
               {...form.register('searchRowLimit', {
                 required: true,
@@ -1134,7 +1130,7 @@ function SearchRowLimitForm({
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Escape') {
-                  setIsEditingQueryLimits(false);
+                  setIsEditing(false);
                 }
               }}
             />
@@ -1153,7 +1149,7 @@ function SearchRowLimitForm({
               variant="default"
               disabled={setSearchRowLimit.isPending}
               onClick={() => {
-                setIsEditingQueryLimits(false);
+                setIsEditing(false);
               }}
             >
               Cancel
@@ -1168,7 +1164,109 @@ function SearchRowLimitForm({
               size="xs"
               variant="default"
               leftSection={<i className="bi bi-pencil text-slate-300" />}
-              onClick={() => setIsEditingQueryLimits(true)}
+              onClick={() => setIsEditing(true)}
+            >
+              Change
+            </Button>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
+function FieldMetadataForm() {
+  const { data: me, refetch: refetchMe } = api.useMe();
+  const setFieldMetadataDisabled = api.useSetFieldMetadataDisabled();
+  const hasAdminAccess = true;
+  const [isEditing, setIsEditing] = useState(false);
+  const fieldMetadataDisabled = me?.team.fieldMetadataDisabled ?? false;
+  const fieldMetadata = fieldMetadataDisabled ? 'Disabled' : 'Enabled';
+  const form = useForm<{ fieldMetadata: string }>({
+    defaultValues: {
+      fieldMetadata: fieldMetadata,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ fieldMetadata: string }> = useCallback(
+    async values => {
+      try {
+        setFieldMetadataDisabled.mutate(
+          {
+            fieldMetadataDisabled: values.fieldMetadata === 'Disabled',
+          },
+          {
+            onError: e => {
+              notifications.show({
+                color: 'red',
+                message: 'Failed to update Field Metadata Queries',
+              });
+            },
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: `${values.fieldMetadata} Field Metadata queries`,
+              });
+              refetchMe();
+              setIsEditing(false);
+            },
+          },
+        );
+      } catch (e) {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    },
+    [refetchMe, setFieldMetadataDisabled, me?.team?.searchRowLimit],
+  );
+
+  return (
+    <Stack gap="xs">
+      <InputLabel c="gray.3" size="md">
+        Field Metadata Queries
+      </InputLabel>
+      {isEditing && hasAdminAccess ? (
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <Group>
+            <SelectControlled
+              control={form.control}
+              name="fieldMetadata"
+              value={fieldMetadata}
+              data={['Enabled', 'Disabled']}
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="light"
+              color="green"
+              loading={setFieldMetadataDisabled.isPending}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={setFieldMetadataDisabled.isPending}
+              onClick={() => {
+                setIsEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      ) : (
+        <Group>
+          <Text className="text-white">{fieldMetadata}</Text>
+          {hasAdminAccess && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              onClick={() => setIsEditing(true)}
             >
               Change
             </Button>
@@ -1180,8 +1278,6 @@ function SearchRowLimitForm({
 }
 
 function TeamQueryConfigSection() {
-  const { data: me, refetch: refetchMe } = api.useMe();
-
   return (
     <Box id="team_name">
       <Text size="md" c="gray.4">
@@ -1190,7 +1286,8 @@ function TeamQueryConfigSection() {
       <Divider my="md" />
       <Card>
         <Stack>
-          <SearchRowLimitForm me={me} refetchMe={refetchMe} />
+          <SearchRowLimitForm />
+          <FieldMetadataForm />
         </Stack>
       </Card>
     </Box>
