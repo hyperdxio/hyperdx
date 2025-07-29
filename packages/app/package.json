@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "engines": {
-    "node": ">=18.12.0"
+    "node": ">=22.16.0"
   },
   "scripts": {
     "dev": "npx dotenv -e .env.development -- next dev",
