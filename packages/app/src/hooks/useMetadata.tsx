@@ -12,6 +12,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
+import { IS_METADATA_FIELD_FETCH_DISABLED } from '@/config';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
@@ -56,6 +57,10 @@ export function useAllFields(
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
+      if (IS_METADATA_FIELD_FETCH_DISABLED) {
+        return [];
+      }
+
       const fields2d = await Promise.all(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
