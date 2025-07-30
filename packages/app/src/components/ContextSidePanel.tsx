@@ -18,7 +18,10 @@ import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
 import DBRowSidePanel from './DBRowSidePanel';
-import { BreadcrumbPath } from './DBRowSidePanelHeader';
+import {
+  BreadcrumbNavigationCallback,
+  BreadcrumbPath,
+} from './DBRowSidePanelHeader';
 import { DBSqlRowTable } from './DBRowTable';
 
 enum ContextBy {
@@ -36,6 +39,7 @@ interface ContextSubpanelProps {
   rowData: Record<string, any>;
   rowId: string | undefined;
   breadcrumbPath?: BreadcrumbPath;
+  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }
 
 // Custom hook to manage nested panel state
@@ -69,6 +73,7 @@ export default function ContextSubpanel({
   rowData,
   rowId,
   breadcrumbPath = [],
+  onBreadcrumbClick,
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
   const { Timestamp: origTimestamp } = rowData;
@@ -337,6 +342,7 @@ export default function ContextSubpanel({
               rowData,
             },
           ]}
+          onBreadcrumbClick={onBreadcrumbClick}
         />
       )}
     </>

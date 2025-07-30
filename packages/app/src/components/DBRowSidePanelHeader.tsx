@@ -37,6 +37,9 @@ export type BreadcrumbEntry = {
 
 export type BreadcrumbPath = BreadcrumbEntry[];
 
+// Navigation callback type - called when user wants to navigate to a specific level
+export type BreadcrumbNavigationCallback = (targetLevel: number) => void;
+
 function getBodyTextForBreadcrumb(rowData: Record<string, any>): string {
   const bodyText = (rowData.__hdx_body || '').trim();
   const BREADCRUMB_TOOLTIP_MAX_LENGTH = 200;
@@ -49,11 +52,20 @@ function getBodyTextForBreadcrumb(rowData: Record<string, any>): string {
 
 function BreadcrumbNavigation({
   breadcrumbPath,
-  onBreadcrumbClick,
+  onNavigateToLevel,
 }: {
   breadcrumbPath: BreadcrumbPath;
-  onBreadcrumbClick?: () => void;
+  onNavigateToLevel?: BreadcrumbNavigationCallback;
 }) {
+  const handleBreadcrumbItemClick = useCallback(
+    (clickedIndex: number) => {
+      // Navigate to the clicked breadcrumb level
+      // This will close all panels above this level
+      onNavigateToLevel?.(clickedIndex);
+    },
+    [onNavigateToLevel],
+  );
+
   const breadcrumbItems = useMemo(() => {
     if (breadcrumbPath.length === 0) return [];
 
@@ -74,7 +86,7 @@ function BreadcrumbNavigation({
           withArrow
         >
           <UnstyledButton
-            onClick={() => onBreadcrumbClick?.()}
+            onClick={() => handleBreadcrumbItemClick(index)}
             style={{ textDecoration: 'none' }}
           >
             <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
@@ -93,7 +105,7 @@ function BreadcrumbNavigation({
     );
 
     return items;
-  }, [breadcrumbPath, onBreadcrumbClick]);
+  }, [breadcrumbPath, handleBreadcrumbItemClick]);
 
   if (breadcrumbPath.length === 0) return null;
 
@@ -121,7 +133,7 @@ export default function DBRowSidePanelHeader({
   tags: Record<string, string>;
   severityText?: string;
   breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: () => void;
+  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { onPropertyAddClick, generateSearchUrl } =
@@ -179,7 +191,7 @@ export default function DBRowSidePanelHeader({
       {/* Breadcrumb navigation */}
       <BreadcrumbNavigation
         breadcrumbPath={breadcrumbPath}
-        onBreadcrumbClick={onBreadcrumbClick}
+        onNavigateToLevel={onBreadcrumbClick}
       />
 
       {/* Event timestamp and severity */}

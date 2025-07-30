@@ -19,6 +19,7 @@ import { Box, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader, {
+  BreadcrumbNavigationCallback,
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
@@ -74,6 +75,7 @@ type DBRowSidePanelProps = {
   onClose: () => void;
   isNestedPanel?: boolean;
   breadcrumbPath?: BreadcrumbPath;
+  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 };
 
 const DBRowSidePanel = ({
@@ -83,6 +85,7 @@ const DBRowSidePanel = ({
   setSubDrawerOpen,
   onClose,
   breadcrumbPath = [],
+  onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
@@ -96,6 +99,34 @@ const DBRowSidePanel = ({
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
+
+  const handleBreadcrumbClick = useCallback(
+    (targetLevel: number) => {
+      // Current panel's level in the hierarchy
+      const currentLevel = breadcrumbPath.length;
+
+      // The target panel level corresponds to the breadcrumb index:
+      // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
+      // - targetLevel 1 = first nested panel (breadcrumbPath.length = 1)
+      // - etc.
+
+      // If our current level is greater than the target panel level, close this panel
+      if (currentLevel > targetLevel) {
+        onClose();
+        onBreadcrumbClick?.(targetLevel);
+      }
+      // If our current level equals the target panel level, we're the target - don't close
+      else if (currentLevel === targetLevel) {
+        // This is the panel the user wants to navigate to - do nothing (stay open)
+        return;
+      }
+      // If our current level is less than target, propagate up (this panel should stay open)
+      else {
+        onBreadcrumbClick?.(targetLevel);
+      }
+    },
+    [breadcrumbPath.length, onBreadcrumbClick, onClose],
+  );
 
   const hasOverviewPanel = useMemo(() => {
     if (
@@ -236,7 +267,7 @@ const DBRowSidePanel = ({
           mainContentHeader={mainContentColumn}
           severityText={severityText}
           breadcrumbPath={breadcrumbPath}
-          onBreadcrumbClick={onClose}
+          onBreadcrumbClick={handleBreadcrumbClick}
         />
       </Box>
       {/* <SidePanelHeader
@@ -357,6 +388,7 @@ const DBRowSidePanel = ({
             rowData={normalizedRow}
             rowId={rowId}
             breadcrumbPath={breadcrumbPath}
+            onBreadcrumbClick={handleBreadcrumbClick}
           />
         </ErrorBoundary>
       )}
@@ -414,6 +446,7 @@ export default function DBRowSidePanelErrorBoundary({
   source,
   isNestedPanel,
   breadcrumbPath = [],
+  onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -485,6 +518,7 @@ export default function DBRowSidePanelErrorBoundary({
               isNestedPanel={isNestedPanel}
               breadcrumbPath={breadcrumbPath}
               setSubDrawerOpen={setSubDrawerOpen}
+              onBreadcrumbClick={onBreadcrumbClick}
             />
           </ErrorBoundary>
         </div>
