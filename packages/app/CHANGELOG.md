@@ -1,5 +1,11 @@
 # @hyperdx/app
 
+## 2.1.2
+
+### Patch Changes
+
+- 86115fa: feat: Add click + sidepanel support to items within surrounding context
+
 ## 2.1.1
 
 ### Patch Changes
