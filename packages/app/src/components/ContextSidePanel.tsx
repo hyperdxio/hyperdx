@@ -335,13 +335,51 @@ export default function ContextSubpanel({
           rowId={contextRowId}
           onClose={handleContextSidePanelClose}
           isNestedPanel={true}
-          breadcrumbPath={[
-            ...breadcrumbPath,
-            {
-              label: `Surrounding Context`,
-              rowData,
-            },
-          ]}
+          breadcrumbPath={
+            breadcrumbPath.length === 0
+              ? [
+                  // First nested level: only show "Original Event" in breadcrumbs
+                  {
+                    label: 'Original Event',
+                    rowData,
+                    previewData: {
+                      title: 'Original Event',
+                      subtitle: 'The event selected from the main search',
+                      timestamp: new Date(origTimestamp),
+                      details: [
+                        { label: 'Service', value: service || 'N/A' },
+                        { label: 'Host', value: host || 'N/A' },
+                        ...(k8sPodName
+                          ? [{ label: 'Pod', value: k8sPodName }]
+                          : []),
+                        ...(k8sNodeName
+                          ? [{ label: 'Node', value: k8sNodeName }]
+                          : []),
+                      ].filter(detail => detail.value !== 'N/A'),
+                    },
+                  },
+                ]
+              : [
+                  // Deeper nesting: preserve existing breadcrumbs and add current event
+                  ...breadcrumbPath,
+                  {
+                    label: 'Selected Event',
+                    rowData,
+                    previewData: {
+                      title: 'Selected Event',
+                      subtitle: 'Event selected from context search',
+                      timestamp: new Date(origTimestamp),
+                      details: [
+                        { label: 'Service', value: service || 'N/A' },
+                        { label: 'Host', value: host || 'N/A' },
+                        ...(k8sPodName
+                          ? [{ label: 'Pod', value: k8sPodName }]
+                          : []),
+                      ].filter(detail => detail.value !== 'N/A'),
+                    },
+                  },
+                ]
+          }
           onBreadcrumbClick={onBreadcrumbClick}
         />
       )}
