@@ -244,9 +244,10 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
+    // If no metricName is provided, apply default time filter to avoid full table scan
     const where = metricName
       ? chSql`WHERE MetricName=${{ String: metricName }}`
-      : '';
+      : chSql`WHERE TimestampTime > (now() - toIntervalDay(7))`;
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
       sql = chSql`SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(${{
