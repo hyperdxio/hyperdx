@@ -7,11 +7,14 @@ import React, {
   useState,
 } from 'react';
 import {
+  Badge,
   Box,
   Breadcrumbs,
   Button,
   Flex,
+  Group,
   Paper,
+  Stack,
   Text,
   Tooltip,
   UnstyledButton,
@@ -33,6 +36,13 @@ const MAX_MAIN_CONTENT_LENGTH = 2000;
 export type BreadcrumbEntry = {
   label: string;
   rowData?: Record<string, any>;
+  previewData?: {
+    title?: string;
+    subtitle?: string;
+    details?: Array<{ label: string; value: string }>;
+    timestamp?: Date;
+    eventCount?: number;
+  };
 };
 
 export type BreadcrumbPath = BreadcrumbEntry[];
@@ -48,6 +58,151 @@ function getBodyTextForBreadcrumb(rowData: Record<string, any>): string {
   return bodyText.length > BREADCRUMB_TOOLTIP_MAX_LENGTH
     ? `${bodyText.substring(0, BREADCRUMB_TOOLTIP_TRUNCATED_LENGTH)}...`
     : bodyText;
+}
+
+function PreviewTooltip({
+  children,
+  previewData,
+  fallbackText,
+  rowData,
+}: {
+  children: React.ReactNode;
+  previewData?: BreadcrumbEntry['previewData'];
+  fallbackText?: string;
+  rowData?: Record<string, any>;
+}) {
+  // If no preview data, fall back to simple text tooltip
+  if (!previewData && !fallbackText) {
+    return <>{children}</>;
+  }
+
+  if (!previewData) {
+    return (
+      <Tooltip
+        label={fallbackText}
+        disabled={!fallbackText}
+        position="bottom"
+        withArrow
+      >
+        {children}
+      </Tooltip>
+    );
+  }
+
+  // Get the log content from rowData
+  const logContent = rowData ? getBodyTextForBreadcrumb(rowData) : '';
+
+  const tooltipContent = (
+    <Stack gap="xs" maw={320}>
+      {previewData.title && (
+        <Text size="sm" fw={500} c="white">
+          {previewData.title}
+        </Text>
+      )}
+      {previewData.subtitle && (
+        <Text size="xs" c="gray.3">
+          {previewData.subtitle}
+        </Text>
+      )}
+      {previewData.timestamp && (
+        <Group gap="xs">
+          <Text size="xs" c="gray.4">
+            <FormatTime value={previewData.timestamp} />
+          </Text>
+          <Text size="xs" c="gray.4">
+            •
+          </Text>
+          <Text size="xs" c="gray.4">
+            {formatDistanceToNowStrictShort(previewData.timestamp)} ago
+          </Text>
+        </Group>
+      )}
+      {previewData.eventCount && (
+        <Badge size="sm" variant="light" color="blue">
+          {previewData.eventCount} events
+        </Badge>
+      )}
+
+      {/* Show the actual log content */}
+      {logContent && (
+        <Paper
+          p="xs"
+          bg="dark.9"
+          style={{
+            borderRadius: '4px',
+            border: '1px solid var(--mantine-color-dark-6)',
+          }}
+        >
+          <Text size="xs" c="gray.4" mb="xs" fw={500}>
+            Log Content:
+          </Text>
+          <Text
+            size="xs"
+            c="gray.1"
+            style={{
+              fontFamily: 'monospace',
+              lineHeight: 1.4,
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {logContent}
+          </Text>
+        </Paper>
+      )}
+
+      {previewData.details && previewData.details.length > 0 && (
+        <Stack gap="xs" mt="xs">
+          {previewData.details.slice(0, 3).map((detail, index) => (
+            <Group key={index} justify="space-between" gap="xs">
+              <Text size="xs" c="gray.4" style={{ minWidth: 0, flex: 1 }}>
+                {detail.label}:
+              </Text>
+              <Text
+                size="xs"
+                c="gray.2"
+                style={{
+                  minWidth: 0,
+                  flex: 2,
+                  textAlign: 'right',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {detail.value}
+              </Text>
+            </Group>
+          ))}
+          {previewData.details.length > 3 && (
+            <Text size="xs" c="gray.5" style={{ textAlign: 'center' }}>
+              +{previewData.details.length - 3} more
+            </Text>
+          )}
+        </Stack>
+      )}
+    </Stack>
+  );
+
+  return (
+    <Tooltip
+      label={tooltipContent}
+      position="bottom"
+      withArrow
+      multiline
+      w={320}
+      openDelay={500}
+      styles={{
+        tooltip: {
+          backgroundColor: 'var(--mantine-color-dark-8)',
+          border: '1px solid var(--mantine-color-dark-6)',
+          padding: '12px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+        },
+      }}
+    >
+      {children}
+    </Tooltip>
+  );
 }
 
 function BreadcrumbNavigation({
@@ -73,17 +228,16 @@ function BreadcrumbNavigation({
 
     // Add all previous levels from breadcrumbPath
     breadcrumbPath.forEach((crumb, index) => {
-      const tooltipText = crumb.rowData
+      const fallbackText = crumb.rowData
         ? getBodyTextForBreadcrumb(crumb.rowData)
         : '';
 
       items.push(
-        <Tooltip
+        <PreviewTooltip
           key={`crumb-${index}`}
-          label={tooltipText}
-          disabled={!tooltipText}
-          position="bottom"
-          withArrow
+          previewData={crumb.previewData}
+          fallbackText={fallbackText}
+          rowData={crumb.rowData}
         >
           <UnstyledButton
             onClick={() => handleBreadcrumbItemClick(index)}
@@ -93,7 +247,7 @@ function BreadcrumbNavigation({
               {index === 0 ? 'Original Event' : crumb.label}
             </Text>
           </UnstyledButton>
-        </Tooltip>,
+        </PreviewTooltip>,
       );
     });
 
