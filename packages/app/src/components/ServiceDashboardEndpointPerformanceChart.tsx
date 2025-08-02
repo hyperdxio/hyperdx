@@ -5,7 +5,10 @@ import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
 import DBListBarChart from '@/components/DBListBarChart';
 import { useJsonColumns } from '@/hooks/useMetadata';
-import { getExpressions } from '@/serviceDashboard';
+import {
+  getExpressions,
+  makeCoalescedFieldsAccessQuery,
+} from '@/serviceDashboard';
 
 const MAX_NUM_GROUPS = 200;
 
@@ -67,20 +70,16 @@ export default function ServiceDashboardEndpointPerformanceChart({
   // so we instead use toString() and an empty string check to check for
   // existence of the serverAddress/httpHost to build the span name
   if (jsonColumns.includes(spanAttributesExpression)) {
+    const coalescedServerAddress = makeCoalescedFieldsAccessQuery(
+      [expressions.serverAddress, expressions.httpHost],
+      true,
+    );
     spanNameColSql = `
       concat(
         ${expressions.spanName}, ' ',
         if(
           has(['HTTP DELETE', 'DELETE', 'HTTP GET', 'GET', 'HTTP HEAD', 'HEAD', 'HTTP OPTIONS', 'OPTIONS', 'HTTP PATCH', 'PATCH', 'HTTP POST', 'POST', 'HTTP PUT', 'PUT'], ${expressions.spanName}),
-          if(
-              toString(${expressions.serverAddress}) != '',
-              toString(${expressions.serverAddress}),
-              if(
-                toString(${expressions.httpHost}) != '', 
-                toString(${expressions.httpHost}), 
-                ''
-              )
-            ),
+          ${coalescedServerAddress},
           ''
         )
       )`;
