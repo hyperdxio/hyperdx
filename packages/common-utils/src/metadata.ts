@@ -147,27 +147,6 @@ export class Metadata {
     );
   }
 
-  async getJsonColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  }) {
-    const columns = await this.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
-
-    // TODO: should we use .includes() to handle Array(JSON) and other variants?
-    return columns
-      .filter(column => column.type.startsWith('JSON'))
-      .map(column => column.name);
-  }
-
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,
