@@ -43,6 +43,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
 import { getExpressions } from '@/serviceDashboard';
@@ -90,7 +91,12 @@ function ServiceSelectControlled({
   onCreate?: () => void;
 } & UseControllerProps<any>) {
   const { data: source } = useSource({ id: sourceId });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const queriedConfig = {
     ...source,
@@ -153,7 +159,12 @@ export function EndpointLatencyChart({
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
 }) {
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
   const [latencyChartType, setLatencyChartType] = useState<
     'line' | 'histogram'
   >('line');
@@ -259,7 +270,12 @@ function HttpTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [reqChartType, setReqChartType] = useQueryState(
     'reqChartType',
@@ -529,7 +545,12 @@ function DatabaseTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
 
@@ -776,7 +797,12 @@ function ErrorsTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
