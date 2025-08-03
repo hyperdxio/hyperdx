@@ -17,7 +17,7 @@ services:
   db:
     image: mongo:5.0.14-focal
     volumes:
-      - .volumes/db:/data/db
+      - /mnt/nvme2/hyperdx-clickhouse/db:/data/db
     # WARNING: Exposing the database port will make it accessible from outside the container,
     # potentially allowing unauthorized access. If you uncomment the ports below,
     # ensure to secure your database (e.g., with strong authentication, proper network rules, and firewalls).
@@ -35,9 +35,9 @@ services:
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
-      - '4317:4317' # OTLP gRPC receiver
-      - '4318:4318' # OTLP http receiver
-      - '8888:8888' # metrics extension
+      - '24226:4317' # OTLP gRPC receiver
+      - '24227:4318' # OTLP http receiver
+      - '24228:8888' # metrics extension
     restart: always
     networks:
       - internal
@@ -89,8 +89,8 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - .volumes/ch_data:/var/lib/clickhouse
-      - .volumes/ch_logs:/var/log/clickhouse-server
+      - /mnt/nvme2/hyperdx-clickhouse/ch_data:/var/lib/clickhouse
+      - /mnt/nvme2/hyperdx-clickhouse/ch_logs:/var/log/clickhouse-server
     restart: on-failure
     networks:
       - internal
