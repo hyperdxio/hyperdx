@@ -53,8 +53,8 @@ export async function loadProvider(
     } catch {
       /* will be caught falling through to the default return */
     }
+    console.warn(`load "${providerName}" failed, using default alert provider`);
   }
 
-  console.warn(`load "${providerName}" failed, using default alert provider`);
   return new DefaultAlertProvider();
 }
