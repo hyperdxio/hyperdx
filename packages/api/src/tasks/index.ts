@@ -4,26 +4,26 @@ import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
-import { connectDB, mongooseConnection } from '@/models';
+import checkAlerts from '@/tasks/checkAlerts';
+import { loadProvider } from '@/tasks/providers';
 import logger from '@/utils/logger';
 
-import checkAlerts from './checkAlerts';
-
-const shutdown = async () => Promise.all([mongooseConnection.close()]);
-
-const main = async (taskName: string) => {
-  // connect dbs
-  await Promise.all([connectDB()]);
-
-  const t0 = performance.now();
-  logger.info(`Task [${taskName}] started at ${new Date()}`);
-  switch (taskName) {
-    case 'check-alerts':
-      await checkAlerts();
-      break;
-    // only for testing
-    case 'ping-pong':
-      logger.info(`
+const main = async (
+  alertProviderName: string | undefined,
+  taskName: string,
+) => {
+  const alertProvider = await loadProvider(alertProviderName);
+  try {
+    await alertProvider.init();
+    const t0 = performance.now();
+    logger.info(`Task [${taskName}] started at ${new Date()}`);
+    switch (taskName) {
+      case 'check-alerts':
+        await checkAlerts(alertProvider);
+        break;
+      // only for testing
+      case 'ping-pong':
+        logger.info(`
                  O .
                _/|\\_-O
               ___|_______
@@ -39,19 +39,21 @@ const main = async (taskName: string) => {
           |  /   \\          |
           |_/    /_
       `);
-      break;
-    default:
-      throw new Error(`Unkown task name ${taskName}`);
+        break;
+      default:
+        throw new Error(`Unknown task name ${taskName}`);
+    }
+    logger.info(
+      `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
+    );
+  } finally {
+    await alertProvider.asyncDispose();
   }
-  logger.info(
-    `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
-  );
-
-  await shutdown();
 };
 
 // Entry point
 const argv = minimist(process.argv.slice(2));
+const alertProviderName = argv.provider;
 const taskName = argv._[0];
 // WARNING: the cron job will be enabled only in development mode
 if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
@@ -60,17 +62,16 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   const job = CronJob.from({
     cronTime: '0 * * * * *',
     waitForCompletion: true,
-    onTick: async () => main(taskName),
+    onTick: async () => main(alertProviderName, taskName),
     errorHandler: async err => {
       console.error(err);
-      await shutdown();
     },
     start: true,
     timeZone: 'UTC',
   });
 } else {
   logger.warn('In-app cron job is disabled');
-  main(taskName)
+  main(alertProviderName, taskName)
     .then(() => {
       process.exit(0);
     })

@@ -1,5 +1,5 @@
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
-import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
+import { Metadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithOptDateRange,
@@ -22,16 +22,12 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import Webhook from '@/models/webhook';
+import { doesExceedThreshold } from '@/tasks/checkAlerts';
+import { AlertProvider } from '@/tasks/providers';
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
-import { convertMsToGranularityString, truncateString } from '@/utils/common';
+import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
-
-import {
-  buildChartLink,
-  buildLogSearchLink,
-  doesExceedThreshold,
-} from './checkAlerts';
 
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
@@ -251,19 +247,22 @@ export const handleSendGenericWebhook = async (
   }
 };
 
-export const buildAlertMessageTemplateHdxLink = ({
-  alert,
-  dashboard,
-  endTime,
-  granularity,
-  savedSearch,
-  startTime,
-}: AlertMessageTemplateDefaultView) => {
+export const buildAlertMessageTemplateHdxLink = (
+  alertProvider: AlertProvider,
+  {
+    alert,
+    dashboard,
+    endTime,
+    granularity,
+    savedSearch,
+    startTime,
+  }: AlertMessageTemplateDefaultView,
+) => {
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source} but savedSearch is null`);
     }
-    return buildLogSearchLink({
+    return alertProvider.buildLogSearchLink({
       endTime,
       savedSearch,
       startTime,
@@ -272,7 +271,7 @@ export const buildAlertMessageTemplateHdxLink = ({
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
-    return buildChartLink({
+    return alertProvider.buildChartLink({
       dashboardId: dashboard.id,
       endTime,
       granularity,
@@ -344,6 +343,7 @@ export const translateExternalActionsToInternal = (template: string) => {
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
+  alertProvider,
   clickhouseClient,
   metadata,
   template,
@@ -351,6 +351,7 @@ export const renderAlertTemplate = async ({
   view,
   team,
 }: {
+  alertProvider: AlertProvider;
   clickhouseClient: clickhouse.ClickhouseClient;
   metadata: Metadata;
   template?: string | null;
@@ -417,7 +418,7 @@ export const renderAlertTemplate = async ({
           channel,
           id: renderedId,
           message: {
-            hdxLink: buildAlertMessageTemplateHdxLink(view),
+            hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
             title,
             body: renderedBody,
           },

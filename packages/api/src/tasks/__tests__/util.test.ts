@@ -3,7 +3,7 @@ import {
   roundDownTo,
   roundDownToXMinutes,
   unflattenObject,
-} from '../util';
+} from '@/tasks/util';
 
 describe('util', () => {
   describe('unflattenObject', () => {

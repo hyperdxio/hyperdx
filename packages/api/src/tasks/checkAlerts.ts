@@ -3,28 +3,19 @@
 // --------------------------------------------------------
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
-  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
-import { _useTry, formatDate } from '@hyperdx/common-utils/dist/utils';
 import * as fns from 'date-fns';
-import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
-import { escapeRegExp, isString } from 'lodash';
-import mongoose from 'mongoose';
+import { isString } from 'lodash';
 import ms from 'ms';
-import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
-import { URLSearchParams } from 'url';
 
-import * as config from '@/config';
-import { AlertInput } from '@/controllers/alerts';
 import { getConnectionById } from '@/controllers/connection';
-import { LOCAL_APP_TEAM } from '@/controllers/team';
-import Alert, {
+import {
+  AlertDocument,
   AlertSource,
   AlertState,
   AlertThresholdType,
@@ -33,81 +24,16 @@ import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
-import { ITeam } from '@/models/team';
-import Webhook, { IWebhook } from '@/models/webhook';
-import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
-import { convertMsToGranularityString, truncateString } from '@/utils/common';
-import logger from '@/utils/logger';
-import * as slack from '@/utils/slack';
-
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
   handleSendGenericWebhook,
   renderAlertTemplate,
-} from './template';
+} from '@/tasks/template';
+import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
+import logger from '@/utils/logger';
 
-// TODO(perf): no need to populate the team
-const getAlerts = async () => {
-  const alerts = await Alert.find({}).populate<{
-    team: ITeam;
-  }>(['team']);
-
-  return config.IS_LOCAL_APP_MODE
-    ? alerts.map(_alert => {
-        // @ts-ignore
-        _alert.team = LOCAL_APP_TEAM;
-        return _alert;
-      })
-    : alerts;
-};
-
-type EnhancedAlert = Awaited<ReturnType<typeof getAlerts>>[0];
-
-export const buildLogSearchLink = ({
-  endTime,
-  savedSearch,
-  startTime,
-}: {
-  endTime: Date;
-  savedSearch: ISavedSearch;
-  startTime: Date;
-}) => {
-  const url = new URL(`${config.FRONTEND_URL}/search/${savedSearch.id}`);
-  const queryParams = new URLSearchParams({
-    from: startTime.getTime().toString(),
-    to: endTime.getTime().toString(),
-    isLive: 'false',
-    // do we need to fill more params here?
-  });
-  url.search = queryParams.toString();
-  return url.toString();
-};
-
-// TODO: should link to the chart instead
-export const buildChartLink = ({
-  dashboardId,
-  endTime,
-  granularity,
-  startTime,
-}: {
-  dashboardId: string;
-  endTime: Date;
-  granularity: string;
-  startTime: Date;
-}) => {
-  const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
-  // extend both start and end time by 7x granularity
-  const from = (startTime.getTime() - ms(granularity) * 7).toString();
-  const to = (endTime.getTime() + ms(granularity) * 7).toString();
-  const queryParams = new URLSearchParams({
-    from,
-    granularity: convertMsToGranularityString(ms(granularity)),
-    to,
-  });
-  url.search = queryParams.toString();
-  return url.toString();
-};
+import { AlertProvider } from './providers';
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -125,6 +51,7 @@ export const doesExceedThreshold = (
 
 const fireChannelEvent = async ({
   alert,
+  alertProvider,
   attributes,
   clickhouseClient,
   dashboard,
@@ -137,7 +64,8 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
 }: {
-  alert: EnhancedAlert;
+  alert: AlertDocument;
+  alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
   clickhouseClient: clickhouse.ClickhouseClient;
   dashboard?: IDashboard | null;
@@ -192,6 +120,7 @@ const fireChannelEvent = async ({
   };
 
   await renderAlertTemplate({
+    alertProvider,
     clickhouseClient,
     metadata,
     title: buildAlertMessageTemplateTitle({
@@ -201,12 +130,16 @@ const fireChannelEvent = async ({
     template: alert.message,
     view: templateView,
     team: {
-      id: team._id.toString(), // TODO: Dan
+      id: team._id.toString(),
     },
   });
 };
 
-export const processAlert = async (now: Date, alert: EnhancedAlert) => {
+export const processAlert = async (
+  now: Date,
+  alert: AlertDocument,
+  alertProvider: AlertProvider,
+) => {
   try {
     const previous: IAlertHistory | undefined = (
       await AlertHistory.find({ alert: alert._id })
@@ -460,6 +393,7 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
           try {
             await fireChannelEvent({
               alert,
+              alertProvider,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
               clickhouseClient,
               dashboard,
@@ -505,9 +439,12 @@ export const processAlert = async (now: Date, alert: EnhancedAlert) => {
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
-export default async () => {
+export default async (alertProvider: AlertProvider) => {
   const now = new Date();
-  const alerts = await getAlerts();
+  const alertTasks = await alertProvider.getAlertTasks();
+  const alerts = alertTasks[0].alerts;
   logger.info(`Going to process ${alerts.length} alerts`);
-  await Promise.all(alerts.map(alert => processAlert(now, alert)));
+  await Promise.all(
+    alerts.map(alert => processAlert(now, alert, alertProvider)),
+  );
 };
