@@ -96,47 +96,18 @@ describe('asTaskArgs', () => {
   });
 
   it('should throw error when provider is not a string', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: 123,
-    };
+    const invalidProviders = [123, null, { name: 'default' }, ['default']];
 
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must be a string if provided',
-    );
-  });
+    invalidProviders.forEach(provider => {
+      const invalidArgs = {
+        _: ['command'],
+        provider,
+      };
 
-  it('should throw error when provider is null', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: null,
-    };
-
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must be a string if provided',
-    );
-  });
-
-  it('should throw error when provider is an object', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: { name: 'default' },
-    };
-
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must be a string if provided',
-    );
-  });
-
-  it('should throw error when provider is an array', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: ['default'],
-    };
-
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must be a string if provided',
-    );
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Provider must be a string if provided',
+      );
+    });
   });
 
   it('should handle empty array for _ property', () => {
@@ -186,7 +157,7 @@ describe('asTaskArgs', () => {
     expect(result.taskName).toBe('command');
   });
 
-  it('should require provider for check-alerts task', () => {
+  it('should accept check-alerts task with provider', () => {
     const validArgs = {
       _: ['check-alerts'],
       provider: 'default',
@@ -200,25 +171,17 @@ describe('asTaskArgs', () => {
     });
   });
 
-  it('should throw error when check-alerts task has no provider', () => {
-    const invalidArgs = {
+  it('should accept check-alerts task without provider', () => {
+    const validArgs = {
       _: ['check-alerts'],
     };
 
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider is required for check-alerts task',
-    );
-  });
+    const result = asTaskArgs(validArgs);
 
-  it('should throw error when check-alerts task has whitespace-only provider', () => {
-    const invalidArgs = {
-      _: ['check-alerts'],
-      provider: '   ',
-    };
-
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider is required for check-alerts task',
-    );
+    expect(result).toEqual({
+      taskName: 'check-alerts',
+      provider: undefined,
+    });
   });
 
   it('should throw error when provider is whitespace-only', () => {

@@ -37,12 +37,13 @@ export function asTaskArgs(argv: any): TaskArgs {
     throw new Error('Provider must be a string if provided');
   }
 
-  // Provider is required for check-alerts task
+  // Provider is optional for check-alerts task, but if provided must be valid
   if (
     argv._[0] === 'check-alerts' &&
-    (!argv.provider || argv.provider.trim() === '')
+    argv.provider !== undefined &&
+    argv.provider.trim() === ''
   ) {
-    throw new Error('Provider is required for check-alerts task');
+    throw new Error('Provider must contain valid characters');
   }
 
   // Provider must contain valid characters if provided (for non-check-alerts tasks)
