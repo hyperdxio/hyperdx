@@ -28,8 +28,9 @@ export interface AlertProvider {
   }): string;
 }
 
-function isValidProvider(obj: any): obj is AlertProvider {
+export function isValidProvider(obj: any): obj is AlertProvider {
   return (
+    obj != null &&
     typeof obj.init === 'function' &&
     typeof obj.asyncDispose === 'function' &&
     typeof obj.getAlertTasks === 'function' &&
@@ -48,12 +49,15 @@ export async function loadProvider(
         const providerInstance = new ProviderClass();
         if (isValidProvider(providerInstance)) {
           return providerInstance;
+        } else {
+          console.warn(`"${providerName}" does not implement AlertProvider`);
         }
+      } else {
+        console.warn(`"${providerName}" does not export default constructor`);
       }
-    } catch {
-      /* will be caught falling through to the default return */
+    } catch (e) {
+      console.warn(`failed to load "${providerName}: ${e}"`);
     }
-    console.warn(`load "${providerName}" failed, using default alert provider`);
   }
 
   return new DefaultAlertProvider();
