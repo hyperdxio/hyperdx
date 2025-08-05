@@ -24,16 +24,16 @@ import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { ISource, Source } from '@/models/source';
+import { AlertProvider, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
   handleSendGenericWebhook,
   renderAlertTemplate,
 } from '@/tasks/template';
+import { HdxTask, TaskArgs } from '@/tasks/types';
 import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
 import logger from '@/utils/logger';
-
-import { AlertProvider } from './providers';
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -439,12 +439,25 @@ export const processAlert = async (
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
-export default async (alertProvider: AlertProvider) => {
-  const now = new Date();
-  const alertTasks = await alertProvider.getAlertTasks();
-  const alerts = alertTasks[0].alerts;
-  logger.info(`Going to process ${alerts.length} alerts`);
-  await Promise.all(
-    alerts.map(alert => processAlert(now, alert, alertProvider)),
-  );
-};
+export default class CheckAlertTask implements HdxTask {
+  private provider!: AlertProvider;
+
+  async execute(args: TaskArgs): Promise<void> {
+    this.provider = await loadProvider(args.provider);
+    await this.provider.init();
+
+    const now = new Date();
+    const alertTasks = await this.provider.getAlertTasks();
+    const alerts = alertTasks[0].alerts;
+    logger.info(`Going to process ${alerts.length} alerts`);
+    await Promise.all(
+      alerts.map(alert => processAlert(now, alert, this.provider)),
+    );
+  }
+
+  async asyncDispose(): Promise<void> {
+    if (this.provider) {
+      await this.provider.asyncDispose();
+    }
+  }
+}

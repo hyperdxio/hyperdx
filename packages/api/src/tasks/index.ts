@@ -4,57 +4,39 @@ import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
-import checkAlerts from '@/tasks/checkAlerts';
-import { loadProvider } from '@/tasks/providers';
+import PingPongTask from '@/tasks//pingPongTask';
+import CheckAlertTask from '@/tasks/checkAlerts';
+import { asTaskArgs, HdxTask, TaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
 
-const main = async (
-  alertProviderName: string | undefined,
-  taskName: string,
-) => {
-  const alertProvider = await loadProvider(alertProviderName);
+function createTask(taskName: string): HdxTask {
+  switch (taskName) {
+    case 'check-alerts':
+      return new CheckAlertTask();
+    case 'ping-pong':
+      return new PingPongTask();
+    default:
+      throw new Error(`Unknown task name ${taskName}`);
+  }
+}
+
+const main = async (argv: TaskArgs) => {
+  const taskName = argv._[0];
+  const task: HdxTask = createTask(taskName);
   try {
-    await alertProvider.init();
     const t0 = performance.now();
     logger.info(`Task [${taskName}] started at ${new Date()}`);
-    switch (taskName) {
-      case 'check-alerts':
-        await checkAlerts(alertProvider);
-        break;
-      // only for testing
-      case 'ping-pong':
-        logger.info(`
-                 O .
-               _/|\\_-O
-              ___|_______
-             /     |     \
-            /      |      \
-           #################
-          /   _ ( )|        \
-         /    ( ) ||         \
-        /  \\  |_/ |          \
-       /____\\/|___|___________\
-          |    |             |
-          |   / \\           |
-          |  /   \\          |
-          |_/    /_
-      `);
-        break;
-      default:
-        throw new Error(`Unknown task name ${taskName}`);
-    }
+    await task.execute(argv);
     logger.info(
       `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
     );
   } finally {
-    await alertProvider.asyncDispose();
+    await task.asyncDispose();
   }
 };
 
 // Entry point
-const argv = minimist(process.argv.slice(2));
-const alertProviderName = argv.provider;
-const taskName = argv._[0];
+const argv = asTaskArgs(minimist(process.argv.slice(2)));
 // WARNING: the cron job will be enabled only in development mode
 if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.info('In-app cron job is enabled');
@@ -62,7 +44,7 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   const job = CronJob.from({
     cronTime: '0 * * * * *',
     waitForCompletion: true,
-    onTick: async () => main(alertProviderName, taskName),
+    onTick: async () => main(argv),
     errorHandler: async err => {
       console.error(err);
     },
@@ -71,7 +53,7 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   });
 } else {
   logger.warn('In-app cron job is disabled');
-  main(alertProviderName, taskName)
+  main(argv)
     .then(() => {
       process.exit(0);
     })
