@@ -21,7 +21,7 @@ function createTask(taskName: string): HdxTask {
 }
 
 const main = async (argv: TaskArgs) => {
-  const taskName = argv._[0];
+  const taskName = argv.taskName;
   const task: HdxTask = createTask(taskName);
   try {
     const t0 = performance.now();
