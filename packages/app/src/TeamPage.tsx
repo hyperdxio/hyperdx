@@ -41,7 +41,11 @@ import { IS_LOCAL_MODE } from '@/config';
 import { PageHeader } from './components/PageHeader';
 import api from './api';
 import { useConnections } from './connection';
-import { DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
+import {
+  DEFAULT_QUERY_TIMEOUT,
+  DEFAULT_SEARCH_QUERY_TIMEOUT,
+  DEFAULT_SEARCH_ROW_LIMIT,
+} from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';
@@ -1175,6 +1179,119 @@ function SearchRowLimitForm() {
   );
 }
 
+function QueryTimeoutForm() {
+  const { data: me, refetch: refetchMe } = api.useMe();
+  const setQueryTimeout = api.useSetQueryTimeout();
+  const hasAdminAccess = true;
+  const [isEditing, setIsEditing] = useState(false);
+  const queryTimeout = me?.team.queryTimeout ?? DEFAULT_QUERY_TIMEOUT;
+  const form = useForm<{ queryTimeout: number }>({
+    defaultValues: {
+      queryTimeout,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ queryTimeout: number }> = useCallback(
+    async values => {
+      try {
+        setQueryTimeout.mutate(
+          { queryTimeout: Number(values.queryTimeout) },
+          {
+            onError: e => {
+              notifications.show({
+                color: 'red',
+                message: 'Failed to update Query Timeout',
+              });
+            },
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: 'Updated Query Timeout',
+              });
+              refetchMe();
+              setIsEditing(false);
+            },
+          },
+        );
+      } catch (e) {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    },
+    [refetchMe, queryTimeout, me?.team?.queryTimeout],
+  );
+
+  return (
+    <Stack gap="xs" mb="md">
+      <InputLabel c="gray.3" size="md">
+        {'Query Timeout (seconds)'}
+      </InputLabel>
+      {isEditing && hasAdminAccess ? (
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <Group>
+            <TextInput
+              size="xs"
+              type="number"
+              placeholder={queryTimeout}
+              required
+              readOnly={!isEditing}
+              error={form.formState.errors.queryTimeout?.message}
+              {...form.register('queryTimeout', {
+                required: true,
+              })}
+              miw={300}
+              min={1}
+              max={100000}
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  setIsEditing(false);
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="light"
+              color="green"
+              loading={queryTimeout.isPending}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={queryTimeout.isPending}
+              onClick={() => {
+                setIsEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      ) : (
+        <Group>
+          <Text className="text-white">{queryTimeout}</Text>
+          {hasAdminAccess && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              onClick={() => setIsEditing(true)}
+            >
+              Change
+            </Button>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
 function FieldMetadataForm() {
   const { data: me, refetch: refetchMe } = api.useMe();
   const setFieldMetadataDisabled = api.useSetFieldMetadataDisabled();
@@ -1287,6 +1404,7 @@ function TeamQueryConfigSection() {
       <Card>
         <Stack>
           <SearchRowLimitForm />
+          <QueryTimeoutForm />
           <FieldMetadataForm />
         </Stack>
       </Card>

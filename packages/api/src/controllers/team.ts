@@ -78,6 +78,10 @@ export function setTeamSearchRowLimit(
   return Team.findByIdAndUpdate(teamId, { searchRowLimit }, { new: true });
 }
 
+export function setTeamQueryTimeout(teamId: ObjectId, queryTimeout: number) {
+  return Team.findByIdAndUpdate(teamId, { queryTimeout }, { new: true });
+}
+
 export function setTeamFieldMetadataDisabled(
   teamId: ObjectId,
   fieldMetadataDisabled: boolean,

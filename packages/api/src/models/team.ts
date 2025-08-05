@@ -7,6 +7,7 @@ export interface ITeam {
   _id: ObjectId;
   name: string;
   searchRowLimit?: number;
+  queryTimeout?: number;
   fieldMetadataDisabled?: boolean;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
@@ -21,6 +22,7 @@ export default mongoose.model<ITeam>(
     {
       name: String,
       searchRowLimit: Number,
+      queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
       allowedAuthMethods: [String],
       hookId: {

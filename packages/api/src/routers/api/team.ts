@@ -11,6 +11,7 @@ import {
   rotateTeamApiKey,
   setTeamFieldMetadataDisabled,
   setTeamName,
+  setTeamQueryTimeout,
   setTeamSearchRowLimit,
 } from '@/controllers/team';
 import {
@@ -105,6 +106,28 @@ router.patch(
       const { searchRowLimit } = req.body;
       const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
       res.json({ searchRowLimit: team?.searchRowLimit });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/query-timeout',
+  validateRequest({
+    body: z.object({
+      queryTimeout: z.number(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+      const { queryTimeout } = req.body;
+      const team = await setTeamQueryTimeout(teamId, queryTimeout);
+      res.json({ queryTimeout: team?.queryTimeout });
     } catch (e) {
       next(e);
     }

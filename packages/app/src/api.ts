@@ -271,6 +271,15 @@ const api = {
         }).json(),
     });
   },
+  useSetQueryTimeout() {
+    return useMutation<any, HTTPError, { queryTimeout: number }>({
+      mutationFn: async ({ queryTimeout }) =>
+        hdxServer(`team/query-timeout`, {
+          method: 'PATCH',
+          json: { queryTimeout },
+        }).json(),
+    });
+  },
   useSetFieldMetadataDisabled() {
     return useMutation<any, HTTPError, { fieldMetadataDisabled: boolean }>({
       mutationFn: async ({ fieldMetadataDisabled }) =>
