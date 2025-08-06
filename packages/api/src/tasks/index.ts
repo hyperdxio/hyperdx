@@ -4,8 +4,8 @@ import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
-import PingPongTask from '@/tasks//pingPongTask';
 import CheckAlertTask from '@/tasks/checkAlerts';
+import PingPongTask from '@/tasks/pingPongTask';
 import { asTaskArgs, HdxTask, TaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
 
