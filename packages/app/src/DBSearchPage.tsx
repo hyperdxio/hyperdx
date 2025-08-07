@@ -136,6 +136,21 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+// Helper function to get the default source id
+export function getDefaultSourceId(
+  sources: { id: string }[] | undefined,
+  lastSelectedSourceId: string | undefined,
+): string {
+  if (!sources || sources.length === 0) return '';
+  if (
+    lastSelectedSourceId &&
+    sources.some(s => s.id === lastSelectedSourceId)
+  ) {
+    return lastSelectedSourceId;
+  }
+  return sources[0].id;
+}
+
 function SearchNumRows({
   config,
   enabled,
@@ -546,6 +561,12 @@ function DBSearchPage() {
     [setIsLive, _setDenoiseResults],
   );
 
+  // Get default source
+  const defaultSourceId = useMemo(
+    () => getDefaultSourceId(sources, lastSelectedSourceId),
+    [sources, lastSelectedSourceId],
+  );
+
   const {
     control,
     watch,
@@ -561,13 +582,7 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source:
-        searchedConfig.source ??
-        (lastSelectedSourceId &&
-        sources?.some(s => s.id === lastSelectedSourceId)
-          ? lastSelectedSourceId
-          : sources?.[0]?.id) ??
-        '',
+      source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -658,10 +673,10 @@ function DBSearchPage() {
         return;
       }
 
-      // Landed on a new search
-      if (inputSource && savedSearchId == null) {
+      // Landed on a new search - ensure we have a source selected
+      if (savedSearchId == null && defaultSourceId) {
         setSearchedConfig({
-          source: inputSource,
+          source: defaultSourceId,
           where: '',
           select: '',
           whereLanguage: 'lucene',
@@ -675,8 +690,7 @@ function DBSearchPage() {
     searchedConfig,
     setSearchedConfig,
     savedSearchId,
-    inputSource,
-    lastSelectedSourceId,
+    defaultSourceId,
     sources,
   ]);
 
