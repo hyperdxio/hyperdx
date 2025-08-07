@@ -7,6 +7,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
+import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -27,6 +28,7 @@ import {
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -1062,34 +1064,76 @@ function TeamNameSection() {
   );
 }
 
-function SearchRowLimitForm() {
+type ClickhouseSettingType = 'number' | 'boolean';
+
+interface ClickhouseSettingFormProps {
+  settingKey:
+    | 'searchRowLimit'
+    | 'metadataMaxRowsToRead'
+    | 'fieldMetadataDisabled';
+  label: string;
+  tooltip?: string;
+  type: ClickhouseSettingType;
+  defaultValue?: number | string;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  displayValue?: (value: any) => string;
+  options?: string[]; // For boolean settings displayed as select
+}
+
+function ClickhouseSettingForm({
+  settingKey,
+  label,
+  tooltip,
+  type,
+  defaultValue,
+  placeholder,
+  min,
+  max,
+  displayValue,
+  options,
+}: ClickhouseSettingFormProps) {
   const { data: me, refetch: refetchMe } = api.useMe();
-  const setSearchRowLimit = api.useSetTeamSearchRowLimit();
+  const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
-  const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
-  const form = useForm<{ searchRowLimit: number }>({
+  const currentValue = me?.team[settingKey];
+
+  const form = useForm<{ value: any }>({
     defaultValues: {
-      searchRowLimit,
+      value:
+        type === 'boolean'
+          ? currentValue != null
+            ? currentValue
+              ? 'Disabled'
+              : 'Enabled'
+            : 'Enabled'
+          : (currentValue ?? defaultValue ?? ''),
     },
   });
 
-  const onSubmit: SubmitHandler<{ searchRowLimit: number }> = useCallback(
+  const onSubmit: SubmitHandler<{ value: any }> = useCallback(
     async values => {
       try {
-        setSearchRowLimit.mutate(
-          { searchRowLimit: Number(values.searchRowLimit) },
+        const settingValue =
+          type === 'boolean'
+            ? values.value === 'Disabled'
+            : Number(values.value);
+
+        updateClickhouseSettings.mutate(
+          { [settingKey]: settingValue },
           {
             onError: e => {
               notifications.show({
                 color: 'red',
-                message: 'Failed to update Search Row Limit',
+                message: `Failed to update ${label}`,
               });
             },
             onSuccess: () => {
               notifications.show({
                 color: 'green',
-                message: 'Updated Search Row Limit',
+                message: `Updated ${label}`,
               });
               refetchMe();
               setIsEditing(false);
@@ -1103,43 +1147,76 @@ function SearchRowLimitForm() {
         });
       }
     },
-    [refetchMe, setSearchRowLimit, me?.team?.searchRowLimit],
+    [refetchMe, updateClickhouseSettings, settingKey, label, type],
   );
 
   return (
     <Stack gap="xs" mb="md">
-      <InputLabel c="gray.3" size="md">
-        Search Row Limit
-      </InputLabel>
+      <Group gap="xs">
+        <InputLabel c="gray.3" size="md">
+          {label}
+        </InputLabel>
+        {tooltip && (
+          <Tooltip label={tooltip}>
+            <Text c="gray.5" size="sm" style={{ cursor: 'help' }}>
+              <i className="bi bi-question-circle" />
+            </Text>
+          </Tooltip>
+        )}
+      </Group>
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
-            <TextInput
-              size="xs"
-              type="number"
-              placeholder={searchRowLimit}
-              required
-              readOnly={!isEditing}
-              error={form.formState.errors.searchRowLimit?.message}
-              {...form.register('searchRowLimit', {
-                required: true,
-              })}
-              miw={300}
-              min={1}
-              max={100000}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Escape') {
-                  setIsEditing(false);
+            {type === 'boolean' && options ? (
+              <SelectControlled
+                control={form.control}
+                name="value"
+                value={form.watch('value')}
+                data={options}
+                size="xs"
+                placeholder="Please select"
+                withAsterisk
+                miw={300}
+                readOnly={!isEditing}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditing(false);
+                  }
+                }}
+              />
+            ) : (
+              <TextInput
+                size="xs"
+                type="number"
+                placeholder={
+                  placeholder || currentValue?.toString() || `Enter value`
                 }
-              }}
-            />
+                required
+                readOnly={!isEditing}
+                error={
+                  form.formState.errors.value?.message as string | undefined
+                }
+                {...form.register('value', {
+                  required: true,
+                })}
+                miw={300}
+                min={min}
+                max={max}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditing(false);
+                  }
+                }}
+              />
+            )}
             <Button
               type="submit"
               size="xs"
               variant="light"
               color="green"
-              loading={setSearchRowLimit.isPending}
+              loading={updateClickhouseSettings.isPending}
             >
               Save
             </Button>
@@ -1147,7 +1224,7 @@ function SearchRowLimitForm() {
               type="button"
               size="xs"
               variant="default"
-              disabled={setSearchRowLimit.isPending}
+              disabled={updateClickhouseSettings.isPending}
               onClick={() => {
                 setIsEditing(false);
               }}
@@ -1158,109 +1235,11 @@ function SearchRowLimitForm() {
         </form>
       ) : (
         <Group>
-          <Text className="text-white">{searchRowLimit}</Text>
-          {hasAdminAccess && (
-            <Button
-              size="xs"
-              variant="default"
-              leftSection={<i className="bi bi-pencil text-slate-300" />}
-              onClick={() => setIsEditing(true)}
-            >
-              Change
-            </Button>
-          )}
-        </Group>
-      )}
-    </Stack>
-  );
-}
-
-function FieldMetadataForm() {
-  const { data: me, refetch: refetchMe } = api.useMe();
-  const setFieldMetadataDisabled = api.useSetFieldMetadataDisabled();
-  const hasAdminAccess = true;
-  const [isEditing, setIsEditing] = useState(false);
-  const fieldMetadataDisabled = me?.team.fieldMetadataDisabled ?? false;
-  const fieldMetadata = fieldMetadataDisabled ? 'Disabled' : 'Enabled';
-  const form = useForm<{ fieldMetadata: string }>({
-    defaultValues: {
-      fieldMetadata: fieldMetadata,
-    },
-  });
-
-  const onSubmit: SubmitHandler<{ fieldMetadata: string }> = useCallback(
-    async values => {
-      try {
-        setFieldMetadataDisabled.mutate(
-          {
-            fieldMetadataDisabled: values.fieldMetadata === 'Disabled',
-          },
-          {
-            onError: e => {
-              notifications.show({
-                color: 'red',
-                message: 'Failed to update Field Metadata Queries',
-              });
-            },
-            onSuccess: () => {
-              notifications.show({
-                color: 'green',
-                message: `${values.fieldMetadata} Field Metadata queries`,
-              });
-              refetchMe();
-              setIsEditing(false);
-            },
-          },
-        );
-      } catch (e) {
-        notifications.show({
-          color: 'red',
-          message: e.message,
-        });
-      }
-    },
-    [refetchMe, setFieldMetadataDisabled, me?.team?.searchRowLimit],
-  );
-
-  return (
-    <Stack gap="xs">
-      <InputLabel c="gray.3" size="md">
-        Field Metadata Queries
-      </InputLabel>
-      {isEditing && hasAdminAccess ? (
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <Group>
-            <SelectControlled
-              control={form.control}
-              name="fieldMetadata"
-              value={fieldMetadata}
-              data={['Enabled', 'Disabled']}
-            />
-            <Button
-              type="submit"
-              size="xs"
-              variant="light"
-              color="green"
-              loading={setFieldMetadataDisabled.isPending}
-            >
-              Save
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant="default"
-              disabled={setFieldMetadataDisabled.isPending}
-              onClick={() => {
-                setIsEditing(false);
-              }}
-            >
-              Cancel
-            </Button>
-          </Group>
-        </form>
-      ) : (
-        <Group>
-          <Text className="text-white">{fieldMetadata}</Text>
+          <Text className="text-white">
+            {displayValue
+              ? displayValue(currentValue)
+              : currentValue?.toString() || 'Not set'}
+          </Text>
           {hasAdminAccess && (
             <Button
               size="xs"
@@ -1281,13 +1260,46 @@ function TeamQueryConfigSection() {
   return (
     <Box id="team_name">
       <Text size="md" c="gray.4">
-        Team Query Limits
+        ClickHouse Client Settings
       </Text>
       <Divider my="md" />
       <Card>
         <Stack>
-          <SearchRowLimitForm />
-          <FieldMetadataForm />
+          <ClickhouseSettingForm
+            settingKey="searchRowLimit"
+            label="Search Row Limit"
+            tooltip="The number of rows per query for the Search page or search dashboard tiles"
+            type="number"
+            defaultValue={DEFAULT_SEARCH_ROW_LIMIT}
+            placeholder={`Enter value (default: ${DEFAULT_SEARCH_ROW_LIMIT})`}
+            min={1}
+            max={100000}
+            displayValue={value => value ?? 'System Default'}
+          />
+          <ClickhouseSettingForm
+            settingKey="metadataMaxRowsToRead"
+            label="Max Rows to Read (METADATA ONLY)"
+            tooltip="The maximum number of rows that can be read from a table when running a query"
+            type="number"
+            defaultValue={DEFAULT_METADATA_MAX_ROWS_TO_READ}
+            placeholder={`Enter value (default: ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`}
+            min={0}
+            displayValue={value =>
+              value == null
+                ? `System Default (${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()})`
+                : value === 0
+                  ? 'Unlimited'
+                  : value.toLocaleString()
+            }
+          />
+          <ClickhouseSettingForm
+            settingKey="fieldMetadataDisabled"
+            label="Field Metadata Queries"
+            tooltip="Enable to fetch field metadata from ClickHouse"
+            type="boolean"
+            options={['Enabled', 'Disabled']}
+            displayValue={value => (value ? 'Disabled' : 'Enabled')}
+          />
         </Stack>
       </Card>
     </Box>

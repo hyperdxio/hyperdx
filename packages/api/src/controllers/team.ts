@@ -4,7 +4,7 @@ import * as config from '@/config';
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import Team from '@/models/team';
+import Team, { TeamCHSettings } from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
@@ -71,22 +71,11 @@ export function setTeamName(teamId: ObjectId, name: string) {
   return Team.findByIdAndUpdate(teamId, { name }, { new: true });
 }
 
-export function setTeamSearchRowLimit(
+export function updateTeamClickhouseSettings(
   teamId: ObjectId,
-  searchRowLimit: number,
+  settings: TeamCHSettings,
 ) {
-  return Team.findByIdAndUpdate(teamId, { searchRowLimit }, { new: true });
-}
-
-export function setTeamFieldMetadataDisabled(
-  teamId: ObjectId,
-  fieldMetadataDisabled: boolean,
-) {
-  return Team.findByIdAndUpdate(
-    teamId,
-    { fieldMetadataDisabled },
-    { new: true },
-  );
+  return Team.findByIdAndUpdate(teamId, settings, { new: true });
 }
 
 export async function getTags(teamId: ObjectId) {

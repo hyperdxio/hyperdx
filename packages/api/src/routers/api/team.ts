@@ -9,9 +9,8 @@ import {
   getTags,
   getTeam,
   rotateTeamApiKey,
-  setTeamFieldMetadataDisabled,
   setTeamName,
-  setTeamSearchRowLimit,
+  updateTeamClickhouseSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -90,10 +89,12 @@ router.patch(
 );
 
 router.patch(
-  '/search-row-limit',
+  '/clickhouse-settings',
   validateRequest({
     body: z.object({
-      searchRowLimit: z.number(),
+      fieldMetadataDisabled: z.boolean().optional(),
+      searchRowLimit: z.number().optional(),
+      metadataMaxRowsToRead: z.number().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -102,34 +103,33 @@ router.patch(
       if (teamId == null) {
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
-      const { searchRowLimit } = req.body;
-      const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
-      res.json({ searchRowLimit: team?.searchRowLimit });
-    } catch (e) {
-      next(e);
-    }
-  },
-);
 
-router.patch(
-  '/field-metadata',
-  validateRequest({
-    body: z.object({
-      fieldMetadataDisabled: z.boolean(),
-    }),
-  }),
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        throw new Error(`User ${req.user?._id} not associated with a team`);
+      const { fieldMetadataDisabled, metadataMaxRowsToRead, searchRowLimit } =
+        req.body;
+
+      const settings = {
+        ...(searchRowLimit !== undefined && { searchRowLimit }),
+        ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
+        ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
+      };
+
+      if (Object.keys(settings).length === 0) {
+        return res.json({});
       }
-      const { fieldMetadataDisabled } = req.body;
-      const team = await setTeamFieldMetadataDisabled(
-        teamId,
-        fieldMetadataDisabled,
-      );
-      res.json({ fieldMetadataDisabled: team?.fieldMetadataDisabled });
+
+      const team = await updateTeamClickhouseSettings(teamId, settings);
+
+      res.json({
+        ...(searchRowLimit !== undefined && {
+          searchRowLimit: team?.searchRowLimit,
+        }),
+        ...(fieldMetadataDisabled !== undefined && {
+          fieldMetadataDisabled: team?.fieldMetadataDisabled,
+        }),
+        ...(metadataMaxRowsToRead !== undefined && {
+          metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
+        }),
+      });
     } catch (e) {
       next(e);
     }
