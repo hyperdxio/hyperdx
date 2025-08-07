@@ -1,3 +1,5 @@
+import type { ClickHouseSettings } from '@clickhouse/client-common';
+
 import {
   ChSql,
   chSql,
@@ -91,10 +93,20 @@ export type TableMetadata = {
 export class Metadata {
   private readonly clickhouseClient: ClickhouseClient;
   private readonly cache: MetadataCache;
+  private readonly clickhouseSettings: ClickHouseSettings;
 
-  constructor(clickhouseClient: ClickhouseClient, cache: MetadataCache) {
+  constructor(
+    clickhouseClient: ClickhouseClient,
+    cache: MetadataCache,
+    settings?: ClickHouseSettings,
+  ) {
     this.clickhouseClient = clickhouseClient;
     this.cache = cache;
+    this.clickhouseSettings = settings ?? {};
+  }
+
+  setClickHouseSettings(settings: ClickHouseSettings) {
+    Object.assign(this.clickhouseSettings, settings);
   }
 
   private async queryTableMetadata({
@@ -115,6 +127,7 @@ export class Metadata {
           connectionId,
           query: sql.sql,
           query_params: sql.params,
+          clickhouse_settings: this.clickhouseSettings,
         })
         .then(res => res.json<TableMetadata>());
       return json.data[0];
@@ -139,6 +152,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
+            clickhouse_settings: this.clickhouseSettings,
           })
           .then(res => res.json())
           .then(d => d.data);
@@ -254,13 +268,22 @@ export class Metadata {
       }}) as keysArr
       FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
     } else {
-      sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
-        Identifier: column,
-      }}.keys)) as key
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-      LIMIT ${{
-        Int32: maxKeys,
-      }}`;
+      sql = chSql`
+        WITH sampledKeys as (
+          SELECT ${{
+            Identifier: column,
+          }}.keys AS keysArr
+          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+          LIMIT ${{
+            Int32: DEFAULT_MAX_ROWS_TO_READ,
+          }}
+        )
+        SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
+        FROM sampledKeys
+        LIMIT ${{
+          Int32: maxKeys,
+        }}
+      `;
     }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
@@ -272,6 +295,7 @@ export class Metadata {
           clickhouse_settings: {
             max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
+            ...this.clickhouseSettings,
           },
         })
         .then(res => res.json<Record<string, unknown>>())
@@ -345,6 +369,7 @@ export class Metadata {
             clickhouse_settings: {
               max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
+              ...this.clickhouseSettings,
             },
           })
           .then(res => res.json<Record<string, unknown>>())
@@ -462,6 +487,7 @@ export class Metadata {
               ? {
                   max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
                   read_overflow_mode: 'break',
+                  ...this.clickhouseSettings,
                 }
               : undefined,
           })
