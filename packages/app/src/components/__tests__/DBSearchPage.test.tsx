@@ -9,6 +9,10 @@ describe('getDefaultSourceId', () => {
     expect(getDefaultSourceId([], undefined)).toBe('');
   });
 
+  it('returns empty string if sources is empty but lastSelectedSourceId is a string', () => {
+    expect(getDefaultSourceId([], 'some-id')).toBe('');
+  });
+
   it('returns lastSelectedSourceId if it exists in sources', () => {
     const sources = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
     expect(getDefaultSourceId(sources, 'b')).toBe('b');
