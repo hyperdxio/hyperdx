@@ -1,10 +1,11 @@
 import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
-import { groupBy } from 'lodash';
+import { groupBy, pick } from 'lodash';
 import { z } from 'zod';
 
 import { deleteSavedSearchAlerts } from '@/controllers/alerts';
 import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
+import type { IUser } from '@/models/user';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
@@ -13,15 +14,22 @@ export async function getSavedSearches(teamId: string) {
   const alerts = await Alert.find(
     { team: teamId, savedSearch: { $exists: true, $ne: null } },
     { __v: 0 },
-  );
+  ).populate<{
+    createdBy?: IUser;
+  }>(['createdBy']);
 
   const alertsBySavedSearchId = groupBy(alerts, 'savedSearch');
 
   return savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
-    alerts: alertsBySavedSearchId[savedSearch._id.toString()]
-      ?.map(alert => alert.toJSON())
-      .map(({ _id, ...alert }) => ({ id: _id, ...alert })), // Remap _id to id
+    alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
+      const { _id, createdBy, ...restAlert } = alert.toJSON();
+      return {
+        id: _id,
+        ...restAlert,
+        createdBy: createdBy ? pick(createdBy, ['email', 'name']) : undefined,
+      };
+    }),
   }));
 }
 
