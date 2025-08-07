@@ -1064,7 +1064,7 @@ function TeamNameSection() {
 
 function SearchRowLimitForm() {
   const { data: me, refetch: refetchMe } = api.useMe();
-  const setSearchRowLimit = api.useSetTeamSearchRowLimit();
+  const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
   const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
@@ -1077,7 +1077,7 @@ function SearchRowLimitForm() {
   const onSubmit: SubmitHandler<{ searchRowLimit: number }> = useCallback(
     async values => {
       try {
-        setSearchRowLimit.mutate(
+        updateClickhouseSettings.mutate(
           { searchRowLimit: Number(values.searchRowLimit) },
           {
             onError: e => {
@@ -1103,7 +1103,7 @@ function SearchRowLimitForm() {
         });
       }
     },
-    [refetchMe, setSearchRowLimit, me?.team?.searchRowLimit],
+    [refetchMe, updateClickhouseSettings, me?.team?.searchRowLimit],
   );
 
   return (
@@ -1139,7 +1139,7 @@ function SearchRowLimitForm() {
               size="xs"
               variant="light"
               color="green"
-              loading={setSearchRowLimit.isPending}
+              loading={updateClickhouseSettings.isPending}
             >
               Save
             </Button>
@@ -1147,7 +1147,7 @@ function SearchRowLimitForm() {
               type="button"
               size="xs"
               variant="default"
-              disabled={setSearchRowLimit.isPending}
+              disabled={updateClickhouseSettings.isPending}
               onClick={() => {
                 setIsEditing(false);
               }}
@@ -1177,7 +1177,7 @@ function SearchRowLimitForm() {
 
 function FieldMetadataForm() {
   const { data: me, refetch: refetchMe } = api.useMe();
-  const setFieldMetadataDisabled = api.useSetFieldMetadataDisabled();
+  const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
   const fieldMetadataDisabled = me?.team.fieldMetadataDisabled ?? false;
@@ -1191,7 +1191,7 @@ function FieldMetadataForm() {
   const onSubmit: SubmitHandler<{ fieldMetadata: string }> = useCallback(
     async values => {
       try {
-        setFieldMetadataDisabled.mutate(
+        updateClickhouseSettings.mutate(
           {
             fieldMetadataDisabled: values.fieldMetadata === 'Disabled',
           },
@@ -1219,7 +1219,7 @@ function FieldMetadataForm() {
         });
       }
     },
-    [refetchMe, setFieldMetadataDisabled, me?.team?.searchRowLimit],
+    [refetchMe, updateClickhouseSettings, me?.team?.searchRowLimit],
   );
 
   return (
@@ -1241,7 +1241,7 @@ function FieldMetadataForm() {
               size="xs"
               variant="light"
               color="green"
-              loading={setFieldMetadataDisabled.isPending}
+              loading={updateClickhouseSettings.isPending}
             >
               Save
             </Button>
@@ -1249,7 +1249,7 @@ function FieldMetadataForm() {
               type="button"
               size="xs"
               variant="default"
-              disabled={setFieldMetadataDisabled.isPending}
+              disabled={updateClickhouseSettings.isPending}
               onClick={() => {
                 setIsEditing(false);
               }}
@@ -1281,7 +1281,7 @@ function TeamQueryConfigSection() {
   return (
     <Box id="team_name">
       <Text size="md" c="gray.4">
-        Team Query Limits
+        ClickHouse Client Settings
       </Text>
       <Divider my="md" />
       <Card>

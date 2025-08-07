@@ -90,10 +90,11 @@ router.patch(
 );
 
 router.patch(
-  '/search-row-limit',
+  '/clickhouse-settings',
   validateRequest({
     body: z.object({
-      searchRowLimit: z.number(),
+      searchRowLimit: z.number().optional(),
+      fieldMetadataDisabled: z.boolean().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -102,34 +103,24 @@ router.patch(
       if (teamId == null) {
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
-      const { searchRowLimit } = req.body;
-      const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
-      res.json({ searchRowLimit: team?.searchRowLimit });
-    } catch (e) {
-      next(e);
-    }
-  },
-);
 
-router.patch(
-  '/field-metadata',
-  validateRequest({
-    body: z.object({
-      fieldMetadataDisabled: z.boolean(),
-    }),
-  }),
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      if (teamId == null) {
-        throw new Error(`User ${req.user?._id} not associated with a team`);
+      const { searchRowLimit, fieldMetadataDisabled } = req.body;
+      const response: Record<string, unknown> = {};
+
+      if (searchRowLimit !== undefined) {
+        const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
+        response.searchRowLimit = team?.searchRowLimit;
       }
-      const { fieldMetadataDisabled } = req.body;
-      const team = await setTeamFieldMetadataDisabled(
-        teamId,
-        fieldMetadataDisabled,
-      );
-      res.json({ fieldMetadataDisabled: team?.fieldMetadataDisabled });
+
+      if (fieldMetadataDisabled !== undefined) {
+        const team = await setTeamFieldMetadataDisabled(
+          teamId,
+          fieldMetadataDisabled,
+        );
+        response.fieldMetadataDisabled = team?.fieldMetadataDisabled;
+      }
+
+      res.json(response);
     } catch (e) {
       next(e);
     }
