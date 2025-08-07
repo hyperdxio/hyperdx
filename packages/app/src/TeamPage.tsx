@@ -7,6 +7,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
+import { DEFAULT_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -1298,7 +1299,7 @@ function MaxRowsToReadForm() {
   const maxRowsToRead = me?.team.maxRowsToRead;
   const form = useForm<{ maxRowsToRead: number }>({
     defaultValues: {
-      maxRowsToRead: maxRowsToRead ?? 0,
+      maxRowsToRead: maxRowsToRead ?? DEFAULT_MAX_ROWS_TO_READ,
     },
   });
 
@@ -1353,7 +1354,8 @@ function MaxRowsToReadForm() {
               size="xs"
               type="number"
               placeholder={
-                maxRowsToRead?.toString() || 'Enter value (0 = unlimited)'
+                maxRowsToRead?.toString() ||
+                `Enter value (default: ${DEFAULT_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`
               }
               required
               readOnly={!isEditing}
@@ -1396,10 +1398,10 @@ function MaxRowsToReadForm() {
         <Group>
           <Text className="text-white">
             {maxRowsToRead == null
-              ? 'System Default'
+              ? `System Default (${DEFAULT_MAX_ROWS_TO_READ.toLocaleString()})`
               : maxRowsToRead === 0
                 ? 'Unlimited'
-                : maxRowsToRead}
+                : maxRowsToRead.toLocaleString()}
           </Text>
           {hasAdminAccess && (
             <Button
