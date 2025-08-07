@@ -164,7 +164,7 @@ export function useGetKeyValues(
       ).flatMap(v => v);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length,
+    enabled: !!keys.length && isFetched,
     placeholderData: keepPreviousData,
     ...options,
   });

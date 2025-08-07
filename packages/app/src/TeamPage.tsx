@@ -1150,53 +1150,6 @@ function ClickhouseSettingForm({
     [refetchMe, updateClickhouseSettings, settingKey, label, type],
   );
 
-  const renderEditForm = () => {
-    if (type === 'boolean' && options) {
-      return (
-        <SelectControlled
-          control={form.control}
-          name="value"
-          value={form.watch('value')}
-          data={options}
-          size="xs"
-          placeholder="Please select"
-          withAsterisk
-          miw={300}
-          readOnly={!isEditing}
-          autoFocus
-          onKeyDown={e => {
-            if (e.key === 'Escape') {
-              setIsEditing(false);
-            }
-          }}
-        />
-      );
-    }
-
-    return (
-      <TextInput
-        size="xs"
-        type="number"
-        placeholder={placeholder || currentValue?.toString() || `Enter value`}
-        required
-        readOnly={!isEditing}
-        error={form.formState.errors.value?.message as string | undefined}
-        {...form.register('value', {
-          required: true,
-        })}
-        miw={300}
-        min={min}
-        max={max}
-        autoFocus
-        onKeyDown={e => {
-          if (e.key === 'Escape') {
-            setIsEditing(false);
-          }
-        }}
-      />
-    );
-  };
-
   return (
     <Stack gap="xs" mb="md">
       <Group gap="xs">
@@ -1214,7 +1167,50 @@ function ClickhouseSettingForm({
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
-            {renderEditForm()}
+            {type === 'boolean' && options ? (
+              <SelectControlled
+                control={form.control}
+                name="value"
+                value={form.watch('value')}
+                data={options}
+                size="xs"
+                placeholder="Please select"
+                withAsterisk
+                miw={300}
+                readOnly={!isEditing}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditing(false);
+                  }
+                }}
+              />
+            ) : (
+              <TextInput
+                size="xs"
+                type="number"
+                placeholder={
+                  placeholder || currentValue?.toString() || `Enter value`
+                }
+                required
+                readOnly={!isEditing}
+                error={
+                  form.formState.errors.value?.message as string | undefined
+                }
+                {...form.register('value', {
+                  required: true,
+                })}
+                miw={300}
+                min={min}
+                max={max}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setIsEditing(false);
+                  }
+                }}
+              />
+            )}
             <Button
               type="submit"
               size="xs"
