@@ -511,7 +511,7 @@ function useDefaultOrderBy(sourceID: string | undefined | null) {
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(() => {
     const fallbackOrderBy = `${getFirstTimestampValueExpression(
-      source?.timestampValueExpression ?? 'Timestamp',
+      source?.timestampValueExpression ?? '',
     )} DESC`;
     if (!tableMetadata) return fallbackOrderBy;
     return optimizeOrderBy(
