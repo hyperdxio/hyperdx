@@ -27,6 +27,7 @@ import {
   Table,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -1229,9 +1230,16 @@ function FieldMetadataForm() {
 
   return (
     <Stack gap="xs">
-      <InputLabel c="gray.3" size="md">
-        Field Metadata Queries
-      </InputLabel>
+      <Group gap="xs">
+        <InputLabel c="gray.3" size="md">
+          Field Metadata Queries
+        </InputLabel>
+        <Tooltip label="Enable to fetch field metadata from ClickHouse">
+          <Text c="gray.5" size="sm" style={{ cursor: 'help' }}>
+            <i className="bi bi-question-circle" />
+          </Text>
+        </Tooltip>
+      </Group>
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
@@ -1328,9 +1336,16 @@ function MaxRowsToReadForm() {
 
   return (
     <Stack gap="xs" mb="md">
-      <InputLabel c="gray.3" size="md">
-        Max Rows to Read
-      </InputLabel>
+      <Group gap="xs">
+        <InputLabel c="gray.3" size="md">
+          Max Rows to Read
+        </InputLabel>
+        <Tooltip label="The maximum number of rows that can be read from a table when running a query (FIELD METADATA ONLY)">
+          <Text c="gray.5" size="sm" style={{ cursor: 'help' }}>
+            <i className="bi bi-question-circle" />
+          </Text>
+        </Tooltip>
+      </Group>
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
