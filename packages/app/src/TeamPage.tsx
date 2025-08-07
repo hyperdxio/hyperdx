@@ -7,7 +7,7 @@ import { SubmitHandler, useForm } from 'react-hook-form';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
-import { DEFAULT_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
+import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -1067,7 +1067,10 @@ function TeamNameSection() {
 type ClickhouseSettingType = 'number' | 'boolean';
 
 interface ClickhouseSettingFormProps {
-  settingKey: 'searchRowLimit' | 'maxRowsToRead' | 'fieldMetadataDisabled';
+  settingKey:
+    | 'searchRowLimit'
+    | 'metadataMaxRowsToRead'
+    | 'fieldMetadataDisabled';
   label: string;
   tooltip?: string;
   type: ClickhouseSettingType;
@@ -1277,16 +1280,16 @@ function TeamQueryConfigSection() {
             displayValue={value => value ?? 'System Default'}
           />
           <ClickhouseSettingForm
-            settingKey="maxRowsToRead"
+            settingKey="metadataMaxRowsToRead"
             label="Max Rows to Read"
             tooltip="The maximum number of rows that can be read from a table when running a query (FIELD METADATA ONLY)"
             type="number"
-            defaultValue={DEFAULT_MAX_ROWS_TO_READ}
-            placeholder={`Enter value (default: ${DEFAULT_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`}
+            defaultValue={DEFAULT_METADATA_MAX_ROWS_TO_READ}
+            placeholder={`Enter value (default: ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`}
             min={0}
             displayValue={value =>
               value == null
-                ? `System Default (${DEFAULT_MAX_ROWS_TO_READ.toLocaleString()})`
+                ? `System Default (${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()})`
                 : value === 0
                   ? 'Unlimited'
                   : value.toLocaleString()

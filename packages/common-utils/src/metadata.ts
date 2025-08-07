@@ -15,7 +15,7 @@ import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
-export const DEFAULT_MAX_ROWS_TO_READ = 3e6;
+export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -277,7 +277,7 @@ export class Metadata {
           LIMIT ${{
             Int32: this.clickhouseSettings.max_rows_to_read
               ? Number(this.clickhouseSettings.max_rows_to_read)
-              : DEFAULT_MAX_ROWS_TO_READ,
+              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
           }}
         )
         SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
@@ -295,7 +295,7 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+            max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
             ...this.clickhouseSettings,
           },
@@ -369,7 +369,7 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
               ...this.clickhouseSettings,
             },
@@ -487,7 +487,7 @@ export class Metadata {
             connectionId: chartConfig.connection,
             clickhouse_settings: !disableRowLimit
               ? {
-                  max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+                  max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
                   read_overflow_mode: 'break',
                   ...this.clickhouseSettings,
                 }

@@ -94,7 +94,7 @@ router.patch(
     body: z.object({
       fieldMetadataDisabled: z.boolean().optional(),
       searchRowLimit: z.number().optional(),
-      maxRowsToRead: z.number().optional(),
+      metadataMaxRowsToRead: z.number().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -104,12 +104,13 @@ router.patch(
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
 
-      const { fieldMetadataDisabled, maxRowsToRead, searchRowLimit } = req.body;
+      const { fieldMetadataDisabled, metadataMaxRowsToRead, searchRowLimit } =
+        req.body;
 
       const settings = {
         ...(searchRowLimit !== undefined && { searchRowLimit }),
         ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
-        ...(maxRowsToRead !== undefined && { maxRowsToRead }),
+        ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
       };
 
       if (Object.keys(settings).length === 0) {
@@ -125,8 +126,8 @@ router.patch(
         ...(fieldMetadataDisabled !== undefined && {
           fieldMetadataDisabled: team?.fieldMetadataDisabled,
         }),
-        ...(maxRowsToRead !== undefined && {
-          maxRowsToRead: team?.maxRowsToRead,
+        ...(metadataMaxRowsToRead !== undefined && {
+          metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
         }),
       });
     } catch (e) {

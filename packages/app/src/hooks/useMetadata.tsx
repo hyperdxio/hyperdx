@@ -64,9 +64,9 @@ export function useAllFields(
       }
 
       // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.maxRowsToRead) {
+      if (team?.metadataMaxRowsToRead) {
         metadata.setClickHouseSettings({
-          max_rows_to_read: team.maxRowsToRead,
+          max_rows_to_read: team.metadataMaxRowsToRead,
         });
       }
 
@@ -145,9 +145,9 @@ export function useGetKeyValues(
       const team = me?.team;
 
       // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.maxRowsToRead) {
+      if (team?.metadataMaxRowsToRead) {
         metadata.setClickHouseSettings({
-          max_rows_to_read: team.maxRowsToRead,
+          max_rows_to_read: team.metadataMaxRowsToRead,
         });
       }
       return (

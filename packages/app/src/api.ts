@@ -269,7 +269,7 @@ const api = {
       {
         searchRowLimit?: number;
         fieldMetadataDisabled?: boolean;
-        maxRowsToRead?: number;
+        metadataMaxRowsToRead?: number;
       }
     >({
       mutationFn: async settings =>

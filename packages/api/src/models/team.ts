@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 type ObjectId = mongoose.Types.ObjectId;
 
 export type TeamCHSettings = {
-  maxRowsToRead?: number;
+  metadataMaxRowsToRead?: number;
   searchRowLimit?: number;
   fieldMetadataDisabled?: boolean;
 };
@@ -43,7 +43,7 @@ export default mongoose.model<ITeam>(
       },
       // TODO: maybe add these to a top level Mixed type
       // CH Client Settings
-      maxRowsToRead: Number,
+      metadataMaxRowsToRead: Number,
       searchRowLimit: Number,
       fieldMetadataDisabled: Boolean,
     },
