@@ -1177,7 +1177,7 @@ function ClickhouseSettingForm({
         placeholder={placeholder || currentValue?.toString() || `Enter value`}
         required
         readOnly={!isEditing}
-        error={form.formState.errors.value?.message}
+        error={form.formState.errors.value?.message as string | undefined}
         {...form.register('value', {
           required: true,
         })}
