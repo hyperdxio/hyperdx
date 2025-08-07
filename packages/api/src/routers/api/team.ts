@@ -9,9 +9,8 @@ import {
   getTags,
   getTeam,
   rotateTeamApiKey,
-  setTeamFieldMetadataDisabled,
   setTeamName,
-  setTeamSearchRowLimit,
+  updateTeamClickhouseSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -93,8 +92,9 @@ router.patch(
   '/clickhouse-settings',
   validateRequest({
     body: z.object({
-      searchRowLimit: z.number().optional(),
       fieldMetadataDisabled: z.boolean().optional(),
+      searchRowLimit: z.number().optional(),
+      maxRowsToRead: z.number().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -104,23 +104,31 @@ router.patch(
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
 
-      const { searchRowLimit, fieldMetadataDisabled } = req.body;
-      const response: Record<string, unknown> = {};
+      const { fieldMetadataDisabled, maxRowsToRead, searchRowLimit } = req.body;
 
-      if (searchRowLimit !== undefined) {
-        const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
-        response.searchRowLimit = team?.searchRowLimit;
+      const settings = {
+        ...(searchRowLimit !== undefined && { searchRowLimit }),
+        ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
+        ...(maxRowsToRead !== undefined && { maxRowsToRead }),
+      };
+
+      if (Object.keys(settings).length === 0) {
+        return res.json({});
       }
 
-      if (fieldMetadataDisabled !== undefined) {
-        const team = await setTeamFieldMetadataDisabled(
-          teamId,
-          fieldMetadataDisabled,
-        );
-        response.fieldMetadataDisabled = team?.fieldMetadataDisabled;
-      }
+      const team = await updateTeamClickhouseSettings(teamId, settings);
 
-      res.json(response);
+      res.json({
+        ...(searchRowLimit !== undefined && {
+          searchRowLimit: team?.searchRowLimit,
+        }),
+        ...(fieldMetadataDisabled !== undefined && {
+          fieldMetadataDisabled: team?.fieldMetadataDisabled,
+        }),
+        ...(maxRowsToRead !== undefined && {
+          maxRowsToRead: team?.maxRowsToRead,
+        }),
+      });
     } catch (e) {
       next(e);
     }

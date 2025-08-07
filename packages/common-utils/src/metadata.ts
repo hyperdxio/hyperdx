@@ -275,7 +275,9 @@ export class Metadata {
           }}.keys AS keysArr
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{
-            Int32: DEFAULT_MAX_ROWS_TO_READ,
+            Int32: this.clickhouseSettings.max_rows_to_read
+              ? Number(this.clickhouseSettings.max_rows_to_read)
+              : DEFAULT_MAX_ROWS_TO_READ,
           }}
         )
         SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key

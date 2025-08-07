@@ -1067,10 +1067,10 @@ function SearchRowLimitForm() {
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
-  const searchRowLimit = me?.team.searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT;
+  const searchRowLimit = me?.team.searchRowLimit;
   const form = useForm<{ searchRowLimit: number }>({
     defaultValues: {
-      searchRowLimit,
+      searchRowLimit: searchRowLimit ?? DEFAULT_SEARCH_ROW_LIMIT,
     },
   });
 
@@ -1117,7 +1117,10 @@ function SearchRowLimitForm() {
             <TextInput
               size="xs"
               type="number"
-              placeholder={searchRowLimit}
+              placeholder={
+                searchRowLimit?.toString() ||
+                `Enter value (default: ${DEFAULT_SEARCH_ROW_LIMIT})`
+              }
               required
               readOnly={!isEditing}
               error={form.formState.errors.searchRowLimit?.message}
@@ -1158,7 +1161,9 @@ function SearchRowLimitForm() {
         </form>
       ) : (
         <Group>
-          <Text className="text-white">{searchRowLimit}</Text>
+          <Text className="text-white">
+            {searchRowLimit ?? 'System Default'}
+          </Text>
           {hasAdminAccess && (
             <Button
               size="xs"
@@ -1277,6 +1282,126 @@ function FieldMetadataForm() {
   );
 }
 
+function MaxRowsToReadForm() {
+  const { data: me, refetch: refetchMe } = api.useMe();
+  const updateClickhouseSettings = api.useUpdateClickhouseSettings();
+  const hasAdminAccess = true;
+  const [isEditing, setIsEditing] = useState(false);
+  const maxRowsToRead = me?.team.maxRowsToRead;
+  const form = useForm<{ maxRowsToRead: number }>({
+    defaultValues: {
+      maxRowsToRead: maxRowsToRead ?? 0,
+    },
+  });
+
+  const onSubmit: SubmitHandler<{ maxRowsToRead: number }> = useCallback(
+    async values => {
+      try {
+        updateClickhouseSettings.mutate(
+          { maxRowsToRead: Number(values.maxRowsToRead) },
+          {
+            onError: e => {
+              notifications.show({
+                color: 'red',
+                message: 'Failed to update Max Rows to Read',
+              });
+            },
+            onSuccess: () => {
+              notifications.show({
+                color: 'green',
+                message: 'Updated Max Rows to Read',
+              });
+              refetchMe();
+              setIsEditing(false);
+            },
+          },
+        );
+      } catch (e) {
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    },
+    [refetchMe, updateClickhouseSettings, me?.team?.maxRowsToRead],
+  );
+
+  return (
+    <Stack gap="xs" mb="md">
+      <InputLabel c="gray.3" size="md">
+        Max Rows to Read
+      </InputLabel>
+      {isEditing && hasAdminAccess ? (
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <Group>
+            <TextInput
+              size="xs"
+              type="number"
+              placeholder={
+                maxRowsToRead?.toString() || 'Enter value (0 = unlimited)'
+              }
+              required
+              readOnly={!isEditing}
+              error={form.formState.errors.maxRowsToRead?.message}
+              {...form.register('maxRowsToRead', {
+                required: true,
+              })}
+              miw={300}
+              min={0}
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  setIsEditing(false);
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="light"
+              color="green"
+              loading={updateClickhouseSettings.isPending}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="default"
+              disabled={updateClickhouseSettings.isPending}
+              onClick={() => {
+                setIsEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Group>
+        </form>
+      ) : (
+        <Group>
+          <Text className="text-white">
+            {maxRowsToRead == null
+              ? 'System Default'
+              : maxRowsToRead === 0
+                ? 'Unlimited'
+                : maxRowsToRead}
+          </Text>
+          {hasAdminAccess && (
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              onClick={() => setIsEditing(true)}
+            >
+              Change
+            </Button>
+          )}
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
 function TeamQueryConfigSection() {
   return (
     <Box id="team_name">
@@ -1287,6 +1412,7 @@ function TeamQueryConfigSection() {
       <Card>
         <Stack>
           <SearchRowLimitForm />
+          <MaxRowsToReadForm />
           <FieldMetadataForm />
         </Stack>
       </Card>

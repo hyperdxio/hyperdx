@@ -266,7 +266,11 @@ const api = {
     return useMutation<
       any,
       HTTPError,
-      { searchRowLimit?: number; fieldMetadataDisabled?: boolean }
+      {
+        searchRowLimit?: number;
+        fieldMetadataDisabled?: boolean;
+        maxRowsToRead?: number;
+      }
     >({
       mutationFn: async settings =>
         hdxServer(`team/clickhouse-settings`, {
