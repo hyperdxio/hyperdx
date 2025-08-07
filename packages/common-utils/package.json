@@ -1,14 +1,14 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "license": "MIT",
   "private": true,
   "files": [
     "dist/*"
   ],
   "engines": {
-    "node": ">=18.12.0"
+    "node": ">=22.16.0"
   },
   "dependencies": {
     "@clickhouse/client": "^1.11.1",

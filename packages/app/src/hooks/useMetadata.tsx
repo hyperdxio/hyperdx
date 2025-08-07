@@ -12,6 +12,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
+import api from '@/api';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
@@ -50,12 +51,17 @@ export function useAllFields(
     ? _tableConnections
     : [_tableConnections];
   const metadata = getMetadata();
+  const { data: me, isFetched } = api.useMe();
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
+      if (me?.team.fieldMetadataDisabled) {
+        return [];
+      }
+
       const fields2d = await Promise.all(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
@@ -69,7 +75,8 @@ export function useAllFields(
       tableConnections.length > 0 &&
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
-      ),
+      ) &&
+      isFetched,
     ...options,
   });
 }
