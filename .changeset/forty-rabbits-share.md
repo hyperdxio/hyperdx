@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: introduce team 'clickhouse-settings' endpoint + maxRowsToRead setting
+feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting

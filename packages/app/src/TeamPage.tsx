@@ -1272,6 +1272,7 @@ function TeamQueryConfigSection() {
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
             label="Search Row Limit"
+            tooltip="The number of rows per query for the Search page or search dashboard tiles"
             type="number"
             defaultValue={DEFAULT_SEARCH_ROW_LIMIT}
             placeholder={`Enter value (default: ${DEFAULT_SEARCH_ROW_LIMIT})`}
@@ -1281,8 +1282,8 @@ function TeamQueryConfigSection() {
           />
           <ClickhouseSettingForm
             settingKey="metadataMaxRowsToRead"
-            label="Max Rows to Read"
-            tooltip="The maximum number of rows that can be read from a table when running a query (FIELD METADATA ONLY)"
+            label="Max Rows to Read (METADATA ONLY)"
+            tooltip="The maximum number of rows that can be read from a table when running a query"
             type="number"
             defaultValue={DEFAULT_METADATA_MAX_ROWS_TO_READ}
             placeholder={`Enter value (default: ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`}
