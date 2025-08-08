@@ -24,7 +24,7 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "husky": "^8.0.3",
     "lint-staged": "^13.1.2",
-    "nx": "21.0.0",
+    "nx": "21.3.11",
     "prettier": "3.3.3"
   },
   "scripts": {
