@@ -188,43 +188,43 @@ export const KubeTimeline = ({
         alias: 'id',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'metadata', 'creationTimestamp')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'metadata', 'creationTimestamp')`,
         alias: 'object.metadata.creationTimestamp',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'reason')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'reason')`,
         alias: 'object.reason',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
         alias: 'object.note',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'object.type',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'message')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'message')`,
         alias: 'object.message',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
         alias: 'k8s.pod.name',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'uid')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'uid')`,
         alias: 'k8s.pod.uid',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'type',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'severity_text',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
         alias: 'body',
       },
     ],
