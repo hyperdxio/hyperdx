@@ -268,13 +268,24 @@ export class Metadata {
       }}) as keysArr
       FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
     } else {
-      sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
-        Identifier: column,
-      }}.keys)) as key
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-      LIMIT ${{
-        Int32: maxKeys,
-      }}`;
+      sql = chSql`
+        WITH sampledKeys as (
+          SELECT ${{
+            Identifier: column,
+          }}.keys AS keysArr
+          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+          LIMIT ${{
+            Int32: this.clickhouseSettings.max_rows_to_read
+              ? Number(this.clickhouseSettings.max_rows_to_read)
+              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+          }}
+        )
+        SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
+        FROM sampledKeys
+        LIMIT ${{
+          Int32: maxKeys,
+        }}
+      `;
     }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
