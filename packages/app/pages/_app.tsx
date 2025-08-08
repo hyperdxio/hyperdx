@@ -32,7 +32,7 @@ import 'uplot/dist/uPlot.min.css';
 
 // Polyfill crypto.randomUUID for non-HTTPS environments
 if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
-  crypto.randomUUID = randomUUID;
+  crypto['randomUUID'] = randomUUID;
 }
 
 enableMapSet();
