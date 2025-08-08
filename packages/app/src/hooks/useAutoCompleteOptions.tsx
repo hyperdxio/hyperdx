@@ -15,6 +15,9 @@ export interface ILanguageFormatter {
   formatKeyValPair: (key: string, value: string) => string;
 }
 
+// Defined outside of the component to fix rerenders
+const NOW = Date.now();
+
 export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
   value: string,
@@ -94,10 +97,7 @@ export function useAutoCompleteOptions(
     where: '',
     // TODO: Pull in date for query as arg
     // just assuming 1/2 day is okay to query over right now
-    dateRange: [
-      new Date(Date.now() - (86400 * 1000) / 2),
-      new Date(Date.now()),
-    ],
+    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
   }));
   const { data: keyVals } = useGetKeyValues({
     chartConfigs,
