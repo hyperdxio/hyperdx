@@ -43,7 +43,7 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import api from './api';
-import { SearchConfig } from './types';
+import { AlertWithCreatedBy, SearchConfig } from './types';
 import { optionsToSelectData } from './utils';
 
 const SavedSearchAlertFormSchema = z
@@ -76,7 +76,7 @@ const AlertForm = ({
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
   select?: string | null;
-  defaultValues?: null | Alert;
+  defaultValues?: null | AlertWithCreatedBy;
   loading?: boolean;
   deleteLoading?: boolean;
   hasSavedSearch?: boolean;
@@ -184,6 +184,22 @@ const AlertForm = ({
           </Accordion.Panel>
         </Accordion.Item>
       </Accordion>
+
+      {defaultValues?.createdBy && (
+        <Paper px="md" py="sm" bg="dark.6" radius="xs" mt="sm">
+          <Text size="xxs" opacity={0.5} mb={4}>
+            Created by
+          </Text>
+          <Text size="sm" opacity={0.8}>
+            {defaultValues.createdBy.name || defaultValues.createdBy.email}
+          </Text>
+          {defaultValues.createdBy.name && (
+            <Text size="xs" opacity={0.6}>
+              {defaultValues.createdBy.email}
+            </Text>
+          )}
+        </Paper>
+      )}
 
       <Group mt="lg" justify="space-between" gap="xs">
         <div>

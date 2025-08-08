@@ -53,9 +53,24 @@ export type AlertsPageItem = Alert & {
   history: AlertHistory[];
   dashboard?: ServerDashboard;
   savedSearch?: SavedSearch;
+  createdBy?: {
+    email: string;
+    name?: string;
+  };
+};
+
+export type AlertWithCreatedBy = Alert & {
+  createdBy?: {
+    email: string;
+    name?: string;
+  };
 };
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+
+export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
+  alerts?: AlertWithCreatedBy[];
+};
 
 export type SearchConfig = {
   select?: string | null;

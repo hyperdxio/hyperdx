@@ -48,6 +48,9 @@ router.get('/', async (req, res, next) => {
                 until: alert.silenced.until,
               }
             : undefined,
+          createdBy: alert.createdBy
+            ? _.pick(alert.createdBy, ['email', 'name'])
+            : undefined,
           channel: _.pick(alert.channel, ['type']),
           ...(alert.dashboard && {
             dashboardId: alert.dashboard._id,
@@ -95,13 +98,14 @@ router.post(
   validateRequest({ body: alertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
-    if (teamId == null) {
+    const userId = req.user?._id;
+    if (teamId == null || userId == null) {
       return res.sendStatus(403);
     }
     try {
       const alertInput = req.body;
       return res.json({
-        data: await createAlert(teamId, alertInput),
+        data: await createAlert(teamId, alertInput, userId),
       });
     } catch (e) {
       next(e);

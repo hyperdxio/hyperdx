@@ -5,6 +5,7 @@ import {
   makeTile,
   randomMongoId,
 } from '@/fixtures';
+import Alert from '@/models/alert';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
 
@@ -95,6 +96,53 @@ describe('alerts router', () => {
     const allAlerts = await agent.get(`/alerts`).expect(200);
     expect(allAlerts.body.data.length).toBe(1);
     expect(allAlerts.body.data[0].threshold).toBe(10);
+  });
+
+  it('preserves createdBy field during updates', async () => {
+    const { agent, user } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    // Create an alert
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          threshold: 5,
+        }),
+      )
+      .expect(200);
+
+    // Verify alert was created and contains the expected data
+    expect(alert.body.data.threshold).toBe(5);
+
+    // Get the alert directly from database to verify createdBy was set
+    const alertFromDb = await Alert.findById(alert.body.data._id);
+    expect(alertFromDb).toBeDefined();
+    expect(alertFromDb!.createdBy).toEqual(user._id);
+    expect(alertFromDb!.threshold).toBe(5);
+
+    // Update the alert with a different threshold
+    const updatedAlert = await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...alert.body.data,
+        dashboardId: dashboard.body.id, // because alert.body.data stores 'dashboard' instead of 'dashboardId'
+        threshold: 15, // Change threshold
+      })
+      .expect(200);
+
+    expect(updatedAlert.body.data.threshold).toBe(15);
+
+    // Get the alert from database again to verify createdBy is preserved
+    const alertFromDbAfterUpdate = await Alert.findById(alert.body.data._id);
+    expect(alertFromDbAfterUpdate).toBeDefined();
+    expect(alertFromDbAfterUpdate!.createdBy).toEqual(user._id); // ✅ createdBy should still be the original user
+    expect(alertFromDbAfterUpdate!.threshold).toBe(15); // ✅ threshold should be updated
   });
 
   it('has alerts attached to dashboards', async () => {
