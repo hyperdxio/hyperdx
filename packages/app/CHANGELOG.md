@@ -1,5 +1,18 @@
 # @hyperdx/app
 
+## 2.1.2
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+- 86115fa: feat: Add click + sidepanel support to items within surrounding context
+- 7cd1d2a: fix: endless rerenders caused by Date.now() in a component
+- ba86b0c: fix: Set default source in dropdown if one does not exist
+- Updated dependencies [39cde41]
+- Updated dependencies [b568b00]
+  - @hyperdx/common-utils@0.2.9
+
 ## 2.1.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.2.9
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+
 ## 0.2.8
 
 ### Patch Changes
