@@ -1,5 +1,9 @@
 import objectHash from 'object-hash';
-import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ColumnMeta,
+  filterColumnMetaByType,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
   TableConnection,
@@ -37,6 +41,38 @@ export function useColumns(
         tableName,
         connectionId,
       });
+    },
+    enabled: !!databaseName && !!tableName && !!connectionId,
+    ...options,
+  });
+}
+
+export function useJsonColumns(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  },
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  return useQuery<string[]>({
+    queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
+    queryFn: async () => {
+      const metadata = getMetadata();
+      const columns = await metadata.getColumns({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+      return (
+        filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
+          column => column.name,
+        ) ?? []
+      );
     },
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
