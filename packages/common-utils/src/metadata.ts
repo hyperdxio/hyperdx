@@ -1,3 +1,5 @@
+import type { ClickHouseSettings } from '@clickhouse/client-common';
+
 import {
   ChSql,
   chSql,
@@ -13,7 +15,7 @@ import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
-export const DEFAULT_MAX_ROWS_TO_READ = 3e6;
+export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -91,10 +93,20 @@ export type TableMetadata = {
 export class Metadata {
   private readonly clickhouseClient: ClickhouseClient;
   private readonly cache: MetadataCache;
+  private readonly clickhouseSettings: ClickHouseSettings;
 
-  constructor(clickhouseClient: ClickhouseClient, cache: MetadataCache) {
+  constructor(
+    clickhouseClient: ClickhouseClient,
+    cache: MetadataCache,
+    settings?: ClickHouseSettings,
+  ) {
     this.clickhouseClient = clickhouseClient;
     this.cache = cache;
+    this.clickhouseSettings = settings ?? {};
+  }
+
+  setClickHouseSettings(settings: ClickHouseSettings) {
+    Object.assign(this.clickhouseSettings, settings);
   }
 
   private async queryTableMetadata({
@@ -115,6 +127,7 @@ export class Metadata {
           connectionId,
           query: sql.sql,
           query_params: sql.params,
+          clickhouse_settings: this.clickhouseSettings,
         })
         .then(res => res.json<TableMetadata>());
       return json.data[0];
@@ -139,6 +152,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
+            clickhouse_settings: this.clickhouseSettings,
           })
           .then(res => res.json())
           .then(d => d.data);
@@ -270,8 +284,9 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+            max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
+            ...this.clickhouseSettings,
           },
         })
         .then(res => res.json<Record<string, unknown>>())
@@ -343,8 +358,9 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
+              ...this.clickhouseSettings,
             },
           })
           .then(res => res.json<Record<string, unknown>>())
@@ -460,8 +476,9 @@ export class Metadata {
             connectionId: chartConfig.connection,
             clickhouse_settings: !disableRowLimit
               ? {
-                  max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+                  max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
                   read_overflow_mode: 'break',
+                  ...this.clickhouseSettings,
                 }
               : undefined,
           })

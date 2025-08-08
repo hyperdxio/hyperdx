@@ -27,7 +27,7 @@ import {
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
-import { Box, Code, Flex, Text } from '@mantine/core';
+import { Box, Code, Flex, Text, UnstyledButton } from '@mantine/core';
 import {
   FetchNextPageOptions,
   useQuery,
@@ -230,7 +230,7 @@ export const RawLogTable = memo(
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
-    wrapLines,
+    wrapLines = false,
     columnNameMap,
     showServiceColumn = true,
     dedupRows,
@@ -527,6 +527,7 @@ export const RawLogTable = memo(
     // Scroll to log id if it's not in window yet
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
+    const [wrapLinesEnabled, setWrapLinesEnabled] = useState(wrapLines);
 
     useEffect(() => {
       if (
@@ -688,6 +689,11 @@ export const RawLogTable = memo(
                                 <i className="bi bi-arrow-clockwise" />
                               </div>
                             )}
+                          <UnstyledButton
+                            onClick={() => setWrapLinesEnabled(prev => !prev)}
+                          >
+                            <i className="bi bi-text-wrap" />
+                          </UnstyledButton>
                           <CsvExportButton
                             data={csvData}
                             filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
@@ -742,8 +748,8 @@ export const RawLogTable = memo(
                       <td
                         key={cell.id}
                         className={cx('align-top overflow-hidden', {
-                          'text-break': wrapLines,
-                          'text-truncate': !wrapLines,
+                          'text-break': wrapLinesEnabled,
+                          'text-truncate': !wrapLinesEnabled,
                         })}
                       >
                         {flexRender(

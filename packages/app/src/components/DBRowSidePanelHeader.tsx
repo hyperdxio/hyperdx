@@ -2,10 +2,20 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import { Button, Flex, Paper, Text } from '@mantine/core';
+import {
+  Box,
+  Breadcrumbs,
+  Button,
+  Flex,
+  Paper,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 
 import EventTag from '@/components/EventTag';
 import { FormatTime } from '@/useFormatTime';
@@ -19,18 +29,111 @@ const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
 
 const MAX_MAIN_CONTENT_LENGTH = 2000;
 
+// Types for breadcrumb navigation
+export type BreadcrumbEntry = {
+  label: string;
+  rowData?: Record<string, any>;
+};
+
+export type BreadcrumbPath = BreadcrumbEntry[];
+
+// Navigation callback type - called when user wants to navigate to a specific level
+export type BreadcrumbNavigationCallback = (targetLevel: number) => void;
+
+function getBodyTextForBreadcrumb(rowData: Record<string, any>): string {
+  const bodyText = (rowData.__hdx_body || '').trim();
+  const BREADCRUMB_TOOLTIP_MAX_LENGTH = 200;
+  const BREADCRUMB_TOOLTIP_TRUNCATED_LENGTH = 197;
+
+  return bodyText.length > BREADCRUMB_TOOLTIP_MAX_LENGTH
+    ? `${bodyText.substring(0, BREADCRUMB_TOOLTIP_TRUNCATED_LENGTH)}...`
+    : bodyText;
+}
+
+function BreadcrumbNavigation({
+  breadcrumbPath,
+  onNavigateToLevel,
+}: {
+  breadcrumbPath: BreadcrumbPath;
+  onNavigateToLevel?: BreadcrumbNavigationCallback;
+}) {
+  const handleBreadcrumbItemClick = useCallback(
+    (clickedIndex: number) => {
+      // Navigate to the clicked breadcrumb level
+      // This will close all panels above this level
+      onNavigateToLevel?.(clickedIndex);
+    },
+    [onNavigateToLevel],
+  );
+
+  const breadcrumbItems = useMemo(() => {
+    if (breadcrumbPath.length === 0) return [];
+
+    const items = [];
+
+    // Add all previous levels from breadcrumbPath
+    breadcrumbPath.forEach((crumb, index) => {
+      const tooltipText = crumb.rowData
+        ? getBodyTextForBreadcrumb(crumb.rowData)
+        : '';
+
+      items.push(
+        <Tooltip
+          key={`crumb-${index}`}
+          label={tooltipText}
+          disabled={!tooltipText}
+          position="bottom"
+          withArrow
+        >
+          <UnstyledButton
+            onClick={() => handleBreadcrumbItemClick(index)}
+            style={{ textDecoration: 'none' }}
+          >
+            <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+              {index === 0 ? 'Original Event' : crumb.label}
+            </Text>
+          </UnstyledButton>
+        </Tooltip>,
+      );
+    });
+
+    // Add current level
+    items.push(
+      <Text key="current" size="sm" c="gray.2">
+        Selected Event
+      </Text>,
+    );
+
+    return items;
+  }, [breadcrumbPath, handleBreadcrumbItemClick]);
+
+  if (breadcrumbPath.length === 0) return null;
+
+  return (
+    <Box mb="sm" pb="sm" className="border-bottom border-dark">
+      <Breadcrumbs separator="›" separatorMargin="xs">
+        {breadcrumbItems}
+      </Breadcrumbs>
+    </Box>
+  );
+}
+
 export default function DBRowSidePanelHeader({
   tags,
   mainContent = '',
   mainContentHeader,
   date,
   severityText,
+  breadcrumbPath = [],
+  onBreadcrumbClick,
 }: {
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
   tags: Record<string, string>;
   severityText?: string;
+  breadcrumbPath?: BreadcrumbPath;
+  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
   const { onPropertyAddClick, generateSearchUrl } =
@@ -85,6 +188,13 @@ export default function DBRowSidePanelHeader({
 
   return (
     <>
+      {/* Breadcrumb navigation */}
+      <BreadcrumbNavigation
+        breadcrumbPath={breadcrumbPath}
+        onNavigateToLevel={onBreadcrumbClick}
+      />
+
+      {/* Event timestamp and severity */}
       <Flex>
         {severityText && <LogLevel level={severityText} />}
         {severityText && isValidDate(date) && (

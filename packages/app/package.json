@@ -1,10 +1,10 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.0.6",
+  "version": "2.1.1",
   "private": true,
   "license": "MIT",
   "engines": {
-    "node": ">=18.12.0"
+    "node": ">=22.16.0"
   },
   "scripts": {
     "dev": "npx dotenv -e .env.development -- next dev",
@@ -28,7 +28,7 @@
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.2.6",
+    "@hyperdx/common-utils": "^0.2.8",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",

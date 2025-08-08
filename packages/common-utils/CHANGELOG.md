@@ -1,5 +1,18 @@
 # @hyperdx/common-utils
 
+## 0.2.8
+
+### Patch Changes
+
+- eed38e8: bump node version to 22.16.0
+
+## 0.2.7
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+
 ## 0.2.6
 
 ### Patch Changes

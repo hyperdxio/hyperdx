@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-fix: handle Nullable + Tuple type column + decouple useRowWhere
+fix: k8s event property mappings

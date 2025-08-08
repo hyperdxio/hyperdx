@@ -3,15 +3,20 @@ import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-export interface ITeam {
+export type TeamCHSettings = {
+  metadataMaxRowsToRead?: number;
+  searchRowLimit?: number;
+  fieldMetadataDisabled?: boolean;
+};
+
+export type ITeam = {
   _id: ObjectId;
   name: string;
-  searchRowLimit?: number;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
   hookId: string;
   collectorAuthenticationEnforced: boolean;
-}
+} & TeamCHSettings;
 export type TeamDocument = mongoose.HydratedDocument<ITeam>;
 
 export default mongoose.model<ITeam>(
@@ -19,7 +24,6 @@ export default mongoose.model<ITeam>(
   new Schema<ITeam>(
     {
       name: String,
-      searchRowLimit: Number,
       allowedAuthMethods: [String],
       hookId: {
         type: String,
@@ -37,6 +41,11 @@ export default mongoose.model<ITeam>(
         type: Boolean,
         default: false,
       },
+      // TODO: maybe add these to a top level Mixed type
+      // CH Client Settings
+      metadataMaxRowsToRead: Number,
+      searchRowLimit: Number,
+      fieldMetadataDisabled: Boolean,
     },
     {
       timestamps: true,

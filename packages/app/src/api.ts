@@ -262,12 +262,20 @@ const api = {
         }).json(),
     });
   },
-  useSetTeamSearchRowLimit() {
-    return useMutation<any, HTTPError, { searchRowLimit: number }>({
-      mutationFn: async ({ searchRowLimit }) =>
-        hdxServer(`team/search-row-limit`, {
+  useUpdateClickhouseSettings() {
+    return useMutation<
+      any,
+      HTTPError,
+      {
+        searchRowLimit?: number;
+        fieldMetadataDisabled?: boolean;
+        metadataMaxRowsToRead?: number;
+      }
+    >({
+      mutationFn: async settings =>
+        hdxServer(`team/clickhouse-settings`, {
           method: 'PATCH',
-          json: { searchRowLimit },
+          json: settings,
         }).json(),
     });
   },

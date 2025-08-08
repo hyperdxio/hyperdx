@@ -1,5 +1,26 @@
 # @hyperdx/api
 
+## 2.1.1
+
+### Patch Changes
+
+- 1dc1c82: feat: add team setting to disable field metadata queries in app
+- eed38e8: bump node version to 22.16.0
+- Updated dependencies [eed38e8]
+  - @hyperdx/common-utils@0.2.8
+
+## 2.1.0
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 21b5df6: fix: Hotfix to prevent the app from crashing due to a strict mode exception
+- 6c13403: fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+- Updated dependencies [4ce81d4]
+- Updated dependencies [61c79a1]
+  - @hyperdx/common-utils@0.2.7
+
 ## 2.0.6
 
 ### Patch Changes
