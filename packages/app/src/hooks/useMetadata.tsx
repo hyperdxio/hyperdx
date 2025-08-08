@@ -1,5 +1,9 @@
 import objectHash from 'object-hash';
-import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ColumnMeta,
+  filterColumnMetaByType,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
   TableConnection,
@@ -43,6 +47,38 @@ export function useColumns(
   });
 }
 
+export function useJsonColumns(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  },
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  return useQuery<string[]>({
+    queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
+    queryFn: async () => {
+      const metadata = getMetadata();
+      const columns = await metadata.getColumns({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+      return (
+        filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
+          column => column.name,
+        ) ?? []
+      );
+    },
+    enabled: !!databaseName && !!tableName && !!connectionId,
+    ...options,
+  });
+}
+
 export function useAllFields(
   _tableConnections: TableConnection | TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
@@ -58,8 +94,16 @@ export function useAllFields(
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
-      if (me?.team.fieldMetadataDisabled) {
+      const team = me?.team;
+      if (team?.fieldMetadataDisabled) {
         return [];
+      }
+
+      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
+      if (team?.metadataMaxRowsToRead) {
+        metadata.setClickHouseSettings({
+          max_rows_to_read: team.metadataMaxRowsToRead,
+        });
       }
 
       const fields2d = await Promise.all(
@@ -125,6 +169,7 @@ export function useGetKeyValues(
 ) {
   const metadata = getMetadata();
   const chartConfigsArr = toArray(chartConfigs);
+  const { data: me, isFetched } = api.useMe();
   return useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
@@ -132,8 +177,16 @@ export function useGetKeyValues(
       ...keys,
       disableRowLimit,
     ],
-    queryFn: async () =>
-      (
+    queryFn: async () => {
+      const team = me?.team;
+
+      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
+      if (team?.metadataMaxRowsToRead) {
+        metadata.setClickHouseSettings({
+          max_rows_to_read: team.metadataMaxRowsToRead,
+        });
+      }
+      return (
         await Promise.all(
           chartConfigsArr.map(chartConfig =>
             metadata.getKeyValues({
@@ -144,9 +197,10 @@ export function useGetKeyValues(
             }),
           ),
         )
-      ).flatMap(v => v),
+      ).flatMap(v => v);
+    },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length,
+    enabled: !!keys.length && isFetched,
     placeholderData: keepPreviousData,
     ...options,
   });
