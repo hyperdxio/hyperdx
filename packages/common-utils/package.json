@@ -51,8 +51,8 @@
     "dev": "nodemon --watch ./src --ext ts --exec \"tsup\"",
     "build": "tsup",
     "ci:build": "tsup",
-    "lint": "eslint --quiet . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "lint": "npx eslint --quiet . --ext .ts",
+    "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "jest --runInBand --ci --forceExit --coverage",
     "dev:unit": "jest --watchAll --runInBand --detectOpenHandles"

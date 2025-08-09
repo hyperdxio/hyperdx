@@ -67,3 +67,6 @@ scripts/*.csv
 # docker
 docker-compose.prod.yml
 .volumes
+
+# NX
+.nx
