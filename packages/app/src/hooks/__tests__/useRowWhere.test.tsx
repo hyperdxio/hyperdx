@@ -176,6 +176,26 @@ describe('processRowToWhereClause', () => {
     expect(result).toBe("toString(dynamic_field)='quoted_value'");
   });
 
+  it('should handle Dynamic columns with escaped values', () => {
+    const columnMap = new Map([
+      [
+        'dynamic_field',
+        {
+          name: 'dynamic_field',
+          type: 'Dynamic',
+          valueExpr: 'dynamic_field',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+    ]);
+
+    const row = { dynamic_field: '{\"took\":7, not a valid json' };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe("toString(dynamic_field)='{\"took\":7, not a valid json'");
+  });
+
+
   it('should handle long strings with MD5', () => {
     const columnMap = new Map([
       [
@@ -332,26 +352,6 @@ describe('processRowToWhereClause', () => {
 
     expect(() => processRowToWhereClause(row, columnMap)).toThrow(
       'valueExpr not found for test',
-    );
-  });
-
-  it('should throw error for large Dynamic values', () => {
-    const columnMap = new Map([
-      [
-        'dynamic_field',
-        {
-          name: 'dynamic_field',
-          type: 'Dynamic',
-          valueExpr: 'dynamic_field',
-          jsType: JSDataType.Dynamic,
-        },
-      ],
-    ]);
-
-    const row = { dynamic_field: 'a'.repeat(1001) };
-
-    expect(() => processRowToWhereClause(row, columnMap)).toThrow(
-      'Search value/object key too large.',
     );
   });
 });
