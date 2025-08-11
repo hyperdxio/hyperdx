@@ -432,9 +432,34 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
+  // Log all component props and variables
+  console.error('🚀 DBSearchPageFiltersComponent - ALL PROPS AND VARIABLES:');
+  console.error('📋 Main Props:');
+  console.error('  - analysisMode:', analysisMode);
+  console.error('  - isLive:', isLive);
+  console.error('  - sourceId:', sourceId);
+  console.error('  - sourceType:', sourceType);
+  console.error('  - showDelta:', showDelta);
+  console.error('  - denoiseResults:', denoiseResults);
+  console.error('  - chartConfig:', chartConfig);
+  console.error('📊 FilterStateHook Props:');
+  console.error('  - filters (filterState):', filterState);
+  console.error('  - clearAllFilters function:', typeof clearAllFilters);
+  console.error('  - clearFilter function:', typeof clearFilter);
+  console.error('  - setFilterValue function:', typeof setFilterValue);
+  console.error('🔧 Hook Results:');
+
   const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
     usePinnedFilters(sourceId ?? null);
+
+  console.error('  - toggleFilterPin function:', typeof toggleFilterPin);
+  console.error('  - toggleFieldPin function:', typeof toggleFieldPin);
+  console.error('  - isFilterPinned function:', typeof isFilterPinned);
+  console.error('  - isFieldPinned function:', typeof isFieldPinned);
+
   const { width, startResize } = useResizable(16, 'left');
+  console.error('  - width:', width);
+  console.error('  - startResize function:', typeof startResize);
 
   const { data: countData } = useExplainQuery(chartConfig);
 
@@ -444,7 +469,16 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
+  console.error('  - countData:', countData);
+  console.error('  - allFields data:', data);
+  console.error('  - allFields isLoading:', isLoading);
+  console.error('📊 State Variables:');
+
   const [showMoreFields, setShowMoreFields] = useState(false);
+  console.error('  - showMoreFields:', showMoreFields);
+  console.error('  - setShowMoreFields function:', typeof setShowMoreFields);
+  console.error('🚀 END OF COMPONENT PROPS LOGGING 🚀');
+  console.error('');
 
   // const keysToFetch = useMemo(() => {
   //   // Get keys for the source type - will return specific keys if available, or default keys otherwise
@@ -488,7 +522,10 @@ const DBSearchPageFiltersComponent = ({
     console.error('📊 Processing data for keysToFetch:');
     console.error('  - Raw data sample:', data.slice(0, 3));
     console.error('  - showMoreFields:', showMoreFields);
-    console.error('  - filterState keys:', Object.keys(DBSearchPageFiltersComponent));
+    console.error(
+      '  - filterState keys:',
+      Object.keys(filterState),
+    );
 
     const strings = data
       .sort((a, b) => {
