@@ -469,7 +469,7 @@ const DBSearchPageFiltersComponent = ({
         '✅ Using source type override for',
         sourceType,
         ':',
-        DBSearchPageFiltersComponent,
+        overrideKeys,
       );
       return overrideKeys;
     }
@@ -488,7 +488,7 @@ const DBSearchPageFiltersComponent = ({
     console.error('📊 Processing data for keysToFetch:');
     console.error('  - Raw data sample:', data.slice(0, 3));
     console.error('  - showMoreFields:', showMoreFields);
-    console.error('  - filterState keys:', Object.keys(filterState));
+    console.error('  - filterState keys:', Object.keys(DBSearchPageFiltersComponent));
 
     const strings = data
       .sort((a, b) => {
