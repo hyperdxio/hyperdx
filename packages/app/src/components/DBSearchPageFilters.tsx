@@ -29,32 +29,24 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
-  // Override keys for specific source types
-  const serviceMapOverride = {
-    log: [
-      'SeverityText',
-      'ServiceName',
-      "ResourceAttributes['k8s.cluster.name']",
-      "ResourceAttributes['k8s.namespace.name']",
-    ],
-    trace: [
-      'ServiceName',
-      'StatusCode',
-      "ResourceAttributes['k8s.node.name']",
-      "ResourceAttributes['k8s.owner.name']",
-      'SpanKind',
-    ],
-    session: [
-      'ServiceName',
-      'StatusCode',
-      'SpanKind',
-    ],
-    metric: [
-      'ServiceName',
-      'MetricName',
-      'Unit',
-    ],
-  };
+// Override keys for specific source types
+const serviceMapOverride = {
+  log: [
+    'SeverityText',
+    'ServiceName',
+    "ResourceAttributes['k8s.cluster.name']",
+    "ResourceAttributes['k8s.namespace.name']",
+  ],
+  trace: [
+    'ServiceName',
+    'StatusCode',
+    "ResourceAttributes['k8s.node.name']",
+    "ResourceAttributes['k8s.owner.name']",
+    'SpanKind',
+  ],
+  session: ['ServiceName', 'StatusCode', 'SpanKind'],
+  metric: ['ServiceName', 'MetricName', 'Unit'],
+};
 
 // Helper function to get keys - override for specific types, use default for others
 const getKeysForSourceType = (sourceType?: string) => {
@@ -99,7 +91,9 @@ export const TextButton = ({
   );
 };
 
-const emptyFn = () => {};
+const emptyFn = () => {
+  // Intentionally empty - onChange is handled by parent Group's onClick
+};
 export const FilterCheckbox = ({
   value,
   label,
@@ -279,7 +273,7 @@ export const FilterGroup = ({
           selectedValues.included.size + selectedValues.excluded.size,
         ),
       );
-  }, [search, isExpanded, augmentedOptions, selectedValues]);
+  }, [search, isExpanded, augmentedOptions, selectedValues, isPinned]);
 
   const showExpandButton =
     !search &&
@@ -438,17 +432,11 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
-  const {
-    toggleFilterPin,
-    toggleFieldPin,
-    isFilterPinned,
-    isFieldPinned,
-    getPinnedFields,
-  } = usePinnedFilters(sourceId ?? null);
+  const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
+    usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
 
   const { data: countData } = useExplainQuery(chartConfig);
-  const numRows: number = countData?.[0]?.rows ?? 0;
 
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
@@ -463,12 +451,17 @@ const DBSearchPageFiltersComponent = ({
   //   return getKeysForSourceType(sourceType);
   // }, [sourceType]);
 
-   const keysToFetch = useMemo(() => {
-    console.log('🔍 keysToFetch - sourceType:', sourceType, 'available overrides:', Object.keys(serviceMapOverride));
+    const keysToFetch = useMemo(() => {
+    console.log('🔍 keysToFetch function called with:');
+    console.log('  - sourceType:', sourceType);
+    console.log('  - data available:', !!data);
+    console.log('  - data length:', data?.length || 0);
+    console.log('  - serviceMapOverride keys:', Object.keys(serviceMapOverride));
 
     // First check if we have a source type override
     if (sourceType && sourceType in serviceMapOverride) {
-      const overrideKeys = serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
+      const overrideKeys =
+        serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
       console.log('✅ Using source type override for', sourceType, ':', overrideKeys);
       return overrideKeys;
     }
@@ -477,8 +470,13 @@ const DBSearchPageFiltersComponent = ({
 
     // If no source type override, fall back to data-based logic
     if (!data) {
+      console.log('❌ No data available, returning empty array');
       return [];
     }
+    console.log('📊 Processing data for keysToFetch:');
+    console.log('  - Raw data sample:', data.slice(0, 3));
+    console.log('  - showMoreFields:', showMoreFields);
+    console.log('  - filterState keys:', Object.keys(filterState));
 
     const strings = data
       .sort((a, b) => {
@@ -506,6 +504,10 @@ const DBSearchPageFiltersComponent = ({
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
+
+    console.log('🎯 Final keysToFetch result:', strings);
+    console.log('  - Total keys found:', strings.length);
+    console.log('  - Keys:', strings);
 
     return strings;
   }, [sourceType, data, filterState, showMoreFields]);
