@@ -451,32 +451,32 @@ const DBSearchPageFiltersComponent = ({
   //   return getKeysForSourceType(sourceType);
   // }, [sourceType]);
 
-    const keysToFetch = useMemo(() => {
-    console.log('🔍 keysToFetch function called with:');
-    console.log('  - sourceType:', sourceType);
-    console.log('  - data available:', !!data);
-    console.log('  - data length:', data?.length || 0);
-    console.log('  - serviceMapOverride keys:', Object.keys(serviceMapOverride));
+  const keysToFetch = useMemo(() => {
+    console.error('🔍 keysToFetch function called with:');
+    console.error('  - sourceType:', sourceType);
+    console.error('  - data available:', !!data);
+    console.error('  - data length:', data?.length || 0);
+    console.error('  - serviceMapOverride keys:', Object.keys(serviceMapOverride));
 
     // First check if we have a source type override
     if (sourceType && sourceType in serviceMapOverride) {
       const overrideKeys =
         serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
-      console.log('✅ Using source type override for', sourceType, ':', overrideKeys);
+      console.error('✅ Using source type override for', sourceType, ':', overrideKeys);
       return overrideKeys;
     }
 
-    console.log('⚠️ No source type override found for', sourceType, '- falling back to data-based logic');
+    console.error('⚠️ No source type override found for', sourceType, '- falling back to data-based erroric');
 
-    // If no source type override, fall back to data-based logic
+    // If no source type override, fall back to data-based erroric
     if (!data) {
-      console.log('❌ No data available, returning empty array');
+      console.error('❌ No data available, returning empty array');
       return [];
     }
-    console.log('📊 Processing data for keysToFetch:');
-    console.log('  - Raw data sample:', data.slice(0, 3));
-    console.log('  - showMoreFields:', showMoreFields);
-    console.log('  - filterState keys:', Object.keys(filterState));
+    console.error('📊 Processing data for keysToFetch:');
+    console.error('  - Raw data sample:', data.slice(0, 3));
+    console.error('  - showMoreFields:', showMoreFields);
+    console.error('  - filterState keys:', Object.keys(filterState));
 
     const strings = data
       .sort((a, b) => {
@@ -505,9 +505,9 @@ const DBSearchPageFiltersComponent = ({
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
 
-    console.log('🎯 Final keysToFetch result:', strings);
-    console.log('  - Total keys found:', strings.length);
-    console.log('  - Keys:', strings);
+    console.error('🎯 Final keysToFetch result:', strings);
+    console.error('  - Total keys found:', strings.length);
+    console.error('  - Keys:', strings);
 
     return strings;
   }, [sourceType, data, filterState, showMoreFields]);
