@@ -29,27 +29,32 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
-// Override keys for specific source types
-const serviceMapOverride = {
-  Logs: [
-    'SeverityText',
-    'ServiceName',
-    "ResourceAttributes['k8s.cluster.name']",
-    "ResourceAttributes['k8s.namespace.name']",
-  ],
-  Traces: [
-    'ServiceName',
-    'StatusCode',
-    "ResourceAttributes['k8s.node.name']",
-    "ResourceAttributes['k8s.owner.name']",
-    'SpanKind',
-  ],
-  'K8s Events': [
-    "ResourceAttributes['k8s.cluster.name']",
-    "LogAttributes['k8s.namespace.name']",
-    "LogAttributes['k8s.event.reason']",
-  ],
-};
+  // Override keys for specific source types
+  const serviceMapOverride = {
+    log: [
+      'SeverityText',
+      'ServiceName',
+      "ResourceAttributes['k8s.cluster.name']",
+      "ResourceAttributes['k8s.namespace.name']",
+    ],
+    trace: [
+      'ServiceName',
+      'StatusCode',
+      "ResourceAttributes['k8s.node.name']",
+      "ResourceAttributes['k8s.owner.name']",
+      'SpanKind',
+    ],
+    session: [
+      'ServiceName',
+      'StatusCode',
+      'SpanKind',
+    ],
+    metric: [
+      'ServiceName',
+      'MetricName',
+      'Unit',
+    ],
+  };
 
 // Helper function to get keys - override for specific types, use default for others
 const getKeysForSourceType = (sourceType?: string) => {
@@ -453,16 +458,57 @@ const DBSearchPageFiltersComponent = ({
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 
-  const keysToFetch = useMemo(() => {
-    // Override keys for specific source types
+  // const keysToFetch = useMemo(() => {
+  //   // Get keys for the source type - will return specific keys if available, or default keys otherwise
+  //   return getKeysForSourceType(sourceType);
+  // }, [sourceType]);
+
+   const keysToFetch = useMemo(() => {
+    console.log('🔍 keysToFetch - sourceType:', sourceType, 'available overrides:', Object.keys(serviceMapOverride));
+
+    // First check if we have a source type override
     if (sourceType && sourceType in serviceMapOverride) {
-      return getKeysForSourceType(sourceType);
+      const overrideKeys = serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
+      console.log('✅ Using source type override for', sourceType, ':', overrideKeys);
+      return overrideKeys;
     }
-    console.error('nishant is here === ', sourceType);
-    // For other source types, return empty array to use default behavior
-    // This allows the system to fetch all available keys from metadata
-    return [];
-  }, [sourceType]);
+
+    console.log('⚠️ No source type override found for', sourceType, '- falling back to data-based logic');
+
+    // If no source type override, fall back to data-based logic
+    if (!data) {
+      return [];
+    }
+
+    const strings = data
+      .sort((a, b) => {
+        // First show low cardinality fields
+        const isLowCardinality = (type: string) =>
+          type.includes('LowCardinality');
+        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
+      })
+      .filter(
+        field => field.jsType && ['string'].includes(field.jsType),
+        // todo: add number type with sliders :D
+      )
+      .map(({ path, type }) => {
+        return { type, path: mergePath(path) };
+      })
+      .filter(
+        field =>
+          showMoreFields ||
+          field.type.includes('LowCardinality') || // query only low cardinality fields by default
+          Object.keys(filterState).includes(field.path) || // keep selected fields
+          isFieldPinned(field.path), // keep pinned fields
+      )
+      .map(({ path }) => path)
+      .filter(
+        path =>
+          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
+      );
+
+    return strings;
+  }, [sourceType, data, filterState, showMoreFields]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
