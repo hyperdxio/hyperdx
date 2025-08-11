@@ -469,7 +469,7 @@ const DBSearchPageFiltersComponent = ({
         '✅ Using source type override for',
         sourceType,
         ':',
-        overrideKeys,
+        DBSearchPageFiltersComponent,
       );
       return overrideKeys;
     }
