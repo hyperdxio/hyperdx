@@ -13,6 +13,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import ServiceDashboardEndpointPerformanceChart from '@/components/ServiceDashboardEndpointPerformanceChart';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
+import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
 import { EndpointLatencyChart } from '@/ServicesDashboardPage';
 import { useSource } from '@/source';
@@ -31,7 +32,12 @@ export default function ServiceDashboardEndpointSidePanel({
   searchedTimeRange: [Date, Date];
 }) {
   const { data: source } = useSource({ id: sourceId });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [endpoint, setEndpoint] = useQueryState('endpoint', parseAsString);
   const onClose = useCallback(() => {
