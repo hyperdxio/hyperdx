@@ -197,11 +197,16 @@ export const FilterGroup = ({
   onFieldPinClick,
   isFieldPinned,
   onLoadMore,
-  loadMoreLoading,
   hasLoadedMore,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   const [isExpanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (onLoadMore && !hasLoadedMore) {
+      onLoadMore(name);
+    }
+  }, [onLoadMore, hasLoadedMore, name]);
 
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
@@ -412,6 +417,7 @@ const DBSearchPageFiltersComponent = ({
   analysisMode,
   setAnalysisMode,
   sourceId,
+  sourceType,
   showDelta,
   denoiseResults,
   setDenoiseResults,
@@ -517,11 +523,13 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange],
+    [chartConfig, setExtraFacets, dateRange, sourceType],
   );
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
+
+    //for filters
     for (const facet of facets ?? []) {
       // don't include empty facets, unless they are already selected
       const filter = filterState[facet.key];
