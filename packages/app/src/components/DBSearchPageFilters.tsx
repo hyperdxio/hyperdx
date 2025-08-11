@@ -456,19 +456,31 @@ const DBSearchPageFiltersComponent = ({
     console.error('  - sourceType:', sourceType);
     console.error('  - data available:', !!data);
     console.error('  - data length:', data?.length || 0);
-    console.error('  - serviceMapOverride keys:', Object.keys(serviceMapOverride));
+    console.error(
+      '  - serviceMapOverride keys:',
+      Object.keys(serviceMapOverride),
+    );
 
     // First check if we have a source type override
     if (sourceType && sourceType in serviceMapOverride) {
       const overrideKeys =
         serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
-      console.error('✅ Using source type override for', sourceType, ':', overrideKeys);
+      console.error(
+        '✅ Using source type override for',
+        sourceType,
+        ':',
+        overrideKeys,
+      );
       return overrideKeys;
     }
 
-    console.error('⚠️ No source type override found for', sourceType, '- falling back to data-based erroric');
+    console.error(
+      '⚠️ No source type override found for',
+      sourceType,
+      '- falling back to data-based logic',
+    );
 
-    // If no source type override, fall back to data-based erroric
+    // If no source type override, fall back to data-based logic
     if (!data) {
       console.error('❌ No data available, returning empty array');
       return [];
