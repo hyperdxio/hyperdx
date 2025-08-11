@@ -14,21 +14,15 @@ export async function getSavedSearches(teamId: string) {
   const alerts = await Alert.find(
     { team: teamId, savedSearch: { $exists: true, $ne: null } },
     { __v: 0 },
-  ).populate<{
-    createdBy?: IUser;
-  }>(['createdBy']);
+  ).populate('createdBy', 'email name');
 
   const alertsBySavedSearchId = groupBy(alerts, 'savedSearch');
 
   return savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
     alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
-      const { _id, createdBy, ...restAlert } = alert.toJSON();
-      return {
-        id: _id,
-        ...restAlert,
-        createdBy: createdBy ? pick(createdBy, ['email', 'name']) : undefined,
-      };
+      const { _id, ...restAlert } = alert.toJSON();
+      return { id: _id, ...restAlert };
     }),
   }));
 }
