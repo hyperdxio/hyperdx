@@ -522,10 +522,7 @@ const DBSearchPageFiltersComponent = ({
     console.error('📊 Processing data for keysToFetch:');
     console.error('  - Raw data sample:', data.slice(0, 3));
     console.error('  - showMoreFields:', showMoreFields);
-    console.error(
-      '  - filterState keys:',
-      Object.keys(filterState),
-    );
+    console.error('  - filterState keys:', Object.keys(filterState));
 
     const strings = data
       .sort((a, b) => {
