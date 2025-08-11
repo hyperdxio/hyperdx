@@ -197,6 +197,7 @@ export const FilterGroup = ({
   onFieldPinClick,
   isFieldPinned,
   onLoadMore,
+  loadMoreLoading,
   hasLoadedMore,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
@@ -427,6 +428,7 @@ const DBSearchPageFiltersComponent = ({
   isLive: boolean;
   chartConfig: ChartConfigWithDateRange;
   sourceId?: string;
+  sourceType?: string;
   showDelta: boolean;
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
