@@ -29,6 +29,37 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
+// Override keys for specific source types
+const serviceMapOverride = {
+  Logs: [
+    'SeverityText',
+    'ServiceName',
+    "ResourceAttributes['k8s.cluster.name']",
+    "ResourceAttributes['k8s.namespace.name']",
+  ],
+  Traces: [
+    'ServiceName',
+    'StatusCode',
+    "ResourceAttributes['k8s.node.name']",
+    "ResourceAttributes['k8s.owner.name']",
+    'SpanKind',
+  ],
+  'K8s Events': [
+    "ResourceAttributes['k8s.cluster.name']",
+    "LogAttributes['k8s.namespace.name']",
+    "LogAttributes['k8s.event.reason']",
+  ],
+};
+
+// Helper function to get keys - override for specific types, use default for others
+const getKeysForSourceType = (sourceType?: string) => {
+  if (sourceType && sourceType in serviceMapOverride) {
+    return serviceMapOverride[sourceType as keyof typeof serviceMapOverride];
+  }
+  // For other source types, return empty array to use default behavior
+  return [];
+};
+
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
@@ -415,39 +446,15 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
-    if (!data) {
-      return [];
+    // Override keys for specific source types
+    if (sourceType && sourceType in serviceMapOverride) {
+      return getKeysForSourceType(sourceType);
     }
-
-    const strings = data
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
-      })
-      .filter(
-        field => field.jsType && ['string'].includes(field.jsType),
-        // todo: add number type with sliders :D
-      )
-      .map(({ path, type }) => {
-        return { type, path: mergePath(path) };
-      })
-      .filter(
-        field =>
-          showMoreFields ||
-          field.type.includes('LowCardinality') || // query only low cardinality fields by default
-          Object.keys(filterState).includes(field.path) || // keep selected fields
-          isFieldPinned(field.path), // keep pinned fields
-      )
-      .map(({ path }) => path)
-      .filter(
-        path =>
-          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
-      );
-
-    return strings;
-  }, [data, filterState, showMoreFields]);
+    console.error('nishant is here === ', sourceType);
+    // For other source types, return empty array to use default behavior
+    // This allows the system to fetch all available keys from metadata
+    return [];
+  }, [sourceType]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -471,10 +478,11 @@ const DBSearchPageFiltersComponent = ({
   } = useGetKeyValues({
     chartConfigs: { ...chartConfig, dateRange },
     limit: keyLimit,
-    keys: keysToFetch,
+    keys: getKeysForSourceType(sourceType),
   });
 
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
+
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
     new Set(),
   );
