@@ -426,7 +426,25 @@ export class ClickhouseClient {
           // Indicate that the CH instance does not accept the max_rows_to_read setting
           this.maxRowReadOnly = true;
         } else {
-          throw error;
+          let err = error;
+          // We should never error out here for debug info, so it's aggressively wrapped
+          try {
+            let debugSql = '';
+            try {
+              debugSql = parameterizedQueryToSql({
+                sql: props.query,
+                params: props.query_params ?? {},
+              });
+            } catch (e) {
+              debugSql = props.query;
+            }
+            err = new ClickHouseQueryError(error.message, debugSql);
+            err.cause = error;
+          } catch (_) {
+            // ignore
+          }
+
+          throw err;
         }
       }
       attempts++;

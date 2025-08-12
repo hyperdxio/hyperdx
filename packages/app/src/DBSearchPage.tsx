@@ -816,7 +816,9 @@ function DBSearchPage() {
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
-    const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
+    const queryError: Error | ClickHouseQueryError | null = hasQueryError
+      ? Object.values(_queryErrors)[0]
+      : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
   const inputWhere = watch('where');
@@ -1675,6 +1677,21 @@ function DBSearchPage() {
                           {queryError.message}
                         </Code>
                       </Box>
+                      {queryError instanceof ClickHouseQueryError && (
+                        <Box mt="lg">
+                          <Text my="sm" size="sm">
+                            Original Query:
+                          </Text>
+                          <Code
+                            block
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            <SQLPreview data={queryError.query} formatData />
+                          </Code>
+                        </Box>
+                      )}
                     </div>
                   </>
                 ) : (
