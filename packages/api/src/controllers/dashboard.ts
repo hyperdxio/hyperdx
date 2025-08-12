@@ -60,6 +60,7 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
 export async function createDashboard(
   teamId: ObjectId,
   dashboard: z.infer<typeof DashboardWithoutIdSchema>,
+  userId?: ObjectId,
 ) {
   const newDashboard = await new Dashboard({
     ...dashboard,
@@ -70,6 +71,7 @@ export async function createDashboard(
     newDashboard._id,
     teamId,
     pickAlertsByTile(dashboard.tiles),
+    userId,
   );
 
   return newDashboard;
@@ -89,6 +91,7 @@ export async function updateDashboard(
   dashboardId: string,
   teamId: ObjectId,
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
+  userId?: ObjectId,
 ) {
   const oldDashboard = await getDashboard(dashboardId, teamId);
 
@@ -114,13 +117,15 @@ export async function updateDashboard(
   // Update related alerts
   // - Delete
   const newAlertIds = new Set(
-    updates.tiles?.map(t => t.config.alert?.id).filter(Boolean),
+    updates.tiles
+      ?.map(t => (t.config.alert as any)?._id?.toString())
+      .filter(Boolean),
   );
-  const deletedAlertIds: string[] = [];
 
+  const deletedAlertIds: string[] = [];
   if (oldDashboard.tiles) {
     for (const tile of oldDashboard.tiles) {
-      const alertId = tile.config.alert?.id;
+      const alertId = (tile.config.alert as any)?._id?.toString();
       if (alertId && !newAlertIds.has(alertId)) {
         deletedAlertIds.push(alertId);
       }
@@ -137,6 +142,7 @@ export async function updateDashboard(
       dashboardId,
       teamId,
       pickAlertsByTile(updates.tiles),
+      userId,
     );
   }
 

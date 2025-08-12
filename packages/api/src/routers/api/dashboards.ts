@@ -40,11 +40,11 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      const { teamId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getNonNullUserWithTeam(req);
 
       const dashboard = req.body;
 
-      const newDashboard = await createDashboard(teamId, dashboard);
+      const newDashboard = await createDashboard(teamId, dashboard, userId);
 
       res.json(newDashboard.toJSON());
     } catch (e) {
@@ -63,7 +63,7 @@ router.patch(
   }),
   async (req, res, next) => {
     try {
-      const { teamId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getNonNullUserWithTeam(req);
       const { id: dashboardId } = req.params;
 
       const dashboard = await getDashboard(dashboardId, teamId);
@@ -78,6 +78,7 @@ router.patch(
         dashboardId,
         teamId,
         updates,
+        userId,
       );
 
       res.json(updatedDashboard);

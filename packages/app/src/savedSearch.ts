@@ -9,6 +9,7 @@ import {
 
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
+import { SavedSearchWithEnhancedAlerts } from './types';
 
 export function useSavedSearches() {
   return useQuery({
@@ -17,7 +18,9 @@ export function useSavedSearches() {
       if (IS_LOCAL_MODE) {
         return [];
       } else {
-        return hdxServer('saved-search').json<SavedSearch[]>();
+        return hdxServer('saved-search').json<
+          SavedSearchWithEnhancedAlerts[]
+        >();
       }
     },
   });
@@ -25,7 +28,10 @@ export function useSavedSearches() {
 
 export function useSavedSearch(
   { id }: { id: string },
-  options: Omit<Partial<UseQueryOptions<SavedSearch[], Error>>, 'select'> = {},
+  options: Omit<
+    Partial<UseQueryOptions<SavedSearchWithEnhancedAlerts[], Error>>,
+    'select'
+  > = {},
 ) {
   return useQuery({
     queryKey: ['saved-search'],
@@ -33,7 +39,7 @@ export function useSavedSearch(
       if (IS_LOCAL_MODE) {
         return [];
       }
-      return hdxServer('saved-search').json<SavedSearch[]>();
+      return hdxServer('saved-search').json<SavedSearchWithEnhancedAlerts[]>();
     },
     select: data => data.find(s => s.id === id),
     ...options,

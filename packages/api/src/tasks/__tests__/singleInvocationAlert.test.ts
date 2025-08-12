@@ -1,4 +1,5 @@
 import { createServer } from 'http';
+import mongoose from 'mongoose';
 import ms from 'ms';
 
 import * as config from '@/config';
@@ -130,18 +131,23 @@ describe('Single Invocation Alert Test', () => {
     }).save();
 
     // Create alert
-    const alert = await createAlert(team._id, {
-      source: AlertSource.SAVED_SEARCH,
-      channel: {
-        type: 'webhook',
-        webhookId: webhook._id.toString(),
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        savedSearchId: savedSearch.id,
+        name: 'Test Alert Name',
       },
-      interval: '5m',
-      thresholdType: AlertThresholdType.ABOVE,
-      threshold: 1,
-      savedSearchId: savedSearch.id,
-      name: 'Test Alert Name',
-    });
+      mockUserId,
+    );
 
     // Insert test logs that will trigger the alert
     const now = new Date('2023-11-16T22:12:00.000Z');
