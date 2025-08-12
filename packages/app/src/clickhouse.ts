@@ -66,7 +66,7 @@ export function useTablesDirect(
 ) {
   const clickhouseClient = getClickhouseClient();
   return useQuery<ResponseJSON<ColumnMeta>, Error>({
-    queryKey: [`direct_datasources/databases/${database}/tables`],
+    queryKey: [`direct_datasources/databases/${database}/tables`, connectionId],
     queryFn: async () => {
       const paramSql = chSql`SHOW TABLES FROM ${{ Identifier: database }}`;
       const json = await clickhouseClient
