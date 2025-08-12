@@ -104,6 +104,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
+import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
@@ -454,6 +455,7 @@ function useSearchedConfigToChartConfig({
   const { data: sourceObj, isLoading } = useSource({
     id: source,
   });
+  const defaultOrderBy = useDefaultOrderBy(source);
 
   return useMemo(() => {
     if (sourceObj != null) {
@@ -479,17 +481,60 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
-          orderBy:
-            orderBy ||
-            `${getFirstTimestampValueExpression(
-              sourceObj.timestampValueExpression,
-            )} DESC`,
+          orderBy: orderBy || defaultOrderBy,
         },
       };
     }
 
     return { data: null, isLoading };
-  }, [sourceObj, isLoading, select, filters, where, whereLanguage]);
+  }, [
+    sourceObj,
+    isLoading,
+    select,
+    filters,
+    where,
+    whereLanguage,
+    defaultOrderBy,
+  ]);
+}
+
+function optimizeOrderBy(
+  timestampExpr: string,
+  orderBy: string,
+  sortingKey: string,
+) {
+  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
+  if (timestampExprIdx <= 0) return orderBy;
+  const orderByArr = [orderBy];
+
+  for (let i = 0; i < timestampExprIdx; i++) {
+    const sortKey = sortKeys[i];
+    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+      orderByArr.push(sortKey);
+    }
+  }
+
+  const newOrderBy = orderByArr.reverse().join(', ');
+  return newOrderBy;
+}
+
+export function useDefaultOrderBy(sourceID: string | undefined | null) {
+  const { data: source } = useSource({ id: sourceID });
+  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+
+  // When source changes, make sure select and orderby fields are set to default
+  return useMemo(() => {
+    const fallbackOrderBy = `${getFirstTimestampValueExpression(
+      source?.timestampValueExpression ?? '',
+    )} DESC`;
+    if (!tableMetadata) return fallbackOrderBy;
+    return optimizeOrderBy(
+      source?.timestampValueExpression ?? '',
+      fallbackOrderBy,
+      tableMetadata.sorting_key,
+    );
+  }, [source, tableMetadata]);
 }
 
 // This is outside as it needs to be a stable reference
@@ -598,15 +643,7 @@ function DBSearchPage() {
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
 
-  // When source changes, make sure select and orderby fields are set to default
-  const defaultOrderBy = useMemo(
-    () =>
-      `${getFirstTimestampValueExpression(
-        inputSourceObj?.timestampValueExpression ?? '',
-      )} DESC`,
-    [inputSourceObj?.timestampValueExpression],
-  );
-
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
   const [rowId, setRowId] = useQueryState('rowWhere');
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -765,12 +802,6 @@ function DBSearchPage() {
           setValue(
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
-          setValue(
-            'orderBy',
-            `${getFirstTimestampValueExpression(
-              newInputSourceObj?.timestampValueExpression ?? '',
-            )} DESC`,
           );
           // Clear all search filters
           searchFilters.clearAllFilters();
