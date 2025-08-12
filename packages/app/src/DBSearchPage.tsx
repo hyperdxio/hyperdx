@@ -483,30 +483,30 @@ function useSearchedConfigToChartConfig({
   ]);
 }
 
-function useDefaultOrderBy(sourceID: string | undefined | null) {
+function optimizeOrderBy(
+  timestampExpr: string,
+  orderBy: string,
+  sortingKey: string,
+) {
+  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
+  if (timestampExprIdx <= 0) return orderBy;
+  const orderByArr = [orderBy];
+
+  for (let i = 0; i < timestampExprIdx; i++) {
+    const sortKey = sortKeys[i];
+    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+      orderByArr.push(sortKey);
+    }
+  }
+
+  const newOrderBy = orderByArr.reverse().join(', ');
+  return newOrderBy;
+}
+
+export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({ id: sourceID });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
-
-  const optimizeOrderBy = (
-    timestampExpr: string,
-    orderBy: string,
-    sortingKey: string,
-  ) => {
-    const sortKeys = sortingKey.split(',').map(key => key.trim());
-    const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
-    if (timestampExprIdx <= 0) return orderBy;
-    const orderByArr = [orderBy];
-
-    for (let i = 0; i < timestampExprIdx; i++) {
-      const sortKey = sortKeys[i];
-      if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
-        orderByArr.push(sortKey);
-      }
-    }
-
-    const newOrderBy = orderByArr.reverse().join(', ');
-    return newOrderBy;
-  };
 
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(() => {
