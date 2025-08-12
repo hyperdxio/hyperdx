@@ -1060,19 +1060,19 @@ function KubernetesDashboardPage() {
                               alias: 'Timestamp',
                             },
                             {
-                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
                               alias: 'Severity',
                             },
                             {
-                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'kind')`,
+                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'kind')`,
                               alias: 'Kind',
                             },
                             {
-                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
+                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
                               alias: 'Name',
                             },
                             {
-                              valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
                               alias: 'Message',
                             },
                           ],
