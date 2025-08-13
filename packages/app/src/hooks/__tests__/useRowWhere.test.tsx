@@ -189,12 +189,12 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { dynamic_field: '{\"took\":7, not a valid json' };
+    const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
     const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe("toString(dynamic_field)='{\"took\":7, not a valid json'");
+    expect(result).toBe(
+      'toString(dynamic_field)=\'{\\"took\\":7, not a valid json\'',
+    );
   });
-
 
   it('should handle long strings with MD5', () => {
     const columnMap = new Map([
