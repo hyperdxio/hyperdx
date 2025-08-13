@@ -692,17 +692,22 @@ describe('checkAlerts', () => {
         source: source.id,
         tags: ['test'],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.SAVED_SEARCH,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        savedSearchId: savedSearch.id,
-      });
+        mockUserId,
+      );
 
       const enhancedAlert: any = await Alert.findById(alert._id).populate([
         'team',
@@ -867,18 +872,23 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
       const enhancedAlert: any = await Alert.findById(alert._id).populate([
         'team',
@@ -1035,18 +1045,23 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
       const enhancedAlert: any = await Alert.findById(alert._id).populate([
         'team',
@@ -1185,18 +1200,23 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
       const enhancedAlert: any = await Alert.findById(alert._id).populate([
         'team',

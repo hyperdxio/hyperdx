@@ -768,39 +768,50 @@ export default function EditTimeChartForm({
         <Paper my="sm">
           <Stack gap="xs">
             <Paper px="md" py="sm" bg="dark.6" radius="xs">
-              <Group gap="xs">
-                <Text size="sm" opacity={0.7}>
-                  Alert when the value
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
-                  size="xs"
-                  name={`alert.thresholdType`}
-                  control={control}
-                />
-                <NumberInput
-                  min={MINIMUM_THRESHOLD_VALUE}
-                  size="xs"
-                  w={80}
-                  control={control}
-                  name={`alert.threshold`}
-                />
-                over
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                  size="xs"
-                  name={`alert.interval`}
-                  control={control}
-                />
-                <Text size="sm" opacity={0.7}>
-                  window via
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                  size="xs"
-                  name={`alert.channel.type`}
-                  control={control}
-                />
+              <Group gap="xs" justify="space-between">
+                <Group gap="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Alert when the value
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(
+                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                    )}
+                    size="xs"
+                    name={`alert.thresholdType`}
+                    control={control}
+                  />
+                  <NumberInput
+                    min={MINIMUM_THRESHOLD_VALUE}
+                    size="xs"
+                    w={80}
+                    control={control}
+                    name={`alert.threshold`}
+                  />
+                  over
+                  <NativeSelect
+                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                    size="xs"
+                    name={`alert.interval`}
+                    control={control}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    window via
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                    size="xs"
+                    name={`alert.channel.type`}
+                    control={control}
+                  />
+                </Group>
+                {(alert as any)?.createdBy && (
+                  <Text size="xs" opacity={0.6}>
+                    Created by{' '}
+                    {(alert as any).createdBy?.name ||
+                      (alert as any).createdBy?.email}
+                  </Text>
+                )}
               </Group>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to

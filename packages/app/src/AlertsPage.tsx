@@ -183,6 +183,14 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
           <div className="text-slate-400 fs-8 d-flex gap-2">
             {alertType}
             {notificationMethod}
+            {alert.createdBy && (
+              <>
+                <span className="text-slate-400">&middot;</span>
+                <span>
+                  Created by {alert.createdBy.name || alert.createdBy.email}
+                </span>
+              </>
+            )}
           </div>
         </Stack>
       </Group>

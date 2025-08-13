@@ -49,6 +49,7 @@ export interface IAlert {
   team: ObjectId;
   threshold: number;
   thresholdType: AlertThresholdType;
+  createdBy?: ObjectId;
 
   // Message template
   name?: string | null;
@@ -101,6 +102,11 @@ const AlertSchema = new Schema<IAlert>(
     team: {
       type: mongoose.Schema.Types.ObjectId,
       ref: Team.modelName,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
     },
 
     // Message template
