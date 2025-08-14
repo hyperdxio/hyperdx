@@ -1,3 +1,4 @@
+import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -21,7 +22,7 @@ import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import { doesExceedThreshold, processAlert } from '@/tasks/checkAlerts';
-import { loadProvider } from '@/tasks/providers';
+import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
@@ -714,25 +715,63 @@ describe('checkAlerts', () => {
         'savedSearch',
       ]);
 
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+      };
+
+      const clickhouseClient = new clickhouse.ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert, alertProvider);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert, alertProvider);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert, alertProvider);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       const nextNextWindow = new Date('2023-11-16T22:20:00.000Z');
-      await processAlert(nextNextWindow, enhancedAlert, alertProvider);
+      await processAlert(
+        nextNextWindow,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
@@ -895,20 +934,55 @@ describe('checkAlerts', () => {
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found for dashboard test case');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new clickhouse.ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert, alertProvider);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert, alertProvider);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert, alertProvider);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
@@ -1068,20 +1142,56 @@ describe('checkAlerts', () => {
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard generic webhook');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new clickhouse.ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert, alertProvider);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert, alertProvider);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert, alertProvider);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
@@ -1223,20 +1333,56 @@ describe('checkAlerts', () => {
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard metrics webhook');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new clickhouse.ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert, alertProvider);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert, alertProvider);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert, alertProvider);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection._id.toString(),
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert._id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
