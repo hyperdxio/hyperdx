@@ -43,7 +43,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { PageHeader } from './components/PageHeader';
 import api from './api';
 import { useConnections } from './connection';
-import { DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
+import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import { useConfirm } from './useConfirm';
@@ -1069,6 +1069,7 @@ type ClickhouseSettingType = 'number' | 'boolean';
 interface ClickhouseSettingFormProps {
   settingKey:
     | 'searchRowLimit'
+    | 'queryTimeout'
     | 'metadataMaxRowsToRead'
     | 'fieldMetadataDisabled';
   label: string;
@@ -1078,7 +1079,7 @@ interface ClickhouseSettingFormProps {
   placeholder?: string;
   min?: number;
   max?: number;
-  displayValue?: (value: any) => string;
+  displayValue?: (value: any, defaultValue?: any) => string;
   options?: string[]; // For boolean settings displayed as select
 }
 
@@ -1237,7 +1238,7 @@ function ClickhouseSettingForm({
         <Group>
           <Text className="text-white">
             {displayValue
-              ? displayValue(currentValue)
+              ? displayValue(currentValue, defaultValue)
               : currentValue?.toString() || 'Not set'}
           </Text>
           {hasAdminAccess && (
@@ -1257,6 +1258,14 @@ function ClickhouseSettingForm({
 }
 
 function TeamQueryConfigSection() {
+  const displayValueWithUnit =
+    (unit: string) => (value: any, defaultValue?: any) =>
+      value === undefined || value === defaultValue
+        ? `${defaultValue.toLocaleString()} ${unit} (System Default)`
+        : value === 0
+          ? 'Unlimited'
+          : `${value.toLocaleString()} ${unit}`;
+
   return (
     <Box id="team_name">
       <Text size="md" c="gray.4">
@@ -1271,10 +1280,20 @@ function TeamQueryConfigSection() {
             tooltip="The number of rows per query for the Search page or search dashboard tiles"
             type="number"
             defaultValue={DEFAULT_SEARCH_ROW_LIMIT}
-            placeholder={`Enter value (default: ${DEFAULT_SEARCH_ROW_LIMIT})`}
+            placeholder={`default = ${DEFAULT_SEARCH_ROW_LIMIT}, 0 = unlimited`}
             min={1}
             max={100000}
-            displayValue={value => value ?? 'System Default'}
+            displayValue={displayValueWithUnit('rows')}
+          />
+          <ClickhouseSettingForm
+            settingKey="queryTimeout"
+            label="Query Timeout (seconds)"
+            tooltip="Sets the max execution time of a query in seconds."
+            type="number"
+            defaultValue={DEFAULT_QUERY_TIMEOUT}
+            placeholder={`default = ${DEFAULT_QUERY_TIMEOUT}, 0 = unlimited`}
+            min={0}
+            displayValue={displayValueWithUnit('seconds')}
           />
           <ClickhouseSettingForm
             settingKey="metadataMaxRowsToRead"
@@ -1282,15 +1301,9 @@ function TeamQueryConfigSection() {
             tooltip="The maximum number of rows that can be read from a table when running a query"
             type="number"
             defaultValue={DEFAULT_METADATA_MAX_ROWS_TO_READ}
-            placeholder={`Enter value (default: ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited)`}
+            placeholder={`default = ${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()}, 0 = unlimited`}
             min={0}
-            displayValue={value =>
-              value == null
-                ? `System Default (${DEFAULT_METADATA_MAX_ROWS_TO_READ.toLocaleString()})`
-                : value === 0
-                  ? 'Unlimited'
-                  : value.toLocaleString()
-            }
+            displayValue={displayValueWithUnit('rows')}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"
