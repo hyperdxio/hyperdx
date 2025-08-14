@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.3.0
+
+### Minor Changes
+
+- 6dd6165: feat: Display original query to error messages in search page
+
 ## 0.2.9
 
 ### Patch Changes
