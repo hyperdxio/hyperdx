@@ -6,6 +6,7 @@ type ObjectId = mongoose.Types.ObjectId;
 export type TeamCHSettings = {
   metadataMaxRowsToRead?: number;
   searchRowLimit?: number;
+  queryTimeout?: number;
   fieldMetadataDisabled?: boolean;
 };
 
@@ -45,6 +46,7 @@ export default mongoose.model<ITeam>(
       // CH Client Settings
       metadataMaxRowsToRead: Number,
       searchRowLimit: Number,
+      queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
     },
     {
