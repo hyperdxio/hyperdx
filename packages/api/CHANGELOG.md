@@ -1,5 +1,16 @@
 # @hyperdx/api
 
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+
+### Patch Changes
+
+- Updated dependencies [6dd6165]
+  - @hyperdx/common-utils@0.3.0
+
 ## 2.1.2
 
 ### Patch Changes
