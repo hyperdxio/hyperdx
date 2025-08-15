@@ -159,7 +159,13 @@ export default class DefaultAlertProvider implements AlertProvider {
       if (!groupedTasks.has(k)) {
         groupedTasks.set(k, { alerts: [], conn });
       }
-      groupedTasks.get(k)?.alerts.push(details);
+      const v = groupedTasks.get(k);
+      if (!v) {
+        throw new Error(
+          `default provider did not create AlertDetails before grouping correctly`,
+        );
+      }
+      v.alerts.push(details);
     }
 
     // Flatten out our groupings for execution
