@@ -1,0 +1,25 @@
+receivers:
+  hostmetrics:
+    collection_interval: 5s
+    scrapers:
+      cpu:
+      load:
+      memory:
+      disk:
+      filesystem:
+      network:
+# override the default processors
+# processors:
+#   batch:
+#     send_batch_size: 10000
+#     timeout: 10s
+#   memory_limiter:
+#     limit_mib: 2000
+service:
+  pipelines:
+    metrics/hostmetrics:
+      receivers: [hostmetrics]
+      # attach existing processors
+      processors: [memory_limiter, batch]
+      # attach existing exporters
+      exporters: [clickhouse]
