@@ -179,6 +179,20 @@ describe('DefaultAlertProvider', () => {
       if (result[0].alerts[0].taskType === AlertTaskType.TILE) {
         expect(result[0].alerts[0].tile.id).toBe(tile.id);
         expect(result[0].alerts[0].dashboard.name).toBe('Test Dashboard');
+
+        // Validate source is proper ISource object
+        const alertSource = result[0].alerts[0].source;
+        expect(alertSource.connection).toBe(connection._id.toString()); // Should be ObjectId, not populated IConnection
+        expect(alertSource.name).toBe('Test Source');
+        expect(alertSource.kind).toBe('log');
+        expect(alertSource.team).toBeDefined();
+        expect(alertSource.from?.databaseName).toBe('default');
+        expect(alertSource.from?.tableName).toBe('logs');
+        expect(alertSource.timestampValueExpression).toBe('timestamp');
+
+        // Ensure it's a plain object, not a mongoose document
+        expect((alertSource as any).toObject).toBeUndefined(); // mongoose documents have toObject method
+        expect((alertSource as any).save).toBeUndefined(); // mongoose documents have save method
       }
     });
 

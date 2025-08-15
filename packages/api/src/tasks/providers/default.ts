@@ -82,19 +82,20 @@ async function getTileDetails(
     return [];
   }
 
-  const { connection, ...restSource } = source;
-  if (!connection) {
+  if (!source.connection) {
     logger.error(
       `connection not found: alert=${alert._id}, source=${source.id}`,
     );
     return [];
   }
 
+  const connection = source.connection;
+  const sourceProps = source.toObject();
   return [
     connection,
     {
       alert,
-      source: { connection: connection._id, ...restSource },
+      source: { ...sourceProps, connection: connection._id.toString() },
       taskType: AlertTaskType.TILE,
       tile,
       dashboard,
