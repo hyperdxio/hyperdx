@@ -47,6 +47,10 @@ export async function createTeam({
   return team;
 }
 
+export function getAllTeams(fields?: string[]) {
+  return Team.find({}, fields);
+}
+
 export function getTeam(id?: string | ObjectId, fields?: string[]) {
   if (config.IS_LOCAL_APP_MODE) {
     return LOCAL_APP_TEAM;
