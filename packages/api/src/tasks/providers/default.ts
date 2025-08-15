@@ -127,6 +127,51 @@ async function getTileDetails(
   ];
 }
 
+async function loadAlert(alert: IAlert, groupedTasks: Map<string, AlertTask>) {
+  if (!alert.source) {
+    throw new Error('alert does not have a source');
+  }
+
+  if (config.IS_LOCAL_APP_MODE) {
+    // The id is the 12 character string `_local_team_', which will become an ObjectId
+    // as the ASCII hex values, so 5f6c6f63616c5f7465616d5f.
+    alert.team = new mongoose.Types.ObjectId(LOCAL_APP_TEAM.id);
+  }
+
+  let conn: IConnection | undefined;
+  let details: AlertDetails | undefined;
+  switch (alert.source) {
+    case AlertSource.SAVED_SEARCH:
+      [conn, details] = await getSavedSearchDetails(alert);
+      break;
+
+    case AlertSource.TILE:
+      [conn, details] = await getTileDetails(alert);
+      break;
+
+    default:
+      throw new Error(`unsupported source: ${alert.source}`);
+  }
+
+  if (!details) {
+    throw new Error('failed to fetch alert details');
+  }
+
+  if (!conn) {
+    throw new Error('failed to fetch alert connection');
+  }
+
+  const k = conn._id.toString();
+  if (!groupedTasks.has(k)) {
+    groupedTasks.set(k, { alerts: [], conn });
+  }
+  const v = groupedTasks.get(k);
+  if (!v) {
+    throw new Error(`provider did not set key ${k} before appending`);
+  }
+  v.alerts.push(details);
+}
+
 export default class DefaultAlertProvider implements AlertProvider {
   async init() {
     await Promise.all([connectDB()]);
@@ -140,67 +185,16 @@ export default class DefaultAlertProvider implements AlertProvider {
     const groupedTasks = new Map<string, AlertTask>();
     const alerts = await Alert.find({});
     for (const alert of alerts) {
-      if (!alert.source) {
+      try {
+        await loadAlert(alert, groupedTasks);
+      } catch (e) {
         logger.error({
-          message: 'alert does not have a source',
+          message: `failed to load alert: ${e}`,
           alertId: alert._id,
+          team: alert.team,
+          channel: alert.channel,
         });
-        continue;
       }
-
-      if (config.IS_LOCAL_APP_MODE) {
-        // The id is the 12 character string `_local_team_', which will become an ObjectId
-        // as the ASCII hex values, so 5f6c6f63616c5f7465616d5f.
-        alert.team = new mongoose.Types.ObjectId(LOCAL_APP_TEAM.id);
-      }
-
-      let conn: IConnection | undefined;
-      let details: AlertDetails | undefined;
-      switch (alert.source) {
-        case AlertSource.SAVED_SEARCH:
-          [conn, details] = await getSavedSearchDetails(alert);
-          break;
-
-        case AlertSource.TILE:
-          [conn, details] = await getTileDetails(alert);
-          break;
-
-        default:
-          logger.error({
-            message: 'unsupported source',
-            alertId: alert._id,
-            source: alert.source,
-          });
-          continue;
-      }
-
-      if (!details) {
-        logger.error({
-          message: 'failed to fetch alert details',
-          alertId: alert._id,
-        });
-        continue;
-      }
-
-      if (!conn) {
-        logger.error({
-          message: 'failed to fetch alert connection',
-          alertId: alert._id,
-        });
-        continue;
-      }
-
-      const k = conn._id.toString();
-      if (!groupedTasks.has(k)) {
-        groupedTasks.set(k, { alerts: [], conn });
-      }
-      const v = groupedTasks.get(k);
-      if (!v) {
-        throw new Error(
-          `default provider did not create AlertDetails before grouping correctly`,
-        );
-      }
-      v.alerts.push(details);
     }
 
     // Flatten out our groupings for execution
