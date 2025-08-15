@@ -330,7 +330,7 @@ export const processAlert = async (
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: extraFields.join(', '),
               metadata,
-              savedSearch: (details as any)?.savedSearch,
+              savedSearch: (details as any).savedSearch,
               source,
               startTime: bucketStart,
               totalCount: _value,
