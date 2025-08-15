@@ -1,29 +1,4 @@
-receivers:
-  # Troubleshooting
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'otelcol'
-          scrape_interval: 30s
-          static_configs:
-            - targets:
-                - '0.0.0.0:8888'
-                - ${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}
-  # Data sources: logs
-  fluentforward:
-    endpoint: '0.0.0.0:24225'
-#   # Data sources: traces, metrics, logs
-#   otlp:
-#     protocols:
-#       grpc:
-#         include_metadata: true
-#         endpoint: '0.0.0.0:4317'
-#       http:
-#         cors:
-#           allowed_origins: ['*']
-#           allowed_headers: ['*']
-#         include_metadata: true
-#         endpoint: '0.0.0.0:4318'
+# Receivers are now configured dynamically in opampController.ts
 processors:
   transform:
     log_statements:

@@ -1,0 +1,15 @@
+receivers:
+  hostmetrics:
+    collection_interval: 5s
+    scrapers:
+      cpu:
+      load:
+      memory:
+      disk:
+      filesystem:
+      network:
+service:
+  pipelines:
+    metrics/hostmetrics:
+      receivers: [hostmetrics]
+      exporters: [clickhouse]

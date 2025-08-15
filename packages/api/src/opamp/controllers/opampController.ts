@@ -38,6 +38,20 @@ type CollectorConfig = {
         };
       };
     };
+    prometheus?: {
+      config: {
+        scrape_configs: Array<{
+          job_name: string;
+          scrape_interval: string;
+          static_configs: Array<{
+            targets: string[];
+          }>;
+        }>;
+      };
+    };
+    fluentforward?: {
+      endpoint: string;
+    };
     nop?: null;
     'routing/logs'?: string[];
   };
@@ -125,6 +139,27 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
               include_metadata: true,
             },
           },
+        },
+        prometheus: {
+          config: {
+            scrape_configs: [
+              {
+                job_name: 'otelcol',
+                scrape_interval: '30s',
+                static_configs: [
+                  {
+                    targets: [
+                      '0.0.0.0:8888',
+                      '${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}',
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        fluentforward: {
+          endpoint: '0.0.0.0:24225',
         },
       },
       connectors: {
