@@ -371,7 +371,10 @@ export const processAlertTask = async (
   alertProvider: AlertProvider,
 ) => {
   const { alerts, conn } = alertTask;
-  logger.info(`Processing ${alerts.length} alerts in batch`);
+  logger.info({
+    message: 'Processing alerts in batch',
+    alertCount: alerts.length,
+  });
 
   const clickhouseClient = new clickhouse.ClickhouseClient({
     host: conn.host,
@@ -406,7 +409,10 @@ export default class CheckAlertTask implements HdxTask {
 
     const now = new Date();
     const alertTasks = await this.provider.getAlertTasks();
-    logger.info(`Fetched ${alertTasks.length} alert tasks to process`);
+    logger.info({
+      message: 'Fetched alert tasks to process',
+      taskCount: alertTasks.length,
+    });
 
     for (const task of alertTasks) {
       await processAlertTask(now, task, this.provider);

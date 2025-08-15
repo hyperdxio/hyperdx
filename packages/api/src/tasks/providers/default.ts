@@ -29,7 +29,11 @@ async function getSavedSearchDetails(
   >('source');
 
   if (!savedSearch) {
-    logger.error(`savedSearch not found: id=${savedSearchId}`);
+    logger.error({
+      message: 'savedSearch not found',
+      savedSearchId,
+      alertId: alert._id,
+    });
     return [];
   }
 
@@ -37,9 +41,12 @@ async function getSavedSearchDetails(
   const connId = source.connection;
   const conn = await Connection.findById(connId);
   if (!conn) {
-    logger.error(
-      `connection not found: alertId=${alert._id}, connId=${connId}, savedSearchId=${savedSearchId}`,
-    );
+    logger.error({
+      message: 'connection not found',
+      alertId: alert._id,
+      connId,
+      savedSearchId,
+    });
     return [];
   }
 
@@ -62,15 +69,22 @@ async function getTileDetails(
 
   const dashboard = await Dashboard.findById(dashboardId);
   if (!dashboard) {
-    logger.error(`dashboard not found: id=${dashboardId}`);
+    logger.error({
+      message: 'dashboard not found',
+      dashboardId,
+      alertId: alert._id,
+    });
     return [];
   }
 
   const tile = dashboard.tiles?.find((t: Tile) => t.id === tileId);
   if (!tile) {
-    logger.error(
-      `tile matching alert not found: tile=${tileId},alert=${alert._id}`,
-    );
+    logger.error({
+      message: 'tile matching alert not found',
+      tileId,
+      dashboardId: dashboard._id,
+      alertId: alert._id,
+    });
     return [];
   }
 
@@ -78,14 +92,24 @@ async function getTileDetails(
     Omit<ISource, 'connection'> & { connection: IConnection }
   >('connection');
   if (!source) {
-    logger.error(`source not found: id=${tile.config.source}`);
+    logger.error({
+      message: 'source not found',
+      sourceId: tile.config.source,
+      tileId,
+      dashboardId: dashboard._id,
+      alertId: alert._id,
+    });
     return [];
   }
 
   if (!source.connection) {
-    logger.error(
-      `connection not found: alert=${alert._id}, source=${source.id}`,
-    );
+    logger.error({
+      message: 'connection not found',
+      alertId: alert._id,
+      tileId,
+      dashboardId: dashboard._id,
+      sourceId: source.id,
+    });
     return [];
   }
 
@@ -117,7 +141,10 @@ export default class DefaultAlertProvider implements AlertProvider {
     const alerts = await Alert.find({});
     for (const alert of alerts) {
       if (!alert.source) {
-        logger.error(`alert does not have a source: alertId=${alert._id}`);
+        logger.error({
+          message: 'alert does not have a source',
+          alertId: alert._id,
+        });
         continue;
       }
 
@@ -139,19 +166,27 @@ export default class DefaultAlertProvider implements AlertProvider {
           break;
 
         default:
-          logger.error(
-            `unsupported source: alertId=${alert._id}, source=${alert.source}`,
-          );
+          logger.error({
+            message: 'unsupported source',
+            alertId: alert._id,
+            source: alert.source,
+          });
           continue;
       }
 
       if (!details) {
-        logger.error(`failed to fetch alert details: alertId=${alert._id}`);
+        logger.error({
+          message: 'failed to fetch alert details',
+          alertId: alert._id,
+        });
         continue;
       }
 
       if (!conn) {
-        logger.error(`failed to fetch alert connection: alertId=${alert._id}`);
+        logger.error({
+          message: 'failed to fetch alert connection',
+          alertId: alert._id,
+        });
         continue;
       }
 
