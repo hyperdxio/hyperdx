@@ -15,12 +15,22 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 import { omit } from '@/utils';
 
-function queryKeyFn(prefix: string, config: ChartConfigWithDateRange) {
-  return [prefix, config] as const;
+type TQueryKey = readonly [
+  string,
+  ChartConfigWithDateRange,
+  number | undefined,
+];
+function queryKeyFn(
+  prefix: string,
+  config: ChartConfigWithDateRange,
+  queryTimeout?: number,
+): TQueryKey {
+  return [prefix, config, queryTimeout];
 }
 
 type TPageParam = number;
@@ -34,11 +44,12 @@ type TData = {
   pageParams: TPageParam[];
 };
 
-const queryFn: QueryFunction<
-  TQueryFnData,
-  readonly [string, ChartConfigWithDateRange],
-  number
-> = async ({ queryKey, pageParam, signal, meta }) => {
+const queryFn: QueryFunction<TQueryFnData, TQueryKey, number> = async ({
+  queryKey,
+  pageParam,
+  signal,
+  meta,
+}) => {
   if (meta == null) {
     throw new Error('Query missing client meta');
   }
@@ -60,7 +71,8 @@ const queryFn: QueryFunction<
     getMetadata(),
   );
 
-  const clickhouseClient = getClickhouseClient();
+  const queryTimeout = queryKey[2];
+  const clickhouseClient = getClickhouseClient({ queryTimeout });
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -247,7 +259,8 @@ export default function useOffsetPaginatedQuery(
     queryKeyPrefix?: string;
   } = {},
 ) {
-  const key = queryKeyFn(queryKeyPrefix, config);
+  const { data: meData } = api.useMe();
+  const key = queryKeyFn(queryKeyPrefix, config, meData?.team?.queryTimeout);
   const queryClient = useQueryClient();
   const matchedQueries = queryClient.getQueriesData<TData>({
     queryKey: [queryKeyPrefix, omit(config, ['dateRange'])],
@@ -268,7 +281,7 @@ export default function useOffsetPaginatedQuery(
     TQueryFnData,
     Error | ClickHouseQueryError,
     TData,
-    Readonly<[string, typeof config]>,
+    TQueryKey,
     TPageParam
   >({
     queryKey: key,

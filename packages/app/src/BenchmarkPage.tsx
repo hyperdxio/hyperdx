@@ -21,7 +21,7 @@ import {
 } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getClickhouseClient } from '@/clickhouse';
+import { useClickhouseClient } from '@/clickhouse';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
@@ -38,7 +38,7 @@ function useBenchmarkQueryIds({
   iterations?: number;
 }) {
   const enabled = queries.length > 0 && connections.length > 0;
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
 
   return useQuery({
     enabled,
@@ -95,7 +95,7 @@ function useEstimates(
   },
   options: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'> = {},
 ) {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   return useQuery({
     queryKey: ['estimate', queries, connections],
     queryFn: async () => {
@@ -125,7 +125,7 @@ function useIndexes(
   },
   options: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'> = {},
 ) {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   return useQuery({
     queryKey: ['indexes', queries, connections],
     queryFn: async () => {
