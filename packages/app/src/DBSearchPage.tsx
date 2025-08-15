@@ -506,8 +506,13 @@ function optimizeOrderBy(
   const sortKeys = sortingKey.split(',').map(key => key.trim());
   const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
   if (timestampExprIdx <= 0) return orderBy;
-  const orderByArr = [orderBy];
+  const [orderField, ...excessOrderBy] = orderBy.split(' ');
+  let modifier = '';
+  if (excessOrderBy.length === 1) {
+    modifier = excessOrderBy[0];
+  }
 
+  const orderByArr = [orderField];
   for (let i = 0; i < timestampExprIdx; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
@@ -515,7 +520,7 @@ function optimizeOrderBy(
     }
   }
 
-  const newOrderBy = orderByArr.reverse().join(', ');
+  const newOrderBy = `(${orderByArr.reverse().join(', ')})${modifier && ` ${modifier}`}`;
   return newOrderBy;
 }
 
