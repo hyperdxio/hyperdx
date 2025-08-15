@@ -15,7 +15,7 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { getMetadata } from '@/metadata';
 import { usePrevious } from '@/utils';
 
-import { getClickhouseClient } from './clickhouse';
+import { getClickhouseClient, useClickhouseClient } from './clickhouse';
 import { IS_LOCAL_MODE } from './config';
 import { getLocalConnections } from './connection';
 import { useSource } from './source';
@@ -54,7 +54,7 @@ export function useSessions(
 ) {
   const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName', 'userEmail', 'userName'];
   const SESSIONS_CTE_NAME = 'sessions';
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   return useQuery<ResponseJSON<Session>, Error>({
     queryKey: [
       'sessions',

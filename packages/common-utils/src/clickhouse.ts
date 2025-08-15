@@ -385,15 +385,17 @@ interface QueryInputs<Format extends DataFormat> {
 }
 
 export type ClickhouseClientOptions = {
-  host: string;
+  host?: string;
   username?: string;
   password?: string;
+  queryTimeout?: number;
 };
 
 export class ClickhouseClient {
   private readonly host: string;
   private readonly username?: string;
   private readonly password?: string;
+  private readonly queryTimeout?: number;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
@@ -401,10 +403,16 @@ export class ClickhouseClient {
    */
   private maxRowReadOnly: boolean;
 
-  constructor({ host, username, password }: ClickhouseClientOptions) {
-    this.host = host;
+  constructor({
+    host,
+    username,
+    password,
+    queryTimeout,
+  }: ClickhouseClientOptions) {
+    this.host = host!;
     this.username = username;
     this.password = password;
+    this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
   }
 
@@ -483,6 +491,12 @@ export class ClickhouseClient {
     );
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
+    }
+    if (
+      clickhouse_settings?.max_execution_time === undefined &&
+      (this.queryTimeout || 0) > 0
+    ) {
+      clickhouse_settings.max_execution_time = this.queryTimeout;
     }
 
     if (isBrowser) {
