@@ -20,6 +20,7 @@ agent:
   executable: /otelcontribcol
   config_files:
     - /etc/otelcol-contrib/config.yaml
+    - ${env:CUSTOM_OTELCOL_CONFIG_FILE}
   args:
     - ${env:OTEL_AGENT_FEATURE_GATE_ARG}
   passthrough_logs: ${env:OTEL_SUPERVISOR_PASSTHROUGH_LOGS}
