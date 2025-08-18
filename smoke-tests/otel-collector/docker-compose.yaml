@@ -21,7 +21,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.129.1
     volumes:
-      - ../../docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+      - ../../docker/otel-collector/config.deprecated.yaml:/etc/otelcol-contrib/config.yaml
       - ./receiver-config.yaml:/etc/otelcol-contrib/receiver-config.yaml
     command:
       [

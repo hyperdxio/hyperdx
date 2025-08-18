@@ -57,7 +57,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
-      expect(result.current).toBe('undefined DESC');
+      expect(result.current).toBe(' DESC');
     });
 
     it('should return optimized order by when Timestamp is not first in sorting key', () => {
@@ -83,7 +83,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
-      expect(result.current).toBe('toStartOfHour(Timestamp), Timestamp DESC');
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
     });
 
     it('should return fallback when Timestamp is first in sorting key', () => {
@@ -135,7 +135,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
-      expect(result.current).toBe('toStartOfHour(Timestamp), Timestamp DESC');
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
     });
 
     it('should handle null source ungracefully', () => {
@@ -153,7 +153,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(null));
 
-      expect(result.current).toBe('undefined DESC');
+      expect(result.current).toBe(' DESC');
     });
 
     it('should handle undefined sourceID ungracefully', () => {
@@ -171,7 +171,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(undefined));
 
-      expect(result.current).toBe('undefined DESC');
+      expect(result.current).toBe(' DESC');
     });
 
     it('should handle complex Timestamp expressions', () => {
@@ -199,7 +199,7 @@ describe('useDefaultOrderBy', () => {
       const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
       expect(result.current).toBe(
-        'toStartOfHour(toDateTime(timestamp_ms / 1000)), toDateTime(timestamp_ms / 1000) DESC',
+        '(toStartOfHour(toDateTime(timestamp_ms / 1000)), toDateTime(timestamp_ms / 1000)) DESC',
       );
     });
 

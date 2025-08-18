@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -11,8 +11,8 @@
     "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint --quiet . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint": "npx eslint --quiet . --ext .ts,.tsx",
+    "lint:fix": "npx eslint . --ext .ts,.tsx --fix",
     "lint:styles": "stylelint **/*/*.{css,scss}",
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
     "ci:unit": "jest --ci --coverage",
@@ -28,7 +28,7 @@
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.2.9",
+    "@hyperdx/common-utils": "^0.3.0",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
