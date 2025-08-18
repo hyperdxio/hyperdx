@@ -192,7 +192,7 @@ describe('Single Invocation Alert Test', () => {
       now,
       details,
       clickhouseClient,
-      connection._id.toString(),
+      connection.id.toString(),
       alertProvider,
     );
 
@@ -201,7 +201,7 @@ describe('Single Invocation Alert Test', () => {
 
     // Verify alert history was created
     const alertHistories = await AlertHistory.find({
-      alert: alert._id,
+      alert: alert.id,
     }).sort({ createdAt: 1 });
 
     expect(alertHistories.length).toBe(1);

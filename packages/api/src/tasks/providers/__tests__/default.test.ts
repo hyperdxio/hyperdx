@@ -32,6 +32,9 @@ describe('DefaultAlertProvider', () => {
   });
 
   afterAll(async () => {
+    if (provider) {
+      await provider.asyncDispose();
+    }
     await server.stop();
   });
 
