@@ -2,7 +2,9 @@
   "compilerOptions": {
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     },
     "allowSyntheticDefaultImports": true,
     "declaration": true,
@@ -10,7 +12,10 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "importHelpers": true,
-    "lib": ["ES2022", "dom"],
+    "lib": [
+      "ES2022",
+      "dom"
+    ],
     "module": "Node16",
     "moduleResolution": "Node16",
     "noFallthroughCasesInSwitch": true,
@@ -25,6 +30,12 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
 }
