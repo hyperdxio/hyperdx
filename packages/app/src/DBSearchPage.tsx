@@ -498,16 +498,23 @@ function useSearchedConfigToChartConfig({
   ]);
 }
 
-function optimizeOrderBy(
+function optimizeDefaultOrderBy(
   timestampExpr: string,
-  orderBy: string,
-  sortingKey: string,
+  sortingKey: string | undefined,
 ) {
+  const defaultModifier = 'DESC';
+  const fallbackOrderByItems = [
+    getFirstTimestampValueExpression(timestampExpr ?? ''),
+    defaultModifier,
+  ];
+  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+  if (!sortingKey) return fallbackOrderBy;
+
   const sortKeys = sortingKey.split(',').map(key => key.trim());
   const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
-  if (timestampExprIdx <= 0) return orderBy;
-  const orderByArr = [orderBy];
+  if (timestampExprIdx <= 0) return fallbackOrderBy;
 
+  const orderByArr = [fallbackOrderByItems[0]];
   for (let i = 0; i < timestampExprIdx; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
@@ -515,7 +522,7 @@ function optimizeOrderBy(
     }
   }
 
-  const newOrderBy = orderByArr.reverse().join(', ');
+  const newOrderBy = `(${orderByArr.reverse().join(', ')}) ${defaultModifier}`;
   return newOrderBy;
 }
 
@@ -524,17 +531,14 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
   // When source changes, make sure select and orderby fields are set to default
-  return useMemo(() => {
-    const fallbackOrderBy = `${getFirstTimestampValueExpression(
-      source?.timestampValueExpression ?? '',
-    )} DESC`;
-    if (!tableMetadata) return fallbackOrderBy;
-    return optimizeOrderBy(
-      source?.timestampValueExpression ?? '',
-      fallbackOrderBy,
-      tableMetadata.sorting_key,
-    );
-  }, [source, tableMetadata]);
+  return useMemo(
+    () =>
+      optimizeDefaultOrderBy(
+        source?.timestampValueExpression ?? '',
+        tableMetadata?.sorting_key,
+      ),
+    [source, tableMetadata],
+  );
 }
 
 // This is outside as it needs to be a stable reference
