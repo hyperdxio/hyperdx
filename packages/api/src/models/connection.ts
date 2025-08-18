@@ -5,6 +5,7 @@ type ObjectId = mongoose.Types.ObjectId;
 
 export interface IConnection {
   _id: ObjectId;
+  id: ObjectId;
   host: string;
   name: string;
   password: string;

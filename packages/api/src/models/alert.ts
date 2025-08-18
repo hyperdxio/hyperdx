@@ -42,6 +42,7 @@ export enum AlertSource {
 
 export interface IAlert {
   _id: ObjectId;
+  id: ObjectId;
   channel: AlertChannel;
   interval: AlertInterval;
   source?: AlertSource;
@@ -162,6 +163,7 @@ const AlertSchema = new Schema<IAlert>(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
   },
 );
 

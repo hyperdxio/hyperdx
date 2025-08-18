@@ -85,7 +85,7 @@ const fireChannelEvent = async ({
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info({
       message: 'Skipped firing alert due to silence',
-      alertId: alert._id,
+      alertId: alert.id,
       silenced: alert.silenced,
     });
     return;
@@ -144,7 +144,7 @@ export const processAlert = async (
   const { alert, source } = details;
   try {
     const previous: IAlertHistory | undefined = (
-      await AlertHistory.find({ alert: alert._id })
+      await AlertHistory.find({ alert: alert.id })
         .sort({ createdAt: -1 })
         .limit(1)
     )[0];
@@ -161,7 +161,7 @@ export const processAlert = async (
         nowInMinsRoundDown,
         previous,
         now,
-        alertId: alert._id,
+        alertId: alert.id,
       });
       return;
     }
@@ -218,7 +218,7 @@ export const processAlert = async (
     } else {
       logger.error({
         message: `Unsupported alert source: ${alert.source}`,
-        alertId: alert._id,
+        alertId: alert.id,
       });
       return;
     }
@@ -228,7 +228,7 @@ export const processAlert = async (
       logger.error({
         message: 'Failed to build chart config',
         chartConfig,
-        alertId: alert._id,
+        alertId: alert.id,
       });
       return;
     }
@@ -241,7 +241,7 @@ export const processAlert = async (
 
     logger.info({
       message: `Received alert metric [${alert.source} source]`,
-      alertId: alert._id,
+      alertId: alert.id,
       checksData,
       checkStartTime,
       checkEndTime,
@@ -250,7 +250,7 @@ export const processAlert = async (
     // TODO: support INSUFFICIENT_DATA state
     let alertState = AlertState.OK;
     const history = await new AlertHistory({
-      alert: alert._id,
+      alert: alert.id,
       createdAt: nowInMinsRoundDown,
       state: alertState,
     }).save();
@@ -276,7 +276,7 @@ export const processAlert = async (
         logger.error({
           message: 'Failed to find timestamp column',
           meta,
-          alertId: alert._id,
+          alertId: alert.id,
         });
         return;
       }
@@ -284,7 +284,7 @@ export const processAlert = async (
         logger.error({
           message: 'Failed to find value column',
           meta,
-          alertId: alert._id,
+          alertId: alert.id,
         });
         return;
       }
@@ -311,7 +311,7 @@ export const processAlert = async (
           alertState = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
-            alertId: alert._id,
+            alertId: alert.id,
             totalCount: _value,
             checkData,
           });
@@ -339,7 +339,7 @@ export const processAlert = async (
           } catch (e) {
             logger.error({
               message: 'Failed to fire channel event',
-              alertId: alert._id,
+              alertId: alert.id,
               error: serializeError(e),
             });
           }
@@ -353,13 +353,13 @@ export const processAlert = async (
       await history.save();
     }
 
-    await Alert.updateOne({ _id: alert._id }, { $set: { state: alertState } });
+    await Alert.updateOne({ _id: alert.id }, { $set: { state: alertState } });
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
     logger.error({
       message: 'Failed to process alert',
-      alertId: alert._id,
+      alertId: alert.id,
       error: serializeError(e),
     });
   }
@@ -389,7 +389,7 @@ export const processAlertTask = async (
         now,
         alert,
         clickhouseClient,
-        conn._id.toString(),
+        conn.id.toString(),
         alertProvider,
       ),
     );
