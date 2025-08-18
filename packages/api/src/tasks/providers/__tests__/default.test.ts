@@ -101,10 +101,10 @@ describe('DefaultAlertProvider', () => {
       const result = await provider.getAlertTasks();
 
       expect(result).toHaveLength(1);
-      expect(result[0].conn.id.toString()).toBe(connection.id.toString());
+      expect(result[0].conn.id).toBe(connection.id);
       expect(result[0].alerts).toHaveLength(1);
       expect(result[0].alerts[0].taskType).toBe(AlertTaskType.SAVED_SEARCH);
-      expect(result[0].alerts[0].alert.id.toString()).toBe(alert.id.toString());
+      expect(result[0].alerts[0].alert.id).toBe(alert.id);
 
       // Type narrowing for SAVED_SEARCH alert
       if (result[0].alerts[0].taskType === AlertTaskType.SAVED_SEARCH) {
@@ -169,10 +169,10 @@ describe('DefaultAlertProvider', () => {
       const result = await provider.getAlertTasks();
 
       expect(result).toHaveLength(1);
-      expect(result[0].conn.id.toString()).toBe(connection.id.toString());
+      expect(result[0].conn.id).toBe(connection.id);
       expect(result[0].alerts).toHaveLength(1);
       expect(result[0].alerts[0].taskType).toBe(AlertTaskType.TILE);
-      expect(result[0].alerts[0].alert.id.toString()).toBe(alert.id.toString());
+      expect(result[0].alerts[0].alert.id).toBe(alert.id);
 
       // Type narrowing for TILE alert
       if (result[0].alerts[0].taskType === AlertTaskType.TILE) {
@@ -181,7 +181,7 @@ describe('DefaultAlertProvider', () => {
 
         // Validate source is proper ISource object
         const alertSource = result[0].alerts[0].source;
-        expect(alertSource.connection).toBe(connection.id.toString()); // Should be ObjectId, not populated IConnection
+        expect(alertSource.connection).toBe(connection.id); // Should be ObjectId, not populated IConnection
         expect(alertSource.name).toBe('Test Source');
         expect(alertSource.kind).toBe('log');
         expect(alertSource.team).toBeDefined();
@@ -320,13 +320,11 @@ describe('DefaultAlertProvider', () => {
       const result = await provider.getAlertTasks();
 
       expect(result).toHaveLength(1); // Should group into one task
-      expect(result[0].conn.id.toString()).toBe(connection.id.toString());
+      expect(result[0].conn.id).toBe(connection.id);
       expect(result[0].alerts).toHaveLength(2); // Both alerts should be in the same task
 
-      const alertIds = result[0].alerts.map(a => a.alert.id.toString()).sort();
-      expect(alertIds).toEqual(
-        [savedSearchAlert.id.toString(), tileAlert.id.toString()].sort(),
-      );
+      const alertIds = result[0].alerts.map(a => a.alert.id).sort();
+      expect(alertIds).toEqual([savedSearchAlert.id, tileAlert.id].sort());
     });
 
     it('should create separate tasks for different connections', async () => {
@@ -433,10 +431,8 @@ describe('DefaultAlertProvider', () => {
 
       expect(result).toHaveLength(2); // Should create separate tasks
 
-      const connectionIds = result.map(task => task.conn.id.toString()).sort();
-      expect(connectionIds).toEqual(
-        [connection1.id.toString(), connection2.id.toString()].sort(),
-      );
+      const connectionIds = result.map(task => task.conn.id).sort();
+      expect(connectionIds).toEqual([connection1.id, connection2.id].sort());
 
       // Each task should have one alert
       expect(result[0].alerts).toHaveLength(1);

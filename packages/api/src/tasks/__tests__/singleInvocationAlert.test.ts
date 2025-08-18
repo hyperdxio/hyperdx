@@ -170,7 +170,7 @@ describe('Single Invocation Alert Test', () => {
     ]);
 
     // Get the alert with populated references
-    const enhancedAlert: any = await Alert.findById(alert._id).populate([
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
       'team',
       'savedSearch',
     ]);
@@ -192,12 +192,12 @@ describe('Single Invocation Alert Test', () => {
       now,
       details,
       clickhouseClient,
-      connection.id.toString(),
+      connection.id,
       alertProvider,
     );
 
     // Verify alert state changed to ALERT (from DB)
-    expect((await Alert.findById(enhancedAlert._id))!.state).toBe('ALERT');
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
     // Verify alert history was created
     const alertHistories = await AlertHistory.find({

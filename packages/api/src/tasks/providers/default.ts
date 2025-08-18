@@ -36,7 +36,7 @@ async function getSavedSearchDetails(
     logger.error({
       message: 'savedSearch not found',
       savedSearchId,
-      alertId: alert._id,
+      alertId: alert.id,
     });
     return [];
   }
@@ -47,7 +47,7 @@ async function getSavedSearchDetails(
   if (!conn) {
     logger.error({
       message: 'connection not found',
-      alertId: alert._id,
+      alertId: alert.id,
       connId,
       savedSearchId,
     });
@@ -79,7 +79,7 @@ async function getTileDetails(
     logger.error({
       message: 'dashboard not found',
       dashboardId,
-      alertId: alert._id,
+      alertId: alert.id,
     });
     return [];
   }
@@ -90,7 +90,7 @@ async function getTileDetails(
       message: 'tile matching alert not found',
       tileId,
       dashboardId: dashboard._id,
-      alertId: alert._id,
+      alertId: alert.id,
     });
     return [];
   }
@@ -108,7 +108,7 @@ async function getTileDetails(
       sourceId: tile.config.source,
       tileId,
       dashboardId: dashboard._id,
-      alertId: alert._id,
+      alertId: alert.id,
     });
     return [];
   }
@@ -116,7 +116,7 @@ async function getTileDetails(
   if (!source.connection) {
     logger.error({
       message: 'connection not found',
-      alertId: alert._id,
+      alertId: alert.id,
       tileId,
       dashboardId: dashboard._id,
       sourceId: source.id,
@@ -130,7 +130,7 @@ async function getTileDetails(
     connection,
     {
       alert,
-      source: { ...sourceProps, connection: connection._id.toString() },
+      source: { ...sourceProps, connection: connection.id },
       taskType: AlertTaskType.TILE,
       tile,
       dashboard,
@@ -172,13 +172,12 @@ async function loadAlert(alert: IAlert, groupedTasks: Map<string, AlertTask>) {
     throw new Error('failed to fetch alert connection');
   }
 
-  const k = conn.id.toString();
-  if (!groupedTasks.has(k)) {
-    groupedTasks.set(k, { alerts: [], conn });
+  if (!groupedTasks.has(conn.id)) {
+    groupedTasks.set(conn.id, { alerts: [], conn });
   }
-  const v = groupedTasks.get(k);
+  const v = groupedTasks.get(conn.id);
   if (!v) {
-    throw new Error(`provider did not set key ${k} before appending`);
+    throw new Error(`provider did not set key ${conn.id} before appending`);
   }
   v.alerts.push(details);
 }
@@ -201,7 +200,7 @@ export default class DefaultAlertProvider implements AlertProvider {
       } catch (e) {
         logger.error({
           message: `failed to load alert: ${e}`,
-          alertId: alert._id,
+          alertId: alert.id,
           team: alert.team,
           channel: alert.channel,
         });

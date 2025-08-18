@@ -41,8 +41,7 @@ export enum AlertSource {
 }
 
 export interface IAlert {
-  _id: ObjectId;
-  id: ObjectId;
+  id: string;
   channel: AlertChannel;
   interval: AlertInterval;
   source?: AlertSource;

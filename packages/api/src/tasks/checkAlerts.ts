@@ -384,15 +384,7 @@ export const processAlertTask = async (
 
   const p: Promise<void>[] = [];
   for (const alert of alerts) {
-    p.push(
-      processAlert(
-        now,
-        alert,
-        clickhouseClient,
-        conn.id.toString(),
-        alertProvider,
-      ),
-    );
+    p.push(processAlert(now, alert, clickhouseClient, conn.id, alertProvider));
   }
   await Promise.all(p);
 };
