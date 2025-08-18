@@ -24,9 +24,13 @@ async function getSavedSearchDetails(
   alert: IAlert,
 ): Promise<[IConnection, AlertDetails] | []> {
   const savedSearchId = alert.savedSearch;
-  const savedSearch = await SavedSearch.findById(savedSearchId).populate<
-    Omit<ISavedSearch, 'source'> & { source: ISource }
-  >('source');
+  const savedSearch = await SavedSearch.findOne({
+    _id: savedSearchId,
+    team: alert.team,
+  }).populate<Omit<ISavedSearch, 'source'> & { source: ISource }>({
+    path: 'source',
+    match: { team: alert.team },
+  });
 
   if (!savedSearch) {
     logger.error({
@@ -39,7 +43,7 @@ async function getSavedSearchDetails(
 
   const { source } = savedSearch;
   const connId = source.connection;
-  const conn = await Connection.findById(connId);
+  const conn = await Connection.findOne({ _id: connId, team: alert.team });
   if (!conn) {
     logger.error({
       message: 'connection not found',
@@ -67,7 +71,10 @@ async function getTileDetails(
   const dashboardId = alert.dashboard;
   const tileId = alert.tileId;
 
-  const dashboard = await Dashboard.findById(dashboardId);
+  const dashboard = await Dashboard.findOne({
+    _id: dashboardId,
+    team: alert.team,
+  });
   if (!dashboard) {
     logger.error({
       message: 'dashboard not found',
@@ -88,9 +95,13 @@ async function getTileDetails(
     return [];
   }
 
-  const source = await Source.findById(tile.config.source).populate<
-    Omit<ISource, 'connection'> & { connection: IConnection }
-  >('connection');
+  const source = await Source.findOne({
+    _id: tile.config.source,
+    team: alert.team,
+  }).populate<Omit<ISource, 'connection'> & { connection: IConnection }>({
+    path: 'connection',
+    match: { team: alert.team },
+  });
   if (!source) {
     logger.error({
       message: 'source not found',
@@ -161,7 +172,7 @@ async function loadAlert(alert: IAlert, groupedTasks: Map<string, AlertTask>) {
     throw new Error('failed to fetch alert connection');
   }
 
-  const k = conn._id.toString();
+  const k = conn.id.toString();
   if (!groupedTasks.has(k)) {
     groupedTasks.set(k, { alerts: [], conn });
   }
