@@ -25,6 +25,7 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': 'warn',
     'n/no-process-exit': 'warn',
     'n/no-missing-import': 'off',
+    'n/no-extraneous-import': 'off',
     'n/no-unpublished-import': [
       'error',
       {

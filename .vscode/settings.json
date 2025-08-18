@@ -44,5 +44,6 @@
     "opamp",
     "pyimport",
     "pyodide"
-  ]
+  ],
+  "nxConsole.generateAiAgentRules": true
 }

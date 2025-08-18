@@ -12,7 +12,7 @@
     "importHelpers": true,
     "lib": ["ES2022", "dom"],
     "module": "Node16",
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": false,
     "noImplicitReturns": false,
