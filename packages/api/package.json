@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.9",
+    "@hyperdx/common-utils": "^0.3.0",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
