@@ -1,5 +1,20 @@
 # @hyperdx/api
 
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+
+### Patch Changes
+
+- ab50b12: feat: support custom otel collector config (BETA)
+- ab50b12: fix: reduce bloat in opamp agent logs
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+- Updated dependencies [6dd6165]
+- Updated dependencies [5a59d32]
+  - @hyperdx/common-utils@0.3.0
+
 ## 2.1.2
 
 ### Patch Changes
