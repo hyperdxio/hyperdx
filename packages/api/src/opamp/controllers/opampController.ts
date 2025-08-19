@@ -106,9 +106,9 @@ type CollectorConfig = {
     extensions: string[];
     pipelines: {
       [key: string]: {
-        receivers?: string[];
+        receivers: string[];
         processors?: string[];
-        exporters?: string[];
+        exporters: string[];
       };
     };
   };
@@ -119,129 +119,139 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
   const collectorAuthenticationEnforced =
     teams[0]?.collectorAuthenticationEnforced;
 
-  if (apiKeys && apiKeys.length > 0) {
-    // Build full configuration with all team API keys
-    const otelCollectorConfig: CollectorConfig = {
-      extensions: {},
-      receivers: {
-        'otlp/hyperdx': {
-          protocols: {
-            grpc: {
-              endpoint: '0.0.0.0:4317',
-              include_metadata: true,
-            },
-            http: {
-              endpoint: '0.0.0.0:4318',
-              cors: {
-                allowed_origins: ['*'],
-                allowed_headers: ['*'],
-              },
-              include_metadata: true,
-            },
+  const otelCollectorConfig: CollectorConfig = {
+    extensions: {},
+    receivers: {
+      nop: null,
+      'otlp/hyperdx': {
+        protocols: {
+          grpc: {
+            endpoint: '0.0.0.0:4317',
+            include_metadata: true,
           },
-        },
-        prometheus: {
-          config: {
-            scrape_configs: [
-              {
-                job_name: 'otelcol',
-                scrape_interval: '30s',
-                static_configs: [
-                  {
-                    targets: [
-                      '0.0.0.0:8888',
-                      '${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}',
-                    ],
-                  },
-                ],
-              },
-            ],
+          http: {
+            endpoint: '0.0.0.0:4318',
+            cors: {
+              allowed_origins: ['*'],
+              allowed_headers: ['*'],
+            },
+            include_metadata: true,
           },
-        },
-        fluentforward: {
-          endpoint: '0.0.0.0:24225',
         },
       },
-      connectors: {
-        'routing/logs': {
-          default_pipelines: ['logs/out-default'],
-          error_mode: 'ignore',
-          table: [
+      prometheus: {
+        config: {
+          scrape_configs: [
             {
-              context: 'log',
-              statement:
-                'route() where IsMatch(attributes["rr-web.event"], ".*")',
-              pipelines: ['logs/out-rrweb'],
+              job_name: 'otelcol',
+              scrape_interval: '30s',
+              static_configs: [
+                {
+                  targets: [
+                    '0.0.0.0:8888',
+                    '${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}',
+                  ],
+                },
+              ],
             },
           ],
         },
       },
-      exporters: {
-        debug: {
-          verbosity: 'detailed',
-          sampling_initial: 5,
-          sampling_thereafter: 200,
-        },
-        'clickhouse/rrweb': {
-          endpoint: '${env:CLICKHOUSE_ENDPOINT}',
-          database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
-          username: '${env:CLICKHOUSE_USER}',
-          password: '${env:CLICKHOUSE_PASSWORD}',
-          ttl: '720h',
-          logs_table_name: 'hyperdx_sessions',
-          timeout: '5s',
-          retry_on_failure: {
-            enabled: true,
-            initial_interval: '5s',
-            max_interval: '30s',
-            max_elapsed_time: '300s',
+      fluentforward: {
+        endpoint: '0.0.0.0:24225',
+      },
+    },
+    connectors: {
+      'routing/logs': {
+        default_pipelines: ['logs/out-default'],
+        error_mode: 'ignore',
+        table: [
+          {
+            context: 'log',
+            statement:
+              'route() where IsMatch(attributes["rr-web.event"], ".*")',
+            pipelines: ['logs/out-rrweb'],
           },
-        },
-        clickhouse: {
-          endpoint: '${env:CLICKHOUSE_ENDPOINT}',
-          database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
-          username: '${env:CLICKHOUSE_USER}',
-          password: '${env:CLICKHOUSE_PASSWORD}',
-          ttl: '720h',
-          timeout: '5s',
-          retry_on_failure: {
-            enabled: true,
-            initial_interval: '5s',
-            max_interval: '30s',
-            max_elapsed_time: '300s',
-          },
+        ],
+      },
+    },
+    exporters: {
+      debug: {
+        verbosity: 'detailed',
+        sampling_initial: 5,
+        sampling_thereafter: 200,
+      },
+      'clickhouse/rrweb': {
+        endpoint: '${env:CLICKHOUSE_ENDPOINT}',
+        database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
+        username: '${env:CLICKHOUSE_USER}',
+        password: '${env:CLICKHOUSE_PASSWORD}',
+        ttl: '720h',
+        logs_table_name: 'hyperdx_sessions',
+        timeout: '5s',
+        retry_on_failure: {
+          enabled: true,
+          initial_interval: '5s',
+          max_interval: '30s',
+          max_elapsed_time: '300s',
         },
       },
-      service: {
-        extensions: [],
-        pipelines: {
-          traces: {
-            receivers: ['otlp/hyperdx'],
-            processors: ['memory_limiter', 'batch'],
-            exporters: ['clickhouse'],
-          },
-          metrics: {
-            receivers: ['otlp/hyperdx', 'prometheus'],
-            processors: ['memory_limiter', 'batch'],
-            exporters: ['clickhouse'],
-          },
-          'logs/in': {
-            receivers: ['otlp/hyperdx', 'fluentforward'],
-            exporters: ['routing/logs'],
-          },
-          'logs/out-default': {
-            receivers: ['routing/logs'],
-            processors: ['memory_limiter', 'transform', 'batch'],
-            exporters: ['clickhouse'],
-          },
-          'logs/out-rrweb': {
-            receivers: ['routing/logs'],
-            processors: ['memory_limiter', 'batch'],
-            exporters: ['clickhouse/rrweb'],
-          },
+      clickhouse: {
+        endpoint: '${env:CLICKHOUSE_ENDPOINT}',
+        database: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}',
+        username: '${env:CLICKHOUSE_USER}',
+        password: '${env:CLICKHOUSE_PASSWORD}',
+        ttl: '720h',
+        timeout: '5s',
+        retry_on_failure: {
+          enabled: true,
+          initial_interval: '5s',
+          max_interval: '30s',
+          max_elapsed_time: '300s',
         },
       },
-    };
+    },
+    service: {
+      extensions: [],
+      pipelines: {
+        traces: {
+          receivers: ['nop'],
+          processors: ['memory_limiter', 'batch'],
+          exporters: ['clickhouse'],
+        },
+        metrics: {
+          // TODO: prometheus needs to be authenticated
+          receivers: ['prometheus'],
+          processors: ['memory_limiter', 'batch'],
+          exporters: ['clickhouse'],
+        },
+        'logs/in': {
+          // TODO: fluentforward needs to be authenticated
+          receivers: ['fluentforward'],
+          exporters: ['routing/logs'],
+        },
+        'logs/out-default': {
+          receivers: ['routing/logs'],
+          processors: ['memory_limiter', 'transform', 'batch'],
+          exporters: ['clickhouse'],
+        },
+        'logs/out-rrweb': {
+          receivers: ['routing/logs'],
+          processors: ['memory_limiter', 'batch'],
+          exporters: ['clickhouse/rrweb'],
+        },
+      },
+    },
+  };
+  if (apiKeys && apiKeys.length > 0) {
+    // attach otlp/hyperdx receiver
+    otelCollectorConfig.service.pipelines.traces.receivers.push('otlp/hyperdx');
+    otelCollectorConfig.service.pipelines.metrics.receivers.push(
+      'otlp/hyperdx',
+    );
+    otelCollectorConfig.service.pipelines['logs/in'].receivers.push(
+      'otlp/hyperdx',
+    );
 
     if (collectorAuthenticationEnforced) {
       if (otelCollectorConfig.receivers['otlp/hyperdx'] == null) {
@@ -261,36 +271,9 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
       };
       otelCollectorConfig.service.extensions = ['bearertokenauth/hyperdx'];
     }
-
-    return otelCollectorConfig;
   }
 
-  // If no apiKeys are found, return NOP config
-  // This is later merged with otel-collector/config.yaml
-  // we need to instantiate a valid config so the collector
-  // can at least start up
-  return {
-    extensions: {},
-    receivers: {
-      nop: null,
-    },
-    connectors: {},
-    exporters: {},
-    service: {
-      extensions: [],
-      pipelines: {
-        traces: {
-          receivers: ['nop'],
-        },
-        metrics: {
-          receivers: ['nop'],
-        },
-        logs: {
-          receivers: ['nop'],
-        },
-      },
-    },
-  };
+  return otelCollectorConfig;
 };
 
 export class OpampController {
