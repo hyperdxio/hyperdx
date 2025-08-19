@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.3.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+
 ## 0.3.0
 
 ### Minor Changes

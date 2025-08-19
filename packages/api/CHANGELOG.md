@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- c216053: Changes the order of alert evaluation to group queries by the connection on the alert.
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
 ## 2.2.0
 
 ### Minor Changes
