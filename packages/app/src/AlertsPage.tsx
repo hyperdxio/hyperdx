@@ -254,7 +254,7 @@ export default function AlertsPage() {
           >
             Alerts can be{' '}
             <a
-              href="https://www.hyperdx.io/docs/alerts"
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
               target="_blank"
               rel="noopener noreferrer"
             >
