@@ -21,8 +21,7 @@ export async function getSavedSearches(teamId: string) {
   return savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
     alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
-      const { _id, ...restAlert } = alert.toJSON();
-      return { id: _id, ...restAlert };
+      return alert.toJSON();
     }),
   }));
 }
