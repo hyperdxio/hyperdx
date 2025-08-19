@@ -7,7 +7,7 @@ import { SavedSearch } from '@/models/savedSearch';
 import Team, { TeamCHSettings } from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
-export const LOCAL_APP_TEAM = {
+export const LOCAL_APP_TEAM: any = {
   _id: LOCAL_APP_TEAM_ID,
   id: LOCAL_APP_TEAM_ID,
   name: 'Local App Team',
@@ -48,6 +48,10 @@ export async function createTeam({
 }
 
 export function getAllTeams(fields?: string[]) {
+  if (config.IS_LOCAL_APP_MODE) {
+    return [LOCAL_APP_TEAM];
+  }
+
   return Team.find({}, fields);
 }
 

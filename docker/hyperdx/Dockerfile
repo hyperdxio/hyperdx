@@ -79,6 +79,8 @@ ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base 
 
 ARG CODE_VERSION
+ARG USER_UID=10001
+ARG USER_GID=10001
 
 ENV CODE_VERSION=$CODE_VERSION
 # Copy from otel collector bases
@@ -100,15 +102,23 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY --from=otel-collector ./supervisor_docker.yaml  /etc/otel/supervisor.yaml
+COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
-# Install MongoDB and other dependencies (consolidated into a single RUN command)
+# Copy otel-collector entrypoint and log rotation scripts
+COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
+COPY --from=otel-collector --chmod=755 ./log-rotator.sh /log-rotator.sh
+
+# Install MongoDB, gomplate and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
   apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl ca-certificates && \
+  wget -O /usr/local/bin/gomplate https://github.com/hairyhenderson/gomplate/releases/download/v4.3.3/gomplate_linux-amd64 && \
+  chmod +x /usr/local/bin/gomplate && \
+  addgroup -S -g ${USER_GID} otel && \
+  adduser  -S -u ${USER_UID} -G otel otel && \
   mkdir -p /data/db && \
-  mkdir -p /etc/otel/supervisor-data && \
+  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
   rm -rf /var/cache/apk/*
 
 ENV NODE_ENV production
