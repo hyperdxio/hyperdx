@@ -568,7 +568,10 @@ function SessionSetupInstructions() {
         </Text>
         <Text c="dimmed" size="xs">
           Install the{' '}
-          <a href="https://www.hyperdx.io/docs/install/browser" target="_blank">
+          <a
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
+            target="_blank"
+          >
             HyperDX Browser Integration
           </a>{' '}
           to start recording sessions.

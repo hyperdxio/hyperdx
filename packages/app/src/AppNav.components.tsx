@@ -228,7 +228,7 @@ export const AppNavHelpMenu = ({
             </Menu.Label>
 
             <Menu.Item
-              href="https://hyperdx.io/docs/v2"
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
               leftSection={<Icon name="book" />}
             >
