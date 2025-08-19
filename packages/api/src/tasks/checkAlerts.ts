@@ -8,23 +8,22 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import _ from 'lodash';
 import { isString } from 'lodash';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import { getConnectionById } from '@/controllers/connection';
-import {
-  AlertDocument,
-  AlertSource,
-  AlertState,
-  AlertThresholdType,
-} from '@/models/alert';
+import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
-import Dashboard, { IDashboard } from '@/models/dashboard';
-import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
-import { ISource, Source } from '@/models/source';
-import { AlertProvider, loadProvider } from '@/tasks/providers';
+import { IDashboard } from '@/models/dashboard';
+import { ISavedSearch } from '@/models/savedSearch';
+import { ISource } from '@/models/source';
+import {
+  AlertDetails,
+  AlertProvider,
+  AlertTask,
+  AlertTaskType,
+  loadProvider,
+} from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
@@ -64,7 +63,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
 }: {
-  alert: AlertDocument;
+  alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
   clickhouseClient: clickhouse.ClickhouseClient;
@@ -137,12 +136,15 @@ const fireChannelEvent = async ({
 
 export const processAlert = async (
   now: Date,
-  alert: AlertDocument,
+  details: AlertDetails,
+  clickhouseClient: clickhouse.ClickhouseClient,
+  connectionId: string,
   alertProvider: AlertProvider,
 ) => {
+  const { alert, source } = details;
   try {
     const previous: IAlertHistory | undefined = (
-      await AlertHistory.find({ alert: alert._id })
+      await AlertHistory.find({ alert: alert.id })
         .sort({ createdAt: -1 })
         .limit(1)
     )[0];
@@ -169,30 +171,8 @@ export const processAlert = async (
     const checkEndTime = nowInMinsRoundDown;
 
     let chartConfig: ChartConfigWithOptDateRange | undefined;
-    let connectionId: string | undefined;
-    let savedSearch: ISavedSearch | undefined | null;
-    let dashboard: IDashboard | undefined | null;
-    let source: ISource | undefined | null;
-    // SAVED_SEARCH Source
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      savedSearch = await SavedSearch.findById(alert.savedSearch);
-      if (savedSearch == null) {
-        logger.error({
-          message: 'SavedSearch not found',
-          alertId: alert.id,
-        });
-        return;
-      }
-      source = await Source.findById(savedSearch.source);
-      if (source == null) {
-        logger.error({
-          message: 'Source not found',
-          alertId: alert.id,
-          savedSearch: alert.savedSearch,
-        });
-        return;
-      }
-      connectionId = source.connection.toString();
+    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      const savedSearch = details.savedSearch;
       chartConfig = {
         connection: connectionId,
         displayType: DisplayType.Line,
@@ -214,61 +194,26 @@ export const processAlert = async (
         implicitColumnExpression: source.implicitColumnExpression,
         timestampValueExpression: source.timestampValueExpression,
       };
-    }
-    // TILE Source
-    else if (
-      alert.source === AlertSource.TILE &&
-      alert.dashboard &&
-      alert.tileId
-    ) {
-      dashboard = await Dashboard.findById(alert.dashboard);
-      if (dashboard == null) {
-        logger.error({
-          message: 'Dashboard not found',
-          alertId: alert.id,
-          dashboardId: alert.dashboard,
-        });
-        return;
-      }
-      // filter tiles
-      dashboard.tiles = dashboard.tiles.filter(
-        tile => tile.id === alert.tileId,
-      );
-
-      if (dashboard.tiles.length === 1) {
-        // Doesn't work for metric alerts yet
-        const MAX_NUM_GROUPS = 20;
-        // TODO: assuming that the chart has only 1 series for now
-        const firstTile = dashboard.tiles[0];
-        if (firstTile.config.displayType === DisplayType.Line) {
-          // fetch source data
-          source = await Source.findById(firstTile.config.source);
-          if (!source) {
-            logger.error({
-              message: 'Source not found',
-              dashboardId: alert.dashboard,
-              tile: firstTile,
-            });
-            return;
-          }
-          connectionId = source.connection.toString();
-          chartConfig = {
-            connection: connectionId,
-            dateRange: [checkStartTime, checkEndTime],
-            dateRangeStartInclusive: true,
-            dateRangeEndInclusive: false,
-            displayType: firstTile.config.displayType,
-            from: source.from,
-            granularity: `${windowSizeInMins} minute`,
-            groupBy: firstTile.config.groupBy,
-            implicitColumnExpression: source.implicitColumnExpression,
-            metricTables: source.metricTables,
-            select: firstTile.config.select,
-            timestampValueExpression: source.timestampValueExpression,
-            where: firstTile.config.where,
-            seriesReturnType: firstTile.config.seriesReturnType,
-          };
-        }
+    } else if (details.taskType === AlertTaskType.TILE) {
+      const tile = details.tile;
+      // Doesn't work for metric alerts yet
+      if (tile.config.displayType === DisplayType.Line) {
+        chartConfig = {
+          connection: connectionId,
+          dateRange: [checkStartTime, checkEndTime],
+          dateRangeStartInclusive: true,
+          dateRangeEndInclusive: false,
+          displayType: tile.config.displayType,
+          from: source.from,
+          granularity: `${windowSizeInMins} minute`,
+          groupBy: tile.config.groupBy,
+          implicitColumnExpression: source.implicitColumnExpression,
+          metricTables: source.metricTables,
+          select: tile.config.select,
+          timestampValueExpression: source.timestampValueExpression,
+          where: tile.config.where,
+          seriesReturnType: tile.config.seriesReturnType,
+        };
       }
     } else {
       logger.error({
@@ -279,34 +224,15 @@ export const processAlert = async (
     }
 
     // Fetch data
-    if (chartConfig == null || connectionId == null) {
+    if (chartConfig == null) {
       logger.error({
         message: 'Failed to build chart config',
         chartConfig,
-        connectionId,
         alertId: alert.id,
       });
       return;
     }
 
-    const connection = await getConnectionById(
-      alert.team._id.toString(),
-      connectionId,
-      true,
-    );
-
-    if (connection == null) {
-      logger.error({
-        message: 'Connection not found',
-        alertId: alert.id,
-      });
-      return;
-    }
-    const clickhouseClient = new clickhouse.ClickhouseClient({
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-    });
     const metadata = getMetadata(clickhouseClient);
     const checksData = await clickhouseClient.queryChartConfig({
       config: chartConfig,
@@ -324,7 +250,7 @@ export const processAlert = async (
     // TODO: support INSUFFICIENT_DATA state
     let alertState = AlertState.OK;
     const history = await new AlertHistory({
-      alert: alert._id,
+      alert: alert.id,
       createdAt: nowInMinsRoundDown,
       state: alertState,
     }).save();
@@ -391,16 +317,20 @@ export const processAlert = async (
           });
 
           try {
+            // Casts to any here because this is where I stopped unraveling the
+            // alert logic requiring large, nested objects. We should look at
+            // cleaning this up next. fireChannelEvent guards against null values
+            // for these properties.
             await fireChannelEvent({
               alert,
               alertProvider,
               attributes: {}, // FIXME: support attributes (logs + resources ?)
               clickhouseClient,
-              dashboard,
+              dashboard: (details as any).dashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
               group: extraFields.join(', '),
               metadata,
-              savedSearch,
+              savedSearch: (details as any).savedSearch,
               source,
               startTime: bucketStart,
               totalCount: _value,
@@ -423,8 +353,7 @@ export const processAlert = async (
       await history.save();
     }
 
-    alert.state = alertState;
-    await alert.save();
+    await Alert.updateOne({ _id: alert.id }, { $set: { state: alertState } });
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
@@ -434,6 +363,30 @@ export const processAlert = async (
       error: serializeError(e),
     });
   }
+};
+
+export const processAlertTask = async (
+  now: Date,
+  alertTask: AlertTask,
+  alertProvider: AlertProvider,
+) => {
+  const { alerts, conn } = alertTask;
+  logger.info({
+    message: 'Processing alerts in batch',
+    alertCount: alerts.length,
+  });
+
+  const clickhouseClient = new clickhouse.ClickhouseClient({
+    host: conn.host,
+    username: conn.username,
+    password: conn.password,
+  });
+
+  const p: Promise<void>[] = [];
+  for (const alert of alerts) {
+    p.push(processAlert(now, alert, clickhouseClient, conn.id, alertProvider));
+  }
+  await Promise.all(p);
 };
 
 // Re-export handleSendGenericWebhook for testing
@@ -448,11 +401,14 @@ export default class CheckAlertTask implements HdxTask {
 
     const now = new Date();
     const alertTasks = await this.provider.getAlertTasks();
-    const alerts = alertTasks[0].alerts;
-    logger.info(`Going to process ${alerts.length} alerts`);
-    await Promise.all(
-      alerts.map(alert => processAlert(now, alert, this.provider)),
-    );
+    logger.info({
+      message: 'Fetched alert tasks to process',
+      taskCount: alertTasks.length,
+    });
+
+    for (const task of alertTasks) {
+      await processAlertTask(now, task, this.provider);
+    }
   }
 
   async asyncDispose(): Promise<void> {

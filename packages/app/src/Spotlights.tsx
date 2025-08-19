@@ -133,7 +133,9 @@ export const useSpotlightActions = () => {
         label: 'Documentation',
         keywords: ['help', 'docs'],
         onClick: () => {
-          router.push('https://www.hyperdx.io/docs');
+          router.push(
+            'https://clickhouse.com/docs/use-cases/observability/clickstack',
+          );
         },
       },
       {
