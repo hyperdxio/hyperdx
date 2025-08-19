@@ -747,7 +747,8 @@ export const RawLogTable = memo(
                     return (
                       <td
                         key={cell.id}
-                        className={cx('align-top overflow-hidden', {
+                        className={cx('align-top', {
+                          'overflow-hidden': !wrapLinesEnabled,
                           'text-break': wrapLinesEnabled,
                           'text-truncate': !wrapLinesEnabled,
                         })}
