@@ -1,3 +1,4 @@
+import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { createServer } from 'http';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -13,7 +14,7 @@ import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import { processAlert } from '@/tasks/checkAlerts';
-import { loadProvider } from '@/tasks/providers';
+import { AlertTaskType, loadProvider } from '@/tasks/providers';
 import * as slack from '@/utils/slack';
 
 describe('Single Invocation Alert Test', () => {
@@ -169,20 +170,38 @@ describe('Single Invocation Alert Test', () => {
     ]);
 
     // Get the alert with populated references
-    const enhancedAlert: any = await Alert.findById(alert._id).populate([
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
       'team',
       'savedSearch',
     ]);
 
     // Process the alert - this should trigger the webhook
-    await processAlert(now, enhancedAlert, alertProvider);
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+    };
+    const clickhouseClient = new clickhouse.ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+    );
 
-    // Verify alert state changed to ALERT
-    expect(enhancedAlert.state).toBe('ALERT');
+    // Verify alert state changed to ALERT (from DB)
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
     // Verify alert history was created
     const alertHistories = await AlertHistory.find({
-      alert: alert._id,
+      alert: alert.id,
     }).sort({ createdAt: 1 });
 
     expect(alertHistories.length).toBe(1);

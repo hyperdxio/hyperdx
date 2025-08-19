@@ -18,7 +18,7 @@ export function getConnectionById(
 
 export function createConnection(
   team: string,
-  connection: Omit<IConnection, '_id'>,
+  connection: Omit<IConnection, 'id' | '_id'>,
 ) {
   return Connection.create({ ...connection, team });
 }
@@ -26,7 +26,7 @@ export function createConnection(
 export function updateConnection(
   team: string,
   connectionId: string,
-  connection: Omit<IConnection, '_id'>,
+  connection: Omit<IConnection, 'id' | '_id'>,
 ) {
   return Connection.findOneAndUpdate({ _id: connectionId, team }, connection, {
     new: true,
