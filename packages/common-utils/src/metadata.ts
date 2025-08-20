@@ -18,6 +18,7 @@ import { escapeJSONKey } from './utils';
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
+const DEFAULT_MAX_KEYS = 1000;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -221,7 +222,7 @@ export class Metadata {
     databaseName,
     tableName,
     column,
-    maxKeys = 1000,
+    maxKeys = DEFAULT_MAX_KEYS,
     connectionId,
     metricName,
   }: {
@@ -308,7 +309,7 @@ export class Metadata {
 
   async getJSONKeys({
     column,
-    maxKeys = 1000,
+    maxKeys = DEFAULT_MAX_KEYS,
     databaseName,
     tableName,
     connectionId,
@@ -348,11 +349,19 @@ export class Metadata {
               ...this.clickhouseSettings,
             },
           })
-          .then(res => res.json<Record<string, unknown>>())
+          .then(res => res.json<{ pathMap: Record<string, string[]> }>())
           .then(d => {
-            return Object.entries(
-              d.data[0].pathMap as { [key: string]: string[] },
-            ).map(e => ({ key: escapeJSONKey(e[0]), chType: e[1][0] }));
+            const keys: { key: string; chType: string }[] = [];
+            for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
+              if (!key || !typeArr || !Array.isArray(typeArr)) {
+                console.error(`Unknown key (${key}) and typeArr (${typeArr})`);
+              }
+              keys.push({
+                key: escapeJSONKey(key),
+                chType: typeArr[0],
+              });
+            }
+            return keys;
           });
         return keys;
       },
