@@ -298,3 +298,13 @@ export const formatDate = (
     ? formatInTimeZone(date, 'Etc/UTC', formatStr)
     : fnsFormat(date, formatStr);
 };
+
+// This function is needed especially when a number is used in the path of a json.
+// For example, path "LogAttributes.foo.bar.2.bingo" will result in ClickHouse
+// assuming you're accessing a value of a tuple and causes some weird query behavior.
+// Instead, this path should be "LogAttributes.foo.bar.`2`.bingo".
+export const escapeJSONKey = (key: string) =>
+  key
+    .split('.')
+    .map(v => (v.startsWith('$') || !isNaN(parseInt(v)) ? `\`${v}\`` : v))
+    .join('.');

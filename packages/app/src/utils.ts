@@ -646,12 +646,14 @@ export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
 };
 
 // Date formatting
-export const mergePath = (path: string[]) => {
+export const mergePath = (path: string[], jsonColumns: string[]) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
   }
-  return `${key}['${rest.join("']['")}']`;
+  return jsonColumns.includes(key)
+    ? `${key}.${rest.join('.')}`
+    : `${key}['${rest.join("']['")}']`;
 };
 
 export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

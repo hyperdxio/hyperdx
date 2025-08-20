@@ -13,6 +13,8 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
+import { escapeJSONKey } from './utils';
+
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
@@ -304,6 +306,59 @@ export class Metadata {
     });
   }
 
+  async getJSONKeys({
+    column,
+    maxKeys = 1000,
+    databaseName,
+    tableName,
+    connectionId,
+    metricName,
+  }: {
+    column: string;
+    maxKeys?: number;
+  } & TableConnection) {
+    const cacheKey = metricName
+      ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
+      : `${databaseName}.${tableName}.${column}.keys`;
+
+    return this.cache.getOrFetch<{ key: string; chType: string }[]>(
+      cacheKey,
+      async () => {
+        const where = metricName
+          ? chSql`WHERE MetricName=${{ String: metricName }}`
+          : '';
+        const sql = chSql`WITH all_paths AS
+        (
+            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
+            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+            LIMIT ${{ Int32: maxKeys }}
+            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
+        )
+        SELECT groupUniqArrayMap(paths) as pathMap
+        FROM all_paths;`;
+
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+              read_overflow_mode: 'break',
+              ...this.clickhouseSettings,
+            },
+          })
+          .then(res => res.json<Record<string, unknown>>())
+          .then(d => {
+            return Object.entries(
+              d.data[0].pathMap as { [key: string]: string[] },
+            ).map(e => ({ key: escapeJSONKey(e[0]), chType: e[1][0] }));
+          });
+        return keys;
+      },
+    );
+  }
+
   async getMapValues({
     databaseName,
     tableName,
@@ -391,10 +446,30 @@ export class Metadata {
       });
     }
 
-    const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
+    const mapColumns =
+      filterColumnMetaByType(columns, [JSDataType.Map, JSDataType.JSON]) ?? [];
 
     await Promise.all(
       mapColumns.map(async column => {
+        if (convertCHDataTypeToJSType(column.type) === JSDataType.JSON) {
+          const paths = await this.getJSONKeys({
+            databaseName,
+            tableName,
+            column: column.name,
+            connectionId,
+            metricName,
+          });
+
+          for (const path of paths) {
+            fields.push({
+              path: [column.name, path.key],
+              type: path.chType,
+              jsType: convertCHDataTypeToJSType(path.chType),
+            });
+          }
+          return;
+        }
+
         const keys = await this.getMapKeys({
           databaseName,
           tableName,

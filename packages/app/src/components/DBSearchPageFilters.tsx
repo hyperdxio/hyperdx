@@ -20,7 +20,11 @@ import {
 import { IconSearch } from '@tabler/icons-react';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  useAllFields,
+  useGetKeyValues,
+  useJsonColumns,
+} from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
@@ -406,6 +410,11 @@ const DBSearchPageFiltersComponent = ({
   const { data: countData } = useExplainQuery(chartConfig);
   const numRows: number = countData?.[0]?.rows ?? 0;
 
+  const { data: jsonColumns } = useJsonColumns({
+    databaseName: chartConfig.from.databaseName,
+    tableName: chartConfig.from.tableName,
+    connectionId: chartConfig.connection,
+  });
   const { data, isLoading } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -431,7 +440,7 @@ const DBSearchPageFiltersComponent = ({
         // todo: add number type with sliders :D
       )
       .map(({ path, type }) => {
-        return { type, path: mergePath(path) };
+        return { type, path: mergePath(path, jsonColumns ?? []) };
       })
       .filter(
         field =>
@@ -445,9 +454,8 @@ const DBSearchPageFiltersComponent = ({
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
-
     return strings;
-  }, [data, filterState, showMoreFields]);
+  }, [data, jsonColumns, filterState, showMoreFields]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
