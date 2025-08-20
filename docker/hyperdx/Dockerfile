@@ -76,6 +76,7 @@ COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one base ############################################################################################
+FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base 
 
 ARG CODE_VERSION
@@ -108,13 +109,14 @@ COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.ya
 COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
 COPY --from=otel-collector --chmod=755 ./log-rotator.sh /log-rotator.sh
 
-# Install MongoDB, gomplate and other dependencies (consolidated into a single RUN command)
+# Copy gomplate binary from the gomplate image
+COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
+
+# Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
   apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl ca-certificates && \
-  wget -O /usr/local/bin/gomplate https://github.com/hairyhenderson/gomplate/releases/download/v4.3.3/gomplate_linux-amd64 && \
-  chmod +x /usr/local/bin/gomplate && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
   mkdir -p /data/db && \
