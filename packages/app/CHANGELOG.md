@@ -1,5 +1,14 @@
 # @hyperdx/app
 
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- 5eeee5c: change app's docs links to ClickStack docs
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
 ## 2.2.0
 
 ### Minor Changes

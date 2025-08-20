@@ -8,8 +8,10 @@ FROM alpine:latest@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff45
 ARG USER_UID=10001
 ARG USER_GID=10001
 
-# Install certs, create user/group, and make the writable data dir
+# Install certs, gomplate for templating, create user/group, and make the writable data dir
 RUN apk add --no-cache ca-certificates && \
+  wget -O /usr/local/bin/gomplate https://github.com/hairyhenderson/gomplate/releases/download/v4.3.3/gomplate_linux-amd64 && \
+  chmod +x /usr/local/bin/gomplate && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
   install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data
@@ -27,7 +29,7 @@ COPY --chmod=755 ./log-rotator.sh /log-rotator.sh
 FROM base AS dev
 
 COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml /etc/otel/supervisor.yaml
+COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
@@ -38,7 +40,7 @@ CMD ["--config", "/etc/otel/supervisor.yaml"]
 FROM base AS prod
 
 COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml /etc/otel/supervisor.yaml
+COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
