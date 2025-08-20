@@ -16,6 +16,7 @@ export HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE="${HYPERDX_OTEL_EXPORTER_CLICKH
 export CLICKHOUSE_ENDPOINT="${CLICKHOUSE_ENDPOINT:-tcp://ch-server:9000?dial_timeout=10s}"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
+export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT:-ch-server:9363}"
 
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 # IS_LOCAL_APP_MODE should be set by the calling script
@@ -58,8 +59,8 @@ while ! curl -s "http://ch-server:8123" > /dev/null; do
 done
 echo "ClickHouse is ready!"
 
-# Start Otel Collector
-opampsupervisor --config /etc/otel/supervisor.yaml > /var/log/otel-collector.log 2>&1 &
+# Start Otel Collector with entrypoint script for template rendering and log rotation
+/otel-entrypoint.sh /usr/local/bin/opampsupervisor > /var/log/otel-collector.log 2>&1 &
 
 # Start HyperDX app
 npx concurrently \
