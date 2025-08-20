@@ -38,7 +38,7 @@ services:
       # OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
-      - ./docker/otel-collector/supervisor_docker.yaml:/etc/otel/supervisor.yaml
+      - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
       # Add a custom config file
       - ./docker/otel-collector/custom.config.yaml:/etc/otelcol-contrib/custom.config.yaml
     ports:
