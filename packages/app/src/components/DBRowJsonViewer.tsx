@@ -158,19 +158,9 @@ export function DBRowJsonViewer({
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
-      let fieldPath = mergePath(keyPath);
+      const fieldPath = mergePath(keyPath, jsonColumns);
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
-
-      if (isJsonColumn) {
-        fieldPath = keyPath.join('.');
-        if (keyPath.length > 1) {
-          fieldPath = `${keyPath[0]}.${keyPath
-            .slice(1)
-            .map(k => `\`${k}\``)
-            .join('.')}`;
-        }
-      }
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters

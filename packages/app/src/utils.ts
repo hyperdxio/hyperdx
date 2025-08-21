@@ -652,7 +652,14 @@ export const mergePath = (path: string[], jsonColumns: string[] = []) => {
     return key;
   }
   return jsonColumns.includes(key)
-    ? `${key}.${rest.join('.')}`
+    ? `${key}.${rest
+        .map(v =>
+          v
+            .split('.')
+            .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
+            .join('.'),
+        )
+        .join('.')}`
     : `${key}['${rest.join("']['")}']`;
 };
 

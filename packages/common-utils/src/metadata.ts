@@ -13,8 +13,6 @@ import {
 import { renderChartConfig } from '@/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
-import { escapeJSONKey } from './utils';
-
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
@@ -357,7 +355,10 @@ export class Metadata {
                 console.error(`Unknown key (${key}) and typeArr (${typeArr})`);
               }
               keys.push({
-                key: escapeJSONKey(key),
+                key: key
+                  .split('.')
+                  .map(v => `\`${v}\``)
+                  .join('.'),
                 chType: typeArr[0],
               });
             }
