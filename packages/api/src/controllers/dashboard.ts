@@ -1,5 +1,4 @@
 import {
-  AlertSource,
   DashboardWithoutIdSchema,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
