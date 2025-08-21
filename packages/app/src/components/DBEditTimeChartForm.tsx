@@ -308,7 +308,9 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.extend({
+      _id: z.string().optional(), // Allow MongoDB _id to be preserved
+    }).optional(),
   })
   .passthrough();
 
@@ -453,17 +455,9 @@ export default function EditTimeChartForm({
         v.select = '';
       }
 
-      // ✅ Preserve alert _id when saving to prevent delete/recreate
-      if (v.alert && chartConfig.alert && '_id' in chartConfig.alert) {
-        v.alert = {
-          ...v.alert,
-          _id: chartConfig.alert._id,
-        };
-      }
-
       onSave?.(v);
     },
-    [onSave, displayType, chartConfig.alert],
+    [onSave, displayType],
   );
 
   watch((_, { name, type }) => {
