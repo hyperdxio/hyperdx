@@ -605,7 +605,7 @@ router.put(
         translateExternalChartToInternalChart(tile),
       );
 
-      // Use updateDashboard to handle the update and all related data (like alerts)
+      // ✅ PUT: complete replacement, but external API works with charts, not tiles
       const updatedDashboard = await Dashboard.findOneAndUpdate(
         { _id: dashboardId, team: teamId },
         {
@@ -615,6 +615,138 @@ router.put(
             tags: tags && uniq(tags),
           },
         },
+        { new: true },
+      );
+
+      if (updatedDashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      res.json({
+        data: translateDashboardDocumentToExternalDashboard(updatedDashboard),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/dashboards/{id}:
+ *   patch:
+ *     summary: Partially Update Dashboard
+ *     description: Updates specific fields of an existing dashboard (partial update)
+ *     operationId: patchDashboard
+ *     tags: [Dashboards]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Dashboard ID
+ *         example: "65f5e4a3b9e77c001a567890"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PatchDashboardRequest'
+ *           examples:
+ *             updateName:
+ *               summary: Update only dashboard name
+ *               value:
+ *                 name: "Updated Dashboard Name"
+ *             updateTags:
+ *               summary: Update only tags
+ *               value:
+ *                 tags: ["production", "monitoring"]
+ *             updateSpecificTile:
+ *               summary: Update specific tiles
+ *               value:
+ *                 tiles:
+ *                   - id: "65f5e4a3b9e77c001a901234"
+ *                     name: "Updated Chart Name"
+ *                     x: 0
+ *                     y: 0
+ *                     w: 6
+ *                     h: 3
+ *                     asRatio: false
+ *                     series:
+ *                       - type: "time"
+ *                         dataSource: "events"
+ *                         aggFn: "count"
+ *                         where: "level:error"
+ *                         groupBy: []
+ *     responses:
+ *       '200':
+ *         description: Successfully updated dashboard
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DashboardResponse'
+ *       '400':
+ *         description: Bad request - at least one field must be provided
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "At least one field must be provided for PATCH"
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '404':
+ *         description: Dashboard not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    body: z
+      .object({
+        name: z.string().max(1024).optional(),
+        tiles: z.array(externalChartSchemaWithId).optional(),
+        tags: tagsSchema.optional(),
+      })
+      .refine(data => Object.keys(data).length > 0, {
+        message: 'At least one field must be provided for PATCH',
+      }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const { id: dashboardId } = req.params;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const { name, tiles, tags } = req.body ?? {};
+
+      // Build partial update object for MongoDB
+      const mongoUpdates: any = {};
+      if (name !== undefined) mongoUpdates.name = name;
+      if (tiles !== undefined) {
+        mongoUpdates.tiles = tiles.map(tile =>
+          translateExternalChartToInternalChart(tile),
+        );
+      }
+      if (tags !== undefined) mongoUpdates.tags = tags && uniq(tags);
+
+      // ✅ PATCH: partial update using MongoDB directly
+      const updatedDashboard = await Dashboard.findOneAndUpdate(
+        { _id: dashboardId, team: teamId },
+        { $set: mongoUpdates },
         { new: true },
       );
 

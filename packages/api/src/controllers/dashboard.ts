@@ -17,14 +17,7 @@ import Dashboard from '@/models/dashboard';
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
     if (tile.config.alert) {
-      // Include the alert _id if it exists to enable proper updates
-      acc[tile.id] = {
-        ...tile.config.alert,
-        // Preserve the MongoDB _id if it exists in the alert object
-        ...((tile.config.alert as any)._id && {
-          _id: (tile.config.alert as any)._id,
-        }),
-      };
+      acc[tile.id] = tile.config.alert;
     }
     return acc;
   }, {});
@@ -40,10 +33,21 @@ export async function getDashboards(teamId: ObjectId) {
     .map(d => d.toJSON())
     .map(d => ({
       ...d,
-      tiles: d.tiles.map(t => ({
-        ...t,
-        config: { ...t.config, alert: alerts[t.id]?.[0] },
-      })),
+      tiles: d.tiles.map(t => {
+        const alert = alerts[t.id]?.[0];
+        return {
+          ...t,
+          config: {
+            ...t.config,
+            alert: alert
+              ? {
+                  ...alert.toObject(),
+                  _id: alert._id, // Explicitly preserve the MongoDB _id
+                }
+              : undefined,
+          },
+        };
+      }),
     }));
 
   return dashboards;
@@ -57,10 +61,21 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
 
   return {
     ..._dashboard,
-    tiles: _dashboard?.tiles.map(t => ({
-      ...t,
-      config: { ...t.config, alert: alerts[t.id]?.[0] },
-    })),
+    tiles: _dashboard?.tiles.map(t => {
+      const alert = alerts[t.id]?.[0];
+      return {
+        ...t,
+        config: {
+          ...t.config,
+          alert: alert
+            ? {
+                ...alert.toObject(),
+                _id: alert._id, // Explicitly preserve the MongoDB _id
+              }
+            : undefined,
+        },
+      };
+    }),
   };
 }
 
@@ -106,25 +121,41 @@ export async function updateDashboard(
     throw new Error('Dashboard not found');
   }
 
+  // Prepare final update data based on operation type
+  const finalUpdates = options.isFullReplacement
+    ? {
+        // PUT: use provided data as-is (complete replacement)
+        ...updates,
+        tags: updates.tags && uniq(updates.tags),
+      }
+    : {
+        // PATCH: merge with existing data (partial update)
+        ...updates,
+        tags: updates.tags ? uniq(updates.tags) : undefined,
+      };
+
   const updatedDashboard = await Dashboard.findOneAndUpdate(
     {
       _id: dashboardId,
       team: teamId,
     },
-    {
-      ...updates,
-      tags: updates.tags && uniq(updates.tags),
-    },
+    options.isFullReplacement
+      ? finalUpdates // PUT: replace completely
+      : { $set: finalUpdates }, // PATCH: only set provided fields
     { new: true },
   );
+
   if (updatedDashboard == null) {
     throw new Error('Could not update dashboard');
   }
 
-  // Update related alerts
-  // - Delete
+  // Update related alerts - handle both PATCH and PUT scenarios
+  const tilesToProcess =
+    finalUpdates.tiles || (options.isFullReplacement ? [] : oldDashboard.tiles);
+
+  // - Delete alerts for removed tiles
   const newAlertIds = new Set(
-    updates.tiles
+    tilesToProcess
       ?.map(t => (t.config.alert as any)?._id?.toString())
       .filter(Boolean),
   );
@@ -143,12 +174,12 @@ export async function updateDashboard(
     }
   }
 
-  // - Update / Create
-  if (updates.tiles) {
+  // - Update / Create alerts for current tiles
+  if (tilesToProcess && tilesToProcess.length > 0) {
     await createOrUpdateDashboardAlerts(
       dashboardId,
       teamId,
-      pickAlertsByTile(updates.tiles),
+      pickAlertsByTile(tilesToProcess),
       userId,
     );
   }

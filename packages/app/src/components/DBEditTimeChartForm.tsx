@@ -452,9 +452,18 @@ export default function EditTimeChartForm({
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
       }
+
+      // ✅ Preserve alert _id when saving to prevent delete/recreate
+      if (v.alert && chartConfig.alert && '_id' in chartConfig.alert) {
+        v.alert = {
+          ...v.alert,
+          _id: chartConfig.alert._id,
+        };
+      }
+
       onSave?.(v);
     },
-    [onSave, displayType],
+    [onSave, displayType, chartConfig.alert],
   );
 
   watch((_, { name, type }) => {

@@ -257,6 +257,112 @@ describe('dashboard router', () => {
     expect(alerts.body.data[0].threshold).toBe(5);
   });
 
+  it('PATCH vs PUT: PATCH preserves unspecified fields, PUT replaces entire resource', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    // Create dashboard with alert
+    const originalDashboard = {
+      name: 'Original Dashboard',
+      tiles: [makeTile({ alert: MOCK_ALERT })],
+      tags: ['original', 'production'],
+    };
+
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(originalDashboard)
+      .expect(200);
+
+    // Test PATCH: partial update should preserve unspecified fields
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({ name: 'Patched Dashboard' }) // Only update name
+      .expect(200);
+
+    let updatedDashboard = await agent.get('/dashboards').expect(200);
+    const patchedDashboard = updatedDashboard.body.find(
+      d => d.id === dashboard.body.id,
+    );
+
+    expect(patchedDashboard.name).toBe('Patched Dashboard'); // ✅ Name updated
+    expect(patchedDashboard.tags).toEqual(['original', 'production']); // ✅ Tags preserved
+    expect(patchedDashboard.tiles).toHaveLength(1); // ✅ Tiles preserved
+    expect(patchedDashboard.tiles[0].config.alert).toBeDefined(); // ✅ Alert preserved
+
+    // Test PUT: complete replacement should replace entire resource
+    await agent
+      .put(`/dashboards/${dashboard.body.id}`)
+      .send({
+        name: 'Replaced Dashboard',
+        tiles: [makeTile()], // New tile without alert
+        tags: ['replaced'],
+      })
+      .expect(200);
+
+    updatedDashboard = await agent.get('/dashboards').expect(200);
+    const replacedDashboard = updatedDashboard.body.find(
+      d => d.id === dashboard.body.id,
+    );
+
+    expect(replacedDashboard.name).toBe('Replaced Dashboard'); // ✅ Name replaced
+    expect(replacedDashboard.tags).toEqual(['replaced']); // ✅ Tags replaced
+    expect(replacedDashboard.tiles).toHaveLength(1); // ✅ Tiles replaced
+    expect(replacedDashboard.tiles[0].config.alert).toBeUndefined(); // ✅ Alert removed
+
+    // Verify alert was properly deleted during PUT operation
+    const alerts = await agent.get('/alerts').expect(200);
+    expect(alerts.body.data).toHaveLength(0); // ✅ Original alert deleted
+  });
+
+  it('PATCH: alert updates preserve creator when using partial updates', async () => {
+    // User A creates dashboard with alert
+    const { agent: agentA, user: userA } = await getLoggedInAgent(server);
+    const dashboard = await agentA
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    // Verify alert creator
+    let alerts = await agentA.get('/alerts').expect(200);
+    expect(alerts.body.data[0].createdBy?.email).toBe(userA.email);
+    const originalAlertId = alerts.body.data[0]._id;
+
+    // User B uses PATCH to update only the tile alert threshold
+    const { agent: agentB, user: userB } = await getLoggedInAgent(server);
+    const dashboards = await agentB.get('/dashboards').expect(200);
+    const dashboardWithAlerts = dashboards.body.find(
+      d => d.id === dashboard.body.id,
+    );
+
+    const updatedTile = {
+      ...dashboardWithAlerts.tiles[0],
+      config: {
+        ...dashboardWithAlerts.tiles[0].config,
+        alert: {
+          ...dashboardWithAlerts.tiles[0].config.alert,
+          threshold: 5, // Change threshold from 1 to 5
+        },
+      },
+    };
+
+    await agentB
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        tiles: [updatedTile], // Only update tiles
+      })
+      .expect(200);
+
+    // Verify alert creator is preserved and alert is updated, not recreated
+    alerts = await agentB.get('/alerts').expect(200);
+    expect(alerts.body.data).toHaveLength(1);
+    expect(alerts.body.data[0].createdBy?.email).toBe(userA.email); // ✅ Creator preserved
+    expect(alerts.body.data[0]._id).toBe(originalAlertId); // ✅ Same alert (updated)
+    expect(alerts.body.data[0].threshold).toBe(5); // ✅ Threshold updated
+  });
+
   it('deletes attached alerts when deleting tiles', async () => {
     const { agent } = await getLoggedInAgent(server);
 

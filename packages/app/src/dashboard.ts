@@ -34,7 +34,23 @@ export function useUpdateDashboard() {
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
       await hdxServer(`dashboards/${dashboard.id}`, {
-        method: 'PATCH',
+        method: 'PATCH', // ✅ Correct for partial updates
+        json: dashboard,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+    },
+  });
+}
+
+export function useReplaceDashboard() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (dashboard: Dashboard) => {
+      await hdxServer(`dashboards/${dashboard.id}`, {
+        method: 'PUT', // ✅ Correct for complete replacement
         json: dashboard,
       });
     },

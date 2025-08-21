@@ -123,7 +123,9 @@ const api = {
         }).json(),
     });
   },
-  useUpdateDashboard() {
+  // Deprecated: Use useReplaceDashboard from dashboard.ts instead
+  // This hook is kept for backward compatibility but should be migrated
+  useReplaceDashboardLegacy() {
     return useMutation({
       mutationFn: async ({
         id,
@@ -139,7 +141,7 @@ const api = {
         tags: any;
       }) =>
         hdxServer(`dashboards/${id}`, {
-          method: 'PUT',
+          method: 'PUT', // ✅ Now clearly PUT for replacement
           json: { name, charts, query, tags },
         }).json(),
     });

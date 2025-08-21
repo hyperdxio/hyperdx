@@ -53,6 +53,7 @@ router.post(
   },
 );
 
+// PATCH: Partial update - only updates specified fields, preserves others
 router.patch(
   '/:id',
   validateRequest({
@@ -78,6 +79,41 @@ router.patch(
         dashboardId,
         teamId,
         updates,
+        userId,
+      );
+
+      res.json(updatedDashboard);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// PUT: Complete replacement - replaces entire resource with provided data
+router.put(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    body: DashboardWithoutIdSchema, // Complete dashboard required for PUT
+  }),
+  async (req, res, next) => {
+    try {
+      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { id: dashboardId } = req.params;
+
+      const dashboard = await getDashboard(dashboardId, teamId);
+
+      if (dashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      // PUT: Replace entire resource
+      const updatedDashboard = await updateDashboard(
+        dashboardId,
+        teamId,
+        req.body, // Complete replacement
         userId,
       );
 

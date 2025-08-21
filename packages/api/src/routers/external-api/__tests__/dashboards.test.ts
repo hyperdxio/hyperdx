@@ -374,6 +374,69 @@ describe('External API v2 Dashboards', () => {
     });
   });
 
+  describe('PATCH /:id', () => {
+    it('should partially update a dashboard (name only)', async () => {
+      const dashboard = await createTestDashboard();
+      const originalTileCount = dashboard.tiles.length;
+
+      const response = await authRequest(
+        'patch',
+        `${BASE_URL}/${dashboard._id}`,
+      )
+        .send({ name: 'Partially Updated Name' })
+        .expect(200);
+
+      expect(response.body.data).toMatchObject({
+        id: dashboard._id.toString(),
+        name: 'Partially Updated Name',
+      });
+
+      // Verify only name was updated, tiles preserved
+      const updatedDashboard = await Dashboard.findById(dashboard._id).lean();
+      expect(updatedDashboard?.name).toBe('Partially Updated Name');
+      expect(updatedDashboard?.tiles).toHaveLength(originalTileCount);
+    });
+
+    it('should partially update a dashboard (tags only)', async () => {
+      const dashboard = await createTestDashboard();
+      const originalName = dashboard.name;
+
+      const response = await authRequest(
+        'patch',
+        `${BASE_URL}/${dashboard._id}`,
+      )
+        .send({ tags: ['updated', 'test'] })
+        .expect(200);
+
+      expect(response.body.data).toMatchObject({
+        id: dashboard._id.toString(),
+        name: originalName, // Name should be preserved
+        tags: ['updated', 'test'],
+      });
+
+      // Verify in database
+      const updatedDashboard = await Dashboard.findById(dashboard._id).lean();
+      expect(updatedDashboard?.tags).toEqual(['updated', 'test']);
+      expect(updatedDashboard?.name).toBe(originalName);
+    });
+
+    it('should require at least one field for PATCH', async () => {
+      const dashboard = await createTestDashboard();
+
+      await authRequest('patch', `${BASE_URL}/${dashboard._id}`)
+        .send({}) // Empty body
+        .expect(400);
+    });
+
+    it('should return 404 when dashboard does not exist', async () => {
+      const nonExistentId = new ObjectId().toString();
+
+      await authRequest('patch', `${BASE_URL}/${nonExistentId}`)
+        .send({ name: 'Test' })
+        .expect(404);
+    });
+  });
+
   describe('DELETE /:id', () => {
     it('should delete a dashboard', async () => {
       const dashboard = await createTestDashboard();
