@@ -17,6 +17,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { IconSearch } from '@tabler/icons-react';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -415,11 +416,21 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
-  const { data, isLoading } = useAllFields({
+  const { data, isLoading, error } = useAllFields({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
+  useEffect(() => {
+    if (error) {
+      notifications.show({
+        color: 'red',
+        title: error?.name,
+        message: error?.message,
+        autoClose: 5000,
+      });
+    }
+  }, [error]);
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 
