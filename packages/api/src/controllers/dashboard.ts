@@ -33,21 +33,10 @@ export async function getDashboards(teamId: ObjectId) {
     .map(d => d.toJSON())
     .map(d => ({
       ...d,
-      tiles: d.tiles.map(t => {
-        const alert = alerts[t.id]?.[0];
-        return {
-          ...t,
-          config: {
-            ...t.config,
-            alert: alert
-              ? {
-                  ...alert.toObject(),
-                  _id: alert._id, // Explicitly preserve the MongoDB _id
-                }
-              : undefined,
-          },
-        };
-      }),
+      tiles: d.tiles.map(t => ({
+        ...t,
+        config: { ...t.config, alert: alerts[t.id]?.[0] },
+      })),
     }));
 
   return dashboards;
@@ -61,21 +50,10 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
 
   return {
     ..._dashboard,
-    tiles: _dashboard?.tiles.map(t => {
-      const alert = alerts[t.id]?.[0];
-      return {
-        ...t,
-        config: {
-          ...t.config,
-          alert: alert
-            ? {
-                ...alert.toObject(),
-                _id: alert._id, // Explicitly preserve the MongoDB _id
-              }
-            : undefined,
-        },
-      };
-    }),
+    tiles: _dashboard?.tiles.map(t => ({
+      ...t,
+      config: { ...t.config, alert: alerts[t.id]?.[0] },
+    })),
   };
 }
 
@@ -121,27 +99,15 @@ export async function updateDashboard(
     throw new Error('Dashboard not found');
   }
 
-  // Prepare final update data based on operation type
-  const finalUpdates = options.isFullReplacement
-    ? {
-        // PUT: use provided data as-is (complete replacement)
-        ...updates,
-        tags: updates.tags && uniq(updates.tags),
-      }
-    : {
-        // PATCH: merge with existing data (partial update)
-        ...updates,
-        tags: updates.tags ? uniq(updates.tags) : undefined,
-      };
-
   const updatedDashboard = await Dashboard.findOneAndUpdate(
     {
       _id: dashboardId,
       team: teamId,
     },
-    options.isFullReplacement
-      ? finalUpdates // PUT: replace completely
-      : { $set: finalUpdates }, // PATCH: only set provided fields
+    {
+      ...updates,
+      tags: updates.tags && uniq(updates.tags),
+    },
     { new: true },
   );
 
@@ -149,39 +115,17 @@ export async function updateDashboard(
     throw new Error('Could not update dashboard');
   }
 
-  // Update related alerts - handle both PATCH and PUT scenarios
-  const tilesToProcess =
-    finalUpdates.tiles || (options.isFullReplacement ? [] : oldDashboard.tiles);
-
-  // - Delete alerts for removed tiles
-  const newAlertIds = new Set(
-    tilesToProcess
-      ?.map(t => (t.config.alert as any)?._id?.toString())
-      .filter(Boolean),
-  );
-
-  const deletedAlertIds: string[] = [];
-  if (oldDashboard.tiles) {
-    for (const tile of oldDashboard.tiles) {
-      const alertId = (tile.config.alert as any)?._id?.toString();
-      if (alertId && !newAlertIds.has(alertId)) {
-        deletedAlertIds.push(alertId);
-      }
+  // Update related alerts only if tiles are being updated
+  if (updates.tiles) {
+    const alertsByTile = pickAlertsByTile(updates.tiles);
+    if (Object.keys(alertsByTile).length > 0) {
+      await createOrUpdateDashboardAlerts(
+        dashboardId,
+        teamId,
+        alertsByTile,
+        userId,
+      );
     }
-
-    if (deletedAlertIds.length > 0) {
-      await deleteDashboardAlerts(dashboardId, teamId, deletedAlertIds);
-    }
-  }
-
-  // - Update / Create alerts for current tiles
-  if (tilesToProcess && tilesToProcess.length > 0) {
-    await createOrUpdateDashboardAlerts(
-      dashboardId,
-      teamId,
-      pickAlertsByTile(tilesToProcess),
-      userId,
-    );
   }
 
   return updatedDashboard;

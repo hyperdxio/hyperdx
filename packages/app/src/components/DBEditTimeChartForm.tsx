@@ -308,9 +308,7 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.extend({
-      _id: z.string().optional(), // Allow MongoDB _id to be preserved
-    }).optional(),
+    alert: ChartAlertBaseSchema.optional(),
   })
   .passthrough();
 
