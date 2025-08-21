@@ -646,7 +646,7 @@ export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
 };
 
 // Date formatting
-export const mergePath = (path: string[], jsonColumns: string[]) => {
+export const mergePath = (path: string[], jsonColumns: string[] = []) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
