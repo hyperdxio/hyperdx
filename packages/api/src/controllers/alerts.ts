@@ -18,6 +18,7 @@ import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
+  _id?: string; // Include MongoDB ObjectId for updates
   source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;
@@ -153,17 +154,26 @@ export const createOrUpdateDashboardAlerts = async (
 ) => {
   return Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
-      const filter = {
-        dashboard: dashboardId,
-        tileId,
-        source: AlertSource.TILE,
-        team: teamId,
-      };
+      // If alert has an _id, it's an existing alert - use it in the filter
+      const filter = alert._id
+        ? {
+            _id: alert._id,
+            team: teamId,
+          }
+        : {
+            dashboard: dashboardId,
+            tileId,
+            source: AlertSource.TILE,
+            team: teamId,
+          };
+
       const oldAlert = await Alert.findOne(filter);
+
+      // Preserve createdBy when updating existing alerts
       const alertValues =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alert)
-          : makeAlert(alert, userId);
+          ? makeAlert(alert) // Don't pass userId to avoid overwriting createdBy
+          : makeAlert(alert, userId); // Only set createdBy for new alerts
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
         new: true,

@@ -17,7 +17,14 @@ import Dashboard from '@/models/dashboard';
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
     if (tile.config.alert) {
-      acc[tile.id] = tile.config.alert;
+      // Include the alert _id if it exists to enable proper updates
+      acc[tile.id] = {
+        ...tile.config.alert,
+        // Preserve the MongoDB _id if it exists in the alert object
+        ...((tile.config.alert as any)._id && {
+          _id: (tile.config.alert as any)._id,
+        }),
+      };
     }
     return acc;
   }, {});

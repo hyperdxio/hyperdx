@@ -192,6 +192,71 @@ describe('dashboard router', () => {
     ]);
   });
 
+  it('preserves alert creator when different user edits tile alert settings', async () => {
+    // This test reproduces the exact issue described in the ticket
+
+    // User A creates dashboard with alert
+    const { agent: agentA, user: userA } = await getLoggedInAgent(server);
+    const dashboard = await agentA
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    // Verify alert was created with User A as creator
+    let alerts = await agentA.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toHaveLength(1);
+    expect(alerts.body.data[0].createdBy?.email).toBe(userA.email);
+    const originalAlertId = alerts.body.data[0]._id;
+
+    // User B edits the alert threshold (simulating the bug scenario)
+    const { agent: agentB, user: userB } = await getLoggedInAgent(server);
+
+    // Get dashboard as User B would see it (with populated alert data including _id)
+    const dashboards = await agentB.get('/dashboards').expect(200);
+    const dashboardWithAlerts = dashboards.body.find(
+      d => d.id === dashboard.body.id,
+    );
+
+    const updatedAlert = {
+      ...dashboardWithAlerts.tiles[0].config.alert,
+      threshold: 5, // Change threshold from 1 to 5
+    };
+
+    await agentB
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboardWithAlerts,
+        tiles: [
+          {
+            ...dashboardWithAlerts.tiles[0],
+            config: {
+              ...dashboardWithAlerts.tiles[0].config,
+              alert: updatedAlert,
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    // Verify alert was updated, not recreated
+    alerts = await agentB.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toHaveLength(1);
+
+    // CRITICAL: Creator should still be User A, not User B
+    expect(alerts.body.data[0].createdBy?.email).toBe(userA.email);
+    expect(alerts.body.data[0].createdBy?.email).not.toBe(userB.email);
+
+    // Alert ID should be the same (updated, not recreated)
+    expect(alerts.body.data[0]._id).toBe(originalAlertId);
+
+    // Threshold should be updated
+    expect(alerts.body.data[0].threshold).toBe(5);
+  });
+
   it('deletes attached alerts when deleting tiles', async () => {
     const { agent } = await getLoggedInAgent(server);
 
