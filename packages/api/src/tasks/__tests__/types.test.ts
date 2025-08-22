@@ -14,7 +14,8 @@ describe('asTaskArgs', () => {
       provider: 'default',
     });
     expect(result.taskName).toBe('command');
-    expect(result.provider).toBe('default');
+    // For non-check-alerts tasks, we need to use type assertion to access provider
+    expect((result as any).provider).toBe('default');
   });
 
   it('should return valid TaskArgs when provider is undefined', () => {
@@ -29,18 +30,8 @@ describe('asTaskArgs', () => {
       provider: undefined,
     });
     expect(result.taskName).toBe('command');
-    expect(result.provider).toBeUndefined();
-  });
-
-  it('should throw error when provider is empty string', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: '',
-    };
-
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must contain valid characters',
-    );
+    // For non-check-alerts tasks, we need to use type assertion to access provider
+    expect((result as any).provider).toBeUndefined();
   });
 
   it('should throw error for null input', () => {
@@ -93,21 +84,6 @@ describe('asTaskArgs', () => {
     expect(() => asTaskArgs(invalidArgs)).toThrow(
       'Arguments must have a "_" property that is an array',
     );
-  });
-
-  it('should throw error when provider is not a string', () => {
-    const invalidProviders = [123, null, { name: 'default' }, ['default']];
-
-    invalidProviders.forEach(provider => {
-      const invalidArgs = {
-        _: ['command'],
-        provider,
-      };
-
-      expect(() => asTaskArgs(invalidArgs)).toThrow(
-        'Provider must be a string if provided',
-      );
-    });
   });
 
   it('should handle empty array for _ property', () => {
@@ -169,6 +145,11 @@ describe('asTaskArgs', () => {
       taskName: 'check-alerts',
       provider: 'default',
     });
+    expect(result.taskName).toBe('check-alerts');
+    // For check-alerts tasks, provider property is directly accessible
+    if (result.taskName === 'check-alerts') {
+      expect(result.provider).toBe('default');
+    }
   });
 
   it('should accept check-alerts task without provider', () => {
@@ -182,16 +163,25 @@ describe('asTaskArgs', () => {
       taskName: 'check-alerts',
       provider: undefined,
     });
+    expect(result.taskName).toBe('check-alerts');
+    // For check-alerts tasks, provider property is directly accessible
+    if (result.taskName === 'check-alerts') {
+      expect(result.provider).toBeUndefined();
+    }
   });
 
-  it('should throw error when provider is whitespace-only', () => {
-    const invalidArgs = {
-      _: ['command'],
-      provider: '   ',
+  it('should accept ping-pong task without provider', () => {
+    const validArgs = {
+      _: ['ping-pong'],
     };
 
-    expect(() => asTaskArgs(invalidArgs)).toThrow(
-      'Provider must contain valid characters',
-    );
+    const result = asTaskArgs(validArgs);
+
+    expect(result).toEqual({
+      taskName: 'ping-pong',
+    });
+    expect(result.taskName).toBe('ping-pong');
+    // Ping-pong tasks should not have a provider property
+    expect('provider' in result).toBe(false);
   });
 });

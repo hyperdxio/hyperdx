@@ -9,26 +9,27 @@ import PingPongTask from '@/tasks/pingPongTask';
 import { asTaskArgs, HdxTask, TaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
 
-function createTask(taskName: string): HdxTask {
+function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
+  const taskName = argv.taskName;
   switch (taskName) {
     case 'check-alerts':
-      return new CheckAlertTask();
+      return new CheckAlertTask(argv);
     case 'ping-pong':
-      return new PingPongTask();
+      return new PingPongTask(argv);
     default:
       throw new Error(`Unknown task name ${taskName}`);
   }
 }
 
 const main = async (argv: TaskArgs) => {
-  const taskName = argv.taskName;
-  const task: HdxTask = createTask(taskName);
+  // const taskName = argv.taskName;
+  const task: HdxTask<TaskArgs> = createTask(argv);
   try {
     const t0 = performance.now();
-    logger.info(`Task [${taskName}] started at ${new Date()}`);
-    await task.execute(argv);
+    logger.info(`Task [${task.name()}] started at ${new Date()}`);
+    await task.execute();
     logger.info(
-      `Task [${taskName}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
+      `Task [${task.name()}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
     );
   } finally {
     await task.asyncDispose();

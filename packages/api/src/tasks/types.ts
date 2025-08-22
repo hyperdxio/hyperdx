@@ -1,10 +1,13 @@
-import { ParsedArgs } from 'minimist';
-
 /**
  * Command line arguments structure for tasks.
  * Contains task name and optional provider configuration.
  */
-export type TaskArgs = { taskName: string; provider?: string };
+export type PingTaskArgs = { taskName: 'ping-pong' };
+export type CheckAlertsTaskArgs = {
+  taskName: 'check-alerts';
+  provider?: string;
+};
+export type TaskArgs = PingTaskArgs | CheckAlertsTaskArgs;
 
 /**
  * Validates and converts command line arguments to TaskArgs type.
@@ -33,44 +36,54 @@ export function asTaskArgs(argv: any): TaskArgs {
     throw new Error('All arguments in "_" array must be strings');
   }
 
-  if (argv.provider !== undefined && typeof argv.provider !== 'string') {
-    throw new Error('Provider must be a string if provided');
-  }
+  const taskName = argv._[0];
+  if (taskName === 'check-alerts') {
+    if (argv.provider !== undefined && typeof argv.provider !== 'string') {
+      throw new Error('Provider must be a string if provided');
+    }
 
-  // Provider is optional for check-alerts task, but if provided must be valid
-  if (
-    argv._[0] === 'check-alerts' &&
-    argv.provider !== undefined &&
-    argv.provider.trim() === ''
-  ) {
-    throw new Error('Provider must contain valid characters');
-  }
+    // Provider is optional for check-alerts task, but if provided must be valid
+    if (
+      argv._[0] === 'check-alerts' &&
+      argv.provider !== undefined &&
+      argv.provider.trim() === ''
+    ) {
+      throw new Error('Provider must contain valid characters');
+    }
 
-  // Provider must contain valid characters if provided (for non-check-alerts tasks)
-  if (argv.provider !== undefined && argv.provider.trim() === '') {
-    throw new Error('Provider must contain valid characters');
+    return {
+      taskName: 'check-alerts',
+      provider: argv.provider,
+    };
+  } else if (taskName === 'ping-pong') {
+    return {
+      taskName: 'ping-pong',
+    };
+  } else {
+    // For any other task names, create a generic structure without provider
+    return {
+      taskName,
+      provider: argv.provider,
+    } as TaskArgs;
   }
-
-  return {
-    taskName: argv._[0],
-    provider: argv.provider,
-  } as TaskArgs;
 }
 
 /**
  * Interface for HyperDX task implementations.
  * All tasks must implement execute and asyncDispose methods.
  */
-export interface HdxTask {
+export interface HdxTask<T extends TaskArgs> {
   /**
    * Executes the main task logic with validated arguments.
    * @param args - Validated command line arguments
    */
-  execute(args: TaskArgs): Promise<void>;
+  execute(): Promise<void>;
 
   /**
    * Performs cleanup operations when the task is finished.
    * Should dispose of any resources held by the task.
    */
   asyncDispose(): Promise<void>;
+
+  name(): string;
 }
