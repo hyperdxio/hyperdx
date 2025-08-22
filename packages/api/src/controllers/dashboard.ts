@@ -2,7 +2,7 @@ import {
   DashboardWithoutIdSchema,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
-import { uniq } from 'lodash';
+import { map, partition, uniq } from 'lodash';
 import { z } from 'zod';
 
 import {
@@ -32,15 +32,9 @@ function extractTileAlertData(tiles: TileForAlertSync[]): {
   tileIds: Set<string>;
   tileIdsWithAlerts: Set<string>;
 } {
-  const tileIds = new Set<string>();
-  const tileIdsWithAlerts = new Set<string>();
-
-  tiles.forEach(tile => {
-    tileIds.add(tile.id);
-    if (tile.config?.alert) {
-      tileIdsWithAlerts.add(tile.id);
-    }
-  });
+  const [tilesWithAlerts, _] = partition(tiles, 'config.alert');
+  const tileIds = new Set(map(tiles, 'id'));
+  const tileIdsWithAlerts = new Set(map(tilesWithAlerts, 'id'));
 
   return { tileIds, tileIdsWithAlerts };
 }
@@ -183,7 +177,7 @@ export async function updateDashboard(
     await syncDashboardAlerts(
       dashboardId,
       teamId,
-      oldDashboard.tiles || [],
+      oldDashboard?.tiles || [],
       updates.tiles,
       userId,
     );
