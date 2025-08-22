@@ -1,6 +1,7 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
+import pMap, { pMapSkip } from '@esm2cjs/p-map';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
@@ -10,8 +11,6 @@ import {
 import * as fns from 'date-fns';
 import { isString } from 'lodash';
 import ms from 'ms';
-// eslint-disable-next-line n/no-extraneous-import
-import pMap from 'p-map';
 import { serializeError } from 'serialize-error';
 
 import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
@@ -365,12 +364,15 @@ export const processAlert = async (
       error: serializeError(e),
     });
   }
+
+  return pMapSkip;
 };
 
 export const processAlertTask = async (
   now: Date,
   alertTask: AlertTask,
   alertProvider: AlertProvider,
+  concurrency?: number,
 ) => {
   const { alerts, conn } = alertTask;
   logger.info({
@@ -384,9 +386,13 @@ export const processAlertTask = async (
     password: conn.password,
   });
 
-  await pMap(alerts, alert =>
-    processAlert(now, alert, clickhouseClient, conn.id, alertProvider),
+  await pMap(
+    alerts,
+    alert => processAlert(now, alert, clickhouseClient, conn.id, alertProvider),
+    { stopOnError: false, ...(concurrency ? { concurrency } : null) },
   );
+
+  return pMapSkip;
 };
 
 // Re-export handleSendGenericWebhook for testing
@@ -414,9 +420,15 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       taskCount: alertTasks.length,
     });
 
-    for (const task of alertTasks) {
-      await processAlertTask(now, task, this.provider);
-    }
+    const concurrency = this.args.concurrency;
+    await pMap(
+      alertTasks,
+      task => processAlertTask(now, task, this.provider, concurrency),
+      {
+        stopOnError: false,
+        ...(concurrency ? { concurrency } : null),
+      },
+    );
   }
 
   name(): string {

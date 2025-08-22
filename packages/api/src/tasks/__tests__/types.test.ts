@@ -184,4 +184,236 @@ describe('asTaskArgs', () => {
     // Ping-pong tasks should not have a provider property
     expect('provider' in result).toBe(false);
   });
+
+  describe('concurrency parameter validation', () => {
+    it('should accept check-alerts task with valid concurrency', () => {
+      const validArgs = {
+        _: ['check-alerts'],
+        concurrency: 4,
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'check-alerts',
+        provider: undefined,
+        concurrency: 4,
+      });
+      expect(result.taskName).toBe('check-alerts');
+      if (result.taskName === 'check-alerts') {
+        expect(result.concurrency).toBe(4);
+      }
+    });
+
+    it('should accept check-alerts task with concurrency value of 1', () => {
+      const validArgs = {
+        _: ['check-alerts'],
+        concurrency: 1,
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'check-alerts',
+        provider: undefined,
+        concurrency: 1,
+      });
+      expect(result.taskName).toBe('check-alerts');
+      if (result.taskName === 'check-alerts') {
+        expect(result.concurrency).toBe(1);
+      }
+    });
+
+    it('should accept check-alerts task with large concurrency values', () => {
+      const validArgs = {
+        _: ['check-alerts'],
+        concurrency: 100,
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'check-alerts',
+        provider: undefined,
+        concurrency: 100,
+      });
+      expect(result.taskName).toBe('check-alerts');
+      if (result.taskName === 'check-alerts') {
+        expect(result.concurrency).toBe(100);
+      }
+    });
+
+    it('should accept check-alerts task without concurrency parameter', () => {
+      const validArgs = {
+        _: ['check-alerts'],
+        provider: 'default',
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'check-alerts',
+        provider: 'default',
+        concurrency: undefined,
+      });
+      expect(result.taskName).toBe('check-alerts');
+      if (result.taskName === 'check-alerts') {
+        expect(result.concurrency).toBeUndefined();
+      }
+    });
+
+    it('should throw error when concurrency is not a number', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: 'invalid',
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be a number if provided',
+      );
+    });
+
+    it('should throw error when concurrency is boolean', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: true,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be a number if provided',
+      );
+    });
+
+    it('should throw error when concurrency is null', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: null,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be a number if provided',
+      );
+    });
+
+    it('should throw error when concurrency is an object', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: { value: 4 },
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be a number if provided',
+      );
+    });
+
+    it('should throw error when concurrency is an array', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: [4],
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be a number if provided',
+      );
+    });
+
+    it('should throw error when concurrency is zero', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: 0,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency cannot be less than 1',
+      );
+    });
+
+    it('should throw error when concurrency is negative', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: -1,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency cannot be less than 1',
+      );
+    });
+
+    it('should throw error when concurrency is a negative decimal', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: -0.5,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be an integer if provided',
+      );
+    });
+
+    it('should throw error when concurrency is a positive decimal', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: 2.5,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be an integer if provided',
+      );
+    });
+
+    it('should throw error when concurrency is a small decimal', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: 1.1,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be an integer if provided',
+      );
+    });
+
+    it('should throw error when concurrency is a large decimal', () => {
+      const invalidArgs = {
+        _: ['check-alerts'],
+        concurrency: 100.999,
+      };
+
+      expect(() => asTaskArgs(invalidArgs)).toThrow(
+        'Concurrency must be an integer if provided',
+      );
+    });
+
+    it('should ignore concurrency parameter for non-check-alerts tasks', () => {
+      const validArgs = {
+        _: ['ping-pong'],
+        concurrency: 4,
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'ping-pong',
+      });
+      expect(result.taskName).toBe('ping-pong');
+      // Ping-pong tasks should not have a concurrency property
+      expect('concurrency' in result).toBe(false);
+    });
+
+    it('should ignore concurrency parameter for unknown task types', () => {
+      const validArgs = {
+        _: ['unknown-task'],
+        concurrency: 4,
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'unknown-task',
+        provider: undefined,
+      });
+      expect(result.taskName).toBe('unknown-task');
+      // Unknown task types should not process concurrency parameter
+      expect('concurrency' in result).toBe(false);
+    });
+  });
 });

@@ -5,7 +5,13 @@
 export type PingTaskArgs = { taskName: 'ping-pong' };
 export type CheckAlertsTaskArgs = {
   taskName: 'check-alerts';
+  // name of the provider module to use for fetching alert task data. If not defined,
+  // the default provider will be used.
   provider?: string;
+  // limits number of concurrent tasks processed, should be the square of the
+  // desired number of concurrent tasks (e.g. 4 would mean allow 16 concurrent tasks).
+  // If omitted, there is no concurrency limit. Must be an integer greater than 0.
+  concurrency?: number;
 };
 export type TaskArgs = PingTaskArgs | CheckAlertsTaskArgs;
 
@@ -38,22 +44,35 @@ export function asTaskArgs(argv: any): TaskArgs {
 
   const taskName = argv._[0];
   if (taskName === 'check-alerts') {
-    if (argv.provider !== undefined && typeof argv.provider !== 'string') {
-      throw new Error('Provider must be a string if provided');
+    const { provider, concurrency } = argv;
+    if (provider) {
+      if (typeof provider !== 'string') {
+        throw new Error('Provider must be a string if provided');
+      }
+
+      if (provider.trim() === '') {
+        throw new Error('Provider must contain valid characters');
+      }
     }
 
-    // Provider is optional for check-alerts task, but if provided must be valid
-    if (
-      argv._[0] === 'check-alerts' &&
-      argv.provider !== undefined &&
-      argv.provider.trim() === ''
-    ) {
-      throw new Error('Provider must contain valid characters');
+    if (concurrency !== undefined) {
+      if (typeof concurrency !== 'number') {
+        throw new Error('Concurrency must be a number if provided');
+      }
+
+      if (!Number.isInteger(concurrency)) {
+        throw new Error('Concurrency must be an integer if provided');
+      }
+
+      if (concurrency < 1) {
+        throw new Error('Concurrency cannot be less than 1');
+      }
     }
 
     return {
       taskName: 'check-alerts',
-      provider: argv.provider,
+      provider: provider,
+      concurrency: concurrency,
     };
   } else if (taskName === 'ping-pong') {
     return {
