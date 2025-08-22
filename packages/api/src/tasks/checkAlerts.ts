@@ -1,6 +1,7 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
+import pMap from '@esm2cjs/p-map';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
@@ -10,6 +11,8 @@ import {
 import * as fns from 'date-fns';
 import { isString } from 'lodash';
 import ms from 'ms';
+// eslint-disable-next-line n/no-extraneous-import
+import pMap from 'p-map';
 import { serializeError } from 'serialize-error';
 
 import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
@@ -382,11 +385,9 @@ export const processAlertTask = async (
     password: conn.password,
   });
 
-  const p: Promise<void>[] = [];
-  for (const alert of alerts) {
-    p.push(processAlert(now, alert, clickhouseClient, conn.id, alertProvider));
-  }
-  await Promise.all(p);
+  await pMap(alerts, alert =>
+    processAlert(now, alert, clickhouseClient, conn.id, alertProvider),
+  );
 };
 
 // Re-export handleSendGenericWebhook for testing
