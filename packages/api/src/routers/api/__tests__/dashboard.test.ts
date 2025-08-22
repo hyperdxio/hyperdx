@@ -153,6 +153,38 @@ describe('dashboard router', () => {
     expect(alerts.body.data).toEqual([]);
   });
 
+  it('alerts are deleted when removing alert from tile (keeping tile)', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    // Remove alert from tile but keep the tile
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: undefined, // Remove the alert
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const alerts = await agent.get(`/alerts`).expect(200);
+    expect(alerts.body.data).toEqual([]);
+  });
+
   it('alerts are updated when updating dashboard (updating tile alert settings)', async () => {
     const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
