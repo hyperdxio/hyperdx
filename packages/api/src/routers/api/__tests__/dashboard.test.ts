@@ -1,12 +1,14 @@
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
+import mongoose from 'mongoose';
 
 import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
   makeTile,
-} from '@/fixtures';
+} from '../../../fixtures';
+import Alert from '../../../models/alert';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',
@@ -249,5 +251,80 @@ describe('dashboard router', () => {
       .map(alert => alert.tileId)
       .sort();
     expect(allTilesPostDelete).toEqual(alertsPostDeleteTiles);
+  });
+
+  it('preserves alert creator when different user updates dashboard', async () => {
+    const { agent, user: currentUser } = await getLoggedInAgent(server);
+
+    // Arrange: Create dashboard with alert
+    const dashboardResponse = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: MOCK_ALERT })],
+        tags: [],
+      })
+      .expect(200);
+
+    const dashboard = dashboardResponse.body;
+    const tileId = dashboard.tiles[0].id;
+
+    // Setup: Simulate alert created by different user
+    const originalAlert = await Alert.findOne({ tileId });
+
+    if (!originalAlert) {
+      throw new Error('Original alert not found');
+    }
+
+    // Set the original creator to a different user
+    const originalCreatorId = new mongoose.Types.ObjectId();
+    originalAlert.createdBy = originalCreatorId;
+    await originalAlert.save({ validateBeforeSave: false });
+
+    // Act: Current user updates the dashboard (modifies alert threshold)
+    const updatedThreshold = 5;
+    const updatedAlert = {
+      ...MOCK_ALERT,
+      threshold: updatedThreshold,
+    };
+
+    await agent
+      .patch(`/dashboards/${dashboard.id}`)
+      .send({
+        ...dashboard,
+        tiles: [
+          {
+            ...dashboard.tiles[0],
+            config: {
+              ...dashboard.tiles[0].config,
+              alert: updatedAlert,
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    // Assert: Verify alert preserves original creator and updates threshold
+    const updatedAlertRecord = await Alert.findOne({ tileId });
+    expect(updatedAlertRecord).toBeTruthy();
+
+    if (!updatedAlertRecord) {
+      throw new Error('Updated alert record not found');
+    }
+
+    // Alert should preserve original creator
+    if (!updatedAlertRecord.createdBy) {
+      throw new Error('Updated alert record has no creator');
+    }
+
+    expect(updatedAlertRecord.createdBy.toString()).toBe(
+      originalCreatorId.toString(),
+    );
+    expect(updatedAlertRecord.createdBy.toString()).not.toBe(
+      currentUser._id.toString(),
+    );
+
+    // Alert should have updated threshold
+    expect(updatedAlertRecord.threshold).toBe(updatedThreshold);
   });
 });
