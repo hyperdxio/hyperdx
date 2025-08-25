@@ -14,7 +14,7 @@ import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getClickhouseClient } from '@/clickhouse';
+import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { getMetadata } from '@/metadata';
@@ -29,7 +29,7 @@ export function useQueriedChartConfig(
   options?: Partial<UseQueryOptions<ResponseJSON<any>>> &
     AdditionalUseQueriedChartConfigOptions,
 ) {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   const query = useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
     queryKey: [config],
     queryFn: async ({ signal }) => {
