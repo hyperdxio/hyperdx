@@ -1,5 +1,11 @@
 # @hyperdx/api
 
+## 2.2.3
+
+### Patch Changes
+
+- bb2221a1: fix: Keep "created by" field unchanged during alert updates in dashboards
+
 ## 2.2.2
 
 ### Patch Changes
