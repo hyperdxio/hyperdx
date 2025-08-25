@@ -1,5 +1,14 @@
 # @hyperdx/app
 
+## 2.2.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- Updated dependencies [56fd856d]
+- Updated dependencies [0f242558]
+  - @hyperdx/common-utils@0.3.2
+
 ## 2.2.1
 
 ### Patch Changes
