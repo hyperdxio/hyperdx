@@ -2,7 +2,7 @@ import {
   DashboardWithoutIdSchema,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
-import { uniq } from 'lodash';
+import { map, partition, uniq } from 'lodash';
 import { z } from 'zod';
 
 import {
@@ -12,6 +12,7 @@ import {
   getTeamDashboardAlertsByTile,
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
+import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 
 function pickAlertsByTile(tiles: Tile[]) {
@@ -21,6 +22,64 @@ function pickAlertsByTile(tiles: Tile[]) {
     }
     return acc;
   }, {});
+}
+
+type TileForAlertSync = Pick<Tile, 'id'> & {
+  config?: Pick<Tile['config'], 'alert'> | { alert?: IAlert | AlertDocument };
+};
+
+function extractTileAlertData(tiles: TileForAlertSync[]): {
+  tileIds: Set<string>;
+  tileIdsWithAlerts: Set<string>;
+} {
+  const [tilesWithAlerts, _] = partition(tiles, 'config.alert');
+  const tileIds = new Set(map(tiles, 'id'));
+  const tileIdsWithAlerts = new Set(map(tilesWithAlerts, 'id'));
+
+  return { tileIds, tileIdsWithAlerts };
+}
+
+async function syncDashboardAlerts(
+  dashboardId: string,
+  teamId: ObjectId,
+  oldTiles: TileForAlertSync[],
+  newTiles: Tile[],
+  userId?: ObjectId,
+): Promise<void> {
+  const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
+    extractTileAlertData(oldTiles);
+  const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
+    extractTileAlertData(newTiles);
+
+  // 1. Create/update alerts for tiles that have alerts
+  const alertsByTile = pickAlertsByTile(newTiles);
+  if (Object.keys(alertsByTile).length > 0) {
+    await createOrUpdateDashboardAlerts(
+      dashboardId,
+      teamId,
+      alertsByTile,
+      userId,
+    );
+  }
+
+  // 2. Identify tiles whose alerts need to be deleted
+  const tilesToDeleteAlertsFrom = new Set([
+    // Tiles that were completely removed
+    ...Array.from(oldTileIds).filter(id => !newTileIds.has(id)),
+    // Tiles that exist but no longer have alerts
+    ...Array.from(oldTileIdsWithAlerts).filter(
+      id => newTileIds.has(id) && !newTileIdsWithAlerts.has(id),
+    ),
+  ]);
+
+  // 3. Delete alerts
+  if (tilesToDeleteAlertsFrom.size > 0) {
+    await deleteDashboardAlerts(
+      dashboardId,
+      teamId,
+      Array.from(tilesToDeleteAlertsFrom),
+    );
+  }
 }
 
 export async function getDashboards(teamId: ObjectId) {
@@ -114,34 +173,12 @@ export async function updateDashboard(
     throw new Error('Could not update dashboard');
   }
 
-  // Update related alerts
-  // - Delete
-  const newAlertIds = new Set(
-    updates.tiles
-      ?.map(t => (t.config.alert as any)?._id?.toString())
-      .filter(Boolean),
-  );
-
-  const deletedAlertIds: string[] = [];
-  if (oldDashboard.tiles) {
-    for (const tile of oldDashboard.tiles) {
-      const alertId = (tile.config.alert as any)?._id?.toString();
-      if (alertId && !newAlertIds.has(alertId)) {
-        deletedAlertIds.push(alertId);
-      }
-    }
-
-    if (deletedAlertIds.length > 0) {
-      await deleteDashboardAlerts(dashboardId, teamId, deletedAlertIds);
-    }
-  }
-
-  // - Update / Create
   if (updates.tiles) {
-    await createOrUpdateDashboardAlerts(
+    await syncDashboardAlerts(
       dashboardId,
       teamId,
-      pickAlertsByTile(updates.tiles),
+      oldDashboard?.tiles || [],
+      updates.tiles,
       userId,
     );
   }
