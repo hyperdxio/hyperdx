@@ -17,10 +17,15 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { IconSearch } from '@tabler/icons-react';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  useAllFields,
+  useGetKeyValues,
+  useJsonColumns,
+} from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
@@ -406,11 +411,26 @@ const DBSearchPageFiltersComponent = ({
   const { data: countData } = useExplainQuery(chartConfig);
   const numRows: number = countData?.[0]?.rows ?? 0;
 
-  const { data, isLoading } = useAllFields({
+  const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
+  const { data, isLoading, error } = useAllFields({
+    databaseName: chartConfig.from.databaseName,
+    tableName: chartConfig.from.tableName,
+    connectionId: chartConfig.connection,
+  });
+  useEffect(() => {
+    if (error) {
+      notifications.show({
+        color: 'red',
+        title: error?.name,
+        message: error?.message,
+        autoClose: 5000,
+      });
+    }
+  }, [error]);
 
   const [showMoreFields, setShowMoreFields] = useState(false);
 
@@ -431,7 +451,7 @@ const DBSearchPageFiltersComponent = ({
         // todo: add number type with sliders :D
       )
       .map(({ path, type }) => {
-        return { type, path: mergePath(path) };
+        return { type, path: mergePath(path, jsonColumns ?? []) };
       })
       .filter(
         field =>
@@ -445,9 +465,8 @@ const DBSearchPageFiltersComponent = ({
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
-
     return strings;
-  }, [data, filterState, showMoreFields]);
+  }, [data, jsonColumns, filterState, showMoreFields]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
