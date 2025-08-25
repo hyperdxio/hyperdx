@@ -388,6 +388,13 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       alertCount: alerts.length,
     });
 
+    if (!conn.password) {
+      const className = this.provider.constructor.name;
+      throw new Error(
+        `provider ${className} did not fetch password for connection ${conn.id}`,
+      );
+    }
+
     const clickhouseClient = new clickhouse.ClickhouseClient({
       host: conn.host,
       username: conn.username,
