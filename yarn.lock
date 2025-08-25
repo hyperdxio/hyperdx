@@ -4302,45 +4302,20 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@esm2cjs/aggregate-error@npm:^4.0.0":
-  version: 4.0.1
-  resolution: "@esm2cjs/aggregate-error@npm:4.0.1"
+"@esm2cjs/p-queue@npm:^7.3.0":
+  version: 7.3.0
+  resolution: "@esm2cjs/p-queue@npm:7.3.0"
   dependencies:
-    "@esm2cjs/clean-stack": "npm:^4.0.0"
-    "@esm2cjs/indent-string": "npm:^5.0.0"
-  checksum: 10c0/449e0db63c91e870d8fe8125a4f2957ee71227904349ccb4407febac63d378f79e72a08fa424f721357515ffd17417eee3cb1c2d28d179abe57f0e1b71c274b1
+    "@esm2cjs/p-timeout": "npm:^5.0.2"
+    eventemitter3: "npm:^4.0.7"
+  checksum: 10c0/95ee99d71781d02a8b264be893aa3c6a0292123de3e52a7fc80ccdfd4f426f3e7d93862c2f386e1ef266a6c61d29c921fb5343cccabbf2ecbf88888a6278a592
   languageName: node
   linkType: hard
 
-"@esm2cjs/clean-stack@npm:^4.0.0":
-  version: 4.2.0
-  resolution: "@esm2cjs/clean-stack@npm:4.2.0"
-  dependencies:
-    "@esm2cjs/escape-string-regexp": "npm:5.0.0"
-  checksum: 10c0/16ce7cd1a8bd6d6dc0a55a8ec5e14f874960c05d887e9bc466b19b12649f9b0014d6d49c046010899c6602b1dcfc13fcacf83bedc1f8acec93d4adb5079d2114
-  languageName: node
-  linkType: hard
-
-"@esm2cjs/escape-string-regexp@npm:5.0.0":
-  version: 5.0.0
-  resolution: "@esm2cjs/escape-string-regexp@npm:5.0.0"
-  checksum: 10c0/161bfacbb74946b478c89e983fd80c74fffdc263b11111636b740b4fcec551d827bfcc4f6c6bb4b8d8907fb4835d5a8987cc8e8077b5f6866396c4dc09ac8209
-  languageName: node
-  linkType: hard
-
-"@esm2cjs/indent-string@npm:^5.0.0":
-  version: 5.0.0
-  resolution: "@esm2cjs/indent-string@npm:5.0.0"
-  checksum: 10c0/f85de690549882687e1e92567f5161a4e61e9ac5dddf65ae113f006af749ca2600a4955ef1754dc36e71b318ddb82bd7a56aed30718bbe0767238b47ef99d11f
-  languageName: node
-  linkType: hard
-
-"@esm2cjs/p-map@npm:^5.5.0":
-  version: 5.5.0
-  resolution: "@esm2cjs/p-map@npm:5.5.0"
-  dependencies:
-    "@esm2cjs/aggregate-error": "npm:^4.0.0"
-  checksum: 10c0/f5fb0f3f1d54e0964a9f7705c6fe6a990b50a7a413dbeec1878f6059db1d6199ce75facfe3fde22550c3ec8a6fdf2b18d8cd5a3efce98abe82c79a6576ec95b3
+"@esm2cjs/p-timeout@npm:^5.0.2":
+  version: 5.1.0
+  resolution: "@esm2cjs/p-timeout@npm:5.1.0"
+  checksum: 10c0/55019425b87a2c0ac1aca16107facedef256f0fcb4e845a3e79d971aa23d019e8db38a342ada82a6c1520c63b00f178ade8c1f113bfd2592bd3b93cbe6c20961
   languageName: node
   linkType: hard
 
@@ -4514,7 +4489,7 @@ __metadata:
   resolution: "@hyperdx/api@workspace:packages/api"
   dependencies:
     "@clickhouse/client": "npm:^0.2.10"
-    "@esm2cjs/p-map": "npm:^5.5.0"
+    "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.3.2"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@hyperdx/node-opentelemetry": "npm:^0.8.2"
@@ -16296,7 +16271,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eventemitter3@npm:^4.0.0, eventemitter3@npm:^4.0.1":
+"eventemitter3@npm:^4.0.0, eventemitter3@npm:^4.0.1, eventemitter3@npm:^4.0.7":
   version: 4.0.7
   resolution: "eventemitter3@npm:4.0.7"
   checksum: 10c0/5f6d97cbcbac47be798e6355e3a7639a84ee1f7d9b199a07017f1d2f1e2fe236004d14fa5dfaeba661f94ea57805385e326236a6debbc7145c8877fbc0297c6b

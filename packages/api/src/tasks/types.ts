@@ -8,9 +8,8 @@ export type CheckAlertsTaskArgs = {
   // name of the provider module to use for fetching alert task data. If not defined,
   // the default provider will be used.
   provider?: string;
-  // limits number of concurrent tasks processed, should be the square of the
-  // desired number of concurrent tasks (e.g. 4 would mean allow 16 concurrent tasks).
-  // If omitted, there is no concurrency limit. Must be an integer greater than 0.
+  // Limits number of concurrent tasks processed. If omitted, there is no concurrency
+  // limit. Must be an integer greater than 0.
   concurrency?: number;
 };
 export type TaskArgs = PingTaskArgs | CheckAlertsTaskArgs;

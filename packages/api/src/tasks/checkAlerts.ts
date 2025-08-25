@@ -1,7 +1,7 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
-import pMap, { pMapSkip } from '@esm2cjs/p-map';
+import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
@@ -364,35 +364,6 @@ export const processAlert = async (
       error: serializeError(e),
     });
   }
-
-  return pMapSkip;
-};
-
-export const processAlertTask = async (
-  now: Date,
-  alertTask: AlertTask,
-  alertProvider: AlertProvider,
-  concurrency?: number,
-) => {
-  const { alerts, conn } = alertTask;
-  logger.info({
-    message: 'Processing alerts in batch',
-    alertCount: alerts.length,
-  });
-
-  const clickhouseClient = new clickhouse.ClickhouseClient({
-    host: conn.host,
-    username: conn.username,
-    password: conn.password,
-  });
-
-  await pMap(
-    alerts,
-    alert => processAlert(now, alert, clickhouseClient, conn.id, alertProvider),
-    { stopOnError: false, ...(concurrency ? { concurrency } : null) },
-  );
-
-  return pMapSkip;
 };
 
 // Re-export handleSendGenericWebhook for testing
@@ -400,8 +371,35 @@ export { handleSendGenericWebhook };
 
 export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
   private provider!: AlertProvider;
+  private task_queue: PQueue;
 
-  constructor(private args: CheckAlertsTaskArgs) {}
+  constructor(private args: CheckAlertsTaskArgs) {
+    const concurrency = this.args.concurrency;
+    this.task_queue = new PQueue({
+      autoStart: true,
+      ...(concurrency ? { concurrency } : null),
+    });
+  }
+
+  async processAlertTask(now: Date, alertTask: AlertTask) {
+    const { alerts, conn } = alertTask;
+    logger.info({
+      message: 'Processing alerts in batch',
+      alertCount: alerts.length,
+    });
+
+    const clickhouseClient = new clickhouse.ClickhouseClient({
+      host: conn.host,
+      username: conn.username,
+      password: conn.password,
+    });
+
+    for (const alert of alerts) {
+      await this.task_queue.add(() =>
+        processAlert(now, alert, clickhouseClient, conn.id, this.provider),
+      );
+    }
+  }
 
   async execute(): Promise<void> {
     if (this.args.taskName !== 'check-alerts') {
@@ -420,15 +418,11 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       taskCount: alertTasks.length,
     });
 
-    const concurrency = this.args.concurrency;
-    await pMap(
-      alertTasks,
-      task => processAlertTask(now, task, this.provider, concurrency),
-      {
-        stopOnError: false,
-        ...(concurrency ? { concurrency } : null),
-      },
-    );
+    for (const task of alertTasks) {
+      await this.task_queue.add(() => this.processAlertTask(now, task));
+    }
+
+    await this.task_queue.onIdle();
   }
 
   name(): string {
