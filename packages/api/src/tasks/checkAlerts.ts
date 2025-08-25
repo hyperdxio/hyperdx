@@ -1,6 +1,7 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
+import pMap, { pMapSkip } from '@esm2cjs/p-map';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
@@ -30,7 +31,7 @@ import {
   handleSendGenericWebhook,
   renderAlertTemplate,
 } from '@/tasks/template';
-import { HdxTask, TaskArgs } from '@/tasks/types';
+import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
 import logger from '@/utils/logger';
 
@@ -363,12 +364,15 @@ export const processAlert = async (
       error: serializeError(e),
     });
   }
+
+  return pMapSkip;
 };
 
 export const processAlertTask = async (
   now: Date,
   alertTask: AlertTask,
   alertProvider: AlertProvider,
+  concurrency?: number,
 ) => {
   const { alerts, conn } = alertTask;
   logger.info({
@@ -382,21 +386,31 @@ export const processAlertTask = async (
     password: conn.password,
   });
 
-  const p: Promise<void>[] = [];
-  for (const alert of alerts) {
-    p.push(processAlert(now, alert, clickhouseClient, conn.id, alertProvider));
-  }
-  await Promise.all(p);
+  await pMap(
+    alerts,
+    alert => processAlert(now, alert, clickhouseClient, conn.id, alertProvider),
+    { stopOnError: false, ...(concurrency ? { concurrency } : null) },
+  );
+
+  return pMapSkip;
 };
 
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
-export default class CheckAlertTask implements HdxTask {
+export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
   private provider!: AlertProvider;
 
-  async execute(args: TaskArgs): Promise<void> {
-    this.provider = await loadProvider(args.provider);
+  constructor(private args: CheckAlertsTaskArgs) {}
+
+  async execute(): Promise<void> {
+    if (this.args.taskName !== 'check-alerts') {
+      throw new Error(
+        `CheckAlertTask can only handle 'check-alerts' tasks, received: ${this.args.taskName}`,
+      );
+    }
+
+    this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
 
     const now = new Date();
@@ -406,9 +420,19 @@ export default class CheckAlertTask implements HdxTask {
       taskCount: alertTasks.length,
     });
 
-    for (const task of alertTasks) {
-      await processAlertTask(now, task, this.provider);
-    }
+    const concurrency = this.args.concurrency;
+    await pMap(
+      alertTasks,
+      task => processAlertTask(now, task, this.provider, concurrency),
+      {
+        stopOnError: false,
+        ...(concurrency ? { concurrency } : null),
+      },
+    );
+  }
+
+  name(): string {
+    return this.args.taskName;
   }
 
   async asyncDispose(): Promise<void> {
