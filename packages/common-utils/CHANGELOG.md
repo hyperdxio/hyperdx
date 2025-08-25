@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.3.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- 0f242558: fix: Compatibilty with lowercase text skip index
+
 ## 0.3.1
 
 ### Patch Changes
