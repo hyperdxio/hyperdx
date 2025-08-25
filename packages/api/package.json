@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "license": "MIT",
   "private": true,
   "engines": {
