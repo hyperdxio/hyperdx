@@ -585,6 +585,130 @@ describe('DefaultAlertProvider', () => {
       const result = await provider.getAlertTasks();
       expect(result).toEqual([]);
     });
+
+    it('should include password field in connection for saved search alerts', async () => {
+      const team = await createTeam({ name: 'Test Team' });
+
+      // Create connection with specific password
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Test Connection',
+        host: 'http://localhost:8123',
+        username: 'test',
+        password: 'secret-password-123',
+      });
+
+      // Create source
+      const source = await Source.create({
+        team: team._id,
+        name: 'Test Source',
+        kind: 'log',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        timestampValueExpression: 'timestamp',
+        connection: connection._id,
+      });
+
+      // Create saved search
+      const savedSearch = await SavedSearch.create({
+        team: team._id,
+        name: 'Test Search',
+        select: 'message',
+        where: 'level: error',
+        whereLanguage: 'lucene',
+        orderBy: 'timestamp',
+        source: source._id,
+        tags: [],
+      });
+
+      // Create alert
+      await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          interval: '5m',
+          channel: {
+            type: 'webhook',
+            webhookId: new mongoose.Types.ObjectId().toString(),
+          },
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      const result = await provider.getAlertTasks();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].conn.password).toBe('secret-password-123');
+      expect(result[0].conn.username).toBe('test');
+      expect(result[0].conn.host).toBe('http://localhost:8123');
+    });
+
+    it('should include password field in connection for tile alerts', async () => {
+      const team = await createTeam({ name: 'Test Team' });
+
+      // Create connection with specific password
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Test Connection',
+        host: 'http://localhost:8124',
+        username: 'tile-user',
+        password: 'tile-secret-password-456',
+      });
+
+      // Create source
+      const source = await Source.create({
+        team: team._id,
+        name: 'Test Source',
+        kind: 'log',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        timestampValueExpression: 'timestamp',
+        connection: connection._id,
+      });
+
+      // Create tile with source
+      const tile = makeTile({ id: 'test-tile-123' });
+      tile.config.source = source._id.toString();
+
+      // Create dashboard
+      const dashboard = await Dashboard.create({
+        team: team._id,
+        name: 'Test Dashboard',
+        tiles: [tile],
+      });
+
+      // Create alert
+      await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          dashboardId: dashboard._id.toString(),
+          tileId: tile.id,
+          threshold: 10,
+          thresholdType: AlertThresholdType.ABOVE,
+          interval: '5m',
+          channel: {
+            type: 'webhook',
+            webhookId: new mongoose.Types.ObjectId().toString(),
+          },
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      const result = await provider.getAlertTasks();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].conn.password).toBe('tile-secret-password-456');
+      expect(result[0].conn.username).toBe('tile-user');
+      expect(result[0].conn.host).toBe('http://localhost:8124');
+    });
   });
 
   describe('buildLogSearchLink', () => {
