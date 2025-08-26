@@ -1,5 +1,48 @@
 # @hyperdx/api
 
+## 2.2.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- Updated dependencies [56fd856d]
+- Updated dependencies [0f242558]
+  - @hyperdx/common-utils@0.3.2
+
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- c216053: Changes the order of alert evaluation to group queries by the connection on the alert.
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+
+### Patch Changes
+
+- ab50b12: feat: support custom otel collector config (BETA)
+- ab50b12: fix: reduce bloat in opamp agent logs
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+- Updated dependencies [6dd6165]
+- Updated dependencies [5a59d32]
+  - @hyperdx/common-utils@0.3.0
+
+## 2.1.2
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+- Updated dependencies [39cde41]
+- Updated dependencies [b568b00]
+  - @hyperdx/common-utils@0.2.9
+
 ## 2.1.1
 
 ### Patch Changes

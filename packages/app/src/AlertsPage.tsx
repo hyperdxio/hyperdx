@@ -183,6 +183,14 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
           <div className="text-slate-400 fs-8 d-flex gap-2">
             {alertType}
             {notificationMethod}
+            {alert.createdBy && (
+              <>
+                <span className="text-slate-400">&middot;</span>
+                <span>
+                  Created by {alert.createdBy.name || alert.createdBy.email}
+                </span>
+              </>
+            )}
           </div>
         </Stack>
       </Group>
@@ -246,7 +254,7 @@ export default function AlertsPage() {
           >
             Alerts can be{' '}
             <a
-              href="https://www.hyperdx.io/docs/alerts"
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack/alerts"
               target="_blank"
               rel="noopener noreferrer"
             >

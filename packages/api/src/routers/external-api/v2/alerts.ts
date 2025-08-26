@@ -390,12 +390,13 @@ router.get('/', async (req, res, next) => {
  */
 router.post('/', async (req, res, next) => {
   const teamId = req.user?.team;
-  if (teamId == null) {
+  const userId = req.user?._id;
+  if (teamId == null || userId == null) {
     return res.sendStatus(403);
   }
   try {
     const alertInput = req.body;
-    const createdAlert = await createAlert(teamId, alertInput);
+    const createdAlert = await createAlert(teamId, alertInput, userId);
 
     return res.json({
       data: translateAlertDocumentToExternalAlert(createdAlert),

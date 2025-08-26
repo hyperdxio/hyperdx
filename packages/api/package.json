@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.1.1",
+  "version": "2.2.2",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.8",
+    "@esm2cjs/p-queue": "^7.3.0",
+    "@hyperdx/common-utils": "^0.3.2",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
@@ -94,8 +95,8 @@
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "tsc && tsc-alias && esbuild ../../node_modules/@hyperdx/node-opentelemetry/build/src/tracing --bundle --minify --platform=node --outfile=dist/tracing.js && esbuild ./build/src/index.js ./build/src/tasks/index.js --bundle --minify --platform=node --target=node22 --outdir=dist --alias:@='./src' && mkdir -p dist/opamp && cp -r src/opamp/proto dist/opamp/proto && rimraf ./build",
-    "lint": "eslint --quiet . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "lint": "npx eslint --quiet . --ext .ts",
+    "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --runInBand --ci --forceExit --coverage",
     "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --watchAll --runInBand --detectOpenHandles",

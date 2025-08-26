@@ -104,6 +104,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
+import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
@@ -135,6 +136,21 @@ const SearchConfigSchema = z.object({
 });
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
+
+// Helper function to get the default source id
+export function getDefaultSourceId(
+  sources: { id: string }[] | undefined,
+  lastSelectedSourceId: string | undefined,
+): string {
+  if (!sources || sources.length === 0) return '';
+  if (
+    lastSelectedSourceId &&
+    sources.some(s => s.id === lastSelectedSourceId)
+  ) {
+    return lastSelectedSourceId;
+  }
+  return sources[0].id;
+}
 
 function SearchNumRows({
   config,
@@ -439,6 +455,7 @@ function useSearchedConfigToChartConfig({
   const { data: sourceObj, isLoading } = useSource({
     id: source,
   });
+  const defaultOrderBy = useDefaultOrderBy(source);
 
   return useMemo(() => {
     if (sourceObj != null) {
@@ -464,17 +481,64 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
-          orderBy:
-            orderBy ||
-            `${getFirstTimestampValueExpression(
-              sourceObj.timestampValueExpression,
-            )} DESC`,
+          orderBy: orderBy || defaultOrderBy,
         },
       };
     }
 
     return { data: null, isLoading };
-  }, [sourceObj, isLoading, select, filters, where, whereLanguage]);
+  }, [
+    sourceObj,
+    isLoading,
+    select,
+    filters,
+    where,
+    whereLanguage,
+    defaultOrderBy,
+  ]);
+}
+
+function optimizeDefaultOrderBy(
+  timestampExpr: string,
+  sortingKey: string | undefined,
+) {
+  const defaultModifier = 'DESC';
+  const fallbackOrderByItems = [
+    getFirstTimestampValueExpression(timestampExpr ?? ''),
+    defaultModifier,
+  ];
+  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+  if (!sortingKey) return fallbackOrderBy;
+
+  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
+  if (timestampExprIdx <= 0) return fallbackOrderBy;
+
+  const orderByArr = [fallbackOrderByItems[0]];
+  for (let i = 0; i < timestampExprIdx; i++) {
+    const sortKey = sortKeys[i];
+    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+      orderByArr.push(sortKey);
+    }
+  }
+
+  const newOrderBy = `(${orderByArr.reverse().join(', ')}) ${defaultModifier}`;
+  return newOrderBy;
+}
+
+export function useDefaultOrderBy(sourceID: string | undefined | null) {
+  const { data: source } = useSource({ id: sourceID });
+  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+
+  // When source changes, make sure select and orderby fields are set to default
+  return useMemo(
+    () =>
+      optimizeDefaultOrderBy(
+        source?.timestampValueExpression ?? '',
+        tableMetadata?.sorting_key,
+      ),
+    [source, tableMetadata],
+  );
 }
 
 // This is outside as it needs to be a stable reference
@@ -546,6 +610,12 @@ function DBSearchPage() {
     [setIsLive, _setDenoiseResults],
   );
 
+  // Get default source
+  const defaultSourceId = useMemo(
+    () => getDefaultSourceId(sources, lastSelectedSourceId),
+    [sources, lastSelectedSourceId],
+  );
+
   const {
     control,
     watch,
@@ -561,13 +631,7 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source:
-        searchedConfig.source ??
-        (lastSelectedSourceId &&
-        sources?.some(s => s.id === lastSelectedSourceId)
-          ? lastSelectedSourceId
-          : sources?.[0]?.id) ??
-        '',
+      source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -583,15 +647,7 @@ function DBSearchPage() {
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
 
-  // When source changes, make sure select and orderby fields are set to default
-  const defaultOrderBy = useMemo(
-    () =>
-      `${getFirstTimestampValueExpression(
-        inputSourceObj?.timestampValueExpression ?? '',
-      )} DESC`,
-    [inputSourceObj?.timestampValueExpression],
-  );
-
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
   const [rowId, setRowId] = useQueryState('rowWhere');
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -658,10 +714,10 @@ function DBSearchPage() {
         return;
       }
 
-      // Landed on a new search
-      if (inputSource && savedSearchId == null) {
+      // Landed on a new search - ensure we have a source selected
+      if (savedSearchId == null && defaultSourceId) {
         setSearchedConfig({
-          source: inputSource,
+          source: defaultSourceId,
           where: '',
           select: '',
           whereLanguage: 'lucene',
@@ -675,8 +731,7 @@ function DBSearchPage() {
     searchedConfig,
     setSearchedConfig,
     savedSearchId,
-    inputSource,
-    lastSelectedSourceId,
+    defaultSourceId,
     sources,
   ]);
 
@@ -752,12 +807,6 @@ function DBSearchPage() {
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
           );
-          setValue(
-            'orderBy',
-            `${getFirstTimestampValueExpression(
-              newInputSourceObj?.timestampValueExpression ?? '',
-            )} DESC`,
-          );
           // Clear all search filters
           searchFilters.clearAllFilters();
         }
@@ -802,7 +851,9 @@ function DBSearchPage() {
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
-    const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
+    const queryError: Error | ClickHouseQueryError | null = hasQueryError
+      ? Object.values(_queryErrors)[0]
+      : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
   const inputWhere = watch('where');
@@ -1661,6 +1712,21 @@ function DBSearchPage() {
                           {queryError.message}
                         </Code>
                       </Box>
+                      {queryError instanceof ClickHouseQueryError && (
+                        <Box mt="lg">
+                          <Text my="sm" size="sm">
+                            Original Query:
+                          </Text>
+                          <Code
+                            block
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            <SQLPreview data={queryError.query} formatData />
+                          </Code>
+                        </Box>
+                      )}
                     </div>
                   </>
                 ) : (

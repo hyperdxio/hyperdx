@@ -178,9 +178,11 @@ jobs:
     name: Notify CH Downstream
     needs: [check_changesets, release, check_release_app_pushed]
     runs-on: ubuntu-24.04
-    if: |
-      needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
-      needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+    # Temporarily disabled:
+    if: false
+    # if: |
+    #   needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
+    #   needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

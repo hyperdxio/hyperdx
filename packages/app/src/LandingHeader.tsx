@@ -38,7 +38,10 @@ export default function LandingHeader({
               <Nav.Link href="https://hyperdx.io" className="mx-2">
                 HyperDX Cloud
               </Nav.Link>
-              <Nav.Link href="https://hyperdx.io/docs" className="mx-2">
+              <Nav.Link
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+                className="mx-2"
+              >
                 Docs
               </Nav.Link>
               {!isLoggedIn && installation?.isTeamExisting === true && (
