@@ -1,3 +1,4 @@
+import { getJSNativeCreateClient } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   DisplayType,
   SavedChartConfig,
@@ -33,34 +34,35 @@ export const DEFAULT_METRICS_TABLE = {
   EXPONENTIAL_HISTOGRAM: 'otel_metrics_exponential_histogram',
 };
 
-const clickhouseClient = createClient({
-  host: config.CLICKHOUSE_HOST,
-  username: config.CLICKHOUSE_USER,
-  password: config.CLICKHOUSE_PASSWORD,
-  request_timeout: ms('1m'),
-  compression: {
-    request: false,
-    response: false, // has to be off to enable streaming
-  },
-  keep_alive: {
-    enabled: true,
-    // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
-    // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
-    // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
-    socket_ttl: 60000,
-    retry_on_expired_socket: true,
-  },
-  clickhouse_settings: {
-    connect_timeout: ms('1m') / 1000,
-    date_time_output_format: 'iso',
-    max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
-    max_download_threads: 32,
-    max_execution_time: ms('2m') / 1000,
-  },
-});
+let clickhouseClient: any;
+
+const getClickhouseClient = async () => {
+  if (!clickhouseClient) {
+    const createClient = await getJSNativeCreateClient();
+    clickhouseClient = createClient({
+      url: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+      request_timeout: ms('1m'),
+      compression: {
+        request: false,
+        response: false, // has to be off to enable streaming
+      },
+      clickhouse_settings: {
+        connect_timeout: ms('1m') / 1000,
+        date_time_output_format: 'iso',
+        max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
+        max_download_threads: 32,
+        max_execution_time: ms('2m') / 1000,
+      },
+    });
+  }
+  return clickhouseClient;
+};
 
 const healthCheck = async () => {
-  const result = await clickhouseClient.ping();
+  const client = await getClickhouseClient();
+  const result = await client.ping();
   if (!result.success) {
     logger.error({
       message: 'ClickHouse health check failed',
@@ -74,7 +76,8 @@ const connectClickhouse = async () => {
   // health check
   await healthCheck();
 
-  await clickhouseClient.command({
+  const client = await getClickhouseClient();
+  await client.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}
       (
@@ -119,7 +122,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouseClient.command({
+  await client.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}
         (
@@ -161,7 +164,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouseClient.command({
+  await client.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}
       (
@@ -205,7 +208,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouseClient.command({
+  await client.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}
       (
@@ -372,7 +375,8 @@ export const getLoggedInAgent = async (server: MockServer) => {
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
 export const executeSqlCommand = async (sql: string) => {
-  return await clickhouseClient.command({
+  const client = await getClickhouseClient();
+  return await client.command({
     query: sql,
     clickhouse_settings: {
       wait_end_of_query: 1,
@@ -393,9 +397,10 @@ export const clearClickhouseTables = async () => {
   ];
 
   const promises: any = [];
+  const client = await getClickhouseClient();
   for (const table of tables) {
     promises.push(
-      clickhouseClient.command({
+      client.command({
         query: `TRUNCATE TABLE ${table}`,
         clickhouse_settings: {
           wait_end_of_query: 1,
@@ -422,7 +427,8 @@ const _bulkInsertData = async (table: string, data: Record<string, any>[]) => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await clickhouseClient.insert({
+  const client = await getClickhouseClient();
+  await client.insert({
     table,
     values: data,
     format: 'JSONEachRow',
