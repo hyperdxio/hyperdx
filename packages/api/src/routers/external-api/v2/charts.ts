@@ -5,13 +5,13 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { Granularity } from '@hyperdx/common-utils/dist/utils';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { Granularity } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getTeam } from '@/controllers/team';

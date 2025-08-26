@@ -4,9 +4,9 @@ import {
   Tile,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
+import ms from 'ms';
 import request from 'supertest';
 
-import * as clickhouse from '@/clickhouse';
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
 import { getTeam } from '@/controllers/team';
@@ -14,6 +14,7 @@ import { findUserByEmail } from '@/controllers/user';
 import { mongooseConnection } from '@/models';
 import { AlertInterval, AlertSource, AlertThresholdType } from '@/models/alert';
 import Server from '@/server';
+import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
 
 const MOCK_USER = {
@@ -32,11 +33,48 @@ export const DEFAULT_METRICS_TABLE = {
   EXPONENTIAL_HISTOGRAM: 'otel_metrics_exponential_histogram',
 };
 
+const clickhouseClient = createClient({
+  host: config.CLICKHOUSE_HOST,
+  username: config.CLICKHOUSE_USER,
+  password: config.CLICKHOUSE_PASSWORD,
+  request_timeout: ms('1m'),
+  compression: {
+    request: false,
+    response: false, // has to be off to enable streaming
+  },
+  keep_alive: {
+    enabled: true,
+    // should be slightly less than the `keep_alive_timeout` setting in server's `config.xml`
+    // default is 3s there, so 2500 milliseconds seems to be a safe client value in this scenario
+    // another example: if your configuration has `keep_alive_timeout` set to 60s, you could put 59_000 here
+    socket_ttl: 60000,
+    retry_on_expired_socket: true,
+  },
+  clickhouse_settings: {
+    connect_timeout: ms('1m') / 1000,
+    date_time_output_format: 'iso',
+    max_download_buffer_size: (10 * 1024 * 1024).toString(), // default
+    max_download_threads: 32,
+    max_execution_time: ms('2m') / 1000,
+  },
+});
+
+const healthCheck = async () => {
+  const result = await clickhouseClient.ping();
+  if (!result.success) {
+    logger.error({
+      message: 'ClickHouse health check failed',
+      error: result.error,
+    });
+    throw result.error;
+  }
+};
+
 const connectClickhouse = async () => {
   // health check
-  await clickhouse.healthCheck();
+  await healthCheck();
 
-  await clickhouse.client.command({
+  await clickhouseClient.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}
       (
@@ -81,7 +119,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouse.client.command({
+  await clickhouseClient.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}
         (
@@ -123,7 +161,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouse.client.command({
+  await clickhouseClient.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}
       (
@@ -167,7 +205,7 @@ const connectClickhouse = async () => {
     },
   });
 
-  await clickhouse.client.command({
+  await clickhouseClient.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}
       (
@@ -334,7 +372,7 @@ export const getLoggedInAgent = async (server: MockServer) => {
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
 export const executeSqlCommand = async (sql: string) => {
-  return await clickhouse.client.command({
+  return await clickhouseClient.command({
     query: sql,
     clickhouse_settings: {
       wait_end_of_query: 1,
@@ -357,7 +395,7 @@ export const clearClickhouseTables = async () => {
   const promises: any = [];
   for (const table of tables) {
     promises.push(
-      clickhouse.client.command({
+      clickhouseClient.command({
         query: `TRUNCATE TABLE ${table}`,
         clickhouse_settings: {
           wait_end_of_query: 1,
@@ -372,7 +410,7 @@ export const selectAllLogs = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  return clickhouse.client
+  return clickhouseClient
     .query({
       query: `SELECT * FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
       format: 'JSONEachRow',
@@ -384,7 +422,7 @@ const _bulkInsertData = async (table: string, data: Record<string, any>[]) => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await clickhouse.client.insert({
+  await clickhouseClient.insert({
     table,
     values: data,
     format: 'JSONEachRow',
@@ -467,6 +505,14 @@ export const bulkInsertMetricsHistogram = async (
   );
 };
 
+enum MetricsDataType {
+  Gauge = 'Gauge',
+  Histogram = 'Histogram',
+  Sum = 'Sum',
+  Summary = 'Summary',
+  // TODO: support 'ExponentialHistogram'
+}
+
 // TODO: DEPRECATED
 export function buildMetricSeries({
   tags,
@@ -481,7 +527,7 @@ export function buildMetricSeries({
   tags: Record<string, string>;
   name: string;
   points: { value: number; timestamp: number; le?: string }[];
-  data_type: clickhouse.MetricsDataType;
+  data_type: MetricsDataType;
   is_monotonic: boolean;
   is_delta: boolean;
   unit: string;
