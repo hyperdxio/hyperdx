@@ -116,6 +116,11 @@ type CollectorConfig = {
 
 export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
   const apiKeys = teams.filter(team => team.apiKey).map(team => team.apiKey);
+
+  if (config.INGESTION_API_KEY) {
+    apiKeys.push(config.INGESTION_API_KEY);
+  }
+
   const collectorAuthenticationEnforced =
     teams[0]?.collectorAuthenticationEnforced;
 
