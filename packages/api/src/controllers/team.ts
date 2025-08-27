@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 import * as config from '@/config';
@@ -8,7 +9,7 @@ import Team, { TeamCHSettings } from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
-  _id: LOCAL_APP_TEAM_ID,
+  _id: new mongoose.Types.ObjectId(LOCAL_APP_TEAM_ID),
   id: LOCAL_APP_TEAM_ID,
   name: 'Local App Team',
   // Placeholder keys
@@ -45,6 +46,14 @@ export async function createTeam({
   await team.save();
 
   return team;
+}
+
+export function getAllTeams(fields?: string[]) {
+  if (config.IS_LOCAL_APP_MODE) {
+    return [LOCAL_APP_TEAM];
+  }
+
+  return Team.find({}, fields);
 }
 
 export function getTeam(id?: string | ObjectId, fields?: string[]) {

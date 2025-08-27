@@ -202,7 +202,7 @@ export default function SearchInputV2({
             <a
               className="text-muted"
               target="_blank"
-              href="https://hyperdx.io/docs/search#search-syntax"
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack/search"
               rel="noreferrer"
             >
               <i className="bi bi-book me-1" />

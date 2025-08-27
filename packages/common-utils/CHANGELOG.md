@@ -1,5 +1,28 @@
 # @hyperdx/common-utils
 
+## 0.3.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- 0f242558: fix: Compatibilty with lowercase text skip index
+
+## 0.3.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+
+## 0.3.0
+
+### Minor Changes
+
+- 6dd6165: feat: Display original query to error messages in search page
+
+### Patch Changes
+
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+
 ## 0.2.9
 
 ### Patch Changes

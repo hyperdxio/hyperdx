@@ -1,5 +1,42 @@
 # @hyperdx/app
 
+## 2.2.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- Updated dependencies [56fd856d]
+- Updated dependencies [0f242558]
+  - @hyperdx/common-utils@0.3.2
+
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- 5eeee5c: change app's docs links to ClickStack docs
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+- 6dd6165: feat: Display original query to error messages in search page
+
+### Patch Changes
+
+- 5ad1455: feat: centralize the default orderBy and optimize it for diverse table structures
+- 823566f: chore: show display switcher on dashboard page
+- 4c459dc: handle escaped string search correctly
+- 35fe9cf: fix default order by generated for advanced table sorting keys
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+- 9cd9bfb: fix: Properly fetch tables in source edit dropdown when new connection is selected
+- Updated dependencies [6dd6165]
+- Updated dependencies [5a59d32]
+  - @hyperdx/common-utils@0.3.0
+
 ## 2.1.2
 
 ### Patch Changes
