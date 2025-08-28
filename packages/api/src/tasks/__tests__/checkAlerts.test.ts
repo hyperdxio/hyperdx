@@ -159,6 +159,7 @@ describe('checkAlerts', () => {
       value: 10,
     };
 
+    const testTile = makeTile({ id: 'test-tile-id' });
     const defaultChartView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -169,12 +170,13 @@ describe('checkAlerts', () => {
           webhookId: 'fake-webhook-id',
         },
         interval: '1m',
+        tileId: 'test-tile-id',
       },
       dashboard: {
         _id: new mongoose.Types.ObjectId(),
         id: 'id-123',
         name: 'My Dashboard',
-        tiles: [makeTile()],
+        tiles: [testTile],
         team: 'team-123' as any,
         tags: ['test'],
       },
