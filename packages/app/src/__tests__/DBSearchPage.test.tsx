@@ -16,126 +16,71 @@ describe('useDefaultOrderBy', () => {
   });
 
   describe('optimizeOrderBy function', () => {
-    it('should return fallback order by when tableMetadata is not available', () => {
+    it('should handle these cases', () => {
       const mockSource = {
         timestampValueExpression: 'Timestamp',
       };
 
-      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-        data: mockSource,
-        isLoading: false,
-        error: null,
-      } as any);
+      const testCases = [
+        {
+          input: undefined,
+          expected: 'Timestamp DESC',
+        },
+        {
+          input: '',
+          expected: 'Timestamp DESC',
+        },
+        {
+          input: 'toStartOfHour(Timestamp), other_column, Timestamp',
+          expected: '(toStartOfHour(Timestamp), Timestamp) DESC',
+        },
+        {
+          input: 'Timestamp, other_column',
+          expected: 'Timestamp DESC',
+        },
+        {
+          input: 'user_id, toStartOfHour(Timestamp), status, Timestamp',
+          expected: '(toStartOfHour(Timestamp), Timestamp) DESC',
+        },
+        {
+          input:
+            'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp(Timestamp)',
+          expected:
+            '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp)) DESC',
+        },
+        {
+          // test variation of toUnixTimestamp
+          input:
+            'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
+          expected:
+            '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp)) DESC',
+        },
+        {
+          input:
+            'toUnixTimestamp(toStartOfMinute(Timestamp)), user_id, status, Timestamp',
+          expected:
+            '(toUnixTimestamp(toStartOfMinute(Timestamp)), Timestamp) DESC',
+        },
+      ];
+      for (const testCase of testCases) {
+        const mockTableMetadata = { sorting_key: testCase.input };
 
-      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: null,
-      } as any);
+        jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+          data: mockSource,
+          isLoading: false,
+          error: null,
+        } as any);
 
-      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+        jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+          data: mockTableMetadata,
+          isLoading: false,
+          error: null,
+        } as any);
 
-      expect(result.current).toBe('Timestamp DESC');
-    });
+        const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
-    it('should handle empty Timestamp expression ungracefully', () => {
-      const mockSource = {
-        timestampValueExpression: '',
-      };
-
-      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-        data: mockSource,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
-
-      expect(result.current).toBe(' DESC');
-    });
-
-    it('should return optimized order by when Timestamp is not first in sorting key', () => {
-      const mockSource = {
-        timestampValueExpression: 'Timestamp',
-      };
-
-      const mockTableMetadata = {
-        sorting_key: 'toStartOfHour(Timestamp), other_column, Timestamp',
-      };
-
-      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-        data: mockSource,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-        data: mockTableMetadata,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
-
-      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
-    });
-
-    it('should return fallback when Timestamp is first in sorting key', () => {
-      const mockSource = {
-        timestampValueExpression: 'Timestamp',
-      };
-
-      const mockTableMetadata = {
-        sorting_key: 'Timestamp, other_column',
-      };
-
-      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-        data: mockSource,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-        data: mockTableMetadata,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
-
-      expect(result.current).toBe('Timestamp DESC');
-    });
-
-    it('should ignore non-toStartOf columns before Timestamp', () => {
-      const mockSource = {
-        timestampValueExpression: 'Timestamp',
-      };
-
-      const mockTableMetadata = {
-        sorting_key: 'user_id, toStartOfHour(Timestamp), status, Timestamp',
-      };
-
-      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-        data: mockSource,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-        data: mockTableMetadata,
-        isLoading: false,
-        error: null,
-      } as any);
-
-      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
-
-      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
+        expect(result.current).toBe(testCase.expected);
+      }
     });
 
     it('should handle null source ungracefully', () => {

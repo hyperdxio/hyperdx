@@ -510,20 +510,27 @@ function optimizeDefaultOrderBy(
   const fallbackOrderBy = fallbackOrderByItems.join(' ');
   if (!sortingKey) return fallbackOrderBy;
 
+  const orderByArr = [];
   const sortKeys = sortingKey.split(',').map(key => key.trim());
-  const timestampExprIdx = sortKeys.findIndex(v => v === timestampExpr);
-  if (timestampExprIdx <= 0) return fallbackOrderBy;
-
-  const orderByArr = [fallbackOrderByItems[0]];
-  for (let i = 0; i < timestampExprIdx; i++) {
+  for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
       orderByArr.push(sortKey);
+    } else if (
+      sortKey === timestampExpr ||
+      (sortKey.startsWith('toUnixTimestamp') && sortKey.includes(timestampExpr))
+    ) {
+      if (i === 0) {
+        // fallback if the first sort key is the timestamp sort key
+        return fallbackOrderBy;
+      } else {
+        orderByArr.push(sortKey);
+        break;
+      }
     }
   }
 
-  const newOrderBy = `(${orderByArr.reverse().join(', ')}) ${defaultModifier}`;
-  return newOrderBy;
+  return `(${orderByArr.join(', ')}) ${defaultModifier}`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
