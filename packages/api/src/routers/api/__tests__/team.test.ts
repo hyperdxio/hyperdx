@@ -26,7 +26,7 @@ describe('team router', () => {
 
     expect(new Date(resp.body.createdAt).toString()).not.toBe('Invalid Date');
 
-    expect(_.omit(resp.body, ['_id', 'apiKey', 'createdAt']))
+    expect(_.omit(resp.body, ['_id', 'id', 'apiKey', 'createdAt']))
       .toMatchInlineSnapshot(`
 Object {
   "allowedAuthMethods": Array [],
@@ -55,7 +55,7 @@ Object {
       .expect(200);
 
     await agent.post('/sources').send({
-      team: team._id,
+      team: team.id,
       kind: 'log',
       name: 'My New Source',
       connection: 'local',
@@ -87,11 +87,11 @@ Object {
     const { agent, team } = await getLoggedInAgent(server);
     const user1 = await User.create({
       email: 'user1@example.com',
-      team: team._id,
+      team: team.id,
     });
     const user2 = await User.create({
       email: 'user2@example.com',
-      team: team._id,
+      team: team.id,
     });
     const resp = await agent.get('/team/members').expect(200);
 
@@ -182,7 +182,7 @@ Array [
 
     const user1 = await User.create({
       email: 'user1@example.com',
-      team: team._id,
+      team: team.id,
     });
 
     await agent.delete(`/team/member/${user1._id}`).expect(200);
@@ -198,7 +198,7 @@ Array [
     const invite = await TeamInvite.create({
       email: 'fake_invite@example.com',
       name: 'Fake Invite',
-      teamId: team._id,
+      teamId: team.id,
       token: 'fake_token',
     });
 
