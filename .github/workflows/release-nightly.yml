@@ -1,5 +1,8 @@
 name: Release Nightly
 on:
+  schedule:
+    # Run at 0:00 AM UTC every day
+    - cron: '0 0 * * *'
   push:
     branches: [main]
 concurrency:
