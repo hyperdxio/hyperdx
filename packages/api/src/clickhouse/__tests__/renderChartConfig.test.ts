@@ -3,14 +3,14 @@
 import { ChSql, ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
-import _ from 'lodash';
-import ms from 'ms';
-
 import {
   AggregateFunctionSchema,
   DerivedColumn,
   MetricsDataType,
-} from '@/../../common-utils/dist/types';
+} from '@hyperdx/common-utils/dist/types';
+import _ from 'lodash';
+import ms from 'ms';
+
 import * as config from '@/config';
 import { createTeam } from '@/controllers/team';
 import {
@@ -26,7 +26,6 @@ import {
 } from '@/fixtures';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
-import { AggregationTemporality } from '@/utils/logParser';
 
 const TEST_METRIC_TABLES = {
   sum: DEFAULT_METRICS_TABLE.SUM,

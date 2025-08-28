@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
-import type { ResponseJSON } from '@clickhouse/client';
-import { createClient } from '@clickhouse/client-web';
+import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import objectHash from 'object-hash';
-import { ResponseJSON } from '@clickhouse/client-web';
 import {
   ChSql,
   chSqlToAliasMap,
@@ -8,6 +7,7 @@ import {
   inferNumericColumn,
   inferTimestampColumn,
   parameterizedQueryToSql,
+  ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';

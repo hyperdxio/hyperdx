@@ -1,5 +1,8 @@
-import { ResponseJSON } from '@clickhouse/client';
-import { chSql, tableExpr } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSql,
+  ResponseJSON,
+  tableExpr,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';

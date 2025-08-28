@@ -22,8 +22,6 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.7.0",
-    "@clickhouse/client-web": "^1.7.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",

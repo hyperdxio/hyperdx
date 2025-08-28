@@ -7,7 +7,6 @@
     "node": ">=22.16.0"
   },
   "dependencies": {
-    "@clickhouse/client": "^0.2.10",
     "@esm2cjs/p-queue": "^7.3.0",
     "@hyperdx/common-utils": "^0.3.2",
     "@hyperdx/lucene": "^3.1.1",
