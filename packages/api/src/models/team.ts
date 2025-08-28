@@ -11,6 +11,7 @@ export type TeamCHSettings = {
 
 export type ITeam = {
   _id: ObjectId;
+  id: string;
   name: string;
   allowedAuthMethods?: 'password'[];
   apiKey: string;
@@ -49,6 +50,8 @@ export default mongoose.model<ITeam>(
     },
     {
       timestamps: true,
+      toJSON: { virtuals: true },
+      toObject: { virtuals: true },
     },
   ),
 );
