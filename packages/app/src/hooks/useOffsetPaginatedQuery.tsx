@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import ms from 'ms';
-import { ResponseJSON, Row } from '@clickhouse/client-web';
+import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,

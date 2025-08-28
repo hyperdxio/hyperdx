@@ -1,4 +1,4 @@
-import { Granularity } from '@/clickhouse';
+import { Granularity } from '@hyperdx/common-utils/dist/utils';
 
 export type JSONBlob = Record<string, Json>;
 

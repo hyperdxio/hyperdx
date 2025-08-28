@@ -2,11 +2,11 @@ import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
 import Select from 'react-select';
 import { z } from 'zod';
-import { ResponseJSON } from '@clickhouse/client';
 import {
   filterColumnMetaByType,
   inferTimestampColumn,
   JSDataType,
+  ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   AggregateFunction as AggFnV2,

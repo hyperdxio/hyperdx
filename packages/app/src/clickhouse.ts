@@ -5,11 +5,11 @@
 // please move app-specific functions elsewhere in the app
 // ================================
 
-import type { ResponseJSON } from '@clickhouse/client';
 import {
   chSql,
   ClickhouseClient,
   ColumnMeta,
+  ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 

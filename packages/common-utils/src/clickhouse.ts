@@ -4,6 +4,7 @@ import type {
   DataFormat,
   ResponseHeaders,
   ResponseJSON,
+  Row,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
 import * as SQLParser from 'node-sql-parser';
@@ -18,6 +19,15 @@ import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
 import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
 
 import { Metadata } from './metadata';
+
+// export @clickhouse/client-common types
+export type {
+  BaseResultSet,
+  ClickHouseSettings,
+  DataFormat,
+  ResponseJSON,
+  Row,
+};
 
 export enum JSDataType {
   Array = 'array',
@@ -390,6 +400,22 @@ export type ClickhouseClientOptions = {
   password?: string;
 };
 
+export const getJSNativeCreateClient = async () => {
+  if (isBrowser) {
+    // Only import client-web in browser environment
+    const { createClient } = await import('@clickhouse/client-web');
+    return createClient;
+  } else if (isNode) {
+    // Use require with eval to prevent webpack from analyzing this import
+    // This ensures @clickhouse/client is never bundled in browser builds
+    const { createClient } = eval('require')(
+      '@clickhouse/client',
+    ) as typeof import('@clickhouse/client');
+    return createClient;
+  }
+  throw new Error('Unsupported environment');
+};
+
 export class ClickhouseClient {
   private readonly host: string;
   private readonly username?: string;
@@ -485,10 +511,9 @@ export class ClickhouseClient {
       delete clickhouse_settings['max_rows_to_read'];
     }
 
-    if (isBrowser) {
-      // TODO: check if we can use the client-web directly
-      const { createClient } = await import('@clickhouse/client-web');
+    const createClient = await getJSNativeCreateClient();
 
+    if (isBrowser) {
       clickhouse_settings = {
         date_time_output_format: 'iso',
         wait_end_of_query: 0,
@@ -533,7 +558,6 @@ export class ClickhouseClient {
         query_id: queryId,
       }) as Promise<BaseResultSet<ReadableStream, Format>>;
     } else if (isNode) {
-      const { createClient } = await import('@clickhouse/client');
       const _client = createClient({
         url: this.host,
         username: this.username,
