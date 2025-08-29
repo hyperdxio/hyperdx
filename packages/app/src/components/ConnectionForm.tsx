@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse';
+import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
