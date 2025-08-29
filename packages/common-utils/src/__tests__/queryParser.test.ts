@@ -1,4 +1,4 @@
-import { ClickhouseClient } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/metadata';
 import { CustomSchemaSQLSerializerV2 } from '@/queryParser';
 

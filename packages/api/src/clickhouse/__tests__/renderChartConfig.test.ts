@@ -1,6 +1,7 @@
 // TODO: we might want to move this test file to common-utils package
 
-import { ChSql, ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {

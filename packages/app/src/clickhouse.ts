@@ -7,10 +7,10 @@
 
 import {
   chSql,
-  ClickhouseClient,
   ColumnMeta,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from '@/config';

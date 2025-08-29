@@ -1,4 +1,5 @@
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
@@ -357,7 +358,7 @@ export const renderAlertTemplate = async ({
   team,
 }: {
   alertProvider: AlertProvider;
-  clickhouseClient: clickhouse.ClickhouseClient;
+  clickhouseClient: ClickhouseClient;
   metadata: Metadata;
   template?: string | null;
   title: string;

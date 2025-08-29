@@ -3,6 +3,7 @@
 // --------------------------------------------------------
 import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithOptDateRange,
@@ -67,7 +68,7 @@ const fireChannelEvent = async ({
   alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
-  clickhouseClient: clickhouse.ClickhouseClient;
+  clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
@@ -138,7 +139,7 @@ const fireChannelEvent = async ({
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
-  clickhouseClient: clickhouse.ClickhouseClient,
+  clickhouseClient: ClickhouseClient,
   connectionId: string,
   alertProvider: AlertProvider,
 ) => {
@@ -397,7 +398,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       });
     }
 
-    const clickhouseClient = new clickhouse.ClickhouseClient({
+    const clickhouseClient = new ClickhouseClient({
       host: conn.host,
       username: conn.username,
       password: conn.password,

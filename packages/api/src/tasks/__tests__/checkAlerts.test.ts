@@ -1,4 +1,4 @@
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -725,7 +725,7 @@ describe('checkAlerts', () => {
         savedSearch,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -965,7 +965,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -1195,7 +1195,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -1404,7 +1404,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
