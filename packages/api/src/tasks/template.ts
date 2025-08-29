@@ -1,4 +1,5 @@
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
@@ -303,7 +304,12 @@ export const buildAlertMessageTemplateTitle = ({
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
-    const tile = dashboard.tiles[0];
+    const tile = dashboard.tiles.find(t => t.id === alert.tileId);
+    if (!tile) {
+      throw new Error(
+        `Tile with id ${alert.tileId} not found in dashboard ${dashboard.name}`,
+      );
+    }
     return template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
@@ -352,7 +358,7 @@ export const renderAlertTemplate = async ({
   team,
 }: {
   alertProvider: AlertProvider;
-  clickhouseClient: clickhouse.ClickhouseClient;
+  clickhouseClient: ClickhouseClient;
   metadata: Metadata;
   template?: string | null;
   title: string;

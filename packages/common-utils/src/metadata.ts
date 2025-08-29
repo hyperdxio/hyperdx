@@ -1,9 +1,9 @@
 import type { ClickHouseSettings } from '@clickhouse/client-common';
 
 import {
+  BaseClickhouseClient,
   ChSql,
   chSql,
-  ClickhouseClient,
   ColumnMeta,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
@@ -91,12 +91,12 @@ export type TableMetadata = {
 };
 
 export class Metadata {
-  private readonly clickhouseClient: ClickhouseClient;
+  private readonly clickhouseClient: BaseClickhouseClient;
   private readonly cache: MetadataCache;
   private readonly clickhouseSettings: ClickHouseSettings;
 
   constructor(
-    clickhouseClient: ClickhouseClient,
+    clickhouseClient: BaseClickhouseClient,
     cache: MetadataCache,
     settings?: ClickHouseSettings,
   ) {
@@ -528,5 +528,5 @@ const __LOCAL_CACHE__ = new MetadataCache();
 
 // TODO: better to init the Metadata object on the client side
 // also the client should be able to choose the cache strategy
-export const getMetadata = (clickhouseClient: ClickhouseClient) =>
+export const getMetadata = (clickhouseClient: BaseClickhouseClient) =>
   new Metadata(clickhouseClient, __LOCAL_CACHE__);

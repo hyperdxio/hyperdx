@@ -1,4 +1,4 @@
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { createServer } from 'http';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -10,11 +10,16 @@ import { bulkInsertLogs, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import { processAlert } from '@/tasks/checkAlerts';
 import { AlertTaskType, loadProvider } from '@/tasks/providers';
+import {
+  AlertMessageTemplateDefaultView,
+  buildAlertMessageTemplateTitle,
+} from '@/tasks/template';
 import * as slack from '@/utils/slack';
 
 describe('Single Invocation Alert Test', () => {
@@ -183,7 +188,7 @@ describe('Single Invocation Alert Test', () => {
       taskType: AlertTaskType.SAVED_SEARCH,
       savedSearch,
     };
-    const clickhouseClient = new clickhouse.ClickhouseClient({
+    const clickhouseClient = new ClickhouseClient({
       host: connection.host,
       username: connection.username,
       password: connection.password,
@@ -242,5 +247,211 @@ describe('Single Invocation Alert Test', () => {
     expect(messageBody).toContain('from=');
     expect(messageBody).toContain('to=');
     expect(messageBody).toContain('isLive=false');
+  });
+
+  it('should use correct tile name in alert title when alerting tile is not first', async () => {
+    // Mock slack webhook to avoid external calls
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    // Create team
+    const team = await createTeam({ name: 'Test Team' });
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const eventMs = now.getTime() - ms('5m');
+
+    // Insert logs that will trigger the alert
+    await bulkInsertLogs([
+      {
+        ServiceName: 'api',
+        Timestamp: new Date(eventMs),
+        SeverityText: 'error',
+        Body: 'Test error message',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: new Date(eventMs),
+        SeverityText: 'error',
+        Body: 'Test error message',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: new Date(eventMs),
+        SeverityText: 'error',
+        Body: 'Test error message',
+      },
+    ]);
+
+    // Create connection
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    // Create source
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+
+    // Create dashboard with multiple tiles - the alerting tile is NOT the first one
+    const dashboard = await new Dashboard({
+      name: 'Multi-Tile Dashboard',
+      team: team._id,
+      tiles: [
+        {
+          id: 'first-tile-id',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 4,
+          config: {
+            name: 'First Tile Name', // This should NOT appear in alert title
+            select: [
+              {
+                aggFn: 'count',
+                aggCondition: 'ServiceName:api',
+                valueExpression: '',
+                aggConditionLanguage: 'lucene',
+              },
+            ],
+            where: '',
+            displayType: 'line',
+            granularity: 'auto',
+            source: source.id,
+            groupBy: '',
+          },
+        },
+        {
+          id: 'second-tile-id',
+          x: 6,
+          y: 0,
+          w: 6,
+          h: 4,
+          config: {
+            name: 'Second Tile Name', // This SHOULD appear in alert title
+            select: [
+              {
+                aggFn: 'count',
+                aggCondition: 'SeverityText:error',
+                valueExpression: '',
+                aggConditionLanguage: 'lucene',
+              },
+            ],
+            where: '',
+            displayType: 'line',
+            granularity: 'auto',
+            source: source.id,
+            groupBy: '',
+          },
+        },
+      ],
+    }).save();
+
+    // Create webhook
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/test123',
+      name: 'Test Webhook',
+    }).save();
+
+    // Create alert that references the SECOND tile (not the first)
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.TILE,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1, // Low threshold to trigger alert
+        dashboardId: dashboard.id,
+        tileId: 'second-tile-id', // Alert references second tile, NOT first
+      },
+      mockUserId,
+    );
+
+    // Get enhanced alert with populated relations
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'dashboard',
+    ]);
+
+    // Find the tile we're alerting on (should be the second tile)
+    const tile = dashboard.tiles?.find((t: any) => t.id === 'second-tile-id');
+    if (!tile) throw new Error('Second tile not found for multi-tile test');
+
+    // Set up alert processing details (like existing tile tests)
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.TILE,
+      tile,
+      dashboard,
+    };
+
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    const mockMetadata = {
+      getColumn: jest.fn().mockImplementation(({ column }) => {
+        const columnMap = {
+          ServiceName: { name: 'ServiceName', type: 'String' },
+          Timestamp: { name: 'Timestamp', type: 'DateTime' },
+          SeverityText: { name: 'SeverityText', type: 'String' },
+          Body: { name: 'Body', type: 'String' },
+        };
+        return Promise.resolve(columnMap[column]);
+      }),
+    };
+
+    // Mock the getMetadata function
+    jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+      ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      getMetadata: jest.fn().mockReturnValue(mockMetadata),
+    }));
+
+    // Process alert - this triggers the webhook with the title
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+    );
+
+    // Get the webhook call to inspect the title
+    expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    const webhookCall = (slack.postMessageToWebhook as jest.Mock).mock.calls[0];
+    const messageText = webhookCall[1].text;
+
+    // This assertion SHOULD pass but WILL FAIL due to the bug
+    // The bug causes buildAlertMessageTemplateTitle to use dashboard.tiles[0] (First Tile Name)
+    // instead of finding the correct tile by ID (Second Tile Name)
+    expect(messageText).toContain('Second Tile Name'); // Should find the correct tile
+    expect(messageText).not.toContain('First Tile Name'); // Should NOT use first tile
+
+    // Verify our test setup is correct
+    expect(dashboard.tiles).toHaveLength(2);
+    expect(dashboard.tiles[0].config.name).toBe('First Tile Name');
+    expect(dashboard.tiles[1].config.name).toBe('Second Tile Name');
+    expect(enhancedAlert.tileId).toBe('second-tile-id');
   });
 });

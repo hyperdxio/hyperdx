@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ResponseJSON } from '@clickhouse/client';
+import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
