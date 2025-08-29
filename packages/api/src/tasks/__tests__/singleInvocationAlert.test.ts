@@ -1,4 +1,4 @@
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { createServer } from 'http';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -188,7 +188,7 @@ describe('Single Invocation Alert Test', () => {
       taskType: AlertTaskType.SAVED_SEARCH,
       savedSearch,
     };
-    const clickhouseClient = new clickhouse.ClickhouseClient({
+    const clickhouseClient = new ClickhouseClient({
       host: connection.host,
       username: connection.username,
       password: connection.password,
@@ -404,7 +404,7 @@ describe('Single Invocation Alert Test', () => {
       dashboard,
     };
 
-    const clickhouseClient = new clickhouse.ClickhouseClient({
+    const clickhouseClient = new ClickhouseClient({
       host: connection.host,
       username: connection.username,
       password: connection.password,
