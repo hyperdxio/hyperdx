@@ -370,14 +370,12 @@ export type ClickhouseClientOptions = {
   host: string;
   username?: string;
   password?: string;
-  getAccessToken?: () => Promise<string>;
 };
 
 export abstract class BaseClickhouseClient {
   protected readonly host: string;
   protected readonly username?: string;
   protected readonly password?: string;
-  protected readonly getAccessToken?: () => Promise<string>;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
@@ -386,16 +384,10 @@ export abstract class BaseClickhouseClient {
   protected maxRowReadOnly: boolean;
   protected requestTimeout: number = 3600000; // TODO: make configurable
 
-  constructor({
-    host,
-    username,
-    password,
-    getAccessToken,
-  }: ClickhouseClientOptions) {
+  constructor({ host, username, password }: ClickhouseClientOptions) {
     this.host = host;
     this.username = username;
     this.password = password;
-    this.getAccessToken = getAccessToken;
     this.maxRowReadOnly = false;
   }
 
