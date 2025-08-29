@@ -15,9 +15,10 @@ export const EXPRESS_SESSION_SECRET = (env.EXPRESS_SESSION_SECRET ||
   DEFAULT_EXPRESS_SESSION) as string;
 export const FRONTEND_URL = (env.FRONTEND_URL ||
   DEFAULT_FRONTEND_URL) as string;
-export const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
+const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
+export const IS_APP_IMAGE = HYPERDX_IMAGE === 'hyperdx';
 export const IS_ALL_IN_ONE_IMAGE = HYPERDX_IMAGE === 'all-in-one-auth';
-export const IS_ALL_IN_ONE_NOAUTH_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
+export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
 export const HYPERDX_API_KEY = env.HYPERDX_API_KEY as string;
 export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
