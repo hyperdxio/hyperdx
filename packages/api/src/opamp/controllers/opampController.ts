@@ -116,6 +116,14 @@ type CollectorConfig = {
 
 export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
   const apiKeys = teams.filter(team => team.apiKey).map(team => team.apiKey);
+
+  if (config.IS_ALL_IN_ONE_IMAGE || config.IS_LOCAL_APP_MODE || config.IS_DEV) {
+    // Only allow INGESTION_API_KEY for dev or all-in-one images for security reasons
+    if (config.INGESTION_API_KEY) {
+      apiKeys.push(config.INGESTION_API_KEY);
+    }
+  }
+
   const collectorAuthenticationEnforced =
     teams[0]?.collectorAuthenticationEnforced;
 
