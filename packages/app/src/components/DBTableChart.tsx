@@ -50,10 +50,14 @@ export default function DBTableChart({
       return [];
     }
 
+    let groupByKeys: string[] = [];
+    if (queriedConfig.groupBy && typeof queriedConfig.groupBy === 'string') {
+      groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
+    }
     return Object.keys(rows?.[0]).map(key => ({
       dataKey: key,
       displayName: key,
-      numberFormat: config.numberFormat,
+      numberFormat: groupByKeys.includes(key) ? undefined : config.numberFormat,
     }));
   }, [config.numberFormat, data]);
 

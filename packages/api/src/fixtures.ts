@@ -1,4 +1,4 @@
-import { getJSNativeCreateClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   DisplayType,
   SavedChartConfig,
@@ -38,8 +38,7 @@ let clickhouseClient: any;
 
 const getClickhouseClient = async () => {
   if (!clickhouseClient) {
-    const createClient = await getJSNativeCreateClient();
-    clickhouseClient = createClient({
+    clickhouseClient = createNativeClient({
       url: config.CLICKHOUSE_HOST,
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,

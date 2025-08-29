@@ -1,7 +1,8 @@
 name: Release Nightly
 on:
-  push:
-    branches: [main]
+  schedule:
+    # Run at 0:00 AM UTC every day
+    - cron: '0 0 * * *'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
