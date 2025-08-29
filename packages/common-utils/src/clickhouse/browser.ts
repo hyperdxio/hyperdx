@@ -1,4 +1,8 @@
-import type { BaseResultSet, DataFormat } from '@clickhouse/client-common';
+import type {
+  BaseResultSet,
+  ClickHouseSettings,
+  DataFormat,
+} from '@clickhouse/client-common';
 import { createClient } from '@clickhouse/client-web';
 
 import {
@@ -61,42 +65,25 @@ export class ClickhouseClient extends BaseClickhouseClient {
     super(options);
   }
 
-  protected async __query<Format extends DataFormat>({
-    query,
-    format = 'JSON' as Format,
-    query_params = {},
-    abort_signal,
-    clickhouse_settings: external_clickhouse_settings,
-    connectionId,
-    queryId,
-  }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
-    this.logDebugQuery(query, query_params);
-
-    let _url = this.host!;
-    const clickhouse_settings = this.processClickhouseSettings(
-      external_clickhouse_settings,
-    );
-    const http_headers: { [header: string]: string } = {
-      ...(connectionId && connectionId !== 'local'
-        ? { 'x-hyperdx-connection-id': connectionId }
-        : {}),
-    };
+  private buildClient() {
+    let url = this.host!;
     let myFetch: typeof fetch;
     const isLocalMode = this.username != null && this.password != null;
+    const clickhouseSettings: ClickHouseSettings = {};
+
     if (isLocalMode) {
       myFetch = localModeFetch;
-      clickhouse_settings.add_http_cors_header = 1;
+      clickhouseSettings.add_http_cors_header = 1;
     } else {
-      _url = `${window.origin}${this.host}`; // this.host is just a pathname in this scenario
+      url = `${window.origin}${this.host}`; // this.host is just a pathname in this scenario
       myFetch = standardModeFetch;
     }
 
-    const url = new URL(_url);
-    const clickhouseClient = createClient({
-      url: url.origin,
-      pathname: url.pathname,
-      http_headers,
-      clickhouse_settings,
+    const parsedUrl = new URL(url);
+    return createClient({
+      url: parsedUrl.origin,
+      pathname: parsedUrl.pathname,
+      clickhouse_settings: clickhouseSettings,
       username: this.username ?? '',
       password: this.password ?? '',
       // Disable keep-alive to prevent multiple concurrent dashboard requests from exceeding the 64KB payload size limit.
@@ -106,12 +93,42 @@ export class ClickhouseClient extends BaseClickhouseClient {
       fetch: myFetch,
       request_timeout: this.requestTimeout,
     });
-    return clickhouseClient.query({
+  }
+
+  protected async __query<Format extends DataFormat>({
+    query,
+    format = 'JSON' as Format,
+    query_params = {},
+    abort_signal,
+    clickhouse_settings: externalClickhouseSettings,
+    connectionId,
+    queryId,
+  }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
+    // FIXME: we couldn't initialize the client in the constructor
+    // since the window is not avalible
+    if (this.client == null) {
+      this.client = this.buildClient();
+    }
+
+    this.logDebugQuery(query, query_params);
+
+    const clickhouseSettings = this.processClickhouseSettings(
+      externalClickhouseSettings,
+    );
+
+    const httpHeaders: { [header: string]: string } = {
+      ...(connectionId && connectionId !== 'local'
+        ? { 'x-hyperdx-connection-id': connectionId }
+        : {}),
+    };
+
+    return this.getClient().query({
       query,
       query_params,
       format,
       abort_signal,
-      clickhouse_settings,
+      http_headers: httpHeaders,
+      clickhouse_settings: clickhouseSettings,
       query_id: queryId,
     }) as Promise<BaseResultSet<ReadableStream, Format>>;
   }
