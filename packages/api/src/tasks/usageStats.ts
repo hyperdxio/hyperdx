@@ -1,7 +1,5 @@
-import {
-  ClickhouseClient,
-  ResponseJSON,
-} from '@hyperdx/common-utils/dist/clickhouse';
+import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';

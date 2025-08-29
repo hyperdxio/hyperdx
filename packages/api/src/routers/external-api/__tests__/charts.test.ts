@@ -1,4 +1,4 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
