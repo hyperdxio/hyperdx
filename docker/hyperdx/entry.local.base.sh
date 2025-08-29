@@ -18,6 +18,7 @@ export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
 export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT:-ch-server:9363}"
 
+export HYPERDX_IMAGE=$([[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]] && echo "all-in-one" || echo "all-in-one-noauth")
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 # IS_LOCAL_APP_MODE should be set by the calling script
 # Default to dangerous mode if not set
