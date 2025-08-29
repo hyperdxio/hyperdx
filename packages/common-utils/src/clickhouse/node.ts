@@ -53,6 +53,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       url: this.host,
       username: this.username,
       password: this.password,
+      request_timeout: this.requestTimeout,
     });
 
     // TODO: Custom error handling

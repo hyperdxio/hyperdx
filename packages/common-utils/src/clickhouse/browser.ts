@@ -131,6 +131,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
         enabled: false,
       },
       fetch: myFetch,
+      request_timeout: this.requestTimeout,
     });
     return clickhouseClient.query({
       query,
