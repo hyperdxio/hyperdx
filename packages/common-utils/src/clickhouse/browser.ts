@@ -1,14 +1,9 @@
-import type {
-  BaseResultSet,
-  ClickHouseSettings,
-  DataFormat,
-} from '@clickhouse/client-common';
+import type { BaseResultSet, DataFormat } from '@clickhouse/client-common';
 import { createClient } from '@clickhouse/client-web';
 
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
-  parameterizedQueryToSql,
   QueryInputs,
 } from './index';
 
@@ -75,40 +70,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
     connectionId,
     queryId,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
-    let debugSql = '';
-    try {
-      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
-      debugSql = query;
-    }
+    this.logDebugQuery(query, query_params);
+
     let _url = this.host!;
-
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-
-    let clickhouse_settings = structuredClone(
-      external_clickhouse_settings || {},
+    const clickhouse_settings = this.processClickhouseSettings(
+      external_clickhouse_settings,
     );
-    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
-      delete clickhouse_settings['max_rows_to_read'];
-    }
-    if (
-      clickhouse_settings?.max_execution_time === undefined &&
-      (this.queryTimeout || 0) > 0
-    ) {
-      clickhouse_settings.max_execution_time = this.queryTimeout;
-    }
-
-    clickhouse_settings = {
-      date_time_output_format: 'iso',
-      wait_end_of_query: 0,
-      cancel_http_readonly_queries_on_client_close: 1,
-      ...clickhouse_settings,
-    };
     const http_headers: { [header: string]: string } = {
       ...(connectionId && connectionId !== 'local'
         ? { 'x-hyperdx-connection-id': connectionId }

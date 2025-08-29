@@ -400,6 +400,49 @@ export abstract class BaseClickhouseClient {
     this.maxRowReadOnly = false;
   }
 
+  protected logDebugQuery(
+    query: string,
+    query_params: Record<string, any> = {},
+  ): void {
+    let debugSql = '';
+    try {
+      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
+    } catch (e) {
+      debugSql = query;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+    // eslint-disable-next-line no-console
+    console.log('Sending Query:', debugSql);
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+  }
+
+  protected processClickhouseSettings(
+    external_clickhouse_settings?: ClickHouseSettings,
+  ): ClickHouseSettings {
+    const clickhouse_settings = structuredClone(
+      external_clickhouse_settings || {},
+    );
+    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
+      delete clickhouse_settings['max_rows_to_read'];
+    }
+    if (
+      clickhouse_settings?.max_execution_time === undefined &&
+      (this.queryTimeout || 0) > 0
+    ) {
+      clickhouse_settings.max_execution_time = this.queryTimeout;
+    }
+
+    return {
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      cancel_http_readonly_queries_on_client_close: 1,
+      ...clickhouse_settings,
+    };
+  }
+
   async query<Format extends DataFormat>(
     props: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>> {
