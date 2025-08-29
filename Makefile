@@ -244,79 +244,59 @@ release-app:
 
 .PHONY: release-otel-collector-nightly
 release-otel-collector-nightly:
-	@TAG_EXISTS=$$(docker manifest inspect ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} > /dev/null 2>&1 && echo "true" || echo "false"); \
-	if [ "$$TAG_EXISTS" = "true" ]; then \
-		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} already exists. Skipping push."; \
-	else \
-		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
-			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-			--target prod \
-			--push \
-			--cache-from=type=gha \
-			--cache-to=type=gha,mode=max; \
-	fi
+	@echo "Building and pushing nightly tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
+	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target prod \
+		--push \
+		--cache-from=type=gha \
+		--cache-to=type=gha,mode=max
 
 .PHONY: release-app-nightly
 release-app-nightly:
-	@TAG_EXISTS=$$(docker manifest inspect ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} > /dev/null 2>&1 && echo "true" || echo "false"); \
-	if [ "$$TAG_EXISTS" = "true" ]; then \
-		echo "Tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} already exists. Skipping push."; \
-	else \
-		echo "Tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
-			--build-context hyperdx=./docker/hyperdx \
-			--build-context api=./packages/api \
-			--build-context app=./packages/app \
-			--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
-			--platform ${BUILD_PLATFORMS} \
-			-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-			--target prod \
-			--push \
-			--cache-from=type=gha \
-			--cache-to=type=gha,mode=max; \
-	fi
+	@echo "Building and pushing nightly tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target prod \
+		--push \
+		--cache-from=type=gha \
+		--cache-to=type=gha,mode=max
 
 .PHONY: release-local-nightly
 release-local-nightly:
-	@TAG_EXISTS=$$(docker manifest inspect ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} > /dev/null 2>&1 && echo "true" || echo "false"); \
-	if [ "$$TAG_EXISTS" = "true" ]; then \
-		echo "Tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} already exists. Skipping push."; \
-	else \
-		echo "Tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
-			--build-context clickhouse=./docker/clickhouse \
-			--build-context otel-collector=./docker/otel-collector \
-			--build-context hyperdx=./docker/hyperdx \
-			--build-context api=./packages/api \
-			--build-context app=./packages/app \
-			--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
-			--platform ${BUILD_PLATFORMS} \
-			-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-			--target all-in-one-noauth \
-			--push \
-			--cache-from=type=gha \
-			--cache-to=type=gha,mode=max; \
-	fi
+	@echo "Building and pushing nightly tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target all-in-one-noauth \
+		--push \
+		--cache-from=type=gha \
+		--cache-to=type=gha,mode=max
 
 .PHONY: release-all-in-one-nightly
 release-all-in-one-nightly:
-	@TAG_EXISTS=$$(docker manifest inspect ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} > /dev/null 2>&1 && echo "true" || echo "false"); \
-	if [ "$$TAG_EXISTS" = "true" ]; then \
-		echo "Tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} already exists. Skipping push."; \
-	else \
-		echo "Tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
-			--build-context clickhouse=./docker/clickhouse \
-			--build-context otel-collector=./docker/otel-collector \
-			--build-context hyperdx=./docker/hyperdx \
-			--build-context api=./packages/api \
-			--build-context app=./packages/app \
-			--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
-			--platform ${BUILD_PLATFORMS} \
-			-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
-			--target all-in-one-auth \
-			--push \
-			--cache-from=type=gha \
-			--cache-to=type=gha,mode=max; \
-	fi
+	@echo "Building and pushing nightly tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
+	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		--build-context clickhouse=./docker/clickhouse \
+		--build-context otel-collector=./docker/otel-collector \
+		--build-context hyperdx=./docker/hyperdx \
+		--build-context api=./packages/api \
+		--build-context app=./packages/app \
+		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
+		--platform ${BUILD_PLATFORMS} \
+		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		--target all-in-one-auth \
+		--push \
+		--cache-from=type=gha \
+		--cache-to=type=gha,mode=max
