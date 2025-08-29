@@ -351,7 +351,7 @@ export class Metadata {
           .then(d => {
             const keys: { key: string; chType: string }[] = [];
             for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
-              if (key || !typeArr || !Array.isArray(typeArr)) {
+              if (!key || !typeArr || !Array.isArray(typeArr)) {
                 throw new Error(
                   `Error fetching keys for filters (key: ${key}, typeArr: ${typeArr})`,
                 );
