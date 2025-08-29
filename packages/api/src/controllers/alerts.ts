@@ -176,12 +176,13 @@ export const createOrUpdateDashboardAlerts = async (
 export const deleteDashboardAlerts = async (
   dashboardId: ObjectId | string,
   teamId: ObjectId,
-  alertIds?: string[],
+  tileIds?: string[],
 ) => {
   return Alert.deleteMany({
     dashboard: dashboardId,
     team: teamId,
-    ...(alertIds && { _id: { $in: alertIds } }),
+    source: AlertSource.TILE,
+    ...(tileIds && { tileId: { $in: tileIds } }),
   });
 };
 

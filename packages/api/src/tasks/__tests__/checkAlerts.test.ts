@@ -1,4 +1,4 @@
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -159,6 +159,7 @@ describe('checkAlerts', () => {
       value: 10,
     };
 
+    const testTile = makeTile({ id: 'test-tile-id' });
     const defaultChartView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -169,12 +170,13 @@ describe('checkAlerts', () => {
           webhookId: 'fake-webhook-id',
         },
         interval: '1m',
+        tileId: 'test-tile-id',
       },
       dashboard: {
         _id: new mongoose.Types.ObjectId(),
         id: 'id-123',
         name: 'My Dashboard',
-        tiles: [makeTile()],
+        tiles: [testTile],
         team: 'team-123' as any,
         tags: ['test'],
       },
@@ -723,7 +725,7 @@ describe('checkAlerts', () => {
         savedSearch,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -963,7 +965,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -1193,7 +1195,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,
@@ -1402,7 +1404,7 @@ describe('checkAlerts', () => {
         dashboard,
       };
 
-      const clickhouseClient = new clickhouse.ClickhouseClient({
+      const clickhouseClient = new ClickhouseClient({
         host: connection.host,
         username: connection.username,
         password: connection.password,

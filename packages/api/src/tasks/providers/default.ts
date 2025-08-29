@@ -43,7 +43,10 @@ async function getSavedSearchDetails(
 
   const { source } = savedSearch;
   const connId = source.connection;
-  const conn = await Connection.findOne({ _id: connId, team: alert.team });
+  const conn = await Connection.findOne({
+    _id: connId,
+    team: alert.team,
+  }).select('+password');
   if (!conn) {
     logger.error({
       message: 'connection not found',
@@ -101,6 +104,7 @@ async function getTileDetails(
   }).populate<Omit<ISource, 'connection'> & { connection: IConnection }>({
     path: 'connection',
     match: { team: alert.team },
+    select: '+password',
   });
   if (!source) {
     logger.error({

@@ -7,7 +7,7 @@ import {
   useQueryState,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { DataFormat } from '@clickhouse/client-common';
+import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Button,

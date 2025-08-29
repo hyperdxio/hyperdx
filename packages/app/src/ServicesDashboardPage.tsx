@@ -446,6 +446,7 @@ function HttpTab({
                 filters: getScopedFilters(source, appliedConfig),
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
+                limit: { limit: 20 },
               }}
             />
           )}
@@ -527,6 +528,7 @@ function HttpTab({
                   topEndpointsChartType === 'time'
                     ? '"Total (ms)" DESC'
                     : '"Errors/Min" DESC',
+                limit: { limit: 20 },
               }}
             />
           )}
@@ -723,6 +725,7 @@ function DatabaseTab({
                     ...getScopedFilters(source, appliedConfig, false),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
+                  limit: { limit: 20 },
                 }}
               />
             ) : (
@@ -779,6 +782,7 @@ function DatabaseTab({
                     ...getScopedFilters(source, appliedConfig, false),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
+                  limit: { limit: 20 },
                 }}
               />
             ))}

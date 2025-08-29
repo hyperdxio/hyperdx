@@ -36,7 +36,6 @@ COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 EXPOSE 4317 4318 13133
 
 ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
-CMD ["--config", "/etc/otel/supervisor.yaml"]
 
 ## prod #############################################################################################
 FROM base AS prod
@@ -47,4 +46,3 @@ COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 EXPOSE 4317 4318 13133
 
 ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
-CMD ["--config", "/etc/otel/supervisor.yaml"]

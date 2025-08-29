@@ -1,7 +1,9 @@
 // --------------------------------------------------------
 // -------------- EXECUTE EVERY MINUTE --------------------
 // --------------------------------------------------------
+import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithOptDateRange,
@@ -30,7 +32,7 @@ import {
   handleSendGenericWebhook,
   renderAlertTemplate,
 } from '@/tasks/template';
-import { HdxTask, TaskArgs } from '@/tasks/types';
+import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
 import logger from '@/utils/logger';
 
@@ -66,7 +68,7 @@ const fireChannelEvent = async ({
   alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
-  clickhouseClient: clickhouse.ClickhouseClient;
+  clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
@@ -137,7 +139,7 @@ const fireChannelEvent = async ({
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
-  clickhouseClient: clickhouse.ClickhouseClient,
+  clickhouseClient: ClickhouseClient,
   connectionId: string,
   alertProvider: AlertProvider,
 ) => {
@@ -365,38 +367,58 @@ export const processAlert = async (
   }
 };
 
-export const processAlertTask = async (
-  now: Date,
-  alertTask: AlertTask,
-  alertProvider: AlertProvider,
-) => {
-  const { alerts, conn } = alertTask;
-  logger.info({
-    message: 'Processing alerts in batch',
-    alertCount: alerts.length,
-  });
-
-  const clickhouseClient = new clickhouse.ClickhouseClient({
-    host: conn.host,
-    username: conn.username,
-    password: conn.password,
-  });
-
-  const p: Promise<void>[] = [];
-  for (const alert of alerts) {
-    p.push(processAlert(now, alert, clickhouseClient, conn.id, alertProvider));
-  }
-  await Promise.all(p);
-};
-
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
-export default class CheckAlertTask implements HdxTask {
+export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
   private provider!: AlertProvider;
+  private task_queue: PQueue;
 
-  async execute(args: TaskArgs): Promise<void> {
-    this.provider = await loadProvider(args.provider);
+  constructor(private args: CheckAlertsTaskArgs) {
+    const concurrency = this.args.concurrency;
+    this.task_queue = new PQueue({
+      autoStart: true,
+      ...(concurrency ? { concurrency } : null),
+    });
+  }
+
+  async processAlertTask(now: Date, alertTask: AlertTask) {
+    const { alerts, conn } = alertTask;
+    logger.info({
+      message: 'Processing alerts in batch',
+      alertCount: alerts.length,
+    });
+
+    if (!conn.password && conn.password !== '') {
+      const providerName = this.provider.constructor.name;
+      logger.info({
+        message: `alert provider did not fetch connection password`,
+        providerName,
+        connectionId: conn.id,
+      });
+    }
+
+    const clickhouseClient = new ClickhouseClient({
+      host: conn.host,
+      username: conn.username,
+      password: conn.password,
+    });
+
+    for (const alert of alerts) {
+      await this.task_queue.add(() =>
+        processAlert(now, alert, clickhouseClient, conn.id, this.provider),
+      );
+    }
+  }
+
+  async execute(): Promise<void> {
+    if (this.args.taskName !== 'check-alerts') {
+      throw new Error(
+        `CheckAlertTask can only handle 'check-alerts' tasks, received: ${this.args.taskName}`,
+      );
+    }
+
+    this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
 
     const now = new Date();
@@ -407,8 +429,14 @@ export default class CheckAlertTask implements HdxTask {
     });
 
     for (const task of alertTasks) {
-      await processAlertTask(now, task, this.provider);
+      await this.task_queue.add(() => this.processAlertTask(now, task));
     }
+
+    await this.task_queue.onIdle();
+  }
+
+  name(): string {
+    return this.args.taskName;
   }
 
   async asyncDispose(): Promise<void> {
