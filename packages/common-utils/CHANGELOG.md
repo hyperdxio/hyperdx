@@ -1,5 +1,23 @@
 # @hyperdx/common-utils
 
+## 0.4.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+
+### Patch Changes
+
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- 52483f6a: feat: enable filters for json columns
+- aacd24dd: bump: default request_timeout to 1hr
+
 ## 0.3.2
 
 ### Patch Changes
