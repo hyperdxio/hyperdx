@@ -508,6 +508,7 @@ function optimizeDefaultOrderBy(
     defaultModifier,
   ];
   const fallbackOrderBy = fallbackOrderByItems.join(' ');
+
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
@@ -528,6 +529,11 @@ function optimizeDefaultOrderBy(
         break;
       }
     }
+  }
+
+  // If we can't find an optimized order by, use the fallback/default
+  if (orderByArr.length === 0) {
+    return fallbackOrderBy;
   }
 
   return `(${orderByArr.join(', ')}) ${defaultModifier}`;
