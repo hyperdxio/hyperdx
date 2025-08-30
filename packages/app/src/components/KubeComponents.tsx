@@ -13,7 +13,7 @@ import {
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getClickhouseClient } from '@/clickhouse';
+import { useClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 
@@ -56,7 +56,7 @@ export const useV2LogBatch = <T = any,>(
   },
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) => {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   return useQuery<ResponseJSON<T>, Error>({
     queryKey: [
       'v2LogBatch',

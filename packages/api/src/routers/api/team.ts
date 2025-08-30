@@ -94,6 +94,7 @@ router.patch(
     body: z.object({
       fieldMetadataDisabled: z.boolean().optional(),
       searchRowLimit: z.number().optional(),
+      queryTimeout: z.number().optional(),
       metadataMaxRowsToRead: z.number().optional(),
     }),
   }),
@@ -104,11 +105,16 @@ router.patch(
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
 
-      const { fieldMetadataDisabled, metadataMaxRowsToRead, searchRowLimit } =
-        req.body;
+      const {
+        fieldMetadataDisabled,
+        metadataMaxRowsToRead,
+        searchRowLimit,
+        queryTimeout,
+      } = req.body;
 
       const settings = {
         ...(searchRowLimit !== undefined && { searchRowLimit }),
+        ...(queryTimeout !== undefined && { queryTimeout }),
         ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
         ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
       };
@@ -122,6 +128,9 @@ router.patch(
       res.json({
         ...(searchRowLimit !== undefined && {
           searchRowLimit: team?.searchRowLimit,
+        }),
+        ...(queryTimeout !== undefined && {
+          queryTimeout: team?.queryTimeout,
         }),
         ...(fieldMetadataDisabled !== undefined && {
           fieldMetadataDisabled: team?.fieldMetadataDisabled,

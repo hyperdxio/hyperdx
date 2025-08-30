@@ -7,6 +7,7 @@
 
 import {
   chSql,
+  ClickhouseClientOptions,
   ColumnMeta,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -16,26 +17,48 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
 
+import api from './api';
+import { DEFAULT_QUERY_TIMEOUT } from './defaults';
+
 const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
-export const getClickhouseClient = () => {
+export const getClickhouseClient = (
+  options: ClickhouseClientOptions = {},
+): ClickhouseClient => {
   if (IS_LOCAL_MODE) {
     const localConnections = getLocalConnections();
     if (localConnections.length === 0) {
       console.warn('No local connection found');
       return new ClickhouseClient({
         host: '',
+        ...options,
       });
     }
     return new ClickhouseClient({
       host: localConnections[0].host,
       username: localConnections[0].username,
       password: localConnections[0].password,
+      ...options,
     });
   }
   return new ClickhouseClient({
     host: PROXY_CLICKHOUSE_HOST,
+    ...options,
   });
+};
+
+export const useClickhouseClient = (
+  options: ClickhouseClientOptions = {},
+): ClickhouseClient => {
+  const { data: me } = api.useMe();
+  const teamQueryTimeout = me?.team?.queryTimeout;
+  if (teamQueryTimeout !== undefined) {
+    options.queryTimeout = teamQueryTimeout;
+  } else {
+    options.queryTimeout = DEFAULT_QUERY_TIMEOUT;
+  }
+
+  return getClickhouseClient(options);
 };
 
 export function useDatabasesDirect(

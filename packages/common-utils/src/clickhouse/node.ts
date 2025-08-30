@@ -48,6 +48,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
     }
+    if (
+      clickhouse_settings?.max_execution_time === undefined &&
+      (this.queryTimeout || 0) > 0
+    ) {
+      clickhouse_settings.max_execution_time = this.queryTimeout;
+    }
 
     const _client = createClient({
       url: this.host,
