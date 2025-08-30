@@ -1,5 +1,32 @@
 # @hyperdx/app
 
+## 2.3.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+
+### Patch Changes
+
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- 784014b6: fix: broke out line break icon from HyperJsonMenu
+- 9c4c5f49: feat: support toUnixTimestamp style timestamps in ORDER BY
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- 52483f6a: feat: enable filters for json columns
+- aacd24dd: bump: default request_timeout to 1hr
+- b6787d56: fix: format numbers on dashboards only for the queried column, not groupBy columns
+- Updated dependencies [25f77aa7]
+- Updated dependencies [d6f8058e]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [52483f6a]
+- Updated dependencies [aacd24dd]
+  - @hyperdx/common-utils@0.4.0
+
 ## 2.2.2
 
 ### Patch Changes
