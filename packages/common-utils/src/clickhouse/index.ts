@@ -1,3 +1,4 @@
+import type { ClickHouseClient as NodeClickHouseClient } from '@clickhouse/client';
 import type {
   BaseResultSet,
   ClickHouseSettings,
@@ -7,6 +8,7 @@ import type {
   Row,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
+import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
@@ -376,6 +378,7 @@ export abstract class BaseClickhouseClient {
   protected readonly host: string;
   protected readonly username?: string;
   protected readonly password?: string;
+  protected client?: WebClickHouseClient | NodeClickHouseClient;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
@@ -389,6 +392,52 @@ export abstract class BaseClickhouseClient {
     this.username = username;
     this.password = password;
     this.maxRowReadOnly = false;
+  }
+
+  protected getClient(): WebClickHouseClient | NodeClickHouseClient {
+    if (!this.client) {
+      throw new Error(
+        'ClickHouse client not initialized. Child classes must initialize the client.',
+      );
+    }
+    return this.client;
+  }
+
+  protected logDebugQuery(
+    query: string,
+    query_params: Record<string, any> = {},
+  ): void {
+    let debugSql = '';
+    try {
+      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
+    } catch (e) {
+      debugSql = query;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+    // eslint-disable-next-line no-console
+    console.log('Sending Query:', debugSql);
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+  }
+
+  protected processClickhouseSettings(
+    external_clickhouse_settings?: ClickHouseSettings,
+  ): ClickHouseSettings {
+    const clickhouse_settings = structuredClone(
+      external_clickhouse_settings || {},
+    );
+    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
+      delete clickhouse_settings['max_rows_to_read'];
+    }
+
+    return {
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      cancel_http_readonly_queries_on_client_close: 1,
+      ...clickhouse_settings,
+    };
   }
 
   async query<Format extends DataFormat>(
