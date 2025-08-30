@@ -81,7 +81,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     } catch (e) {
       debugSql = query;
     }
-    let _url = this.host;
+    let _url = this.host!;
 
     // eslint-disable-next-line no-console
     console.log('--------------------------------------------------------');
@@ -95,6 +95,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
     );
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
+    }
+    if (
+      clickhouse_settings?.max_execution_time === undefined &&
+      (this.queryTimeout || 0) > 0
+    ) {
+      clickhouse_settings.max_execution_time = this.queryTimeout;
     }
 
     clickhouse_settings = {
