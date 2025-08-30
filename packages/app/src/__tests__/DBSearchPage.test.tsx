@@ -31,6 +31,11 @@ describe('useDefaultOrderBy', () => {
           expected: 'Timestamp DESC',
         },
         {
+          // Traces Table
+          input: 'ServiceName, SpanName, toDateTime(Timestamp)',
+          expected: 'Timestamp DESC',
+        },
+        {
           input: 'toStartOfHour(Timestamp), other_column, Timestamp',
           expected: '(toStartOfHour(Timestamp), Timestamp) DESC',
         },
