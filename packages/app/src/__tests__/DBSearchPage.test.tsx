@@ -16,7 +16,7 @@ describe('useDefaultOrderBy', () => {
   });
 
   describe('optimizeOrderBy function', () => {
-    describe('should handle these cases', () => {
+    describe('should handle', () => {
       const mockSource = {
         timestampValueExpression: 'Timestamp',
       };
@@ -36,14 +36,26 @@ describe('useDefaultOrderBy', () => {
           expected: 'Timestamp DESC',
         },
         {
+          // Optimized Traces Table
+          input:
+            'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
+          expected: '(toStartOfHour(Timestamp), toDateTime(Timestamp)) DESC',
+        },
+        {
           // Unsupported for now as it's not a great sort key, want to just
           // use default behavior for this
           input: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
-          expected: '(Timestamp) DESC',
+          expected: 'Timestamp DESC',
         },
         {
           // Unsupported prefix sort key
           input: 'toDateTime(Timestamp), ServiceName, SpanName',
+          expected: 'Timestamp DESC',
+        },
+        {
+          // Inverted sort key order, we should not try to optimize this
+          input:
+            'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
           expected: 'Timestamp DESC',
         },
         {
@@ -79,7 +91,7 @@ describe('useDefaultOrderBy', () => {
         },
       ];
       for (const testCase of testCases) {
-        it(`should handle ${testCase.input}`, () => {
+        it(`${testCase.input}`, () => {
           const mockTableMetadata = { sorting_key: testCase.input };
 
           jest.spyOn(sourceModule, 'useSource').mockReturnValue({

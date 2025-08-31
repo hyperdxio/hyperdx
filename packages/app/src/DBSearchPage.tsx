@@ -519,9 +519,11 @@ function optimizeDefaultOrderBy(
       orderByArr.push(sortKey);
     } else if (
       sortKey === timestampExpr ||
-      (sortKey.startsWith('toUnixTimestamp') && sortKey.includes(timestampExpr))
+      (sortKey.startsWith('toUnixTimestamp') &&
+        sortKey.includes(timestampExpr)) ||
+      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
     ) {
-      if (i === 0) {
+      if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
         return fallbackOrderBy;
       } else {
