@@ -16,7 +16,7 @@ describe('useDefaultOrderBy', () => {
   });
 
   describe('optimizeOrderBy function', () => {
-    it('should handle these cases', () => {
+    describe('should handle these cases', () => {
       const mockSource = {
         timestampValueExpression: 'Timestamp',
       };
@@ -33,6 +33,17 @@ describe('useDefaultOrderBy', () => {
         {
           // Traces Table
           input: 'ServiceName, SpanName, toDateTime(Timestamp)',
+          expected: 'Timestamp DESC',
+        },
+        {
+          // Unsupported for now as it's not a great sort key, want to just
+          // use default behavior for this
+          input: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+          expected: '(Timestamp) DESC',
+        },
+        {
+          // Unsupported prefix sort key
+          input: 'toDateTime(Timestamp), ServiceName, SpanName',
           expected: 'Timestamp DESC',
         },
         {
@@ -68,23 +79,25 @@ describe('useDefaultOrderBy', () => {
         },
       ];
       for (const testCase of testCases) {
-        const mockTableMetadata = { sorting_key: testCase.input };
+        it(`should handle ${testCase.input}`, () => {
+          const mockTableMetadata = { sorting_key: testCase.input };
 
-        jest.spyOn(sourceModule, 'useSource').mockReturnValue({
-          data: mockSource,
-          isLoading: false,
-          error: null,
-        } as any);
+          jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+            data: mockSource,
+            isLoading: false,
+            error: null,
+          } as any);
 
-        jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
-          data: mockTableMetadata,
-          isLoading: false,
-          error: null,
-        } as any);
+          jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+            data: mockTableMetadata,
+            isLoading: false,
+            error: null,
+          } as any);
 
-        const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+          const { result } = renderHook(() => useDefaultOrderBy('source-id'));
 
-        expect(result.current).toBe(testCase.expected);
+          expect(result.current).toBe(testCase.expected);
+        });
       }
     });
 
