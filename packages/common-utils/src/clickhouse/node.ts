@@ -1,14 +1,9 @@
 import { createClient } from '@clickhouse/client';
-import type {
-  BaseResultSet,
-  ClickHouseSettings,
-  DataFormat,
-} from '@clickhouse/client-common';
+import type { BaseResultSet, DataFormat } from '@clickhouse/client-common';
 
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
-  parameterizedQueryToSql,
   QueryInputs,
 } from './index';
 
@@ -18,6 +13,12 @@ export { createClient as createNativeClient };
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
     super(options);
+    this.client = createClient({
+      url: this.host,
+      username: this.username,
+      password: this.password,
+      request_timeout: this.requestTimeout,
+    });
   }
 
   protected async __query<Format extends DataFormat>({
@@ -25,55 +26,22 @@ export class ClickhouseClient extends BaseClickhouseClient {
     format = 'JSON' as Format,
     query_params = {},
     abort_signal,
-    clickhouse_settings: external_clickhouse_settings,
+    clickhouse_settings: externalClickhouseSettings,
     queryId,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
-    let debugSql = '';
-    try {
-      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
-      debugSql = query;
-    }
+    this.logDebugQuery(query, query_params);
 
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-
-    const clickhouse_settings = structuredClone(
-      external_clickhouse_settings || {},
+    const clickhouseSettings = this.processClickhouseSettings(
+      externalClickhouseSettings,
     );
-    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
-      delete clickhouse_settings['max_rows_to_read'];
-    }
-    if (
-      clickhouse_settings?.max_execution_time === undefined &&
-      (this.queryTimeout || 0) > 0
-    ) {
-      clickhouse_settings.max_execution_time = this.queryTimeout;
-    }
-
-    const _client = createClient({
-      url: this.host,
-      username: this.username,
-      password: this.password,
-      request_timeout: this.requestTimeout,
-    });
 
     // TODO: Custom error handling
-    return _client.query({
+    return this.getClient().query({
       query,
       query_params,
       format,
       abort_signal,
-      clickhouse_settings: {
-        date_time_output_format: 'iso',
-        wait_end_of_query: 0,
-        cancel_http_readonly_queries_on_client_close: 1,
-        ...clickhouse_settings,
-      },
+      clickhouse_settings: clickhouseSettings,
       query_id: queryId,
     }) as unknown as Promise<BaseResultSet<ReadableStream, Format>>;
   }
