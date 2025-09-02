@@ -508,6 +508,7 @@ function optimizeDefaultOrderBy(
     defaultModifier,
   ];
   const fallbackOrderBy = fallbackOrderByItems.join(' ');
+
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
@@ -518,9 +519,11 @@ function optimizeDefaultOrderBy(
       orderByArr.push(sortKey);
     } else if (
       sortKey === timestampExpr ||
-      (sortKey.startsWith('toUnixTimestamp') && sortKey.includes(timestampExpr))
+      (sortKey.startsWith('toUnixTimestamp') &&
+        sortKey.includes(timestampExpr)) ||
+      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
     ) {
-      if (i === 0) {
+      if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
         return fallbackOrderBy;
       } else {
@@ -528,6 +531,11 @@ function optimizeDefaultOrderBy(
         break;
       }
     }
+  }
+
+  // If we can't find an optimized order by, use the fallback/default
+  if (orderByArr.length === 0) {
+    return fallbackOrderBy;
   }
 
   return `(${orderByArr.join(', ')}) ${defaultModifier}`;
