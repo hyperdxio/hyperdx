@@ -10,7 +10,7 @@ import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
-import { useSource } from '@/source';
+import { getTimestampValueExpression, useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -135,9 +135,10 @@ export default function SlowestEventsTile({
                 ...source,
                 where: '',
                 whereLanguage: 'sql',
+                timestampValueExpression: getTimestampValueExpression(source),
                 select: [
                   {
-                    valueExpression: source.timestampValueExpression,
+                    valueExpression: getTimestampValueExpression(source),
                     alias: 'Timestamp',
                   },
                   {

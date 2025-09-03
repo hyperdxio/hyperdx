@@ -34,6 +34,13 @@ export type Session = {
   userName: string;
 };
 
+export const SESSION_TABLE_EXPRESSIONS = {
+  resourceAttributesExpression: 'ResourceAttributes',
+  eventAttributesExpression: 'LogAttributes',
+  timestampValueExpression: 'TimestampTime',
+  implicitColumnExpression: 'Body',
+} as const;
+
 // TODO: support where filtering
 export function useSessions(
   {
@@ -147,16 +154,18 @@ export function useSessions(
           {
             select: [
               {
-                valueExpression: `DISTINCT ${sessionSource.resourceAttributesExpression}['rum.sessionId']`,
+                valueExpression: `DISTINCT ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}['rum.sessionId']`,
                 alias: 'sessionId',
               },
             ],
             from: sessionSource.from,
             dateRange,
-            where: `${sessionSource.resourceAttributesExpression}['rum.sessionId'] IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
+            where: `${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}['rum.sessionId'] IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
             whereLanguage: 'sql',
-            timestampValueExpression: sessionSource.timestampValueExpression,
-            implicitColumnExpression: sessionSource.implicitColumnExpression,
+            timestampValueExpression:
+              SESSION_TABLE_EXPRESSIONS.timestampValueExpression,
+            implicitColumnExpression:
+              SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
             connection: sessionSource.connection,
           },
           getMetadata(),
@@ -335,19 +344,20 @@ export function useRRWebEventStream(
           // FIXME: add mappings to session source
           select: [
             {
-              valueExpression: `${source.implicitColumnExpression}`,
+              valueExpression:
+                SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
               alias: 'b',
             },
             {
-              valueExpression: `simpleJSONExtractInt(${source.implicitColumnExpression}, 'type')`,
+              valueExpression: `simpleJSONExtractInt(Body, 'type')`,
               alias: 't',
             },
             {
-              valueExpression: `${source.eventAttributesExpression}['rr-web.chunk']`,
+              valueExpression: `${SESSION_TABLE_EXPRESSIONS.eventAttributesExpression}['rr-web.chunk']`,
               alias: 'ck',
             },
             {
-              valueExpression: `${source.eventAttributesExpression}['rr-web.total-chunks']`,
+              valueExpression: `${SESSION_TABLE_EXPRESSIONS.eventAttributesExpression}['rr-web.total-chunks']`,
               alias: 'tcks',
             },
           ],
@@ -357,11 +367,13 @@ export function useRRWebEventStream(
           ],
           from: source.from,
           whereLanguage: 'lucene',
-          where: `ServiceName:"${serviceName}" AND ${source.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
-          timestampValueExpression: source.timestampValueExpression,
-          implicitColumnExpression: source.implicitColumnExpression,
+          where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+          timestampValueExpression:
+            SESSION_TABLE_EXPRESSIONS.timestampValueExpression,
+          implicitColumnExpression:
+            SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
           connection: source.connection,
-          orderBy: `${source.timestampValueExpression} ASC`,
+          orderBy: `${SESSION_TABLE_EXPRESSIONS.timestampValueExpression} ASC`,
           limit: {
             limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
             offset: parseInt(offset),

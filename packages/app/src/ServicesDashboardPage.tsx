@@ -47,7 +47,7 @@ import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
 import { getExpressions } from '@/serviceDashboard';
-import { useSource, useSources } from '@/source';
+import { getTimestampValueExpression, useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
@@ -235,6 +235,7 @@ export function EndpointLatencyChart({
                 ...getScopedFilters(source, appliedConfig),
               ],
               numberFormat: MS_NUMBER_FORMAT,
+              timestampValueExpression: getTimestampValueExpression(source),
               dateRange,
             }}
           />
@@ -254,6 +255,7 @@ export function EndpointLatencyChart({
                 ...extraFilters,
                 ...getScopedFilters(source, appliedConfig),
               ],
+              timestampValueExpression: getTimestampValueExpression(source),
               dateRange,
             }}
           />
@@ -338,6 +340,7 @@ function HttpTab({
                   },
                   ...getScopedFilters(source, appliedConfig),
                 ],
+                timestampValueExpression: getTimestampValueExpression(source),
                 groupBy:
                   reqChartType === 'overall'
                     ? undefined
@@ -376,6 +379,7 @@ function HttpTab({
                     aggConditionLanguage: 'sql',
                   },
                 ],
+                timestampValueExpression: getTimestampValueExpression(source),
                 numberFormat: { ...INTEGER_NUMBER_FORMAT, unit: 'requests' },
                 filters: getScopedFilters(source, appliedConfig),
                 dateRange: searchedTimeRange,
@@ -444,6 +448,7 @@ function HttpTab({
                 groupBy: source.spanNameExpression || expressions.spanName,
                 orderBy: '"Total (ms)" DESC',
                 filters: getScopedFilters(source, appliedConfig),
+                timestampValueExpression: getTimestampValueExpression(source),
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
                 limit: { limit: 20 },
@@ -591,6 +596,7 @@ function DatabaseTab({
                   ...getScopedFilters(source, appliedConfig, false),
                   { type: 'sql', condition: expressions.isDbSpan },
                 ],
+                timestampValueExpression: getTimestampValueExpression(source),
                 numberFormat: MS_NUMBER_FORMAT,
                 groupBy: expressions.dbStatement,
                 dateRange: searchedTimeRange,
@@ -626,6 +632,7 @@ function DatabaseTab({
                   ...getScopedFilters(source, appliedConfig, false),
                   { type: 'sql', condition: expressions.isDbSpan },
                 ],
+                timestampValueExpression: getTimestampValueExpression(source),
                 numberFormat: {
                   ...INTEGER_NUMBER_FORMAT,
                   unit: 'queries',
@@ -682,6 +689,7 @@ function DatabaseTab({
                   groupBy: expressions.dbStatement,
                   selectGroupBy: false,
                   orderBy: '"Total" DESC',
+                  timestampValueExpression: getTimestampValueExpression(source),
                   select: [
                     {
                       alias: 'Statement',
@@ -825,6 +833,7 @@ function ErrorsTab({
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 displayType: DisplayType.StackedBar,
+                timestampValueExpression: getTimestampValueExpression(source),
                 select: [
                   {
                     valueExpression: `count()`,

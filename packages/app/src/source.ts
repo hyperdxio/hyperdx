@@ -9,7 +9,11 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   hashCode,
   splitAndTrimWithBracket,
@@ -21,6 +25,8 @@ import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
+
+import { SESSION_TABLE_EXPRESSIONS } from './sessions';
 
 const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
 
@@ -55,10 +61,24 @@ export function getSpanEventBody(eventModel: TSource) {
   return eventModel.bodyExpression ?? eventModel?.spanNameExpression;
 }
 
+export function getTimestampValueExpression(source: TSource): string {
+  if (source.kind === SourceKind.Session) {
+    // Session sources have a hard-coded timestampValueExpression
+    return SESSION_TABLE_EXPRESSIONS.timestampValueExpression;
+  } else if (source.timestampValueExpression !== undefined) {
+    return source.timestampValueExpression;
+  } else {
+    console.error(
+      'Expected non-Session-kind source to have a timestampValueExpression',
+    );
+    return '';
+  }
+}
+
 export function getDisplayedTimestampValueExpression(eventModel: TSource) {
   return (
     eventModel.displayedTimestampValueExpression ??
-    getFirstTimestampValueExpression(eventModel.timestampValueExpression)
+    getFirstTimestampValueExpression(getTimestampValueExpression(eventModel))
   );
 }
 

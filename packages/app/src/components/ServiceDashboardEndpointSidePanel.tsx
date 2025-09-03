@@ -16,7 +16,7 @@ import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
 import { EndpointLatencyChart } from '@/ServicesDashboardPage';
-import { useSource } from '@/source';
+import { getTimestampValueExpression, useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import 'react-modern-drawer/dist/index.css';
@@ -114,6 +114,8 @@ export default function ServiceDashboardEndpointSidePanel({
                           },
                         ],
                         numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+                        timestampValueExpression:
+                          getTimestampValueExpression(source),
                         filters: [
                           ...endpointFilters,
                           {
@@ -150,6 +152,8 @@ export default function ServiceDashboardEndpointSidePanel({
                             aggConditionLanguage: 'sql',
                           },
                         ],
+                        timestampValueExpression:
+                          getTimestampValueExpression(source),
                         numberFormat: {
                           ...INTEGER_NUMBER_FORMAT,
                           unit: 'requests',

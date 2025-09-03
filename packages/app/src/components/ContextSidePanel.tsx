@@ -14,7 +14,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import SearchInputV2 from '@/SearchInputV2';
-import { useSource } from '@/source';
+import { getTimestampValueExpression, useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
 import DBRowSidePanel from './DBRowSidePanel';
@@ -214,7 +214,7 @@ export default function ContextSubpanel({
       return {
         connection: source.connection,
         from: source.from,
-        timestampValueExpression: source.timestampValueExpression,
+        timestampValueExpression: getTimestampValueExpression(source),
         select: source.defaultTableSelectExpression || '',
         limit: { limit: 200 },
         orderBy: `${source.timestampValueExpression} DESC`,

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Loader } from '@mantine/core';
 
 import SessionSubpanel from '@/SessionSubpanel';
-import { useSource } from '@/source';
+import { getTimestampValueExpression, useSource } from '@/source';
 
 import { useEventsData } from './DBTraceWaterfallChart';
 
@@ -45,7 +45,7 @@ export const useSessionId = ({
         },
       ],
       from: source.from,
-      timestampValueExpression: source.timestampValueExpression,
+      timestampValueExpression: getTimestampValueExpression(source),
       limit: { limit: 10000 },
       connection: source.connection,
       where: `${source.traceIdExpression} = '${traceId}'`,

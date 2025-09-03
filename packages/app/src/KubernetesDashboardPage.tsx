@@ -56,7 +56,12 @@ import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { getEventBody, useSource, useSources } from './source';
+import {
+  getEventBody,
+  getTimestampValueExpression,
+  useSource,
+  useSources,
+} from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -1053,10 +1058,12 @@ function KubernetesDashboardPage() {
                               : ''
                           }(${logSource.eventAttributesExpression}.k8s.resource.name:"events" -Severity:"Normal")`,
                           whereLanguage: 'lucene',
+                          timestampValueExpression:
+                            getTimestampValueExpression(logSource),
                           select: [
                             {
                               valueExpression:
-                                logSource.timestampValueExpression,
+                                getTimestampValueExpression(logSource),
                               alias: 'Timestamp',
                             },
                             {
@@ -1079,7 +1086,7 @@ function KubernetesDashboardPage() {
                           orderBy: [
                             {
                               valueExpression:
-                                logSource.timestampValueExpression,
+                                getTimestampValueExpression(logSource),
                               ordering: 'DESC',
                             },
                           ],

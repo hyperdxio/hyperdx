@@ -27,7 +27,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
-import { getEventBody } from '@/source';
+import { getEventBody, getTimestampValueExpression } from '@/source';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -187,9 +187,10 @@ function NamespaceLogs({
             ...logSource,
             where: _where,
             whereLanguage: 'lucene',
+            timestampValueExpression: getTimestampValueExpression(logSource),
             select: [
               {
-                valueExpression: logSource.timestampValueExpression,
+                valueExpression: getTimestampValueExpression(logSource),
                 alias: 'Timestamp',
               },
               {
@@ -207,7 +208,7 @@ function NamespaceLogs({
             ],
             orderBy: [
               {
-                valueExpression: logSource.timestampValueExpression,
+                valueExpression: getTimestampValueExpression(logSource),
                 ordering: 'DESC',
               },
             ],

@@ -634,73 +634,15 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control, watch }: TableModelProps) {
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
-  const connectionId = watch(`connection`);
-
+export function SessionTableModelForm({ control }: TableModelProps) {
   return (
     <>
       <Stack gap="sm">
-        <FormRow
-          label={'Timestamp Column'}
-          helpText="DateTime column or expression that is part of your table's primary key."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="timestampValueExpression"
-            disableKeywordAutocomplete
-          />
-        </FormRow>
-        <FormRow label={'Log Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="eventAttributesExpression"
-            placeholder="LogAttributes"
-          />
-        </FormRow>
-        <FormRow label={'Resource Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="resourceAttributesExpression"
-            placeholder="ResourceAttributes"
-          />
-        </FormRow>
         <FormRow
           label={'Correlated Trace Source'}
           helpText="HyperDX Source for traces associated with sessions. Required"
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
-        </FormRow>
-        <FormRow
-          label={'Implicit Column Expression'}
-          helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="implicitColumnExpression"
-            placeholder="Body"
-          />
         </FormRow>
       </Stack>
     </>
@@ -1032,7 +974,7 @@ export function TableSourceForm({
 
       createSource.mutate(
         // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: parseResult.data as TSource },
         {
           onSuccess: async newSource => {
             // Handle bidirectional linking for new sources

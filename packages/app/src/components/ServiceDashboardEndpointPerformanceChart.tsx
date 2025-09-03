@@ -9,6 +9,7 @@ import {
   getExpressions,
   makeCoalescedFieldsAccessQuery,
 } from '@/serviceDashboard';
+import { getTimestampValueExpression } from '@/source';
 
 const MAX_NUM_GROUPS = 200;
 
@@ -100,6 +101,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
             ...source,
             where: '',
             whereLanguage: 'sql',
+            timestampValueExpression: getTimestampValueExpression(source),
             select: [
               {
                 alias: 'group',

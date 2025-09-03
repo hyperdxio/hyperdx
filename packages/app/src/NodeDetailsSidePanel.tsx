@@ -29,7 +29,7 @@ import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
-import { getEventBody } from '@/source';
+import { getEventBody, getTimestampValueExpression } from '@/source';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -208,7 +208,7 @@ function NodeLogs({
             whereLanguage: 'lucene',
             select: [
               {
-                valueExpression: logSource.timestampValueExpression,
+                valueExpression: getTimestampValueExpression(logSource),
                 alias: 'Timestamp',
               },
               {
@@ -226,10 +226,11 @@ function NodeLogs({
             ],
             orderBy: [
               {
-                valueExpression: logSource.timestampValueExpression,
+                valueExpression: getTimestampValueExpression(logSource),
                 ordering: 'DESC',
               },
             ],
+            timestampValueExpression: getTimestampValueExpression(logSource),
             limit: { limit: 200, offset: 0 },
             dateRange,
           }}

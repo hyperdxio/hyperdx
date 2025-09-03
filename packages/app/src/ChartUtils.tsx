@@ -20,6 +20,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
+import { getTimestampValueExpression } from './source';
 import {
   AggFn,
   ChartSeries,
@@ -724,7 +725,7 @@ export const convertV1ChartConfigToV2 = (
       dateRange,
       connection: source.metric?.connection,
       metricTables: source.metric?.metricTables,
-      timestampValueExpression: source.metric?.timestampValueExpression,
+      timestampValueExpression: getTimestampValueExpression(source.metric),
       granularity,
       where: '',
       fillNulls,

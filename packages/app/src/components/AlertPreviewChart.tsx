@@ -9,6 +9,7 @@ import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
+import { getTimestampValueExpression } from '@/source';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
@@ -73,7 +74,7 @@ export const AlertPreviewChart = ({
               valueExpression: '',
             },
           ],
-          timestampValueExpression: source.timestampValueExpression,
+          timestampValueExpression: getTimestampValueExpression(source),
           from: source.from,
           connection: source.connection,
         }}

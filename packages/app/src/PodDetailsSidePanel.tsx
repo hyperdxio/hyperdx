@@ -30,7 +30,7 @@ import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
-import { getEventBody } from './source';
+import { getEventBody, getTimestampValueExpression } from './source';
 
 import styles from '../styles/LogSidePanel.module.scss';
 
@@ -152,12 +152,12 @@ function PodLogs({
       from: logSource.from,
       where: _where,
       whereLanguage: 'lucene' as const,
-      timestampValueExpression: logSource.timestampValueExpression,
+      timestampValueExpression: getTimestampValueExpression(logSource),
       implicitColumnExpression: logSource.implicitColumnExpression,
       connection: logSource.connection,
       select: [
         {
-          valueExpression: logSource.timestampValueExpression,
+          valueExpression: getTimestampValueExpression(logSource),
           alias: 'Timestamp',
         },
         {

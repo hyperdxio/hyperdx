@@ -96,6 +96,7 @@ import SearchInputV2 from '@/SearchInputV2';
 import {
   getDurationMsExpression,
   getFirstTimestampValueExpression,
+  getTimestampValueExpression,
   useSource,
   useSources,
 } from '@/source';
@@ -477,7 +478,7 @@ function useSearchedConfigToChartConfig({
           ...(filters != null ? { filters } : {}),
           where: where ?? '',
           whereLanguage: whereLanguage ?? 'sql',
-          timestampValueExpression: sourceObj.timestampValueExpression,
+          timestampValueExpression: getTimestampValueExpression(sourceObj),
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,

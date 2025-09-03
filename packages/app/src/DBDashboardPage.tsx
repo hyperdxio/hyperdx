@@ -83,6 +83,7 @@ import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
 import {
   getFirstTimestampValueExpression,
+  getTimestampValueExpression,
   useSource,
   useSources,
 } from './source';
@@ -182,7 +183,7 @@ const Tile = forwardRef(
             connection: source.connection,
             dateRange,
             granularity,
-            timestampValueExpression: source.timestampValueExpression,
+            timestampValueExpression: getTimestampValueExpression(source),
             from: {
               databaseName: source.from?.databaseName || 'default',
               tableName: tableName || '',

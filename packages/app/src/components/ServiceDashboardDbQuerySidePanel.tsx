@@ -11,7 +11,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
-import { useSource } from '@/source';
+import { getTimestampValueExpression, useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import 'react-modern-drawer/dist/index.css';
@@ -111,6 +111,8 @@ export default function ServiceDashboardDbQuerySidePanel({
                             aggCondition: '',
                           },
                         ],
+                        timestampValueExpression:
+                          getTimestampValueExpression(source),
                         numberFormat: MS_NUMBER_FORMAT,
                         filters: dbQueryFilters,
                         dateRange: searchedTimeRange,
@@ -142,6 +144,8 @@ export default function ServiceDashboardDbQuerySidePanel({
                             aggConditionLanguage: 'sql',
                           },
                         ],
+                        timestampValueExpression:
+                          getTimestampValueExpression(source),
                         numberFormat: {
                           ...INTEGER_NUMBER_FORMAT,
                           unit: 'requests',

@@ -51,7 +51,11 @@ import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
-import { getFirstTimestampValueExpression, useSource } from '@/source';
+import {
+  getFirstTimestampValueExpression,
+  getTimestampValueExpression,
+  useSource,
+} from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 import { getMetricTableName, optionsToSelectData } from '@/utils';
 import {
@@ -426,7 +430,7 @@ export default function EditTimeChartForm({
         const newConfig = {
           ...form,
           from: tableSource.from,
-          timestampValueExpression: tableSource.timestampValueExpression,
+          timestampValueExpression: getTimestampValueExpression(tableSource),
           dateRange,
           connection: tableSource.connection,
           implicitColumnExpression: tableSource.implicitColumnExpression,
@@ -506,12 +510,12 @@ export default function EditTimeChartForm({
               {
                 ordering: 'DESC' as const,
                 valueExpression: getFirstTimestampValueExpression(
-                  tableSource.timestampValueExpression,
+                  getTimestampValueExpression(tableSource),
                 ),
               },
             ],
             dateRange,
-            timestampValueExpression: tableSource.timestampValueExpression,
+            timestampValueExpression: getTimestampValueExpression(tableSource),
             connection: tableSource.connection,
             from: tableSource.from,
             limit: { limit: 200 },
@@ -947,12 +951,13 @@ export default function EditTimeChartForm({
                   {
                     ordering: 'DESC' as const,
                     valueExpression: getFirstTimestampValueExpression(
-                      tableSource.timestampValueExpression,
+                      getTimestampValueExpression(tableSource),
                     ),
                   },
                 ],
                 dateRange,
-                timestampValueExpression: tableSource.timestampValueExpression,
+                timestampValueExpression:
+                  getTimestampValueExpression(tableSource),
                 connection: tableSource.connection,
                 from: tableSource.from,
                 limit: { limit: 200 },
