@@ -501,8 +501,11 @@ const SourceBaseSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
-  timestampValueExpression: z.string().min(1, 'Timestamp Column is required'),
 });
+
+const RequiredTimestampColumnSchema = z
+  .string()
+  .min(1, 'Timestamp Column is required');
 
 // Log source form schema
 const LogSourceAugmentation = {
@@ -510,6 +513,7 @@ const LogSourceAugmentation = {
   defaultTableSelectExpression: z.string({
     message: 'Default Table Select Expression is required',
   }),
+  timestampValueExpression: RequiredTimestampColumnSchema,
 
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
@@ -531,6 +535,7 @@ const LogSourceAugmentation = {
 const TraceSourceAugmentation = {
   kind: z.literal(SourceKind.Trace),
   defaultTableSelectExpression: z.string().optional(),
+  timestampValueExpression: RequiredTimestampColumnSchema,
 
   // Required fields for traces
   durationExpression: z.string().min(1, 'Duration Expression is required'),
@@ -561,18 +566,9 @@ const SessionSourceAugmentation = {
   kind: z.literal(SourceKind.Session),
 
   // Required fields for sessions
-  eventAttributesExpression: z
-    .string()
-    .min(1, 'Log Attributes Expression is required'),
-  resourceAttributesExpression: z
-    .string()
-    .min(1, 'Resource Attributes Expression is required'),
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
     .min(1, 'Correlated Trace Source is required'),
-
-  // Optional fields for sessions
-  implicitColumnExpression: z.string().optional(),
 };
 
 // Metric source form schema
@@ -586,6 +582,7 @@ const MetricSourceAugmentation = {
 
   // Metric tables - at least one should be provided
   metricTables: MetricTableSchema,
+  timestampValueExpression: RequiredTimestampColumnSchema,
   resourceAttributesExpression: z
     .string()
     .min(1, 'Resource Attributes is required'),
@@ -659,4 +656,9 @@ type FlattenUnion<T> = {
     ? never
     : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
 };
-export type TSource = FlattenUnion<z.infer<typeof SourceSchema>>;
+type TSourceWithoutDefaults = FlattenUnion<z.infer<typeof SourceSchema>>;
+
+// Type representing a TSourceWithoutDefaults object which has been augmented with default values
+export type TSource = TSourceWithoutDefaults & {
+  timestampValueExpression: string;
+};

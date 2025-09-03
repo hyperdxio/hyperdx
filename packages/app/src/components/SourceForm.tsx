@@ -35,6 +35,7 @@ import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
+  isValidSessionsTable,
   useCreateSource,
   useDeleteSource,
   useSource,
@@ -634,73 +635,52 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control, watch }: TableModelProps) {
+export function SessionTableModelForm({
+  control,
+  watch,
+  setValue,
+}: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
+
+  useEffect(() => {
+    const { unsubscribe } = watch(async (value, { name, type }) => {
+      try {
+        const tableName = value.from?.tableName;
+        if (tableName && name === 'from.tableName' && type === 'change') {
+          const isValid = await isValidSessionsTable({
+            databaseName,
+            tableName,
+            connectionId,
+          });
+
+          if (!isValid) {
+            notifications.show({
+              color: 'red',
+              message: `${tableName} is not a valid Sessions schema.`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [setValue, watch, databaseName, connectionId]);
 
   return (
     <>
       <Stack gap="sm">
         <FormRow
-          label={'Timestamp Column'}
-          helpText="DateTime column or expression that is part of your table's primary key."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="timestampValueExpression"
-            disableKeywordAutocomplete
-          />
-        </FormRow>
-        <FormRow label={'Log Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="eventAttributesExpression"
-            placeholder="LogAttributes"
-          />
-        </FormRow>
-        <FormRow label={'Resource Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="resourceAttributesExpression"
-            placeholder="ResourceAttributes"
-          />
-        </FormRow>
-        <FormRow
           label={'Correlated Trace Source'}
           helpText="HyperDX Source for traces associated with sessions. Required"
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
-        </FormRow>
-        <FormRow
-          label={'Implicit Column Expression'}
-          helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="implicitColumnExpression"
-            placeholder="Body"
-          />
         </FormRow>
       </Stack>
     </>
