@@ -96,8 +96,18 @@ export const AppNavUserMenu = ({
             </Avatar>
             {!isCollapsed && (
               <>
-                <div style={{ flex: 1 }}>
-                  <Text size="xs" fw="bold" lh={1.1} c="gray.3">
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <Text
+                    size="xs"
+                    fw="bold"
+                    lh={1.1}
+                    c="gray.3"
+                    style={{
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     {IS_LOCAL_MODE ? 'Local mode' : userName}
                   </Text>
                   <Text
