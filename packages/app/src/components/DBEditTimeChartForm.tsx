@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -119,6 +127,7 @@ function ChartSeriesEditorComponent({
   showGroupBy,
   tableName: _tableName,
   watch,
+  parentRef,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -126,6 +135,7 @@ function ChartSeriesEditorComponent({
   connectionId?: string;
   index: number;
   namePrefix: string;
+  parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
@@ -276,6 +286,7 @@ function ChartSeriesEditorComponent({
             </Text>
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
+                parentRef={parentRef}
                 tableConnections={{
                   databaseName,
                   tableName: tableName ?? '',
@@ -525,8 +536,18 @@ export default function EditTimeChartForm({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  const parentRef = useRef<HTMLElement | null>(null);
+  // Need to force a rerender as this modal will not be mounted when
+  // initially rendered
+  const [, forceRerender] = useState(false);
+
+  const setRef = useCallback((el: HTMLElement | null) => {
+    parentRef.current = el;
+    forceRerender(v => !v);
+  }, []);
+
   return (
-    <>
+    <div ref={setRef}>
       <Controller
         control={control}
         name="displayType"
@@ -620,6 +641,7 @@ export default function EditTimeChartForm({
                   dateRange={dateRange}
                   index={index}
                   key={field.id}
+                  parentRef={parentRef?.current}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
                   onSubmit={onSubmit}
@@ -1018,7 +1040,7 @@ export default function EditTimeChartForm({
           </Accordion>
         </>
       )}
-    </>
+    </div>
   );
 }
 
