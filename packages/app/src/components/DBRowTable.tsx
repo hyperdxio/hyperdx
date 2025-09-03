@@ -238,6 +238,7 @@ export const RawLogTable = memo(
     error,
     columnTypeMap,
     dateRange,
+    loadingDate,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -266,6 +267,7 @@ export const RawLogTable = memo(
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
+    loadingDate?: Date;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -770,6 +772,11 @@ export const RawLogTable = memo(
                       <div className="spin-animate d-inline-block">
                         <i className="bi bi-arrow-repeat" />
                       </div>{' '}
+                      {loadingDate != null && (
+                        <>
+                          Searched <FormatTime value={loadingDate} />.{' '}
+                        </>
+                      )}
                       Loading results
                       {dateRange?.[0] != null && dateRange?.[1] != null ? (
                         <>
@@ -1174,6 +1181,7 @@ function DBSqlRowTableComponent({
         error={error ?? undefined}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
+        loadingDate={data?.window?.startTime}
       />
     </>
   );
