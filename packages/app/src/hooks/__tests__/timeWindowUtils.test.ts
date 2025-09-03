@@ -1,9 +1,5 @@
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
-// Import the utility functions from the hook file
-// Note: These functions are not exported, so we'll test them through the hook
-// But we can test the logic by creating similar test scenarios
-
 describe('Time Window Generation Logic', () => {
   // Test the time window configuration constants
   const TIME_WINDOWS_MS = [
