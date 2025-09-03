@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
@@ -25,6 +32,7 @@ import {
 import {
   ChartConfigWithDateRange,
   SelectList,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import { Box, Code, Flex, Text, UnstyledButton } from '@mantine/core';
@@ -65,6 +73,7 @@ import {
 
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import { RowOverviewPanel } from './DBRowOverviewPanel';
 import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
@@ -83,6 +92,44 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
+
+const ExpandedLogRow = memo(
+  ({
+    columnsLength,
+    virtualKey,
+    source,
+    rowId,
+  }: {
+    columnsLength: number;
+    virtualKey: string;
+    source: TSource | undefined;
+    rowId: string;
+  }) => {
+    return (
+      <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
+        <td colSpan={columnsLength} className="p-0 border-0">
+          <div
+            className="mx-2 mb-2 rounded"
+            style={{
+              maxHeight: '400px',
+              overflow: 'auto',
+              backgroundColor: 'rgb(37, 41, 47)',
+              padding: '12px',
+            }}
+          >
+            {source ? (
+              <div className="inline-overview-panel">
+                <RowOverviewPanel source={source} rowId={rowId} />
+              </div>
+            ) : (
+              <div className="p-3 text-muted">Loading...</div>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  },
+);
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -238,6 +285,7 @@ export const RawLogTable = memo(
     error,
     columnTypeMap,
     dateRange,
+    source,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -266,6 +314,7 @@ export const RawLogTable = memo(
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
+    source?: TSource;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -331,6 +380,18 @@ export const RawLogTable = memo(
       })),
     );
 
+    // Accordion expansion state
+    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>(
+      {},
+    );
+
+    const toggleRowExpansion = useCallback((rowId: string) => {
+      setExpandedRows(prev => ({
+        ...prev,
+        [rowId]: !prev[rowId],
+      }));
+    }, []);
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
         {
@@ -338,24 +399,27 @@ export const RawLogTable = memo(
           accessorKey: '__hyperdx_id',
           header: () => '',
           cell: info => {
+            const rowId = info.getValue() as string;
+            const isExpanded = expandedRows[rowId] ?? false;
             return (
-              <div
-                role="button"
-                className={cx('cursor-pointer', {
-                  'text-success': highlightedLineId === info.getValue(),
-                  'text-muted-hover': highlightedLineId !== info.getValue(),
+              <button
+                type="button"
+                className={cx('btn btn-link p-0 border-0', {
+                  'text-success': highlightedLineId === rowId,
+                  'text-muted': highlightedLineId !== rowId,
                 })}
-                onMouseDown={e => {
-                  // For some reason this interfers with the onclick handler
-                  // inside a dashboard tile
+                onClick={e => {
                   e.stopPropagation();
+                  toggleRowExpansion(rowId);
                 }}
-                onClick={() => {
-                  _onRowExpandClick(info.row.original);
-                }}
+                aria-expanded={isExpanded}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+                style={{ lineHeight: 1 }}
               >
-                <span className="bi bi-chevron-right" />
-              </div>
+                <i
+                  className={`bi bi-chevron-${isExpanded ? 'down' : 'right'}`}
+                />
+              </button>
             );
           },
           size: 8,
@@ -434,6 +498,8 @@ export const RawLogTable = memo(
         columnNameMap,
         columnTypeMap,
         logLevelColumn,
+        expandedRows,
+        toggleRowExpansion,
       ],
     );
 
@@ -727,39 +793,51 @@ export const RawLogTable = memo(
             )}
             {items.map(virtualRow => {
               const row = _rows[virtualRow.index] as TableRow<any>;
+              const rowId = row.original.__hyperdx_id;
+              const isExpanded = expandedRows[rowId] ?? false;
+
               return (
-                <tr
-                  onClick={() => {
-                    // onRowExpandClick(row.original.id, row.original.sort_key);
-                    _onRowExpandClick(row.original);
-                  }}
-                  role="button"
-                  key={virtualRow.key}
-                  // TODO: Restore highlight
-                  className={cx(styles.tableRow, {
-                    [styles.tableRow__selected]:
-                      highlightedLineId === row.original.__hyperdx_id,
-                  })}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                >
-                  {row.getVisibleCells().map(cell => {
-                    return (
-                      <td
-                        key={cell.id}
-                        className={cx('align-top overflow-hidden', {
-                          'text-break': wrapLinesEnabled,
-                          'text-truncate': !wrapLinesEnabled,
-                        })}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <React.Fragment key={virtualRow.key}>
+                  <tr
+                    onClick={() => {
+                      // onRowExpandClick(row.original.id, row.original.sort_key);
+                      _onRowExpandClick(row.original);
+                    }}
+                    role="button"
+                    // TODO: Restore highlight
+                    className={cx(styles.tableRow, {
+                      [styles.tableRow__selected]:
+                        highlightedLineId === row.original.__hyperdx_id,
+                    })}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                  >
+                    {row.getVisibleCells().map(cell => {
+                      return (
+                        <td
+                          key={cell.id}
+                          className={cx('align-top overflow-hidden', {
+                            'text-break': wrapLinesEnabled,
+                            'text-truncate': !wrapLinesEnabled,
+                          })}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {isExpanded && (
+                    <ExpandedLogRow
+                      columnsLength={columns.length}
+                      virtualKey={virtualRow.key.toString()}
+                      source={source}
+                      rowId={rowId}
+                    />
+                  )}
+                </React.Fragment>
               );
             })}
             <tr>
@@ -1174,6 +1252,7 @@ function DBSqlRowTableComponent({
         error={error ?? undefined}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
+        source={source}
       />
     </>
   );
