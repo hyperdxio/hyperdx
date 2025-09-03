@@ -536,17 +536,11 @@ export default function EditTimeChartForm({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
-  const parentRef = useRef<HTMLElement | null>(null);
-  // Need to force a rerender as the modal will not be mounted when initially rendered
-  const [, forceRerender] = useState(false);
-
-  const setRef = useCallback((el: HTMLElement | null) => {
-    parentRef.current = el;
-    forceRerender(v => !v);
-  }, []);
+  // Need to force a rerender on change as the modal will not be mounted when initially rendered
+  const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   return (
-    <div ref={setRef}>
+    <div ref={setParentRef}>
       <Controller
         control={control}
         name="displayType"
@@ -640,7 +634,7 @@ export default function EditTimeChartForm({
                   dateRange={dateRange}
                   index={index}
                   key={field.id}
-                  parentRef={parentRef?.current}
+                  parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
                   onSubmit={onSubmit}
