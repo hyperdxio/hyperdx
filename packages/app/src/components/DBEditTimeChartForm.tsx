@@ -537,8 +537,7 @@ export default function EditTimeChartForm({
   );
 
   const parentRef = useRef<HTMLElement | null>(null);
-  // Need to force a rerender as this modal will not be mounted when
-  // initially rendered
+  // Need to force a rerender as the modal will not be mounted when initially rendered
   const [, forceRerender] = useState(false);
 
   const setRef = useCallback((el: HTMLElement | null) => {
