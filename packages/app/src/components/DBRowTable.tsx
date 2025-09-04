@@ -286,6 +286,8 @@ export const RawLogTable = memo(
     columnTypeMap,
     dateRange,
     source,
+    onExpandedRowsChange,
+    collapseAllRows,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -315,6 +317,8 @@ export const RawLogTable = memo(
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
     source?: TSource;
+    onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
+    collapseAllRows?: boolean;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -385,12 +389,31 @@ export const RawLogTable = memo(
       {},
     );
 
-    const toggleRowExpansion = useCallback((rowId: string) => {
-      setExpandedRows(prev => ({
-        ...prev,
-        [rowId]: !prev[rowId],
-      }));
-    }, []);
+    const toggleRowExpansion = useCallback(
+      (rowId: string) => {
+        setExpandedRows(prev => {
+          const newExpandedRows = {
+            ...prev,
+            [rowId]: !prev[rowId],
+          };
+
+          // Check if any rows are expanded and notify parent
+          const hasExpandedRows = Object.values(newExpandedRows).some(Boolean);
+          onExpandedRowsChange?.(hasExpandedRows);
+
+          return newExpandedRows;
+        });
+      },
+      [onExpandedRowsChange],
+    );
+
+    // Effect to collapse all rows when requested by parent
+    useEffect(() => {
+      if (collapseAllRows) {
+        setExpandedRows({});
+        onExpandedRowsChange?.(false);
+      }
+    }, [collapseAllRows, onExpandedRowsChange]);
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -1052,6 +1075,8 @@ function DBSqlRowTableComponent({
   queryKeyPrefix,
   onScroll,
   denoiseResults = false,
+  onExpandedRowsChange,
+  collapseAllRows,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1063,6 +1088,8 @@ function DBSqlRowTableComponent({
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
+  onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
+  collapseAllRows?: boolean;
 }) {
   const { data: me } = api.useMe();
   const mergedConfig = useConfigWithPrimaryAndPartitionKey({
@@ -1253,6 +1280,8 @@ function DBSqlRowTableComponent({
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         source={source}
+        onExpandedRowsChange={onExpandedRowsChange}
+        collapseAllRows={collapseAllRows}
       />
     </>
   );
