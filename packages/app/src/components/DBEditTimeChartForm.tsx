@@ -864,7 +864,8 @@ export default function EditTimeChartForm({
           )}
         </Flex>
         <Flex gap="sm" my="sm" align="center" justify="end">
-          {setDisplayedTimeInputValue != null &&
+          {activeTab !== 'markdown' &&
+            setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <TimePicker
@@ -881,14 +882,16 @@ export default function EditTimeChartForm({
           {activeTab === 'time' && (
             <GranularityPickerControlled control={control} name="granularity" />
           )}
-          <Button
-            variant="outline"
-            type="submit"
-            color="green"
-            onClick={onSubmit}
-          >
-            <i className="bi bi-play"></i>
-          </Button>
+          {activeTab !== 'markdown' && (
+            <Button
+              variant="outline"
+              type="submit"
+              color="green"
+              onClick={onSubmit}
+            >
+              <i className="bi bi-play"></i>
+            </Button>
+          )}
         </Flex>
       </Flex>
       {!queryReady && activeTab !== 'markdown' ? (
