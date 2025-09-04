@@ -34,14 +34,17 @@ export default function PatternTable({
     totalCountQueryKeyPrefix,
   );
 
-  const { data: groupedResults, isLoading: isGroupedPatternsLoading } =
-    useGroupedPatterns({
-      config,
-      samples: SAMPLES,
-      bodyValueExpression,
-      severityTextExpression: source?.severityTextExpression ?? '',
-      totalCount,
-    });
+  const {
+    data: groupedResults,
+    isLoading: isGroupedPatternsLoading,
+    patternQueryConfig,
+  } = useGroupedPatterns({
+    config,
+    samples: SAMPLES,
+    bodyValueExpression,
+    severityTextExpression: source?.severityTextExpression ?? '',
+    totalCount,
+  });
 
   const isLoading = isTotalCountLoading || isGroupedPatternsLoading;
 
@@ -76,6 +79,7 @@ export default function PatternTable({
           pattern: 'Pattern',
           severityText: 'level',
         }}
+        config={patternQueryConfig}
       />
       {selectedPattern && source && (
         <PatternSidePanel
