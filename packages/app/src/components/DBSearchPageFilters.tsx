@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  Accordion,
   ActionIcon,
   Box,
   Button,
@@ -175,7 +176,13 @@ export const FilterGroup = ({
   hasLoadedMore,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
-  const [isExpanded, setExpanded] = useState(false);
+  // "Show More" button when there's lots of options
+  const [shouldShowMore, setShowMore] = useState(false);
+  // Accordion expanded state
+  const [isExpanded, setExpanded] = useState(true);
+
+  const totalFiltersSize =
+    selectedValues.included.size + selectedValues.excluded.size;
 
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
@@ -200,10 +207,8 @@ export const FilterGroup = ({
       });
     }
 
-    const sortBySelectionAndAlpha = (
-      a: (typeof augmentedOptions)[0],
-      b: (typeof augmentedOptions)[0],
-    ) => {
+    // General Sorting of List
+    augmentedOptions.sort((a, b) => {
       const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
@@ -225,154 +230,193 @@ export const FilterGroup = ({
 
       // Finally sort alphabetically/numerically
       return a.value.localeCompare(b.value, undefined, { numeric: true });
-    };
+    });
 
-    // If expanded or small list, sort everything
-    if (isExpanded || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
-      return augmentedOptions.sort(sortBySelectionAndAlpha);
+    // If expanded or small list, return everything
+    if (shouldShowMore || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
+      return augmentedOptions;
     }
+    // Return the subset of items
+    const pageSize = Math.max(MAX_FILTER_GROUP_ITEMS, totalFiltersSize);
+    return augmentedOptions.slice(0, pageSize);
+  }, [
+    search,
+    shouldShowMore,
+    isPinned,
+    augmentedOptions,
+    selectedValues,
+    totalFiltersSize,
+  ]);
 
-    // Do not rearrange items if all selected values are visible without expanding
-    return augmentedOptions
-      .sort((a, b) => sortBySelectionAndAlpha(a, b))
-      .slice(
-        0,
-        Math.max(
-          MAX_FILTER_GROUP_ITEMS,
-          selectedValues.included.size + selectedValues.excluded.size,
-        ),
-      );
-  }, [search, isExpanded, augmentedOptions, selectedValues]);
-
-  const showExpandButton =
+  const showLoadMoreButton =
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
-    selectedValues.included.size + selectedValues.excluded.size <
-      augmentedOptions.length;
+    totalFiltersSize < augmentedOptions.length;
 
   return (
-    <Stack gap={0}>
-      <Tooltip
-        openDelay={name.length > 26 ? 0 : 1500}
-        label={name}
-        position="top"
-        withArrow
-        fz="xxs"
-        color="gray"
-      >
-        <TextInput
-          size="xs"
-          placeholder={name}
-          value={search}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-            setSearch(event.currentTarget.value)
-          }
-          leftSectionWidth={27}
-          leftSection={<IconSearch size={15} stroke={2} />}
-          rightSection={
-            <Group gap="xs">
-              {onFieldPinClick && (
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={onFieldPinClick}
-                  title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                >
-                  <i
-                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                  />
-                </ActionIcon>
-              )}
-              {selectedValues.included.size + selectedValues.excluded.size >
-                0 && (
-                <TextButton
-                  label="Clear"
-                  onClick={() => {
-                    onClearClick();
-                    setSearch('');
-                  }}
-                />
-              )}
-            </Group>
-          }
-        />
-      </Tooltip>
-      <Stack gap={0}>
-        {displayedOptions.map(option => (
-          <FilterCheckbox
-            key={option.value}
-            label={option.label}
-            pinned={isPinned(option.value)}
-            value={
-              selectedValues.included.has(option.value)
-                ? 'included'
-                : selectedValues.excluded.has(option.value)
-                  ? 'excluded'
-                  : false
-            }
-            onChange={() => onChange(option.value)}
-            onClickOnly={() => onOnlyClick(option.value)}
-            onClickExclude={() => onExcludeClick(option.value)}
-            onClickPin={() => onPinClick(option.value)}
-          />
-        ))}
-        {optionsLoading ? (
-          <Group m={6} gap="xs">
-            <Loader size={12} color="gray.6" />
-            <Text c="dimmed" size="xs">
-              Loading...
-            </Text>
-          </Group>
-        ) : displayedOptions.length === 0 ? (
-          <Group m={6} gap="xs">
-            <Text c="dimmed" size="xs">
-              No options found
-            </Text>
-          </Group>
-        ) : null}
-        {showExpandButton && (
-          <div className="d-flex m-1">
-            <TextButton
-              label={
-                isExpanded ? (
-                  <>
-                    <span className="bi-chevron-up" /> Less
-                  </>
-                ) : (
-                  <>
-                    <span className="bi-chevron-down" /> Show more
-                  </>
-                )
-              }
-              onClick={() => setExpanded(!isExpanded)}
-            />
-          </div>
-        )}
-        {onLoadMore && (!showExpandButton || isExpanded) && (
-          <div className="d-flex m-1">
-            {loadMoreLoading ? (
-              <Group m={6} gap="xs">
-                <Loader size={12} color="gray.6" />
-                <Text c="dimmed" size="xs">
-                  Loading more...
-                </Text>
-              </Group>
-            ) : (
-              <TextButton
-                display={hasLoadedMore ? 'none' : undefined}
-                label={
-                  <>
-                    <span className="bi-chevron-down" /> Load more
-                  </>
+    <Accordion
+      variant="unstyled"
+      chevronPosition="left"
+      value={isExpanded ? name : null}
+      onChange={v => {
+        setExpanded(v === name);
+      }}
+    >
+      <Accordion.Item value={name}>
+        <Stack gap={0}>
+          <Accordion.Control
+            component={UnstyledButton}
+            style={{ padding: 0 }}
+            classNames={{
+              chevron: 'm-0',
+              label: 'p-0',
+            }}
+          >
+            <Tooltip
+              openDelay={name.length > 26 ? 0 : 1500}
+              label={name}
+              position="top"
+              withArrow
+              fz="xxs"
+              color="gray"
+            >
+              <TextInput
+                size="xs"
+                placeholder={name}
+                value={search}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setSearch(event.currentTarget.value)
                 }
-                onClick={() => onLoadMore(name)}
+                onClick={e => {
+                  // Prevent accordion from opening when clicking on the input, unless it's closed.
+                  if (isExpanded) {
+                    e.stopPropagation();
+                  }
+                }}
+                leftSectionWidth={27}
+                leftSection={<IconSearch size={15} stroke={2} />}
+                // If 'clear' is shown, increase the width
+                rightSectionWidth={totalFiltersSize > 0 ? 60 : undefined}
+                rightSection={
+                  <Group
+                    gap="xxxs"
+                    onClick={e => {
+                      // Prevent accordion from opening when clicking on the right section
+                      e.stopPropagation();
+                    }}
+                  >
+                    {onFieldPinClick && (
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={onFieldPinClick}
+                        title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                      >
+                        <i
+                          className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
+                        />
+                      </ActionIcon>
+                    )}
+                    {totalFiltersSize > 0 && (
+                      <TextButton
+                        label="Clear"
+                        onClick={() => {
+                          onClearClick();
+                          setSearch('');
+                        }}
+                      />
+                    )}
+                  </Group>
+                }
               />
-            )}
-          </div>
-        )}
-      </Stack>
-    </Stack>
+            </Tooltip>
+          </Accordion.Control>
+          <Accordion.Panel
+            classNames={{
+              content: 'p-0 pt-2',
+            }}
+          >
+            <Stack gap={0}>
+              {displayedOptions.map(option => (
+                <FilterCheckbox
+                  key={option.value}
+                  label={option.label}
+                  pinned={isPinned(option.value)}
+                  value={
+                    selectedValues.included.has(option.value)
+                      ? 'included'
+                      : selectedValues.excluded.has(option.value)
+                        ? 'excluded'
+                        : false
+                  }
+                  onChange={() => onChange(option.value)}
+                  onClickOnly={() => onOnlyClick(option.value)}
+                  onClickExclude={() => onExcludeClick(option.value)}
+                  onClickPin={() => onPinClick(option.value)}
+                />
+              ))}
+              {optionsLoading ? (
+                <Group m={6} gap="xs">
+                  <Loader size={12} color="gray.6" />
+                  <Text c="dimmed" size="xs">
+                    Loading...
+                  </Text>
+                </Group>
+              ) : displayedOptions.length === 0 ? (
+                <Group m={6} gap="xs">
+                  <Text c="dimmed" size="xs">
+                    No options found
+                  </Text>
+                </Group>
+              ) : null}
+              {showLoadMoreButton && (
+                <div className="d-flex m-1">
+                  <TextButton
+                    label={
+                      shouldShowMore ? (
+                        <>
+                          <span className="bi-chevron-up" /> Less
+                        </>
+                      ) : (
+                        <>
+                          <span className="bi-chevron-down" /> Show more
+                        </>
+                      )
+                    }
+                    onClick={() => setShowMore(!shouldShowMore)}
+                  />
+                </div>
+              )}
+              {onLoadMore &&
+                (loadMoreLoading || showLoadMoreButton || shouldShowMore) &&
+                !hasLoadedMore && (
+                  <div className="d-flex m-1">
+                    {loadMoreLoading ? (
+                      <Group m={6} gap="xs">
+                        <Loader size={12} color="gray.6" />
+                        <Text c="dimmed" size="xs">
+                          Loading more...
+                        </Text>
+                      </Group>
+                    ) : (
+                      <TextButton
+                        display={hasLoadedMore ? 'none' : undefined}
+                        label={
+                          <>
+                            <span className="bi-chevron-down" /> Load more
+                          </>
+                        }
+                        onClick={() => onLoadMore(name)}
+                      />
+                    )}
+                  </div>
+                )}
+            </Stack>
+          </Accordion.Panel>
+        </Stack>
+      </Accordion.Item>
+    </Accordion>
   );
 };
 
