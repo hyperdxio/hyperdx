@@ -1771,21 +1771,32 @@ function DBSearchPage() {
                           </div>
                         </div>
                       )}
+                    {/* Wrap table with context provider so inline content has access to context */}
                     {chartConfig &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
-                        <DBSqlRowTable
-                          config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source ?? ''}
-                          onRowExpandClick={onRowExpandClick}
-                          highlightedLineId={rowId ?? undefined}
-                          enabled={isReady}
-                          isLive={isLive ?? true}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onScroll={onTableScroll}
-                          onError={handleTableError}
-                          denoiseResults={denoiseResults}
-                        />
+                        <RowSidePanelContext.Provider
+                          value={{
+                            onPropertyAddClick: searchFilters.setFilterValue,
+                            displayedColumns,
+                            toggleColumn,
+                            generateSearchUrl,
+                            dbSqlRowTableConfig,
+                          }}
+                        >
+                          <DBSqlRowTable
+                            config={dbSqlRowTableConfig}
+                            sourceId={searchedConfig.source ?? ''}
+                            onRowExpandClick={onRowExpandClick}
+                            highlightedLineId={rowId ?? undefined}
+                            enabled={isReady}
+                            isLive={isLive ?? true}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onScroll={onTableScroll}
+                            onError={handleTableError}
+                            denoiseResults={denoiseResults}
+                          />
+                        </RowSidePanelContext.Provider>
                       )}
                   </>
                 )}
