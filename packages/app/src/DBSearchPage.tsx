@@ -414,6 +414,24 @@ function useLiveUpdate({
   ) => void;
   pause: boolean;
 }) {
+  const documentState = useDocumentVisibility();
+  const isDocumentVisible = documentState === 'visible';
+  const [refreshOnVisible, setRefreshOnVisible] = useState(false);
+
+  const refresh = useCallback(() => {
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+  }, [onTimeRangeSelect, interval]);
+
+  // When the user comes back to the app after switching tabs, we immediately refresh the list.
+  useEffect(() => {
+    if (refreshOnVisible && isDocumentVisible) {
+      if (!pause) {
+        refresh();
+      }
+      setRefreshOnVisible(false);
+    }
+  }, [refreshOnVisible, isDocumentVisible, pause, refresh]);
+
   const intervalRef = useRef<number | null>(null);
   useEffect(() => {
     if (isLive) {
@@ -424,11 +442,11 @@ function useLiveUpdate({
       // only start interval if no queries are fetching
       if (!pause) {
         intervalRef.current = window.setInterval(() => {
-          onTimeRangeSelect(
-            new Date(Date.now() - interval),
-            new Date(),
-            'Live Tail',
-          );
+          if (isDocumentVisible) {
+            refresh();
+          } else {
+            setRefreshOnVisible(true);
+          }
         }, refreshFrequency);
       }
     } else {
@@ -441,7 +459,14 @@ function useLiveUpdate({
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [isLive, onTimeRangeSelect, pause, interval, refreshFrequency]);
+  }, [
+    isLive,
+    isDocumentVisible,
+    onTimeRangeSelect,
+    pause,
+    refresh,
+    refreshFrequency,
+  ]);
 }
 
 function useSearchedConfigToChartConfig({
@@ -508,6 +533,7 @@ function optimizeDefaultOrderBy(
     defaultModifier,
   ];
   const fallbackOrderBy = fallbackOrderByItems.join(' ');
+
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
@@ -518,9 +544,11 @@ function optimizeDefaultOrderBy(
       orderByArr.push(sortKey);
     } else if (
       sortKey === timestampExpr ||
-      (sortKey.startsWith('toUnixTimestamp') && sortKey.includes(timestampExpr))
+      (sortKey.startsWith('toUnixTimestamp') &&
+        sortKey.includes(timestampExpr)) ||
+      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
     ) {
-      if (i === 0) {
+      if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
         return fallbackOrderBy;
       } else {
@@ -528,6 +556,11 @@ function optimizeDefaultOrderBy(
         break;
       }
     }
+  }
+
+  // If we can't find an optimized order by, use the fallback/default
+  if (orderByArr.length === 0) {
+    return fallbackOrderBy;
   }
 
   return `(${orderByArr.join(', ')}) ${defaultModifier}`;
@@ -1147,6 +1180,8 @@ function DBSearchPage() {
     setNewSourceModalOpened(true);
   }, []);
 
+  const [isDrawerChildModalOpen, setDrawerChildModalOpen] = useState(false);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1408,6 +1443,8 @@ function DBSearchPage() {
           toggleColumn,
           generateSearchUrl,
           dbSqlRowTableConfig,
+          isChildModalOpen: isDrawerChildModalOpen,
+          setChildModalOpen: setDrawerChildModalOpen,
         }}
       >
         {searchedSource && (

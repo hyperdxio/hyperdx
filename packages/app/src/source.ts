@@ -9,7 +9,12 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  SourceKind,
+  TSource,
+  TSourceUnion,
+} from '@hyperdx/common-utils/dist/types';
 import {
   hashCode,
   splitAndTrimWithBracket,
@@ -21,6 +26,14 @@ import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
+
+// Columns for the sessions table as of OTEL Collector v0.129.1
+export const SESSION_TABLE_EXPRESSIONS = {
+  resourceAttributesExpression: 'ResourceAttributes',
+  eventAttributesExpression: 'LogAttributes',
+  timestampValueExpression: 'TimestampTime',
+  implicitColumnExpression: 'Body',
+} as const;
 
 const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
 
@@ -74,6 +87,17 @@ export function getEventBody(eventModel: TSource) {
   return multiExpr.length === 1 ? expression : multiExpr[0]; // TODO: check if we want to show multiple columns
 }
 
+function addDefaultsToSource(source: TSourceUnion): TSource {
+  return {
+    ...source,
+    // Session sources have hard-coded timestampValueExpressions
+    timestampValueExpression:
+      source.kind === SourceKind.Session
+        ? SESSION_TABLE_EXPRESSIONS.timestampValueExpression
+        : source.timestampValueExpression,
+  };
+}
+
 export function useSources() {
   return useQuery({
     queryKey: ['sources'],
@@ -82,7 +106,8 @@ export function useSources() {
         return getLocalSources();
       }
 
-      return hdxServer('sources').json<TSource[]>();
+      const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+      return rawSources.map(addDefaultsToSource);
     },
   });
 }
@@ -92,7 +117,8 @@ export function useSource({ id }: { id?: string | null }) {
     queryKey: ['sources'],
     queryFn: async () => {
       if (!IS_LOCAL_MODE) {
-        return hdxServer('sources').json<TSource[]>();
+        const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+        return rawSources.map(addDefaultsToSource);
       } else {
         return getLocalSources();
       }
@@ -407,4 +433,29 @@ export async function isValidMetricTable({
   });
 
   return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
+}
+
+const ReqSessionsTableColumns = Object.values(SESSION_TABLE_EXPRESSIONS);
+
+export async function isValidSessionsTable({
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  databaseName: string;
+  tableName?: string;
+  connectionId: string;
+}) {
+  if (!tableName) {
+    return false;
+  }
+
+  const metadata = getMetadata();
+  const columns = await metadata.getColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  });
+
+  return hasAllColumns(columns, ReqSessionsTableColumns);
 }
