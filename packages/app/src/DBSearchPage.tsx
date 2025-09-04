@@ -956,10 +956,8 @@ function DBSearchPage() {
 
   const isTabVisible = useDocumentVisibility();
 
-  // Track if any rows are expanded to pause live tail
+  // For live tail updates, we need to track if any rows are expanded
   const [hasExpandedRows, setHasExpandedRows] = useState(false);
-
-  // State to trigger collapsing all expanded rows
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
   useLiveUpdate({
@@ -975,7 +973,6 @@ function DBSearchPage() {
   // otherwise we get SSR hydration issues
   const [shouldShowLiveModeHint, setShouldShowLiveModeHint] = useState(false);
   useEffect(() => {
-    // Show resume button when live tail is disabled OR when rows are expanded (pausing live updates)
     setShouldShowLiveModeHint(isLive === false || hasExpandedRows);
   }, [isLive, hasExpandedRows]);
 
@@ -1783,7 +1780,6 @@ function DBSearchPage() {
                           </div>
                         </div>
                       )}
-                    {/* Wrap table with context provider so inline content has access to context */}
                     {chartConfig &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
