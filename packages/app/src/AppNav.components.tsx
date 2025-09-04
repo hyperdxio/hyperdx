@@ -117,7 +117,6 @@ export const AppNavUserMenu = ({
                       size="xs"
                       fw="bold"
                       lh={1.1}
-                      c="gray.3"
                       style={{
                         maxWidth: '100%',
                         overflow: 'hidden',
@@ -128,7 +127,6 @@ export const AppNavUserMenu = ({
                     </Text>
                     <Text
                       size="xs"
-                      c="dimmed"
                       style={{
                         fontSize: 11,
                         maxWidth: '100%',

@@ -2,4 +2,4 @@
 "@hyperdx/app": patch
 ---
 
-fix overflow of nav bar profile information
+Resolved overflow issue and enhanced color contrast in nav bar profile section.
