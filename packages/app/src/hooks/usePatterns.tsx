@@ -192,6 +192,7 @@ function usePatterns({
   return {
     ...query,
     isLoading: query.isLoading || isLoadingPyodide,
+    patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
 }
 
@@ -210,7 +211,11 @@ export function useGroupedPatterns({
   totalCount?: number;
   enabled?: boolean;
 }) {
-  const { data: results, isLoading } = usePatterns({
+  const {
+    data: results,
+    isLoading,
+    patternQueryConfig,
+  } = usePatterns({
     config,
     samples,
     bodyValueExpression,
@@ -301,5 +306,6 @@ export function useGroupedPatterns({
     isLoading,
     miner: results?.miner,
     sampledRowCount,
+    patternQueryConfig,
   };
 }

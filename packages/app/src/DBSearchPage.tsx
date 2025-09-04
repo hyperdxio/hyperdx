@@ -1180,6 +1180,8 @@ function DBSearchPage() {
     setNewSourceModalOpened(true);
   }, []);
 
+  const [isDrawerChildModalOpen, setDrawerChildModalOpen] = useState(false);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1441,6 +1443,8 @@ function DBSearchPage() {
           toggleColumn,
           generateSearchUrl,
           dbSqlRowTableConfig,
+          isChildModalOpen: isDrawerChildModalOpen,
+          setChildModalOpen: setDrawerChildModalOpen,
         }}
       >
         {searchedSource && (

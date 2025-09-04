@@ -57,6 +57,8 @@ export const RowSidePanelContext = createContext<{
   toggleColumn?: (column: string) => void;
   shareUrl?: string;
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  isChildModalOpen?: boolean;
+  setChildModalOpen?: (open: boolean) => void;
 }>({});
 
 enum Tab {
@@ -457,6 +459,8 @@ export default function DBRowSidePanelErrorBoundary({
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
+  const { isChildModalOpen } = useContext(RowSidePanelContext);
+
   const [_, setQueryTab] = useQueryState(
     'tab',
     parseAsStringEnum<Tab>(Object.values(Tab)),
@@ -474,7 +478,7 @@ export default function DBRowSidePanelErrorBoundary({
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 
   const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && rowId != null) {
+    if (!subDrawerOpen && !isChildModalOpen && rowId != null) {
       _onClose();
     }
   }, ['mouseup', 'touchend']);
