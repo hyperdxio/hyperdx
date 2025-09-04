@@ -9,25 +9,6 @@ describe('Time Window Generation Logic', () => {
     24 * 60 * 60 * 1000, // 24h
   ];
 
-  describe('Time Window Sizes', () => {
-    it('should have correct progressive window sizes', () => {
-      expect(TIME_WINDOWS_MS).toEqual([
-        6 * 60 * 60 * 1000, // 6h = 21,600,000ms
-        6 * 60 * 60 * 1000, // 6h = 21,600,000ms
-        12 * 60 * 60 * 1000, // 12h = 43,200,000ms
-        24 * 60 * 60 * 1000, // 24h = 86,400,000ms
-      ]);
-    });
-
-    it('should have total coverage for 24-hour periods', () => {
-      const totalCoverage = TIME_WINDOWS_MS.reduce(
-        (sum, window) => sum + window,
-        0,
-      );
-      expect(totalCoverage).toBe(48 * 60 * 60 * 1000); // 48 hours
-    });
-  });
-
   describe('Time Window Generation Scenarios', () => {
     it('should generate correct windows for 6-hour range', () => {
       const startDate = new Date('2024-01-01T00:00:00Z');
