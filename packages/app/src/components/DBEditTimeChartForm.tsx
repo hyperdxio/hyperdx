@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -119,6 +127,7 @@ function ChartSeriesEditorComponent({
   showGroupBy,
   tableName: _tableName,
   watch,
+  parentRef,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -126,6 +135,7 @@ function ChartSeriesEditorComponent({
   connectionId?: string;
   index: number;
   namePrefix: string;
+  parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
@@ -276,6 +286,7 @@ function ChartSeriesEditorComponent({
             </Text>
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
+                parentRef={parentRef}
                 tableConnections={{
                   databaseName,
                   tableName: tableName ?? '',
@@ -525,8 +536,11 @@ export default function EditTimeChartForm({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  // Need to force a rerender on change as the modal will not be mounted when initially rendered
+  const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
+
   return (
-    <>
+    <div ref={setParentRef}>
       <Controller
         control={control}
         name="displayType"
@@ -620,6 +634,7 @@ export default function EditTimeChartForm({
                   dateRange={dateRange}
                   index={index}
                   key={field.id}
+                  parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
                   onSubmit={onSubmit}
@@ -849,7 +864,8 @@ export default function EditTimeChartForm({
           )}
         </Flex>
         <Flex gap="sm" my="sm" align="center" justify="end">
-          {setDisplayedTimeInputValue != null &&
+          {activeTab !== 'markdown' &&
+            setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <TimePicker
@@ -866,14 +882,16 @@ export default function EditTimeChartForm({
           {activeTab === 'time' && (
             <GranularityPickerControlled control={control} name="granularity" />
           )}
-          <Button
-            variant="outline"
-            type="submit"
-            color="green"
-            onClick={onSubmit}
-          >
-            <i className="bi bi-play"></i>
-          </Button>
+          {activeTab !== 'markdown' && (
+            <Button
+              variant="outline"
+              type="submit"
+              color="green"
+              onClick={onSubmit}
+            >
+              <i className="bi bi-play"></i>
+            </Button>
+          )}
         </Flex>
       </Flex>
       {!queryReady && activeTab !== 'markdown' ? (
@@ -1018,7 +1036,7 @@ export default function EditTimeChartForm({
           </Accordion>
         </>
       )}
-    </>
+    </div>
   );
 }
 
