@@ -33,8 +33,8 @@ import {
   useJsonColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
-import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
@@ -594,6 +594,7 @@ const DBSearchPageFiltersComponent = ({
     keys: keysToFetch,
   });
 
+  const metadata = useMetadataWithSettings();
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
     new Set(),
@@ -602,7 +603,6 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const metadata = getMetadata();
         const newKeyVals = await metadata.getKeyValues({
           chartConfig: {
             ...chartConfig,
