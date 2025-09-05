@@ -288,6 +288,7 @@ export const RawLogTable = memo(
     source,
     onExpandedRowsChange,
     collapseAllRows,
+    showExpandButton = true,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -319,6 +320,7 @@ export const RawLogTable = memo(
     source?: TSource;
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
+    showExpandButton?: boolean;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -417,37 +419,41 @@ export const RawLogTable = memo(
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
-        {
-          id: 'expand-btn',
-          accessorKey: '__hyperdx_id',
-          header: () => '',
-          cell: info => {
-            const rowId = info.getValue() as string;
-            const isExpanded = expandedRows[rowId] ?? false;
-            return (
-              <button
-                type="button"
-                className={cx('btn btn-link p-0 border-0', {
-                  'text-success': highlightedLineId === rowId,
-                  'text-muted': highlightedLineId !== rowId,
-                })}
-                onClick={e => {
-                  e.stopPropagation();
-                  toggleRowExpansion(rowId);
-                }}
-                aria-expanded={isExpanded}
-                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
-                style={{ lineHeight: 1 }}
-              >
-                <i
-                  className={`bi bi-chevron-${isExpanded ? 'down' : 'right'}`}
-                />
-              </button>
-            );
-          },
-          size: 8,
-          enableResizing: false,
-        },
+        ...(showExpandButton
+          ? [
+              {
+                id: 'expand-btn',
+                accessorKey: '__hyperdx_id',
+                header: () => '',
+                cell: (info: any) => {
+                  const rowId = info.getValue() as string;
+                  const isExpanded = expandedRows[rowId] ?? false;
+                  return (
+                    <button
+                      type="button"
+                      className={cx('btn btn-link p-0 border-0', {
+                        'text-success': highlightedLineId === rowId,
+                        'text-muted': highlightedLineId !== rowId,
+                      })}
+                      onClick={e => {
+                        e.stopPropagation();
+                        toggleRowExpansion(rowId);
+                      }}
+                      aria-expanded={isExpanded}
+                      aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+                      style={{ lineHeight: 1 }}
+                    >
+                      <i
+                        className={`bi bi-chevron-${isExpanded ? 'down' : 'right'}`}
+                      />
+                    </button>
+                  );
+                },
+                size: 8,
+                enableResizing: false,
+              },
+            ]
+          : []),
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
@@ -523,6 +529,7 @@ export const RawLogTable = memo(
         logLevelColumn,
         expandedRows,
         toggleRowExpansion,
+        showExpandButton,
       ],
     );
 
@@ -852,7 +859,7 @@ export const RawLogTable = memo(
                       );
                     })}
                   </tr>
-                  {isExpanded && (
+                  {showExpandButton && isExpanded && (
                     <ExpandedLogRow
                       columnsLength={columns.length}
                       virtualKey={virtualRow.key.toString()}
@@ -1077,6 +1084,7 @@ function DBSqlRowTableComponent({
   denoiseResults = false,
   onExpandedRowsChange,
   collapseAllRows,
+  showExpandButton = true,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1090,6 +1098,7 @@ function DBSqlRowTableComponent({
   denoiseResults?: boolean;
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
+  showExpandButton?: boolean;
 }) {
   const { data: me } = api.useMe();
   const mergedConfig = useConfigWithPrimaryAndPartitionKey({
@@ -1282,6 +1291,7 @@ function DBSqlRowTableComponent({
         source={source}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
+        showExpandButton={showExpandButton}
       />
     </>
   );
