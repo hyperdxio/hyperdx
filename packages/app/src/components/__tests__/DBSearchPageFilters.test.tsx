@@ -21,6 +21,7 @@ describe('FilterGroup', () => {
     onLoadMore: jest.fn(),
     loadMoreLoading: false,
     hasLoadedMore: false,
+    isDefaultExpanded: true,
   };
 
   it('should sort options alphabetically by default', () => {
@@ -159,5 +160,29 @@ describe('FilterGroup', () => {
 
     // Verify banana is not shown
     expect(screen.queryByText('banana')).not.toBeInTheDocument();
+  });
+
+  it('Should allow opening the filter group', async () => {
+    renderWithMantine(
+      <FilterGroup {...defaultProps} isDefaultExpanded={false} />,
+    );
+
+    // Verify the filter group is closed
+    expect(
+      (await screen.findByTestId('filter-group-panel')).getAttribute(
+        'aria-hidden',
+      ),
+    ).toBe('true');
+
+    // Find and click the filter group header
+    const header = await screen.findByTestId('filter-group-control');
+    await userEvent.click(header);
+
+    // Verify the filter group is open
+    expect(
+      (await screen.findByTestId('filter-group-panel')).getAttribute(
+        'aria-hidden',
+      ),
+    ).toBe('false');
   });
 });
