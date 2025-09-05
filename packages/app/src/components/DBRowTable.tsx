@@ -722,8 +722,7 @@ export const RawLogTable = memo(
         }
 
         const newIndex =
-          dedupedRows.findIndex(l => l.__hyperdx_id === highlightedLineId) +
-          shift;
+          dedupedRows.findIndex(l => getRowId(l) === highlightedLineId) + shift;
 
         if (newIndex < 0 || newIndex >= dedupedRows.length) {
           return;
