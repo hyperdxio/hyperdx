@@ -17,22 +17,3 @@
   }
 }
 
-.expandedRow {
-  background-color: transparent;
-  
-  &:hover {
-    background-color: transparent;
-  }
-  
-  // Override dark backgrounds in the inline overview panel
-  :global(.inline-overview-panel) {
-    * {
-      background-color: transparent !important;
-    }
-    
-    // Keep only text backgrounds that might be needed for readability
-    code, pre {
-      background-color: rgba(0, 0, 0, 0.2) !important;
-    }
-  }
-}
