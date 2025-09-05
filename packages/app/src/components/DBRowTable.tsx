@@ -10,6 +10,7 @@ import cx from 'classnames';
 import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
+import { useQueryState } from 'nuqs';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -103,6 +104,20 @@ const MAX_CELL_LENGTH = 500;
 
 const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
 
+// Hook to automatically detect if we're in a context that supports sidebars
+const useAutoShowMore = () => {
+  const [, setRowId] = useQueryState('rowWhere');
+  const [, setRowSource] = useQueryState('rowSource');
+
+  return useCallback(
+    (rowWhere: string, sourceId: string) => {
+      setRowId(rowWhere);
+      setRowSource(sourceId);
+    },
+    [setRowId, setRowSource],
+  );
+};
+
 const ExpandedLogRow = memo(
   ({
     columnsLength,
@@ -115,14 +130,31 @@ const ExpandedLogRow = memo(
     source: TSource | undefined;
     rowId: string;
   }) => {
+    const autoShowMore = useAutoShowMore();
     return (
       <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
         <td colSpan={columnsLength} className="p-0 border-0">
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
             {source ? (
-              <div className="inline-overview-panel">
-                <RowOverviewPanel source={source} rowId={rowId} />
-              </div>
+              <>
+                <div className="position-relative">
+                  {autoShowMore && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2"
+                      onClick={() => autoShowMore(rowId, source.id)}
+                      title="Open in sidebar"
+                      aria-label="Open in sidebar"
+                      style={{ zIndex: 1 }}
+                    >
+                      <i className="bi bi-arrows-angle-expand" />
+                    </button>
+                  )}
+                  <div className="inline-overview-panel">
+                    <RowOverviewPanel source={source} rowId={rowId} />
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="p-3 text-muted">Loading...</div>
             )}
@@ -565,7 +597,6 @@ export const RawLogTable = memo(
       [
         isUTC,
         highlightedLineId,
-        _onRowExpandClick,
         displayedColumns,
         columnSizeStorage,
         columnNameMap,
