@@ -80,8 +80,11 @@ import {
   useWindowSize,
 } from '@/utils';
 
+import TabBar from '../TabBar';
+
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import LogLevel from './LogLevel';
 
@@ -103,6 +106,11 @@ const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
 
 const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
+
+enum InlineTab {
+  Overview = 'overview',
+  ColumnValues = 'columnValues',
+}
 
 // Hook to automatically detect if we're in a context that supports sidebars
 const useAutoShowMore = () => {
@@ -131,6 +139,7 @@ const ExpandedLogRow = memo(
     rowId: string;
   }) => {
     const autoShowMore = useAutoShowMore();
+    const [activeTab, setActiveTab] = useState<InlineTab>(InlineTab.Overview);
     return (
       <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
         <td colSpan={columnsLength} className="p-0 border-0">
@@ -138,20 +147,51 @@ const ExpandedLogRow = memo(
             {source ? (
               <>
                 <div className="position-relative">
-                  {autoShowMore && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2"
-                      onClick={() => autoShowMore(rowId, source.id)}
-                      title="Open in sidebar"
-                      aria-label="Open in sidebar"
-                      style={{ zIndex: 1 }}
-                    >
-                      <i className="bi bi-arrows-angle-expand" />
-                    </button>
-                  )}
-                  <div className="inline-overview-panel">
-                    <RowOverviewPanel source={source} rowId={rowId} />
+                  <div className="bg-body px-3 pt-2 position-relative">
+                    {autoShowMore && (
+                      <button
+                        type="button"
+                        className={cx(
+                          'position-absolute top-0 end-0 mt-1 me-1 p-1 border-0 bg-transparent text-muted rounded',
+                          styles.expandButton,
+                        )}
+                        onClick={() => autoShowMore(rowId, source.id)}
+                        title="Open in sidebar"
+                        aria-label="Open in sidebar"
+                        style={{
+                          zIndex: 1,
+                          fontSize: '12px',
+                          lineHeight: 1,
+                        }}
+                      >
+                        <i className="bi bi-arrows-angle-expand" />
+                      </button>
+                    )}
+                    <TabBar
+                      className="fs-8"
+                      items={[
+                        {
+                          text: 'Overview',
+                          value: InlineTab.Overview,
+                        },
+                        {
+                          text: 'Column Values',
+                          value: InlineTab.ColumnValues,
+                        },
+                      ]}
+                      activeItem={activeTab}
+                      onClick={setActiveTab}
+                    />
+                  </div>
+                  <div className="bg-body">
+                    {activeTab === InlineTab.Overview && (
+                      <div className="inline-overview-panel">
+                        <RowOverviewPanel source={source} rowId={rowId} />
+                      </div>
+                    )}
+                    {activeTab === InlineTab.ColumnValues && (
+                      <RowDataPanel source={source} rowId={rowId} />
+                    )}
                   </div>
                 </div>
               </>
