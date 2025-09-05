@@ -1045,6 +1045,7 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {logSource && (
                       <DBSqlRowTable
+                        sourceId={logSource.id}
                         config={{
                           ...logSource,
                           where: `${
