@@ -17,8 +17,8 @@ enum InlineTab {
   ColumnValues = 'columnValues',
 }
 
-// Hook to automatically detect if we're in a context that supports sidebars
-const useAutoShowMore = () => {
+// Hook that provides a function to open the sidebar with specific row details
+const useSidebarOpener = () => {
   const [, setRowId] = useQueryState('rowWhere');
   const [, setRowSource] = useQueryState('rowSource');
 
@@ -43,7 +43,7 @@ export const ExpandedLogRow = memo(
     source: TSource | undefined;
     rowId: string;
   }) => {
-    const autoShowMore = useAutoShowMore();
+    const openSidebar = useSidebarOpener();
 
     // Use localStorage to persist the selected tab
     const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
@@ -59,14 +59,14 @@ export const ExpandedLogRow = memo(
               <>
                 <div className="position-relative">
                   <div className="bg-body px-3 pt-2 position-relative">
-                    {autoShowMore && (
+                    {openSidebar && (
                       <button
                         type="button"
                         className={cx(
                           'position-absolute top-0 end-0 mt-1 me-1 p-1 border-0 bg-transparent text-muted rounded',
                           styles.expandButton,
                         )}
-                        onClick={() => autoShowMore(rowId, source.id)}
+                        onClick={() => openSidebar(rowId, source.id)}
                         title="Open in sidebar"
                         aria-label="Open in sidebar"
                         style={{
