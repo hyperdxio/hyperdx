@@ -184,13 +184,20 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const query = await renderChartConfig(windowedConfig, getMetadata());
 
   const queryTimeout = queryKey[2];
-  const clickhouseClient = getClickhouseClient({ queryTimeout });
+  const clickhouseClient = getClickhouseClient();
+
+  // Create abort signal from timeout if provided
+  const abortController = queryTimeout ? new AbortController() : undefined;
+  if (abortController && queryTimeout) {
+    setTimeout(() => abortController.abort(), queryTimeout);
+  }
+
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
       query_params: query.params,
       format: 'JSONCompactEachRowWithNamesAndTypes',
-      abort_signal: signal,
+      abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
     });
 
