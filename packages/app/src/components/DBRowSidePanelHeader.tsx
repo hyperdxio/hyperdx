@@ -289,7 +289,9 @@ export default function DBRowSidePanelHeader({
             <EventTag
               onPropertyAddClick={undefined}
               sqlExpression={undefined}
-              generateSearchUrl={_generateSearchUrl}
+              generateSearchUrl={
+                generateSearchUrl ? _generateSearchUrl : undefined
+              }
               displayedKey={luceneKey}
               name={luceneKey}
               value={value}
