@@ -16,3 +16,10 @@
     font-weight: bold;
   }
 }
+
+.expandedRowContent {
+  max-height: 400px;
+  overflow: auto;
+  background-color: $slate-950;
+  padding: 12px;
+}

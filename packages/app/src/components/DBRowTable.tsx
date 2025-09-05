@@ -101,6 +101,8 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
 
+const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
+
 const ExpandedLogRow = memo(
   ({
     columnsLength,
@@ -116,15 +118,7 @@ const ExpandedLogRow = memo(
     return (
       <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
         <td colSpan={columnsLength} className="p-0 border-0">
-          <div
-            className="mx-2 mb-2 rounded"
-            style={{
-              maxHeight: '400px',
-              overflow: 'auto',
-              backgroundColor: 'rgb(37, 41, 47)',
-              padding: '12px',
-            }}
-          >
+          <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
             {source ? (
               <div className="inline-overview-panel">
                 <RowOverviewPanel source={source} rowId={rowId} />
@@ -691,7 +685,7 @@ export const RawLogTable = memo(
       }
 
       const rowIdx = dedupedRows.findIndex(
-        l => l.__hyperdx_id === highlightedLineId,
+        l => getRowId(l) === highlightedLineId,
       );
       if (rowIdx == -1) {
         if (
@@ -902,7 +896,7 @@ export const RawLogTable = memo(
             )}
             {items.map(virtualRow => {
               const row = _rows[virtualRow.index] as TableRow<any>;
-              const rowId = row.original.__hyperdx_id;
+              const rowId = getRowId(row.original);
               const isExpanded = expandedRows[rowId] ?? false;
 
               return (
@@ -915,8 +909,7 @@ export const RawLogTable = memo(
                     role="button"
                     // TODO: Restore highlight
                     className={cx(styles.tableRow, {
-                      [styles.tableRow__selected]:
-                        highlightedLineId === row.original.__hyperdx_id,
+                      [styles.tableRow__selected]: highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}

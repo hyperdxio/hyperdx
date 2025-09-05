@@ -28,12 +28,9 @@ export default function EventTag({
   const hasActions = !!onPropertyAddClick || !!generateSearchUrl;
 
   if (!hasActions) {
-    // No actions available - render as plain text without popover
     return (
       <div key={name} className="bg-hdx-dark px-2 py-0.5 me-1 my-1">
-        {displayedKey || name}
-        {': '}
-        {value}
+        {displayedKey || name}: {value}
       </div>
     );
   }
@@ -52,9 +49,7 @@ export default function EventTag({
           className="text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 cursor-pointer"
           onClick={() => setOpened(!opened)}
         >
-          {displayedKey || name}
-          {': '}
-          {value}
+          {displayedKey || name}: {value}
         </div>
       </Popover.Target>
       <Popover.Dropdown p={2}>
