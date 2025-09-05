@@ -1,4 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  TableMetadata,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -26,10 +30,12 @@ import {
   useAllFields,
   useGetKeyValues,
   useJsonColumns,
+  useTableMetadata,
 } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
+import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -154,6 +160,7 @@ export type FilterGroupProps = {
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
+  isDefaultExpanded?: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -174,12 +181,19 @@ export const FilterGroup = ({
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
+  isDefaultExpanded,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
   // Accordion expanded state
-  const [isExpanded, setExpanded] = useState(true);
+  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+
+  useEffect(() => {
+    if (isDefaultExpanded) {
+      setExpanded(true);
+    }
+  }, [isDefaultExpanded]);
 
   const totalFiltersSize =
     selectedValues.included.size + selectedValues.excluded.size;
@@ -465,6 +479,10 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
+
+  const { data: source } = useSource({ id: sourceId });
+  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+
   useEffect(() => {
     if (error) {
       notifications.show({
@@ -615,15 +633,36 @@ const DBSearchPageFiltersComponent = ({
       }
     }
 
-    // reorder facets to put pinned fields first
+    // prioritize facets that are primary keys
+    _facets.sort((a, b) => {
+      const aIsPk = isFieldPrimary(tableMetadata, a.key);
+      const bIsPk = isFieldPrimary(tableMetadata, b.key);
+      return aIsPk && !bIsPk ? -1 : bIsPk && !aIsPk ? 1 : 0;
+    });
+
+    // prioritize facets that are pinned
     _facets.sort((a, b) => {
       const aPinned = isFieldPinned(a.key);
       const bPinned = isFieldPinned(b.key);
       return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
     });
 
+    // prioritize facets that have checked items
+    _facets.sort((a, b) => {
+      const aChecked = filterState?.[a.key]?.included.size > 0;
+      const bChecked = filterState?.[b.key]?.included.size > 0;
+      return aChecked && !bChecked ? -1 : bChecked && !aChecked ? 1 : 0;
+    });
+
     return _facets;
-  }, [facets, filterState, extraFacets, keysToFetch, isFieldPinned]);
+  }, [
+    facets,
+    filterState,
+    tableMetadata,
+    extraFacets,
+    keysToFetch,
+    isFieldPinned,
+  ]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -764,6 +803,13 @@ const DBSearchPageFiltersComponent = ({
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
               hasLoadedMore={Boolean(extraFacets[facet.key])}
+              isDefaultExpanded={
+                // open by default if PK, or has selected values
+                isFieldPrimary(tableMetadata, facet.key) ||
+                (filterState[facet.key] &&
+                  (filterState[facet.key].included.size > 0 ||
+                    filterState[facet.key].excluded.size > 0))
+              }
             />
           ))}
 
@@ -785,4 +831,10 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
+export function isFieldPrimary(
+  tableMetadata: TableMetadata | undefined,
+  key: string,
+) {
+  return tableMetadata?.primary_key?.includes(key);
+}
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);
