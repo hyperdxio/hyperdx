@@ -9,6 +9,7 @@ import {
   ActionIcon,
   Box,
   Button,
+  Center,
   Checkbox,
   Flex,
   Group,
@@ -278,75 +279,74 @@ export const FilterGroup = ({
     >
       <Accordion.Item value={name}>
         <Stack gap={0}>
-          <Accordion.Control
-            component={UnstyledButton}
-            style={{ padding: 0 }}
-            classNames={{
-              chevron: 'm-0',
-              label: 'p-0',
-            }}
-          >
-            <Tooltip
-              openDelay={name.length > 26 ? 0 : 1500}
-              label={name}
-              position="top"
-              withArrow
-              fz="xxs"
-              color="gray"
+          <Center>
+            <Accordion.Control
+              component={UnstyledButton}
+              flex="1"
+              p="0"
+              data-testid="filter-group-control"
+              classNames={{
+                chevron: 'm-0',
+                label: 'p-0',
+              }}
             >
-              <TextInput
-                size="xs"
-                placeholder={name}
-                value={search}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setSearch(event.currentTarget.value)
-                }
-                onClick={e => {
-                  // Prevent accordion from opening when clicking on the input, unless it's closed.
-                  if (isExpanded) {
-                    e.stopPropagation();
+              <Tooltip
+                openDelay={name.length > 26 ? 0 : 1500}
+                label={name}
+                position="top"
+                withArrow
+                fz="xxs"
+                color="gray"
+              >
+                <TextInput
+                  size="xs"
+                  flex="1"
+                  placeholder={name}
+                  value={search}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                    setSearch(event.currentTarget.value)
                   }
-                }}
-                leftSectionWidth={27}
-                leftSection={<IconSearch size={15} stroke={2} />}
-                // If 'clear' is shown, increase the width
-                rightSectionWidth={totalFiltersSize > 0 ? 60 : undefined}
-                rightSection={
-                  <Group
-                    gap="xxxs"
-                    onClick={e => {
-                      // Prevent accordion from opening when clicking on the right section
+                  onClick={e => {
+                    // Prevent accordion from opening when clicking on the input, unless it's closed.
+                    if (isExpanded) {
                       e.stopPropagation();
-                    }}
-                  >
-                    {onFieldPinClick && (
-                      <ActionIcon
-                        size="xs"
-                        variant="subtle"
-                        color="gray"
-                        onClick={onFieldPinClick}
-                        title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                      >
-                        <i
-                          className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                        />
-                      </ActionIcon>
-                    )}
-                    {totalFiltersSize > 0 && (
-                      <TextButton
-                        label="Clear"
-                        onClick={() => {
-                          onClearClick();
-                          setSearch('');
-                        }}
-                      />
-                    )}
-                  </Group>
-                }
-              />
-            </Tooltip>
-          </Accordion.Control>
+                    }
+                  }}
+                  leftSectionWidth={27}
+                  leftSection={<IconSearch size={15} stroke={2} />}
+                  classNames={{
+                    input: 'pe-1',
+                  }}
+                />
+              </Tooltip>
+            </Accordion.Control>
+            <Group gap="xxxs" wrap="nowrap">
+              {onFieldPinClick && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={onFieldPinClick}
+                  title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                >
+                  <i
+                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
+                  />
+                </ActionIcon>
+              )}
+              {totalFiltersSize > 0 && (
+                <TextButton
+                  label="Clear"
+                  onClick={() => {
+                    onClearClick();
+                    setSearch('');
+                  }}
+                />
+              )}
+            </Group>
+          </Center>
           <Accordion.Panel
+            data-testid="filter-group-panel"
             classNames={{
               content: 'p-0 pt-2',
             }}
