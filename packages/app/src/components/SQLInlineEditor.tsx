@@ -139,6 +139,10 @@ const styleTheme = EditorView.baseTheme({
   '& .cm-scroller': {
     overflowX: 'hidden',
   },
+  '.cm-scroller': {
+    overflowX: 'hidden',
+    fontFamily: 'var(--mantine-font-family) !important',
+  },
 });
 
 export default function SQLInlineEditor({
