@@ -317,6 +317,7 @@ export default function ContextSubpanel({
           </Group>
           <div style={{ height: '100%', overflow: 'auto' }}>
             <DBSqlRowTable
+              sourceId={source.id}
               highlightedLineId={rowId}
               isLive={false}
               config={config}

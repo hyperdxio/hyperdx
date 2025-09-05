@@ -981,25 +981,34 @@ function DBSearchPage() {
 
   const isTabVisible = useDocumentVisibility();
 
+  // For live tail updates, we need to track if any rows are expanded
+  const [hasExpandedRows, setHasExpandedRows] = useState(false);
+  const [collapseAllRows, setCollapseAllRows] = useState(false);
+
   useLiveUpdate({
     isLive,
     interval: 1000 * 60 * 15,
     refreshFrequency: 4000,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
+    pause:
+      isAnyQueryFetching || !queryReady || !isTabVisible || hasExpandedRows,
   });
 
   // This ensures we only render this conditionally on the client
   // otherwise we get SSR hydration issues
   const [shouldShowLiveModeHint, setShouldShowLiveModeHint] = useState(false);
   useEffect(() => {
-    setShouldShowLiveModeHint(isLive === false);
-  }, [isLive]);
+    setShouldShowLiveModeHint(isLive === false || hasExpandedRows);
+  }, [isLive, hasExpandedRows]);
 
   const { data: me } = api.useMe();
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
     setDisplayedTimeInputValue('Live Tail');
+    // Trigger collapsing all expanded rows
+    setCollapseAllRows(true);
+    // Reset the collapse trigger after a short delay
+    setTimeout(() => setCollapseAllRows(false), 100);
     onSearch('Live Tail');
   }, [onSearch, setIsLive]);
 
@@ -1803,18 +1812,30 @@ function DBSearchPage() {
                     {chartConfig &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
-                        <DBSqlRowTable
-                          config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source ?? ''}
-                          onRowExpandClick={onRowExpandClick}
-                          highlightedLineId={rowId ?? undefined}
-                          enabled={isReady}
-                          isLive={isLive ?? true}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onScroll={onTableScroll}
-                          onError={handleTableError}
-                          denoiseResults={denoiseResults}
-                        />
+                        <RowSidePanelContext.Provider
+                          value={{
+                            onPropertyAddClick: searchFilters.setFilterValue,
+                            displayedColumns,
+                            toggleColumn,
+                            generateSearchUrl,
+                            dbSqlRowTableConfig,
+                          }}
+                        >
+                          <DBSqlRowTable
+                            config={dbSqlRowTableConfig}
+                            sourceId={searchedConfig.source ?? ''}
+                            onRowExpandClick={onRowExpandClick}
+                            highlightedLineId={rowId ?? undefined}
+                            enabled={isReady}
+                            isLive={isLive ?? true}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onScroll={onTableScroll}
+                            onError={handleTableError}
+                            denoiseResults={denoiseResults}
+                            onExpandedRowsChange={setHasExpandedRows}
+                            collapseAllRows={collapseAllRows}
+                          />
+                        </RowSidePanelContext.Provider>
                       )}
                   </>
                 )}

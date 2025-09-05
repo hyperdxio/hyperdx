@@ -275,21 +275,20 @@ export default function DBRowSidePanelHeader({
           // or SQL: column -> Lucene: column
           const luceneKey = sqlKey.replace(/\['([^']+)'\]/g, '.$1');
 
-          return onPropertyAddClick ? (
+          return (
             <EventTag
-              onPropertyAddClick={onPropertyAddClick}
-              sqlExpression={sqlKey} // Original SQL syntax for property add
-              generateSearchUrl={_generateSearchUrl}
-              displayedKey={luceneKey} // Show friendly Lucene format
-              name={luceneKey} // Use Lucene syntax for search
-              value={value}
-              key={sqlKey}
-            />
-          ) : (
-            <EventTag
-              onPropertyAddClick={undefined}
-              sqlExpression={undefined}
-              generateSearchUrl={_generateSearchUrl}
+              {...(onPropertyAddClick
+                ? {
+                    onPropertyAddClick,
+                    sqlExpression: sqlKey,
+                  }
+                : {
+                    onPropertyAddClick: undefined,
+                    sqlExpression: undefined,
+                  })}
+              generateSearchUrl={
+                generateSearchUrl ? _generateSearchUrl : undefined
+              }
               displayedKey={luceneKey}
               name={luceneKey}
               value={value}

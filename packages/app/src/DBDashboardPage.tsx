@@ -348,6 +348,7 @@ const Tile = forwardRef(
             {queriedConfig?.displayType === DisplayType.Search && (
               <DBSqlRowTable
                 enabled
+                sourceId={chart.config.source}
                 config={{
                   ...queriedConfig,
                   orderBy: [
