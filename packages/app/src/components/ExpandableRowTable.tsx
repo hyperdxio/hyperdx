@@ -3,6 +3,8 @@ import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
+import { useLocalStorage } from '@/utils';
+
 import TabBar from '../TabBar';
 
 import { RowDataPanel } from './DBRowDataPanel';
@@ -42,7 +44,12 @@ export const ExpandedLogRow = memo(
     rowId: string;
   }) => {
     const autoShowMore = useAutoShowMore();
-    const [activeTab, setActiveTab] = useState<InlineTab>(InlineTab.Overview);
+
+    // Use localStorage to persist the selected tab
+    const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
+      'hdx-expanded-row-default-tab',
+      InlineTab.ColumnValues,
+    );
 
     return (
       <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
