@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
 import { parseAsString, useQueryState } from 'nuqs';
@@ -17,7 +17,7 @@ import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
-import DBRowSidePanel from './DBRowSidePanel';
+import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
 import {
   BreadcrumbNavigationCallback,
   BreadcrumbPath,
@@ -109,6 +109,8 @@ export default function ContextSubpanel({
     setContextRowId(null);
     setContextRowSource(null);
   }, [setContextRowId, setContextRowSource]);
+
+  const { setChildModalOpen } = useContext(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
     (rowWhere: string) => {
@@ -321,6 +323,7 @@ export default function ContextSubpanel({
               config={config}
               queryKeyPrefix={QUERY_KEY_PREFIX}
               onRowExpandClick={handleRowExpandClick}
+              onChildModalOpen={setChildModalOpen}
             />
           </div>
         </Flex>

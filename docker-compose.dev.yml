@@ -3,6 +3,7 @@ x-hyperdx-logging: &hyperdx-logging
   driver: fluentd
   options:
     fluentd-address: tcp://localhost:24225
+    fluentd-async: 'true'
     labels: 'service.name'
 services:
   db:

@@ -414,6 +414,24 @@ function useLiveUpdate({
   ) => void;
   pause: boolean;
 }) {
+  const documentState = useDocumentVisibility();
+  const isDocumentVisible = documentState === 'visible';
+  const [refreshOnVisible, setRefreshOnVisible] = useState(false);
+
+  const refresh = useCallback(() => {
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+  }, [onTimeRangeSelect, interval]);
+
+  // When the user comes back to the app after switching tabs, we immediately refresh the list.
+  useEffect(() => {
+    if (refreshOnVisible && isDocumentVisible) {
+      if (!pause) {
+        refresh();
+      }
+      setRefreshOnVisible(false);
+    }
+  }, [refreshOnVisible, isDocumentVisible, pause, refresh]);
+
   const intervalRef = useRef<number | null>(null);
   useEffect(() => {
     if (isLive) {
@@ -424,11 +442,11 @@ function useLiveUpdate({
       // only start interval if no queries are fetching
       if (!pause) {
         intervalRef.current = window.setInterval(() => {
-          onTimeRangeSelect(
-            new Date(Date.now() - interval),
-            new Date(),
-            'Live Tail',
-          );
+          if (isDocumentVisible) {
+            refresh();
+          } else {
+            setRefreshOnVisible(true);
+          }
         }, refreshFrequency);
       }
     } else {
@@ -441,7 +459,14 @@ function useLiveUpdate({
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [isLive, onTimeRangeSelect, pause, interval, refreshFrequency]);
+  }, [
+    isLive,
+    isDocumentVisible,
+    onTimeRangeSelect,
+    pause,
+    refresh,
+    refreshFrequency,
+  ]);
 }
 
 function useSearchedConfigToChartConfig({
@@ -1164,6 +1189,8 @@ function DBSearchPage() {
     setNewSourceModalOpened(true);
   }, []);
 
+  const [isDrawerChildModalOpen, setDrawerChildModalOpen] = useState(false);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1425,6 +1452,8 @@ function DBSearchPage() {
           toggleColumn,
           generateSearchUrl,
           dbSqlRowTableConfig,
+          isChildModalOpen: isDrawerChildModalOpen,
+          setChildModalOpen: setDrawerChildModalOpen,
         }}
       >
         {searchedSource && (

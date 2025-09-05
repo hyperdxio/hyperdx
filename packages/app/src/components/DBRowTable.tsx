@@ -10,7 +10,6 @@ import cx from 'classnames';
 import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
-import { Button, Modal } from 'react-bootstrap';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -35,7 +34,15 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
-import { Box, Code, Flex, Text, UnstyledButton } from '@mantine/core';
+import {
+  Box,
+  Code,
+  Flex,
+  Modal,
+  Text,
+  Tooltip as MantineTooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import {
   FetchNextPageOptions,
   useQuery,
@@ -54,6 +61,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
+import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -260,6 +268,42 @@ export const PatternTrendChart = ({
   );
 };
 
+const SqlModal = ({
+  opened,
+  onClose,
+  config,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  config: ChartConfigWithDateRange;
+}) => {
+  const { data: sql, isLoading: isLoadingSql } = useRenderedSqlChartConfig(
+    config,
+    {
+      queryKey: ['SqlModal', config],
+      placeholderData: prev => prev ?? '', // Avoid flicker when query changes (eg. when in live mode)
+      enabled: opened,
+    },
+  );
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Generated SQL" size="auto">
+      {sql ? (
+        <SQLPreview data={sql} enableCopy={true} />
+      ) : isLoadingSql ? (
+        <div className="text-center my-2">
+          <div className="spin-animate d-inline-block me-2">
+            <i className="bi bi-arrow-repeat" />
+          </div>
+          Loading SQL...
+        </div>
+      ) : (
+        <div className="text-center my-2">No SQL available</div>
+      )}
+    </Modal>
+  );
+};
+
 export const RawLogTable = memo(
   ({
     tableId,
@@ -285,6 +329,9 @@ export const RawLogTable = memo(
     error,
     columnTypeMap,
     dateRange,
+    loadingDate,
+    config,
+    onChildModalOpen,
     source,
     onExpandedRowsChange,
     collapseAllRows,
@@ -317,6 +364,9 @@ export const RawLogTable = memo(
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
+    loadingDate?: Date;
+    config?: ChartConfigWithDateRange;
+    onChildModalOpen?: (open: boolean) => void;
     source?: TSource;
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
@@ -624,6 +674,12 @@ export const RawLogTable = memo(
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
     const [wrapLinesEnabled, setWrapLinesEnabled] = useState(wrapLines);
+    const [showSql, setShowSql] = useState(false);
+
+    const handleSqlModalOpen = (open: boolean) => {
+      setShowSql(open);
+      onChildModalOpen?.(open);
+    };
 
     useEffect(() => {
       if (
@@ -710,6 +766,13 @@ export const RawLogTable = memo(
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}
       >
+        {config && (
+          <SqlModal
+            opened={showSql}
+            onClose={() => handleSqlModalOpen(false)}
+            config={config}
+          />
+        )}
         <table
           className="w-100 bg-inherit"
           id={tableId}
@@ -785,18 +848,34 @@ export const RawLogTable = memo(
                                 <i className="bi bi-arrow-clockwise" />
                               </div>
                             )}
+                          {config && (
+                            <UnstyledButton
+                              onClick={() => handleSqlModalOpen(true)}
+                            >
+                              <MantineTooltip label="Show generated SQL">
+                                <i className="bi bi-code-square" />
+                              </MantineTooltip>
+                            </UnstyledButton>
+                          )}
                           <UnstyledButton
                             onClick={() => setWrapLinesEnabled(prev => !prev)}
+                            className="ms-2"
                           >
-                            <i className="bi bi-text-wrap" />
+                            <MantineTooltip label="Wrap lines">
+                              <i className="bi bi-text-wrap" />
+                            </MantineTooltip>
                           </UnstyledButton>
+
                           <CsvExportButton
                             data={csvData}
                             filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
                             className="fs-6 text-muted-hover ms-2"
-                            title={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
                           >
-                            <i className="bi bi-download" />
+                            <MantineTooltip
+                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                            >
+                              <i className="bi bi-download" />
+                            </MantineTooltip>
                           </CsvExportButton>
                           {onSettingsClick != null && (
                             <div
@@ -878,6 +957,11 @@ export const RawLogTable = memo(
                       <div className="spin-animate d-inline-block">
                         <i className="bi bi-arrow-repeat" />
                       </div>{' '}
+                      {loadingDate != null && (
+                        <>
+                          Searched <FormatTime value={loadingDate} />.{' '}
+                        </>
+                      )}
                       Loading results
                       {dateRange?.[0] != null && dateRange?.[1] != null ? (
                         <>
@@ -1082,6 +1166,7 @@ function DBSqlRowTableComponent({
   queryKeyPrefix,
   onScroll,
   denoiseResults = false,
+  onChildModalOpen,
   onExpandedRowsChange,
   collapseAllRows,
   showExpandButton = true,
@@ -1096,6 +1181,7 @@ function DBSqlRowTableComponent({
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
+  onChildModalOpen?: (open: boolean) => void;
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
   showExpandButton?: boolean;
@@ -1288,6 +1374,9 @@ function DBSqlRowTableComponent({
         error={error ?? undefined}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
+        loadingDate={data?.window?.startTime}
+        config={config}
+        onChildModalOpen={onChildModalOpen}
         source={source}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
