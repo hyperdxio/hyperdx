@@ -314,7 +314,7 @@ export const FilterGroup = ({
                     }
                   }}
                   styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={isExpanded ? 27 : 5}
+                  rightSectionWidth={isExpanded ? 20 : 2}
                   rightSection={
                     <IconSearch
                       size={15}
