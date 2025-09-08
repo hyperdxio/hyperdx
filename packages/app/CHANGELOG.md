@@ -1,5 +1,159 @@
 # @hyperdx/app
 
+## 2.3.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+- 64eb638b: feat: Improve search speed by chunking long time range searches into smaller incremental search windows.
+
+### Patch Changes
+
+- c691e948: Improve the rendering of autocomplete suggestions in a modal context
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- fb66126e: fix: remove play button and time picker from markdown tab
+- 88f3cafb: fix: Prevent empty order by set in search page for certain sort/primary keys
+- 784014b6: fix: broke out line break icon from HyperJsonMenu
+- 9c4c5f49: feat: support toUnixTimestamp style timestamps in ORDER BY
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- 52483f6a: feat: enable filters for json columns
+- aacd24dd: bump: default request_timeout to 1hr
+- 5e4047a9: feat: add generated SQL modal to the search page
+- 042e3595: Resolved overflow issue and enhanced color contrast in nav bar profile section.
+- a714412d: Improve live tail logic to not fetch if the page isn't visible.
+- b6787d56: fix: format numbers on dashboards only for the queried column, not groupBy columns
+- ecb20c84: feat: remove useless session source fields
+- Updated dependencies [25f77aa7]
+- Updated dependencies [d6f8058e]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [52483f6a]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [3f2d4270]
+- Updated dependencies [ecb20c84]
+  - @hyperdx/common-utils@0.4.0
+
+## 2.2.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- Updated dependencies [56fd856d]
+- Updated dependencies [0f242558]
+  - @hyperdx/common-utils@0.3.2
+
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- 5eeee5c: change app's docs links to ClickStack docs
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+- 6dd6165: feat: Display original query to error messages in search page
+
+### Patch Changes
+
+- 5ad1455: feat: centralize the default orderBy and optimize it for diverse table structures
+- 823566f: chore: show display switcher on dashboard page
+- 4c459dc: handle escaped string search correctly
+- 35fe9cf: fix default order by generated for advanced table sorting keys
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+- 9cd9bfb: fix: Properly fetch tables in source edit dropdown when new connection is selected
+- Updated dependencies [6dd6165]
+- Updated dependencies [5a59d32]
+  - @hyperdx/common-utils@0.3.0
+
+## 2.1.2
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+- 86115fa: feat: Add click + sidepanel support to items within surrounding context
+- 7cd1d2a: fix: endless rerenders caused by Date.now() in a component
+- ba86b0c: fix: Set default source in dropdown if one does not exist
+- Updated dependencies [39cde41]
+- Updated dependencies [b568b00]
+  - @hyperdx/common-utils@0.2.9
+
+## 2.1.1
+
+### Patch Changes
+
+- 1dc1c82: feat: add team setting to disable field metadata queries in app
+- dc4a32c: feat: add text wrap to tables
+- eed38e8: bump node version to 22.16.0
+- 3bb11af: fix: Allow users to disable field fetching
+- Updated dependencies [eed38e8]
+  - @hyperdx/common-utils@0.2.8
+
+## 2.1.0
+
+### Minor Changes
+
+- bb37520: Correlated source field links are bidirectional by default and no link exists.
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 6c13403: fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+- Updated dependencies [4ce81d4]
+- Updated dependencies [61c79a1]
+  - @hyperdx/common-utils@0.2.7
+
+## 2.0.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+- b9ad3bd: fix: Limit source selector to only display the supported types in search, sessions and dashboards
+- 10abadd: feat: Add verbose time range used for search in results table
+- 40d0439: feat: Allow pinning a field in the filter panel
+- 4581a68: fix: queries firing before having a valid table or connection id
+- Updated dependencies [33fc071]
+  - @hyperdx/common-utils@0.2.6
+
+## 2.0.5
+
+### Patch Changes
+
+- 973b9e8: feat: Add any aggFn support, fix select field input not showing up
+- 844f74c: fix: validate name for saved searches
+- f7eb1ef: feat: configurable search row limit
+- Updated dependencies [973b9e8]
+  - @hyperdx/common-utils@0.2.5
+
+## 2.0.4
+
+### Patch Changes
+
+- 52ca182: feat: Add ClickHouse JSON Type Support
+- Updated dependencies [52ca182]
+  - @hyperdx/common-utils@0.2.4
+
+## 2.0.3
+
+### Patch Changes
+
+- b75d7c0: feat: add robust source form validation and error reporting
+- a06c8cd: feat: Add download csv functionality to search tables
+- 93e36b5: fix: remove id from post for connection creation endpoint
+- Updated dependencies [b75d7c0]
+- Updated dependencies [93e36b5]
+  - @hyperdx/common-utils@0.2.3
+
 ## 2.0.2
 
 ### Patch Changes

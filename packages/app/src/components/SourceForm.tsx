@@ -35,9 +35,11 @@ import { useConnections } from '@/connection';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
+  isValidSessionsTable,
   useCreateSource,
   useDeleteSource,
   useSource,
+  useSources,
   useUpdateSource,
 } from '@/source';
 
@@ -54,6 +56,39 @@ const DEFAULT_DATABASE = 'default';
 const OTEL_CLICKHOUSE_EXPRESSIONS = {
   timestampValueExpression: 'TimeUnix',
   resourceAttributesExpression: 'ResourceAttributes',
+};
+
+const CORRELATION_FIELD_MAP: Record<
+  SourceKind,
+  Record<string, { targetKind: SourceKind; targetField: keyof TSource }[]>
+> = {
+  [SourceKind.Log]: {
+    metricSourceId: [
+      { targetKind: SourceKind.Metric, targetField: 'logSourceId' },
+    ],
+    traceSourceId: [
+      { targetKind: SourceKind.Trace, targetField: 'logSourceId' },
+    ],
+  },
+  [SourceKind.Trace]: {
+    logSourceId: [{ targetKind: SourceKind.Log, targetField: 'traceSourceId' }],
+    sessionSourceId: [
+      { targetKind: SourceKind.Session, targetField: 'traceSourceId' },
+    ],
+    metricSourceId: [
+      { targetKind: SourceKind.Metric, targetField: 'logSourceId' },
+    ],
+  },
+  [SourceKind.Session]: {
+    traceSourceId: [
+      { targetKind: SourceKind.Trace, targetField: 'sessionSourceId' },
+    ],
+  },
+  [SourceKind.Metric]: {
+    logSourceId: [
+      { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
+    ],
+  },
 };
 
 function FormRow({
@@ -600,73 +635,52 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control, watch }: TableModelProps) {
+export function SessionTableModelForm({
+  control,
+  watch,
+  setValue,
+}: TableModelProps) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
+
+  useEffect(() => {
+    const { unsubscribe } = watch(async (value, { name, type }) => {
+      try {
+        const tableName = value.from?.tableName;
+        if (tableName && name === 'from.tableName' && type === 'change') {
+          const isValid = await isValidSessionsTable({
+            databaseName,
+            tableName,
+            connectionId,
+          });
+
+          if (!isValid) {
+            notifications.show({
+              color: 'red',
+              message: `${tableName} is not a valid Sessions schema.`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [setValue, watch, databaseName, connectionId]);
 
   return (
     <>
       <Stack gap="sm">
         <FormRow
-          label={'Timestamp Column'}
-          helpText="DateTime column or expression that is part of your table's primary key."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="timestampValueExpression"
-            disableKeywordAutocomplete
-          />
-        </FormRow>
-        <FormRow label={'Log Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="eventAttributesExpression"
-            placeholder="LogAttributes"
-          />
-        </FormRow>
-        <FormRow label={'Resource Attributes Expression'}>
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="resourceAttributesExpression"
-            placeholder="ResourceAttributes"
-          />
-        </FormRow>
-        <FormRow
           label={'Correlated Trace Source'}
           helpText="HyperDX Source for traces associated with sessions. Required"
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
-        </FormRow>
-        <FormRow
-          label={'Implicit Column Expression'}
-          helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
-        >
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="implicitColumnExpression"
-            placeholder="Body"
-          />
         </FormRow>
       </Stack>
     </>
@@ -906,6 +920,62 @@ export function TableSourceForm({
   const updateSource = useUpdateSource();
   const deleteSource = useDeleteSource();
 
+  // Bidirectional source linking
+  const { data: sources } = useSources();
+  const currentSourceId = watch('id');
+
+  useEffect(() => {
+    const { unsubscribe } = watch(async (_value, { name, type }) => {
+      const value = _value as TSourceUnion;
+      if (!currentSourceId || !sources || type !== 'change') return;
+
+      const correlationFields = CORRELATION_FIELD_MAP[kind];
+      if (!correlationFields || !name || !(name in correlationFields)) return;
+
+      const fieldName = name as keyof TSourceUnion;
+      const newTargetSourceId = value[fieldName] as string | undefined;
+      const targetConfigs = correlationFields[fieldName];
+
+      for (const { targetKind, targetField } of targetConfigs) {
+        // Find the previously linked source if any
+        const previouslyLinkedSource = sources.find(
+          s => s.kind === targetKind && s[targetField] === currentSourceId,
+        );
+
+        // If there was a previously linked source and it's different from the new one, unlink it
+        if (
+          previouslyLinkedSource &&
+          previouslyLinkedSource.id !== newTargetSourceId
+        ) {
+          await updateSource.mutateAsync({
+            source: {
+              ...previouslyLinkedSource,
+              [targetField]: undefined,
+            } as TSource,
+          });
+        }
+
+        // If a new source is selected, link it back
+        if (newTargetSourceId) {
+          const targetSource = sources.find(s => s.id === newTargetSourceId);
+          if (targetSource && targetSource.kind === targetKind) {
+            // Only update if the target field is empty to avoid overwriting existing correlations
+            if (!targetSource[targetField]) {
+              await updateSource.mutateAsync({
+                source: {
+                  ...targetSource,
+                  [targetField]: currentSourceId,
+                } as TSource,
+              });
+            }
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [watch, kind, currentSourceId, sources, updateSource]);
+
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = (error: z.ZodError<TSourceUnion>) => {
     const errors = error.errors;
@@ -933,18 +1003,47 @@ export function TableSourceForm({
 
   const _onCreate = useCallback(() => {
     clearErrors();
-    handleSubmit(data => {
+    handleSubmit(async data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error);
         return;
       }
+
       createSource.mutate(
         // TODO: HDX-1768 get rid of this type assertion
         { source: data as TSource },
         {
-          onSuccess: data => {
-            onCreate?.(data);
+          onSuccess: async newSource => {
+            // Handle bidirectional linking for new sources
+            const correlationFields = CORRELATION_FIELD_MAP[newSource.kind];
+            if (correlationFields && sources) {
+              for (const [fieldName, targetConfigs] of Object.entries(
+                correlationFields,
+              )) {
+                const targetSourceId = (newSource as any)[fieldName];
+                if (targetSourceId) {
+                  for (const { targetKind, targetField } of targetConfigs) {
+                    const targetSource = sources.find(
+                      s => s.id === targetSourceId,
+                    );
+                    if (targetSource && targetSource.kind === targetKind) {
+                      // Only update if the target field is empty to avoid overwriting existing correlations
+                      if (!targetSource[targetField]) {
+                        await updateSource.mutateAsync({
+                          source: {
+                            ...targetSource,
+                            [targetField]: newSource.id,
+                          } as TSource,
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            onCreate?.(newSource);
             notifications.show({
               color: 'green',
               message: 'Source created',
@@ -959,7 +1058,15 @@ export function TableSourceForm({
         },
       );
     })();
-  }, [handleSubmit, createSource, onCreate, kind, formState]);
+  }, [
+    handleSubmit,
+    createSource,
+    onCreate,
+    kind,
+    formState,
+    sources,
+    updateSource,
+  ]);
 
   const _onSave = useCallback(() => {
     clearErrors();

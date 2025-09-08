@@ -1,23 +1,34 @@
+import type { ClickHouseClient as NodeClickHouseClient } from '@clickhouse/client';
 import type {
   BaseResultSet,
   ClickHouseSettings,
   DataFormat,
   ResponseHeaders,
   ResponseJSON,
+  Row,
 } from '@clickhouse/client-common';
 import { isSuccessfulResponse } from '@clickhouse/client-common';
+import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
+import { Metadata } from '@/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
   splitChartConfigs,
 } from '@/renderChartConfig';
 import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode, isBrowser, isNode, timeBucketByGranularity } from '@/utils';
+import { hashCode } from '@/utils';
 
-import { Metadata } from './metadata';
+// export @clickhouse/client-common types
+export type {
+  BaseResultSet,
+  ClickHouseSettings,
+  DataFormat,
+  ResponseJSON,
+  Row,
+};
 
 export enum JSDataType {
   Array = 'array',
@@ -25,6 +36,7 @@ export enum JSDataType {
   Map = 'map',
   Number = 'number',
   String = 'string',
+  Tuple = 'tuple',
   Bool = 'bool',
   JSON = 'json',
   Dynamic = 'dynamic', // json type will store anything as Dynamic type by default
@@ -43,6 +55,8 @@ export const convertCHDataTypeToJSType = (
 ): JSDataType | null => {
   if (dataType.startsWith('Date')) {
     return JSDataType.Date;
+  } else if (dataType.startsWith('Tuple')) {
+    return JSDataType.Tuple;
   } else if (dataType.startsWith('Map')) {
     return JSDataType.Map;
   } else if (dataType.startsWith('Array')) {
@@ -79,11 +93,27 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
+export const isJSDataTypeJSONStringifiable = (
+  dataType: JSDataType | null | undefined,
+) => {
+  return (
+    dataType === JSDataType.Map ||
+    dataType === JSDataType.Array ||
+    dataType === JSDataType.JSON ||
+    dataType === JSDataType.Tuple ||
+    dataType === JSDataType.Dynamic
+  );
+};
+
 export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
   const jsType = convertCHDataTypeToJSType(dataType);
 
-  if (jsType === JSDataType.Map || jsType === JSDataType.Array) {
-    throw new Error('Map type is not a primitive type');
+  if (
+    jsType === JSDataType.Map ||
+    jsType === JSDataType.Array ||
+    jsType === JSDataType.Tuple
+  ) {
+    throw new Error('Map, Array or Tuple type is not a primitive type');
   } else if (jsType === JSDataType.Date) {
     return JSDataType.Number;
   }
@@ -328,32 +358,7 @@ export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
   return result;
 };
 
-const localModeFetch: typeof fetch = (input, init) => {
-  if (!init) init = {};
-  const url = new URL(
-    input instanceof URL ? input : input instanceof Request ? input.url : input,
-  );
-
-  // CORS is unhappy with the authorization header, so we will supply as query params instead
-  const auth: string = init.headers?.['Authorization'];
-  const [username, password] = window
-    .atob(auth.substring('Bearer'.length))
-    .split(':');
-  delete init.headers?.['Authorization'];
-  if (username) url.searchParams.set('user', username);
-  if (password) url.searchParams.set('password', password);
-
-  return fetch(`${url.toString()}`, init);
-};
-
-const standardModeFetch: typeof fetch = (input, init) => {
-  if (!init) init = {};
-  // authorization is handled on the backend, don't send this header
-  delete init.headers?.['Authorization'];
-  return fetch(input, init);
-};
-
-interface QueryInputs<Format extends DataFormat> {
+export interface QueryInputs<Format extends DataFormat> {
   query: string;
   format?: Format;
   abort_signal?: AbortSignal;
@@ -364,27 +369,89 @@ interface QueryInputs<Format extends DataFormat> {
 }
 
 export type ClickhouseClientOptions = {
-  host: string;
+  host?: string;
   username?: string;
   password?: string;
+  queryTimeout?: number;
 };
 
-export class ClickhouseClient {
-  private readonly host: string;
-  private readonly username?: string;
-  private readonly password?: string;
+export abstract class BaseClickhouseClient {
+  protected readonly host?: string;
+  protected readonly username?: string;
+  protected readonly password?: string;
+  protected readonly queryTimeout?: number;
+  protected client?: WebClickHouseClient | NodeClickHouseClient;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
    * query with max_rows_to_read specified
    */
-  private maxRowReadOnly: boolean;
+  protected maxRowReadOnly: boolean;
+  protected requestTimeout: number = 3600000; // TODO: make configurable
 
-  constructor({ host, username, password }: ClickhouseClientOptions) {
-    this.host = host;
+  constructor({
+    host,
+    username,
+    password,
+    queryTimeout,
+  }: ClickhouseClientOptions) {
+    this.host = host!;
     this.username = username;
     this.password = password;
+    this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
+  }
+
+  protected getClient(): WebClickHouseClient | NodeClickHouseClient {
+    if (!this.client) {
+      throw new Error(
+        'ClickHouse client not initialized. Child classes must initialize the client.',
+      );
+    }
+    return this.client;
+  }
+
+  protected logDebugQuery(
+    query: string,
+    query_params: Record<string, any> = {},
+  ): void {
+    let debugSql = '';
+    try {
+      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
+    } catch (e) {
+      debugSql = query;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+    // eslint-disable-next-line no-console
+    console.log('Sending Query:', debugSql);
+    // eslint-disable-next-line no-console
+    console.log('--------------------------------------------------------');
+  }
+
+  protected processClickhouseSettings(
+    external_clickhouse_settings?: ClickHouseSettings,
+  ): ClickHouseSettings {
+    const clickhouse_settings = structuredClone(
+      external_clickhouse_settings || {},
+    );
+    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
+      delete clickhouse_settings['max_rows_to_read'];
+    }
+    if (
+      clickhouse_settings?.max_execution_time === undefined &&
+      (this.queryTimeout || 0) > 0
+    ) {
+      clickhouse_settings.max_execution_time = this.queryTimeout;
+    }
+
+    return {
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      cancel_http_readonly_queries_on_client_close: 1,
+      ...clickhouse_settings,
+    };
   }
 
   async query<Format extends DataFormat>(
@@ -405,7 +472,25 @@ export class ClickhouseClient {
           // Indicate that the CH instance does not accept the max_rows_to_read setting
           this.maxRowReadOnly = true;
         } else {
-          throw error;
+          let err = error;
+          // We should never error out here for debug info, so it's aggressively wrapped
+          try {
+            let debugSql = '';
+            try {
+              debugSql = parameterizedQueryToSql({
+                sql: props.query,
+                params: props.query_params ?? {},
+              });
+            } catch (e) {
+              debugSql = props.query;
+            }
+            err = new ClickHouseQueryError(error.message, debugSql);
+            err.cause = error;
+          } catch (_) {
+            // ignore
+          }
+
+          throw err;
         }
       }
       attempts++;
@@ -414,113 +499,9 @@ export class ClickhouseClient {
     throw new Error('ClickHouseClient query impossible codepath');
   }
 
-  // https://github.com/ClickHouse/clickhouse-js/blob/1ebdd39203730bb99fad4c88eac35d9a5e96b34a/packages/client-web/src/connection/web_connection.ts#L151
-  private async __query<Format extends DataFormat>({
-    query,
-    format = 'JSON' as Format,
-    query_params = {},
-    abort_signal,
-    clickhouse_settings: external_clickhouse_settings,
-    connectionId,
-    queryId,
-  }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
-    let debugSql = '';
-    try {
-      debugSql = parameterizedQueryToSql({ sql: query, params: query_params });
-    } catch (e) {
-      debugSql = query;
-    }
-    let _url = this.host;
-
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
-
-    let clickhouse_settings = structuredClone(
-      external_clickhouse_settings || {},
-    );
-    if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
-      delete clickhouse_settings['max_rows_to_read'];
-    }
-
-    if (isBrowser) {
-      // TODO: check if we can use the client-web directly
-      const { createClient } = await import('@clickhouse/client-web');
-
-      clickhouse_settings = {
-        date_time_output_format: 'iso',
-        wait_end_of_query: 0,
-        cancel_http_readonly_queries_on_client_close: 1,
-        ...clickhouse_settings,
-      };
-      const http_headers = {
-        ...(connectionId && connectionId !== 'local'
-          ? { 'x-hyperdx-connection-id': connectionId }
-          : {}),
-      };
-      let myFetch: typeof fetch;
-      const isLocalMode = this.username != null && this.password != null;
-      if (isLocalMode) {
-        myFetch = localModeFetch;
-        clickhouse_settings.add_http_cors_header = 1;
-      } else {
-        _url = `${window.origin}${this.host}`; // this.host is just a pathname in this scenario
-        myFetch = standardModeFetch;
-      }
-
-      const url = new URL(_url);
-      const clickhouseClient = createClient({
-        url: url.origin,
-        pathname: url.pathname,
-        http_headers,
-        clickhouse_settings,
-        username: this.username ?? '',
-        password: this.password ?? '',
-        // Disable keep-alive to prevent multiple concurrent dashboard requests from exceeding the 64KB payload size limit.
-        keep_alive: {
-          enabled: false,
-        },
-        fetch: myFetch,
-      });
-      return clickhouseClient.query<Format>({
-        query,
-        query_params,
-        format,
-        abort_signal,
-        clickhouse_settings,
-        query_id: queryId,
-      }) as Promise<BaseResultSet<ReadableStream, Format>>;
-    } else if (isNode) {
-      const { createClient } = await import('@clickhouse/client');
-      const _client = createClient({
-        url: this.host,
-        username: this.username,
-        password: this.password,
-      });
-
-      // TODO: Custom error handling
-      return _client.query<Format>({
-        query,
-        query_params,
-        format,
-        abort_signal,
-        clickhouse_settings: {
-          date_time_output_format: 'iso',
-          wait_end_of_query: 0,
-          cancel_http_readonly_queries_on_client_close: 1,
-          ...clickhouse_settings,
-        },
-        query_id: queryId,
-      }) as unknown as Promise<BaseResultSet<ReadableStream, Format>>;
-    } else {
-      throw new Error(
-        'ClickhouseClient is only supported in the browser or node environment',
-      );
-    }
-  }
+  protected abstract __query<Format extends DataFormat>(
+    inputs: QueryInputs<Format>,
+  ): Promise<BaseResultSet<ReadableStream, Format>>;
 
   // TODO: only used when multi-series 'metrics' is selected (no effects on the events chart)
   // eventually we want to generate union CTEs on the db side instead of computing it on the client side
@@ -617,28 +598,6 @@ export class ClickhouseClient {
     throw new Error('No result sets');
   }
 }
-
-export const testLocalConnection = async ({
-  host,
-  username,
-  password,
-}: {
-  host: string;
-  username: string;
-  password: string;
-}): Promise<boolean> => {
-  try {
-    const client = new ClickhouseClient({ host, username, password });
-    const result = await client.query({
-      query: 'SELECT 1',
-      format: 'TabSeparatedRaw',
-    });
-    return result.text().then(text => text.trim() === '1');
-  } catch (e) {
-    console.warn('Failed to test local connection', e);
-    return false;
-  }
-};
 
 export const tableExpr = ({
   database,

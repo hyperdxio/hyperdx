@@ -9,6 +9,7 @@ import {
   Menu,
   Paper,
   Text,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -32,9 +33,15 @@ export const AppNavContext = React.createContext<{
 export const AppNavCloudBanner = () => {
   return (
     <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-      <span className="text-slate-300 fs-8">Ready to use HyperDX Cloud?</span>
+      <span className="text-slate-300 fs-8">
+        Ready to deploy on ClickHouse Cloud?
+      </span>
       <div className="mt-2 mb-2">
-        <Link href="https://www.hyperdx.io/register" passHref legacyBehavior>
+        <Link
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
+          passHref
+          legacyBehavior
+        >
           <Button
             variant="light"
             size="xs"
@@ -69,6 +76,8 @@ export const AppNavUserMenu = ({
     .map(name => name[0].toUpperCase())
     .join('');
 
+  const displayName = IS_LOCAL_MODE ? 'Local mode' : userName;
+
   return (
     <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>
       <Menu.Target>
@@ -90,24 +99,46 @@ export const AppNavUserMenu = ({
             </Avatar>
             {!isCollapsed && (
               <>
-                <div style={{ flex: 1 }}>
-                  <Text size="xs" fw="bold" lh={1.1} c="gray.3">
-                    {IS_LOCAL_MODE ? 'Local mode' : userName}
-                  </Text>
-                  <Text
-                    size="xs"
-                    c="dimmed"
-                    style={{
-                      fontSize: 11,
-                      maxWidth: '100%',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      maxHeight: 16,
-                    }}
-                  >
-                    {teamName}
-                  </Text>
-                </div>
+                <Tooltip
+                  fz="xs"
+                  color="gray"
+                  ta="center"
+                  label={
+                    <>
+                      <strong>{displayName}</strong>
+                      <br />
+                      {teamName}
+                    </>
+                  }
+                  openDelay={250}
+                >
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <Text
+                      size="xs"
+                      fw="bold"
+                      lh={1.1}
+                      style={{
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {displayName}
+                    </Text>
+                    <Text
+                      size="xs"
+                      style={{
+                        fontSize: 11,
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxHeight: 16,
+                      }}
+                    >
+                      {teamName}
+                    </Text>
+                  </div>
+                </Tooltip>
                 <Icon name="chevron-right" className="fs-8 text-slate-400" />
               </>
             )}
@@ -222,7 +253,7 @@ export const AppNavHelpMenu = ({
             </Menu.Label>
 
             <Menu.Item
-              href="https://hyperdx.io/docs/v2"
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
               leftSection={<Icon name="book" />}
             >

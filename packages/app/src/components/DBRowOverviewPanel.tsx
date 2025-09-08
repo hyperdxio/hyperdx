@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react';
+import { flatten } from 'flat';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -6,7 +7,7 @@ import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
 import { getEventBody } from '@/source';
 
-import { useRowData } from './DBRowDataPanel';
+import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
@@ -28,6 +29,8 @@ export function RowOverviewPanel({
   const { data, isLoading, isError } = useRowData({ source, rowId });
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
+
+  const jsonColumns = getJSONColumnNames(data?.meta);
 
   const eventAttributesExpr = source.eventAttributesExpression;
 
@@ -65,8 +68,18 @@ export function RowOverviewPanel({
     return false;
   });
 
-  const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
-  const eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
+  // memo
+  const resourceAttributes = useMemo(() => {
+    return flatten<string, Record<string, string>>(
+      firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ,
+    );
+  }, [firstRow?.__hdx_resource_attributes]);
+
+  const _eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
+  const flattenedEventAttributes = useMemo(() => {
+    return flatten<string, Record<string, string>>(_eventAttributes);
+  }, [_eventAttributes]);
+
   const dataAttributes =
     eventAttributesExpr &&
     firstRow?.[eventAttributesExpr] &&
@@ -188,7 +201,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px="md">
                 <NetworkPropertySubpanel
-                  eventAttributes={eventAttributes}
+                  eventAttributes={flattenedEventAttributes}
                   onPropertyAddClick={onPropertyAddClick}
                   generateSearchUrl={_generateSearchUrl}
                 />
@@ -242,7 +255,10 @@ export function RowOverviewPanel({
             </Accordion.Control>
             <Accordion.Panel>
               <Box px="md">
-                <DBRowJsonViewer data={topLevelAttributes} />
+                <DBRowJsonViewer
+                  data={topLevelAttributes}
+                  jsonColumns={jsonColumns}
+                />
               </Box>
             </Accordion.Panel>
           </Accordion.Item>
@@ -256,7 +272,10 @@ export function RowOverviewPanel({
           </Accordion.Control>
           <Accordion.Panel>
             <Box px="md">
-              <DBRowJsonViewer data={filteredEventAttributes} />
+              <DBRowJsonViewer
+                data={filteredEventAttributes}
+                jsonColumns={jsonColumns}
+              />
             </Box>
           </Accordion.Panel>
         </Accordion.Item>

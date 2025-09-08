@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
@@ -113,6 +114,10 @@ export function useRowData({
   );
 }
 
+export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
+  return meta?.filter(m => m.type === 'JSON').map(m => m.name) ?? [];
+}
+
 export function RowDataPanel({
   source,
   rowId,
@@ -130,10 +135,12 @@ export function RowDataPanel({
     return firstRow;
   }, [data]);
 
+  const jsonColumns = getJSONColumnNames(data?.meta);
+
   return (
     <div className="flex-grow-1 bg-body overflow-auto">
       <Box mx="md" my="sm">
-        <DBRowJsonViewer data={firstRow} />
+        <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
       </Box>
     </div>
   );

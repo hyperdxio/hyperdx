@@ -10,6 +10,7 @@ import {
   getTeam,
   rotateTeamApiKey,
   setTeamName,
+  updateTeamClickhouseSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -81,6 +82,63 @@ router.patch(
       const { name } = req.body;
       const team = await setTeamName(teamId, name);
       res.json({ name: team?.name });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/clickhouse-settings',
+  validateRequest({
+    body: z.object({
+      fieldMetadataDisabled: z.boolean().optional(),
+      searchRowLimit: z.number().optional(),
+      queryTimeout: z.number().optional(),
+      metadataMaxRowsToRead: z.number().optional(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+
+      const {
+        fieldMetadataDisabled,
+        metadataMaxRowsToRead,
+        searchRowLimit,
+        queryTimeout,
+      } = req.body;
+
+      const settings = {
+        ...(searchRowLimit !== undefined && { searchRowLimit }),
+        ...(queryTimeout !== undefined && { queryTimeout }),
+        ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
+        ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
+      };
+
+      if (Object.keys(settings).length === 0) {
+        return res.json({});
+      }
+
+      const team = await updateTeamClickhouseSettings(teamId, settings);
+
+      res.json({
+        ...(searchRowLimit !== undefined && {
+          searchRowLimit: team?.searchRowLimit,
+        }),
+        ...(queryTimeout !== undefined && {
+          queryTimeout: team?.queryTimeout,
+        }),
+        ...(fieldMetadataDisabled !== undefined && {
+          fieldMetadataDisabled: team?.fieldMetadataDisabled,
+        }),
+        ...(metadataMaxRowsToRead !== undefined && {
+          metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
+        }),
+      });
     } catch (e) {
       next(e);
     }

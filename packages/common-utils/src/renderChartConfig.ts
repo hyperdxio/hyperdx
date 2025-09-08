@@ -85,7 +85,7 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: s.alias ?? `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
+        alias: s.alias || `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
       })),
     };
   }
@@ -266,11 +266,12 @@ const aggFnExpr = ({
   quantileLevel?: number;
   where?: string;
 }) => {
+  const isAny = fn === 'any';
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
-    UNSAFE_RAW_SQL: `toFloat64OrDefault(toString(${expr}))`,
+    UNSAFE_RAW_SQL: isAny ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
   };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
@@ -395,7 +396,7 @@ async function renderSelectList(
       }
 
       return chSql`${expr}${
-        select.alias != null
+        select.alias != null && select.alias.trim() !== ''
           ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
           : []
       }`;
@@ -1249,13 +1250,13 @@ async function translateMetricChartConfig(
                 WHEN upper_bound = inf THEN point[upper_idx - 1].2
                 WHEN lower_bound = inf THEN point[1].2
                 ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS ${valueAlias}
+            END AS "${valueAlias}"
           FROM points
           WHERE length(point) > 1 AND total > 0
           `,
         },
       ],
-      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, ${valueAlias}`,
+      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
       from: {
         databaseName: '',
         tableName: 'metrics',

@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -67,7 +75,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
-import { InputControlled } from './InputControlled';
+import { InputControlled, TextInputControlled } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
@@ -119,6 +127,7 @@ function ChartSeriesEditorComponent({
   showGroupBy,
   tableName: _tableName,
   watch,
+  parentRef,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -126,6 +135,7 @@ function ChartSeriesEditorComponent({
   connectionId?: string;
   index: number;
   namePrefix: string;
+  parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
@@ -163,6 +173,17 @@ function ChartSeriesEditorComponent({
       <Divider
         label={
           <Group gap="xs">
+            <Text size="xxs">Alias</Text>
+
+            <div style={{ width: 150 }}>
+              <TextInputControlled
+                name={`${namePrefix}alias`}
+                control={control}
+                placeholder="Series alias"
+                onChange={() => onSubmit()}
+                size="xs"
+              />
+            </div>
             {(index ?? -1) > 0 && (
               <Button
                 variant="subtle"
@@ -179,6 +200,7 @@ function ChartSeriesEditorComponent({
         c="dark.2"
         labelPosition="right"
         mb={8}
+        mt="sm"
       />
       <Flex gap="sm" mt="xs" align="center">
         <div
@@ -264,6 +286,7 @@ function ChartSeriesEditorComponent({
             </Text>
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
+                parentRef={parentRef}
                 tableConnections={{
                   databaseName,
                   tableName: tableName ?? '',
@@ -286,7 +309,7 @@ function ChartSeriesEditorComponent({
     </>
   );
 }
-const ChartSeriesEditor = memo(ChartSeriesEditorComponent);
+const ChartSeriesEditor = ChartSeriesEditorComponent;
 
 // Autocomplete can focus on column/map keys
 
@@ -513,8 +536,11 @@ export default function EditTimeChartForm({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  // Need to force a rerender on change as the modal will not be mounted when initially rendered
+  const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
+
   return (
-    <>
+    <div ref={setParentRef}>
       <Controller
         control={control}
         name="displayType"
@@ -608,6 +634,7 @@ export default function EditTimeChartForm({
                   dateRange={dateRange}
                   index={index}
                   key={field.id}
+                  parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
                   onSubmit={onSubmit}
@@ -756,39 +783,50 @@ export default function EditTimeChartForm({
         <Paper my="sm">
           <Stack gap="xs">
             <Paper px="md" py="sm" bg="dark.6" radius="xs">
-              <Group gap="xs">
-                <Text size="sm" opacity={0.7}>
-                  Alert when the value
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_THRESHOLD_TYPE_OPTIONS)}
-                  size="xs"
-                  name={`alert.thresholdType`}
-                  control={control}
-                />
-                <NumberInput
-                  min={MINIMUM_THRESHOLD_VALUE}
-                  size="xs"
-                  w={80}
-                  control={control}
-                  name={`alert.threshold`}
-                />
-                over
-                <NativeSelect
-                  data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                  size="xs"
-                  name={`alert.interval`}
-                  control={control}
-                />
-                <Text size="sm" opacity={0.7}>
-                  window via
-                </Text>
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                  size="xs"
-                  name={`alert.channel.type`}
-                  control={control}
-                />
+              <Group gap="xs" justify="space-between">
+                <Group gap="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Alert when the value
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(
+                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                    )}
+                    size="xs"
+                    name={`alert.thresholdType`}
+                    control={control}
+                  />
+                  <NumberInput
+                    min={MINIMUM_THRESHOLD_VALUE}
+                    size="xs"
+                    w={80}
+                    control={control}
+                    name={`alert.threshold`}
+                  />
+                  over
+                  <NativeSelect
+                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                    size="xs"
+                    name={`alert.interval`}
+                    control={control}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    window via
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                    size="xs"
+                    name={`alert.channel.type`}
+                    control={control}
+                  />
+                </Group>
+                {(alert as any)?.createdBy && (
+                  <Text size="xs" opacity={0.6}>
+                    Created by{' '}
+                    {(alert as any).createdBy?.name ||
+                      (alert as any).createdBy?.email}
+                  </Text>
+                )}
               </Group>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to
@@ -826,7 +864,8 @@ export default function EditTimeChartForm({
           )}
         </Flex>
         <Flex gap="sm" my="sm" align="center" justify="end">
-          {setDisplayedTimeInputValue != null &&
+          {activeTab !== 'markdown' &&
+            setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
             onTimeRangeSearch != null && (
               <TimePicker
@@ -843,14 +882,16 @@ export default function EditTimeChartForm({
           {activeTab === 'time' && (
             <GranularityPickerControlled control={control} name="granularity" />
           )}
-          <Button
-            variant="outline"
-            type="submit"
-            color="green"
-            onClick={onSubmit}
-          >
-            <i className="bi bi-play"></i>
-          </Button>
+          {activeTab !== 'markdown' && (
+            <Button
+              variant="outline"
+              type="submit"
+              color="green"
+              onClick={onSubmit}
+            >
+              <i className="bi bi-play"></i>
+            </Button>
+          )}
         </Flex>
       </Flex>
       {!queryReady && activeTab !== 'markdown' ? (
@@ -995,7 +1036,7 @@ export default function EditTimeChartForm({
           </Accordion>
         </>
       )}
-    </>
+    </div>
   );
 }
 

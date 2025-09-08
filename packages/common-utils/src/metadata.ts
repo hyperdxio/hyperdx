@@ -1,7 +1,9 @@
+import type { ClickHouseSettings } from '@clickhouse/client-common';
+
 import {
+  BaseClickhouseClient,
   ChSql,
   chSql,
-  ClickhouseClient,
   ColumnMeta,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
@@ -13,7 +15,8 @@ import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
-export const DEFAULT_MAX_ROWS_TO_READ = 3e6;
+export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
+const DEFAULT_MAX_KEYS = 1000;
 
 export class MetadataCache {
   private cache = new Map<string, any>();
@@ -89,12 +92,22 @@ export type TableMetadata = {
 };
 
 export class Metadata {
-  private readonly clickhouseClient: ClickhouseClient;
+  private readonly clickhouseClient: BaseClickhouseClient;
   private readonly cache: MetadataCache;
+  private readonly clickhouseSettings: ClickHouseSettings;
 
-  constructor(clickhouseClient: ClickhouseClient, cache: MetadataCache) {
+  constructor(
+    clickhouseClient: BaseClickhouseClient,
+    cache: MetadataCache,
+    settings?: ClickHouseSettings,
+  ) {
     this.clickhouseClient = clickhouseClient;
     this.cache = cache;
+    this.clickhouseSettings = settings ?? {};
+  }
+
+  setClickHouseSettings(settings: ClickHouseSettings) {
+    Object.assign(this.clickhouseSettings, settings);
   }
 
   private async queryTableMetadata({
@@ -115,6 +128,7 @@ export class Metadata {
           connectionId,
           query: sql.sql,
           query_params: sql.params,
+          clickhouse_settings: this.clickhouseSettings,
         })
         .then(res => res.json<TableMetadata>());
       return json.data[0];
@@ -139,6 +153,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
+            clickhouse_settings: this.clickhouseSettings,
           })
           .then(res => res.json())
           .then(d => d.data);
@@ -205,7 +220,7 @@ export class Metadata {
     databaseName,
     tableName,
     column,
-    maxKeys = 1000,
+    maxKeys = DEFAULT_MAX_KEYS,
     connectionId,
     metricName,
   }: {
@@ -270,8 +285,9 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+            max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
             read_overflow_mode: 'break',
+            ...this.clickhouseSettings,
           },
         })
         .then(res => res.json<Record<string, unknown>>())
@@ -287,6 +303,72 @@ export class Metadata {
         });
       return keys;
     });
+  }
+
+  async getJSONKeys({
+    column,
+    maxKeys = DEFAULT_MAX_KEYS,
+    databaseName,
+    tableName,
+    connectionId,
+    metricName,
+  }: {
+    column: string;
+    maxKeys?: number;
+  } & TableConnection) {
+    const cacheKey = metricName
+      ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
+      : `${databaseName}.${tableName}.${column}.keys`;
+
+    return this.cache.getOrFetch<{ key: string; chType: string }[]>(
+      cacheKey,
+      async () => {
+        const where = metricName
+          ? chSql`WHERE MetricName=${{ String: metricName }}`
+          : '';
+        const sql = chSql`WITH all_paths AS
+        (
+            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
+            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+            LIMIT ${{ Int32: maxKeys }}
+            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
+        )
+        SELECT groupUniqArrayMap(paths) as pathMap
+        FROM all_paths;`;
+
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+              read_overflow_mode: 'break',
+              ...this.clickhouseSettings,
+            },
+          })
+          .then(res => res.json<{ pathMap: Record<string, string[]> }>())
+          .then(d => {
+            const keys: { key: string; chType: string }[] = [];
+            for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
+              if (!key || !typeArr || !Array.isArray(typeArr)) {
+                throw new Error(
+                  `Error fetching keys for filters (key: ${key}, typeArr: ${typeArr})`,
+                );
+              }
+              keys.push({
+                key: key
+                  .split('.')
+                  .map(v => `\`${v}\``)
+                  .join('.'),
+                chType: typeArr[0],
+              });
+            }
+            return keys;
+          });
+        return keys;
+      },
+    );
   }
 
   async getMapValues({
@@ -343,8 +425,9 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
+              ...this.clickhouseSettings,
             },
           })
           .then(res => res.json<Record<string, unknown>>())
@@ -375,10 +458,30 @@ export class Metadata {
       });
     }
 
-    const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
+    const mapColumns =
+      filterColumnMetaByType(columns, [JSDataType.Map, JSDataType.JSON]) ?? [];
 
     await Promise.all(
       mapColumns.map(async column => {
+        if (convertCHDataTypeToJSType(column.type) === JSDataType.JSON) {
+          const paths = await this.getJSONKeys({
+            databaseName,
+            tableName,
+            column: column.name,
+            connectionId,
+            metricName,
+          });
+
+          for (const path of paths) {
+            fields.push({
+              path: [column.name, path.key],
+              type: path.chType,
+              jsType: convertCHDataTypeToJSType(path.chType),
+            });
+          }
+          return;
+        }
+
         const keys = await this.getMapKeys({
           databaseName,
           tableName,
@@ -460,8 +563,9 @@ export class Metadata {
             connectionId: chartConfig.connection,
             clickhouse_settings: !disableRowLimit
               ? {
-                  max_rows_to_read: String(DEFAULT_MAX_ROWS_TO_READ),
+                  max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
                   read_overflow_mode: 'break',
+                  ...this.clickhouseSettings,
                 }
               : undefined,
           })
@@ -511,5 +615,5 @@ const __LOCAL_CACHE__ = new MetadataCache();
 
 // TODO: better to init the Metadata object on the client side
 // also the client should be able to choose the cache strategy
-export const getMetadata = (clickhouseClient: ClickhouseClient) =>
+export const getMetadata = (clickhouseClient: BaseClickhouseClient) =>
   new Metadata(clickhouseClient, __LOCAL_CACHE__);

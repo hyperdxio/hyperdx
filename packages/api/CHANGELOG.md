@@ -1,5 +1,135 @@
 # @hyperdx/api
 
+## 2.3.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+
+### Patch Changes
+
+- 85685801: feat: INGESTION_API_KEY allows for environment variable defined api key
+- eb6f3a01: Fix the alert connection query to include the password field.
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- bb2221a1: fix: Keep "created by" field unchanged during alert updates in dashboards
+- aacd24dd: bump: default request_timeout to 1hr
+- f800fd13: Fixes alert title used on dashboards with multiple tiles
+- 261d4693: feat: limit how many tasks are executing at any time
+- Updated dependencies [25f77aa7]
+- Updated dependencies [d6f8058e]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [52483f6a]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [3f2d4270]
+- Updated dependencies [ecb20c84]
+  - @hyperdx/common-utils@0.4.0
+
+## 2.2.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- Updated dependencies [56fd856d]
+- Updated dependencies [0f242558]
+  - @hyperdx/common-utils@0.3.2
+
+## 2.2.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+- c216053: Changes the order of alert evaluation to group queries by the connection on the alert.
+- Updated dependencies [d29e2bc]
+  - @hyperdx/common-utils@0.3.1
+
+## 2.2.0
+
+### Minor Changes
+
+- c0b188c: Track the user id who created alerts and display the information in the UI.
+
+### Patch Changes
+
+- ab50b12: feat: support custom otel collector config (BETA)
+- ab50b12: fix: reduce bloat in opamp agent logs
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+- Updated dependencies [6dd6165]
+- Updated dependencies [5a59d32]
+  - @hyperdx/common-utils@0.3.0
+
+## 2.1.2
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+- Updated dependencies [39cde41]
+- Updated dependencies [b568b00]
+  - @hyperdx/common-utils@0.2.9
+
+## 2.1.1
+
+### Patch Changes
+
+- 1dc1c82: feat: add team setting to disable field metadata queries in app
+- eed38e8: bump node version to 22.16.0
+- Updated dependencies [eed38e8]
+  - @hyperdx/common-utils@0.2.8
+
+## 2.1.0
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 21b5df6: fix: Hotfix to prevent the app from crashing due to a strict mode exception
+- 6c13403: fix: use '--kill-others-on-fail' to prevent processes from terminating when RUN_SCHEDULED_TASKS_EXTERNALLY is enabled
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+- Updated dependencies [4ce81d4]
+- Updated dependencies [61c79a1]
+  - @hyperdx/common-utils@0.2.7
+
+## 2.0.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+- Updated dependencies [33fc071]
+  - @hyperdx/common-utils@0.2.6
+
+## 2.0.5
+
+### Patch Changes
+
+- a4f2afa: fix: Add samesite to cookies for better security
+- 844f74c: fix: validate name for saved searches
+- f7eb1ef: feat: configurable search row limit
+- Updated dependencies [973b9e8]
+  - @hyperdx/common-utils@0.2.5
+
+## 2.0.4
+
+### Patch Changes
+
+- 52ca182: feat: Add ClickHouse JSON Type Support
+- 808145b: feat: specify NODE_ENV in api build (prod stage)
+- Updated dependencies [52ca182]
+  - @hyperdx/common-utils@0.2.4
+
+## 2.0.3
+
+### Patch Changes
+
+- 93e36b5: fix: remove id from post for connection creation endpoint
+- Updated dependencies [b75d7c0]
+- Updated dependencies [93e36b5]
+  - @hyperdx/common-utils@0.2.3
+
 ## 2.0.2
 
 ### Patch Changes

@@ -262,6 +262,23 @@ const api = {
         }).json(),
     });
   },
+  useUpdateClickhouseSettings() {
+    return useMutation<
+      any,
+      HTTPError,
+      {
+        searchRowLimit?: number;
+        fieldMetadataDisabled?: boolean;
+        metadataMaxRowsToRead?: number;
+      }
+    >({
+      mutationFn: async settings =>
+        hdxServer(`team/clickhouse-settings`, {
+          method: 'PATCH',
+          json: settings,
+        }).json(),
+    });
+  },
   useTags() {
     return useQuery({
       queryKey: [`team/tags`],

@@ -104,7 +104,9 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import PatternTable from './components/PatternTable';
+import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -134,6 +136,21 @@ const SearchConfigSchema = z.object({
 });
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
+
+// Helper function to get the default source id
+export function getDefaultSourceId(
+  sources: { id: string }[] | undefined,
+  lastSelectedSourceId: string | undefined,
+): string {
+  if (!sources || sources.length === 0) return '';
+  if (
+    lastSelectedSourceId &&
+    sources.some(s => s.id === lastSelectedSourceId)
+  ) {
+    return lastSelectedSourceId;
+  }
+  return sources[0].id;
+}
 
 function SearchNumRows({
   config,
@@ -182,7 +199,12 @@ function SaveSearchModal({
     },
   );
 
-  const { control, handleSubmit } = useForm({
+  const {
+    control,
+    handleSubmit,
+    formState,
+    reset: resetForm,
+  } = useForm({
     ...(isUpdate
       ? {
           values: {
@@ -196,6 +218,13 @@ function SaveSearchModal({
     },
   });
 
+  const closeAndReset = () => {
+    resetForm();
+    onClose();
+  };
+
+  const isValidName = (name?: string): boolean =>
+    Boolean(name && name.trim().length > 0);
   const [tags, setTags] = useState<string[]>(savedSearch?.tags || []);
 
   // Update tags when savedSearch changes
@@ -260,7 +289,7 @@ function SaveSearchModal({
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={closeAndReset}
       title="Save Search"
       centered
       size="lg"
@@ -309,7 +338,11 @@ function SaveSearchModal({
             <Text c="gray.4" size="xs" mb="xs">
               Name
             </Text>
-            <InputControlled control={control} name="name" />
+            <InputControlled
+              control={control}
+              name="name"
+              rules={{ required: true, validate: isValidName }}
+            />
           </Box>
           <Box mb="sm">
             <Text c="gray.4" size="xs" mb="xs">
@@ -347,7 +380,12 @@ function SaveSearchModal({
               </Tags>
             </Group>
           </Box>
-          <Button variant="outline" color="green" type="submit">
+          <Button
+            variant="outline"
+            color="green"
+            type="submit"
+            disabled={!formState.isValid}
+          >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
         </Stack>
@@ -376,6 +414,24 @@ function useLiveUpdate({
   ) => void;
   pause: boolean;
 }) {
+  const documentState = useDocumentVisibility();
+  const isDocumentVisible = documentState === 'visible';
+  const [refreshOnVisible, setRefreshOnVisible] = useState(false);
+
+  const refresh = useCallback(() => {
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+  }, [onTimeRangeSelect, interval]);
+
+  // When the user comes back to the app after switching tabs, we immediately refresh the list.
+  useEffect(() => {
+    if (refreshOnVisible && isDocumentVisible) {
+      if (!pause) {
+        refresh();
+      }
+      setRefreshOnVisible(false);
+    }
+  }, [refreshOnVisible, isDocumentVisible, pause, refresh]);
+
   const intervalRef = useRef<number | null>(null);
   useEffect(() => {
     if (isLive) {
@@ -386,11 +442,11 @@ function useLiveUpdate({
       // only start interval if no queries are fetching
       if (!pause) {
         intervalRef.current = window.setInterval(() => {
-          onTimeRangeSelect(
-            new Date(Date.now() - interval),
-            new Date(),
-            'Live Tail',
-          );
+          if (isDocumentVisible) {
+            refresh();
+          } else {
+            setRefreshOnVisible(true);
+          }
         }, refreshFrequency);
       }
     } else {
@@ -403,7 +459,14 @@ function useLiveUpdate({
         window.clearInterval(intervalRef.current);
       }
     };
-  }, [isLive, onTimeRangeSelect, pause, interval, refreshFrequency]);
+  }, [
+    isLive,
+    isDocumentVisible,
+    onTimeRangeSelect,
+    pause,
+    refresh,
+    refreshFrequency,
+  ]);
 }
 
 function useSearchedConfigToChartConfig({
@@ -417,6 +480,7 @@ function useSearchedConfigToChartConfig({
   const { data: sourceObj, isLoading } = useSource({
     id: source,
   });
+  const defaultOrderBy = useDefaultOrderBy(source);
 
   return useMemo(() => {
     if (sourceObj != null) {
@@ -442,17 +506,79 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
-          orderBy:
-            orderBy ||
-            `${getFirstTimestampValueExpression(
-              sourceObj.timestampValueExpression,
-            )} DESC`,
+          orderBy: orderBy || defaultOrderBy,
         },
       };
     }
 
     return { data: null, isLoading };
-  }, [sourceObj, isLoading, select, filters, where, whereLanguage]);
+  }, [
+    sourceObj,
+    isLoading,
+    select,
+    filters,
+    where,
+    whereLanguage,
+    defaultOrderBy,
+  ]);
+}
+
+function optimizeDefaultOrderBy(
+  timestampExpr: string,
+  sortingKey: string | undefined,
+) {
+  const defaultModifier = 'DESC';
+  const fallbackOrderByItems = [
+    getFirstTimestampValueExpression(timestampExpr ?? ''),
+    defaultModifier,
+  ];
+  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+
+  if (!sortingKey) return fallbackOrderBy;
+
+  const orderByArr = [];
+  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  for (let i = 0; i < sortKeys.length; i++) {
+    const sortKey = sortKeys[i];
+    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+      orderByArr.push(sortKey);
+    } else if (
+      sortKey === timestampExpr ||
+      (sortKey.startsWith('toUnixTimestamp') &&
+        sortKey.includes(timestampExpr)) ||
+      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
+    ) {
+      if (orderByArr.length === 0) {
+        // fallback if the first sort key is the timestamp sort key
+        return fallbackOrderBy;
+      } else {
+        orderByArr.push(sortKey);
+        break;
+      }
+    }
+  }
+
+  // If we can't find an optimized order by, use the fallback/default
+  if (orderByArr.length === 0) {
+    return fallbackOrderBy;
+  }
+
+  return `(${orderByArr.join(', ')}) ${defaultModifier}`;
+}
+
+export function useDefaultOrderBy(sourceID: string | undefined | null) {
+  const { data: source } = useSource({ id: sourceID });
+  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+
+  // When source changes, make sure select and orderby fields are set to default
+  return useMemo(
+    () =>
+      optimizeDefaultOrderBy(
+        source?.timestampValueExpression ?? '',
+        tableMetadata?.sorting_key,
+      ),
+    [source, tableMetadata],
+  );
 }
 
 // This is outside as it needs to be a stable reference
@@ -524,6 +650,12 @@ function DBSearchPage() {
     [setIsLive, _setDenoiseResults],
   );
 
+  // Get default source
+  const defaultSourceId = useMemo(
+    () => getDefaultSourceId(sources, lastSelectedSourceId),
+    [sources, lastSelectedSourceId],
+  );
+
   const {
     control,
     watch,
@@ -539,13 +671,7 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source:
-        searchedConfig.source ??
-        (lastSelectedSourceId &&
-        sources?.some(s => s.id === lastSelectedSourceId)
-          ? lastSelectedSourceId
-          : sources?.[0]?.id) ??
-        '',
+      source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -561,15 +687,7 @@ function DBSearchPage() {
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
 
-  // When source changes, make sure select and orderby fields are set to default
-  const defaultOrderBy = useMemo(
-    () =>
-      `${getFirstTimestampValueExpression(
-        inputSourceObj?.timestampValueExpression ?? '',
-      )} DESC`,
-    [inputSourceObj?.timestampValueExpression],
-  );
-
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
   const [rowId, setRowId] = useQueryState('rowWhere');
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -636,10 +754,10 @@ function DBSearchPage() {
         return;
       }
 
-      // Landed on a new search
-      if (inputSource && savedSearchId == null) {
+      // Landed on a new search - ensure we have a source selected
+      if (savedSearchId == null && defaultSourceId) {
         setSearchedConfig({
-          source: inputSource,
+          source: defaultSourceId,
           where: '',
           select: '',
           whereLanguage: 'lucene',
@@ -653,8 +771,7 @@ function DBSearchPage() {
     searchedConfig,
     setSearchedConfig,
     savedSearchId,
-    inputSource,
-    lastSelectedSourceId,
+    defaultSourceId,
     sources,
   ]);
 
@@ -730,12 +847,6 @@ function DBSearchPage() {
             'select',
             newInputSourceObj?.defaultTableSelectExpression ?? '',
           );
-          setValue(
-            'orderBy',
-            `${getFirstTimestampValueExpression(
-              newInputSourceObj?.timestampValueExpression ?? '',
-            )} DESC`,
-          );
           // Clear all search filters
           searchFilters.clearAllFilters();
         }
@@ -780,7 +891,9 @@ function DBSearchPage() {
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
     const hasQueryError = Object.values(_queryErrors).length > 0;
-    const queryError = hasQueryError ? Object.values(_queryErrors)[0] : null;
+    const queryError: Error | ClickHouseQueryError | null = hasQueryError
+      ? Object.values(_queryErrors)[0]
+      : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
   const inputWhere = watch('where');
@@ -883,6 +996,7 @@ function DBSearchPage() {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
 
+  const { data: me } = api.useMe();
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
     setDisplayedTimeInputValue('Live Tail');
@@ -897,9 +1011,8 @@ function DBSearchPage() {
     return {
       ...chartConfig,
       dateRange: searchedTimeRange,
-      limit: { limit: 200 },
     };
-  }, [chartConfig, searchedTimeRange]);
+  }, [me?.team, chartConfig, searchedTimeRange]);
 
   const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
@@ -1067,6 +1180,8 @@ function DBSearchPage() {
     setNewSourceModalOpened(true);
   }, []);
 
+  const [isDrawerChildModalOpen, setDrawerChildModalOpen] = useState(false);
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
@@ -1088,6 +1203,7 @@ function DBSearchPage() {
               control={control}
               name="source"
               onCreate={openNewSourceModal}
+              allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
             />
             <Menu withArrow position="bottom-start">
               <Menu.Target>
@@ -1327,6 +1443,8 @@ function DBSearchPage() {
           toggleColumn,
           generateSearchUrl,
           dbSqlRowTableConfig,
+          isChildModalOpen: isDrawerChildModalOpen,
+          setChildModalOpen: setDrawerChildModalOpen,
         }}
       >
         {searchedSource && (
@@ -1638,6 +1756,21 @@ function DBSearchPage() {
                           {queryError.message}
                         </Code>
                       </Box>
+                      {queryError instanceof ClickHouseQueryError && (
+                        <Box mt="lg">
+                          <Text my="sm" size="sm">
+                            Original Query:
+                          </Text>
+                          <Code
+                            block
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            <SQLPreview data={queryError.query} formatData />
+                          </Code>
+                        </Box>
+                      )}
                     </div>
                   </>
                 ) : (

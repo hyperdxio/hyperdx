@@ -90,16 +90,99 @@ jobs:
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Publish Images
+        id: publish
         if:
           needs.check_changesets.outputs.changeset_outputs_hasChangesets ==
           'false'
-        run: make ${{ matrix.release }}
-  notify_downstream:
-    name: Notify Downstream
+        run: |
+          OUTPUT=$(make ${{ matrix.release }} 2>&1)
+          echo "$OUTPUT"
+
+          # Store the output in a file for the specific release target
+          echo "$OUTPUT" > /tmp/${{ matrix.release }}-output.txt
+
+          # Upload the output as an artifact if this is release-app
+          if [ "${{ matrix.release }}" = "release-app" ]; then
+            if echo "$OUTPUT" | grep -q "already exists. Skipping push."; then
+              echo "RELEASE_APP_PUSHED=false" > /tmp/release-app-status.txt
+            else
+              echo "RELEASE_APP_PUSHED=true" > /tmp/release-app-status.txt
+            fi
+          fi
+      - name: Upload release-app status
+        if: matrix.release == 'release-app'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-app-status
+          path: /tmp/release-app-status.txt
+  check_release_app_pushed:
+    name: Check if release-app pushed
     needs: [check_changesets, release]
     runs-on: ubuntu-24.04
+    outputs:
+      app_was_pushed: ${{ steps.check.outputs.pushed }}
     if:
       needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false'
+    steps:
+      - name: Download release-app status
+        uses: actions/download-artifact@v4
+        with:
+          name: release-app-status
+          path: /tmp
+      - name: Check if release-app was pushed
+        id: check
+        run: |
+          if [ -f /tmp/release-app-status.txt ]; then
+            STATUS=$(cat /tmp/release-app-status.txt)
+            echo "Release app status: $STATUS"
+            if [ "$STATUS" = "RELEASE_APP_PUSHED=true" ]; then
+              echo "pushed=true" >> $GITHUB_OUTPUT
+            else
+              echo "pushed=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No release-app status file found, assuming not pushed"
+            echo "pushed=false" >> $GITHUB_OUTPUT
+          fi
+  notify_helm_charts:
+    name: Notify Helm-Charts Downstream
+    needs: [check_changesets, release, check_release_app_pushed]
+    runs-on: ubuntu-24.04
+    if: |
+      needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
+      needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Notify Helm-Charts Downstream
+        uses: actions/github-script@v7
+        continue-on-error: true
+        env:
+          TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
+        with:
+          github-token: ${{ secrets.HYPERDX_INTERNAL_TOKEN }}
+          script: |
+            const { TAG } = process.env;
+            const result = await github.rest.actions.createWorkflowDispatch({
+              owner: 'hyperdxio',
+              repo: 'helm-charts',
+              workflow_id: '${{ secrets.DOWNSTREAM_HC_WORKFLOW_ID }}',
+              ref: 'main',
+              inputs: {
+                tag: TAG
+              }
+            });
+  notify_ch:
+    name: Notify CH Downstream
+    needs: [check_changesets, release, check_release_app_pushed]
+    runs-on: ubuntu-24.04
+    # Temporarily disabled:
+    if: false
+    # if: |
+    #   needs.check_changesets.outputs.changeset_outputs_hasChangesets == 'false' &&
+    #   needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,8 +195,9 @@ jobs:
           app-id: ${{ secrets.DOWNSTREAM_CH_APP_ID }}
           private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
           owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
-      - name: Notify Downstream
+      - name: Notify CH Downstream
         uses: actions/github-script@v7
+        continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
         with:

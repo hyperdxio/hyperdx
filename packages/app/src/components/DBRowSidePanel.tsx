@@ -18,7 +18,10 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
-import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
+import DBRowSidePanelHeader, {
+  BreadcrumbNavigationCallback,
+  BreadcrumbPath,
+} from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
@@ -54,6 +57,8 @@ export const RowSidePanelContext = createContext<{
   toggleColumn?: (column: string) => void;
   shareUrl?: string;
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  isChildModalOpen?: boolean;
+  setChildModalOpen?: (open: boolean) => void;
 }>({});
 
 enum Tab {
@@ -71,6 +76,8 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   onClose: () => void;
   isNestedPanel?: boolean;
+  breadcrumbPath?: BreadcrumbPath;
+  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 };
 
 const DBRowSidePanel = ({
@@ -78,6 +85,9 @@ const DBRowSidePanel = ({
   source,
   isNestedPanel = false,
   setSubDrawerOpen,
+  onClose,
+  breadcrumbPath = [],
+  onBreadcrumbClick,
 }: DBRowSidePanelProps & {
   setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
@@ -91,6 +101,34 @@ const DBRowSidePanel = ({
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
+
+  const handleBreadcrumbClick = useCallback(
+    (targetLevel: number) => {
+      // Current panel's level in the hierarchy
+      const currentLevel = breadcrumbPath.length;
+
+      // The target panel level corresponds to the breadcrumb index:
+      // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
+      // - targetLevel 1 = first nested panel (breadcrumbPath.length = 1)
+      // - etc.
+
+      // If our current level is greater than the target panel level, close this panel
+      if (currentLevel > targetLevel) {
+        onClose();
+        onBreadcrumbClick?.(targetLevel);
+      }
+      // If our current level equals the target panel level, we're the target - don't close
+      else if (currentLevel === targetLevel) {
+        // This is the panel the user wants to navigate to - do nothing (stay open)
+        return;
+      }
+      // If our current level is less than target, propagate up (this panel should stay open)
+      else {
+        onBreadcrumbClick?.(targetLevel);
+      }
+    },
+    [breadcrumbPath.length, onBreadcrumbClick, onClose],
+  );
 
   const hasOverviewPanel = useMemo(() => {
     if (
@@ -230,6 +268,8 @@ const DBRowSidePanel = ({
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
+          breadcrumbPath={breadcrumbPath}
+          onBreadcrumbClick={handleBreadcrumbClick}
         />
       </Box>
       {/* <SidePanelHeader
@@ -349,6 +389,8 @@ const DBRowSidePanel = ({
             dbSqlRowTableConfig={dbSqlRowTableConfig}
             rowData={normalizedRow}
             rowId={rowId}
+            breadcrumbPath={breadcrumbPath}
+            onBreadcrumbClick={handleBreadcrumbClick}
           />
         </ErrorBoundary>
       )}
@@ -405,6 +447,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   source,
   isNestedPanel,
+  breadcrumbPath = [],
+  onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -414,6 +458,8 @@ export default function DBRowSidePanelErrorBoundary({
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+
+  const { isChildModalOpen } = useContext(RowSidePanelContext);
 
   const [_, setQueryTab] = useQueryState(
     'tab',
@@ -432,7 +478,7 @@ export default function DBRowSidePanelErrorBoundary({
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 
   const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && rowId != null) {
+    if (!subDrawerOpen && !isChildModalOpen && rowId != null) {
       _onClose();
     }
   }, ['mouseup', 'touchend']);
@@ -474,7 +520,9 @@ export default function DBRowSidePanelErrorBoundary({
               rowId={rowId}
               onClose={_onClose}
               isNestedPanel={isNestedPanel}
+              breadcrumbPath={breadcrumbPath}
               setSubDrawerOpen={setSubDrawerOpen}
+              onBreadcrumbClick={onBreadcrumbClick}
             />
           </ErrorBoundary>
         </div>

@@ -1,4 +1,4 @@
-import { ClickhouseClient } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/metadata';
 import { CustomSchemaSQLSerializerV2 } from '@/queryParser';
 
@@ -6,7 +6,9 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   function getTestTable(field) {
     return { name: field, type: 'JSON' };
   }
-  const metadata = getMetadata(new ClickhouseClient({ host: '' }));
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
   // @ts-ignore
   metadata.getColumn = ({ column }) => {
     return new Promise((resolve, reject) => {

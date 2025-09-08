@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
-import type { ResponseJSON } from '@clickhouse/client';
+import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
   ChartConfigWithDateRange,
@@ -13,7 +13,7 @@ import {
 import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getClickhouseClient } from '@/clickhouse';
+import { useClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 
@@ -56,7 +56,7 @@ export const useV2LogBatch = <T = any,>(
   },
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) => {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   return useQuery<ResponseJSON<T>, Error>({
     queryKey: [
       'v2LogBatch',
@@ -188,43 +188,43 @@ export const KubeTimeline = ({
         alias: 'id',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'metadata', 'creationTimestamp')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'metadata', 'creationTimestamp')`,
         alias: 'object.metadata.creationTimestamp',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'reason')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'reason')`,
         alias: 'object.reason',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
         alias: 'object.note',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'object.type',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'message')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'message')`,
         alias: 'object.message',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'name')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
         alias: 'k8s.pod.name',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'regarding', 'uid')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'uid')`,
         alias: 'k8s.pod.uid',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'type',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'type')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
         alias: 'severity_text',
       },
       {
-        valueExpression: `JSONExtractString(${getEventBody(logSource)}, 'object', 'note')`,
+        valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
         alias: 'body',
       },
     ],

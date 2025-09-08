@@ -8,7 +8,12 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import { DisplayType, Filter, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  Filter,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -38,6 +43,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
 import { getExpressions } from '@/serviceDashboard';
@@ -85,7 +91,12 @@ function ServiceSelectControlled({
   onCreate?: () => void;
 } & UseControllerProps<any>) {
   const { data: source } = useSource({ id: sourceId });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const queriedConfig = {
     ...source,
@@ -148,7 +159,12 @@ export function EndpointLatencyChart({
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
 }) {
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
   const [latencyChartType, setLatencyChartType] = useState<
     'line' | 'histogram'
   >('line');
@@ -254,7 +270,12 @@ function HttpTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [reqChartType, setReqChartType] = useQueryState(
     'reqChartType',
@@ -425,6 +446,7 @@ function HttpTab({
                 filters: getScopedFilters(source, appliedConfig),
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
+                limit: { limit: 20 },
               }}
             />
           )}
@@ -506,6 +528,7 @@ function HttpTab({
                   topEndpointsChartType === 'time'
                     ? '"Total (ms)" DESC'
                     : '"Errors/Min" DESC',
+                limit: { limit: 20 },
               }}
             />
           )}
@@ -524,7 +547,12 @@ function DatabaseTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
 
@@ -697,6 +725,7 @@ function DatabaseTab({
                     ...getScopedFilters(source, appliedConfig, false),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
+                  limit: { limit: 20 },
                 }}
               />
             ) : (
@@ -753,6 +782,7 @@ function DatabaseTab({
                     ...getScopedFilters(source, appliedConfig, false),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
+                  limit: { limit: 20 },
                 }}
               />
             ))}
@@ -771,7 +801,12 @@ function ErrorsTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const expressions = getExpressions(source);
+  const { data: jsonColumns = [] } = useJsonColumns({
+    databaseName: source?.from?.databaseName || '',
+    tableName: source?.from?.tableName || '',
+    connectionId: source?.connection || '',
+  });
+  const expressions = getExpressions(source, jsonColumns);
 
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
@@ -905,7 +940,11 @@ function ServicesDashboardPage() {
       >
         <Group gap="xs">
           <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
-            <SourceSelectControlled control={control} name="source" />
+            <SourceSelectControlled
+              control={control}
+              name="source"
+              allowedSourceKinds={[SourceKind.Trace]}
+            />
             <ServiceSelectControlled
               sourceId={sourceId}
               control={control}

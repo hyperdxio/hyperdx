@@ -26,6 +26,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   secret: config.EXPRESS_SESSION_SECRET,
   cookie: {
     secure: false,
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
   rolling: true,
@@ -87,7 +88,6 @@ app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
-app.use('/datasources', isUserAuthenticated, routers.datasourceRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);

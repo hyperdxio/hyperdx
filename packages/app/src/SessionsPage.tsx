@@ -436,7 +436,11 @@ export default function SessionsPage() {
             style={{ overflow: 'hidden' }}
           >
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
-              <SourceSelectControlled control={control} name="source" />
+              <SourceSelectControlled
+                control={control}
+                name="source"
+                allowedSourceKinds={[SourceKind.Session]}
+              />
               <WhereLanguageControlled
                 name="whereLanguage"
                 control={control}
@@ -564,7 +568,10 @@ function SessionSetupInstructions() {
         </Text>
         <Text c="dimmed" size="xs">
           Install the{' '}
-          <a href="https://www.hyperdx.io/docs/install/browser" target="_blank">
+          <a
+            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
+            target="_blank"
+          >
             HyperDX Browser Integration
           </a>{' '}
           to start recording sessions.

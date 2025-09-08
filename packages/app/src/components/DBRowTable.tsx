@@ -1,8 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
+import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
-import { Button, Modal } from 'react-bootstrap';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -18,6 +18,7 @@ import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReference,
+  isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -25,7 +26,15 @@ import {
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
-import { Box, Code, Flex, Text } from '@mantine/core';
+import {
+  Box,
+  Code,
+  Flex,
+  Modal,
+  Text,
+  Tooltip as MantineTooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import {
   FetchNextPageOptions,
   useQuery,
@@ -42,6 +51,9 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import api from '@/api';
+import { searchChartConfigDefaults } from '@/defaults';
+import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -209,6 +221,42 @@ export const PatternTrendChart = ({
   );
 };
 
+const SqlModal = ({
+  opened,
+  onClose,
+  config,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  config: ChartConfigWithDateRange;
+}) => {
+  const { data: sql, isLoading: isLoadingSql } = useRenderedSqlChartConfig(
+    config,
+    {
+      queryKey: ['SqlModal', config],
+      placeholderData: prev => prev ?? '', // Avoid flicker when query changes (eg. when in live mode)
+      enabled: opened,
+    },
+  );
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Generated SQL" size="auto">
+      {sql ? (
+        <SQLPreview data={sql} enableCopy={true} />
+      ) : isLoadingSql ? (
+        <div className="text-center my-2">
+          <div className="spin-animate d-inline-block me-2">
+            <i className="bi bi-arrow-repeat" />
+          </div>
+          Loading SQL...
+        </div>
+      ) : (
+        <div className="text-center my-2">No SQL available</div>
+      )}
+    </Modal>
+  );
+};
+
 export const RawLogTable = memo(
   ({
     tableId,
@@ -226,13 +274,17 @@ export const RawLogTable = memo(
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
-    wrapLines,
+    wrapLines = false,
     columnNameMap,
     showServiceColumn = true,
     dedupRows,
     isError,
     error,
     columnTypeMap,
+    dateRange,
+    loadingDate,
+    config,
+    onChildModalOpen,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -260,6 +312,10 @@ export const RawLogTable = memo(
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
+    dateRange?: [Date, Date];
+    loadingDate?: Date;
+    config?: ChartConfigWithDateRange;
+    onChildModalOpen?: (open: boolean) => void;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -521,6 +577,13 @@ export const RawLogTable = memo(
     // Scroll to log id if it's not in window yet
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
+    const [wrapLinesEnabled, setWrapLinesEnabled] = useState(wrapLines);
+    const [showSql, setShowSql] = useState(false);
+
+    const handleSqlModalOpen = (open: boolean) => {
+      setShowSql(open);
+      onChildModalOpen?.(open);
+    };
 
     useEffect(() => {
       if (
@@ -607,6 +670,13 @@ export const RawLogTable = memo(
         // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
         // style={{ overflowAnchor: 'none' }}
       >
+        {config && (
+          <SqlModal
+            opened={showSql}
+            onClose={() => handleSqlModalOpen(false)}
+            config={config}
+          />
+        )}
         <table
           className="w-100 bg-inherit"
           id={tableId}
@@ -682,13 +752,34 @@ export const RawLogTable = memo(
                                 <i className="bi bi-arrow-clockwise" />
                               </div>
                             )}
+                          {config && (
+                            <UnstyledButton
+                              onClick={() => handleSqlModalOpen(true)}
+                            >
+                              <MantineTooltip label="Show generated SQL">
+                                <i className="bi bi-code-square" />
+                              </MantineTooltip>
+                            </UnstyledButton>
+                          )}
+                          <UnstyledButton
+                            onClick={() => setWrapLinesEnabled(prev => !prev)}
+                            className="ms-2"
+                          >
+                            <MantineTooltip label="Wrap lines">
+                              <i className="bi bi-text-wrap" />
+                            </MantineTooltip>
+                          </UnstyledButton>
+
                           <CsvExportButton
                             data={csvData}
                             filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
                             className="fs-6 text-muted-hover ms-2"
-                            title={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
                           >
-                            <i className="bi bi-download" />
+                            <MantineTooltip
+                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                            >
+                              <i className="bi bi-download" />
+                            </MantineTooltip>
                           </CsvExportButton>
                           {onSettingsClick != null && (
                             <div
@@ -736,8 +827,8 @@ export const RawLogTable = memo(
                       <td
                         key={cell.id}
                         className={cx('align-top overflow-hidden', {
-                          'text-break': wrapLines,
-                          'text-truncate': !wrapLines,
+                          'text-break': wrapLinesEnabled,
+                          'text-truncate': !wrapLinesEnabled,
                         })}
                       >
                         {flexRender(
@@ -758,7 +849,30 @@ export const RawLogTable = memo(
                       <div className="spin-animate d-inline-block">
                         <i className="bi bi-arrow-repeat" />
                       </div>{' '}
-                      Loading results...
+                      {loadingDate != null && (
+                        <>
+                          Searched <FormatTime value={loadingDate} />.{' '}
+                        </>
+                      )}
+                      Loading results
+                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                        <>
+                          {' '}
+                          across{' '}
+                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
+                          <FormatTime
+                            value={dateRange?.[0]}
+                            format="withYear"
+                          />{' '}
+                          to{' '}
+                          <FormatTime
+                            value={dateRange?.[1]}
+                            format="withYear"
+                          />
+                          {')'}
+                        </>
+                      ) : null}
+                      ...
                     </div>
                   ) : hasNextPage == false &&
                     isLoading == false &&
@@ -803,10 +917,26 @@ export const RawLogTable = memo(
                     dedupedRows.length === 0 ? (
                     <div className="my-3">
                       No results found.
-                      <div className="text-muted mt-3">
+                      <Text mt="sm" c="gray.3">
                         Try checking the query explainer in the search bar if
                         there are any search syntax issues.
-                      </div>
+                      </Text>
+                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                        <Text mt="sm" c="gray.3">
+                          Searched Time Range:{' '}
+                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
+                          <FormatTime
+                            value={dateRange?.[0]}
+                            format="withYear"
+                          />{' '}
+                          to{' '}
+                          <FormatTime
+                            value={dateRange?.[1]}
+                            format="withYear"
+                          />
+                          {')'}
+                        </Text>
+                      ) : null}
                     </div>
                   ) : (
                     <div />
@@ -928,6 +1058,7 @@ function DBSqlRowTableComponent({
   queryKeyPrefix,
   onScroll,
   denoiseResults = false,
+  onChildModalOpen,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -939,8 +1070,13 @@ function DBSqlRowTableComponent({
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
+  onChildModalOpen?: (open: boolean) => void;
 }) {
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey(config);
+  const { data: me } = api.useMe();
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey({
+    ...searchChartConfigDefaults(me?.team),
+    ...config,
+  });
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
@@ -970,12 +1106,7 @@ function DBSqlRowTableComponent({
   const objectTypeColumns = useMemo(() => {
     return columns.filter(c => {
       const columnType = columnMap.get(c)?._type;
-      return (
-        columnType === JSDataType.Map ||
-        columnType === JSDataType.Array ||
-        columnType === JSDataType.JSON ||
-        columnType === JSDataType.Dynamic
-      );
+      return isJSDataTypeJSONStringifiable(columnType);
     });
   }, [columns, columnMap]);
   const processedRows = useMemo(() => {
@@ -1128,6 +1259,10 @@ function DBSqlRowTableComponent({
         isError={isError}
         error={error ?? undefined}
         columnTypeMap={columnMap}
+        dateRange={config.dateRange}
+        loadingDate={data?.window?.startTime}
+        config={config}
+        onChildModalOpen={onChildModalOpen}
       />
     </>
   );

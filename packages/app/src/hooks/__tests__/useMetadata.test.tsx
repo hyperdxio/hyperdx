@@ -1,6 +1,6 @@
 import React from 'react';
 import * as metadataModule from '@hyperdx/app/src/metadata';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata, MetadataCache } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

@@ -8,9 +8,9 @@
 # - Otel Collector (otelcol)
 
 ARG NODE_VERSION=22.16.0
-ARG CLICKHOUSE_VERSION=24
-ARG OTEL_COLLECTOR_VERSION=0.126.0
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.126.0
+ARG CLICKHOUSE_VERSION=25.6
+ARG OTEL_COLLECTOR_VERSION=0.129.1
+ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.128.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
@@ -76,9 +76,12 @@ COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one base ############################################################################################
+FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base 
 
 ARG CODE_VERSION
+ARG USER_UID=10001
+ARG USER_GID=10001
 
 ENV CODE_VERSION=$CODE_VERSION
 # Copy from otel collector bases
@@ -100,15 +103,24 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY --from=otel-collector ./supervisor_docker.yaml  /etc/otel/supervisor.yaml
+COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+
+# Copy otel-collector entrypoint and log rotation scripts
+COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
+COPY --from=otel-collector --chmod=755 ./log-rotator.sh /log-rotator.sh
+
+# Copy gomplate binary from the gomplate image
+COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
 
 # Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
   apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl ca-certificates && \
+  addgroup -S -g ${USER_GID} otel && \
+  adduser  -S -u ${USER_UID} -G otel otel && \
   mkdir -p /data/db && \
-  mkdir -p /etc/otel/supervisor-data && \
+  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
   rm -rf /var/cache/apk/*
 
 ENV NODE_ENV production
