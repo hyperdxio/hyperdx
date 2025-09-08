@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import ms from 'ms';
-import { ResponseJSON, Row } from '@clickhouse/client-web';
+import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
@@ -15,30 +15,145 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 import { omit } from '@/utils';
 
-function queryKeyFn(prefix: string, config: ChartConfigWithDateRange) {
-  return [prefix, config] as const;
+type TQueryKey = readonly [
+  string,
+  ChartConfigWithDateRange,
+  number | undefined,
+];
+function queryKeyFn(
+  prefix: string,
+  config: ChartConfigWithDateRange,
+  queryTimeout?: number,
+): TQueryKey {
+  return [prefix, config, queryTimeout];
 }
 
-type TPageParam = number;
+// Time window configuration - progressive bucketing strategy
+const TIME_WINDOWS_MS = [
+  6 * 60 * 60 * 1000, // 6h
+  6 * 60 * 60 * 1000, // 6h
+  12 * 60 * 60 * 1000, // 12h
+  24 * 60 * 60 * 1000, // 24h
+];
+
+type TimeWindow = {
+  startTime: Date;
+  endTime: Date;
+  windowIndex: number;
+};
+
+type TPageParam = {
+  windowIndex: number;
+  offset: number;
+};
+
 type TQueryFnData = {
   data: Record<string, any>[];
   meta: ColumnMetaType[];
   chSql: ChSql;
+  window: TimeWindow;
 };
+
 type TData = {
   pages: TQueryFnData[];
   pageParams: TPageParam[];
 };
 
-const queryFn: QueryFunction<
-  TQueryFnData,
-  readonly [string, ChartConfigWithDateRange],
-  number
-> = async ({ queryKey, pageParam, signal, meta }) => {
+// Generate time windows from date range using progressive bucketing
+function generateTimeWindows(startDate: Date, endDate: Date): TimeWindow[] {
+  const windows: TimeWindow[] = [];
+  let currentEnd = new Date(endDate);
+  let windowIndex = 0;
+
+  while (currentEnd > startDate) {
+    const windowSize =
+      TIME_WINDOWS_MS[windowIndex] ||
+      TIME_WINDOWS_MS[TIME_WINDOWS_MS.length - 1]; // use largest window size
+    const windowStart = new Date(
+      Math.max(currentEnd.getTime() - windowSize, startDate.getTime()),
+    );
+
+    windows.push({
+      endTime: new Date(currentEnd),
+      startTime: windowStart,
+      windowIndex,
+    });
+
+    currentEnd = windowStart;
+    windowIndex++;
+  }
+
+  return windows;
+}
+
+// Get time window from page param
+function getTimeWindowFromPageParam(
+  config: ChartConfigWithDateRange,
+  pageParam: TPageParam,
+): TimeWindow {
+  const [startDate, endDate] = config.dateRange;
+  const windows = generateTimeWindows(startDate, endDate);
+  const window = windows[pageParam.windowIndex];
+  if (window == null) {
+    throw new Error('Invalid time window for page param');
+  }
+  return window;
+}
+
+// Calculate next page param based on current results and window
+function getNextPageParam(
+  lastPage: TQueryFnData | null,
+  allPages: TQueryFnData[],
+  config: ChartConfigWithDateRange,
+): TPageParam | undefined {
+  if (lastPage == null) {
+    return undefined;
+  }
+
+  const [startDate, endDate] = config.dateRange;
+  const windows = generateTimeWindows(startDate, endDate);
+  const currentWindow = lastPage.window;
+
+  // Calculate total results from all pages in current window
+  const currentWindowPages = allPages.filter(
+    p => p.window.windowIndex === currentWindow.windowIndex,
+  );
+  const currentWindowResults = currentWindowPages.reduce(
+    (sum, page) => sum + page.data.length,
+    0,
+  );
+
+  // If we have results in the current window, continue paginating within it
+  if (lastPage.data.length > 0) {
+    return {
+      windowIndex: currentWindow.windowIndex,
+      offset: currentWindowResults,
+    };
+  }
+
+  // If no more results in current window, move to next window
+  const nextWindowIndex = currentWindow.windowIndex + 1;
+  if (nextWindowIndex < windows.length) {
+    return {
+      windowIndex: nextWindowIndex,
+      offset: 0,
+    };
+  }
+
+  return undefined;
+}
+
+const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
+  queryKey,
+  pageParam,
+  signal,
+  meta,
+}) => {
   if (meta == null) {
     throw new Error('Query missing client meta');
   }
@@ -46,27 +161,43 @@ const queryFn: QueryFunction<
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
   // otherwise we'll flicker the UI with streaming data
-  const isStreamingIncrementally = !meta.hasPreviousQueries || pageParam > 0;
+  const isStreamingIncrementally =
+    !meta.hasPreviousQueries ||
+    pageParam.offset > 0 ||
+    pageParam.windowIndex > 0;
 
   const config = queryKey[1];
-  const query = await renderChartConfig(
-    {
-      ...config,
-      limit: {
-        limit: config.limit?.limit,
-        offset: pageParam,
-      },
-    },
-    getMetadata(),
-  );
 
+  // Get the time window for this page
+  const timeWindow = getTimeWindowFromPageParam(config, pageParam);
+
+  // Create config with windowed date range
+  const windowedConfig = {
+    ...config,
+    dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
+    limit: {
+      limit: config.limit?.limit,
+      offset: pageParam.offset,
+    },
+  };
+
+  const query = await renderChartConfig(windowedConfig, getMetadata());
+
+  const queryTimeout = queryKey[2];
   const clickhouseClient = getClickhouseClient();
+
+  // Create abort signal from timeout if provided
+  const abortController = queryTimeout ? new AbortController() : undefined;
+  if (abortController && queryTimeout) {
+    setTimeout(() => abortController.abort(), queryTimeout);
+  }
+
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
       query_params: query.params,
       format: 'JSONCompactEachRowWithNamesAndTypes',
-      abort_signal: signal,
+      abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
     });
 
@@ -82,6 +213,7 @@ const queryFn: QueryFunction<
         data: [],
         meta: [],
         chSql: { sql: '', params: {} },
+        window: timeWindow,
       };
       if (oldData == null) {
         return {
@@ -149,7 +281,14 @@ const queryFn: QueryFunction<
         queryClient.setQueryData<TData>(queryKey, oldData => {
           if (oldData == null) {
             return {
-              pages: [{ data: rowObjs, meta: queryResultMeta, chSql: query }],
+              pages: [
+                {
+                  data: rowObjs,
+                  meta: queryResultMeta,
+                  chSql: query,
+                  window: timeWindow,
+                },
+              ],
               pageParams: [pageParam],
             };
           }
@@ -165,6 +304,7 @@ const queryFn: QueryFunction<
                 data: [...(page.data ?? []), ...rowObjs],
                 meta: queryResultMeta,
                 chSql: query,
+                window: timeWindow,
               },
             ],
             pageParams: oldData.pageParams,
@@ -203,6 +343,7 @@ const queryFn: QueryFunction<
       data: queryResultData,
       meta: queryResultMeta,
       chSql: query,
+      window: timeWindow,
     };
   }
 
@@ -232,6 +373,7 @@ function flattenData(data: TData | undefined): TQueryFnData | null {
     meta: data.pages[0].meta,
     data: flattenPages(data.pages),
     chSql: data.pages[0].chSql,
+    window: data.pages[data.pages.length - 1].window,
   };
 }
 
@@ -247,7 +389,8 @@ export default function useOffsetPaginatedQuery(
     queryKeyPrefix?: string;
   } = {},
 ) {
-  const key = queryKeyFn(queryKeyPrefix, config);
+  const { data: meData } = api.useMe();
+  const key = queryKeyFn(queryKeyPrefix, config, meData?.team?.queryTimeout);
   const queryClient = useQueryClient();
   const matchedQueries = queryClient.getQueriesData<TData>({
     queryKey: [queryKeyPrefix, omit(config, ['dateRange'])],
@@ -268,7 +411,7 @@ export default function useOffsetPaginatedQuery(
     TQueryFnData,
     Error | ClickHouseQueryError,
     TData,
-    Readonly<[string, typeof config]>,
+    TQueryKey,
     TPageParam
   >({
     queryKey: key,
@@ -277,22 +420,9 @@ export default function useOffsetPaginatedQuery(
       return isLive ? prev : undefined;
     },
     enabled,
-    initialPageParam: 0,
-    // TODO: Use initialData derived from cache to do a smarter time range fetch
+    initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
-      if (lastPage == null) {
-        return undefined;
-      }
-
-      const len = lastPage.data.length;
-      if (len === 0) {
-        return undefined;
-      }
-
-      const data = flattenPages(allPages);
-
-      // TODO: Need to configure overlap and account for granularity
-      return data.length;
+      return getNextPageParam(lastPage, allPages, config);
     },
     staleTime: Infinity, // TODO: Pick a correct time
     meta: {

@@ -10,7 +10,7 @@ import {
   getTeam,
   rotateTeamApiKey,
   setTeamName,
-  setTeamSearchRowLimit,
+  updateTeamClickhouseSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -89,10 +89,13 @@ router.patch(
 );
 
 router.patch(
-  '/search-row-limit',
+  '/clickhouse-settings',
   validateRequest({
     body: z.object({
-      searchRowLimit: z.number(),
+      fieldMetadataDisabled: z.boolean().optional(),
+      searchRowLimit: z.number().optional(),
+      queryTimeout: z.number().optional(),
+      metadataMaxRowsToRead: z.number().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -101,9 +104,41 @@ router.patch(
       if (teamId == null) {
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
-      const { searchRowLimit } = req.body;
-      const team = await setTeamSearchRowLimit(teamId, searchRowLimit);
-      res.json({ searchRowLimit: team?.searchRowLimit });
+
+      const {
+        fieldMetadataDisabled,
+        metadataMaxRowsToRead,
+        searchRowLimit,
+        queryTimeout,
+      } = req.body;
+
+      const settings = {
+        ...(searchRowLimit !== undefined && { searchRowLimit }),
+        ...(queryTimeout !== undefined && { queryTimeout }),
+        ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
+        ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
+      };
+
+      if (Object.keys(settings).length === 0) {
+        return res.json({});
+      }
+
+      const team = await updateTeamClickhouseSettings(teamId, settings);
+
+      res.json({
+        ...(searchRowLimit !== undefined && {
+          searchRowLimit: team?.searchRowLimit,
+        }),
+        ...(queryTimeout !== undefined && {
+          queryTimeout: team?.queryTimeout,
+        }),
+        ...(fieldMetadataDisabled !== undefined && {
+          fieldMetadataDisabled: team?.fieldMetadataDisabled,
+        }),
+        ...(metadataMaxRowsToRead !== undefined && {
+          metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
+        }),
+      });
     } catch (e) {
       next(e);
     }

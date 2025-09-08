@@ -1,16 +1,17 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.0.5",
+  "version": "2.3.0",
   "license": "MIT",
   "private": true,
   "engines": {
-    "node": ">=18.12.0"
+    "node": ">=22.16.0"
   },
   "dependencies": {
-    "@clickhouse/client": "^0.2.10",
-    "@hyperdx/common-utils": "^0.2.5",
+    "@esm2cjs/p-queue": "^7.3.0",
+    "@hyperdx/common-utils": "^0.4.0",
     "@hyperdx/lucene": "^3.1.1",
     "@hyperdx/node-opentelemetry": "^0.8.2",
+    "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@opentelemetry/api": "^1.8.0",
     "@opentelemetry/host-metrics": "^0.35.5",
     "@opentelemetry/sdk-metrics": "^1.30.1",
@@ -41,7 +42,6 @@
     "on-headers": "^1.1.0",
     "passport": "^0.6.0",
     "passport-local": "^1.0.0",
-    "passport-local-mongoose": "^6.1.0",
     "pluralize": "^8.0.0",
     "promised-handlebars": "^2.0.1",
     "protobufjs": "^7.5.2",
@@ -94,8 +94,8 @@
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
     "build": "tsc && tsc-alias && esbuild ../../node_modules/@hyperdx/node-opentelemetry/build/src/tracing --bundle --minify --platform=node --outfile=dist/tracing.js && esbuild ./build/src/index.js ./build/src/tasks/index.js --bundle --minify --platform=node --target=node22 --outdir=dist --alias:@='./src' && mkdir -p dist/opamp && cp -r src/opamp/proto dist/opamp/proto && rimraf ./build",
-    "lint": "eslint --quiet . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "lint": "npx eslint --quiet . --ext .ts",
+    "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --runInBand --ci --forceExit --coverage",
     "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --watchAll --runInBand --detectOpenHandles",

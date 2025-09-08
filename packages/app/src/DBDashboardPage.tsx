@@ -320,9 +320,18 @@ const Tile = forwardRef(
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
                 sourceId={chart.config.source}
-                showDisplaySwitcher={false}
+                showDisplaySwitcher={true}
                 config={queriedConfig}
                 onTimeRangeSelect={onTimeRangeSelect}
+                setDisplayType={displayType => {
+                  onUpdateChart?.({
+                    ...chart,
+                    config: {
+                      ...chart.config,
+                      displayType,
+                    },
+                  });
+                }}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Table && (

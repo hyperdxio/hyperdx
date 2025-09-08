@@ -3,6 +3,7 @@ x-hyperdx-logging: &hyperdx-logging
   driver: fluentd
   options:
     fluentd-address: tcp://localhost:24225
+    fluentd-async: 'true'
     labels: 'service.name'
 services:
   db:
@@ -30,14 +31,17 @@ services:
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
+      CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
-      # OTEL_SUPERVISOR_PASSTHROUGH_LOGS: 'true'
+      OTEL_SUPERVISOR_PASSTHROUGH_LOGS: 'false'
       # Uncomment to enable JSON schema in ClickHouse
       # Be sure to also set BETA_CH_OTEL_JSON_SCHEMA_ENABLED to 'true' in ch-server
       # OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
-      - ./docker/otel-collector/supervisor_docker.yaml:/etc/otel/supervisor.yaml
+      - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
+      # Add a custom config file
+      - ./docker/otel-collector/custom.config.yaml:/etc/otelcol-contrib/custom.config.yaml
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
@@ -51,7 +55,7 @@ services:
       ch-server:
         condition: service_healthy
   ch-server:
-    image: clickhouse/clickhouse-server:25.6-alpine
+    image: clickhouse/clickhouse-server:25.7-alpine
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native

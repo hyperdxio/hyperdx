@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -20,20 +21,16 @@ import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
+import { doesExceedThreshold, processAlert } from '@/tasks/checkAlerts';
+import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
-  buildLogSearchLink,
-  doesExceedThreshold,
-  escapeJsonString,
-  expandToNestedObject,
   getDefaultExternalAction,
-  processAlert,
   renderAlertTemplate,
-  roundDownToXMinutes,
   translateExternalActionsToInternal,
-} from '@/tasks/checkAlerts';
+} from '@/tasks/template';
 import * as slack from '@/utils/slack';
 
 const MOCK_DASHBOARD = {
@@ -48,110 +45,74 @@ const MOCK_SAVED_SEARCH: any = {
   id: 'fake-saved-search-id',
 };
 
-// TODO: fix tests
+// Create provider instance for tests
+let alertProvider: any;
+
+beforeAll(async () => {
+  alertProvider = await loadProvider();
+});
+
 describe('checkAlerts', () => {
-  it('roundDownToXMinutes', () => {
-    // 1 min
-    const roundDownTo1Minute = roundDownToXMinutes(1);
-    expect(
-      roundDownTo1Minute(new Date('2023-03-17T22:13:03.103Z')).toISOString(),
-    ).toBe('2023-03-17T22:13:00.000Z');
-    expect(
-      roundDownTo1Minute(new Date('2023-03-17T22:13:59.103Z')).toISOString(),
-    ).toBe('2023-03-17T22:13:00.000Z');
-
-    // 5 mins
-    const roundDownTo5Minutes = roundDownToXMinutes(5);
-    expect(
-      roundDownTo5Minutes(new Date('2023-03-17T22:13:03.103Z')).toISOString(),
-    ).toBe('2023-03-17T22:10:00.000Z');
-    expect(
-      roundDownTo5Minutes(new Date('2023-03-17T22:17:59.103Z')).toISOString(),
-    ).toBe('2023-03-17T22:15:00.000Z');
-    expect(
-      roundDownTo5Minutes(new Date('2023-03-17T22:59:59.103Z')).toISOString(),
-    ).toBe('2023-03-17T22:55:00.000Z');
-  });
-
-  it('buildLogSearchLink', () => {
-    expect(
-      buildLogSearchLink({
-        startTime: new Date('2023-03-17T22:13:03.103Z'),
-        endTime: new Date('2023-03-17T22:13:59.103Z'),
-        savedSearch: MOCK_SAVED_SEARCH,
-      }),
-    ).toMatchInlineSnapshot(
-      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
-    );
-    expect(
-      buildLogSearchLink({
-        startTime: new Date('2023-03-17T22:13:03.103Z'),
-        endTime: new Date('2023-03-17T22:13:59.103Z'),
-        savedSearch: MOCK_SAVED_SEARCH,
-      }),
-    ).toMatchInlineSnapshot(
-      `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
-    );
-  });
-
-  it('doesExceedThreshold', () => {
-    expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 11)).toBe(true);
-    expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 10)).toBe(true);
-    expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 9)).toBe(true);
-    expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 10)).toBe(false);
-  });
-
-  it('expandToNestedObject', () => {
-    expect(expandToNestedObject({}).__proto__).toBeUndefined();
-    expect(expandToNestedObject({})).toEqual({});
-    expect(expandToNestedObject({ foo: 'bar' })).toEqual({ foo: 'bar' });
-    expect(expandToNestedObject({ 'foo.bar': 'baz' })).toEqual({
-      foo: { bar: 'baz' },
+  describe('doesExceedThreshold', () => {
+    it('should return true when value exceeds ABOVE threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 11)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 10)).toBe(true);
     });
-    expect(expandToNestedObject({ 'foo.bar.baz': 'qux' })).toEqual({
-      foo: { bar: { baz: 'qux' } },
-    });
-    // mix
-    expect(
-      expandToNestedObject({
-        'foo.bar.baz': 'qux',
-        'foo.bar.quux': 'quuz',
-        'foo1.bar1.baz1': 'qux1',
-      }),
-    ).toEqual({
-      foo: { bar: { baz: 'qux', quux: 'quuz' } },
-      foo1: { bar1: { baz1: 'qux1' } },
-    });
-    // overwriting
-    expect(
-      expandToNestedObject({ 'foo.bar.baz': 'qux', 'foo.bar': 'quuz' }),
-    ).toEqual({
-      foo: { bar: 'quuz' },
-    });
-    // max depth
-    expect(
-      expandToNestedObject(
-        {
-          'foo.bar.baz.qux.quuz.quux': 'qux',
-        },
-        '.',
-        3,
-      ),
-    ).toEqual({
-      foo: { bar: { baz: {} } },
-    });
-  });
 
-  it('escapeJsonString', () => {
-    expect(escapeJsonString('foo')).toBe('foo');
-    expect(escapeJsonString("foo'")).toBe("foo'");
-    expect(escapeJsonString('foo"')).toBe('foo\\"');
-    expect(escapeJsonString('foo\\')).toBe('foo\\\\');
-    expect(escapeJsonString('foo\n')).toBe('foo\\n');
-    expect(escapeJsonString('foo\r')).toBe('foo\\r');
-    expect(escapeJsonString('foo\t')).toBe('foo\\t');
-    expect(escapeJsonString('foo\b')).toBe('foo\\b');
-    expect(escapeJsonString('foo\f')).toBe('foo\\f');
+    it('should return true when value is below BELOW threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 9)).toBe(true);
+    });
+
+    it('should return false when value equals BELOW threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 10)).toBe(false);
+    });
+
+    it('should return false when value is below ABOVE threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 9)).toBe(false);
+    });
+
+    it('should return false when value is above BELOW threshold', () => {
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10, 11)).toBe(false);
+    });
+
+    it('should handle zero values correctly', () => {
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, 1)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, 0)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 0, -1)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, -1)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, 0)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 0, 1)).toBe(false);
+    });
+
+    it('should handle negative values correctly', () => {
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -3)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -5)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, -5, -7)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -7)).toBe(true);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -5)).toBe(false);
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, -5, -3)).toBe(false);
+    });
+
+    it('should handle decimal values correctly', () => {
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 11.0)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 10.5)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10.5, 10.0)).toBe(
+        false,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 10.0)).toBe(
+        true,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 10.5)).toBe(
+        false,
+      );
+      expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
+        false,
+      );
+    });
   });
 
   describe('Alert Templates', () => {
@@ -198,6 +159,7 @@ describe('checkAlerts', () => {
       value: 10,
     };
 
+    const testTile = makeTile({ id: 'test-tile-id' });
     const defaultChartView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -208,12 +170,13 @@ describe('checkAlerts', () => {
           webhookId: 'fake-webhook-id',
         },
         interval: '1m',
+        tileId: 'test-tile-id',
       },
       dashboard: {
         _id: new mongoose.Types.ObjectId(),
         id: 'id-123',
         name: 'My Dashboard',
-        tiles: [makeTile()],
+        tiles: [testTile],
         team: 'team-123' as any,
         tags: ['test'],
       },
@@ -241,12 +204,12 @@ describe('checkAlerts', () => {
 
     it('buildAlertMessageTemplateHdxLink', () => {
       expect(
-        buildAlertMessageTemplateHdxLink(defaultSearchView),
+        buildAlertMessageTemplateHdxLink(alertProvider, defaultSearchView),
       ).toMatchInlineSnapshot(
         `"http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false"`,
       );
       expect(
-        buildAlertMessageTemplateHdxLink(defaultChartView),
+        buildAlertMessageTemplateHdxLink(alertProvider, defaultChartView),
       ).toMatchInlineSnapshot(
         `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103"`,
       );
@@ -353,6 +316,7 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
         template: 'Custom body @webhook-My_Web', // partial name should work
@@ -390,6 +354,7 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
         template: 'Custom body @webhook-My_Web', // partial name should work
@@ -449,6 +414,7 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
         template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
@@ -515,6 +481,7 @@ describe('checkAlerts', () => {
       }).save();
 
       await renderAlertTemplate({
+        alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
         template: `
@@ -553,6 +520,7 @@ describe('checkAlerts', () => {
 
       // @webhook should not be called
       await renderAlertTemplate({
+        alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
         template:
@@ -727,46 +695,107 @@ describe('checkAlerts', () => {
         source: source.id,
         tags: ['test'],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.SAVED_SEARCH,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        savedSearchId: savedSearch.id,
-      });
+        mockUserId,
+      );
 
-      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
         'team',
         'savedSearch',
       ]);
 
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+      };
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextNextWindow = new Date('2023-11-16T22:20:00.000Z');
-      await processAlert(nextNextWindow, enhancedAlert);
+      await processAlert(
+        nextNextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert._id,
+        alert: alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -902,42 +931,100 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
-      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
         'team',
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found for dashboard test case');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            ServiceName: { name: 'ServiceName', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            Body: { name: 'Body', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert._id,
+        alert: alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -982,7 +1069,10 @@ describe('checkAlerts', () => {
     it('TILE alert (events) - generic webhook', async () => {
       jest.spyOn(checkAlert, 'handleSendGenericWebhook');
 
-      const fetchMock = jest.fn().mockResolvedValue({});
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue(''),
+      });
       global.fetch = fetchMock;
 
       const team = await createTeam({ name: 'My Team' });
@@ -1070,42 +1160,101 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
-      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
         'team',
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard generic webhook');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            ServiceName: { name: 'ServiceName', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            Body: { name: 'Body', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert._id,
+        alert: alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -1220,42 +1369,102 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const alert = await createAlert(team._id, {
-        source: AlertSource.TILE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
         },
-        interval: '5m',
-        thresholdType: AlertThresholdType.ABOVE,
-        threshold: 1,
-        dashboardId: dashboard.id,
-        tileId: '17quud',
-      });
+        mockUserId,
+      );
 
-      const enhancedAlert: any = await Alert.findById(alert._id).populate([
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
         'team',
         'dashboard',
       ]);
 
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard metrics webhook');
+      const details: any = {
+        alert: enhancedAlert,
+        source,
+        conn: connection,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      };
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            ServiceName: { name: 'ServiceName', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            Value: { name: 'Value', type: 'Double' },
+            MetricName: { name: 'MetricName', type: 'String' },
+            TimeUnix: { name: 'TimeUnix', type: 'DateTime' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
       // should fetch 5m of logs
-      await processAlert(now, enhancedAlert);
-      expect(enhancedAlert.state).toBe('ALERT');
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      await processAlert(later, enhancedAlert);
+      await processAlert(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should still be in alert state
-      expect(enhancedAlert.state).toBe('ALERT');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      await processAlert(nextWindow, enhancedAlert);
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+      );
       // alert should be in ok state
-      expect(enhancedAlert.state).toBe('OK');
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert._id,
+        alert: alert.id,
       }).sort({
         createdAt: 1,
       });

@@ -12,6 +12,7 @@ import {
   Menu,
   Paper,
   Text,
+  UnstyledButton,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -60,65 +61,60 @@ function HyperJsonMenu() {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
 
   return (
-    <Menu width={240} withinPortal={false}>
-      <Menu.Target>
-        <ActionIcon size="md" variant="filled" color="gray">
-          <i className="bi bi-gear" />
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Label lh={1} py={6}>
-          Properties view options
-        </Menu.Label>
-        <Menu.Item
-          onClick={() =>
-            setJsonOptions({
-              ...jsonOptions,
-              normallyExpanded: !jsonOptions.normallyExpanded,
-            })
-          }
-          lh="1"
-          py={8}
-          rightSection={
-            jsonOptions.normallyExpanded ? (
-              <i className="ps-2 bi bi-check2" />
-            ) : null
-          }
-        >
-          Expand all properties
-        </Menu.Item>
-        <Menu.Item
-          onClick={() =>
-            setJsonOptions({
-              ...jsonOptions,
-              lineWrap: !jsonOptions.lineWrap,
-            })
-          }
-          lh="1"
-          py={8}
-          rightSection={
-            jsonOptions.lineWrap ? <i className="ps-2 bi bi-check2" /> : null
-          }
-        >
-          Preserve line breaks
-        </Menu.Item>
-        <Menu.Item
-          lh="1"
-          py={8}
-          rightSection={
-            jsonOptions.tabulate ? <i className="ps-2 bi bi-check2" /> : null
-          }
-          onClick={() =>
-            setJsonOptions({
-              ...jsonOptions,
-              tabulate: !jsonOptions.tabulate,
-            })
-          }
-        >
-          Tabulate
-        </Menu.Item>
-      </Menu.Dropdown>
-    </Menu>
+    <Group>
+      <UnstyledButton
+        color="gray.0"
+        onClick={() =>
+          setJsonOptions({ ...jsonOptions, lineWrap: !jsonOptions.lineWrap })
+        }
+      >
+        <i className="bi bi-text-wrap" />
+      </UnstyledButton>
+      <Menu width={240} withinPortal={false}>
+        <Menu.Target>
+          <UnstyledButton>
+            <i className="bi bi-gear" />
+          </UnstyledButton>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Label lh={1} py={6}>
+            Properties view options
+          </Menu.Label>
+          <Menu.Item
+            onClick={() =>
+              setJsonOptions({
+                ...jsonOptions,
+                normallyExpanded: !jsonOptions.normallyExpanded,
+              })
+            }
+            lh="1"
+            py={8}
+            rightSection={
+              jsonOptions.normallyExpanded ? (
+                <i className="ps-2 bi bi-check2" />
+              ) : null
+            }
+          >
+            Expand all properties
+          </Menu.Item>
+          <Menu.Item
+            lh="1"
+            py={8}
+            rightSection={
+              jsonOptions.tabulate ? <i className="ps-2 bi bi-check2" /> : null
+            }
+            onClick={() =>
+              setJsonOptions({
+                ...jsonOptions,
+                tabulate: !jsonOptions.tabulate,
+              })
+            }
+          >
+            Tabulate
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </Group>
   );
 }
 
@@ -158,19 +154,9 @@ export function DBRowJsonViewer({
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
-      let fieldPath = mergePath(keyPath);
+      const fieldPath = mergePath(keyPath, jsonColumns);
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
-
-      if (isJsonColumn) {
-        fieldPath = keyPath.join('.');
-        if (keyPath.length > 1) {
-          fieldPath = `${keyPath[0]}.${keyPath
-            .slice(1)
-            .map(k => `\`${k}\``)
-            .join('.')}`;
-        }
-      }
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters

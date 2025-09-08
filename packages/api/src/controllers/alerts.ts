@@ -44,13 +44,14 @@ export type AlertInput = {
   };
 };
 
-const makeAlert = (alert: AlertInput): Partial<IAlert> => {
+const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
   return {
     channel: alert.channel,
     interval: alert.interval,
     source: alert.source,
     threshold: alert.threshold,
     thresholdType: alert.thresholdType,
+    ...(userId && { createdBy: userId }),
 
     // Message template
     // If they're undefined/null, set it to null so we clear out the field
@@ -71,6 +72,7 @@ const makeAlert = (alert: AlertInput): Partial<IAlert> => {
 export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof alertSchema>,
+  userId: ObjectId,
 ) => {
   if (alertInput.source === AlertSource.TILE) {
     if ((await Dashboard.findById(alertInput.dashboardId)) == null) {
@@ -85,7 +87,7 @@ export const createAlert = async (
   }
 
   return new Alert({
-    ...makeAlert(alertInput),
+    ...makeAlert(alertInput, userId),
     team: teamId,
   }).save();
 };
@@ -127,7 +129,7 @@ export const getTeamDashboardAlertsByTile = async (teamId: ObjectId) => {
   const alerts = await Alert.find({
     source: AlertSource.TILE,
     team: teamId,
-  });
+  }).populate('createdBy', 'email name');
   return groupBy(alerts, 'tileId');
 };
 
@@ -139,7 +141,7 @@ export const getDashboardAlertsByTile = async (
     dashboard: dashboardId,
     source: AlertSource.TILE,
     team: teamId,
-  });
+  }).populate('createdBy', 'email name');
   return groupBy(alerts, 'tileId');
 };
 
@@ -147,19 +149,26 @@ export const createOrUpdateDashboardAlerts = async (
   dashboardId: ObjectId | string,
   teamId: ObjectId,
   alertsByTile: Record<string, AlertInput>,
+  userId?: ObjectId,
 ) => {
   return Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
-      return await Alert.findOneAndUpdate(
-        {
-          dashboard: dashboardId,
-          tileId,
-          source: AlertSource.TILE,
-          team: teamId,
-        },
-        alert,
-        { new: true, upsert: true },
-      );
+      const filter = {
+        dashboard: dashboardId,
+        tileId,
+        source: AlertSource.TILE,
+        team: teamId,
+      };
+      const oldAlert = await Alert.findOne(filter);
+      const alertValues =
+        oldAlert && oldAlert.createdBy
+          ? makeAlert(alert)
+          : makeAlert(alert, userId);
+
+      return await Alert.findOneAndUpdate(filter, alertValues, {
+        new: true,
+        upsert: true,
+      });
     }),
   );
 };
@@ -167,12 +176,13 @@ export const createOrUpdateDashboardAlerts = async (
 export const deleteDashboardAlerts = async (
   dashboardId: ObjectId | string,
   teamId: ObjectId,
-  alertIds?: string[],
+  tileIds?: string[],
 ) => {
   return Alert.deleteMany({
     dashboard: dashboardId,
     team: teamId,
-    ...(alertIds && { _id: { $in: alertIds } }),
+    source: AlertSource.TILE,
+    ...(tileIds && { tileId: { $in: tileIds } }),
   });
 };
 
@@ -190,10 +200,11 @@ export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
     savedSearch: ISavedSearch;
     dashboard: IDashboard;
+    createdBy?: IUser;
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
-  }>(['savedSearch', 'dashboard', 'silenced.by']);
+  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

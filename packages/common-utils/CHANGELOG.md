@@ -1,5 +1,74 @@
 # @hyperdx/common-utils
 
+## 0.4.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+
+### Patch Changes
+
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- 52483f6a: feat: enable filters for json columns
+- aacd24dd: bump: default request_timeout to 1hr
+- 3f2d4270: style: dedupe codes within \_\_query method and move createClient to the constructor
+- ecb20c84: feat: remove useless session source fields
+
+## 0.3.2
+
+### Patch Changes
+
+- 56fd856d: fix: otelcol process in aio build
+- 0f242558: fix: Compatibilty with lowercase text skip index
+
+## 0.3.1
+
+### Patch Changes
+
+- d29e2bc: fix: handle the case when `CUSTOM_OTELCOL_CONFIG_FILE` is not specified
+
+## 0.3.0
+
+### Minor Changes
+
+- 6dd6165: feat: Display original query to error messages in search page
+
+### Patch Changes
+
+- 5a59d32: Upgraded NX from version 16.8.1 to 21.3.11
+
+## 0.2.9
+
+### Patch Changes
+
+- 39cde41: fix: k8s event property mappings
+- b568b00: feat: introduce team 'clickhouse-settings' endpoint + metadataMaxRowsToRead setting
+
+## 0.2.8
+
+### Patch Changes
+
+- eed38e8: bump node version to 22.16.0
+
+## 0.2.7
+
+### Patch Changes
+
+- 4ce81d4: fix: handle Nullable + Tuple type column + decouple useRowWhere
+- 61c79a1: fix: Ensure percentile aggregations on histograms don't create invalid SQL queries due to improperly escaped aliases.
+
+## 0.2.6
+
+### Patch Changes
+
+- 33fc071: feat: Allow users to define custom column aliases for charts
+
 ## 0.2.5
 
 ### Patch Changes

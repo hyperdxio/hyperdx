@@ -16,7 +16,9 @@ export HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE="${HYPERDX_OTEL_EXPORTER_CLICKH
 export CLICKHOUSE_ENDPOINT="${CLICKHOUSE_ENDPOINT:-tcp://ch-server:9000?dial_timeout=10s}"
 export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
+export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT:-ch-server:9363}"
 
+export HYPERDX_IMAGE=$([[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]] && echo "all-in-one" || echo "all-in-one-noauth")
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 # IS_LOCAL_APP_MODE should be set by the calling script
 # Default to dangerous mode if not set
@@ -58,12 +60,12 @@ while ! curl -s "http://ch-server:8123" > /dev/null; do
 done
 echo "ClickHouse is ready!"
 
-# Start Otel Collector
-opampsupervisor --config /etc/otel/supervisor.yaml > /var/log/otel-collector.log 2>&1 &
+# Start Otel Collector with entrypoint script for template rendering and log rotation
+/otel-entrypoint.sh /usr/local/bin/opampsupervisor > /var/log/otel-collector.log 2>&1 &
 
 # Start HyperDX app
 npx concurrently \
-  "--kill-others" \
+  "--kill-others-on-fail" \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./packages/api/tracing ./packages/api/index" \
   "cd ./packages/app/packages/app && HOSTNAME='0.0.0.0' HYPERDX_API_PORT=${HYPERDX_API_PORT:-8000} PORT=${HYPERDX_APP_PORT:-8080} node server.js" \

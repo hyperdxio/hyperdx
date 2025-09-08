@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -6,7 +14,6 @@ import {
   autocompletion,
   closeCompletion,
   Completion,
-  CompletionSection,
   startCompletion,
 } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
@@ -18,6 +25,7 @@ import CodeMirror, {
   keymap,
   Prec,
   ReactCodeMirrorRef,
+  tooltips,
 } from '@uiw/react-codemirror';
 
 import { useAllFields } from '@/hooks/useMetadata';
@@ -113,6 +121,7 @@ type SQLInlineEditorProps = {
   enableHotkey?: boolean;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  parentRef?: HTMLElement | null;
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -121,6 +130,11 @@ const styleTheme = EditorView.baseTheme({
   },
   '&.cm-editor': {
     background: 'transparent !important',
+  },
+  '& .cm-tooltip-autocomplete': {
+    whiteSpace: 'nowrap',
+    wordWrap: 'break-word',
+    maxWidth: '100%',
   },
   '& .cm-scroller': {
     overflowX: 'hidden',
@@ -143,6 +157,7 @@ export default function SQLInlineEditor({
   enableHotkey,
   additionalSuggestions = [],
   queryHistoryType,
+  parentRef,
 }: SQLInlineEditorProps) {
   const { data: fields } = useAllFields(tableConnections ?? []);
   const filteredFields = useMemo(() => {
@@ -252,6 +267,26 @@ export default function SQLInlineEditor({
     [enableHotkey],
   );
 
+  /**
+   * If the editor is inside a modal, we need to position the tooltip
+   * relative to the modal. This ensures that the autocompletion results
+   * are properly calculated off the correct element.
+   */
+  const tooltipExt = useMemo(() => {
+    if (parentRef == null) {
+      return [];
+    }
+    return [
+      tooltips({
+        parent: parentRef,
+        tooltipSpace: view => {
+          const box = view.dom.getBoundingClientRect();
+          return { ...box, right: box.right ?? 0 };
+        },
+      }),
+    ];
+  }, [parentRef]);
+
   return (
     <Paper
       flex="auto"
@@ -290,6 +325,7 @@ export default function SQLInlineEditor({
             setIsFocused(false);
           }}
           extensions={[
+            ...tooltipExt,
             styleTheme,
             compartmentRef.current.of(
               sql({

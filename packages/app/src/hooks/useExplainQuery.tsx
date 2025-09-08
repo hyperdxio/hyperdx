@@ -2,7 +2,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig'
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getClickhouseClient } from '@/clickhouse';
+import { useClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 
 export function useExplainQuery(
@@ -13,7 +13,7 @@ export function useExplainQuery(
     ..._config,
     with: undefined,
   };
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = useClickhouseClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['explain', config],
     queryFn: async ({ signal }) => {

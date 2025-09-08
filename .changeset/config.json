@@ -5,6 +5,6 @@
   "fixed": [["@hyperdx/api", "@hyperdx/app"]],
   "linked": [],
   "access": "restricted",
-  "baseBranch": "v2",
+  "baseBranch": "main",
   "updateInternalDependencies": "patch"
 }

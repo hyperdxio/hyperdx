@@ -369,13 +369,14 @@ export abstract class SQLSerializer implements Serializer {
           ],
         );
       } else {
+        // TODO: Check case sensitivity of the index before lowering by default
         // We can't search multiple tokens with `hasToken`, so we need to split up the term into tokens
         const hasSeperators = this.termHasSeperators(term);
         if (hasSeperators) {
           const tokens = this.tokenizeTerm(term);
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
-              SqlString.format(`hasTokenCaseInsensitive(?, ?)`, [
+              SqlString.format(`hasToken(lower(?), lower(?))`, [
                 SqlString.raw(column ?? ''),
                 token,
               ]),
@@ -388,7 +389,7 @@ export abstract class SQLSerializer implements Serializer {
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasTokenCaseInsensitive(?, ?))`,
+            `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
             [SqlString.raw(column ?? ''), term],
           );
         }
