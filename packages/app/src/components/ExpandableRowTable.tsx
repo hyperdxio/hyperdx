@@ -37,11 +37,15 @@ export const ExpandedLogRow = memo(
     virtualKey,
     source,
     rowId,
+    measureElement,
+    virtualIndex,
   }: {
     columnsLength: number;
     virtualKey: string;
     source: TSource | undefined;
     rowId: string;
+    measureElement?: (element: HTMLElement | null) => void;
+    virtualIndex?: number;
   }) => {
     const openSidebar = useSidebarOpener();
 
@@ -52,7 +56,12 @@ export const ExpandedLogRow = memo(
     );
 
     return (
-      <tr key={`${virtualKey}-expanded`} className={styles.expandedRow}>
+      <tr
+        key={`${virtualKey}-expanded`}
+        className={styles.expandedRow}
+        data-index={virtualIndex}
+        ref={measureElement}
+      >
         <td colSpan={columnsLength} className="p-0 border-0">
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
             {source ? (

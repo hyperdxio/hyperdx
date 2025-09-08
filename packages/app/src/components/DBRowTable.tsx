@@ -866,6 +866,8 @@ export const RawLogTable = memo(
                       virtualKey={virtualRow.key.toString()}
                       source={source}
                       rowId={rowId}
+                      measureElement={rowVirtualizer.measureElement}
+                      virtualIndex={virtualRow.index}
                     />
                   )}
                 </React.Fragment>
