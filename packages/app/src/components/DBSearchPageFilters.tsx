@@ -412,7 +412,7 @@ export const FilterGroup = ({
                 </div>
               )}
               {onLoadMore &&
-                (loadMoreLoading || shouldShowMore) &&
+                (!showShowMoreButton || shouldShowMore) &&
                 !hasLoadedMore && (
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
