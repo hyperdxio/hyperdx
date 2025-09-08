@@ -263,7 +263,7 @@ export const FilterGroup = ({
     totalFiltersSize,
   ]);
 
-  const showLoadMoreButton =
+  const showShowMoreButton =
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
     totalFiltersSize < augmentedOptions.length;
@@ -393,7 +393,7 @@ export const FilterGroup = ({
                   </Text>
                 </Group>
               ) : null}
-              {showLoadMoreButton && (
+              {showShowMoreButton && (
                 <div className="d-flex m-1">
                   <TextButton
                     label={
@@ -412,7 +412,7 @@ export const FilterGroup = ({
                 </div>
               )}
               {onLoadMore &&
-                (loadMoreLoading || showLoadMoreButton || shouldShowMore) &&
+                (loadMoreLoading || shouldShowMore) &&
                 !hasLoadedMore && (
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
