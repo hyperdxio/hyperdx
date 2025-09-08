@@ -981,8 +981,7 @@ function DBSearchPage() {
 
   const isTabVisible = useDocumentVisibility();
 
-  // For live tail updates, we need to track if any rows are expanded
-  const [hasExpandedRows, setHasExpandedRows] = useState(false);
+  // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
   useLiveUpdate({
@@ -990,18 +989,28 @@ function DBSearchPage() {
     interval: 1000 * 60 * 15,
     refreshFrequency: 4000,
     onTimeRangeSelect,
-    pause:
-      isAnyQueryFetching || !queryReady || !isTabVisible || hasExpandedRows,
+    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client
   // otherwise we get SSR hydration issues
   const [shouldShowLiveModeHint, setShouldShowLiveModeHint] = useState(false);
   useEffect(() => {
-    setShouldShowLiveModeHint(isLive === false || hasExpandedRows);
-  }, [isLive, hasExpandedRows]);
+    setShouldShowLiveModeHint(isLive === false);
+  }, [isLive]);
 
   const { data: me } = api.useMe();
+
+  // Callback to handle when rows are expanded - kick user out of live tail
+  const handleExpandedRowsChange = useCallback(
+    (hasExpandedRows: boolean) => {
+      if (hasExpandedRows && isLive) {
+        setIsLive(false);
+      }
+    },
+    [isLive, setIsLive],
+  );
+
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
     setDisplayedTimeInputValue('Live Tail');
@@ -1832,7 +1841,7 @@ function DBSearchPage() {
                             onScroll={onTableScroll}
                             onError={handleTableError}
                             denoiseResults={denoiseResults}
-                            onExpandedRowsChange={setHasExpandedRows}
+                            onExpandedRowsChange={handleExpandedRowsChange}
                             collapseAllRows={collapseAllRows}
                           />
                         </RowSidePanelContext.Provider>
