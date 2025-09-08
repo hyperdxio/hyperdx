@@ -822,6 +822,7 @@ const DBSearchPageFiltersComponent = ({
               isDefaultExpanded={
                 // open by default if PK, or has selected values
                 isFieldPrimary(tableMetadata, facet.key) ||
+                isFieldPinned(facet.key) ||
                 (filterState[facet.key] &&
                   (filterState[facet.key].included.size > 0 ||
                     filterState[facet.key].excluded.size > 0))
