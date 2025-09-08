@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
   TableMetadata,
   tcFromSource,
@@ -289,6 +289,7 @@ export const FilterGroup = ({
                 chevron: 'm-0',
                 label: 'p-0',
               }}
+              className={displayedOptions.length ? '' : 'opacity-50'}
             >
               <Tooltip
                 openDelay={name.length > 26 ? 0 : 1500}
@@ -312,10 +313,18 @@ export const FilterGroup = ({
                       e.stopPropagation();
                     }
                   }}
-                  leftSectionWidth={27}
-                  leftSection={<IconSearch size={15} stroke={2} />}
+                  styles={{ input: { transition: 'padding 0.2s' } }}
+                  rightSectionWidth={isExpanded ? 27 : 5}
+                  rightSection={
+                    <IconSearch
+                      size={15}
+                      stroke={2}
+                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
+                      style={{ transition: 'opacity 0.4s 0.2s' }}
+                    />
+                  }
                   classNames={{
-                    input: 'pe-1',
+                    input: 'ps-0.5',
                   }}
                 />
               </Tooltip>
