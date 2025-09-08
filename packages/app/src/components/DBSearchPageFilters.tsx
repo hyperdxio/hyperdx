@@ -407,12 +407,19 @@ export const FilterGroup = ({
                         </>
                       )
                     }
-                    onClick={() => setShowMore(!shouldShowMore)}
+                    onClick={() => {
+                      // When show more is clicked, immediately show all and also fetch more from server.
+                      setShowMore(!shouldShowMore);
+                      if (!shouldShowMore) {
+                        onLoadMore?.(name);
+                      }
+                    }}
                   />
                 </div>
               )}
               {onLoadMore &&
-                (!showShowMoreButton || shouldShowMore) &&
+                !showShowMoreButton &&
+                !shouldShowMore &&
                 !hasLoadedMore && (
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
