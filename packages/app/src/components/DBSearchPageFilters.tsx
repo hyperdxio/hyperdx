@@ -835,7 +835,7 @@ const DBSearchPageFiltersComponent = ({
                 Not seeing a filter?
               </Text>
               <Text size="xxs" c="gray.6">
-                {`Try searching instead (e.g. column = 'foo')`}
+                {`Try searching instead (e.g. column:foo)`}
               </Text>
             </div>
           )}
