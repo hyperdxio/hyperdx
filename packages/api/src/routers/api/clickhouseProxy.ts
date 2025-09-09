@@ -166,7 +166,7 @@ const proxyMiddleware: RequestHandler =
         // Add a custom header to indicate that the response is a mixed response when applicable
         // since the Clickhouse Web SDK allows accessing headers but not status codes.
         if (proxyRes.statusCode === 207) {
-          proxyRes.headers['X-ClickHouse-Mixed-Response'] = 'true';
+          proxyRes.headers['X-ClickStack-Mixed-Response'] = 'true';
         }
       },
       error: (err, _req, _res) => {

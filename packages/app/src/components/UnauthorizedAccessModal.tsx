@@ -1,4 +1,4 @@
-import * as React from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Modal, Stack, Table, Text } from '@mantine/core';
 
 import { useHealthCheck } from '@/hooks/useMetadata';
@@ -7,6 +7,7 @@ import { useHealthCheck } from '@/hooks/useMetadata';
 // has incorrect access permissions to the database.
 export const UnauthorizedAccessModal = () => {
   const { results, refetch, isLoading } = useHealthCheck();
+  const [forceClosed, setForceClosed] = useState(false);
 
   const unauthorizedResults = results.filter(r => r?.isAuthError);
   const hasUnauthorized = unauthorizedResults.length > 0;
@@ -17,12 +18,14 @@ export const UnauthorizedAccessModal = () => {
 
   return (
     <Modal
-      opened={hasUnauthorized ?? false}
+      opened={hasUnauthorized && !forceClosed}
       centered
       withCloseButton={false}
-      // An uncloseable modal
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      onClose={() => {}}
+      onClose={() => {
+        // If the user wants to, let them close and try.
+        // They can also use this to switch teams
+        setForceClosed(true);
+      }}
     >
       <Stack gap="xs">
         <Text size="lg">Unauthorized</Text>

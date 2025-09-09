@@ -472,7 +472,7 @@ export abstract class BaseClickhouseClient {
         const res = await this.__query(props);
         // If we get back a mixed response status code (207) we need to check if there is errors.
         // We could always check the json itself, but it's more performant to check the header first.
-        if (res.response_headers['x-clickhouse-mixed-response'] === 'true') {
+        if (res.response_headers['x-clickstack-mixed-response'] === 'true') {
           const json = await res.json();
           // We may want to capture more errors here, but keeping it specific for now.
           if (
