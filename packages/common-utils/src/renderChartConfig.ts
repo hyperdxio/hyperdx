@@ -85,7 +85,11 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: s.alias || `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
+        alias:
+          s.alias ||
+          (s.isDelta
+            ? `delta(${s.aggFn}(${s.metricName}))`
+            : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
       })),
     };
   }
@@ -334,6 +338,17 @@ const aggFnExpr = ({
   }
 };
 
+function withOptionalAlias(
+  expr: ChSql,
+  select: Exclude<SelectList[0], string>,
+) {
+  return chSql`${expr}${
+    select.alias != null && select.alias.trim() !== ''
+      ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
+      : []
+  }`;
+}
+
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: ChartConfigWithOptDateRangeEx,
@@ -395,11 +410,36 @@ async function renderSelectList(
           .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
       }
 
-      return chSql`${expr}${
-        select.alias != null && select.alias.trim() !== ''
-          ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
-          : []
-      }`;
+      if (select.isDelta && chartConfig.timestampValueExpression) {
+        const windowOrderBy = isUsingGranularity(chartConfig)
+          ? timeBucketExpr({
+              interval: chartConfig.granularity,
+              timestampValueExpression: chartConfig.timestampValueExpression,
+              dateRange: chartConfig.dateRange,
+            })
+          : chSql`${chartConfig.timestampValueExpression}`;
+
+        const deltaExpr = concatChSql(
+          ' ',
+          chSql`${expr} - lag(${expr}) OVER (`,
+          isUsingGroupBy(chartConfig)
+            ? concatChSql(
+                ' ',
+                chSql`PARTITION BY`,
+                await renderSelectList(
+                  chartConfig.groupBy,
+                  chartConfig,
+                  metadata,
+                ),
+              )
+            : [],
+          chSql`ORDER BY ${windowOrderBy})`,
+        );
+
+        return withOptionalAlias(deltaExpr, select);
+      } else {
+        return withOptionalAlias(expr, select);
+      }
     }),
   );
 

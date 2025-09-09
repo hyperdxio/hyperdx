@@ -75,7 +75,11 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
-import { InputControlled, TextInputControlled } from './InputControlled';
+import {
+  CheckBoxControlled,
+  InputControlled,
+  TextInputControlled,
+} from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
 import { SourceSelectControlled } from './SourceSelect';
@@ -202,7 +206,7 @@ function ChartSeriesEditorComponent({
         mb={8}
         mt="sm"
       />
-      <Flex gap="sm" mt="xs" align="center">
+      <Flex gap="sm" mt="xs" align="start">
         <div
           style={{
             minWidth: 200,
@@ -214,6 +218,18 @@ function ChartSeriesEditorComponent({
             defaultValue={AGG_FNS[0].value}
             control={control}
           />
+          {tableSource?.kind === SourceKind.Metric &&
+            metricType === 'gauge' && (
+              <Flex justify="end">
+                <CheckBoxControlled
+                  control={control}
+                  name={`${namePrefix}isDelta`}
+                  label="Delta"
+                  size="xs"
+                  className="mt-2"
+                />
+              </Flex>
+            )}
         </div>
         {tableSource?.kind === SourceKind.Metric && (
           <MetricNameSelect
@@ -243,44 +259,46 @@ function ChartSeriesEditorComponent({
             />
           </div>
         )}
-        <Text size="sm">Where</Text>
-        {aggConditionLanguage === 'sql' ? (
-          <SQLInlineEditorControlled
-            tableConnections={{
-              databaseName,
-              tableName: tableName ?? '',
-              connectionId: connectionId ?? '',
-            }}
-            control={control}
-            name={`${namePrefix}aggCondition`}
-            placeholder="SQL WHERE clause (ex. column = 'foo')"
-            onLanguageChange={lang =>
-              setValue(`${namePrefix}aggConditionLanguage`, lang)
-            }
-            additionalSuggestions={attributeKeys}
-            language="sql"
-            onSubmit={onSubmit}
-          />
-        ) : (
-          <SearchInputV2
-            tableConnections={{
-              connectionId: connectionId ?? '',
-              databaseName: databaseName ?? '',
-              tableName: tableName ?? '',
-            }}
-            control={control}
-            name={`${namePrefix}aggCondition`}
-            onLanguageChange={lang =>
-              setValue(`${namePrefix}aggConditionLanguage`, lang)
-            }
-            language="lucene"
-            placeholder="Search your events w/ Lucene ex. column:foo"
-            onSubmit={onSubmit}
-            additionalSuggestions={attributeKeys}
-          />
-        )}
+        <Flex align={'center'} gap={'xs'} className="flex-grow-1">
+          <Text size="sm">Where</Text>
+          {aggConditionLanguage === 'sql' ? (
+            <SQLInlineEditorControlled
+              tableConnections={{
+                databaseName,
+                tableName: tableName ?? '',
+                connectionId: connectionId ?? '',
+              }}
+              control={control}
+              name={`${namePrefix}aggCondition`}
+              placeholder="SQL WHERE clause (ex. column = 'foo')"
+              onLanguageChange={lang =>
+                setValue(`${namePrefix}aggConditionLanguage`, lang)
+              }
+              additionalSuggestions={attributeKeys}
+              language="sql"
+              onSubmit={onSubmit}
+            />
+          ) : (
+            <SearchInputV2
+              tableConnections={{
+                connectionId: connectionId ?? '',
+                databaseName: databaseName ?? '',
+                tableName: tableName ?? '',
+              }}
+              control={control}
+              name={`${namePrefix}aggCondition`}
+              onLanguageChange={lang =>
+                setValue(`${namePrefix}aggConditionLanguage`, lang)
+              }
+              language="lucene"
+              placeholder="Search your events w/ Lucene ex. column:foo"
+              onSubmit={onSubmit}
+              additionalSuggestions={attributeKeys}
+            />
+          )}
+        </Flex>
         {showGroupBy && (
-          <>
+          <Flex align={'center'} gap={'xs'}>
             <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
               Group By
             </Text>
@@ -303,7 +321,7 @@ function ChartSeriesEditorComponent({
                 onSubmit={onSubmit}
               />
             </div>
-          </>
+          </Flex>
         )}
       </Flex>
     </>
