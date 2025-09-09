@@ -642,13 +642,6 @@ const DBSearchPageFiltersComponent = ({
       _facets.push({ key, value: Array.from(filterState[key].included) });
     }
 
-    // Any other keys, let's add them in with empty values
-    for (const key of keysToFetch) {
-      if (!_facets.some(facet => facet.key === key)) {
-        _facets.push({ key, value: [] });
-      }
-    }
-
     // prioritize facets that are primary keys
     _facets.sort((a, b) => {
       const aIsPk = isFieldPrimary(tableMetadata, a.key);
@@ -671,14 +664,7 @@ const DBSearchPageFiltersComponent = ({
     });
 
     return _facets;
-  }, [
-    facets,
-    filterState,
-    tableMetadata,
-    extraFacets,
-    keysToFetch,
-    isFieldPinned,
-  ]);
+  }, [facets, filterState, tableMetadata, extraFacets, isFieldPinned]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -842,6 +828,17 @@ const DBSearchPageFiltersComponent = ({
           >
             {showMoreFields ? 'Less filters' : 'More filters'}
           </Button>
+
+          {showMoreFields && (
+            <div>
+              <Text size="xs" c="gray.6" fw="bold">
+                Not seeing a filter?
+              </Text>
+              <Text size="xxs" c="gray.6">
+                {`Try searching instead (e.g. column = 'foo')`}
+              </Text>
+            </div>
+          )}
         </Stack>
       </ScrollArea>
     </Box>
