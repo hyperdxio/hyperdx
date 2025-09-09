@@ -162,6 +162,22 @@ export class Metadata {
     );
   }
 
+  async getDatabaseHealth({ connectionId }: { connectionId: string }) {
+    try {
+      const sql = chSql`select 1`;
+      await this.clickhouseClient.query<'JSON'>({
+        connectionId,
+        query: sql.sql,
+        query_params: sql.params,
+        ...this.clickhouseSettings,
+      });
+      return { status: 'healthy' as const };
+    } catch (err) {
+      console.error('err', err);
+      return { status: 'unhealthy' as const, error: err };
+    }
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,

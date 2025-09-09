@@ -162,6 +162,12 @@ const proxyMiddleware: RequestHandler =
           proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
           proxyRes.headers['access-control-allow-credentials'] = 'true';
         }
+
+        // Add a custom header to indicate that the response is a mixed response when applicable
+        // since the Clickhouse Web SDK allows accessing headers but not status codes.
+        if (proxyRes.statusCode === 207) {
+          proxyRes.headers['X-ClickHouse-Mixed-Response'] = 'true';
+        }
       },
       error: (err, _req, _res) => {
         console.error('Proxy error:', err);

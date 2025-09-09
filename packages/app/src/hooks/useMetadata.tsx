@@ -1,5 +1,6 @@
 import objectHash from 'object-hash';
 import {
+  ClickHouseAuthenticationError,
   ColumnMeta,
   filterColumnMetaByType,
   JSDataType,
@@ -12,12 +13,14 @@ import {
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
+  useQueries,
   useQuery,
   UseQueryOptions,
 } from '@tanstack/react-query';
 
 import api from '@/api';
 import { getMetadata } from '@/metadata';
+import { useSources } from '@/source';
 import { toArray } from '@/utils';
 
 export function useColumns(
@@ -45,6 +48,54 @@ export function useColumns(
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
+}
+
+/**
+ * Function to fetch every source, run a basic health check
+ * query on the connection, and set the unauthorized state if
+ * the connection throws an auth error.
+ */
+export function useHealthCheck() {
+  const { data: sources, isLoading: sourcesLoading } = useSources();
+  const metadata = getMetadata();
+  // For each source, make a health check query
+  const result = useQueries({
+    combine(results) {
+      return {
+        data: results.map(result => result.data),
+        isLoading: results.some(result => result.isLoading),
+        error: results.find(result => result.error)?.error,
+        refetch: () => {
+          return results.map(result => result.refetch());
+        },
+      };
+    },
+    queries:
+      sources?.map(source => ({
+        queryKey: ['useHealthCheck', { source: source.id }],
+        queryFn: async () => {
+          const result = await metadata.getDatabaseHealth({
+            connectionId: source!.connection,
+          });
+          const isAuthError =
+            result.status === 'unhealthy' &&
+            result.error instanceof ClickHouseAuthenticationError;
+          return {
+            id: source.id,
+            name: source.name,
+            isAuthError,
+            ...result,
+          };
+        },
+      })) ?? [],
+  });
+
+  return {
+    results: result.data,
+    isLoading: sourcesLoading || result.isLoading,
+    error: result.error,
+    refetch: result.refetch,
+  };
 }
 
 export function useJsonColumns(

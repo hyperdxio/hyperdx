@@ -263,6 +263,14 @@ export const wrapChSqlIfNotEmpty = (
 
   return chSql`${left}${sql}${right}`;
 };
+
+export class ClickHouseAuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClickHouseAuthenticationError';
+  }
+}
+
 export class ClickHouseQueryError extends Error {
   constructor(
     message: string,
@@ -462,6 +470,19 @@ export abstract class BaseClickhouseClient {
     while (attempts < 2) {
       try {
         const res = await this.__query(props);
+        // If we get back a mixed response status code (207) we need to check if there is errors.
+        // We could always check the json itself, but it's more performant to check the header first.
+        if (res.response_headers['x-clickhouse-mixed-response'] === 'true') {
+          const json = await res.json();
+          // We may want to capture more errors here, but keeping it specific for now.
+          if (
+            'error' in json &&
+            typeof json.error === 'string' &&
+            json.error.includes('PASSWORD_CREDENTIAL_REQUIRED')
+          ) {
+            throw new ClickHouseAuthenticationError(json.error);
+          }
+        }
         return res;
       } catch (error: any) {
         if (
