@@ -207,6 +207,7 @@ function PodLogs({
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTable
+          sourceId={logSource.id}
           config={tableConfig}
           onRowExpandClick={onRowClick}
           highlightedLineId={rowId ?? undefined}

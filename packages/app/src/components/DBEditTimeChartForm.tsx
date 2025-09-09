@@ -985,6 +985,7 @@ export default function EditTimeChartForm({
               highlightedLineId={undefined}
               enabled
               isLive={false}
+              showExpandButton={false}
               queryKeyPrefix={'search'}
               onScroll={() => {}}
             />
@@ -1013,6 +1014,7 @@ export default function EditTimeChartForm({
                         enabled
                         isLive={false}
                         queryKeyPrefix={'search'}
+                        showExpandButton={false}
                       />
                     </div>
                   )}

@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
@@ -24,6 +31,7 @@ import {
 import {
   ChartConfigWithDateRange,
   SelectList,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
@@ -73,6 +81,11 @@ import {
 
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import {
+  createExpandButtonColumn,
+  ExpandedLogRow,
+  useExpandableRows,
+} from './ExpandableRowTable';
 import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
@@ -91,6 +104,8 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
+
+const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -285,6 +300,10 @@ export const RawLogTable = memo(
     loadingDate,
     config,
     onChildModalOpen,
+    source,
+    onExpandedRowsChange,
+    collapseAllRows,
+    showExpandButton = true,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -316,6 +335,10 @@ export const RawLogTable = memo(
     loadingDate?: Date;
     config?: ChartConfigWithDateRange;
     onChildModalOpen?: (open: boolean) => void;
+    source?: TSource;
+    onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
+    collapseAllRows?: boolean;
+    showExpandButton?: boolean;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -381,36 +404,31 @@ export const RawLogTable = memo(
       })),
     );
 
+    // Expandable rows functionality
+    const {
+      expandedRows,
+      toggleRowExpansion,
+      collapseAllRows: collapseRows,
+    } = useExpandableRows(onExpandedRowsChange);
+
+    // Effect to collapse all rows when requested by parent
+    useEffect(() => {
+      if (collapseAllRows) {
+        collapseRows();
+      }
+    }, [collapseAllRows, collapseRows]);
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
-        {
-          id: 'expand-btn',
-          accessorKey: '__hyperdx_id',
-          header: () => '',
-          cell: info => {
-            return (
-              <div
-                role="button"
-                className={cx('cursor-pointer', {
-                  'text-success': highlightedLineId === info.getValue(),
-                  'text-muted-hover': highlightedLineId !== info.getValue(),
-                })}
-                onMouseDown={e => {
-                  // For some reason this interfers with the onclick handler
-                  // inside a dashboard tile
-                  e.stopPropagation();
-                }}
-                onClick={() => {
-                  _onRowExpandClick(info.row.original);
-                }}
-              >
-                <span className="bi bi-chevron-right" />
-              </div>
-            );
-          },
-          size: 8,
-          enableResizing: false,
-        },
+        ...(showExpandButton
+          ? [
+              createExpandButtonColumn(
+                expandedRows,
+                toggleRowExpansion,
+                highlightedLineId,
+              ),
+            ]
+          : []),
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
@@ -478,12 +496,14 @@ export const RawLogTable = memo(
       [
         isUTC,
         highlightedLineId,
-        _onRowExpandClick,
         displayedColumns,
         columnSizeStorage,
         columnNameMap,
         columnTypeMap,
         logLevelColumn,
+        expandedRows,
+        toggleRowExpansion,
+        showExpandButton,
       ],
     );
 
@@ -595,7 +615,7 @@ export const RawLogTable = memo(
       }
 
       const rowIdx = dedupedRows.findIndex(
-        l => l.__hyperdx_id === highlightedLineId,
+        l => getRowId(l) === highlightedLineId,
       );
       if (rowIdx == -1) {
         if (
@@ -632,8 +652,7 @@ export const RawLogTable = memo(
         }
 
         const newIndex =
-          dedupedRows.findIndex(l => l.__hyperdx_id === highlightedLineId) +
-          shift;
+          dedupedRows.findIndex(l => getRowId(l) === highlightedLineId) + shift;
 
         if (newIndex < 0 || newIndex >= dedupedRows.length) {
           return;
@@ -806,39 +825,52 @@ export const RawLogTable = memo(
             )}
             {items.map(virtualRow => {
               const row = _rows[virtualRow.index] as TableRow<any>;
+              const rowId = getRowId(row.original);
+              const isExpanded = expandedRows[rowId] ?? false;
+
               return (
-                <tr
-                  onClick={() => {
-                    // onRowExpandClick(row.original.id, row.original.sort_key);
-                    _onRowExpandClick(row.original);
-                  }}
-                  role="button"
-                  key={virtualRow.key}
-                  // TODO: Restore highlight
-                  className={cx(styles.tableRow, {
-                    [styles.tableRow__selected]:
-                      highlightedLineId === row.original.__hyperdx_id,
-                  })}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                >
-                  {row.getVisibleCells().map(cell => {
-                    return (
-                      <td
-                        key={cell.id}
-                        className={cx('align-top overflow-hidden', {
-                          'text-break': wrapLinesEnabled,
-                          'text-truncate': !wrapLinesEnabled,
-                        })}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                <React.Fragment key={virtualRow.key}>
+                  <tr
+                    onClick={() => {
+                      // onRowExpandClick(row.original.id, row.original.sort_key);
+                      _onRowExpandClick(row.original);
+                    }}
+                    role="button"
+                    // TODO: Restore highlight
+                    className={cx(styles.tableRow, {
+                      [styles.tableRow__selected]: highlightedLineId === rowId,
+                    })}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                  >
+                    {row.getVisibleCells().map(cell => {
+                      return (
+                        <td
+                          key={cell.id}
+                          className={cx('align-top overflow-hidden', {
+                            'text-break': wrapLinesEnabled,
+                            'text-truncate': !wrapLinesEnabled,
+                          })}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {showExpandButton && isExpanded && (
+                    <ExpandedLogRow
+                      columnsLength={columns.length}
+                      virtualKey={virtualRow.key.toString()}
+                      source={source}
+                      rowId={rowId}
+                      measureElement={rowVirtualizer.measureElement}
+                      virtualIndex={virtualRow.index}
+                    />
+                  )}
+                </React.Fragment>
               );
             })}
             <tr>
@@ -1059,6 +1091,9 @@ function DBSqlRowTableComponent({
   onScroll,
   denoiseResults = false,
   onChildModalOpen,
+  onExpandedRowsChange,
+  collapseAllRows,
+  showExpandButton = true,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1071,6 +1106,9 @@ function DBSqlRowTableComponent({
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
   onChildModalOpen?: (open: boolean) => void;
+  onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
+  collapseAllRows?: boolean;
+  showExpandButton?: boolean;
 }) {
   const { data: me } = api.useMe();
   const mergedConfig = useConfigWithPrimaryAndPartitionKey({
@@ -1263,6 +1301,10 @@ function DBSqlRowTableComponent({
         loadingDate={data?.window?.startTime}
         config={config}
         onChildModalOpen={onChildModalOpen}
+        source={source}
+        onExpandedRowsChange={onExpandedRowsChange}
+        collapseAllRows={collapseAllRows}
+        showExpandButton={showExpandButton}
       />
     </>
   );

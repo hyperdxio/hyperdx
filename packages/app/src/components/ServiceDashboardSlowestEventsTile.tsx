@@ -131,6 +131,7 @@ export default function SlowestEventsTile({
         source && (
           <>
             <DBSqlRowTable
+              sourceId={source.id}
               config={{
                 ...source,
                 where: '',

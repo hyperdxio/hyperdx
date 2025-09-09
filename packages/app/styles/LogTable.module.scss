@@ -16,3 +16,17 @@
     font-weight: bold;
   }
 }
+
+.expandedRowContent {
+  max-height: 400px;
+  overflow: auto;
+  background-color: $slate-950;
+  padding: 12px;
+}
+
+.expandButton {
+  &:hover {
+    background-color: rgb(255 255 255 / 10%) !important;
+    color: #fff !important;
+  }
+}

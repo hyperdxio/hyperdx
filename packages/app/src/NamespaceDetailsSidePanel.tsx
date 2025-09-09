@@ -219,6 +219,7 @@ function NamespaceLogs({
           isLive={false}
           queryKeyPrefix="k8s-dashboard-namespace-logs"
           onScroll={() => {}}
+          showExpandButton={false}
         />
       </Card.Section>
     </Card>

@@ -290,11 +290,19 @@ export function RowOverviewPanel({
             <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
               {Object.entries(resourceAttributes).map(([key, value]) => (
                 <EventTag
-                  onPropertyAddClick={onPropertyAddClick!}
-                  generateSearchUrl={_generateSearchUrl}
+                  {...(onPropertyAddClick
+                    ? {
+                        onPropertyAddClick,
+                        sqlExpression: `${source.resourceAttributesExpression}['${key}']`,
+                      }
+                    : {
+                        onPropertyAddClick: undefined,
+                        sqlExpression: undefined,
+                      })}
+                  generateSearchUrl={
+                    generateSearchUrl ? _generateSearchUrl : undefined
+                  }
                   displayedKey={key}
-                  // TODO: Escape properly
-                  sqlExpression={`${source.resourceAttributesExpression}['${key}']`}
                   name={`${source.resourceAttributesExpression}.${key}`}
                   value={value as string}
                   key={key}
