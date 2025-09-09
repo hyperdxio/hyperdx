@@ -237,6 +237,7 @@ function NodeLogs({
           highlightedLineId={undefined}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-node-logs"
+          showExpandButton={false}
           onScroll={() => {}}
         />
       </Card.Section>
