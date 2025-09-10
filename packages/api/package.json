@@ -93,7 +93,7 @@
     "start": "node ./dist/index.js",
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --signal SIGTERM -e ts,json --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
-    "build": "tsc && tsc-alias && esbuild ../../node_modules/@hyperdx/node-opentelemetry/build/src/tracing --bundle --minify --platform=node --outfile=dist/tracing.js && esbuild ./build/src/index.js ./build/src/tasks/index.js --bundle --minify --platform=node --target=node22 --outdir=dist --alias:@='./src' && mkdir -p dist/opamp && cp -r src/opamp/proto dist/opamp/proto && rimraf ./build",
+    "build": "tsc -p ./tsconfig.build.json && tsc-alias -p ./tsconfig.build.json && esbuild ../../node_modules/@hyperdx/node-opentelemetry/build/src/tracing --bundle --minify --platform=node --outfile=dist/tracing.js && esbuild ./build/src/index.js ./build/src/tasks/index.js --bundle --minify --platform=node --target=node22 --outdir=dist --alias:@='./src' && mkdir -p dist/opamp && cp -r src/opamp/proto dist/opamp/proto && rimraf ./build",
     "lint": "npx eslint --quiet . --ext .ts",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
