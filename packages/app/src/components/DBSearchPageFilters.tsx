@@ -1,9 +1,15 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  TableMetadata,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  Accordion,
   ActionIcon,
   Box,
   Button,
+  Center,
   Checkbox,
   Flex,
   Group,
@@ -25,10 +31,12 @@ import {
   useAllFields,
   useGetKeyValues,
   useJsonColumns,
+  useTableMetadata,
 } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
+import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -153,6 +161,7 @@ export type FilterGroupProps = {
   onLoadMore: (key: string) => void;
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
+  isDefaultExpanded?: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -173,9 +182,22 @@ export const FilterGroup = ({
   onLoadMore,
   loadMoreLoading,
   hasLoadedMore,
+  isDefaultExpanded,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
-  const [isExpanded, setExpanded] = useState(false);
+  // "Show More" button when there's lots of options
+  const [shouldShowMore, setShowMore] = useState(false);
+  // Accordion expanded state
+  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+
+  useEffect(() => {
+    if (isDefaultExpanded) {
+      setExpanded(true);
+    }
+  }, [isDefaultExpanded]);
+
+  const totalFiltersSize =
+    selectedValues.included.size + selectedValues.excluded.size;
 
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
@@ -200,10 +222,8 @@ export const FilterGroup = ({
       });
     }
 
-    const sortBySelectionAndAlpha = (
-      a: (typeof augmentedOptions)[0],
-      b: (typeof augmentedOptions)[0],
-    ) => {
+    // General Sorting of List
+    augmentedOptions.sort((a, b) => {
       const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
@@ -225,52 +245,92 @@ export const FilterGroup = ({
 
       // Finally sort alphabetically/numerically
       return a.value.localeCompare(b.value, undefined, { numeric: true });
-    };
+    });
 
-    // If expanded or small list, sort everything
-    if (isExpanded || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
-      return augmentedOptions.sort(sortBySelectionAndAlpha);
+    // If expanded or small list, return everything
+    if (shouldShowMore || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
+      return augmentedOptions;
     }
+    // Return the subset of items
+    const pageSize = Math.max(MAX_FILTER_GROUP_ITEMS, totalFiltersSize);
+    return augmentedOptions.slice(0, pageSize);
+  }, [
+    search,
+    shouldShowMore,
+    isPinned,
+    augmentedOptions,
+    selectedValues,
+    totalFiltersSize,
+  ]);
 
-    // Do not rearrange items if all selected values are visible without expanding
-    return augmentedOptions
-      .sort((a, b) => sortBySelectionAndAlpha(a, b))
-      .slice(
-        0,
-        Math.max(
-          MAX_FILTER_GROUP_ITEMS,
-          selectedValues.included.size + selectedValues.excluded.size,
-        ),
-      );
-  }, [search, isExpanded, augmentedOptions, selectedValues]);
-
-  const showExpandButton =
+  const showShowMoreButton =
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
-    selectedValues.included.size + selectedValues.excluded.size <
-      augmentedOptions.length;
+    totalFiltersSize < augmentedOptions.length;
 
   return (
-    <Stack gap={0}>
-      <Tooltip
-        openDelay={name.length > 26 ? 0 : 1500}
-        label={name}
-        position="top"
-        withArrow
-        fz="xxs"
-        color="gray"
-      >
-        <TextInput
-          size="xs"
-          placeholder={name}
-          value={search}
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-            setSearch(event.currentTarget.value)
-          }
-          leftSectionWidth={27}
-          leftSection={<IconSearch size={15} stroke={2} />}
-          rightSection={
-            <Group gap="xs">
+    <Accordion
+      variant="unstyled"
+      chevronPosition="left"
+      classNames={{ chevron: classes.chevron }}
+      value={isExpanded ? name : null}
+      onChange={v => {
+        setExpanded(v === name);
+      }}
+    >
+      <Accordion.Item value={name}>
+        <Stack gap={0}>
+          <Center>
+            <Accordion.Control
+              component={UnstyledButton}
+              flex="1"
+              p="0"
+              data-testid="filter-group-control"
+              classNames={{
+                chevron: 'm-0',
+                label: 'p-0',
+              }}
+              className={displayedOptions.length ? '' : 'opacity-50'}
+            >
+              <Tooltip
+                openDelay={name.length > 26 ? 0 : 1500}
+                label={name}
+                position="top"
+                withArrow
+                fz="xxs"
+                color="gray"
+              >
+                <TextInput
+                  size="xs"
+                  flex="1"
+                  placeholder={name}
+                  value={search}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                    setSearch(event.currentTarget.value)
+                  }
+                  onClick={e => {
+                    // Prevent accordion from opening when clicking on the input, unless it's closed.
+                    if (isExpanded) {
+                      e.stopPropagation();
+                    }
+                  }}
+                  styles={{ input: { transition: 'padding 0.2s' } }}
+                  rightSectionWidth={isExpanded ? 20 : 2}
+                  rightSection={
+                    <IconSearch
+                      size={15}
+                      stroke={2}
+                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
+                      style={{ transition: 'opacity 0.4s 0.2s' }}
+                    />
+                  }
+                  classNames={{
+                    input: 'ps-0.5',
+                  }}
+                />
+              </Tooltip>
+            </Accordion.Control>
+            <Group gap="xxxs" wrap="nowrap">
               {onFieldPinClick && (
                 <ActionIcon
                   size="xs"
@@ -284,8 +344,7 @@ export const FilterGroup = ({
                   />
                 </ActionIcon>
               )}
-              {selectedValues.included.size + selectedValues.excluded.size >
-                0 && (
+              {totalFiltersSize > 0 && (
                 <TextButton
                   label="Clear"
                   onClick={() => {
@@ -295,84 +354,100 @@ export const FilterGroup = ({
                 />
               )}
             </Group>
-          }
-        />
-      </Tooltip>
-      <Stack gap={0}>
-        {displayedOptions.map(option => (
-          <FilterCheckbox
-            key={option.value}
-            label={option.label}
-            pinned={isPinned(option.value)}
-            value={
-              selectedValues.included.has(option.value)
-                ? 'included'
-                : selectedValues.excluded.has(option.value)
-                  ? 'excluded'
-                  : false
-            }
-            onChange={() => onChange(option.value)}
-            onClickOnly={() => onOnlyClick(option.value)}
-            onClickExclude={() => onExcludeClick(option.value)}
-            onClickPin={() => onPinClick(option.value)}
-          />
-        ))}
-        {optionsLoading ? (
-          <Group m={6} gap="xs">
-            <Loader size={12} color="gray.6" />
-            <Text c="dimmed" size="xs">
-              Loading...
-            </Text>
-          </Group>
-        ) : displayedOptions.length === 0 ? (
-          <Group m={6} gap="xs">
-            <Text c="dimmed" size="xs">
-              No options found
-            </Text>
-          </Group>
-        ) : null}
-        {showExpandButton && (
-          <div className="d-flex m-1">
-            <TextButton
-              label={
-                isExpanded ? (
-                  <>
-                    <span className="bi-chevron-up" /> Less
-                  </>
-                ) : (
-                  <>
-                    <span className="bi-chevron-down" /> Show more
-                  </>
-                )
-              }
-              onClick={() => setExpanded(!isExpanded)}
-            />
-          </div>
-        )}
-        {onLoadMore && (!showExpandButton || isExpanded) && (
-          <div className="d-flex m-1">
-            {loadMoreLoading ? (
-              <Group m={6} gap="xs">
-                <Loader size={12} color="gray.6" />
-                <Text c="dimmed" size="xs">
-                  Loading more...
-                </Text>
-              </Group>
-            ) : (
-              <TextButton
-                display={hasLoadedMore ? 'none' : undefined}
-                label={
-                  <>
-                    <span className="bi-chevron-down" /> Load more
-                  </>
-                }
-                onClick={() => onLoadMore(name)}
-              />
-            )}
-          </div>
-        )}
-      </Stack>
-    </Stack>
+          </Center>
+          <Accordion.Panel
+            data-testid="filter-group-panel"
+            classNames={{
+              content: 'p-0 pt-2',
+            }}
+          >
+            <Stack gap={0}>
+              {displayedOptions.map(option => (
+                <FilterCheckbox
+                  key={option.value}
+                  label={option.label}
+                  pinned={isPinned(option.value)}
+                  value={
+                    selectedValues.included.has(option.value)
+                      ? 'included'
+                      : selectedValues.excluded.has(option.value)
+                        ? 'excluded'
+                        : false
+                  }
+                  onChange={() => onChange(option.value)}
+                  onClickOnly={() => onOnlyClick(option.value)}
+                  onClickExclude={() => onExcludeClick(option.value)}
+                  onClickPin={() => onPinClick(option.value)}
+                />
+              ))}
+              {optionsLoading ? (
+                <Group m={6} gap="xs">
+                  <Loader size={12} color="gray.6" />
+                  <Text c="dimmed" size="xs">
+                    Loading...
+                  </Text>
+                </Group>
+              ) : displayedOptions.length === 0 ? (
+                <Group m={6} gap="xs">
+                  <Text c="dimmed" size="xs">
+                    No options found
+                  </Text>
+                </Group>
+              ) : null}
+              {showShowMoreButton && (
+                <div className="d-flex m-1">
+                  <TextButton
+                    label={
+                      shouldShowMore ? (
+                        <>
+                          <span className="bi-chevron-up" /> Less
+                        </>
+                      ) : (
+                        <>
+                          <span className="bi-chevron-right" /> Show more
+                        </>
+                      )
+                    }
+                    onClick={() => {
+                      // When show more is clicked, immediately show all and also fetch more from server.
+                      setShowMore(!shouldShowMore);
+                      if (!shouldShowMore) {
+                        onLoadMore?.(name);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {onLoadMore &&
+                !showShowMoreButton &&
+                !shouldShowMore &&
+                !hasLoadedMore && (
+                  <div className="d-flex m-1">
+                    {loadMoreLoading ? (
+                      <Group m={6} gap="xs">
+                        <Loader size={12} color="gray.6" />
+                        <Text c="dimmed" size="xs">
+                          Loading more...
+                        </Text>
+                      </Group>
+                    ) : (
+                      <TextButton
+                        display={hasLoadedMore ? 'none' : undefined}
+                        label={
+                          <>
+                            <span className="bi-chevron-right" /> Load more
+                          </>
+                        }
+                        onClick={() => onLoadMore(name)}
+                      />
+                    )}
+                  </div>
+                )}
+            </Stack>
+          </Accordion.Panel>
+        </Stack>
+      </Accordion.Item>
+    </Accordion>
   );
 };
 
@@ -421,6 +496,10 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
+
+  const { data: source } = useSource({ id: sourceId });
+  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+
   useEffect(() => {
     if (error) {
       notifications.show({
@@ -564,22 +643,29 @@ const DBSearchPageFiltersComponent = ({
       _facets.push({ key, value: Array.from(filterState[key].included) });
     }
 
-    // Any other keys, let's add them in with empty values
-    for (const key of keysToFetch) {
-      if (!_facets.some(facet => facet.key === key)) {
-        _facets.push({ key, value: [] });
-      }
-    }
+    // prioritize facets that are primary keys
+    _facets.sort((a, b) => {
+      const aIsPk = isFieldPrimary(tableMetadata, a.key);
+      const bIsPk = isFieldPrimary(tableMetadata, b.key);
+      return aIsPk && !bIsPk ? -1 : bIsPk && !aIsPk ? 1 : 0;
+    });
 
-    // reorder facets to put pinned fields first
+    // prioritize facets that are pinned
     _facets.sort((a, b) => {
       const aPinned = isFieldPinned(a.key);
       const bPinned = isFieldPinned(b.key);
       return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
     });
 
+    // prioritize facets that have checked items
+    _facets.sort((a, b) => {
+      const aChecked = filterState?.[a.key]?.included.size > 0;
+      const bChecked = filterState?.[b.key]?.included.size > 0;
+      return aChecked && !bChecked ? -1 : bChecked && !aChecked ? 1 : 0;
+    });
+
     return _facets;
-  }, [facets, filterState, extraFacets, keysToFetch, isFieldPinned]);
+  }, [facets, filterState, tableMetadata, extraFacets, isFieldPinned]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -720,6 +806,14 @@ const DBSearchPageFiltersComponent = ({
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
               hasLoadedMore={Boolean(extraFacets[facet.key])}
+              isDefaultExpanded={
+                // open by default if PK, or has selected values
+                isFieldPrimary(tableMetadata, facet.key) ||
+                isFieldPinned(facet.key) ||
+                (filterState[facet.key] &&
+                  (filterState[facet.key].included.size > 0 ||
+                    filterState[facet.key].excluded.size > 0))
+              }
             />
           ))}
 
@@ -735,10 +829,27 @@ const DBSearchPageFiltersComponent = ({
           >
             {showMoreFields ? 'Less filters' : 'More filters'}
           </Button>
+
+          {showMoreFields && (
+            <div>
+              <Text size="xs" c="gray.6" fw="bold">
+                Not seeing a filter?
+              </Text>
+              <Text size="xxs" c="gray.6">
+                {`Try searching instead (e.g. column:foo)`}
+              </Text>
+            </div>
+          )}
         </Stack>
       </ScrollArea>
     </Box>
   );
 };
 
+export function isFieldPrimary(
+  tableMetadata: TableMetadata | undefined,
+  key: string,
+) {
+  return tableMetadata?.primary_key?.includes(key);
+}
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);
