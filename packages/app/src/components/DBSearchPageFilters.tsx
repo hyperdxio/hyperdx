@@ -272,6 +272,7 @@ export const FilterGroup = ({
     <Accordion
       variant="unstyled"
       chevronPosition="left"
+      classNames={{ chevron: classes.chevron }}
       value={isExpanded ? name : null}
       onChange={v => {
         setExpanded(v === name);
@@ -403,7 +404,7 @@ export const FilterGroup = ({
                         </>
                       ) : (
                         <>
-                          <span className="bi-chevron-down" /> Show more
+                          <span className="bi-chevron-right" /> Show more
                         </>
                       )
                     }
@@ -434,7 +435,7 @@ export const FilterGroup = ({
                         display={hasLoadedMore ? 'none' : undefined}
                         label={
                           <>
-                            <span className="bi-chevron-down" /> Load more
+                            <span className="bi-chevron-right" /> Load more
                           </>
                         }
                         onClick={() => onLoadMore(name)}
