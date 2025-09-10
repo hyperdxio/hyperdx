@@ -17,7 +17,7 @@ import {
 } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
-import { UnauthorizedAccessModal } from '@/components/UnauthorizedAccessModal';
+import { HealthCheckModal } from '@/components/HealthCheckModal';
 import { IS_LOCAL_MODE } from '@/config';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
@@ -125,7 +125,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
               <ThemeWrapper fontFamily={userPreferences.font}>
                 {getLayout(<Component {...pageProps} />)}
                 {confirmModal}
-                <UnauthorizedAccessModal />
+                <HealthCheckModal />
               </ThemeWrapper>
               <ReactQueryDevtools initialIsOpen={true} />
               {background}

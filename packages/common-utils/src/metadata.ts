@@ -4,6 +4,7 @@ import {
   BaseClickhouseClient,
   ChSql,
   chSql,
+  ClickHouseAccessError,
   ColumnMeta,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
@@ -174,7 +175,15 @@ export class Metadata {
       return { status: 'healthy' as const };
     } catch (err) {
       console.error('err', err);
-      return { status: 'unhealthy' as const, error: err };
+      if (err instanceof ClickHouseAccessError) {
+        return { status: 'unhealthy' as const, error: err };
+      }
+      return {
+        status: 'unhealthy' as const,
+        error: new ClickHouseAccessError(
+          err instanceof Error ? err.message : 'Unknown Error',
+        ),
+      };
     }
   }
 

@@ -1,6 +1,6 @@
 import objectHash from 'object-hash';
 import {
-  ClickHouseAuthenticationError,
+  ClickHouseAccessError,
   ColumnMeta,
   filterColumnMetaByType,
   JSDataType,
@@ -77,13 +77,13 @@ export function useHealthCheck() {
           const result = await metadata.getDatabaseHealth({
             connectionId: source!.connection,
           });
-          const isAuthError =
+          const isAccessError =
             result.status === 'unhealthy' &&
-            result.error instanceof ClickHouseAuthenticationError;
+            result.error instanceof ClickHouseAccessError;
           return {
             id: source.id,
             name: source.name,
-            isAuthError,
+            isAccessError,
             ...result,
           };
         },

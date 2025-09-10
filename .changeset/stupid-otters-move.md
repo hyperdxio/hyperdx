@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-add unauthorized access modal and handle clickhouse auth errors
+add health check modal and handle clickhouse auth errors
