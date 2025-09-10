@@ -10,7 +10,9 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
-import { isString } from 'lodash';
+import { chunk, isString } from 'lodash';
+import { ObjectId } from 'mongoose';
+import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
@@ -142,15 +144,10 @@ export const processAlert = async (
   clickhouseClient: ClickhouseClient,
   connectionId: string,
   alertProvider: AlertProvider,
+  previous: AggregatedAlertHistory | undefined,
 ) => {
   const { alert, source } = details;
   try {
-    const previous: IAlertHistory | undefined = (
-      await AlertHistory.find({ alert: alert.id })
-        .sort({ createdAt: -1 })
-        .limit(1)
-    )[0];
-
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
     if (
@@ -370,6 +367,55 @@ export const processAlert = async (
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
+interface AggregatedAlertHistory {
+  _id: ObjectId;
+  createdAt: Date;
+}
+
+/**
+ * Fetch the most recent AlertHistory value for each of the given alert IDs.
+ *
+ * @param alertIds The list of alert IDs to query the latest history for.
+ * @param now The current date and time. AlertHistory documents that have a createdBy > now are ignored.
+ * @returns A map from Alert IDs to their most recent AlertHistory. If there are no
+ *  AlertHistory documents for an Alert ID, that ID will not be a key in the map.
+ */
+export const getPreviousAlertHistories = async (
+  alertIds: string[],
+  now: Date,
+) => {
+  // Group the alert IDs into chunks of 50 to avoid exceeding MongoDB's recommendation that $in lists be on the order of 10s of items
+  const chunkedIds = chunk(
+    alertIds.map(id => new mongoose.Types.ObjectId(id)),
+    50,
+  );
+
+  const resultChunks = await Promise.all(
+    chunkedIds.map(async ids =>
+      AlertHistory.aggregate<AggregatedAlertHistory>([
+        // Filter for the given alerts, and only entries created before "now"
+        {
+          $match: {
+            alert: { $in: ids },
+            createdAt: { $lte: now },
+          },
+        },
+        // Group by alert ID, taking the latest createdAt value for each group
+        {
+          $group: {
+            _id: '$alert',
+            createdAt: { $max: '$createdAt' },
+          },
+        },
+      ]),
+    ),
+  );
+
+  return new Map<string, AggregatedAlertHistory>(
+    resultChunks.flat().map(history => [history._id.toString(), history]),
+  );
+};
+
 export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
   private provider!: AlertProvider;
   private task_queue: PQueue;
@@ -382,7 +428,11 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     });
   }
 
-  async processAlertTask(now: Date, alertTask: AlertTask) {
+  async processAlertTask(
+    now: Date,
+    alertTask: AlertTask,
+    previousAlerts: Map<string, AggregatedAlertHistory>,
+  ) {
     const { alerts, conn } = alertTask;
     logger.info({
       message: 'Processing alerts in batch',
@@ -405,8 +455,16 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     });
 
     for (const alert of alerts) {
+      const previous = previousAlerts.get(alert.alert.id);
       await this.task_queue.add(() =>
-        processAlert(now, alert, clickhouseClient, conn.id, this.provider),
+        processAlert(
+          now,
+          alert,
+          clickhouseClient,
+          conn.id,
+          this.provider,
+          previous,
+        ),
       );
     }
   }
@@ -428,8 +486,15 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       taskCount: alertTasks.length,
     });
 
+    const alertIds = alertTasks.flatMap(({ alerts }) =>
+      alerts.map(({ alert }) => alert.id),
+    );
+    const previousAlerts = await getPreviousAlertHistories(alertIds, now);
+
     for (const task of alertTasks) {
-      await this.task_queue.add(() => this.processAlertTask(now, task));
+      await this.task_queue.add(() =>
+        this.processAlertTask(now, task, previousAlerts),
+      );
     }
 
     await this.task_queue.onIdle();
