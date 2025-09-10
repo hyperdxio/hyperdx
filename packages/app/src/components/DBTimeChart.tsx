@@ -90,7 +90,7 @@ function DBTimeChartComponent({
             lineNames: [],
             lineColors: [],
           };
-    }, [data, dateRange, granularity, isSuccess, fillNulls]);
+    }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
