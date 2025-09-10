@@ -75,21 +75,30 @@ function DBTimeChartComponent({
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
     useMemo(() => {
-      return data != null && isSuccess
-        ? formatResponseForTimeChart({
-            res: data,
-            dateRange,
-            granularity,
-            generateEmptyBuckets: fillNulls !== false,
-            source,
-          })
-        : {
-            graphResults: [],
-            timestampColumn: undefined,
-            groupKeys: [],
-            lineNames: [],
-            lineColors: [],
-          };
+      const defaultResponse = {
+        graphResults: [],
+        timestampColumn: undefined,
+        groupKeys: [],
+        lineNames: [],
+        lineColors: [],
+      };
+
+      if (data == null || !isSuccess) {
+        return defaultResponse;
+      }
+
+      try {
+        return formatResponseForTimeChart({
+          res: data,
+          dateRange,
+          granularity,
+          generateEmptyBuckets: fillNulls !== false,
+          source,
+        });
+      } catch (e) {
+        console.error(e);
+        return defaultResponse;
+      }
     }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
