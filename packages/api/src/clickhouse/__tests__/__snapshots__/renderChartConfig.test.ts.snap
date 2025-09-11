@@ -59,6 +59,44 @@ Array [
 ]
 `;
 
+exports[`renderChartConfig Query Metrics - Gauge single max gauge with delta 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "max(toFloat64OrDefault(toString(LastValue)))": 5,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "max(toFloat64OrDefault(toString(LastValue)))": -1.6666666666666667,
+  },
+]
+`;
+
+exports[`renderChartConfig Query Metrics - Gauge single max gauge with delta and group by 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host2",
+    "max(toFloat64OrDefault(toString(LastValue)))": 5,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host1",
+    "max(toFloat64OrDefault(toString(LastValue)))": -72.91666666666667,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host2",
+    "max(toFloat64OrDefault(toString(LastValue)))": -1.6666666666666667,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "arrayElement(ResourceAttributes, 'host')": "host1",
+    "max(toFloat64OrDefault(toString(LastValue)))": -33.333333333333336,
+  },
+]
+`;
+
 exports[`renderChartConfig Query Metrics - Gauge single max/avg/sum gauge 1`] = `
 Array [
   Object {

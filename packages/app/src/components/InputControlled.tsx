@@ -1,6 +1,8 @@
 import React from 'react';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 import {
+  Checkbox,
+  CheckboxProps,
   Input,
   InputProps,
   PasswordInput,
@@ -28,6 +30,17 @@ interface PasswordInputControlledProps<T extends FieldValues>
 interface TextInputControlledProps<T extends FieldValues>
   extends Omit<TextInputProps, 'name' | 'style'>,
     Omit<React.InputHTMLAttributes<HTMLInputElement>, 'name' | 'size'> {
+  name: Path<T>;
+  control: Control<T>;
+  rules?: Parameters<Control<T>['register']>[1];
+}
+
+interface CheckboxControlledProps<T extends FieldValues>
+  extends Omit<CheckboxProps, 'name' | 'style'>,
+    Omit<
+      React.InputHTMLAttributes<HTMLInputElement>,
+      'name' | 'size' | 'color'
+    > {
   name: Path<T>;
   control: Control<T>;
   rules?: Parameters<Control<T>['register']>[1];
@@ -82,6 +95,29 @@ export function PasswordInputControlled<T extends FieldValues>({
       rules={rules}
       render={({ field, fieldState: { error } }) => (
         <PasswordInput {...props} {...field} error={error?.message} />
+      )}
+    />
+  );
+}
+
+export function CheckBoxControlled<T extends FieldValues>({
+  name,
+  control,
+  rules,
+  ...props
+}: CheckboxControlledProps<T>) {
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      render={({ field: { value, ...field }, fieldState: { error } }) => (
+        <Checkbox
+          {...props}
+          {...field}
+          checked={value}
+          error={error?.message}
+        />
       )}
     />
   );

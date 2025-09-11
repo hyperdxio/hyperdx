@@ -76,6 +76,7 @@ export const RootValueExpressionSchema = z
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
+    isDelta: z.boolean().optional(),
   })
   .or(
     z.object({
@@ -84,6 +85,7 @@ export const RootValueExpressionSchema = z
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      isDelta: z.boolean().optional(),
     }),
   )
   .or(
@@ -93,6 +95,7 @@ export const RootValueExpressionSchema = z
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
       metricType: z.nativeEnum(MetricsDataType).optional(),
+      isDelta: z.boolean().optional(),
     }),
   );
 export const DerivedColumnSchema = z.intersection(

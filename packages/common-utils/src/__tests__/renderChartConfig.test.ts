@@ -22,42 +22,65 @@ describe('renderChartConfig', () => {
     } as unknown as Metadata;
   });
 
-  it('should generate sql for a single gauge metric', async () => {
-    const config: ChartConfigWithOptDateRange = {
-      displayType: DisplayType.Line,
-      connection: 'test-connection',
-      // metricTables is added from the Source object via spread operator
-      metricTables: {
-        gauge: 'otel_metrics_gauge',
-        histogram: 'otel_metrics_histogram',
-        sum: 'otel_metrics_sum',
-        summary: 'otel_metrics_summary',
-        'exponential histogram': 'otel_metrics_exponential_histogram',
+  const gaugeConfiguration: ChartConfigWithOptDateRange = {
+    displayType: DisplayType.Line,
+    connection: 'test-connection',
+    // metricTables is added from the Source object via spread operator
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+    },
+    from: {
+      databaseName: 'default',
+      tableName: '',
+    },
+    select: [
+      {
+        aggFn: 'quantile',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: 'Value',
+        level: 0.95,
+        metricName: 'nodejs.event_loop.utilization',
+        metricType: MetricsDataType.Gauge,
       },
-      from: {
-        databaseName: 'default',
-        tableName: '',
-      },
-      select: [
-        {
-          aggFn: 'quantile',
-          aggCondition: '',
-          aggConditionLanguage: 'lucene',
-          valueExpression: 'Value',
-          level: 0.95,
-          metricName: 'nodejs.event_loop.utilization',
-          metricType: MetricsDataType.Gauge,
-        },
-      ],
-      where: '',
-      whereLanguage: 'lucene',
-      timestampValueExpression: 'TimeUnix',
-      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
-      granularity: '1 minute',
-      limit: { limit: 10 },
-    };
+    ],
+    where: '',
+    whereLanguage: 'lucene',
+    timestampValueExpression: 'TimeUnix',
+    dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+    granularity: '1 minute',
+    limit: { limit: 10 },
+  };
 
-    const generatedSql = await renderChartConfig(config, mockMetadata);
+  it('should generate sql for a single gauge metric', async () => {
+    const generatedSql = await renderChartConfig(
+      gaugeConfiguration,
+      mockMetadata,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toMatchSnapshot();
+  });
+
+  it('should generate sql for a single gauge metric with a delta() function applied', async () => {
+    const generatedSql = await renderChartConfig(
+      {
+        ...gaugeConfiguration,
+        select: [
+          {
+            aggFn: 'max',
+            valueExpression: 'Value',
+            metricName: 'nodejs.event_loop.utilization',
+            metricType: MetricsDataType.Gauge,
+            isDelta: true,
+          },
+        ],
+      },
+      mockMetadata,
+    );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
   });
