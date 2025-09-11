@@ -1,6 +1,8 @@
 import _ from 'lodash';
+import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
 
@@ -177,7 +179,7 @@ Array [
 `);
   });
 
-  it('DELETE /team/member/:userId', async () => {
+  it('DELETE /team/member/:userId removes a user', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     const user1 = await User.create({
@@ -190,6 +192,60 @@ Array [
     const resp2 = await agent.get('/team/members').expect(200);
 
     expect(resp2.body.data).toHaveLength(1);
+  });
+
+  it('DELETE /team/member/:userId updates alerts created by the removed user', async () => {
+    const { agent, team, user } = await getLoggedInAgent(server);
+
+    const user1 = await User.create({
+      email: 'user1@example.com',
+      team: team.id,
+    });
+
+    const alert = await Alert.create({
+      createdBy: user1._id,
+      team: team.id,
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+    });
+
+    const alertInAnotherTeam = await Alert.create({
+      createdBy: user1._id,
+      team: new mongoose.Types.ObjectId(), // Different team ID
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+    });
+
+    await agent.delete(`/team/member/${user1._id}`).expect(200);
+
+    const alertAfterUserDeletion = await Alert.findById(alert._id);
+    expect(alertAfterUserDeletion).not.toBeNull();
+    expect(alertAfterUserDeletion?.createdBy?.toString()).toEqual(
+      user.id.toString(),
+    );
+
+    // Ensure alert in another team is not modified
+    const alertInAnotherTeamAfterDeletion = await Alert.findById(
+      alertInAnotherTeam._id,
+    );
+    expect(alertInAnotherTeamAfterDeletion).not.toBeNull();
+    expect(alertInAnotherTeamAfterDeletion?.createdBy?.toString()).toEqual(
+      user1._id.toString(),
+    );
   });
 
   it('DELETE /team/invitation/:teamInviteId', async () => {
