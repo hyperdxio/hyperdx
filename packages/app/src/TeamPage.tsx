@@ -10,6 +10,10 @@ import { EditorView } from '@codemirror/view';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
+  isValidSlackUrl,
+  isValidUrl,
+} from '@hyperdx/common-utils/dist/validation';
+import {
   Alert,
   Badge,
   Box,
@@ -737,6 +741,8 @@ export function CreateWebhookForm({
     }
   };
 
+  const service = form.watch('service');
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <Stack mt="sm">
@@ -744,7 +750,7 @@ export function CreateWebhookForm({
         <Radio.Group
           label="Service Type"
           required
-          value={form.watch('service')}
+          value={service}
           onChange={value => form.setValue('service', value)}
         >
           <Group mt="xs">
@@ -773,7 +779,14 @@ export function CreateWebhookForm({
           type="url"
           required
           error={form.formState.errors.url?.message}
-          {...form.register('url', { required: true })}
+          {...form.register('url', {
+            required: true,
+            validate: (value, formValues) =>
+              formValues.service === WebhookService.Slack
+                ? isValidSlackUrl(value) ||
+                  'URL must be valid and have a slack.com domain'
+                : isValidUrl(value) || 'URL must be valid',
+          })}
         />
         <TextInput
           label="Webhook Description (optional)"
@@ -781,7 +794,7 @@ export function CreateWebhookForm({
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
-        {form.getValues('service') === WebhookService.Generic && [
+        {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
             Webhook Body (optional)
           </label>,

@@ -8,6 +8,7 @@ import {
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { _useTry, formatDate } from '@hyperdx/common-utils/dist/utils';
+import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
 import { escapeRegExp } from 'lodash';
@@ -90,12 +91,6 @@ export const notifyChannel = async ({
   }
 };
 
-function extractDomainFromUrl(url: string): string {
-  const hostname = new URL(url).hostname;
-  const parts = hostname.split('.');
-  return parts.length >= 2 ? parts.slice(-2).join('.') : hostname;
-}
-
 const blacklistedWebhookHosts = (() => {
   const map = new Map<string, string>();
   const configKeys = ['CLICKHOUSE_HOST', 'MONGO_URI'];
@@ -117,7 +112,7 @@ function validateWebhookUrl(
 
   if (webhook.service === WebhookService.Slack) {
     // check that hostname ends in "slack.com"
-    if (extractDomainFromUrl(webhook.url) !== 'slack.com') {
+    if (!isValidSlackUrl(webhook.url)) {
       const message = `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`;
       logger.warn({
         webhook: {
