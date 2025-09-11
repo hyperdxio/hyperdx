@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "node",
+    "lib": [
+      "ES2022",
+      "dom"
+    ],
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "importHelpers": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": false,
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES2022",
+  }
+}
