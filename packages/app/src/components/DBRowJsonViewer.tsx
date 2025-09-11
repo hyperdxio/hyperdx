@@ -1,10 +1,11 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
+import lucene from '@hyperdx/lucene';
 import {
-  ActionIcon,
   Box,
   Button,
   Group,
@@ -118,6 +119,97 @@ function HyperJsonMenu() {
   );
 }
 
+// if keep is true, remove node which matched the match condition.
+// if value is '', match condition is key equal.
+// if value is not '', match condition is key and value equal.
+function rangeNodesWithKey(
+  ast: any,
+  key: string,
+  value: string,
+  keep: boolean,
+): { result: any; modified: boolean } {
+  if (!ast) return { result: null, modified: false };
+
+  if (ast.term) {
+    let matched = false;
+    if (ast.field === key || ast.field === `-${key}`) {
+      if (value !== '') {
+        if (ast.term === value) {
+          matched = true;
+        }
+      } else {
+        matched = true;
+      }
+    }
+    if ((matched && keep) || (!matched && !keep)) {
+      return { result: ast, modified: false };
+    } else {
+      return { result: null, modified: true };
+    }
+  }
+
+  const leftResult = rangeNodesWithKey(ast.left, key, value, keep);
+  const rightResult = rangeNodesWithKey(ast.right, key, value, keep);
+  const left = leftResult.result;
+  const right = rightResult.result;
+  const modified = leftResult.modified || rightResult.modified;
+
+  if (!left && !right) {
+    return { result: null, modified: modified };
+  }
+
+  if (!left && right) {
+    return { result: right, modified: modified };
+  }
+
+  if (left && !right) {
+    return { result: left, modified: modified };
+  }
+
+  return {
+    result: {
+      ...ast,
+      left,
+      right,
+    },
+    modified,
+  };
+}
+
+// removeLuceneField remove field in a lucene search query.
+// modified meaning if it is removed success.
+// example:
+// removeLuceneField('(ServiceName:a OR ServiceName:b) AND SeverityText:ERROR', 'ServiceName', 'a')
+// ServiceName:b AND SeverityText:ERROR
+export function removeLuceneField(
+  query: string,
+  key: string,
+  value: string,
+): { result: string; modified: boolean } {
+  if (typeof query !== 'string') return { result: query, modified: false };
+
+  try {
+    // delete matched node
+    const ast = lucene.parse(query);
+    const { result: modifiedAst, modified } = rangeNodesWithKey(
+      ast,
+      key,
+      value,
+      false,
+    );
+
+    if (!modifiedAst) {
+      return { result: '', modified: modified };
+    }
+
+    const modifiedString = lucene.toString(modifiedAst);
+    return { result: modifiedString, modified };
+  } catch (error) {
+    console.warn('Failed to parse Lucene query', error);
+
+    return { result: query, modified: false };
+  }
+}
 export function DBRowJsonViewer({
   data,
   jsonColumns = [],
@@ -151,6 +243,8 @@ export function DBRowJsonViewer({
     return filterObjectRecursively(data, debouncedFilter);
   }, [data, debouncedFilter]);
 
+  const searchParams = useSearchParams();
+
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value }) => {
       const actions: LineAction[] = [];
@@ -158,60 +252,137 @@ export function DBRowJsonViewer({
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
-      // Add to Filters action (strings only)
-      // FIXME: TOTAL HACK To disallow adding timestamp to filters
-      if (
-        onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
-        fieldPath != 'Timestamp' &&
-        fieldPath != 'TimestampTime'
-      ) {
+      let where = searchParams.get('where') || '';
+      let whereLanguage = searchParams.get('whereLanguage');
+      if (whereLanguage == '') {
+        whereLanguage = 'lucene';
+      }
+
+      let luceneFieldPath = '';
+      if (whereLanguage === 'lucene') {
+        luceneFieldPath = keyPath.join('.');
+      }
+
+      let removedFilterWhere = ''; // filter which already removed value.
+      let hadFilter = false;
+      if (where !== '') {
+        // if it is lucene, we support remove-filter.
+        if (whereLanguage === 'lucene') {
+          const { result, modified } = removeLuceneField(
+            where,
+            luceneFieldPath,
+            value,
+          );
+          removedFilterWhere = result;
+          hadFilter = modified;
+          where += ' ';
+        } else {
+          where += ' AND ';
+        }
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && hadFilter) {
         actions.push({
-          key: 'add-to-search',
+          key: 'remove-filter',
           label: (
             <>
-              <i className="bi bi-funnel-fill me-1" />
-              Add to Filters
+              <i className="bi bi-x-circle me-1" />
+              Remove Filter
             </>
           ),
-          title: 'Add to Filters',
           onClick: () => {
-            onPropertyAddClick(
-              isJsonColumn ? `toString(${fieldPath})` : fieldPath,
-              value,
+            router.push(
+              generateSearchUrl({
+                where: removedFilterWhere,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
             );
-            notifications.show({
-              color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
-            });
           },
         });
       }
 
-      if (generateSearchUrl && typeof value !== 'object') {
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
         actions.push({
-          key: 'search',
+          key: 'filter',
           label: (
             <>
               <i className="bi bi-search me-1" />
-              Search
+              Filter
+            </>
+          ),
+          title: 'Add to Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `${luceneFieldPath}:"${value}"`;
+            } else {
+              where += `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'exclude',
+          label: (
+            <>
+              <i className="bi bi-dash-circle me-1" />
+              Exclude
+            </>
+          ),
+          title: 'Exclude from Filters',
+          onClick: () => {
+            if (whereLanguage === 'lucene') {
+              where += `-${luceneFieldPath}:"${value}"`;
+            } else {
+              where += `${fieldPath} != ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
+            }
+
+            router.push(
+              generateSearchUrl({
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
+              }),
+            );
+          },
+        });
+      }
+
+      if (generateSearchUrl && typeof value !== 'object' && !hadFilter) {
+        actions.push({
+          key: 'replace-filter',
+          label: (
+            <>
+              <i className="bi bi-arrow-counterclockwise me-1" />
+              Replace Filter
             </>
           ),
           title: 'Search for this value only',
           onClick: () => {
-            let defaultWhere = `${fieldPath} = ${
-              typeof value === 'string' ? `'${value}'` : value
-            }`;
-
-            // FIXME: TOTAL HACK
-            if (fieldPath == 'Timestamp' || fieldPath == 'TimestampTime') {
-              defaultWhere = `${fieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+            where = '';
+            if (whereLanguage === 'lucene') {
+              where = `${luceneFieldPath}:"${value}"`;
+            } else {
+              where = `${fieldPath} = ${
+                typeof value === 'string' ? `'${value}'` : value
+              }`;
             }
+
             router.push(
               generateSearchUrl({
-                where: defaultWhere,
-                whereLanguage: 'sql',
+                where: where,
+                whereLanguage: whereLanguage as 'sql' | 'lucene',
               }),
             );
           },
@@ -282,13 +453,23 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: (
+            <>
+              <i className="bi bi-clipboard me-1" />
+              Copy Object
+            </>
+          ),
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: 'Copy Value',
+          label: (
+            <>
+              <i className="bi bi-copy me-1" />
+              Copy Value
+            </>
+          ),
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
