@@ -4,9 +4,9 @@ FROM node:22.16.0-alpine AS base
 WORKDIR /app
 
 COPY .yarn ./.yarn
-COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./
+COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./tsconfig.base.json ./
 COPY ./packages/common-utils ./packages/common-utils
-COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/package.json ./packages/api/
+COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/tsconfig.build.json ./packages/api/package.json ./packages/api/
 RUN yarn install --mode=skip-build && yarn cache clean
 
 
