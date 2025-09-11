@@ -14,7 +14,7 @@ import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
-import { processAlert } from '@/tasks/checkAlerts';
+import { getPreviousAlertHistories, processAlert } from '@/tasks/checkAlerts';
 import { AlertTaskType, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
@@ -193,12 +193,14 @@ describe('Single Invocation Alert Test', () => {
       username: connection.username,
       password: connection.password,
     });
+    const previousAlerts = await getPreviousAlertHistories([alert.id], now);
     await processAlert(
       now,
       details,
       clickhouseClient,
       connection.id,
       alertProvider,
+      previousAlerts.get(alert.id),
     );
 
     // Verify alert state changed to ALERT (from DB)
@@ -429,12 +431,14 @@ describe('Single Invocation Alert Test', () => {
     }));
 
     // Process alert - this triggers the webhook with the title
+    const previousAlerts = await getPreviousAlertHistories([alert.id], now);
     await processAlert(
       now,
       details,
       clickhouseClient,
       connection.id,
       alertProvider,
+      previousAlerts.get(alert.id),
     );
 
     // Get the webhook call to inspect the title

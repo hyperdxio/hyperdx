@@ -1,4 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { AlertState } from '@hyperdx/common-utils/dist/types';
+import { create } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -21,7 +23,11 @@ import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
-import { doesExceedThreshold, processAlert } from '@/tasks/checkAlerts';
+import {
+  doesExceedThreshold,
+  getPreviousAlertHistories,
+  processAlert,
+} from '@/tasks/checkAlerts';
 import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
@@ -756,39 +762,55 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
+        undefined,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
+      const previousAlertsLater = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        later,
+      );
       await processAlert(
         later,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsLater.get(enhancedAlert.id),
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
       await processAlert(
         nextWindow,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsNextWindow.get(enhancedAlert.id),
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextNextWindow = new Date('2023-11-16T22:20:00.000Z');
+      const previousAlertsNextNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextNextWindow,
+      );
       await processAlert(
         nextNextWindow,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsNextNextWindow.get(enhancedAlert.id),
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -996,28 +1018,39 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
+        undefined,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
+      const previousAlertsLater = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        later,
+      );
       await processAlert(
         later,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsLater.get(enhancedAlert.id),
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
       await processAlert(
         nextWindow,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsNextWindow.get(enhancedAlert.id),
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -1226,28 +1259,39 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
+        undefined,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
+      const previousAlertsLater = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        later,
+      );
       await processAlert(
         later,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsLater.get(enhancedAlert.id),
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
       await processAlert(
         nextWindow,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsNextWindow.get(enhancedAlert.id),
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -1436,28 +1480,39 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
+        undefined,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
+      const previousAlertsLater = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        later,
+      );
       await processAlert(
         later,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsLater.get(enhancedAlert.id),
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
       await processAlert(
         nextWindow,
         details,
         clickhouseClient,
         connection.id,
         alertProvider,
+        previousAlertsNextWindow.get(enhancedAlert.id),
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -1503,6 +1558,146 @@ describe('checkAlerts', () => {
             },
           ],
         },
+      );
+    });
+  });
+
+  describe('getPreviousAlertHistories', () => {
+    const server = getServer();
+
+    beforeAll(async () => {
+      await server.start();
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      await server.stop();
+    });
+
+    const saveAlert = (id: mongoose.Types.ObjectId, createdAt: Date) => {
+      return new AlertHistory({
+        alert: id,
+        createdAt,
+        state: AlertState.OK,
+      }).save();
+    };
+
+    it('should return the latest alert history for each alert', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:15:00Z'),
+      );
+    });
+
+    it('should not return alert histories from the future', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z')); // This one is in the future
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:14:00Z'),
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:10:00Z'),
+      );
+    });
+
+    it('should not return a history if there are no histories for the given alert', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())).toBeUndefined();
+    });
+
+    it('should not return a history for an alert that is not provided in the argument', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+    });
+
+    it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+
+      const result = await getPreviousAlertHistories(
+        [
+          alert1Id.toString(),
+          ...Array(150).fill(new mongoose.Types.ObjectId().toString()),
+          alert2Id.toString(),
+        ],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:15:00Z'),
       );
     });
   });
