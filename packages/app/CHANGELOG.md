@@ -1,5 +1,26 @@
 # @hyperdx/app
 
+## 2.4.0
+
+### Minor Changes
+
+- deff04f6: Adds expandable log lines to search results tables
+- fa45875d: Add delta() function for gauge metrics
+
+### Patch Changes
+
+- c48f4181: Add accordion functionality to filter groups, changed how the system prioritizes which filters are open by default, added new sort logic for prioritizing certain filters.
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- 5c88c463: fix bug where reading value when server is offline could throw client error
+- cd5cc7d2: fix: Fixed trace table source inference to correctly infer span events column
+- Updated dependencies [45e8e1b6]
+- Updated dependencies [fa45875d]
+- Updated dependencies [d938b4a4]
+- Updated dependencies [92224d65]
+- Updated dependencies [e7b590cc]
+  - @hyperdx/common-utils@0.5.0
+
 ## 2.3.0
 
 ### Minor Changes
