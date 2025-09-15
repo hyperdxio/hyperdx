@@ -311,16 +311,16 @@ export const RawLogTable = memo(
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
     rows: R[];
-    isLoading: boolean;
-    fetchNextPage: (options?: FetchNextPageOptions | undefined) => any;
+    isLoading?: boolean;
+    fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
     onRowDetailsClick: (row: R) => void;
     generateRowId: (row: R) => string;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
     // ) => void;
-    hasNextPage: boolean;
-    highlightedLineId: string | undefined;
+    hasNextPage?: boolean;
+    highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
     isLive: boolean;
     onShowPatternsClick?: () => void;
@@ -520,7 +520,7 @@ export const RawLogTable = memo(
             hasNextPage
           ) {
             // Cancel refetch is important to ensure we wait for the last fetch to finish
-            fetchNextPage({ cancelRefetch: false });
+            fetchNextPage?.({ cancelRefetch: false });
           }
         }
       },
@@ -619,13 +619,13 @@ export const RawLogTable = memo(
       const rowIdx = dedupedRows.findIndex(
         l => getRowId(l) === highlightedLineId,
       );
-      if (rowIdx == -1) {
+      if (rowIdx == -1 && highlightedLineId) {
         if (
           dedupedRows.length < MAX_SCROLL_FETCH_LINES &&
           !isLoading &&
           hasNextPage
         ) {
-          fetchNextPage({ cancelRefetch: false });
+          fetchNextPage?.({ cancelRefetch: false });
         }
       } else {
         setScrolledToHighlightedLine(true);
@@ -840,7 +840,8 @@ export const RawLogTable = memo(
                     role="button"
                     // TODO: Restore highlight
                     className={cx(styles.tableRow, {
-                      [styles.tableRow__selected]: highlightedLineId === rowId,
+                      [styles.tableRow__selected]:
+                        highlightedLineId && highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}

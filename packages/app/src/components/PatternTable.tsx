@@ -80,6 +80,7 @@ export default function PatternTable({
           severityText: 'level',
         }}
         config={patternQueryConfig}
+        showExpandButton={false}
       />
       {selectedPattern && source && (
         <PatternSidePanel

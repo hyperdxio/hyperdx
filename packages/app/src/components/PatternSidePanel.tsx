@@ -126,12 +126,9 @@ export default function PatternSidePanel({
                   displayedColumns={displayedColumns}
                   columnTypeMap={columnTypeMap}
                   columnNameMap={columnNameMap}
-                  isLoading={false}
-                  fetchNextPage={() => {}}
                   onRowDetailsClick={handleRowClick}
                   wrapLines={false}
-                  highlightedLineId={''}
-                  hasNextPage={false}
+                  showExpandButton={false}
                   isLive={false}
                 />
               </Card>
@@ -143,6 +140,7 @@ export default function PatternSidePanel({
               rowId={selectedRowWhere}
               onClose={handleCloseRowSidePanel}
               isNestedPanel={true}
+              breadcrumbPath={[{ label: 'Pattern Overview' }]}
             />
           )}
         </div>
