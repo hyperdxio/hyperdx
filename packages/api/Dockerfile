@@ -52,3 +52,10 @@ WORKDIR /app
 COPY --chown=node:node --from=builder /app/packages/api/dist ./
 
 ENTRYPOINT ["node", "-r", "./tracing", "./index"]
+
+## alerts ##########################################################################################
+
+FROM prod AS alerts
+
+COPY --chown=node:node ./packages/api/entry.alerts.sh ./
+ENTRYPOINT ["sh", "./entry.alerts.sh"]
