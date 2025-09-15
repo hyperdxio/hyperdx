@@ -21,10 +21,12 @@ export function RowOverviewPanel({
   source,
   rowId,
   hideHeader = false,
+  'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   hideHeader?: boolean;
+  'data-testid'?: string;
 }) {
   const { data, isLoading, isError } = useRowData({ source, rowId });
   const { onPropertyAddClick, generateSearchUrl } =
@@ -167,7 +169,7 @@ export function RowOverviewPanel({
       : undefined;
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto">
+    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
         <Box px="32px" pt="md">
           <DBRowSidePanelHeader

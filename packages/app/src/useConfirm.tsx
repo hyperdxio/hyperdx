@@ -46,6 +46,7 @@ export const useConfirmModal = () => {
 
   return (
     <Modal
+      data-testid="confirm-modal"
       opened={!!confirm}
       onClose={handleClose}
       centered
@@ -55,10 +56,17 @@ export const useConfirmModal = () => {
         {confirm?.message}
       </Text>
       <Group justify="flex-end" mt="md" gap="xs">
-        <Button size="xs" variant="outline" onClick={handleClose} color="Gray">
+        <Button
+          data-testid="confirm-cancel-button"
+          size="xs"
+          variant="outline"
+          onClick={handleClose}
+          color="Gray"
+        >
           Cancel
         </Button>
         <Button
+          data-testid="confirm-confirm-button"
           size="xs"
           variant="outline"
           onClick={confirm?.onConfirm}
