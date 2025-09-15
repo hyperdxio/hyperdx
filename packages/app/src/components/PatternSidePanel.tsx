@@ -128,7 +128,7 @@ export default function PatternSidePanel({
                   columnNameMap={columnNameMap}
                   isLoading={false}
                   fetchNextPage={() => {}}
-                  onRowExpandClick={handleRowClick}
+                  onRowDetailsClick={handleRowClick}
                   wrapLines={false}
                   highlightedLineId={''}
                   hasNextPage={false}

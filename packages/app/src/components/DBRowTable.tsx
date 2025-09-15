@@ -273,7 +273,7 @@ const SqlModal = ({
 };
 
 export const RawLogTable = memo(
-  ({
+  <R extends Record<string, any> = Record<string, any>>({
     tableId,
     displayedColumns,
     fetchNextPage,
@@ -285,7 +285,7 @@ export const RawLogTable = memo(
     generateRowId,
     onInstructionsClick,
     // onPropertySearchClick,
-    onRowExpandClick,
+    onRowDetailsClick,
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
@@ -300,6 +300,7 @@ export const RawLogTable = memo(
     loadingDate,
     config,
     onChildModalOpen,
+    renderRowDetails,
     source,
     onExpandedRowsChange,
     collapseAllRows,
@@ -309,11 +310,11 @@ export const RawLogTable = memo(
     displayedColumns: string[];
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
-    rows: Record<string, any>[];
+    rows: R[];
     isLoading: boolean;
     fetchNextPage: (options?: FetchNextPageOptions | undefined) => any;
-    onRowExpandClick: (row: Record<string, any>) => void;
-    generateRowId: (row: Record<string, any>) => string;
+    onRowDetailsClick: (row: R) => void;
+    generateRowId: (row: R) => string;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
@@ -339,6 +340,7 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
+    renderRowDetails?: (row: R) => React.ReactNode;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -363,9 +365,9 @@ export const RawLogTable = memo(
 
     const _onRowExpandClick = useCallback(
       ({ __hyperdx_id, ...row }: Record<string, any>) => {
-        onRowExpandClick(row);
+        onRowDetailsClick?.(row as unknown as R);
       },
-      [onRowExpandClick],
+      [onRowDetailsClick],
     );
 
     const { width } = useWindowSize();
@@ -868,7 +870,12 @@ export const RawLogTable = memo(
                       rowId={rowId}
                       measureElement={rowVirtualizer.measureElement}
                       virtualIndex={virtualRow.index}
-                    />
+                    >
+                      {renderRowDetails?.({
+                        id: rowId,
+                        ...row.original,
+                      })}
+                    </ExpandedLogRow>
                   )}
                 </React.Fragment>
               );
@@ -1083,7 +1090,7 @@ function DBSqlRowTableComponent({
   config,
   sourceId,
   onError,
-  onRowExpandClick,
+  onRowDetailsClick,
   highlightedLineId,
   enabled = true,
   isLive = false,
@@ -1094,14 +1101,16 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange,
   collapseAllRows,
   showExpandButton = true,
+  renderRowDetails,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
-  onRowExpandClick?: (where: string) => void;
-  highlightedLineId: string | undefined;
+  onRowDetailsClick?: (where: string) => void;
+  highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
+  renderRowDetails?: (r: { [key: string]: unknown }) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
@@ -1172,11 +1181,11 @@ function DBSqlRowTableComponent({
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
-  const _onRowExpandClick = useCallback(
+  const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowExpandClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row));
     },
-    [onRowExpandClick, getRowWhere],
+    [onRowDetailsClick, getRowWhere],
   );
 
   useEffect(() => {
@@ -1287,11 +1296,12 @@ function DBSqlRowTableComponent({
         displayedColumns={columns}
         highlightedLineId={highlightedLineId}
         rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        renderRowDetails={renderRowDetails}
         isLoading={isLoading}
         fetchNextPage={fetchNextPage}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPage}
-        onRowExpandClick={_onRowExpandClick}
+        onRowDetailsClick={_onRowDetailsClick}
         onScroll={onScroll}
         generateRowId={getRowWhere}
         isError={isError}

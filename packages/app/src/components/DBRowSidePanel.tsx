@@ -15,7 +15,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Stack } from '@mantine/core';
+import { Box, OptionalPortal, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader, {
@@ -39,7 +39,7 @@ import DBTracePanel from './DBTracePanel';
 import 'react-modern-drawer/dist/index.css';
 import styles from '@/../styles/LogSidePanel.module.scss';
 
-export const RowSidePanelContext = createContext<{
+export type RowSidePanelContextProps = {
   onPropertyAddClick?: (keyPath: string, value: string) => void;
   generateSearchUrl?: ({
     where,
@@ -59,7 +59,9 @@ export const RowSidePanelContext = createContext<{
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-}>({});
+};
+
+export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
 
 enum Tab {
   Overview = 'overview',
@@ -148,7 +150,7 @@ const DBRowSidePanel = ({
         : Tab.Parsed;
 
   const [queryTab, setQueryTab] = useQueryState(
-    'tab',
+    'sidePanelTab',
     parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
   );
 
@@ -484,49 +486,51 @@ export default function DBRowSidePanelErrorBoundary({
   }, ['mouseup', 'touchend']);
 
   return (
-    <Drawer
-      customIdSuffix={`log-side-panel-${rowId}`}
-      duration={0}
-      open={rowId != null}
-      onClose={() => {
-        if (!subDrawerOpen) {
-          _onClose();
-        }
-      }}
-      direction="right"
-      size={`${width}vw`}
-      zIndex={drawerZIndex}
-      enableOverlay={subDrawerOpen}
-    >
-      <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel} ref={drawerRef}>
-          <Box className={styles.panelDragBar} onMouseDown={startResize} />
+    <OptionalPortal withinPortal={!isNestedPanel}>
+      <Drawer
+        customIdSuffix={`log-side-panel-${rowId}`}
+        duration={300}
+        open={rowId != null}
+        onClose={() => {
+          if (!subDrawerOpen) {
+            _onClose();
+          }
+        }}
+        direction="right"
+        size={`${width}vw`}
+        zIndex={drawerZIndex}
+        enableOverlay={subDrawerOpen}
+      >
+        <ZIndexContext.Provider value={drawerZIndex}>
+          <div className={styles.panel} ref={drawerRef}>
+            <Box className={styles.panelDragBar} onMouseDown={startResize} />
 
-          <ErrorBoundary
-            fallbackRender={error => (
-              <Stack>
-                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                  An error occurred while rendering this event.
-                </div>
+            <ErrorBoundary
+              fallbackRender={error => (
+                <Stack>
+                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+                    An error occurred while rendering this event.
+                  </div>
 
-                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-dark-grey p-4">
-                  {error?.error?.message}
-                </div>
-              </Stack>
-            )}
-          >
-            <DBRowSidePanel
-              source={source}
-              rowId={rowId}
-              onClose={_onClose}
-              isNestedPanel={isNestedPanel}
-              breadcrumbPath={breadcrumbPath}
-              setSubDrawerOpen={setSubDrawerOpen}
-              onBreadcrumbClick={onBreadcrumbClick}
-            />
-          </ErrorBoundary>
-        </div>
-      </ZIndexContext.Provider>
-    </Drawer>
+                  <div className="px-2 py-1 m-2 fs-7 font-monospace bg-dark-grey p-4">
+                    {error?.error?.message}
+                  </div>
+                </Stack>
+              )}
+            >
+              <DBRowSidePanel
+                source={source}
+                rowId={rowId}
+                onClose={_onClose}
+                isNestedPanel={isNestedPanel}
+                breadcrumbPath={breadcrumbPath}
+                setSubDrawerOpen={setSubDrawerOpen}
+                onBreadcrumbClick={onBreadcrumbClick}
+              />
+            </ErrorBoundary>
+          </div>
+        </ZIndexContext.Provider>
+      </Drawer>
+    </OptionalPortal>
   );
 }

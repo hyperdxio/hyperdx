@@ -22,13 +22,13 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import { getEventBody } from './source';
 
@@ -144,7 +144,7 @@ function PodLogs({
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
+  const _where = resultType === 'error' ? ' Severity:err' : '';
 
   // Create a properly typed config object for DBSqlRowTable
   const tableConfig = React.useMemo(() => {
@@ -206,14 +206,13 @@ function PodLogs({
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <DBSqlRowTable
+        <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
           config={tableConfig}
-          onRowExpandClick={onRowClick}
-          highlightedLineId={rowId ?? undefined}
           isLive={false}
+          isNestedPanel
+          breadcrumbPath={[{ label: 'Pods' }]}
           queryKeyPrefix="k8s-dashboard-pod-logs"
-          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
