@@ -610,7 +610,7 @@ export const RawLogTable = memo(
     useEffect(() => {
       if (
         scrolledToHighlightedLine ||
-        highlightedLineId == null ||
+        !highlightedLineId ||
         rowVirtualizer == null
       ) {
         return;
