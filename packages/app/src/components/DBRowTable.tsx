@@ -43,11 +43,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
-import {
-  FetchNextPageOptions,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
   ColumnResizeMode,
@@ -699,7 +695,11 @@ export const RawLogTable = memo(
         <table
           className="w-100 bg-inherit"
           id={tableId}
-          style={{ tableLayout: 'fixed' }}
+          style={{
+            tableLayout: 'fixed',
+            borderSpacing: '0 8px',
+            borderCollapse: 'separate',
+          }}
         >
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
@@ -837,20 +837,27 @@ export const RawLogTable = memo(
                     }}
                     role="button"
                     // TODO: Restore highlight
-                    className={cx(styles.tableRow, {
+                    className={cx(styles.tableRow, 'py-2', {
                       [styles.tableRow__selected]: highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}
                   >
                     {row.getVisibleCells().map(cell => {
+                      const columnCustomClassName = (
+                        cell.column.columnDef.meta as any
+                      )?.className;
                       return (
                         <td
                           key={cell.id}
-                          className={cx('align-top overflow-hidden', {
-                            'text-break': wrapLinesEnabled,
-                            'text-truncate': !wrapLinesEnabled,
-                          })}
+                          className={cx(
+                            'align-top overflow-hidden',
+                            {
+                              'text-break': wrapLinesEnabled,
+                              'text-truncate': !wrapLinesEnabled,
+                            },
+                            columnCustomClassName,
+                          )}
                         >
                           {flexRender(
                             cell.column.columnDef.cell,
@@ -1211,8 +1218,6 @@ function DBSqlRowTableComponent({
   const noisyPatternIds = useMemo(() => {
     return noisyPatterns.data?.map(p => p.id) ?? [];
   }, [noisyPatterns.data]);
-
-  const queryClient = useQueryClient();
 
   const denoisedRows = useQuery({
     queryKey: [

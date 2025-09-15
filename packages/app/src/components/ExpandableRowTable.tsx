@@ -2,6 +2,7 @@ import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { IconChevronRight } from '@tabler/icons-react';
 
 import { useLocalStorage } from '@/utils';
 
@@ -191,24 +192,66 @@ export const createExpandButtonColumn = (
     const rowId = info.getValue() as string;
     const isExpanded = expandedRows[rowId] ?? false;
     return (
-      <button
-        type="button"
-        className={cx('btn btn-link p-0 border-0', {
-          'text-success': highlightedLineId === rowId,
-          'text-muted': highlightedLineId !== rowId,
-        })}
-        onClick={e => {
-          e.stopPropagation();
-          toggleRowExpansion(rowId);
-        }}
-        aria-expanded={isExpanded}
-        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
-        style={{ lineHeight: 1 }}
-      >
-        <i className={`bi bi-chevron-${isExpanded ? 'down' : 'right'}`} />
-      </button>
+      <>
+        <button
+          type="button"
+          className={cx('btn btn-link p-0 border-0 mx-auto', {
+            'text-success': highlightedLineId === rowId,
+            'text-muted': highlightedLineId !== rowId,
+          })}
+          onClick={e => {
+            e.stopPropagation();
+            toggleRowExpansion(rowId);
+          }}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+          style={{
+            lineHeight: 1,
+            transition: 'background-color 0.15s ease-in-out',
+            paddingLeft: '2px',
+            paddingRight: '2px',
+          }}
+          onMouseEnter={e => {
+            e.stopPropagation();
+            e.currentTarget.style.backgroundColor =
+              'var(--mantine-color-gray-9)';
+          }}
+          onMouseLeave={e => {
+            e.stopPropagation();
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          <IconChevronRight
+            size={16}
+            style={{
+              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease-in-out',
+              transformOrigin: 'center',
+              display: 'inline-block',
+            }}
+          />
+          <span className="visually-hidden">
+            {isExpanded ? 'Collapse' : 'Expand'} log details
+          </span>
+        </button>
+        <span
+          style={{
+            width: '1px',
+            height: '12px',
+            color: 'var(--bs-border-color)',
+            borderRight: '1px solid var(--mantine-color-gray-9)',
+            marginLeft: '2px',
+            marginRight: '2px',
+            display: 'inline-block',
+            verticalAlign: 'middle',
+          }}
+        />
+      </>
     );
   },
-  size: 8,
+  size: 32,
   enableResizing: false,
+  meta: {
+    className: 'text-center',
+  },
 });

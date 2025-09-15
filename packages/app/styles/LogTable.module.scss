@@ -7,7 +7,7 @@
 }
 
 .tableRow {
-  &:hover {
+  &:hover:not(:has(button:hover)) {
     background-color: $slate-800;
   }
 
