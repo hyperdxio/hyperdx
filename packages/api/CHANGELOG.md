@@ -1,5 +1,51 @@
 # @hyperdx/api
 
+## 2.4.0
+
+### Patch Changes
+
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- fd732a08: perf: Query AlertHistory in bulk
+- 5d567b99: test: Add integration test for user removal alert updates
+- d9b91124: fix: Update Alerts when creating user is deleted
+- Updated dependencies [45e8e1b6]
+- Updated dependencies [fa45875d]
+- Updated dependencies [d938b4a4]
+- Updated dependencies [92224d65]
+- Updated dependencies [e7b590cc]
+  - @hyperdx/common-utils@0.5.0
+
+## 2.3.0
+
+### Minor Changes
+
+- 25f77aa7: added team level queryTimeout to ClickHouse client
+
+### Patch Changes
+
+- 85685801: feat: INGESTION_API_KEY allows for environment variable defined api key
+- eb6f3a01: Fix the alert connection query to include the password field.
+- d6f8058e: - deprecate unused packages/api/src/clickhouse
+  - deprecate unused route /datasources
+  - introduce getJSNativeCreateClient in common-utils
+  - uninstall @clickhouse/client in api package
+  - uninstall @clickhouse/client + @clickhouse/client-web in app package
+  - bump @clickhouse/client in common-utils package to v1.12.1
+- aacd24dd: refactor: decouple clickhouse client into browser.ts and node.ts
+- bb2221a1: fix: Keep "created by" field unchanged during alert updates in dashboards
+- aacd24dd: bump: default request_timeout to 1hr
+- f800fd13: Fixes alert title used on dashboards with multiple tiles
+- 261d4693: feat: limit how many tasks are executing at any time
+- Updated dependencies [25f77aa7]
+- Updated dependencies [d6f8058e]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [52483f6a]
+- Updated dependencies [aacd24dd]
+- Updated dependencies [3f2d4270]
+- Updated dependencies [ecb20c84]
+  - @hyperdx/common-utils@0.4.0
+
 ## 2.2.2
 
 ### Patch Changes

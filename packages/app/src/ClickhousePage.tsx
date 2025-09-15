@@ -704,6 +704,7 @@ function ClickhousePage() {
                 <DBSqlRowTable
                   highlightedLineId={undefined}
                   onRowExpandClick={() => {}}
+                  showExpandButton={false}
                   config={{
                     select: `event_time, query_kind, 
                 read_rows,

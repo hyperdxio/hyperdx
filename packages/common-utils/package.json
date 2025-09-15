@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "license": "MIT",
   "private": true,
   "files": [
@@ -48,7 +48,8 @@
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "dev": "nodemon --watch ./src --ext ts --exec \"tsup\"",
+    "dev": "nodemon --watch ./src --ext ts --exec \"yarn dev:build\"",
+    "dev:build": "tsup && tsc --emitDeclarationOnly --declaration",
     "build": "tsup",
     "ci:build": "tsup",
     "lint": "npx eslint --quiet . --ext .ts",

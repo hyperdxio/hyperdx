@@ -21,6 +21,9 @@ module.exports = {
       '@hyperdx/instrumentation-sentry-node',
     ],
   },
+  typescript: {
+    tsconfigPath: 'tsconfig.build.json',
+  },
   // Ignore otel pkgs warnings
   // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
   webpack: (
