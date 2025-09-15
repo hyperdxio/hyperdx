@@ -57,6 +57,7 @@ export const ExpandedLogRow = memo(
 
     return (
       <tr
+        data-testid={`expanded-row-${rowId}`}
         key={`${virtualKey}-expanded`}
         className={styles.expandedRow}
         data-index={virtualIndex}

@@ -328,6 +328,7 @@ export default function OnboardingModal({
 
   return (
     <Modal
+      data-testid="onboarding-modal"
       opened={step != null}
       onClose={() => {}}
       title="Welcome to HyperDX"
@@ -371,6 +372,7 @@ export default function OnboardingModal({
           )}
           <Divider label="OR" my="md" />
           <Button
+            data-testid="demo-server-button"
             variant="outline"
             w="100%"
             color="gray.4"

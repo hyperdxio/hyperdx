@@ -355,6 +355,7 @@ export const DBSearchPageAlertModal = ({
 
   return (
     <Modal
+      data-testid="alerts-modal"
       opened={open}
       onClose={onClose}
       size="xl"

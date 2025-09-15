@@ -42,8 +42,9 @@ function DBChartExplorerPage() {
   );
 
   return (
-    <Box p="sm" className="bg-hdx-dark">
+    <Box data-testid="chart-explorer-page" p="sm" className="bg-hdx-dark">
       <EditTimeChartForm
+        data-testid="chart-explorer-form"
         chartConfig={chartConfig}
         setChartConfig={config => {
           setChartConfig(config);

@@ -7,18 +7,21 @@ export default function TabBar<T extends string | number | undefined>({
   activeItem,
   className,
   onClick,
+  'data-testid': dataTestId,
 }: {
   items: Array<{ value: T; text: React.ReactNode }>;
   activeItem: T;
   className?: string | undefined;
   onClick?: (item: T) => any;
+  'data-testid'?: string;
 }) {
   return (
-    <div className={cx('d-flex flex-wrap', className)}>
+    <div className={cx('d-flex flex-wrap', className)} data-testid={dataTestId}>
       {items.map(item => {
         return (
           <TabItem
             key={item.value}
+            data-testid={`tab-${String(item.value).toLowerCase()}`}
             active={item.value === activeItem}
             onClick={() => onClick?.(item.value)}
           >

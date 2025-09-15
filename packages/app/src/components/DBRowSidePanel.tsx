@@ -280,6 +280,7 @@ const DBRowSidePanel = ({
                 onClose={_onClose}
               /> */}
       <TabBar
+        data-testid="side-panel-tabs"
         className="fs-8 mt-2"
         items={[
           ...(hasOverviewPanel
@@ -333,7 +334,12 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <RowOverviewPanel source={source} rowId={rowId} hideHeader={true} />
+          <RowOverviewPanel
+            data-testid="side-panel-tab-overview"
+            source={source}
+            rowId={rowId}
+            hideHeader={true}
+          />
         </ErrorBoundary>
       )}
       {displayedTab === Tab.Trace && (
@@ -349,6 +355,7 @@ const DBRowSidePanel = ({
         >
           <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
             <DBTracePanel
+              data-testid="side-panel-tab-trace"
               parentSourceId={source.id}
               childSourceId={childSourceId}
               traceId={traceId}
@@ -370,7 +377,11 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <RowDataPanel source={source} rowId={rowId} />
+          <RowDataPanel
+            data-testid="side-panel-tab-parsed"
+            source={source}
+            rowId={rowId}
+          />
         </ErrorBoundary>
       )}
       {displayedTab === Tab.Context && (
@@ -385,6 +396,7 @@ const DBRowSidePanel = ({
           )}
         >
           <ContextSubpanel
+            data-testid="side-panel-tab-context"
             source={source}
             dbSqlRowTableConfig={dbSqlRowTableConfig}
             rowData={normalizedRow}
@@ -407,6 +419,7 @@ const DBRowSidePanel = ({
         >
           <div className="overflow-hidden flex-grow-1">
             <DBSessionPanel
+              data-testid="side-panel-tab-replay"
               dateRange={fourHourRange}
               focusDate={focusDate}
               setSubDrawerOpen={setSubDrawerOpen}
@@ -430,6 +443,7 @@ const DBRowSidePanel = ({
         >
           <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
             <DBInfraPanel
+              data-testid="side-panel-tab-infrastructure"
               source={source}
               rowData={normalizedRow}
               rowId={rowId}
@@ -485,6 +499,7 @@ export default function DBRowSidePanelErrorBoundary({
 
   return (
     <Drawer
+      data-testid="row-side-panel"
       customIdSuffix={`log-side-panel-${rowId}`}
       duration={0}
       open={rowId != null}
