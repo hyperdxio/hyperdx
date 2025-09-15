@@ -963,7 +963,7 @@ async function translateMetricChartConfig(
 
     const bucketValueExpr = _select.isDelta
       ? renderDeltaExpression(chartConfig, 'Value')
-      : `last_value(Value)`;
+      : `last_value(${_select.valueExpression})`;
 
     return {
       ...restChartConfig,
