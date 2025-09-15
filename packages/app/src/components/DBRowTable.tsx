@@ -695,7 +695,11 @@ export const RawLogTable = memo(
         <table
           className="w-100 bg-inherit"
           id={tableId}
-          style={{ tableLayout: 'fixed' }}
+          style={{
+            tableLayout: 'fixed',
+            borderSpacing: '0 2px',
+            borderCollapse: 'separate',
+          }}
         >
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
