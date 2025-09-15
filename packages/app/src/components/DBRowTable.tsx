@@ -695,11 +695,7 @@ export const RawLogTable = memo(
         <table
           className="w-100 bg-inherit"
           id={tableId}
-          style={{
-            tableLayout: 'fixed',
-            borderSpacing: '0 8px',
-            borderCollapse: 'separate',
-          }}
+          style={{ tableLayout: 'fixed' }}
         >
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
@@ -837,7 +833,7 @@ export const RawLogTable = memo(
                     }}
                     role="button"
                     // TODO: Restore highlight
-                    className={cx(styles.tableRow, 'py-2', {
+                    className={cx(styles.tableRow, {
                       [styles.tableRow__selected]: highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
