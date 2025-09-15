@@ -240,8 +240,8 @@ export const createExpandButtonColumn = (
             height: '12px',
             color: 'var(--bs-border-color)',
             borderRight: '1px solid var(--mantine-color-gray-9)',
-            marginLeft: '2px',
-            marginRight: '2px',
+            marginLeft: '4px',
+            marginRight: '1px',
             display: 'inline-block',
             verticalAlign: 'middle',
           }}
