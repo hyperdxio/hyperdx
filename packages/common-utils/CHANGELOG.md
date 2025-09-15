@@ -1,5 +1,18 @@
 # @hyperdx/common-utils
 
+## 0.5.0
+
+### Minor Changes
+
+- fa45875d: Add delta() function for gauge metrics
+
+### Patch Changes
+
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- 92224d65: Improve Intellisense on common-utils package
+- e7b590cc: fix: Fix invalid valueExpression
+
 ## 0.4.0
 
 ### Minor Changes

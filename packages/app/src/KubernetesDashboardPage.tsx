@@ -830,7 +830,7 @@ function KubernetesDashboardPage() {
   );
 
   return (
-    <Box p="sm">
+    <Box data-testid="kubernetes-dashboard-page" p="sm">
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
@@ -856,6 +856,7 @@ function KubernetesDashboardPage() {
             Kubernetes Dashboard
           </Text>
           <ConnectionSelectControlled
+            data-testid="kubernetes-connection-select"
             control={control}
             name="connection"
             size="xs"
@@ -863,6 +864,7 @@ function KubernetesDashboardPage() {
         </Group>
 
         <form
+          data-testid="kubernetes-time-form"
           onSubmit={e => {
             e.preventDefault();
             onSearch(displayedTimeInputValue);
@@ -870,6 +872,7 @@ function KubernetesDashboardPage() {
           }}
         >
           <TimePicker
+            data-testid="kubernetes-time-picker"
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {

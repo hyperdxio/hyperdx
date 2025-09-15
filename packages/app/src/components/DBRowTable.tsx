@@ -833,6 +833,7 @@ export const RawLogTable = memo(
               return (
                 <React.Fragment key={virtualRow.key}>
                   <tr
+                    data-testid={`table-row-${rowId}`}
                     onClick={() => {
                       // onRowExpandClick(row.original.id, row.original.sort_key);
                       _onRowExpandClick(row.original);

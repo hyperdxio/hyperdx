@@ -285,13 +285,14 @@ function SaveSearchModal({
 
   return (
     <Modal
+      data-testid="save-search-modal"
       opened={opened}
       onClose={closeAndReset}
       title="Save Search"
       centered
       size="lg"
     >
-      <form onSubmit={onSubmit}>
+      <form data-testid="save-search-form" onSubmit={onSubmit}>
         <Stack>
           {chartConfig != null ? (
             <Card withBorder>
@@ -336,6 +337,7 @@ function SaveSearchModal({
               Name
             </Text>
             <InputControlled
+              data-testid="save-search-name-input"
               control={control}
               name="name"
               rules={{ required: true, validate: isValidName }}
@@ -370,7 +372,12 @@ function SaveSearchModal({
                 </Button>
               ))}
               <Tags allowCreate values={tags} onChange={setTags}>
-                <Button variant="outline" color="gray" size="xs">
+                <Button
+                  data-testid="add-tag-button"
+                  variant="outline"
+                  color="gray"
+                  size="xs"
+                >
                   <i className="bi bi-plus me-1"></i>
                   Add Tag
                 </Button>
@@ -378,6 +385,7 @@ function SaveSearchModal({
             </Group>
           </Box>
           <Button
+            data-testid="save-search-submit-button"
             variant="outline"
             color="green"
             type="submit"
@@ -1203,7 +1211,7 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <form onSubmit={onFormSubmit}>
+      <form data-testid="search-form" onSubmit={onFormSubmit}>
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
           <Group gap="4px" wrap="nowrap">
@@ -1218,6 +1226,7 @@ function DBSearchPage() {
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
+                  data-testid="source-settings-menu"
                   variant="subtle"
                   color="dark.2"
                   size="sm"
@@ -1231,6 +1240,7 @@ function DBSearchPage() {
               <Menu.Dropdown>
                 <Menu.Label>Sources</Menu.Label>
                 <Menu.Item
+                  data-testid="create-new-source-menu-item"
                   leftSection={<i className="bi bi-plus-circle" />}
                   onClick={() => setNewSourceModalOpened(true)}
                 >
@@ -1238,6 +1248,7 @@ function DBSearchPage() {
                 </Menu.Item>
                 {IS_LOCAL_MODE ? (
                   <Menu.Item
+                    data-testid="edit-source-menu-item"
                     leftSection={<i className="bi bi-gear" />}
                     onClick={() => setModelFormExpanded(v => !v)}
                   >
@@ -1245,6 +1256,7 @@ function DBSearchPage() {
                   </Menu.Item>
                 ) : (
                   <Menu.Item
+                    data-testid="edit-sources-menu-item"
                     leftSection={<i className="bi bi-gear" />}
                     component={Link}
                     href="/team"
@@ -1284,6 +1296,7 @@ function DBSearchPage() {
             <>
               {!savedSearchId ? (
                 <Button
+                  data-testid="save-search-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1295,6 +1308,7 @@ function DBSearchPage() {
                 </Button>
               ) : (
                 <Button
+                  data-testid="update-search-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1309,6 +1323,7 @@ function DBSearchPage() {
               )}
               {!IS_LOCAL_MODE && (
                 <Button
+                  data-testid="alerts-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1327,6 +1342,7 @@ function DBSearchPage() {
                     onChange={handleUpdateTags}
                   >
                     <Button
+                      data-testid="tags-button"
                       variant="outline"
                       color="dark.2"
                       px="xs"
@@ -1425,6 +1441,7 @@ function DBSearchPage() {
             }
           />
           <TimePicker
+            data-testid="time-picker"
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
@@ -1438,6 +1455,7 @@ function DBSearchPage() {
             showLive={analysisMode === 'results'}
           />
           <Button
+            data-testid="search-submit-button"
             variant="outline"
             type="submit"
             color={formState.isDirty ? 'green' : 'gray.4'}
