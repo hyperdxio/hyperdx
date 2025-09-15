@@ -155,7 +155,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   }, [alert]);
 
   return (
-    <div className={styles.alertRow}>
+    <div data-testid={`alert-card-${alert.id}`} className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
           <Badge variant="light" color="red">
@@ -172,6 +172,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         <Stack gap={2}>
           <div>
             <Link
+              data-testid={`alert-link-${alert.id}`}
               href={alertUrl}
               className={styles.alertLink}
               title={linkTitle}
@@ -239,7 +240,7 @@ export default function AlertsPage() {
   const alerts = React.useMemo(() => data?.data || [], [data?.data]);
 
   return (
-    <div className="AlertsPage">
+    <div data-testid="alerts-page" className="AlertsPage">
       <Head>
         <title>Alerts - HyperDX</title>
       </Head>

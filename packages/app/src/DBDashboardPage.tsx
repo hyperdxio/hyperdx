@@ -226,6 +226,7 @@ const Tile = forwardRef(
 
     return (
       <div
+        data-testid={`dashboard-tile-${chart.id}`}
         className={`p-2 ${className} d-flex flex-column ${
           isHighlighed && 'dashboard-chart-highlighted'
         }`}
@@ -261,6 +262,7 @@ const Tile = forwardRef(
                   mr={4}
                 >
                   <Button
+                    data-testid={`tile-alerts-button-${chart.id}`}
                     variant="subtle"
                     color="gray.4"
                     size="xxs"
@@ -273,6 +275,7 @@ const Tile = forwardRef(
               )}
 
               <Button
+                data-testid={`tile-duplicate-button-${chart.id}`}
                 variant="subtle"
                 color="gray.4"
                 size="xxs"
@@ -282,6 +285,7 @@ const Tile = forwardRef(
                 <i className="bi bi-copy fs-8"></i>
               </Button>
               <Button
+                data-testid={`tile-edit-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
                 color="gray.4"
@@ -291,11 +295,12 @@ const Tile = forwardRef(
                 <i className="bi bi-pencil"></i>
               </Button>
               <Button
+                data-testid={`tile-delete-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
                 color="gray.4"
                 onClick={onDeleteClick}
-                title="Edit"
+                title="Delete"
               >
                 <i className="bi bi-trash"></i>
               </Button>

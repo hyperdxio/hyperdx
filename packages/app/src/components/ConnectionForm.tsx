@@ -199,6 +199,7 @@ export function ConnectionForm({
 
   return (
     <form
+      data-testid="connection-form"
       onSubmit={e => {
         e.preventDefault();
         handleSubmit(d => {
@@ -212,6 +213,7 @@ export function ConnectionForm({
             Connection Name
           </Text>
           <InputControlled
+            data-testid="connection-name-input"
             name="name"
             control={control}
             placeholder="My Clickhouse Server"
@@ -223,6 +225,7 @@ export function ConnectionForm({
             Host
           </Text>
           <InputControlled
+            data-testid="connection-host-input"
             name="host"
             control={control}
             placeholder="http://localhost:8123"
@@ -234,6 +237,7 @@ export function ConnectionForm({
             Username
           </Text>
           <InputControlled
+            data-testid="connection-username-input"
             name="username"
             control={control}
             placeholder="Username (default: default)"
@@ -245,6 +249,7 @@ export function ConnectionForm({
           </Text>
           {!showUpdatePassword && !isNew && (
             <Button
+              data-testid="update-password-button"
               variant="outline"
               color="gray.4"
               onClick={() => {
@@ -257,6 +262,7 @@ export function ConnectionForm({
           {(showUpdatePassword || isNew) && (
             <Flex align="center" gap="sm">
               <PasswordInputControlled
+                data-testid="connection-password-input"
                 style={{ flexGrow: 1 }}
                 name="password"
                 control={control}
@@ -264,6 +270,7 @@ export function ConnectionForm({
               />
               {!isNew && (
                 <Button
+                  data-testid="cancel-password-button"
                   variant="outline"
                   color="gray.4"
                   onClick={() => {
@@ -280,6 +287,7 @@ export function ConnectionForm({
         <Group justify="space-between">
           <Group gap="xs" justify="flex-start">
             <Button
+              data-testid="connection-save-button"
               variant="outline"
               type="submit"
               loading={

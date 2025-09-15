@@ -6,6 +6,7 @@ export default function TabItem({
   active,
   className,
   style,
+  ...props
 }: any) {
   return (
     <div
@@ -19,6 +20,7 @@ export default function TabItem({
       )}
       onClick={onClick}
       style={style}
+      {...props}
     >
       <span>{children}</span>
       <div className="w-100 mt-2" style={{ height: 4 }}>
