@@ -144,7 +144,7 @@ function PodLogs({
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = resultType === 'error' ? ' Severity:err' : '';
+  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
 
   // Create a properly typed config object for DBSqlRowTable
   const tableConfig = React.useMemo(() => {

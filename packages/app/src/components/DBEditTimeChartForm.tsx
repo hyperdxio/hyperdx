@@ -979,7 +979,6 @@ export default function EditTimeChartForm({
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
-            aaa
             <DBSqlRowTableWithSideBar
               sourceId={sourceId}
               config={{
