@@ -86,7 +86,7 @@ import {
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
 import { getMetricTableName, hashCode, omit } from './utils';
-import { ZIndexContext } from './zIndex';
+import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -385,6 +385,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
 }) => {
+  const contextZIndex = useZIndex();
+  const modalZIndex = contextZIndex + 10;
   return (
     <Modal
       opened={chart != null}
@@ -393,22 +395,25 @@ const EditTileModal = ({
       centered
       size="90%"
       padding="xs"
+      zIndex={modalZIndex}
     >
       {chart != null && (
-        <EditTimeChartForm
-          dashboardId={dashboardId}
-          chartConfig={chart.config}
-          setChartConfig={config => {}}
-          dateRange={dateRange}
-          isSaving={isSaving}
-          onSave={config => {
-            onSave({
-              ...chart,
-              config: config,
-            });
-          }}
-          onClose={onClose}
-        />
+        <ZIndexContext.Provider value={modalZIndex + 10}>
+          <EditTimeChartForm
+            dashboardId={dashboardId}
+            chartConfig={chart.config}
+            setChartConfig={config => {}}
+            dateRange={dateRange}
+            isSaving={isSaving}
+            onSave={config => {
+              onSave({
+                ...chart,
+                config: config,
+              });
+            }}
+            onClose={onClose}
+          />
+        </ZIndexContext.Provider>
       )}
     </Modal>
   );
