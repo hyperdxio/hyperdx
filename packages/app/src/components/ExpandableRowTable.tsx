@@ -210,6 +210,9 @@ export const createExpandButtonColumn = (
             transition: 'background-color 0.15s ease-in-out',
             paddingLeft: '2px',
             paddingRight: '2px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
           onMouseEnter={e => {
             e.stopPropagation();
