@@ -5,6 +5,7 @@ import {
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
+  removeTrailingDirection,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
 } from '../utils';
@@ -272,6 +273,15 @@ describe('utils', () => {
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
 
+    it('should return false if empty orderBy is provided', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: '',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
+    });
+
     it('should return false if the first ordering column is not in the timestampValueExpression', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
@@ -342,6 +352,16 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfHour(TimestampTime), TimestampTime) DESC',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should support functions with multiple parameters in the order by', () => {
+      const config = {
+        timestampValueExpression:
+          'toStartOfInterval(TimestampTime, INTERVAL 1 DAY)',
+        orderBy: 'toStartOfInterval(TimestampTime, INTERVAL 1 DAY) DESC',
       } as ChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);

@@ -309,6 +309,17 @@ export const getFirstOrderingItem = (
     : orderBy[0];
 };
 
+export const removeTrailingDirection = (s: string) => {
+  const upper = s.trim().toUpperCase();
+  if (upper.endsWith('DESC')) {
+    return s.slice(0, upper.lastIndexOf('DESC')).trim();
+  } else if (upper.endsWith('ASC')) {
+    return s.slice(0, upper.lastIndexOf('ASC')).trim();
+  }
+
+  return s;
+};
+
 export const isTimestampExpressionInFirstOrderBy = (
   config: ChartConfigWithDateRange,
 ) => {
@@ -317,7 +328,7 @@ export const isTimestampExpressionInFirstOrderBy = (
 
   const firstOrderingExpression =
     typeof firstOrderingItem === 'string'
-      ? firstOrderingItem.replace(/\s+(ASC|DESC)$/i, '')
+      ? removeTrailingDirection(firstOrderingItem)
       : firstOrderingItem.valueExpression;
 
   const timestampValueExpressions = splitAndTrimWithBracket(
@@ -338,7 +349,7 @@ export const isFirstOrderByAscending = (
 
   const isDescending =
     typeof primaryOrderingItem === 'string'
-      ? /DESC$/.test(primaryOrderingItem.trim().toUpperCase())
+      ? primaryOrderingItem.trim().toUpperCase().endsWith('DESC')
       : primaryOrderingItem.ordering === 'DESC';
 
   return !isDescending;

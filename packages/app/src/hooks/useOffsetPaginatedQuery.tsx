@@ -210,8 +210,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const config = queryKey[1];
 
   // Get the time window for this page
-  const useWindowing = isTimestampExpressionInFirstOrderBy(config);
-  const timeWindow = useWindowing
+  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const timeWindow = shouldUseWindowing
     ? getTimeWindowFromPageParam(config, pageParam)
     : {
         startTime: config.dateRange[0],
