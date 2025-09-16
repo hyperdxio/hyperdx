@@ -178,6 +178,7 @@ export const TimePicker = ({
     >
       <Popover.Target>
         <TextInput
+          data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
               <Icon
@@ -224,6 +225,7 @@ export const TimePicker = ({
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             <Button
+              data-testid="time-picker-1h-back"
               size="compact-xs"
               color="gray"
               variant="light"
@@ -233,6 +235,7 @@ export const TimePicker = ({
               1h back
             </Button>
             <Button
+              data-testid="time-picker-1h-forward"
               size="compact-xs"
               color="gray"
               variant="light"
@@ -243,7 +246,7 @@ export const TimePicker = ({
             </Button>
           </Group>
           <Group gap={4}>
-            <CloseButton onClick={close} />
+            <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
         </Group>
         <Group gap={1} align="stretch">
@@ -329,6 +332,7 @@ export const TimePicker = ({
               style={{ borderTop: '1px solid #282828' }}
             >
               <Button
+                data-testid="time-picker-apply"
                 size="compact-sm"
                 variant="light"
                 disabled={!form.isValid()}
