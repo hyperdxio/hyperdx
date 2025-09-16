@@ -1,5 +1,21 @@
 # @hyperdx/api
 
+## 2.4.0
+
+### Patch Changes
+
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- fd732a08: perf: Query AlertHistory in bulk
+- 5d567b99: test: Add integration test for user removal alert updates
+- d9b91124: fix: Update Alerts when creating user is deleted
+- Updated dependencies [45e8e1b6]
+- Updated dependencies [fa45875d]
+- Updated dependencies [d938b4a4]
+- Updated dependencies [92224d65]
+- Updated dependencies [e7b590cc]
+  - @hyperdx/common-utils@0.5.0
+
 ## 2.3.0
 
 ### Minor Changes
