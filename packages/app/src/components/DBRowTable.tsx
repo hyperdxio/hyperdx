@@ -273,7 +273,7 @@ const SqlModal = ({
 };
 
 export const RawLogTable = memo(
-  <R extends Record<string, any> = Record<string, any>>({
+  ({
     tableId,
     displayedColumns,
     fetchNextPage,
@@ -310,11 +310,11 @@ export const RawLogTable = memo(
     displayedColumns: string[];
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
-    rows: R[];
+    rows: Record<string, any>[];
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
-    onRowDetailsClick: (row: R) => void;
-    generateRowId: (row: R) => string;
+    onRowDetailsClick: (row: Record<string, any>) => void;
+    generateRowId: (row: Record<string, any>) => string;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
@@ -340,7 +340,7 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
-    renderRowDetails?: (row: R) => React.ReactNode;
+    renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -365,7 +365,7 @@ export const RawLogTable = memo(
 
     const _onRowExpandClick = useCallback(
       ({ __hyperdx_id, ...row }: Record<string, any>) => {
-        onRowDetailsClick?.(row as unknown as R);
+        onRowDetailsClick?.(row);
       },
       [onRowDetailsClick],
     );
@@ -835,7 +835,6 @@ export const RawLogTable = memo(
                   <tr
                     data-testid={`table-row-${rowId}`}
                     onClick={() => {
-                      // onRowExpandClick(row.original.id, row.original.sort_key);
                       _onRowExpandClick(row.original);
                     }}
                     role="button"
