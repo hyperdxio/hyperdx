@@ -9,6 +9,10 @@ import {
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
+  isFirstOrderByAscending,
+  isTimestampExpressionInFirstOrderBy,
+} from '@hyperdx/common-utils/dist/utils';
+import {
   QueryClient,
   QueryFunction,
   useInfiniteQuery,
@@ -45,6 +49,7 @@ type TimeWindow = {
   startTime: Date;
   endTime: Date;
   windowIndex: number;
+  direction: 'ASC' | 'DESC';
 };
 
 type TPageParam = {
@@ -64,8 +69,11 @@ type TData = {
   pageParams: TPageParam[];
 };
 
-// Generate time windows from date range using progressive bucketing
-function generateTimeWindows(startDate: Date, endDate: Date): TimeWindow[] {
+// Generate time windows from date range using progressive bucketing, starting at the end of the date range
+function generateTimeWindowsDescending(
+  startDate: Date,
+  endDate: Date,
+): TimeWindow[] {
   const windows: TimeWindow[] = [];
   let currentEnd = new Date(endDate);
   let windowIndex = 0;
@@ -82,9 +90,38 @@ function generateTimeWindows(startDate: Date, endDate: Date): TimeWindow[] {
       endTime: new Date(currentEnd),
       startTime: windowStart,
       windowIndex,
+      direction: 'DESC',
     });
 
     currentEnd = windowStart;
+    windowIndex++;
+  }
+
+  return windows;
+}
+
+// Generate time windows from date range using progressive bucketing, starting at the beginning of the date range
+function generateTimeWindowsAscending(startDate: Date, endDate: Date) {
+  const windows: TimeWindow[] = [];
+  let currentStart = new Date(startDate);
+  let windowIndex = 0;
+
+  while (currentStart < endDate) {
+    const windowSize =
+      TIME_WINDOWS_MS[windowIndex] ||
+      TIME_WINDOWS_MS[TIME_WINDOWS_MS.length - 1]; // use largest window size
+    const windowEnd = new Date(
+      Math.min(currentStart.getTime() + windowSize, endDate.getTime()),
+    );
+
+    windows.push({
+      startTime: new Date(currentStart),
+      endTime: windowEnd,
+      windowIndex,
+      direction: 'ASC',
+    });
+
+    currentStart = windowEnd;
     windowIndex++;
   }
 
@@ -97,7 +134,9 @@ function getTimeWindowFromPageParam(
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
-  const windows = generateTimeWindows(startDate, endDate);
+  const windows = isFirstOrderByAscending(config.orderBy)
+    ? generateTimeWindowsAscending(startDate, endDate)
+    : generateTimeWindowsDescending(startDate, endDate);
   const window = windows[pageParam.windowIndex];
   if (window == null) {
     throw new Error('Invalid time window for page param');
@@ -116,7 +155,9 @@ function getNextPageParam(
   }
 
   const [startDate, endDate] = config.dateRange;
-  const windows = generateTimeWindows(startDate, endDate);
+  const windows = isFirstOrderByAscending(config.orderBy)
+    ? generateTimeWindowsAscending(startDate, endDate)
+    : generateTimeWindowsDescending(startDate, endDate);
   const currentWindow = lastPage.window;
 
   // Calculate total results from all pages in current window
@@ -169,7 +210,15 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const config = queryKey[1];
 
   // Get the time window for this page
-  const timeWindow = getTimeWindowFromPageParam(config, pageParam);
+  const useWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const timeWindow = useWindowing
+    ? getTimeWindowFromPageParam(config, pageParam)
+    : {
+        startTime: config.dateRange[0],
+        endTime: config.dateRange[1],
+        windowIndex: 0,
+        direction: 'DESC' as const,
+      };
 
   // Create config with windowed date range
   const windowedConfig = {

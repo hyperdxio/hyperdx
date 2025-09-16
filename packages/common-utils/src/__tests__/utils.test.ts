@@ -1,4 +1,13 @@
-import { formatDate, splitAndTrimCSV, splitAndTrimWithBracket } from '../utils';
+import { ChartConfigWithDateRange } from '@/types';
+
+import {
+  formatDate,
+  getFirstOrderingItem,
+  isFirstOrderByAscending,
+  isTimestampExpressionInFirstOrderBy,
+  splitAndTrimCSV,
+  splitAndTrimWithBracket,
+} from '../utils';
 
 describe('utils', () => {
   describe('formatDate', () => {
@@ -207,6 +216,189 @@ describe('utils', () => {
         '"foo, bar"',
       ];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should handle order-by clauses with order directions', () => {
+      const input = 'toDate(Timestamp) ASC, Time ASC, ServiceName DESC';
+      const expected = [
+        'toDate(Timestamp) ASC',
+        'Time ASC',
+        'ServiceName DESC',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+  });
+
+  describe('getFirstOrderingItem', () => {
+    it('should return undefined for undefined input', () => {
+      expect(getFirstOrderingItem(undefined)).toBeUndefined();
+    });
+
+    it('should return the first column name for a single column string input', () => {
+      expect(getFirstOrderingItem('column1 DESC')).toBe('column1 DESC');
+    });
+
+    it('should return the first column name for a simple string input', () => {
+      expect(getFirstOrderingItem('column1, column2 DESC, column3 ASC')).toBe(
+        'column1',
+      );
+    });
+
+    it('should return the first column name for a simple string input', () => {
+      expect(
+        getFirstOrderingItem('column1 ASC, column2 DESC, column3 ASC'),
+      ).toBe('column1 ASC');
+    });
+
+    it('should return the first column name for an array of objects input', () => {
+      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+        { valueExpression: 'column1', ordering: 'ASC' },
+        { valueExpression: 'column2', ordering: 'ASC' },
+      ];
+      expect(getFirstOrderingItem(orderBy)).toEqual({
+        valueExpression: 'column1',
+        ordering: 'ASC',
+      });
+    });
+  });
+
+  describe('isFirstOrderingOnTimestampExpression', () => {
+    it('should return false if no orderBy is provided', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: undefined,
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
+    });
+
+    it('should return false if the first ordering column is not in the timestampValueExpression', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: 'ServiceName',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
+    });
+
+    it('should return false if the second ordering column is in the timestampValueExpression but the first is not', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: 'ServiceName ASC, Timestamp',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
+    });
+
+    it('should return true if the first ordering column is the timestampValueExpression', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: 'Timestamp',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should return true if the first ordering column is a string and has a direction', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: 'Timestamp DESC, ServiceName',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should return true if the first ordering column is a string and has a lowercase direction', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: 'Timestamp desc, ServiceName',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should return true if the first ordering column is an object and is in the timestampValueExpression', () => {
+      const config = {
+        timestampValueExpression: 'Timestamp',
+        orderBy: [
+          { valueExpression: 'Timestamp', ordering: 'ASC' },
+          { valueExpression: 'ServiceName', ordering: 'ASC' },
+        ],
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should support toStartOf() timestampValueExpressions', () => {
+      const config = {
+        timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
+        orderBy: '(toStartOfDay(Timestamp)) DESC, Timestamp',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+
+    it('should support toStartOf() timestampValueExpressions in tuples', () => {
+      const config = {
+        timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
+        orderBy: '(toStartOfHour(TimestampTime), TimestampTime) DESC',
+      } as ChartConfigWithDateRange;
+
+      expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
+    });
+  });
+
+  describe('isFirstOrderingAscending', () => {
+    it('should return true for ascending order in string input', () => {
+      expect(isFirstOrderByAscending('column1 ASC, column2 DESC')).toBe(true);
+    });
+
+    it('should return true for lowercase, non-trimmed ascending order in string input', () => {
+      expect(isFirstOrderByAscending(' column1 asc , column2 DESC')).toBe(true);
+    });
+
+    it('should return true for ascending order without explicit direction in string input', () => {
+      expect(isFirstOrderByAscending('column1, column2 DESC')).toBe(true);
+    });
+
+    it('should return false for descending order in string input', () => {
+      expect(isFirstOrderByAscending('column1 DESC, column2 ASC')).toBe(false);
+    });
+
+    it('should return false for lowercase, non-trimmed descending order in string input', () => {
+      expect(isFirstOrderByAscending(' column1 desc , column2 ASC')).toBe(
+        false,
+      );
+    });
+
+    it('should return true for ascending order in object input', () => {
+      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+        { valueExpression: 'column1', ordering: 'ASC' },
+        { valueExpression: 'column2', ordering: 'DESC' },
+      ];
+      expect(isFirstOrderByAscending(orderBy)).toBe(true);
+    });
+
+    it('should return false for descending order in object input', () => {
+      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+        { valueExpression: 'column1', ordering: 'DESC' },
+        { valueExpression: 'column2', ordering: 'ASC' },
+      ];
+      expect(isFirstOrderByAscending(orderBy)).toBe(false);
+    });
+
+    it('should return false if no orderBy is provided', () => {
+      expect(isFirstOrderByAscending(undefined)).toBe(false);
+    });
+
+    it('should support toStartOf() timestampValueExpressions in tuples', () => {
+      const orderBy = '(toStartOfHour(TimestampTime), TimestampTime) DESC';
+      expect(isFirstOrderByAscending(orderBy)).toBe(false);
+    });
+
+    it('should support toStartOf() timestampValueExpressions in tuples', () => {
+      const orderBy = '(toStartOfHour(TimestampTime), TimestampTime) ASC';
+      expect(isFirstOrderByAscending(orderBy)).toBe(true);
     });
   });
 });
