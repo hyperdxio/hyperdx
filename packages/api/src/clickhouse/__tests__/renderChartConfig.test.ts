@@ -438,6 +438,57 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
+
+    it('single max gauge with delta', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+              isDelta: true,
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    it('single max gauge with delta and group by', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'max',
+              metricName: 'test.cpu',
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+              isDelta: true,
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '5 minute',
+          groupBy: `ResourceAttributes['host']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+      expect(await queryData(query)).toMatchSnapshot();
+    });
   });
 
   describe('Query Metrics - Sum', () => {

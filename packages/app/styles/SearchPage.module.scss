@@ -122,3 +122,11 @@
   overflow: hidden;
   position: relative;
 }
+
+.chevron {
+  transform: rotate(-90deg);
+
+  &[data-rotate] {
+    transform: rotate(0deg);
+  }
+}

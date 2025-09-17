@@ -82,6 +82,7 @@ export const AppNavUserMenu = ({
     <Menu position="top-start" transitionProps={{ transition: 'fade-up' }}>
       <Menu.Target>
         <Paper
+          data-testid="user-menu-trigger"
           m="sm"
           mt={8}
           px={8}
@@ -150,6 +151,7 @@ export const AppNavUserMenu = ({
           <Menu.Label fz="xs">Local mode</Menu.Label>
         ) : (
           <Menu.Item
+            data-testid="team-settings-menu-item"
             href="/team"
             component={Link}
             leftSection={<Icon name="gear" />}
@@ -158,6 +160,7 @@ export const AppNavUserMenu = ({
           </Menu.Item>
         )}
         <Menu.Item
+          data-testid="user-preferences-menu-item"
           leftSection={<Icon name="person-gear" />}
           onClick={onClickUserPreferences}
         >
@@ -167,6 +170,7 @@ export const AppNavUserMenu = ({
           <>
             <Menu.Divider />
             <Menu.Item
+              data-testid="logout-menu-item"
               color="red"
               leftSection={<Icon name="box-arrow-left" />}
               component={Link}
@@ -231,7 +235,7 @@ export const AppNavHelpMenu = ({
           defaultOpened={false}
         >
           <Menu.Target>
-            <UnstyledButton w="100%">
+            <UnstyledButton data-testid="help-menu-trigger" w="100%">
               <Group
                 align="center"
                 justify="center"
@@ -253,6 +257,7 @@ export const AppNavHelpMenu = ({
             </Menu.Label>
 
             <Menu.Item
+              data-testid="documentation-menu-item"
               href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
               leftSection={<Icon name="book" />}
@@ -260,6 +265,7 @@ export const AppNavHelpMenu = ({
               Documentation
             </Menu.Item>
             <Menu.Item
+              data-testid="discord-menu-item"
               leftSection={<Icon name="discord" />}
               component="a"
               href="https://hyperdx.io/discord"
@@ -268,6 +274,7 @@ export const AppNavHelpMenu = ({
               Discord Community
             </Menu.Item>
             <Menu.Item
+              data-testid="setup-instructions-menu-item"
               leftSection={<Icon name="lightbulb" />}
               onClick={onAddDataClick}
             >
@@ -301,9 +308,13 @@ export const AppNavLink = ({
 }) => {
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
+  // Create a test id based on the href
+  const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
+
   return (
     <Group justify="space-between" px="md" py="6px">
       <Link
+        data-testid={testId}
         href={href}
         className={cx(
           className,
@@ -318,6 +329,7 @@ export const AppNavLink = ({
       </Link>
       {!isCollapsed && onToggle && (
         <ActionIcon
+          data-testid={`${testId}-toggle`}
           variant="subtle"
           color="dark.2"
           size="sm"

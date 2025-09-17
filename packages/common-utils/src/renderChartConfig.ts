@@ -24,6 +24,7 @@ import {
 } from '@/types';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@/utils';
@@ -85,7 +86,11 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
       ...config,
       select: config.select.map(s => ({
         ...s,
-        alias: s.alias || `${s.aggFn}(${s.metricName})`, // use an alias if one isn't already set
+        alias:
+          s.alias ||
+          (s.isDelta
+            ? `${s.aggFn}(delta(${s.metricName}))`
+            : `${s.aggFn}(${s.metricName})`), // use an alias if one isn't already set
       })),
     };
   }
@@ -893,6 +898,24 @@ function renderFill(
   return undefined;
 }
 
+function renderDeltaExpression(
+  chartConfig: ChartConfigWithOptDateRange,
+  valueExpression: string,
+) {
+  const interval =
+    chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
+      ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+      : chartConfig.granularity;
+  const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
+
+  const valueDiff = `(argMax(${valueExpression}, ${chartConfig.timestampValueExpression}) - argMin(${valueExpression}, ${chartConfig.timestampValueExpression}))`;
+  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${chartConfig.timestampValueExpression})), max(toDateTime(${chartConfig.timestampValueExpression})))`;
+
+  // Prevent division by zero, if timeDiffInSeconds is 0, return 0
+  // The delta is extrapolated to the bucket interval, to match prometheus delta() behavior
+  return `IF(${timeDiffInSeconds} > 0, ${valueDiff} * ${intervalInSeconds} / ${timeDiffInSeconds}, 0)`;
+}
+
 async function translateMetricChartConfig(
   chartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
@@ -938,6 +961,10 @@ async function translateMetricChartConfig(
       metadata,
     );
 
+    const bucketValueExpr = _select.isDelta
+      ? renderDeltaExpression(chartConfig, 'Value')
+      : `last_value(Value)`;
+
     return {
       ...restChartConfig,
       with: [
@@ -957,7 +984,7 @@ async function translateMetricChartConfig(
             SELECT
               ${timeExpr},
               AttributesHash,
-              last_value(Value) AS LastValue,
+              ${bucketValueExpr} AS LastValue,
               any(ScopeAttributes) AS ScopeAttributes,
               any(ResourceAttributes) AS ResourceAttributes,
               any(Attributes) AS Attributes,
@@ -990,6 +1017,7 @@ async function translateMetricChartConfig(
       },
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: timeBucketCol,
+      settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
   } else if (metricType === MetricsDataType.Sum && metricName) {
     const timeBucketCol = '__hdx_time_bucket2';
