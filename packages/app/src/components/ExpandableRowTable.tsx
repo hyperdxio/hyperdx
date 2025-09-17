@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -192,24 +192,12 @@ const ExpandButton = memo(
     highlightedLineId?: string;
     toggleRowExpansion: (rowId: string) => void;
   }) => {
-    const buttonRef = useRef<HTMLButtonElement>(null);
-
-    // Apply the rotation directly to the DOM element to avoid React re-rendering issues
-    useEffect(() => {
-      if (buttonRef.current) {
-        const svg = buttonRef.current.querySelector('svg');
-        if (svg) {
-          svg.style.transform = isExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
-        }
-      }
-    }, [isExpanded]);
-
     return (
       <span className="d-flex align-items-center justify-content-center">
         <button
-          ref={buttonRef}
           type="button"
           className={cx(styles.expandButton, {
+            [styles.expanded]: isExpanded,
             'text-success': highlightedLineId === rowId,
             'text-muted': highlightedLineId !== rowId,
           })}
@@ -220,13 +208,7 @@ const ExpandButton = memo(
           aria-expanded={isExpanded}
           aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
         >
-          <IconChevronRight
-            size={16}
-            style={{
-              transition: 'transform 0.3s ease-in-out',
-              transformOrigin: 'center',
-            }}
-          />
+          <IconChevronRight size={16} />
         </button>
         <span className={styles.expandButtonSeparator} />
       </span>
