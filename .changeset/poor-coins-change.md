@@ -2,4 +2,4 @@
 "@hyperdx/app": minor
 ---
 
-feat: Allow chart series to be reodered
+feat: Allow chart series to be reordered
