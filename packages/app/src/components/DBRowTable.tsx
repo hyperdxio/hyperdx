@@ -1261,6 +1261,11 @@ function DBSqlRowTableComponent({
       groupedPatterns.isLoading
     : isFetching;
 
+  const loadingDate =
+    data?.window?.direction === 'ASC'
+      ? data?.window?.endTime
+      : data?.window?.startTime;
+
   return (
     <>
       {denoiseResults && (
@@ -1299,7 +1304,7 @@ function DBSqlRowTableComponent({
         error={error ?? undefined}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
-        loadingDate={data?.window?.startTime}
+        loadingDate={loadingDate}
         config={config}
         onChildModalOpen={onChildModalOpen}
         source={source}
