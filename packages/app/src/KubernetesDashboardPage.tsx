@@ -38,8 +38,7 @@ import {
 import { TimePicker } from '@/components/TimePicker';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
-import DBRowSidePanel from './components/DBRowSidePanel';
-import { DBSqlRowTable } from './components/DBRowTable';
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
@@ -830,24 +829,6 @@ function KubernetesDashboardPage() {
     [_searchQuery, setSearchQuery],
   );
 
-  // Row details side panel
-  const [rowId, setRowId] = useQueryState('rowWhere');
-  const [rowSource, setRowSource] = useQueryState('rowSource');
-  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
-
-  const handleSidePanelClose = React.useCallback(() => {
-    setRowId(null);
-    setRowSource(null);
-  }, [setRowId, setRowSource]);
-
-  const handleRowExpandClick = React.useCallback(
-    (rowWhere: string) => {
-      setRowId(rowWhere);
-      setRowSource(logSource?.id ?? null);
-    },
-    [logSource?.id, setRowId, setRowSource],
-  );
-
   return (
     <Box data-testid="kubernetes-dashboard-page" p="sm">
       <OnboardingModal requireSource={false} />
@@ -867,13 +848,6 @@ function KubernetesDashboardPage() {
         <NamespaceDetailsSidePanel
           metricSource={metricSource}
           logSource={logSource}
-        />
-      )}
-      {rowId && rowSidePanelSource && (
-        <DBRowSidePanel
-          source={rowSidePanelSource}
-          rowId={rowId}
-          onClose={handleSidePanelClose}
         />
       )}
       <Group justify="space-between">
@@ -1047,7 +1021,7 @@ function KubernetesDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {logSource && (
-                      <DBSqlRowTable
+                      <DBSqlRowTableWithSideBar
                         sourceId={logSource.id}
                         config={{
                           ...logSource,
@@ -1090,11 +1064,8 @@ function KubernetesDashboardPage() {
                           limit: { limit: 200, offset: 0 },
                           dateRange,
                         }}
-                        onRowExpandClick={handleRowExpandClick}
-                        highlightedLineId={rowId ?? undefined}
                         isLive={false}
                         queryKeyPrefix="k8s-dashboard-events"
-                        onScroll={() => {}}
                       />
                     )}
                   </Card.Section>

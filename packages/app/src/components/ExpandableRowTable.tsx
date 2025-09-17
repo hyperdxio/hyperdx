@@ -4,19 +4,7 @@ import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { IconChevronRight } from '@tabler/icons-react';
 
-import { useLocalStorage } from '@/utils';
-
-import TabBar from '../TabBar';
-
-import { RowDataPanel } from './DBRowDataPanel';
-import { RowOverviewPanel } from './DBRowOverviewPanel';
-
 import styles from '../../styles/LogTable.module.scss';
-
-enum InlineTab {
-  Overview = 'overview',
-  ColumnValues = 'columnValues',
-}
 
 // Hook that provides a function to open the sidebar with specific row details
 const useSidebarOpener = () => {
@@ -24,9 +12,9 @@ const useSidebarOpener = () => {
   const [, setRowSource] = useQueryState('rowSource');
 
   return useCallback(
-    (rowWhere: string, sourceId: string) => {
+    (rowWhere: string, sourceId?: string) => {
       setRowId(rowWhere);
-      setRowSource(sourceId);
+      setRowSource(sourceId ?? null);
     },
     [setRowId, setRowSource],
   );
@@ -35,26 +23,22 @@ const useSidebarOpener = () => {
 export const ExpandedLogRow = memo(
   ({
     columnsLength,
+    children,
     virtualKey,
     source,
     rowId,
     measureElement,
     virtualIndex,
   }: {
+    children: React.ReactNode;
     columnsLength: number;
     virtualKey: string;
-    source: TSource | undefined;
+    source?: TSource;
     rowId: string;
     measureElement?: (element: HTMLElement | null) => void;
     virtualIndex?: number;
   }) => {
     const openSidebar = useSidebarOpener();
-
-    // Use localStorage to persist the selected tab
-    const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
-      'hdx-expanded-row-default-tab',
-      InlineTab.ColumnValues,
-    );
 
     return (
       <tr
@@ -66,60 +50,30 @@ export const ExpandedLogRow = memo(
       >
         <td colSpan={columnsLength} className="p-0 border-0">
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
-            {source ? (
-              <>
-                <div className="position-relative">
-                  <div className="bg-body px-3 pt-2 position-relative">
-                    {openSidebar && (
-                      <button
-                        type="button"
-                        className={cx(
-                          'position-absolute top-0 end-0 mt-1 me-1 p-1 border-0 bg-transparent text-muted rounded',
-                          styles.expandButton,
-                        )}
-                        onClick={() => openSidebar(rowId, source.id)}
-                        title="Open in sidebar"
-                        aria-label="Open in sidebar"
-                        style={{
-                          zIndex: 1,
-                          fontSize: '12px',
-                          lineHeight: 1,
-                        }}
-                      >
-                        <i className="bi bi-arrows-angle-expand" />
-                      </button>
+            <div className="position-relative">
+              <div className="bg-body px-3 pt-2 position-relative">
+                {openSidebar && (
+                  <button
+                    type="button"
+                    className={cx(
+                      'position-absolute top-0 end-0 mt-1 me-1 p-1 border-0 bg-transparent text-muted rounded',
+                      styles.expandButton,
                     )}
-                    <TabBar
-                      className="fs-8"
-                      items={[
-                        {
-                          text: 'Overview',
-                          value: InlineTab.Overview,
-                        },
-                        {
-                          text: 'Column Values',
-                          value: InlineTab.ColumnValues,
-                        },
-                      ]}
-                      activeItem={activeTab}
-                      onClick={setActiveTab}
-                    />
-                  </div>
-                  <div className="bg-body">
-                    {activeTab === InlineTab.Overview && (
-                      <div className="inline-overview-panel">
-                        <RowOverviewPanel source={source} rowId={rowId} />
-                      </div>
-                    )}
-                    {activeTab === InlineTab.ColumnValues && (
-                      <RowDataPanel source={source} rowId={rowId} />
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="p-3 text-muted">Loading...</div>
-            )}
+                    onClick={() => openSidebar(rowId, source?.id)}
+                    title="Open in sidebar"
+                    aria-label="Open in sidebar"
+                    style={{
+                      zIndex: 1,
+                      fontSize: '12px',
+                      lineHeight: 1,
+                    }}
+                  >
+                    <i className="bi bi-arrows-angle-expand" />
+                  </button>
+                )}
+                {children}
+              </div>
+            </div>
           </div>
         </td>
       </tr>

@@ -25,7 +25,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
@@ -34,6 +33,7 @@ import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 
@@ -201,7 +201,10 @@ function NodeLogs({
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <DBSqlRowTable
+        <DBSqlRowTableWithSideBar
+          sourceId={logSource.id}
+          isNestedPanel
+          breadcrumbPath={[{ label: 'Node Details' }]}
           config={{
             ...logSource,
             where: _where,
@@ -233,12 +236,8 @@ function NodeLogs({
             limit: { limit: 200, offset: 0 },
             dateRange,
           }}
-          onRowExpandClick={() => {}}
-          highlightedLineId={undefined}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-node-logs"
-          showExpandButton={false}
-          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
