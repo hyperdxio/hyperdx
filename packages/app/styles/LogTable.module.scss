@@ -1,5 +1,11 @@
 @import './variables';
 
+.table {
+  table-layout: fixed;
+  border-spacing: 0 2px;
+  border-collapse: separate;
+}
+
 .tableHead {
   background: inherit;
   position: sticky;
