@@ -281,7 +281,7 @@ export const RawLogTable = memo(
     generateRowId,
     onInstructionsClick,
     // onPropertySearchClick,
-    onRowExpandClick,
+    onRowDetailsClick,
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
@@ -296,6 +296,7 @@ export const RawLogTable = memo(
     loadingDate,
     config,
     onChildModalOpen,
+    renderRowDetails,
     source,
     onExpandedRowsChange,
     collapseAllRows,
@@ -306,16 +307,16 @@ export const RawLogTable = memo(
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
     rows: Record<string, any>[];
-    isLoading: boolean;
-    fetchNextPage: (options?: FetchNextPageOptions | undefined) => any;
-    onRowExpandClick: (row: Record<string, any>) => void;
+    isLoading?: boolean;
+    fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
+    onRowDetailsClick: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => string;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
     // ) => void;
-    hasNextPage: boolean;
-    highlightedLineId: string | undefined;
+    hasNextPage?: boolean;
+    highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
     isLive: boolean;
     onShowPatternsClick?: () => void;
@@ -335,6 +336,7 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
+    renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -359,9 +361,9 @@ export const RawLogTable = memo(
 
     const _onRowExpandClick = useCallback(
       ({ __hyperdx_id, ...row }: Record<string, any>) => {
-        onRowExpandClick(row);
+        onRowDetailsClick?.(row);
       },
-      [onRowExpandClick],
+      [onRowDetailsClick],
     );
 
     const { width } = useWindowSize();
@@ -514,7 +516,7 @@ export const RawLogTable = memo(
             hasNextPage
           ) {
             // Cancel refetch is important to ensure we wait for the last fetch to finish
-            fetchNextPage({ cancelRefetch: false });
+            fetchNextPage?.({ cancelRefetch: false });
           }
         }
       },
@@ -604,7 +606,7 @@ export const RawLogTable = memo(
     useEffect(() => {
       if (
         scrolledToHighlightedLine ||
-        highlightedLineId == null ||
+        !highlightedLineId ||
         rowVirtualizer == null
       ) {
         return;
@@ -613,13 +615,13 @@ export const RawLogTable = memo(
       const rowIdx = dedupedRows.findIndex(
         l => getRowId(l) === highlightedLineId,
       );
-      if (rowIdx == -1) {
+      if (rowIdx == -1 && highlightedLineId) {
         if (
           dedupedRows.length < MAX_SCROLL_FETCH_LINES &&
           !isLoading &&
           hasNextPage
         ) {
-          fetchNextPage({ cancelRefetch: false });
+          fetchNextPage?.({ cancelRefetch: false });
         }
       } else {
         setScrolledToHighlightedLine(true);
@@ -825,7 +827,8 @@ export const RawLogTable = memo(
                   <tr
                     data-testid={`table-row-${rowId}`}
                     className={cx(styles.tableRow, {
-                      [styles.tableRow__selected]: highlightedLineId === rowId,
+                      [styles.tableRow__selected]:
+                        highlightedLineId && highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}
@@ -909,7 +912,12 @@ export const RawLogTable = memo(
                       rowId={rowId}
                       measureElement={rowVirtualizer.measureElement}
                       virtualIndex={virtualRow.index}
-                    />
+                    >
+                      {renderRowDetails?.({
+                        id: rowId,
+                        ...row.original,
+                      })}
+                    </ExpandedLogRow>
                   )}
                 </React.Fragment>
               );
@@ -1124,7 +1132,7 @@ function DBSqlRowTableComponent({
   config,
   sourceId,
   onError,
-  onRowExpandClick,
+  onRowDetailsClick,
   highlightedLineId,
   enabled = true,
   isLive = false,
@@ -1135,14 +1143,16 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange,
   collapseAllRows,
   showExpandButton = true,
+  renderRowDetails,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
-  onRowExpandClick?: (where: string) => void;
-  highlightedLineId: string | undefined;
+  onRowDetailsClick?: (where: string) => void;
+  highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
+  renderRowDetails?: (r: { [key: string]: unknown }) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
@@ -1213,11 +1223,11 @@ function DBSqlRowTableComponent({
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
-  const _onRowExpandClick = useCallback(
+  const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowExpandClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row));
     },
-    [onRowExpandClick, getRowWhere],
+    [onRowDetailsClick, getRowWhere],
   );
 
   useEffect(() => {
@@ -1331,11 +1341,12 @@ function DBSqlRowTableComponent({
         displayedColumns={columns}
         highlightedLineId={highlightedLineId}
         rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        renderRowDetails={renderRowDetails}
         isLoading={isLoading}
         fetchNextPage={fetchNextPage}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPage}
-        onRowExpandClick={_onRowExpandClick}
+        onRowDetailsClick={_onRowDetailsClick}
         onScroll={onScroll}
         generateRowId={getRowWhere}
         isError={isError}
