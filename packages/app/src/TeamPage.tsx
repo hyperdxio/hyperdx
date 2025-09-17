@@ -1084,7 +1084,8 @@ interface ClickhouseSettingFormProps {
     | 'searchRowLimit'
     | 'queryTimeout'
     | 'metadataMaxRowsToRead'
-    | 'fieldMetadataDisabled';
+    | 'fieldMetadataDisabled'
+    | 'maxFetchedKeys';
   label: string;
   tooltip?: string;
   type: ClickhouseSettingType;
@@ -1325,6 +1326,17 @@ function TeamQueryConfigSection() {
             type="boolean"
             options={['Enabled', 'Disabled']}
             displayValue={value => (value ? 'Disabled' : 'Enabled')}
+          />
+          <ClickhouseSettingForm
+            settingKey="maxFetchedKeys"
+            label="Max Fetched Keys for Filter Values"
+            tooltip="Maximum number of unique keys to fetch for Map and JSON field filters"
+            type="number"
+            defaultValue={1000}
+            placeholder="default = 1000"
+            min={1}
+            max={10000}
+            displayValue={displayValueWithUnit('keys')}
           />
         </Stack>
       </Card>

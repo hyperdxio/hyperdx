@@ -15,7 +15,7 @@ import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
-export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
+export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 5e6;
 const DEFAULT_MAX_KEYS = 1000;
 
 export class MetadataCache {
@@ -326,45 +326,66 @@ export class Metadata {
         const where = metricName
           ? chSql`WHERE MetricName=${{ String: metricName }}`
           : '';
-        const sql = chSql`WITH all_paths AS
-        (
-            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
-            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-            LIMIT ${{ Int32: maxKeys }}
-            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
-        )
-        SELECT groupUniqArrayMap(paths) as pathMap
-        FROM all_paths;`;
+        // QUERY OPTION 1
+        // const sql = chSql`
+        //     WITH distinct_paths AS (
+        //       SELECT DISTINCT arrayJoin(JSONDynamicPathsWithTypes(${{ Identifier: column }})) AS paths
+        //       FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+        //       LIMIT ${{ Int32: maxKeys }}
+        //       SETTINGS max_execution_time=2
+        //     )
+        //     SELECT array(paths.keys, paths.values) as path from distinct_paths`;
+
+        const maxRows =
+          this.clickhouseSettings.max_rows_to_read ??
+          DEFAULT_METADATA_MAX_ROWS_TO_READ;
+        // QUERY OPTION 2 - I like this better
+        const sql = chSql`
+          WITH limited_json AS (
+              SELECT ${{ Identifier: column }}
+              FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+              LIMIT ${{ Int32: Number(maxRows) }}
+          ),
+          paths_and_types AS (
+              SELECT arrayJoin(distinctJSONPathsAndTypes(${{ Identifier: column }})) AS tuple_data
+              FROM limited_json
+          )
+          SELECT
+              array(tupleElement(tuple_data, 1), arrayElement(tupleElement(tuple_data, 2), 1)) as path
+          FROM paths_and_types
+          LIMIT ${{ Int32: maxKeys }}
+        `;
 
         const keys = await this.clickhouseClient
-          .query<'JSON'>({
+          .query({
             query: sql.sql,
             query_params: sql.params,
             connectionId,
+            format: 'JSONEachRow',
             clickhouse_settings: {
+              // timeout_overflow_mode
               max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
               read_overflow_mode: 'break',
               ...this.clickhouseSettings,
             },
           })
-          .then(res => res.json<{ pathMap: Record<string, string[]> }>())
+          .then(res => res.json<{ path: string[2] } | { exception: string }>())
           .then(d => {
-            const keys: { key: string; chType: string }[] = [];
-            for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
-              if (!key || !typeArr || !Array.isArray(typeArr)) {
-                throw new Error(
-                  `Error fetching keys for filters (key: ${key}, typeArr: ${typeArr})`,
-                );
+            const results: { key: string; chType: string }[] = [];
+            for (const v of d) {
+              if ('exception' in v) {
+                continue;
               }
-              keys.push({
-                key: key
+              const [path, type] = v.path;
+              results.push({
+                key: path
                   .split('.')
                   .map(v => `\`${v}\``)
                   .join('.'),
-                chType: typeArr[0],
+                chType: type,
               });
             }
-            return keys;
+            return results;
           });
         return keys;
       },
@@ -442,7 +463,8 @@ export class Metadata {
     tableName,
     connectionId,
     metricName,
-  }: TableConnection) {
+    maxKeys,
+  }: TableConnection & { maxKeys?: number }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -470,6 +492,7 @@ export class Metadata {
             column: column.name,
             connectionId,
             metricName,
+            maxKeys,
           });
 
           for (const path of paths) {
@@ -488,6 +511,7 @@ export class Metadata {
           column: column.name,
           connectionId,
           metricName,
+          maxKeys,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);

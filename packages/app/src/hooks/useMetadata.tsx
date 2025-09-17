@@ -107,7 +107,12 @@ export function useAllFields(
       }
 
       const fields2d = await Promise.all(
-        tableConnections.map(tc => metadata.getAllFields(tc)),
+        tableConnections.map(tc =>
+          metadata.getAllFields({
+            ...tc,
+            maxKeys: team?.maxFetchedKeys,
+          }),
+        ),
       );
 
       // skip deduplication if not needed

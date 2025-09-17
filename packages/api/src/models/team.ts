@@ -8,6 +8,7 @@ export type TeamCHSettings = {
   searchRowLimit?: number;
   queryTimeout?: number;
   fieldMetadataDisabled?: boolean;
+  maxFetchedKeys?: number;
 };
 
 export type ITeam = {
@@ -49,6 +50,7 @@ export default mongoose.model<ITeam>(
       searchRowLimit: Number,
       queryTimeout: Number,
       fieldMetadataDisabled: Boolean,
+      maxFetchedKeys: Number,
     },
     {
       timestamps: true,

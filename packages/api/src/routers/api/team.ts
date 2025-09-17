@@ -96,6 +96,7 @@ router.patch(
       searchRowLimit: z.number().optional(),
       queryTimeout: z.number().optional(),
       metadataMaxRowsToRead: z.number().optional(),
+      maxFetchedKeys: z.number().optional(),
     }),
   }),
   async (req, res, next) => {
@@ -110,6 +111,7 @@ router.patch(
         metadataMaxRowsToRead,
         searchRowLimit,
         queryTimeout,
+        maxFetchedKeys,
       } = req.body;
 
       const settings = {
@@ -117,6 +119,7 @@ router.patch(
         ...(queryTimeout !== undefined && { queryTimeout }),
         ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
         ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
+        ...(maxFetchedKeys !== undefined && { maxFetchedKeys }),
       };
 
       if (Object.keys(settings).length === 0) {
@@ -137,6 +140,9 @@ router.patch(
         }),
         ...(metadataMaxRowsToRead !== undefined && {
           metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
+        }),
+        ...(maxFetchedKeys !== undefined && {
+          maxFetchedKeys: team?.maxFetchedKeys,
         }),
       });
     } catch (e) {
