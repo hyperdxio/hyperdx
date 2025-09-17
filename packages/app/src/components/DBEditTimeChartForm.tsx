@@ -50,7 +50,6 @@ import {
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
@@ -75,6 +74,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
+import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
@@ -1008,7 +1008,8 @@ export default function EditTimeChartForm({
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
-            <DBSqlRowTable
+            <DBSqlRowTableWithSideBar
+              sourceId={sourceId}
               config={{
                 ...queriedConfig,
                 orderBy: [
@@ -1031,13 +1032,9 @@ export default function EditTimeChartForm({
                 groupBy: undefined,
                 granularity: undefined,
               }}
-              onRowExpandClick={() => {}}
-              highlightedLineId={undefined}
               enabled
               isLive={false}
-              showExpandButton={false}
               queryKeyPrefix={'search'}
-              onScroll={() => {}}
             />
           </div>
         )}
@@ -1058,13 +1055,12 @@ export default function EditTimeChartForm({
                       className="flex-grow-1 d-flex flex-column"
                       style={{ height: 400 }}
                     >
-                      <DBSqlRowTable
+                      <DBSqlRowTableWithSideBar
+                        sourceId={sourceId}
                         config={sampleEventsConfig}
-                        highlightedLineId={undefined}
                         enabled
                         isLive={false}
                         queryKeyPrefix={'search'}
-                        showExpandButton={false}
                       />
                     </div>
                   )}
