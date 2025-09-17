@@ -2,7 +2,7 @@
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
-import type { SQLInterval } from '@/types';
+import type { ChartConfigWithDateRange, SQLInterval } from '@/types';
 
 export const isBrowser: boolean =
   typeof window !== 'undefined' && typeof window.document !== 'undefined';
@@ -297,4 +297,60 @@ export const formatDate = (
   return isUTC
     ? formatInTimeZone(date, 'Etc/UTC', formatStr)
     : fnsFormat(date, formatStr);
+};
+
+export const getFirstOrderingItem = (
+  orderBy: ChartConfigWithDateRange['orderBy'],
+) => {
+  if (!orderBy || orderBy.length === 0) return undefined;
+
+  return typeof orderBy === 'string'
+    ? splitAndTrimWithBracket(orderBy)[0]
+    : orderBy[0];
+};
+
+export const removeTrailingDirection = (s: string) => {
+  const upper = s.trim().toUpperCase();
+  if (upper.endsWith('DESC')) {
+    return s.slice(0, upper.lastIndexOf('DESC')).trim();
+  } else if (upper.endsWith('ASC')) {
+    return s.slice(0, upper.lastIndexOf('ASC')).trim();
+  }
+
+  return s;
+};
+
+export const isTimestampExpressionInFirstOrderBy = (
+  config: ChartConfigWithDateRange,
+) => {
+  const firstOrderingItem = getFirstOrderingItem(config.orderBy);
+  if (!firstOrderingItem) return false;
+
+  const firstOrderingExpression =
+    typeof firstOrderingItem === 'string'
+      ? removeTrailingDirection(firstOrderingItem)
+      : firstOrderingItem.valueExpression;
+
+  const timestampValueExpressions = splitAndTrimWithBracket(
+    config.timestampValueExpression,
+  );
+
+  return timestampValueExpressions.some(tve =>
+    firstOrderingExpression.includes(tve),
+  );
+};
+
+export const isFirstOrderByAscending = (
+  orderBy: ChartConfigWithDateRange['orderBy'],
+): boolean => {
+  const primaryOrderingItem = getFirstOrderingItem(orderBy);
+
+  if (!primaryOrderingItem) return false;
+
+  const isDescending =
+    typeof primaryOrderingItem === 'string'
+      ? primaryOrderingItem.trim().toUpperCase().endsWith('DESC')
+      : primaryOrderingItem.ordering === 'DESC';
+
+  return !isDescending;
 };

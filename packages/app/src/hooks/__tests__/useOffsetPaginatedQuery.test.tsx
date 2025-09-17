@@ -41,7 +41,7 @@ const createMockChartConfig = (
   overrides: Partial<ChartConfigWithDateRange> = {},
 ): ChartConfigWithDateRange =>
   ({
-    timestampValueExpression: '',
+    timestampValueExpression: 'Timestamp',
     connection: 'foo',
     from: {
       databaseName: 'telemetry',
@@ -55,6 +55,7 @@ const createMockChartConfig = (
       limit: 100,
       offset: 0,
     },
+    orderBy: 'Timestamp DESC',
     ...overrides,
   }) as ChartConfigWithDateRange;
 
@@ -153,6 +154,87 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.data?.window.endTime).toEqual(
         new Date('2024-01-02T00:00:00Z'), // endDate
       );
+      expect(result.current.data?.window.direction).toEqual('DESC');
+    });
+
+    it('should generate correct time windows for 24-hour range with ascending sort order', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+        orderBy: 'Timestamp ASC',
+      });
+
+      // Mock the reader to return data for first window
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log 1'] },
+            { json: () => ['2024-01-01T02:00:00Z', 'test log 2'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Should have data from the first 6-hour window (working forwards from start date)
+      expect(result.current.data).toBeDefined();
+      expect(result.current.data?.window.windowIndex).toBe(0);
+      expect(result.current.data?.window.startTime).toEqual(
+        new Date('2024-01-01T00:00:00Z'), // startDate
+      );
+      expect(result.current.data?.window.endTime).toEqual(
+        new Date('2024-01-01T06:00:00Z'), // endDate + 6h
+      );
+      expect(result.current.data?.window.direction).toEqual('ASC');
+    });
+
+    it('should not use time windows if first ordering is not on timestamp', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+        orderBy: 'ServiceName',
+      });
+
+      // Mock the reader to return data for first window
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log 1'] },
+            { json: () => ['2024-01-01T02:00:00Z', 'test log 2'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Should have data from the entire range, without windowing
+      expect(result.current.data).toBeDefined();
+      expect(result.current.data?.window.windowIndex).toBe(0);
+      expect(result.current.data?.window.startTime).toEqual(
+        new Date('2024-01-01T00:00:00Z'), // startDate
+      );
+      expect(result.current.data?.window.endTime).toEqual(
+        new Date('2024-01-02T00:00:00Z'), // endDate + 6h
+      );
+      expect(result.current.data?.window.direction).toEqual('DESC');
     });
 
     it('should handle very large time ranges with progressive bucketing', async () => {
