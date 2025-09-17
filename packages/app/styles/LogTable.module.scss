@@ -7,7 +7,6 @@
 }
 
 .tableRow {
-  // Remove default row hover since we have button-specific hovers
   &__selected {
     background-color: $slate-800;
     font-weight: bold;
