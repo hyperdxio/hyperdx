@@ -7,10 +7,7 @@
 }
 
 .tableRow {
-  &:hover:not(:has(button:hover)) {
-    background-color: $slate-800;
-  }
-
+  // Remove default row hover since we have button-specific hovers
   &__selected {
     background-color: $slate-800;
     font-weight: bold;
@@ -25,8 +22,81 @@
 }
 
 .expandButton {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease-in-out;
+  border-radius: 4px;
+
   &:hover {
-    background-color: rgb(255 255 255 / 10%) !important;
-    color: #fff !important;
+    background-color: $slate-800;
+  }
+
+  &:focus,
+  &:focus-visible {
+    background-color: $slate-800 !important;
+    outline: none;
+  }
+
+  &:active {
+    outline: none;
+    box-shadow: none;
+    background-color: $slate-800;
+  }
+
+  svg {
+    transition: transform 0.3s ease-in-out;
+    transform-origin: center;
+  }
+
+  &.expanded svg {
+    transform: rotate(90deg);
+  }
+}
+
+.expandButtonSeparator {
+  width: 1px;
+  height: 12px;
+  border-right: 1px solid $slate-800;
+  margin-left: 2px;
+  margin-right: 2px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.rowContentButton {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: stretch;
+  text-align: left;
+  color: inherit;
+  transition: background-color 0.15s ease-in-out;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: $slate-800;
+  }
+
+  &:focus,
+  &:focus-visible {
+    background-color: $slate-800 !important;
+    outline: none;
+  }
+
+  &:active {
+    outline: none;
+    box-shadow: none;
+    background-color: $slate-800;
   }
 }

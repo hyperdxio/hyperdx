@@ -832,41 +832,82 @@ export const RawLogTable = memo(
                 <React.Fragment key={virtualRow.key}>
                   <tr
                     data-testid={`table-row-${rowId}`}
-                    onClick={() => {
-                      // onRowExpandClick(row.original.id, row.original.sort_key);
-                      _onRowExpandClick(row.original);
-                    }}
-                    role="button"
-                    // TODO: Restore highlight
                     className={cx(styles.tableRow, {
                       [styles.tableRow__selected]: highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}
                   >
-                    {row.getVisibleCells().map(cell => {
-                      const columnCustomClassName = (
-                        cell.column.columnDef.meta as any
-                      )?.className;
-                      return (
-                        <td
-                          key={cell.id}
-                          className={cx(
-                            'align-top overflow-hidden',
-                            {
-                              'text-break': wrapLinesEnabled,
-                              'text-truncate': !wrapLinesEnabled,
-                            },
-                            columnCustomClassName,
-                          )}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </td>
-                      );
-                    })}
+                    {/* Expand button cell */}
+                    {showExpandButton && (
+                      <td
+                        className="align-top overflow-hidden"
+                        style={{ width: '40px' }}
+                      >
+                        {flexRender(
+                          row.getVisibleCells()[0].column.columnDef.cell,
+                          row.getVisibleCells()[0].getContext(),
+                        )}
+                      </td>
+                    )}
+
+                    {/* Content columns grouped as one button */}
+                    <td
+                      className="align-top overflow-hidden p-0"
+                      colSpan={columns.length - (showExpandButton ? 1 : 0)}
+                    >
+                      <button
+                        type="button"
+                        className={styles.rowContentButton}
+                        onClick={e => {
+                          e.stopPropagation();
+                          _onRowExpandClick(row.original);
+                        }}
+                        aria-label="View details for log entry"
+                      >
+                        {row
+                          .getVisibleCells()
+                          .slice(showExpandButton ? 1 : 0) // Skip expand column
+                          .map((cell, cellIndex) => {
+                            const columnCustomClassName = (
+                              cell.column.columnDef.meta as any
+                            )?.className;
+                            const columnSize = cell.column.getSize();
+                            const totalContentCells =
+                              row.getVisibleCells().length -
+                              (showExpandButton ? 1 : 0);
+
+                            return (
+                              <div
+                                key={cell.id}
+                                className={cx(
+                                  'flex-shrink-0 overflow-hidden',
+                                  {
+                                    'text-break': wrapLinesEnabled,
+                                    'text-truncate': !wrapLinesEnabled,
+                                  },
+                                  columnCustomClassName,
+                                )}
+                                style={{
+                                  width:
+                                    columnSize === UNDEFINED_WIDTH
+                                      ? 'auto'
+                                      : `${columnSize}px`,
+                                  flex:
+                                    columnSize === UNDEFINED_WIDTH
+                                      ? '1'
+                                      : 'none',
+                                }}
+                              >
+                                {flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext(),
+                                )}
+                              </div>
+                            );
+                          })}
+                      </button>
+                    </td>
                   </tr>
                   {showExpandButton && isExpanded && (
                     <ExpandedLogRow

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -180,6 +180,62 @@ export const useExpandableRows = (
   };
 };
 
+const ExpandButton = memo(
+  ({
+    rowId,
+    isExpanded,
+    highlightedLineId,
+    toggleRowExpansion,
+  }: {
+    rowId: string;
+    isExpanded: boolean;
+    highlightedLineId?: string;
+    toggleRowExpansion: (rowId: string) => void;
+  }) => {
+    const buttonRef = useRef<HTMLButtonElement>(null);
+
+    // Apply the rotation directly to the DOM element to avoid React re-rendering issues
+    useEffect(() => {
+      if (buttonRef.current) {
+        const svg = buttonRef.current.querySelector('svg');
+        if (svg) {
+          svg.style.transform = isExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
+      }
+    }, [isExpanded]);
+
+    return (
+      <span className="d-flex align-items-center justify-content-center">
+        <button
+          ref={buttonRef}
+          type="button"
+          className={cx(styles.expandButton, {
+            'text-success': highlightedLineId === rowId,
+            'text-muted': highlightedLineId !== rowId,
+          })}
+          onClick={e => {
+            e.stopPropagation();
+            toggleRowExpansion(rowId);
+          }}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+        >
+          <IconChevronRight
+            size={16}
+            style={{
+              transition: 'transform 0.3s ease-in-out',
+              transformOrigin: 'center',
+            }}
+          />
+        </button>
+        <span className={styles.expandButtonSeparator} />
+      </span>
+    );
+  },
+);
+
+ExpandButton.displayName = 'ExpandButton';
+
 // Utility function for creating expand button column
 export const createExpandButtonColumn = (
   expandedRows: Record<string, boolean>,
@@ -192,65 +248,14 @@ export const createExpandButtonColumn = (
   cell: (info: any) => {
     const rowId = info.getValue() as string;
     const isExpanded = expandedRows[rowId] ?? false;
+
     return (
-      <>
-        <button
-          type="button"
-          className={cx('btn btn-link p-0 border-0 mx-auto', {
-            'text-success': highlightedLineId === rowId,
-            'text-muted': highlightedLineId !== rowId,
-          })}
-          onClick={e => {
-            e.stopPropagation();
-            toggleRowExpansion(rowId);
-          }}
-          aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
-          style={{
-            lineHeight: 1,
-            transition: 'background-color 0.15s ease-in-out',
-            paddingLeft: '2px',
-            paddingRight: '2px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onMouseEnter={e => {
-            e.stopPropagation();
-            e.currentTarget.style.backgroundColor =
-              'var(--mantine-color-gray-9)';
-          }}
-          onMouseLeave={e => {
-            e.stopPropagation();
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-        >
-          <IconChevronRight
-            size={16}
-            style={{
-              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease-in-out',
-              transformOrigin: 'center',
-              display: 'inline-block',
-            }}
-          />
-          <span className="visually-hidden">
-            {isExpanded ? 'Collapse' : 'Expand'} log details
-          </span>
-        </button>
-        <span
-          style={{
-            width: '1px',
-            height: '12px',
-            color: 'var(--bs-border-color)',
-            borderRight: '1px solid var(--mantine-color-gray-9)',
-            marginLeft: '4px',
-            marginRight: '1px',
-            display: 'inline-block',
-            verticalAlign: 'middle',
-          }}
-        />
-      </>
+      <ExpandButton
+        rowId={rowId}
+        isExpanded={isExpanded}
+        highlightedLineId={highlightedLineId}
+        toggleRowExpansion={toggleRowExpansion}
+      />
     );
   },
   size: 32,
