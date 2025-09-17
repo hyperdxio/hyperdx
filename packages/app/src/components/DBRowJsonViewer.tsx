@@ -253,6 +253,7 @@ export function DBRowJsonViewer({
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
       let where = searchParams.get('where') || '';
+      where = where.trim();
       let whereLanguage = searchParams.get('whereLanguage');
       if (whereLanguage == '') {
         whereLanguage = 'lucene';
@@ -279,6 +280,12 @@ export function DBRowJsonViewer({
         } else {
           where += ' AND ';
         }
+      }
+
+      // if removedFilterWhere is '', use ' '
+      // cause generateSearchUrl would use searchedConfig.where if where is ''
+      if (removedFilterWhere === '') {
+        removedFilterWhere = ' ';
       }
 
       if (generateSearchUrl && typeof value !== 'object' && hadFilter) {
