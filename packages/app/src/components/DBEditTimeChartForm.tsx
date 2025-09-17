@@ -126,12 +126,14 @@ function ChartSeriesEditorComponent({
   index,
   namePrefix,
   onRemoveSeries,
+  onSwapSeries,
   onSubmit,
   setValue,
   showGroupBy,
   tableName: _tableName,
   watch,
   parentRef,
+  length,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -141,11 +143,13 @@ function ChartSeriesEditorComponent({
   namePrefix: string;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
+  onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
   tableName: string;
   watch: UseFormWatch<any>;
+  length: number;
 }) {
   const aggFn = watch(`${namePrefix}aggFn`);
   const aggConditionLanguage = watch(
@@ -189,6 +193,28 @@ function ChartSeriesEditorComponent({
               />
             </div>
             {(index ?? -1) > 0 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index - 1)}
+                title="Move up"
+              >
+                <i className="bi bi-arrow-up" />
+              </Button>
+            )}
+            {(index ?? -1) < length - 1 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index + 1)}
+                title="Move down"
+              >
+                <i className="bi bi-arrow-down" />
+              </Button>
+            )}
+            {((index ?? -1) > 0 || length > 1) && (
               <Button
                 variant="subtle"
                 color="gray"
@@ -386,6 +412,7 @@ export default function EditTimeChartForm({
     fields,
     append,
     remove: removeSeries,
+    swap: swapSeries,
   } = useFieldArray({
     control: control as Control<SavedChartConfigWithSelectArray>,
     name: 'select',
@@ -658,6 +685,8 @@ export default function EditTimeChartForm({
                   parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
+                  length={fields.length}
+                  onSwapSeries={swapSeries}
                   onSubmit={onSubmit}
                   setValue={setValue}
                   connectionId={tableSource?.connection}
