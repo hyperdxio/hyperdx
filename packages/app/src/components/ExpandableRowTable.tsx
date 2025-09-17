@@ -2,6 +2,7 @@ import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { IconChevronRight } from '@tabler/icons-react';
 
 import styles from '../../styles/LogTable.module.scss';
 
@@ -133,6 +134,44 @@ export const useExpandableRows = (
   };
 };
 
+const ExpandButton = memo(
+  ({
+    rowId,
+    isExpanded,
+    highlightedLineId,
+    toggleRowExpansion,
+  }: {
+    rowId: string;
+    isExpanded: boolean;
+    highlightedLineId?: string;
+    toggleRowExpansion: (rowId: string) => void;
+  }) => {
+    return (
+      <span className="d-flex align-items-center justify-content-center">
+        <button
+          type="button"
+          className={cx(styles.expandButton, {
+            [styles.expanded]: isExpanded,
+            'text-success': highlightedLineId === rowId,
+            'text-muted': highlightedLineId !== rowId,
+          })}
+          onClick={e => {
+            e.stopPropagation();
+            toggleRowExpansion(rowId);
+          }}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
+        >
+          <IconChevronRight size={16} />
+        </button>
+        <span className={styles.expandButtonSeparator} />
+      </span>
+    );
+  },
+);
+
+ExpandButton.displayName = 'ExpandButton';
+
 // Utility function for creating expand button column
 export const createExpandButtonColumn = (
   expandedRows: Record<string, boolean>,
@@ -145,25 +184,19 @@ export const createExpandButtonColumn = (
   cell: (info: any) => {
     const rowId = info.getValue() as string;
     const isExpanded = expandedRows[rowId] ?? false;
+
     return (
-      <button
-        type="button"
-        className={cx('btn btn-link p-0 border-0', {
-          'text-success': highlightedLineId === rowId,
-          'text-muted': highlightedLineId !== rowId,
-        })}
-        onClick={e => {
-          e.stopPropagation();
-          toggleRowExpansion(rowId);
-        }}
-        aria-expanded={isExpanded}
-        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} log details`}
-        style={{ lineHeight: 1 }}
-      >
-        <i className={`bi bi-chevron-${isExpanded ? 'down' : 'right'}`} />
-      </button>
+      <ExpandButton
+        rowId={rowId}
+        isExpanded={isExpanded}
+        highlightedLineId={highlightedLineId}
+        toggleRowExpansion={toggleRowExpansion}
+      />
     );
   },
-  size: 8,
+  size: 32,
   enableResizing: false,
+  meta: {
+    className: 'text-center',
+  },
 });
