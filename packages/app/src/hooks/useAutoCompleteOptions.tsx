@@ -6,8 +6,9 @@ import {
   deduplicate2dArray,
   useAllFields,
   useGetKeyValues,
+  useJsonColumns,
 } from '@/hooks/useMetadata';
-import { toArray } from '@/utils';
+import { mergePath, toArray } from '@/utils';
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -71,15 +72,17 @@ export function useAutoCompleteOptions(
       setSearchField(null);
     }
   }, [searchField, setSearchField, value, formatter]);
+  const { data: jsonColumns } = useJsonColumns(
+    Array.isArray(tableConnections)
+      ? tableConnections[0]
+      : (tableConnections ?? {
+          tableName: '',
+          databaseName: '',
+          connectionId: '',
+        }),
+  );
   const searchKeys = useMemo(
-    () =>
-      searchField
-        ? [
-            searchField.path.length > 1
-              ? `${searchField.path[0]}['${searchField.path[1]}']`
-              : searchField.path[0],
-          ]
-        : [],
+    () => (searchField ? [mergePath(searchField.path, jsonColumns)] : []),
     [searchField],
   );
 
