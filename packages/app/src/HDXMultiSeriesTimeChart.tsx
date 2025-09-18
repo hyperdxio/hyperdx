@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
+import { Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import type { NumberFormat } from '@/types';
@@ -371,173 +372,186 @@ export const MemoChart = memo(function MemoChart({
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
 
   return (
-    <ResponsiveContainer
-      width="100%"
-      height="100%"
-      minWidth={0}
-      onResize={(width, height) => {
-        sizeRef.current = [width ?? 1, height ?? 1];
-      }}
-      className={isLoading ? 'effect-pulse' : ''}
-    >
-      <ChartComponent
-        width={500}
-        height={300}
-        data={graphResults}
-        syncId="hdx"
-        syncMethod="value"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={e => {
-          setIsHovered(false);
-
-          setHighlightStart(undefined);
-          setHighlightEnd(undefined);
+    <div className="position-relative w-100 h-100">
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        minWidth={0}
+        onResize={(width, height) => {
+          sizeRef.current = [width ?? 1, height ?? 1];
         }}
-        onMouseDown={e => e != null && setHighlightStart(e.activeLabel)}
-        onMouseMove={e => {
-          setIsHovered(true);
-
-          if (highlightStart != null) {
-            setHighlightEnd(e.activeLabel);
-            setIsClickActive(undefined); // Clear out any click state as we're highlighting
-          }
-        }}
-        onMouseUp={e => {
-          if (e?.activeLabel != null && highlightStart === e.activeLabel) {
-            // If it's just a click, don't zoom
-            setHighlightStart(undefined);
-            setHighlightEnd(undefined);
-          }
-          if (highlightStart != null && highlightEnd != null) {
-            try {
-              onTimeRangeSelect?.(
-                new Date(
-                  Number.parseInt(
-                    highlightStart <= highlightEnd
-                      ? highlightStart
-                      : highlightEnd,
-                  ) * 1000,
-                ),
-                new Date(
-                  Number.parseInt(
-                    highlightEnd >= highlightStart
-                      ? highlightEnd
-                      : highlightStart,
-                  ) * 1000,
-                ),
-              );
-            } catch (e) {
-              console.error('failed to highlight range', e);
-            }
-            setHighlightStart(undefined);
-            setHighlightEnd(undefined);
-          }
-        }}
-        onClick={(state, e) => {
-          if (
-            state != null &&
-            state.chartX != null &&
-            state.chartY != null &&
-            state.activeLabel != null &&
-            // If we didn't drag and highlight yet
-            highlightStart == null
-          ) {
-            setIsClickActive({
-              x: state.chartX,
-              y: state.chartY,
-              activeLabel: state.activeLabel,
-              xPerc: state.chartX / sizeRef.current[0],
-              yPerc: state.chartY / sizeRef.current[1],
-            });
-          } else {
-            // We clicked on the chart but outside of a line
-            setIsClickActive(undefined);
-          }
-
-          // TODO: Properly detect clicks outside of the fake tooltip
-          e.stopPropagation();
-        }}
+        className={isLoading ? 'effect-pulse' : ''}
       >
-        <defs>
-          {COLORS.map(c => {
-            return (
-              <linearGradient
-                key={c}
-                id={`time-chart-lin-grad-${id}-${c.replace('#', '').toLowerCase()}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop offset="0%" stopColor={c} stopOpacity={0.15} />
-                <stop offset="10%" stopColor={c} stopOpacity={0.003} />
-              </linearGradient>
-            );
-          })}
-        </defs>
-        {isHovered && (
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--mantine-color-dark-6)"
-          />
-        )}
-        <XAxis
-          dataKey={timestampKey ?? 'ts_bucket'}
-          domain={[
-            dateRange[0].getTime() / 1000,
-            dateRange[1].getTime() / 1000,
-          ]}
-          interval="preserveStartEnd"
-          scale="time"
-          type="number"
-          tickFormatter={xTickFormatter}
-          minTickGap={100}
-          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-        />
-        <YAxis
-          width={40}
-          minTickGap={25}
-          tickFormatter={tickFormatter}
-          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-        />
-        {lines}
-        <Tooltip
-          content={<HDXLineChartTooltip numberFormat={numberFormat} />}
-          wrapperStyle={{
-            zIndex: 1,
+        <ChartComponent
+          width={500}
+          height={300}
+          data={graphResults}
+          syncId="hdx"
+          syncMethod="value"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={e => {
+            setIsHovered(false);
+
+            setHighlightStart(undefined);
+            setHighlightEnd(undefined);
           }}
-          allowEscapeViewBox={{ y: true }}
-        />
-        {referenceLines}
-        {highlightStart && highlightEnd ? (
-          <ReferenceArea
-            // yAxisId="1"
-            x1={highlightStart}
-            x2={highlightEnd}
-            strokeOpacity={0.3}
+          onMouseDown={e => e != null && setHighlightStart(e.activeLabel)}
+          onMouseMove={e => {
+            setIsHovered(true);
+
+            if (highlightStart != null) {
+              setHighlightEnd(e.activeLabel);
+              setIsClickActive(undefined); // Clear out any click state as we're highlighting
+            }
+          }}
+          onMouseUp={e => {
+            if (e?.activeLabel != null && highlightStart === e.activeLabel) {
+              // If it's just a click, don't zoom
+              setHighlightStart(undefined);
+              setHighlightEnd(undefined);
+            }
+            if (highlightStart != null && highlightEnd != null) {
+              try {
+                onTimeRangeSelect?.(
+                  new Date(
+                    Number.parseInt(
+                      highlightStart <= highlightEnd
+                        ? highlightStart
+                        : highlightEnd,
+                    ) * 1000,
+                  ),
+                  new Date(
+                    Number.parseInt(
+                      highlightEnd >= highlightStart
+                        ? highlightEnd
+                        : highlightStart,
+                    ) * 1000,
+                  ),
+                );
+              } catch (e) {
+                console.error('failed to highlight range', e);
+              }
+              setHighlightStart(undefined);
+              setHighlightEnd(undefined);
+            }
+          }}
+          onClick={(state, e) => {
+            if (
+              state != null &&
+              state.chartX != null &&
+              state.chartY != null &&
+              state.activeLabel != null &&
+              // If we didn't drag and highlight yet
+              highlightStart == null
+            ) {
+              setIsClickActive({
+                x: state.chartX,
+                y: state.chartY,
+                activeLabel: state.activeLabel,
+                xPerc: state.chartX / sizeRef.current[0],
+                yPerc: state.chartY / sizeRef.current[1],
+              });
+            } else {
+              // We clicked on the chart but outside of a line
+              setIsClickActive(undefined);
+            }
+
+            // TODO: Properly detect clicks outside of the fake tooltip
+            e.stopPropagation();
+          }}
+        >
+          <defs>
+            {COLORS.map(c => {
+              return (
+                <linearGradient
+                  key={c}
+                  id={`time-chart-lin-grad-${id}-${c.replace('#', '').toLowerCase()}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={c} stopOpacity={0.15} />
+                  <stop offset="10%" stopColor={c} stopOpacity={0.003} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          {isHovered && (
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="var(--mantine-color-dark-6)"
+            />
+          )}
+          <XAxis
+            dataKey={timestampKey ?? 'ts_bucket'}
+            domain={[
+              dateRange[0].getTime() / 1000,
+              dateRange[1].getTime() / 1000,
+            ]}
+            interval="preserveStartEnd"
+            scale="time"
+            type="number"
+            tickFormatter={xTickFormatter}
+            minTickGap={100}
+            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
           />
-        ) : null}
-        {showLegend && (
-          <Legend
-            iconSize={10}
-            verticalAlign="bottom"
-            content={<LegendRenderer />}
-            offset={-100}
+          <YAxis
+            width={40}
+            minTickGap={25}
+            tickFormatter={tickFormatter}
+            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
           />
-        )}
-        {/** Needs to be at the bottom to prevent re-rendering */}
-        {isClickActive != null ? (
-          <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
-        ) : null}
-        {logReferenceTimestamp != null ? (
-          <ReferenceLine
-            x={logReferenceTimestamp}
-            stroke="#ff5d5b"
-            strokeDasharray="3 3"
-            label="Event"
+          {lines}
+          <Tooltip
+            content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+            wrapperStyle={{
+              zIndex: 1,
+            }}
+            allowEscapeViewBox={{ y: true }}
           />
-        ) : null}
-      </ChartComponent>
-    </ResponsiveContainer>
+          {referenceLines}
+          {highlightStart && highlightEnd ? (
+            <ReferenceArea
+              // yAxisId="1"
+              x1={highlightStart}
+              x2={highlightEnd}
+              strokeOpacity={0.3}
+            />
+          ) : null}
+          {showLegend && (
+            <Legend
+              iconSize={10}
+              verticalAlign="bottom"
+              content={<LegendRenderer />}
+              offset={-100}
+            />
+          )}
+          {/** Needs to be at the bottom to prevent re-rendering */}
+          {isClickActive != null ? (
+            <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
+          ) : null}
+          {logReferenceTimestamp != null ? (
+            <ReferenceLine
+              x={logReferenceTimestamp}
+              stroke="#ff5d5b"
+              strokeDasharray="3 3"
+              label="Event"
+            />
+          ) : null}
+        </ChartComponent>
+      </ResponsiveContainer>
+
+      {isLoading && (
+        <Text
+          size="xs"
+          c="gray.4"
+          mb={4}
+          className="position-absolute top-50 start-50 translate-middle"
+        >
+          Loading...
+        </Text>
+      )}
+    </div>
   );
 });
