@@ -105,3 +105,8 @@ export interface HdxTask<T extends TaskArgs> {
 
   name(): string;
 }
+
+// Utility type to omit keys K from type T, similar to Omit<T, K> but works on discriminated unions
+export type MappedOmit<T, K extends keyof T> = {
+  [P in keyof T as P extends K ? never : P]: T[P];
+};
