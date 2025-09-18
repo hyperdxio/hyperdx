@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 
 import { ObjectId } from '@/models';
@@ -76,6 +77,9 @@ export interface AlertProvider {
 
   /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;
+
+  /** Create and return an authenticated ClickHouse client */
+  getClickHouseClient(connection: IConnection): Promise<ClickhouseClient>;
 }
 
 export function isValidProvider(obj: any): obj is AlertProvider {
@@ -87,7 +91,8 @@ export function isValidProvider(obj: any): obj is AlertProvider {
     typeof obj.buildLogSearchLink === 'function' &&
     typeof obj.buildChartLink === 'function' &&
     typeof obj.updateAlertState === 'function' &&
-    typeof obj.getWebhooks === 'function'
+    typeof obj.getWebhooks === 'function' &&
+    typeof obj.getClickHouseClient === 'function'
   );
 }
 
