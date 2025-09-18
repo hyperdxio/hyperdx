@@ -42,6 +42,21 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
+// This function will clean json string attributes specifically. It will turn a string like
+// 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.verion'.
+export function cleanedFacetName(key: string): string {
+  if (key.startsWith('toString')) {
+    return key
+      .slice('toString('.length, key.length - 1)
+      .split('.')
+      .map(str =>
+        str.startsWith('`') && str.endsWith('`') ? str.slice(1, -1) : str,
+      )
+      .join('.');
+  }
+  return key;
+}
+
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
@@ -455,7 +470,7 @@ const DBSearchPageFiltersComponent = ({
   filters: filterState,
   clearAllFilters,
   clearFilter,
-  setFilterValue,
+  setFilterValue: _setFilterValue,
   isLive,
   chartConfig,
   analysisMode,
@@ -474,6 +489,13 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
+  const setFilterValue: typeof _setFilterValue = (
+    property: string,
+    value: string,
+    action?: 'only' | 'exclude' | 'include' | undefined,
+  ) => {
+    return _setFilterValue(property, value, action);
+  };
   const {
     toggleFilterPin,
     toggleFieldPin,
@@ -612,7 +634,12 @@ const DBSearchPageFiltersComponent = ({
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
-    for (const facet of facets ?? []) {
+    for (const _facet of facets ?? []) {
+      const facet = structuredClone(_facet);
+      if (jsonColumns?.some(col => facet.key.startsWith(col))) {
+        facet.key = `toString(${facet.key})`;
+      }
+
       // don't include empty facets, unless they are already selected
       const filter = filterState[facet.key];
       const hasSelectedValues =
@@ -665,7 +692,14 @@ const DBSearchPageFiltersComponent = ({
     });
 
     return _facets;
-  }, [facets, filterState, tableMetadata, extraFacets, isFieldPinned]);
+  }, [
+    facets,
+    filterState,
+    tableMetadata,
+    extraFacets,
+    isFieldPinned,
+    jsonColumns,
+  ]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -778,7 +812,7 @@ const DBSearchPageFiltersComponent = ({
           {shownFacets.map(facet => (
             <FilterGroup
               key={facet.key}
-              name={facet.key}
+              name={cleanedFacetName(facet.key)}
               options={facet.value.map(value => ({
                 value,
                 label: value,

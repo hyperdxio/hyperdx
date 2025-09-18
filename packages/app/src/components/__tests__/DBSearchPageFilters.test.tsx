@@ -1,7 +1,187 @@
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { FilterGroup, type FilterGroupProps } from '../DBSearchPageFilters';
+import {
+  cleanedFacetName,
+  FilterGroup,
+  type FilterGroupProps,
+} from '../DBSearchPageFilters';
+
+describe('cleanedFacetName', () => {
+  describe('basic functionality', () => {
+    it('should return non-toString strings unchanged', () => {
+      expect(cleanedFacetName('simple.field')).toBe('simple.field');
+      expect(cleanedFacetName('column_name')).toBe('column_name');
+      expect(cleanedFacetName('ResourceAttributes.service.name')).toBe(
+        'ResourceAttributes.service.name',
+      );
+    });
+
+    it('should handle empty strings', () => {
+      expect(cleanedFacetName('')).toBe('');
+    });
+
+    it('should handle strings that do not start with toString', () => {
+      expect(cleanedFacetName('notToString(field)')).toBe('notToString(field)');
+      expect(cleanedFacetName("JSONExtractString(data, 'field')")).toBe(
+        "JSONExtractString(data, 'field')",
+      );
+    });
+  });
+
+  describe('JSON column cleaning', () => {
+    it('should clean basic ResourceAttributes paths', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.`name`)'),
+      ).toBe('ResourceAttributes.service.name');
+
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`hdx`.`sdk`.`version`)'),
+      ).toBe('ResourceAttributes.hdx.sdk.version');
+    });
+
+    it('should handle mixed quoted and unquoted ResourceAttributes', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.name)'),
+      ).toBe('ResourceAttributes.service.name');
+
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.service.`name`)'),
+      ).toBe('ResourceAttributes.service.name');
+    });
+
+    it('should handle deeply nested ResourceAttributes', () => {
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`telemetry`.`sdk`.`language`)',
+        ),
+      ).toBe('ResourceAttributes.telemetry.sdk.language');
+
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`cloud`.`provider`.`account`.`id`)',
+        ),
+      ).toBe('ResourceAttributes.cloud.provider.account.id');
+    });
+
+    it('should handle ResourceAttributes with special characters', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service-name`)'),
+      ).toBe('ResourceAttributes.service-name');
+
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.`version`)'),
+      ).toBe('ResourceAttributes.service.version');
+
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`k8s`.`pod`.`name`)'),
+      ).toBe('ResourceAttributes.k8s.pod.name');
+    });
+
+    it('should clean basic LogAttributes paths', () => {
+      expect(
+        cleanedFacetName('toString(LogAttributes.`severity`.`text`)'),
+      ).toBe('LogAttributes.severity.text');
+
+      expect(cleanedFacetName('toString(LogAttributes.`level`)')).toBe(
+        'LogAttributes.level',
+      );
+    });
+
+    it('should handle deeply nested LogAttributes', () => {
+      expect(
+        cleanedFacetName('toString(LogAttributes.`context`.`user`.`id`)'),
+      ).toBe('LogAttributes.context.user.id');
+
+      expect(
+        cleanedFacetName('toString(LogAttributes.`http`.`request`.`method`)'),
+      ).toBe('LogAttributes.http.request.method');
+    });
+
+    it('should handle Map access in ResourceAttributes', () => {
+      expect(
+        cleanedFacetName(
+          "ResourceAttributes['http.request.headers.user-agent']",
+        ),
+      ).toBe("ResourceAttributes['http.request.headers.user-agent']");
+    });
+  });
+
+  describe('edge cases with Attributes', () => {
+    it('should handle attributes with spaces', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service name`)'),
+      ).toBe('ResourceAttributes.service name');
+
+      expect(cleanedFacetName('toString(LogAttributes.`error message`)')).toBe(
+        'LogAttributes.error message',
+      );
+    });
+
+    it('should handle attributes with numbers', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.`v2`)'),
+      ).toBe('ResourceAttributes.service.v2');
+
+      expect(
+        cleanedFacetName('toString(LogAttributes.`error`.`code`.`404`)'),
+      ).toBe('LogAttributes.error.code.404');
+    });
+  });
+
+  describe('real-world OpenTelemetry patterns', () => {
+    // Common OTEL semantic conventions
+    it('should handle service attributes', () => {
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.`name`)'),
+      ).toBe('ResourceAttributes.service.name');
+
+      expect(
+        cleanedFacetName('toString(ResourceAttributes.`service`.`version`)'),
+      ).toBe('ResourceAttributes.service.version');
+
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`service`.`instance`.`id`)',
+        ),
+      ).toBe('ResourceAttributes.service.instance.id');
+    });
+
+    it('should handle telemetry SDK attributes', () => {
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`telemetry`.`sdk`.`name`)',
+        ),
+      ).toBe('ResourceAttributes.telemetry.sdk.name');
+
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`telemetry`.`sdk`.`language`)',
+        ),
+      ).toBe('ResourceAttributes.telemetry.sdk.language');
+
+      expect(
+        cleanedFacetName(
+          'toString(ResourceAttributes.`telemetry`.`sdk`.`version`)',
+        ),
+      ).toBe('ResourceAttributes.telemetry.sdk.version');
+    });
+
+    it('should handle HTTP attributes', () => {
+      expect(cleanedFacetName('toString(LogAttributes.`http`.`method`)')).toBe(
+        'LogAttributes.http.method',
+      );
+
+      expect(
+        cleanedFacetName('toString(LogAttributes.`http`.`status_code`)'),
+      ).toBe('LogAttributes.http.status_code');
+
+      expect(cleanedFacetName('toString(LogAttributes.`http`.`url`)')).toBe(
+        'LogAttributes.http.url',
+      );
+    });
+  });
+});
 
 describe('FilterGroup', () => {
   const defaultProps: FilterGroupProps = {
