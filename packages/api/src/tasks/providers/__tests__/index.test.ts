@@ -1,3 +1,5 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+
 import { AlertProvider, isValidProvider } from '../index';
 
 describe('isValidProvider', () => {
@@ -10,6 +12,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(validProvider)).toBe(true);
@@ -36,6 +39,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -49,6 +53,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -62,6 +67,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -75,6 +81,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -88,6 +95,7 @@ describe('isValidProvider', () => {
       buildLogSearchLink: () => 'http://example.com/search',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -102,6 +110,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -116,6 +125,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -130,6 +140,7 @@ describe('isValidProvider', () => {
       buildChartLink: () => 'http://example.com/chart',
       updateAlertState: () => Promise.resolve(),
       getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
       extraProperty: 'should not affect validation',
       anotherMethod: () => {},
     };

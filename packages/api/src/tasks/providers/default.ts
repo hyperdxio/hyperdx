@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -293,5 +294,25 @@ export default class DefaultAlertProvider implements AlertProvider {
       team: new mongoose.Types.ObjectId(teamId),
     });
     return new Map<string, IWebhook>(webhooks.map(w => [w.id, w]));
+  }
+
+  async getClickHouseClient({
+    host,
+    username,
+    password,
+    id,
+  }: IConnection): Promise<ClickhouseClient> {
+    if (!password && password !== '') {
+      logger.info({
+        message: `connection password not found`,
+        connectionId: id,
+      });
+    }
+
+    return new ClickhouseClient({
+      host,
+      username,
+      password,
+    });
   }
 }

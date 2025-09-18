@@ -41,6 +41,9 @@ describe('CheckAlertTask', () => {
         asyncDispose: jest.fn(),
         buildChartLink: jest.fn(),
         buildLogSearchLink: jest.fn(),
+        getClickHouseClient: jest
+          .fn()
+          .mockResolvedValue({} as ClickhouseClient),
       };
 
       jest.mocked(loadProvider).mockResolvedValue(mockAlertProvider);
@@ -150,6 +153,9 @@ describe('CheckAlertTask', () => {
 
       mockAlertProvider.getAlertTasks.mockResolvedValue([mockAlertTask]);
       mockAlertProvider.getWebhooks.mockResolvedValue(teamWebhooksById);
+      mockAlertProvider.getClickHouseClient.mockResolvedValue(
+        new ClickhouseClient({}),
+      );
 
       await task.execute();
 
@@ -271,6 +277,10 @@ describe('CheckAlertTask', () => {
         mockAlertTask1,
         mockAlertTask2,
       ]);
+
+      mockAlertProvider.getClickHouseClient.mockResolvedValue(
+        new ClickhouseClient({}),
+      );
 
       // Mock getWebhooks to return team-specific webhooks
       mockAlertProvider.getWebhooks.mockImplementation(
