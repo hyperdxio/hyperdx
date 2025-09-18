@@ -1,6 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
-import { create } from 'lodash';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -38,18 +37,6 @@ import {
   translateExternalActionsToInternal,
 } from '@/tasks/template';
 import * as slack from '@/utils/slack';
-
-const MOCK_DASHBOARD = {
-  name: 'Test Dashboard',
-  tiles: [makeTile(), makeTile()],
-  tags: ['test'],
-};
-
-const MOCK_SOURCE = {};
-
-const MOCK_SAVED_SEARCH: any = {
-  id: 'fake-saved-search-id',
-};
 
 // Create provider instance for tests
 let alertProvider: any;
@@ -337,9 +324,9 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
-        team: {
-          id: team._id.toString(),
-        },
+        teamWebhooksById: new Map<string, typeof webhook>([
+          [webhook._id.toString(), webhook],
+        ]),
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
@@ -352,7 +339,7 @@ describe('checkAlerts', () => {
         .mockResolvedValueOnce(null as any);
 
       const team = await createTeam({ name: 'My Team' });
-      await new Webhook({
+      const webhook = await new Webhook({
         team: team._id,
         service: 'slack',
         url: 'https://hooks.slack.com/services/123',
@@ -374,9 +361,9 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
-        team: {
-          id: team._id.toString(),
-        },
+        teamWebhooksById: new Map<string, typeof webhook>([
+          [webhook._id.toString(), webhook],
+        ]),
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
@@ -412,7 +399,7 @@ describe('checkAlerts', () => {
         .mockResolvedValueOnce(null as any);
 
       const team = await createTeam({ name: 'My Team' });
-      await new Webhook({
+      const webhook = await new Webhook({
         team: team._id,
         service: 'slack',
         url: 'https://hooks.slack.com/services/123',
@@ -437,9 +424,9 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
-        team: {
-          id: team._id.toString(),
-        },
+        teamWebhooksById: new Map<string, typeof webhook>([
+          [webhook._id.toString(), webhook],
+        ]),
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
@@ -473,18 +460,22 @@ describe('checkAlerts', () => {
       jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
 
       const team = await createTeam({ name: 'My Team' });
-      await new Webhook({
+      const myWebhook = await new Webhook({
         team: team._id,
         service: 'slack',
         url: 'https://hooks.slack.com/services/123',
         name: 'My_Webhook',
       }).save();
-      await new Webhook({
+      const anotherWebhook = await new Webhook({
         team: team._id,
         service: 'slack',
         url: 'https://hooks.slack.com/services/456',
         name: 'Another_Webhook',
       }).save();
+      const teamWebhooksById = new Map<string, typeof anotherWebhook>([
+        [anotherWebhook._id.toString(), anotherWebhook],
+        [myWebhook._id.toString(), myWebhook],
+      ]);
 
       await renderAlertTemplate({
         alertProvider,
@@ -519,9 +510,7 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
-        team: {
-          id: team._id.toString(),
-        },
+        teamWebhooksById,
       });
 
       // @webhook should not be called
@@ -544,9 +533,7 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
-        team: {
-          id: team._id.toString(),
-        },
+        teamWebhooksById,
       });
 
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
@@ -673,6 +660,9 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
       const connection = await Connection.create({
         team: team._id,
         name: 'Default',
@@ -723,13 +713,13 @@ describe('checkAlerts', () => {
         'savedSearch',
       ]);
 
-      const details: any = {
+      const details = {
         alert: enhancedAlert,
         source,
-        conn: connection,
         taskType: AlertTaskType.SAVED_SEARCH,
         savedSearch,
-      };
+        previous: undefined,
+      } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
         host: connection.host,
@@ -762,7 +752,7 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
-        undefined,
+        teamWebhooksById,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
@@ -774,11 +764,11 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        details,
+        { ...details, previous: previousAlertsLater.get(enhancedAlert.id) },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsLater.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
@@ -790,11 +780,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         nextWindow,
-        details,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsNextWindow.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
@@ -806,11 +799,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         nextNextWindow,
-        details,
+        {
+          ...details,
+          previous: previousAlertsNextNextWindow.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsNextNextWindow.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -906,6 +902,9 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
       const connection = await Connection.create({
         team: team._id,
         name: 'Default',
@@ -978,14 +977,14 @@ describe('checkAlerts', () => {
 
       const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
       if (!tile) throw new Error('tile not found for dashboard test case');
-      const details: any = {
+      const details = {
         alert: enhancedAlert,
         source,
-        conn: connection,
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-      };
+        previous: undefined,
+      } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
         host: connection.host,
@@ -1018,7 +1017,7 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
-        undefined,
+        teamWebhooksById,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
@@ -1030,11 +1029,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        details,
+        {
+          ...details,
+          previous: previousAlertsLater.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsLater.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
@@ -1046,11 +1048,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         nextWindow,
-        details,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsNextWindow.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -1146,6 +1151,10 @@ describe('checkAlerts', () => {
         }),
         headers: { 'Content-Type': 'application/json' },
       }).save();
+      const webhooks = await Webhook.find({});
+      const teamWebhooksById = new Map<string, typeof webhook>(
+        webhooks.map(w => [w._id.toString(), w]),
+      );
       const connection = await Connection.create({
         team: team._id,
         name: 'Default',
@@ -1219,14 +1228,14 @@ describe('checkAlerts', () => {
       const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
       if (!tile)
         throw new Error('tile not found for dashboard generic webhook');
-      const details: any = {
+      const details = {
         alert: enhancedAlert,
         source,
-        conn: connection,
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-      };
+        previous: undefined,
+      } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
         host: connection.host,
@@ -1259,7 +1268,7 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
-        undefined,
+        teamWebhooksById,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
@@ -1271,11 +1280,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        details,
+        {
+          ...details,
+          previous: previousAlertsLater.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsLater.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
@@ -1287,11 +1299,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         nextWindow,
-        details,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsNextWindow.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
@@ -1362,6 +1377,9 @@ describe('checkAlerts', () => {
         url: 'https://hooks.slack.com/services/123',
         name: 'My Webhook',
       }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
       const connection = await Connection.create({
         team: team._id,
         name: 'Default',
@@ -1439,14 +1457,14 @@ describe('checkAlerts', () => {
       const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
       if (!tile)
         throw new Error('tile not found for dashboard metrics webhook');
-      const details: any = {
+      const details = {
         alert: enhancedAlert,
         source,
-        conn: connection,
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-      };
+        previous: undefined,
+      } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
         host: connection.host,
@@ -1480,7 +1498,7 @@ describe('checkAlerts', () => {
         clickhouseClient,
         connection.id,
         alertProvider,
-        undefined,
+        teamWebhooksById,
       );
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
 
@@ -1492,11 +1510,11 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        details,
+        { ...details, previous: previousAlertsLater.get(enhancedAlert.id) },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsLater.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should still be in alert state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
@@ -1508,11 +1526,14 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         nextWindow,
-        details,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
-        previousAlertsNextWindow.get(enhancedAlert.id),
+        teamWebhooksById,
       );
       // alert should be in ok state
       expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');

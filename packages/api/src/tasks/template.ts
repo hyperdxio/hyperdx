@@ -1,20 +1,20 @@
-import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
 import {
+  AlertChannelType,
   ChartConfigWithOptDateRange,
   DisplayType,
   WebhookService,
+  zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
 import { _useTry, formatDate } from '@hyperdx/common-utils/dist/utils';
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
-import { escapeRegExp } from 'lodash';
-import mongoose from 'mongoose';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
+import { z } from 'zod';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
@@ -23,9 +23,8 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import Webhook from '@/models/webhook';
 import { doesExceedThreshold } from '@/tasks/checkAlerts';
-import { AlertProvider } from '@/tasks/providers';
+import { AlertProvider, PopulatedAlertChannel } from '@/tasks/providers';
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
@@ -34,6 +33,13 @@ import * as slack from '@/utils/slack';
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
+
+const zNotifyFnParams = z.object({
+  hash: z.object({
+    channel: zAlertChannelType,
+    id: z.string(),
+  }),
+});
 
 // should match the external alert schema
 export type AlertMessageTemplateDefaultView = {
@@ -49,45 +55,31 @@ export type AlertMessageTemplateDefaultView = {
   value: number;
 };
 
+interface Message {
+  hdxLink: string;
+  title: string;
+  body: string;
+}
+
 export const notifyChannel = async ({
   channel,
-  id,
   message,
-  team,
 }: {
-  channel: AlertMessageTemplateDefaultView['alert']['channel']['type'];
-  id: string;
-  message: {
-    hdxLink: string;
-    title: string;
-    body: string;
-  };
-  team: {
-    id: string;
-  };
+  channel: PopulatedAlertChannel;
+  message: Message;
 }) => {
-  switch (channel) {
+  switch (channel.type) {
     case 'webhook': {
-      const webhook = await Webhook.findOne({
-        team: team.id,
-        ...(mongoose.isValidObjectId(id)
-          ? { _id: id }
-          : {
-              name: {
-                $regex: new RegExp(`^${escapeRegExp(id)}`), // FIXME: a hacky way to match the prefix
-              },
-            }),
-      });
-
-      if (webhook?.service === WebhookService.Slack) {
+      const webhook = channel.channel;
+      if (webhook.service === WebhookService.Slack) {
         await handleSendSlackWebhook(webhook, message);
-      } else if (webhook?.service === 'generic') {
+      } else if (webhook.service === 'generic') {
         await handleSendGenericWebhook(webhook, message);
       }
       break;
     }
     default:
-      throw new Error(`Unsupported channel type: ${channel}`);
+      throw new Error(`Unsupported channel type: ${channel.type}`);
   }
 };
 
@@ -148,11 +140,7 @@ function validateWebhookUrl(
 
 export const handleSendSlackWebhook = async (
   webhook: IWebhook,
-  message: {
-    hdxLink: string;
-    title: string;
-    body: string;
-  },
+  message: Message,
 ) => {
   validateWebhookUrl(webhook);
 
@@ -172,11 +160,7 @@ export const handleSendSlackWebhook = async (
 
 export const handleSendGenericWebhook = async (
   webhook: IWebhook,
-  message: {
-    hdxLink: string;
-    title: string;
-    body: string;
-  },
+  message: Message,
 ) => {
   validateWebhookUrl(webhook);
 
@@ -342,6 +326,41 @@ export const translateExternalActionsToInternal = (template: string) => {
   });
 };
 
+const findWebhookByName = (
+  channelIdOrNamePrefix: string,
+  teamWebhooksById: Map<string, IWebhook>,
+) => {
+  return [...teamWebhooksById.values()].find(w =>
+    w.name.startsWith(channelIdOrNamePrefix),
+  );
+};
+
+const getPopulatedChannel = (
+  channelType: AlertChannelType,
+  channelIdOrNamePrefix: string,
+  teamWebhooksById: Map<string, IWebhook>,
+): PopulatedAlertChannel | undefined => {
+  switch (channelType) {
+    case 'webhook': {
+      const webhook =
+        teamWebhooksById.get(channelIdOrNamePrefix) ??
+        findWebhookByName(channelIdOrNamePrefix, teamWebhooksById);
+
+      if (!webhook) {
+        logger.error('webhook not found', {
+          webhookId: channelIdOrNamePrefix,
+        });
+        return undefined;
+      }
+      return { type: 'webhook', channel: webhook };
+    }
+    default: {
+      logger.error(`unsupported alert channel type: ${channelType}`);
+      return undefined;
+    }
+  }
+};
+
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
   alertProvider,
@@ -350,7 +369,7 @@ export const renderAlertTemplate = async ({
   template,
   title,
   view,
-  team,
+  teamWebhooksById,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -358,9 +377,7 @@ export const renderAlertTemplate = async ({
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
-  team: {
-    id: string;
-  };
+  teamWebhooksById: Map<string, IWebhook>;
 }) => {
   const {
     alert,
@@ -403,30 +420,36 @@ export const renderAlertTemplate = async ({
   const registerHelpers = (rawTemplateBody: string) => {
     hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
-    hb.registerHelper(
-      NOTIFY_FN_NAME,
-      async (options: { hash: Record<string, string> }) => {
-        const { channel, id } = options.hash;
-        if (channel !== 'webhook') {
-          throw new Error(`Unsupported channel type: ${channel}`);
-        }
-        // render id template
-        const renderedId = _hb.compile(id)(view);
-        // render body template
-        const renderedBody = _hb.compile(rawTemplateBody)(view);
+    // Register a custom helper which sends notifications to the specified channel
+    // Usage: {{NOTIFY_FN_NAME channel="webhook" id="1234_5678"}}
+    hb.registerHelper(NOTIFY_FN_NAME, async (options: unknown) => {
+      const { hash } = zNotifyFnParams.parse(options);
+      const { channel: channelType, id: idTemplate } = hash;
 
+      // The id field can also be a template itself, e.g. id="{{attributes.webhookId}}", so it must be compiled and rendered
+      // The id might also be the prefix of the webhook name.
+      const renderedIdOrNamePrefix = _hb.compile(idTemplate)(view);
+
+      // render body template
+      const renderedBody = _hb.compile(rawTemplateBody)(view);
+
+      const channel = getPopulatedChannel(
+        channelType,
+        renderedIdOrNamePrefix,
+        teamWebhooksById,
+      );
+
+      if (channel) {
         await notifyChannel({
           channel,
-          id: renderedId,
           message: {
             hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
             title,
             body: renderedBody,
           },
-          team,
         });
-      },
-    );
+      }
+    });
   };
 
   const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
