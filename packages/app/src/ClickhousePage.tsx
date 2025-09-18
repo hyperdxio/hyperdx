@@ -7,6 +7,8 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import { sql } from '@codemirror/lang-sql';
+import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -19,6 +21,7 @@ import {
   Tabs,
   Text,
 } from '@mantine/core';
+import ReactCodeMirror from '@uiw/react-codemirror';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -702,9 +705,18 @@ function ClickhousePage() {
                   Slowest Queries
                 </Text>
                 <DBSqlRowTable
-                  highlightedLineId={undefined}
-                  onRowExpandClick={() => {}}
-                  showExpandButton={false}
+                  renderRowDetails={row => {
+                    return (
+                      <ReactCodeMirror
+                        extensions={[sql()]}
+                        editable={false}
+                        value={formatSql(row.query)}
+                        theme="dark"
+                        lang="sql"
+                        maxHeight="200px"
+                      />
+                    );
+                  }}
                   config={{
                     select: `event_time, query_kind, 
                 read_rows,
@@ -735,7 +747,6 @@ function ClickhousePage() {
                     ],
                     limit: { limit: 100 },
                   }}
-                  onScroll={() => {}}
                 />
               </ChartBox>
             </Grid.Col>
