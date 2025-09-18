@@ -50,6 +50,7 @@ type FilterCheckboxProps = {
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
   onClickPin: VoidFunction;
+  className?: string;
 };
 
 export const TextButton = ({
@@ -85,9 +86,10 @@ export const FilterCheckbox = ({
   onClickOnly,
   onClickExclude,
   onClickPin,
+  className,
 }: FilterCheckboxProps) => {
   return (
-    <div className={classes.filterCheckbox}>
+    <div className={`${classes.filterCheckbox} ${className || ''}`}>
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
@@ -189,6 +191,8 @@ export const FilterGroup = ({
   const [shouldShowMore, setShowMore] = useState(false);
   // Accordion expanded state
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  // Track recently moved items for highlight animation
+  const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (isDefaultExpanded) {
@@ -267,6 +271,34 @@ export const FilterGroup = ({
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
     totalFiltersSize < augmentedOptions.length;
+
+  // Handle checkbox change with animation tracking
+  const handleChange = useCallback(
+    (value: string) => {
+      const wasSelected =
+        selectedValues.included.has(value) ||
+        selectedValues.excluded.has(value);
+      const willBeSelected = !selectedValues.included.has(value);
+
+      // If item will be selected (checked) and wasn't selected before, it will move to top
+      if (willBeSelected && !wasSelected) {
+        // Add highlight for moved item
+        setRecentlyMoved(prev => new Set(prev).add(value));
+
+        // Remove highlight after animation
+        setTimeout(() => {
+          setRecentlyMoved(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(value);
+            return newSet;
+          });
+        }, 600);
+      }
+
+      onChange(value);
+    },
+    [onChange, selectedValues],
+  );
 
   return (
     <Accordion
@@ -367,6 +399,9 @@ export const FilterGroup = ({
                   key={option.value}
                   label={option.label}
                   pinned={isPinned(option.value)}
+                  className={
+                    recentlyMoved.has(option.value) ? classes.recentlyMoved : ''
+                  }
                   value={
                     selectedValues.included.has(option.value)
                       ? 'included'
@@ -374,7 +409,7 @@ export const FilterGroup = ({
                         ? 'excluded'
                         : false
                   }
-                  onChange={() => onChange(option.value)}
+                  onChange={() => handleChange(option.value)}
                   onClickOnly={() => onOnlyClick(option.value)}
                   onClickExclude={() => onExcludeClick(option.value)}
                   onClickPin={() => onPinClick(option.value)}
