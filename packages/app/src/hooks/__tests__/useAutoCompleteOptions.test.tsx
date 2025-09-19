@@ -4,7 +4,7 @@ import { renderHook } from '@testing-library/react';
 
 import { LuceneLanguageFormatter } from '../../SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';
-import { useAllFields, useGetKeyValues } from '../useMetadata';
+import { useAllFields, useGetKeyValues, useJsonColumns } from '../useMetadata';
 
 if (!globalThis.structuredClone) {
   globalThis.structuredClone = (obj: any) => {
@@ -17,6 +17,7 @@ jest.mock('../useMetadata', () => ({
   ...jest.requireActual('../useMetadata.tsx'),
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
+  useJsonColumns: jest.fn(),
 }));
 
 const luceneFormatter = new LuceneLanguageFormatter();
@@ -58,6 +59,10 @@ describe('useAutoCompleteOptions', () => {
     });
 
     (useGetKeyValues as jest.Mock).mockReturnValue({
+      data: null,
+    });
+
+    (useJsonColumns as jest.Mock).mockReturnValue({
       data: null,
     });
   });
