@@ -58,13 +58,9 @@ import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
 
-import { useTimeChartSettings } from '@/ChartUtils';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart from '@/components/DBHeatmapChart';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { RowSidePanelContext } from '@/components/DBRowSidePanel';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -103,7 +99,9 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
@@ -696,7 +694,6 @@ function DBSearchPage() {
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
 
   const defaultOrderBy = useDefaultOrderBy(inputSource);
-  const [rowId, setRowId] = useQueryState('rowWhere');
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -880,13 +877,9 @@ function DBSearchPage() {
     [isLive, setIsLive],
   );
 
-  const onRowExpandClick = useCallback(
-    (rowWhere: string) => {
-      setIsLive(false);
-      setRowId(rowWhere);
-    },
-    [setRowId, setIsLive],
-  );
+  const onSidebarOpen = useCallback(() => {
+    setIsLive(false);
+  }, [setIsLive]);
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
   const [saveSearchModalState, setSaveSearchModalState] = useState<
@@ -1010,7 +1003,7 @@ function DBSearchPage() {
   const { data: me } = api.useMe();
 
   // Callback to handle when rows are expanded - kick user out of live tail
-  const handleExpandedRowsChange = useCallback(
+  const onExpandedRowsChange = useCallback(
     (hasExpandedRows: boolean) => {
       if (hasExpandedRows && isLive) {
         setIsLive(false);
@@ -1231,6 +1224,12 @@ function DBSearchPage() {
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
             />
+            <span className="ms-1">
+              <SourceSchemaPreview
+                source={inputSourceObj}
+                iconStyles={{ size: 'xs', color: 'dark.2' }}
+              />
+            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
@@ -1472,25 +1471,6 @@ function DBSearchPage() {
           </Button>
         </Flex>
       </form>
-      <RowSidePanelContext.Provider
-        value={{
-          onPropertyAddClick: searchFilters.setFilterValue,
-          displayedColumns,
-          toggleColumn,
-          generateSearchUrl,
-          dbSqlRowTableConfig,
-          isChildModalOpen: isDrawerChildModalOpen,
-          setChildModalOpen: setDrawerChildModalOpen,
-        }}
-      >
-        {searchedSource && (
-          <DBRowSidePanel
-            source={searchedSource}
-            rowId={rowId ?? undefined}
-            onClose={() => setRowId(null)}
-          />
-        )}
-      </RowSidePanelContext.Provider>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
           opened={saveSearchModalState != null}
@@ -1837,32 +1817,31 @@ function DBSearchPage() {
                         </div>
                       )}
                     {chartConfig &&
+                      searchedConfig.source &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
-                        <RowSidePanelContext.Provider
-                          value={{
+                        <DBSqlRowTableWithSideBar
+                          context={{
                             onPropertyAddClick: searchFilters.setFilterValue,
                             displayedColumns,
                             toggleColumn,
                             generateSearchUrl,
                             dbSqlRowTableConfig,
+                            isChildModalOpen: isDrawerChildModalOpen,
+                            setChildModalOpen: setDrawerChildModalOpen,
                           }}
-                        >
-                          <DBSqlRowTable
-                            config={dbSqlRowTableConfig}
-                            sourceId={searchedConfig.source ?? ''}
-                            onRowExpandClick={onRowExpandClick}
-                            highlightedLineId={rowId ?? undefined}
-                            enabled={isReady}
-                            isLive={isLive ?? true}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onScroll={onTableScroll}
-                            onError={handleTableError}
-                            denoiseResults={denoiseResults}
-                            onExpandedRowsChange={handleExpandedRowsChange}
-                            collapseAllRows={collapseAllRows}
-                          />
-                        </RowSidePanelContext.Provider>
+                          config={dbSqlRowTableConfig}
+                          sourceId={searchedConfig.source}
+                          onSidebarOpen={onSidebarOpen}
+                          onExpandedRowsChange={onExpandedRowsChange}
+                          enabled={isReady}
+                          isLive={isLive ?? true}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onScroll={onTableScroll}
+                          onError={handleTableError}
+                          denoiseResults={denoiseResults}
+                          collapseAllRows={collapseAllRows}
+                        />
                       )}
                   </>
                 )}

@@ -50,7 +50,6 @@ import {
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
@@ -75,6 +74,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
+import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
@@ -82,6 +82,7 @@ import {
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
@@ -126,12 +127,14 @@ function ChartSeriesEditorComponent({
   index,
   namePrefix,
   onRemoveSeries,
+  onSwapSeries,
   onSubmit,
   setValue,
   showGroupBy,
   tableName: _tableName,
   watch,
   parentRef,
+  length,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -141,11 +144,13 @@ function ChartSeriesEditorComponent({
   namePrefix: string;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
+  onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
   tableName: string;
   watch: UseFormWatch<any>;
+  length: number;
 }) {
   const aggFn = watch(`${namePrefix}aggFn`);
   const aggConditionLanguage = watch(
@@ -189,6 +194,28 @@ function ChartSeriesEditorComponent({
               />
             </div>
             {(index ?? -1) > 0 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index - 1)}
+                title="Move up"
+              >
+                <i className="bi bi-arrow-up" />
+              </Button>
+            )}
+            {(index ?? -1) < length - 1 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index + 1)}
+                title="Move down"
+              >
+                <i className="bi bi-arrow-down" />
+              </Button>
+            )}
+            {((index ?? -1) > 0 || length > 1) && (
               <Button
                 variant="subtle"
                 color="gray"
@@ -393,6 +420,7 @@ export default function EditTimeChartForm({
     fields,
     append,
     remove: removeSeries,
+    swap: swapSeries,
   } = useFieldArray({
     control: control as Control<SavedChartConfigWithSelectArray>,
     name: 'select',
@@ -651,6 +679,10 @@ export default function EditTimeChartForm({
               Data Source
             </Text>
             <SourceSelectControlled size="xs" control={control} name="source" />
+            <SourceSchemaPreview
+              source={tableSource}
+              iconStyles={{ color: 'dark.2' }}
+            />
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -665,6 +697,8 @@ export default function EditTimeChartForm({
                   parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
+                  length={fields.length}
+                  onSwapSeries={swapSeries}
                   onSubmit={onSubmit}
                   setValue={setValue}
                   connectionId={tableSource?.connection}
@@ -986,7 +1020,8 @@ export default function EditTimeChartForm({
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
-            <DBSqlRowTable
+            <DBSqlRowTableWithSideBar
+              sourceId={sourceId}
               config={{
                 ...queriedConfig,
                 orderBy: [
@@ -1009,13 +1044,9 @@ export default function EditTimeChartForm({
                 groupBy: undefined,
                 granularity: undefined,
               }}
-              onRowExpandClick={() => {}}
-              highlightedLineId={undefined}
               enabled
               isLive={false}
-              showExpandButton={false}
               queryKeyPrefix={'search'}
-              onScroll={() => {}}
             />
           </div>
         )}
@@ -1036,13 +1067,12 @@ export default function EditTimeChartForm({
                       className="flex-grow-1 d-flex flex-column"
                       style={{ height: 400 }}
                     >
-                      <DBSqlRowTable
+                      <DBSqlRowTableWithSideBar
+                        sourceId={sourceId}
                         config={sampleEventsConfig}
-                        highlightedLineId={undefined}
                         enabled
                         isLive={false}
                         queryKeyPrefix={'search'}
-                        showExpandButton={false}
                       />
                     </div>
                   )}
