@@ -36,6 +36,10 @@ RUN yarn install --mode=skip-build && yarn cache clean
 ## API/APP Builder Image ##########################################################################
 FROM node_base AS builder
 
+ARG HYPERDX_BASE_PATH
+ARG HYPERDX_API_BASE_PATH
+ARG HYPERDX_OTEL_BASE_PATH
+
 WORKDIR /app
 
 COPY --from=api ./src ./packages/api/src
@@ -48,6 +52,9 @@ COPY --from=app ./types ./packages/app/types
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
+ENV HYPERDX_BASE_PATH $HYPERDX_BASE_PATH
+ENV HYPERDX_API_BASE_PATH $HYPERDX_API_BASE_PATH
+ENV HYPERDX_OTEL_BASE_PATH $HYPERDX_OTEL_BASE_PATH
 ENV NX_DAEMON=false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
 

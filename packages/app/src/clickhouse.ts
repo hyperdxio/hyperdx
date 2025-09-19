@@ -20,7 +20,7 @@ import { getLocalConnections } from '@/connection';
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
 
-const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
+const PROXY_CLICKHOUSE_HOST = `${process.env.HYPERDX_BASE_PATH || ''}/api/clickhouse-proxy`;
 
 export const getClickhouseClient = (
   options: ClickhouseClientOptions = {},

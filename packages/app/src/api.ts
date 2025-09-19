@@ -47,8 +47,14 @@ export function loginHook(request: Request, options: any, response: Response) {
   }
 }
 
+// Get basePath from runtime environment
+const getApiPrefix = () => {
+  const basePath = process.env.HYPERDX_BASE_PATH || '';
+  return `${basePath}/api`;
+};
+
 export const server = ky.create({
-  prefixUrl: '/api',
+  prefixUrl: getApiPrefix(),
   credentials: 'include',
   hooks: {
     afterResponse: [loginHook],

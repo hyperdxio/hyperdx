@@ -110,6 +110,9 @@ build-app:
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
+		--build-arg HYPERDX_BASE_PATH="${HYPERDX_BASE_PATH}" \
+		--build-arg HYPERDX_API_BASE_PATH="${HYPERDX_API_BASE_PATH}" \
+		--build-arg HYPERDX_OTEL_BASE_PATH="${HYPERDX_OTEL_BASE_PATH}" \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod
 

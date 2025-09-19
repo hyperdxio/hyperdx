@@ -20,6 +20,8 @@ import passport from './utils/passport';
 
 const app: express.Application = express();
 
+const API_BASE_PATH = process.env.HYPERDX_API_BASE_PATH || '';
+
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
   saveUninitialized: false,
@@ -79,45 +81,84 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 // ----------------------- Internal Routers ----------------------------
 // ---------------------------------------------------------------------
-// PUBLIC ROUTES
-app.use('/', routers.rootRouter);
+if (API_BASE_PATH) {
+  const apiRouter = express.Router();
+  
+  // PUBLIC ROUTES
+  apiRouter.use('/', routers.rootRouter);
+  
+  // PRIVATE ROUTES
+  apiRouter.use('/alerts', isUserAuthenticated, routers.alertsRouter);
+  apiRouter.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
+  apiRouter.use('/me', isUserAuthenticated, routers.meRouter);
+  apiRouter.use('/team', isUserAuthenticated, routers.teamRouter);
+  apiRouter.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
+  apiRouter.use('/connections', isUserAuthenticated, connectionsRouter);
+  apiRouter.use('/sources', isUserAuthenticated, sourcesRouter);
+  apiRouter.use('/saved-search', isUserAuthenticated, savedSearchRouter);
+  apiRouter.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
+  apiRouter.use('/api/v2', externalRoutersV2);
+  
+  // Only initialize Swagger in development or if explicitly enabled
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.ENABLE_SWAGGER === 'true'
+  ) {
+    import('./utils/swagger')
+      .then(({ setupSwagger }) => {
+        console.log('Swagger UI setup and available at /api/v2/docs');
+        setupSwagger(app);
+      })
+      .catch(error => {
+        console.error(
+          'Failed to dynamically load or setup Swagger. Swagger UI will not be available.',
+          error,
+        );
+      });
+  }
+  
+  app.use(API_BASE_PATH, apiRouter);
+} else {
+  // PUBLIC ROUTES
+  app.use('/', routers.rootRouter);
 
-// PRIVATE ROUTES
-app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
-app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
-app.use('/me', isUserAuthenticated, routers.meRouter);
-app.use('/team', isUserAuthenticated, routers.teamRouter);
-app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
-app.use('/connections', isUserAuthenticated, connectionsRouter);
-app.use('/sources', isUserAuthenticated, sourcesRouter);
-app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
-app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
-// ---------------------------------------------------------------------
+  // PRIVATE ROUTES
+  app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
+  app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
+  app.use('/me', isUserAuthenticated, routers.meRouter);
+  app.use('/team', isUserAuthenticated, routers.teamRouter);
+  app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
+  app.use('/connections', isUserAuthenticated, connectionsRouter);
+  app.use('/sources', isUserAuthenticated, sourcesRouter);
+  app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
+  app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
+  
+  // TODO: Separate external API routers from internal routers
+  // ---------------------------------------------------------------------
+  // ----------------------- External Routers ----------------------------
+  // ---------------------------------------------------------------------
+  // API v2
+  // Only initialize Swagger in development or if explicitly enabled
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.ENABLE_SWAGGER === 'true'
+  ) {
+    import('./utils/swagger')
+      .then(({ setupSwagger }) => {
+        console.log('Swagger UI setup and available at /api/v2/docs');
+        setupSwagger(app);
+      })
+      .catch(error => {
+        console.error(
+          'Failed to dynamically load or setup Swagger. Swagger UI will not be available.',
+          error,
+        );
+      });
+  }
 
-// TODO: Separate external API routers from internal routers
-// ---------------------------------------------------------------------
-// ----------------------- External Routers ----------------------------
-// ---------------------------------------------------------------------
-// API v2
-// Only initialize Swagger in development or if explicitly enabled
-if (
-  process.env.NODE_ENV !== 'production' &&
-  process.env.ENABLE_SWAGGER === 'true'
-) {
-  import('./utils/swagger')
-    .then(({ setupSwagger }) => {
-      console.log('Swagger UI setup and available at /api/v2/docs');
-      setupSwagger(app);
-    })
-    .catch(error => {
-      console.error(
-        'Failed to dynamically load or setup Swagger. Swagger UI will not be available.',
-        error,
-      );
-    });
+  app.use('/api/v2', externalRoutersV2);
 }
-
-app.use('/api/v2', externalRoutersV2);
+// ---------------------------------------------------------------------
 
 // error handling
 app.use(appErrorHandler);

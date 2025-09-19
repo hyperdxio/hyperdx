@@ -4,7 +4,7 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        <script src="/__ENV.js" />
+        <script src={`${process.env.HYPERDX_BASE_PATH || ''}/__ENV.js`} />
         <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
         <link
           rel="stylesheet"
