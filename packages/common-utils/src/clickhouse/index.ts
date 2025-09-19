@@ -447,6 +447,7 @@ export abstract class BaseClickhouseClient {
     }
 
     return {
+      allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
