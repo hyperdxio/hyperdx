@@ -101,6 +101,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
@@ -1223,6 +1224,12 @@ function DBSearchPage() {
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
             />
+            <span className="ms-1">
+              <SourceSchemaPreview
+                source={inputSourceObj}
+                iconStyles={{ size: 'xs', color: 'dark.2' }}
+              />
+            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
