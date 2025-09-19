@@ -146,10 +146,12 @@ jobs:
           path: packages/app/test-results/
           retention-days: 30
 
-      - name: Comment PR with test results
-        uses: actions/github-script@v7
+      - name: Generate test results message
+        id: test-results
         if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
         with:
+          result-encoding: string
           script: |
             const fs = require('fs');
             const path = require('path');
@@ -160,38 +162,47 @@ jobs:
                 const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
                 const { stats } = results;
 
-                const total = stats.expected + stats.unexpected + stats.flaky + stats.skipped;
-                const failed = stats.unexpected > 0;
+                const failed = stats.unexpected || 0;
+                const passed = stats.expected || 0;
+                const flaky = stats.flaky || 0;
+                const skipped = stats.skipped || 0;
+                const duration = Math.round((stats.duration || 0) / 1000);
 
-                const summary = failed
-                  ? `❌ **${stats.unexpected} test${stats.unexpected > 1 ? 's' : ''} failed**`
+                const summary = failed > 0
+                  ? `❌ **${failed} test${failed > 1 ? 's' : ''} failed**`
                   : `✅ **All tests passed**`;
 
-                const body = `## E2E Test Results
-                
-                ${summary} • ${stats.expected} passed • ${stats.skipped} skipped • ${Math.round(stats.duration / 1000)}s
-                
-                <details>
-                <summary>View Details</summary>
+                return `## E2E Test Results
 
-                | Status | Count |
-                |--------|-------|
-                | ✅ Passed | ${stats.expected} |
-                | ❌ Failed | ${stats.unexpected} |
-                | ⚠️ Flaky | ${stats.flaky} |
-                | ⏭️ Skipped | ${stats.skipped} |
+            ${summary} • ${passed} passed • ${skipped} skipped • ${duration}s
 
-                </details>
+            | Status | Count |
+            |--------|-------|
+            | ✅ Passed | ${passed} |
+            | ❌ Failed | ${failed} |
+            | ⚠️ Flaky | ${flaky} |
+            | ⏭️ Skipped | ${skipped} |
 
-                [View full report →](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+              } else {
+                return `## E2E Test Results
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+            ❌ **Test results file not found**
+
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
               }
             } catch (error) {
-              console.log('Could not post test results:', error.message);
+              console.log('Could not parse test results:', error.message);
+              return `## E2E Test Results
+
+            ❌ **Error reading test results**
+
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
             }
+
+      - name: Comment PR with test results
+        uses: mshick/add-pr-comment@v2
+        if: always() && github.event_name == 'pull_request'
+        with:
+          message: ${{ steps.test-results.outputs.result }}
+          message-id: e2e-test-results

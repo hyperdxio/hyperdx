@@ -13,7 +13,9 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await test.step('Wait for page to load', async () => {
         await page.waitForLoadState('networkidle');
         // Wait for the first navigation link to be visible instead of using a fixed timeout
-        await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+        await expect(
+          page.locator('[data-testid="nav-link-search"]'),
+        ).toBeVisible();
       });
 
       await test.step('Verify all main navigation links are present and have correct hrefs', async () => {
@@ -36,18 +38,22 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     await test.step('Navigate to and click user menu trigger', async () => {
       // Wait for page to be fully loaded first
       await page.waitForLoadState('networkidle');
-      await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
-      
+      await expect(
+        page.locator('[data-testid="nav-link-search"]'),
+      ).toBeVisible();
+
       const userMenuTrigger = page.locator('[data-testid="user-menu-trigger"]');
       await userMenuTrigger.scrollIntoViewIfNeeded();
       await expect(userMenuTrigger).toBeVisible();
-      
+
       // Wait for the element to be fully interactive and click with extended timeout
       await userMenuTrigger.waitFor({ state: 'attached' });
       await userMenuTrigger.click({ timeout: 10000 });
-      
+
       // Wait for the menu to appear
-      await expect(page.locator('[data-testid="user-preferences-menu-item"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="user-preferences-menu-item"]'),
+      ).toBeVisible();
     });
 
     await test.step('Verify user menu items are accessible', async () => {
@@ -64,18 +70,22 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     await test.step('Navigate to and click help menu trigger', async () => {
       // Wait for page to be fully loaded first
       await page.waitForLoadState('networkidle');
-      await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
-      
+      await expect(
+        page.locator('[data-testid="nav-link-search"]'),
+      ).toBeVisible();
+
       const helpMenuTrigger = page.locator('[data-testid="help-menu-trigger"]');
       await helpMenuTrigger.scrollIntoViewIfNeeded();
       await expect(helpMenuTrigger).toBeVisible();
-      
+
       // Wait for the element to be fully interactive and click with extended timeout
       await helpMenuTrigger.waitFor({ state: 'attached' });
       await helpMenuTrigger.click({ timeout: 10000 });
-      
+
       // Wait for the menu items to appear
-      await expect(page.locator('[data-testid="documentation-menu-item"]')).toBeVisible();
+      await expect(
+        page.locator('[data-testid="documentation-menu-item"]'),
+      ).toBeVisible();
     });
 
     await test.step('Verify help menu items are accessible', async () => {

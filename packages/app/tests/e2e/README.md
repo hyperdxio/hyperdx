@@ -4,7 +4,7 @@ This directory contains Playwright-based end-to-end tests for the HyperDX applic
 
 ## Prerequisites
 
-- Node.js (version specified in `.nvmrc`)
+- Node.js (>=22.16.0 as specified in package.json)
 - Dependencies installed via `yarn install`
 - Development server running (automatically handled by test configuration)
 
@@ -16,7 +16,7 @@ To run the complete test suite:
 
 ```bash
 # From project root
-make dev-e2e
+make e2e
 
 # Or from packages/app directory
 yarn test:e2e
@@ -28,40 +28,32 @@ Tests are organized using tags to allow selective execution:
 
 ```bash
 # Run smoke tests only
-make dev-e2e tags="@smoke"
-
-# Run core functionality tests
-make dev-e2e tags="@core"
+make e2e tags="@smoke"
 
 # Run search-related tests
-make dev-e2e tags="@search"
+make e2e tags="@search"
 
 # Run dashboard tests
-make dev-e2e tags="@dashboard"
+make e2e tags="@dashboard"
 
-# Run trace workflow tests
-make dev-e2e tags="@traces"
+# Run local-mode tests
+make e2e tags="@local-mode"
 
-# Run session tests
-make dev-e2e tags="@sessions"
-
-# Run alert tests
-make dev-e2e tags="@alerts"
-
-# Run chart explorer tests
-make dev-e2e tags="@charts"
+# Or using yarn directly with grep
+cd packages/app && yarn test:e2e --grep "@smoke"
+cd packages/app && yarn test:e2e --grep "@search"
+cd packages/app && yarn test:e2e --grep "@dashboard"
 ```
 
 ### Local Mode vs Full Server
 
-Some tests require a full server setup and are tagged with `@full-server`. Tests tagged with `@local-mode` can run against the local development server without external dependencies.
+Tests tagged with `@local-mode` can run against the local development server without external dependencies. The test configuration automatically starts a local development server with `NEXT_PUBLIC_IS_LOCAL_MODE=true`.
 
 ## Test Organization
 
 ```
 tests/e2e/
 ├── core/                 # Core application functionality
-│   ├── modals.spec.ts    # Modal interactions
 │   └── navigation.spec.ts # Navigation and routing
 ├── features/             # Feature-specific tests
 │   ├── alerts.spec.ts
@@ -72,11 +64,9 @@ tests/e2e/
 │   │   ├── search-filters.spec.ts
 │   │   └── saved-search.spec.ts
 │   ├── sessions.spec.ts
-│   ├── sources.spec.ts
 │   └── traces-workflow.spec.ts
 └── utils/                # Test utilities and helpers
-    ├── base-test.ts
-    └── test-setup.ts
+    └── base-test.ts
 ```
 
 ## Debugging Tests
@@ -147,28 +137,24 @@ yarn playwright show-trace test-results/[test-name]/trace.zip
 
 The test configuration is defined in `playwright.config.ts`:
 
-- **Base URL**: `http://localhost:8080`
-- **Timeout**: 30 seconds per test
-- **Retries**: 1 retry on local, 2 on CI
-- **Workers**: 1 worker locally, 2 on CI
-- **Screenshots**: Captured on failure
-- **Videos**: Recorded for failed tests
+- **Base URL**: `http://localhost:8080` (configurable via `PLAYWRIGHT_BASE_URL`)
+- **Test Timeout**: 60 seconds (increased from default 30s to reduce flaky test failures)
+- **Retries**: 1 retry locally, 2 on CI
+- **Workers**: Undefined (uses Playwright defaults)
+- **Screenshots**: Captured on failure only
+- **Videos**: Recorded and retained on failure
+- **Traces**: Collected on first retry
+- **Global Setup**: Ensures server readiness before tests
+- **Web Server**: Automatically starts local dev server with local mode enabled
 
 ## Test Development
 
 ### Writing Tests
 
 Tests use the extended base test from `utils/base-test.ts` which provides:
-- Automatic handling of onboarding modals
+- Automatic handling of connection/sources
 - Tanstack Query devtools management
 - Network idle waiting after navigation
-
-### Test Utilities
-
-Common utilities are available in `utils/test-setup.ts`:
-- User registration and login helpers
-- Modal handling functions
-- Authentication state management
 
 ### Best Practices
 
@@ -192,13 +178,13 @@ If tests fail with connection errors:
 For intermittent failures:
 1. Check the HTML report for timing issues
 2. Review network logs for failed requests
-3. Increase wait timeouts if necessary
+3. Consider if individual test steps need longer wait times (global timeout is now 60s)
 4. Use the trace viewer to analyze test execution
 
 ### CI/CD Integration
 
 Tests are configured to run in CI environments with:
-- Increased timeout values
-- Multiple retry attempts
+- 60-second test timeout (same as local)
+- Multiple retry attempts (2 retries on CI vs 1 locally)
 - Artifact collection for failed tests
 - GitHub Actions integration for PR comments

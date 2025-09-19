@@ -1,4 +1,4 @@
-import { expect, test, TestUtils } from '../../utils/base-test';
+import { expect, test } from '../../utils/base-test';
 
 test.describe('Search', { tag: '@search' }, () => {
   test.describe('Basic Functionality', () => {

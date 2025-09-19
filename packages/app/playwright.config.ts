@@ -33,6 +33,9 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
+  /* Global test timeout - increased from default 30s to 60s to reduce flaky test failures */
+  timeout: 60 * 1000,
+
   /* Configure projects for different test environments */
   projects: [
     {

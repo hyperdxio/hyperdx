@@ -1,7 +1,5 @@
 import { expect, test as base } from '@playwright/test';
 
-import { TestUtils } from './test-setup';
-
 // Extend the base test to automatically handle Tanstack devtools
 export const test = base.extend({
   page: async ({ page }, use) => {
@@ -145,23 +143,8 @@ export const test = base.extend({
         ]),
       );
     });
-    // // Override the goto method to handle modals and devtools after navigation
-    // const originalGoto = page.goto.bind(page);
-    // page.goto = async (url: string, options?: any) => {
-    //   const result = await originalGoto(url, options);
-    //   await page.waitForLoadState('networkidle');
-
-    //   // Handle onboarding modal
-    //   //await TestUtils.handleOnboardingModal(page);
-    //   return result;
-    // };
-
-    // Use the enhanced page
     await use(page);
   },
 });
 
 export { expect };
-
-// Export TestUtils for convenience
-export { TestUtils };
