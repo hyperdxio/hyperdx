@@ -82,7 +82,7 @@ export function useAutoCompleteOptions(
         }),
   );
   const searchKeys = useMemo(
-    () => (searchField ? [mergePath(searchField.path, jsonColumns)] : []),
+    () => (searchField ? [mergePath(searchField.path, jsonColumns ?? [])] : []),
     [searchField],
   );
 
