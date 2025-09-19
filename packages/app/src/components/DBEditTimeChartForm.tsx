@@ -275,7 +275,12 @@ function ChartSeriesEditorComponent({
           </div>
         )}
         {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
-          <div style={{ minWidth: 220 }}>
+          <div
+            style={{
+              minWidth: 220,
+              ...(aggFn === 'none' && { width: '100%' }),
+            }}
+          >
             <SQLInlineEditorControlled
               tableConnections={{
                 databaseName,
@@ -289,44 +294,46 @@ function ChartSeriesEditorComponent({
             />
           </div>
         )}
-        <Flex align={'center'} gap={'xs'} className="flex-grow-1">
-          <Text size="sm">Where</Text>
-          {aggConditionLanguage === 'sql' ? (
-            <SQLInlineEditorControlled
-              tableConnections={{
-                databaseName,
-                tableName: tableName ?? '',
-                connectionId: connectionId ?? '',
-              }}
-              control={control}
-              name={`${namePrefix}aggCondition`}
-              placeholder="SQL WHERE clause (ex. column = 'foo')"
-              onLanguageChange={lang =>
-                setValue(`${namePrefix}aggConditionLanguage`, lang)
-              }
-              additionalSuggestions={attributeKeys}
-              language="sql"
-              onSubmit={onSubmit}
-            />
-          ) : (
-            <SearchInputV2
-              tableConnections={{
-                connectionId: connectionId ?? '',
-                databaseName: databaseName ?? '',
-                tableName: tableName ?? '',
-              }}
-              control={control}
-              name={`${namePrefix}aggCondition`}
-              onLanguageChange={lang =>
-                setValue(`${namePrefix}aggConditionLanguage`, lang)
-              }
-              language="lucene"
-              placeholder="Search your events w/ Lucene ex. column:foo"
-              onSubmit={onSubmit}
-              additionalSuggestions={attributeKeys}
-            />
-          )}
-        </Flex>
+        {aggFn !== 'none' && (
+          <Flex align={'center'} gap={'xs'} className="flex-grow-1">
+            <Text size="sm">Where</Text>
+            {aggConditionLanguage === 'sql' ? (
+              <SQLInlineEditorControlled
+                tableConnections={{
+                  databaseName,
+                  tableName: tableName ?? '',
+                  connectionId: connectionId ?? '',
+                }}
+                control={control}
+                name={`${namePrefix}aggCondition`}
+                placeholder="SQL WHERE clause (ex. column = 'foo')"
+                onLanguageChange={lang =>
+                  setValue(`${namePrefix}aggConditionLanguage`, lang)
+                }
+                additionalSuggestions={attributeKeys}
+                language="sql"
+                onSubmit={onSubmit}
+              />
+            ) : (
+              <SearchInputV2
+                tableConnections={{
+                  connectionId: connectionId ?? '',
+                  databaseName: databaseName ?? '',
+                  tableName: tableName ?? '',
+                }}
+                control={control}
+                name={`${namePrefix}aggCondition`}
+                onLanguageChange={lang =>
+                  setValue(`${namePrefix}aggConditionLanguage`, lang)
+                }
+                language="lucene"
+                placeholder="Search your events w/ Lucene ex. column:foo"
+                onSubmit={onSubmit}
+                additionalSuggestions={attributeKeys}
+              />
+            )}
+          </Flex>
+        )}
         {showGroupBy && (
           <Flex align={'center'} gap={'xs'}>
             <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
