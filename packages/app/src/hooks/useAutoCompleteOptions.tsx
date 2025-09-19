@@ -82,8 +82,11 @@ export function useAutoCompleteOptions(
         }),
   );
   const searchKeys = useMemo(
-    () => (searchField ? [mergePath(searchField.path, jsonColumns ?? [])] : []),
-    [searchField],
+    () =>
+      searchField && jsonColumns
+        ? [mergePath(searchField.path, jsonColumns)]
+        : [],
+    [searchField, jsonColumns],
   );
 
   // hooks to get key values
