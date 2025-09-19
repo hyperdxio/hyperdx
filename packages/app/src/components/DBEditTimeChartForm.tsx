@@ -389,6 +389,7 @@ export default function EditTimeChartForm({
   onSave,
   onTimeRangeSelect,
   onClose,
+  'data-testid': dataTestId,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -401,6 +402,7 @@ export default function EditTimeChartForm({
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
+  'data-testid'?: string;
 }) {
   const { control, watch, setValue, handleSubmit, register } =
     useForm<SavedChartConfig>({
@@ -588,7 +590,7 @@ export default function EditTimeChartForm({
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   return (
-    <div ref={setParentRef}>
+    <div ref={setParentRef} data-testid={dataTestId}>
       <Controller
         control={control}
         name="displayType"
@@ -639,6 +641,7 @@ export default function EditTimeChartForm({
           w="100%"
           type="text"
           placeholder="My Chart Name"
+          data-testid="chart-name-input"
         />
       </Flex>
       <Divider my="md" />
@@ -670,7 +673,12 @@ export default function EditTimeChartForm({
             <Text c="gray.4" pe="md" size="sm">
               Data Source
             </Text>
-            <SourceSelectControlled size="xs" control={control} name="source" />
+            <SourceSelectControlled
+              size="xs"
+              control={control}
+              name="source"
+              data-testid="source-selector"
+            />
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -895,6 +903,7 @@ export default function EditTimeChartForm({
         <Flex gap="sm">
           {onSave != null && (
             <Button
+              data-testid="chart-save-button"
               loading={isSaving}
               variant="outline"
               onClick={handleSubmit(handleSave)}
@@ -934,6 +943,7 @@ export default function EditTimeChartForm({
           )}
           {activeTab !== 'markdown' && (
             <Button
+              data-testid="chart-run-query-button"
               variant="outline"
               type="submit"
               color="green"

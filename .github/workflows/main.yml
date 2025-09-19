@@ -98,33 +98,100 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         working-directory: ./smoke-tests/otel-collector
         run: bats .
-  app-smoke-test:
-    name: HyperDX App Smoke Test
-    runs-on: ubuntu-latest
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.55.0-jammy
     permissions:
+      contents: read
       pull-requests: write
-      contents: write
+
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v4
-      - name: Waiting for vercel preview to be ready
-        uses: patrickedqvist/wait-for-vercel-preview@v1.3.2
-        id: waitFor200
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          max_timeout: 1200
-          check_interval: 10
-      - run: echo ${{steps.waitFor200.outputs.url}}
 
-      - name: Stably Runner Action
-        uses: stablyhq/stably-runner-action@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          test-suite-id: cmc548u5u0001la04q7y8ddj2
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          api-key: ${{ secrets.STABLY_API_KEY }}
-          environment: PRODUCTION
-          variable-overrides: |
-            {
-              "SITE_URL": "${{ steps.waitFor200.outputs.url }}"
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build dependencies
+        run: npx nx run-many -t ci:build
+
+      - name: Run Playwright tests
+        run: |
+          cd packages/app
+          yarn test:e2e
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: packages/app/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: packages/app/test-results/
+          retention-days: 30
+
+      - name: Comment PR with test results
+        uses: actions/github-script@v7
+        if: always() && github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            try {
+              const resultsPath = path.join('packages/app/test-results/results.json');
+              if (fs.existsSync(resultsPath)) {
+                const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+                const { stats } = results;
+
+                const total = stats.expected + stats.unexpected + stats.flaky + stats.skipped;
+                const failed = stats.unexpected > 0;
+
+                const summary = failed
+                  ? `❌ **${stats.unexpected} test${stats.unexpected > 1 ? 's' : ''} failed**`
+                  : `✅ **All tests passed**`;
+
+                const body = `## E2E Test Results
+                
+                ${summary} • ${stats.expected} passed • ${stats.skipped} skipped • ${Math.round(stats.duration / 1000)}s
+                
+                <details>
+                <summary>View Details</summary>
+
+                | Status | Count |
+                |--------|-------|
+                | ✅ Passed | ${stats.expected} |
+                | ❌ Failed | ${stats.unexpected} |
+                | ⚠️ Flaky | ${stats.flaky} |
+                | ⏭️ Skipped | ${stats.skipped} |
+
+                </details>
+
+                [View full report →](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+              }
+            } catch (error) {
+              console.log('Could not post test results:', error.message);
             }
