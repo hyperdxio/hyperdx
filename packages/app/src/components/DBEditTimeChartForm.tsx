@@ -82,6 +82,7 @@ import {
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
@@ -671,6 +672,10 @@ export default function EditTimeChartForm({
               Data Source
             </Text>
             <SourceSelectControlled size="xs" control={control} name="source" />
+            <SourceSchemaPreview
+              source={tableSource}
+              iconStyles={{ color: 'dark.2' }}
+            />
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
