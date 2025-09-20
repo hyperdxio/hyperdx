@@ -44,5 +44,15 @@ module.exports = {
         ],
       },
     },
+    {
+      // Disable strict rules for E2E test files
+      files: ['tests/e2e/**/*.ts', 'tests/e2e/**/*.js'],
+      rules: {
+        'no-console': 'off',
+        'no-empty': 'off',
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@next/next/no-html-link-for-pages': 'off',
+      },
+    },
   ],
 };

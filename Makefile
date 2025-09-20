@@ -59,6 +59,16 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+.PHONY: e2e
+e2e:
+	@if [ -z "$(tags)" ]; then \
+		echo "Running all E2E tests in local mode..."; \
+		cd packages/app && yarn test:e2e; \
+	else \
+		echo "Running E2E tests with tags: $(tags)"; \
+		cd packages/app && yarn test:e2e --grep "$(tags)"; \
+	fi
+
 # TODO: check db connections before running the migration CLIs
 .PHONY: dev-migrate-db
 dev-migrate-db:

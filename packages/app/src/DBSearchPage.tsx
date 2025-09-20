@@ -1223,6 +1223,7 @@ function DBSearchPage() {
               name="source"
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
+              data-testid="source-selector"
             />
             <span className="ms-1">
               <SourceSchemaPreview
@@ -1444,6 +1445,7 @@ function DBSearchPage() {
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
+                data-testid="search-input"
               />
             }
           />
