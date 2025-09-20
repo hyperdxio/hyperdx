@@ -357,7 +357,10 @@ export class Metadata {
                 );
               }
               keys.push({
-                key: key,
+                key: key
+                  .split('.')
+                  .map(v => `\`${v}\``)
+                  .join('.'),
                 chType: typeArr[0],
               });
             }
