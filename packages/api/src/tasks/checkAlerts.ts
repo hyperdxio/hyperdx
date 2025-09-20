@@ -16,11 +16,12 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
+import { IWebhook } from '@/models/webhook';
 import {
   AlertDetails,
   AlertProvider,
@@ -66,6 +67,7 @@ const fireChannelEvent = async ({
   startTime,
   totalCount,
   windowSizeInMins,
+  teamWebhooksById,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -80,6 +82,7 @@ const fireChannelEvent = async ({
   startTime: Date;
   totalCount: number;
   windowSizeInMins: number;
+  teamWebhooksById: Map<string, IWebhook>;
 }) => {
   const team = alert.team;
   if (team == null) {
@@ -132,9 +135,7 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
-    team: {
-      id: team._id.toString(),
-    },
+    teamWebhooksById,
   });
 };
 
@@ -144,9 +145,9 @@ export const processAlert = async (
   clickhouseClient: ClickhouseClient,
   connectionId: string,
   alertProvider: AlertProvider,
-  previous: AggregatedAlertHistory | undefined,
+  teamWebhooksById: Map<string, IWebhook>,
 ) => {
-  const { alert, source } = details;
+  const { alert, source, previous } = details;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
@@ -247,12 +248,13 @@ export const processAlert = async (
     });
 
     // TODO: support INSUFFICIENT_DATA state
-    let alertState = AlertState.OK;
-    const history = await new AlertHistory({
-      alert: alert.id,
+    const history: IAlertHistory = {
+      alert: new mongoose.Types.ObjectId(alert.id),
       createdAt: nowInMinsRoundDown,
-      state: alertState,
-    }).save();
+      state: AlertState.OK,
+      counts: 0,
+      lastValues: [],
+    };
 
     if (checksData?.data && checksData?.data.length > 0) {
       // attach JS type
@@ -307,7 +309,7 @@ export const processAlert = async (
         }
         const bucketStart = new Date(checkData[timestampColumnName]);
         if (doesExceedThreshold(alert.thresholdType, alert.threshold, _value)) {
-          alertState = AlertState.ALERT;
+          history.state = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
             alertId: alert.id,
@@ -334,6 +336,7 @@ export const processAlert = async (
               startTime: bucketStart,
               totalCount: _value,
               windowSizeInMins,
+              teamWebhooksById,
             });
           } catch (e) {
             logger.error({
@@ -347,12 +350,9 @@ export const processAlert = async (
         }
         history.lastValues.push({ count: _value, startTime: bucketStart });
       }
-
-      history.state = alertState;
-      await history.save();
     }
 
-    await Alert.updateOne({ _id: alert.id }, { $set: { state: alertState } });
+    await alertProvider.updateAlertState(history);
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
@@ -367,7 +367,7 @@ export const processAlert = async (
 // Re-export handleSendGenericWebhook for testing
 export { handleSendGenericWebhook };
 
-interface AggregatedAlertHistory {
+export interface AggregatedAlertHistory {
   _id: ObjectId;
   createdAt: Date;
 }
@@ -429,9 +429,8 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
   }
 
   async processAlertTask(
-    now: Date,
     alertTask: AlertTask,
-    previousAlerts: Map<string, AggregatedAlertHistory>,
+    teamWebhooksById: Map<string, IWebhook>,
   ) {
     const { alerts, conn } = alertTask;
     logger.info({
@@ -439,31 +438,17 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       alertCount: alerts.length,
     });
 
-    if (!conn.password && conn.password !== '') {
-      const providerName = this.provider.constructor.name;
-      logger.info({
-        message: `alert provider did not fetch connection password`,
-        providerName,
-        connectionId: conn.id,
-      });
-    }
-
-    const clickhouseClient = new ClickhouseClient({
-      host: conn.host,
-      username: conn.username,
-      password: conn.password,
-    });
+    const clickhouseClient = await this.provider.getClickHouseClient(conn);
 
     for (const alert of alerts) {
-      const previous = previousAlerts.get(alert.alert.id);
       await this.task_queue.add(() =>
         processAlert(
-          now,
+          alertTask.now,
           alert,
           clickhouseClient,
           conn.id,
           this.provider,
-          previous,
+          teamWebhooksById,
         ),
       );
     }
@@ -479,21 +464,24 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
 
-    const now = new Date();
     const alertTasks = await this.provider.getAlertTasks();
     logger.info({
       message: 'Fetched alert tasks to process',
       taskCount: alertTasks.length,
     });
 
-    const alertIds = alertTasks.flatMap(({ alerts }) =>
-      alerts.map(({ alert }) => alert.id),
-    );
-    const previousAlerts = await getPreviousAlertHistories(alertIds, now);
+    const teams = new Set(alertTasks.map(t => t.conn.team.toString()));
+    const teamToWebhooks = new Map<string, Map<string, IWebhook>>();
+    for (const teamId of teams) {
+      const teamWebhooksById = await this.provider.getWebhooks(teamId);
+      teamToWebhooks.set(teamId, teamWebhooksById);
+    }
 
     for (const task of alertTasks) {
+      const teamWebhooksById =
+        teamToWebhooks.get(task.conn.team.toString()) ?? new Map();
       await this.task_queue.add(() =>
-        this.processAlertTask(now, task, previousAlerts),
+        this.processAlertTask(task, teamWebhooksById),
       );
     }
 

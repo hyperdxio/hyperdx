@@ -1,3 +1,5 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+
 import { AlertProvider, isValidProvider } from '../index';
 
 describe('isValidProvider', () => {
@@ -8,6 +10,9 @@ describe('isValidProvider', () => {
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(validProvider)).toBe(true);
@@ -32,6 +37,9 @@ describe('isValidProvider', () => {
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -43,6 +51,9 @@ describe('isValidProvider', () => {
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -54,6 +65,9 @@ describe('isValidProvider', () => {
       asyncDispose: async () => {},
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -65,6 +79,9 @@ describe('isValidProvider', () => {
       asyncDispose: async () => {},
       getAlertTasks: async () => [],
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -76,6 +93,9 @@ describe('isValidProvider', () => {
       asyncDispose: async () => {},
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -88,6 +108,9 @@ describe('isValidProvider', () => {
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -100,6 +123,9 @@ describe('isValidProvider', () => {
       getAlertTasks: null,
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
     };
 
     expect(isValidProvider(invalidProvider)).toBe(false);
@@ -112,6 +138,9 @@ describe('isValidProvider', () => {
       getAlertTasks: async () => [],
       buildLogSearchLink: () => 'http://example.com/search',
       buildChartLink: () => 'http://example.com/chart',
+      updateAlertState: () => Promise.resolve(),
+      getWebhooks: () => Promise.resolve(new Map()),
+      getClickHouseClient: () => Promise.resolve({} as ClickhouseClient),
       extraProperty: 'should not affect validation',
       anotherMethod: () => {},
     };
