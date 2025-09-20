@@ -370,7 +370,7 @@ export default function DBDeltaChart({
   const PAGE_SIZE = 12;
 
   return (
-    <Box>
+    <Box style={{ overflow: 'auto' }}>
       <Flex justify="flex-end" mx="md" mb="md">
         <Pagination
           size="xs"
