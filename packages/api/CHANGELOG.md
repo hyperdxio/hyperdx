@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.5.0
+
+### Patch Changes
+
+- df259392: chore: remove unused npm packages
+- 0d9f3fe0: fix: Always enable query analyzer to fix compatibility issues with old ClickHouse versions.
+- 140e4d2f: feat: Get ClickHouse client from AlertProvider
+- 825452fe: refactor: Decouple alerts processing from Mongo
+- Updated dependencies [0d9f3fe0]
+- Updated dependencies [3d82583f]
+- Updated dependencies [5a44953e]
+- Updated dependencies [1d79980e]
+  - @hyperdx/common-utils@0.6.0
+
 ## 2.4.0
 
 ### Patch Changes
