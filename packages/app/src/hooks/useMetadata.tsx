@@ -48,7 +48,15 @@ export function useColumns(
 }
 
 export function useJsonColumns(
-  { databaseName, tableName, connectionId }: TableConnection,
+  {
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  },
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
   return useQuery<string[]>({
