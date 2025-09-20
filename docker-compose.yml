@@ -32,6 +32,7 @@ services:
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OPAMP_SERVER_URL: 'http://app:${HYPERDX_OPAMP_PORT}'
+      HYPERDX_OTEL_BASE_PATH: ${HYPERDX_OTEL_BASE_PATH:-}
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
@@ -62,6 +63,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
       OTEL_SERVICE_NAME: 'hdx-oss-app'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
+      HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH:-}
+      HYPERDX_API_BASE_PATH: ${HYPERDX_API_BASE_PATH:-}
+      HYPERDX_OTEL_BASE_PATH: ${HYPERDX_OTEL_BASE_PATH:-}
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
         ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'

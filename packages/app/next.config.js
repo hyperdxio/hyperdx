@@ -9,6 +9,7 @@ const withNextra = require('nextra')({
 });
 
 module.exports = {
+  basePath: process.env.HYPERDX_BASE_PATH || '',
   experimental: {
     instrumentationHook: true,
     // External packages to prevent bundling issues with Next.js 14
