@@ -288,7 +288,7 @@ describe('Single Invocation Alert Test', () => {
     });
 
     // Create source
-    const source = await LogSource.create({
+    const source = (await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {
@@ -298,7 +298,7 @@ describe('Single Invocation Alert Test', () => {
       timestampValueExpression: 'Timestamp',
       connection: connection.id,
       name: 'Test Logs',
-    });
+    })) as any;
 
     // Create dashboard with multiple tiles - the alerting tile is NOT the first one
     const dashboard = await new Dashboard({

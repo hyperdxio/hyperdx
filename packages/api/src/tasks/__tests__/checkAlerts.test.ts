@@ -27,7 +27,7 @@ import {
   getPreviousAlertHistories,
   processAlert,
 } from '@/tasks/checkAlerts';
-import { AlertTaskType, loadProvider } from '@/tasks/providers';
+import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
@@ -670,7 +670,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await LogSource.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -680,7 +680,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const savedSearch = await new SavedSearch({
         team: team._id,
         name: 'My Search',
@@ -912,7 +912,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await LogSource.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -922,7 +922,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -1162,7 +1162,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await LogSource.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -1172,7 +1172,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -1387,7 +1387,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await MetricSource.create({
+      const source = (await MetricSource.create({
         kind: 'metric',
         team: team._id,
         from: {
@@ -1402,7 +1402,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'TimeUnix',
         connection: connection.id,
         name: 'Metrics',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
