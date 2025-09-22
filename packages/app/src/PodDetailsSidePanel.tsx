@@ -25,13 +25,13 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import { getEventBody } from './source';
 
@@ -209,14 +209,13 @@ function PodLogs({
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <DBSqlRowTable
+        <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
           config={tableConfig}
-          onRowExpandClick={onRowClick}
-          highlightedLineId={rowId ?? undefined}
           isLive={false}
+          isNestedPanel
+          breadcrumbPath={[{ label: 'Pods' }]}
           queryKeyPrefix="k8s-dashboard-pod-logs"
-          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
@@ -356,7 +355,7 @@ export default function PodDetailsSidePanel({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} data-testid="k8s-pod-details-panel">
           <DrawerHeader
             header={`Details for ${podName}`}
             onClose={handleClose}
@@ -369,7 +368,7 @@ export default function PodDetailsSidePanel({
                 podName={podName}
               />
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-details-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage
                   </Card.Section>
@@ -405,7 +404,7 @@ export default function PodDetailsSidePanel({
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-details-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage
                   </Card.Section>

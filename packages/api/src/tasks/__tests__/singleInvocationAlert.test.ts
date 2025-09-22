@@ -14,8 +14,8 @@ import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { LogSource } from '@/models/source';
 import Webhook from '@/models/webhook';
-import { getPreviousAlertHistories, processAlert } from '@/tasks/checkAlerts';
-import { AlertTaskType, loadProvider } from '@/tasks/providers';
+import { processAlert } from '@/tasks/checkAlerts';
+import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
 import * as slack from '@/utils/slack';
 
 describe('Single Invocation Alert Test', () => {
@@ -189,14 +189,13 @@ describe('Single Invocation Alert Test', () => {
       username: connection.username,
       password: connection.password,
     });
-    const previousAlerts = await getPreviousAlertHistories([alert.id], now);
     await processAlert(
       now,
       details,
       clickhouseClient,
       connection.id,
       alertProvider,
-      previousAlerts.get(alert.id),
+      new Map([[webhook.id.toString(), webhook]]),
     );
 
     // Verify alert state changed to ALERT (from DB)
@@ -393,14 +392,14 @@ describe('Single Invocation Alert Test', () => {
     if (!tile) throw new Error('Second tile not found for multi-tile test');
 
     // Set up alert processing details (like existing tile tests)
-    const details: any = {
+    const details = {
       alert: enhancedAlert,
       source,
-      conn: connection,
       taskType: AlertTaskType.TILE,
       tile,
       dashboard,
-    };
+      previous: undefined,
+    } satisfies AlertDetails;
 
     const clickhouseClient = new ClickhouseClient({
       host: connection.host,
@@ -427,14 +426,13 @@ describe('Single Invocation Alert Test', () => {
     }));
 
     // Process alert - this triggers the webhook with the title
-    const previousAlerts = await getPreviousAlertHistories([alert.id], now);
     await processAlert(
       now,
       details,
       clickhouseClient,
       connection.id,
       alertProvider,
-      previousAlerts.get(alert.id),
+      new Map([[webhook.id.toString(), webhook]]),
     );
 
     // Get the webhook call to inspect the title

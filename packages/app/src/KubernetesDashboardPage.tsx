@@ -37,8 +37,7 @@ import {
 import { TimePicker } from '@/components/TimePicker';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
-import DBRowSidePanel from './components/DBRowSidePanel';
-import { DBSqlRowTable } from './components/DBRowTable';
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
@@ -291,7 +290,7 @@ export const InfraPodsStatusTable = ({
   });
 
   return (
-    <Card p="md">
+    <Card p="md" data-testid="k8s-pods-table">
       <Card.Section p="md" py="xs" withBorder>
         <Group align="center" justify="space-between">
           Pods
@@ -354,7 +353,11 @@ export const InfraPodsStatusTable = ({
                   <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
                     <Table.Tr className="cursor-pointer">
                       <Table.Td>{pod.name}</Table.Td>
-                      <Table.Td>{pod.namespace}</Table.Td>
+                      <Table.Td
+                        data-testid={`k8s-pods-table-namespace-${pod.id}`}
+                      >
+                        {pod.namespace}
+                      </Table.Td>
                       <Table.Td>{pod.node}</Table.Td>
                       <Table.Td>
                         <FormatPodStatus status={pod.phase} />
@@ -513,7 +516,7 @@ const NodesTable = ({
   }, [data]);
 
   return (
-    <Card p="md">
+    <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs" withBorder>
         Nodes
       </Card.Section>
@@ -677,7 +680,7 @@ const NamespacesTable = ({
   }, []);
 
   return (
-    <Card p="md">
+    <Card p="md" data-testid="k8s-namespaces-table">
       <Card.Section p="md" py="xs" withBorder>
         Namespaces
       </Card.Section>
@@ -830,26 +833,8 @@ function KubernetesDashboardPage() {
     [_searchQuery, setSearchQuery],
   );
 
-  // Row details side panel
-  const [rowId, setRowId] = useQueryState('rowWhere');
-  const [rowSource, setRowSource] = useQueryState('rowSource');
-  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
-
-  const handleSidePanelClose = React.useCallback(() => {
-    setRowId(null);
-    setRowSource(null);
-  }, [setRowId, setRowSource]);
-
-  const handleRowExpandClick = React.useCallback(
-    (rowWhere: string) => {
-      setRowId(rowWhere);
-      setRowSource(logSource?.id ?? null);
-    },
-    [logSource?.id, setRowId, setRowSource],
-  );
-
   return (
-    <Box p="sm">
+    <Box data-testid="kubernetes-dashboard-page" p="sm">
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
@@ -869,22 +854,13 @@ function KubernetesDashboardPage() {
           logSource={logSource}
         />
       )}
-      {rowId &&
-        rowSidePanelSource &&
-        (rowSidePanelSource.kind === SourceKind.Log ||
-          rowSidePanelSource.kind === SourceKind.Trace) && (
-          <DBRowSidePanel
-            source={rowSidePanelSource}
-            rowId={rowId}
-            onClose={handleSidePanelClose}
-          />
-        )}
       <Group justify="space-between">
         <Group>
           <Text c="gray.4" size="xl">
             Kubernetes Dashboard
           </Text>
           <ConnectionSelectControlled
+            data-testid="kubernetes-connection-select"
             control={control}
             name="connection"
             size="xs"
@@ -892,6 +868,7 @@ function KubernetesDashboardPage() {
         </Group>
 
         <form
+          data-testid="kubernetes-time-form"
           onSubmit={e => {
             e.preventDefault();
             onSearch(displayedTimeInputValue);
@@ -899,6 +876,7 @@ function KubernetesDashboardPage() {
           }}
         >
           <TimePicker
+            data-testid="kubernetes-time-picker"
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
@@ -935,7 +913,7 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="pods">
             <Grid>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage
                   </Card.Section>
@@ -974,7 +952,7 @@ function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage
                   </Card.Section>
@@ -1022,7 +1000,7 @@ function KubernetesDashboardPage() {
                 )}
               </Grid.Col>
               <Grid.Col span={12}>
-                <Card p="md">
+                <Card p="md" data-testid="k8s-warning-events-table">
                   <Card.Section p="md" py="xs" withBorder>
                     <Flex justify="space-between">
                       Latest Kubernetes Warning Events
@@ -1047,7 +1025,7 @@ function KubernetesDashboardPage() {
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {logSource && (
-                      <DBSqlRowTable
+                      <DBSqlRowTableWithSideBar
                         sourceId={logSource.id}
                         config={{
                           ...logSource,
@@ -1090,11 +1068,8 @@ function KubernetesDashboardPage() {
                           limit: { limit: 200, offset: 0 },
                           dateRange,
                         }}
-                        onRowExpandClick={handleRowExpandClick}
-                        highlightedLineId={rowId ?? undefined}
                         isLive={false}
                         queryKeyPrefix="k8s-dashboard-events"
-                        onScroll={() => {}}
                       />
                     )}
                   </Card.Section>
@@ -1105,7 +1080,7 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="nodes">
             <Grid>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="nodes-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage
                   </Card.Section>
@@ -1144,7 +1119,7 @@ function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="nodes-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage
                   </Card.Section>
@@ -1196,7 +1171,7 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="namespaces">
             <Grid>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespaces-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage
                   </Card.Section>
@@ -1235,7 +1210,7 @@ function KubernetesDashboardPage() {
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespaces-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage
                   </Card.Section>

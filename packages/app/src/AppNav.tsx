@@ -63,7 +63,14 @@ function NewDashboardButton() {
   if (IS_LOCAL_MODE) {
     return (
       <Link href="/dashboards">
-        <Button variant="transparent" py="0px" px="sm" fw={400} color="gray.2">
+        <Button
+          data-testid="create-dashboard-button"
+          variant="transparent"
+          py="0px"
+          px="sm"
+          fw={400}
+          color="gray.2"
+        >
           <span className="pe-2">+</span> Create Dashboard
         </Button>
       </Link>
@@ -72,6 +79,7 @@ function NewDashboardButton() {
 
   return (
     <Button
+      data-testid="create-dashboard-button"
       variant="transparent"
       py="0px"
       px="sm"
@@ -132,6 +140,7 @@ function SearchInput({
 
   return (
     <Input
+      data-testid="nav-search-input"
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
@@ -140,6 +149,7 @@ function SearchInput({
       rightSection={
         value ? (
           <CloseButton
+            data-testid="nav-search-clear"
             tabIndex={-1}
             size="xs"
             radius="xl"
@@ -812,6 +822,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             [styles.listLinkActive]:
                               pathname.startsWith('/kubernetes'),
                           })}
+                          data-testid="k8s-dashboard-nav-link"
                         >
                           Kubernetes
                         </Link>

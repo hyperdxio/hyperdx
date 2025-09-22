@@ -25,7 +25,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -34,6 +33,7 @@ import { getEventBody } from '@/source';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 
 import styles from '../styles/LogSidePanel.module.scss';
@@ -103,7 +103,10 @@ const NamespaceDetails = ({
 
   return (
     <Grid.Col span={12}>
-      <div className="p-2 gap-2 d-flex flex-wrap">
+      <div
+        className="p-2 gap-2 d-flex flex-wrap"
+        data-testid="k8s-namespace-details-panel"
+      >
         <PodDetailsProperty label="Namespace" value={name} />
         {properties.ready !== undefined && (
           <PodDetailsProperty
@@ -185,7 +188,10 @@ function NamespaceLogs({
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <DBSqlRowTable
+        <DBSqlRowTableWithSideBar
+          sourceId={logSource.id}
+          isNestedPanel
+          breadcrumbPath={[{ label: 'Namespace Details' }]}
           config={{
             ...logSource,
             where: _where,
@@ -217,12 +223,8 @@ function NamespaceLogs({
             limit: { limit: 200, offset: 0 },
             dateRange,
           }}
-          onRowExpandClick={() => {}}
-          highlightedLineId={undefined}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-namespace-logs"
-          onScroll={() => {}}
-          showExpandButton={false}
         />
       </Card.Section>
     </Card>
@@ -358,7 +360,7 @@ export default function NamespaceDetailsSidePanel({
                 metricSource={metricSource}
               />
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespace-details-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage by Pod
                   </Card.Section>
@@ -393,7 +395,7 @@ export default function NamespaceDetailsSidePanel({
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespace-details-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage by Pod
                   </Card.Section>

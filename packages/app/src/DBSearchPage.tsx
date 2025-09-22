@@ -58,13 +58,9 @@ import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
 
-import { useTimeChartSettings } from '@/ChartUtils';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart from '@/components/DBHeatmapChart';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { RowSidePanelContext } from '@/components/DBRowSidePanel';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -103,7 +99,9 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
@@ -290,13 +288,14 @@ function SaveSearchModal({
 
   return (
     <Modal
+      data-testid="save-search-modal"
       opened={opened}
       onClose={closeAndReset}
       title="Save Search"
       centered
       size="lg"
     >
-      <form onSubmit={onSubmit}>
+      <form data-testid="save-search-form" onSubmit={onSubmit}>
         <Stack>
           {chartConfig != null ? (
             <Card withBorder>
@@ -341,6 +340,7 @@ function SaveSearchModal({
               Name
             </Text>
             <InputControlled
+              data-testid="save-search-name-input"
               control={control}
               name="name"
               rules={{ required: true, validate: isValidName }}
@@ -375,7 +375,12 @@ function SaveSearchModal({
                 </Button>
               ))}
               <Tags allowCreate values={tags} onChange={setTags}>
-                <Button variant="outline" color="gray" size="xs">
+                <Button
+                  data-testid="add-tag-button"
+                  variant="outline"
+                  color="gray"
+                  size="xs"
+                >
                   <i className="bi bi-plus me-1"></i>
                   Add Tag
                 </Button>
@@ -383,6 +388,7 @@ function SaveSearchModal({
             </Group>
           </Box>
           <Button
+            data-testid="save-search-submit-button"
             variant="outline"
             color="green"
             type="submit"
@@ -712,7 +718,6 @@ function DBSearchPage() {
   const inputSourceObj = logSource ?? traceSource;
 
   const defaultOrderBy = useDefaultOrderBy(inputSource);
-  const [rowId, setRowId] = useQueryState('rowWhere');
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -898,13 +903,9 @@ function DBSearchPage() {
     [isLive, setIsLive],
   );
 
-  const onRowExpandClick = useCallback(
-    (rowWhere: string) => {
-      setIsLive(false);
-      setRowId(rowWhere);
-    },
-    [setRowId, setIsLive],
-  );
+  const onSidebarOpen = useCallback(() => {
+    setIsLive(false);
+  }, [setIsLive]);
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
   const [saveSearchModalState, setSaveSearchModalState] = useState<
@@ -1028,7 +1029,7 @@ function DBSearchPage() {
   const { data: me } = api.useMe();
 
   // Callback to handle when rows are expanded - kick user out of live tail
-  const handleExpandedRowsChange = useCallback(
+  const onExpandedRowsChange = useCallback(
     (hasExpandedRows: boolean) => {
       if (hasExpandedRows && isLive) {
         setIsLive(false);
@@ -1237,7 +1238,7 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <form onSubmit={onFormSubmit}>
+      <form data-testid="search-form" onSubmit={onFormSubmit}>
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
           <Group gap="4px" wrap="nowrap">
@@ -1248,10 +1249,18 @@ function DBSearchPage() {
               name="source"
               onCreate={openNewSourceModal}
               allowedSourceKinds={ALLOWED_SOURCE_KINDS}
+              data-testid="source-selector"
             />
+            <span className="ms-1">
+              <SourceSchemaPreview
+                source={inputSourceObj}
+                iconStyles={{ size: 'xs', color: 'dark.2' }}
+              />
+            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
+                  data-testid="source-settings-menu"
                   variant="subtle"
                   color="dark.2"
                   size="sm"
@@ -1265,6 +1274,7 @@ function DBSearchPage() {
               <Menu.Dropdown>
                 <Menu.Label>Sources</Menu.Label>
                 <Menu.Item
+                  data-testid="create-new-source-menu-item"
                   leftSection={<i className="bi bi-plus-circle" />}
                   onClick={() => setNewSourceModalOpened(true)}
                 >
@@ -1272,6 +1282,7 @@ function DBSearchPage() {
                 </Menu.Item>
                 {IS_LOCAL_MODE ? (
                   <Menu.Item
+                    data-testid="edit-source-menu-item"
                     leftSection={<i className="bi bi-gear" />}
                     onClick={() => setModelFormExpanded(v => !v)}
                   >
@@ -1279,6 +1290,7 @@ function DBSearchPage() {
                   </Menu.Item>
                 ) : (
                   <Menu.Item
+                    data-testid="edit-sources-menu-item"
                     leftSection={<i className="bi bi-gear" />}
                     component={Link}
                     href="/team"
@@ -1318,6 +1330,7 @@ function DBSearchPage() {
             <>
               {!savedSearchId ? (
                 <Button
+                  data-testid="save-search-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1329,6 +1342,7 @@ function DBSearchPage() {
                 </Button>
               ) : (
                 <Button
+                  data-testid="update-search-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1343,6 +1357,7 @@ function DBSearchPage() {
               )}
               {!IS_LOCAL_MODE && (
                 <Button
+                  data-testid="alerts-button"
                   variant="outline"
                   color="dark.2"
                   px="xs"
@@ -1361,6 +1376,7 @@ function DBSearchPage() {
                     onChange={handleUpdateTags}
                   >
                     <Button
+                      data-testid="tags-button"
                       variant="outline"
                       color="dark.2"
                       px="xs"
@@ -1455,10 +1471,12 @@ function DBSearchPage() {
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
+                data-testid="search-input"
               />
             }
           />
           <TimePicker
+            data-testid="time-picker"
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
@@ -1472,6 +1490,7 @@ function DBSearchPage() {
             showLive={analysisMode === 'results'}
           />
           <Button
+            data-testid="search-submit-button"
             variant="outline"
             type="submit"
             color={formState.isDirty ? 'green' : 'gray.4'}
@@ -1480,25 +1499,6 @@ function DBSearchPage() {
           </Button>
         </Flex>
       </form>
-      <RowSidePanelContext.Provider
-        value={{
-          onPropertyAddClick: searchFilters.setFilterValue,
-          displayedColumns,
-          toggleColumn,
-          generateSearchUrl,
-          dbSqlRowTableConfig,
-          isChildModalOpen: isDrawerChildModalOpen,
-          setChildModalOpen: setDrawerChildModalOpen,
-        }}
-      >
-        {searchedSource && (
-          <DBRowSidePanel
-            source={searchedSource}
-            rowId={rowId ?? undefined}
-            onClose={() => setRowId(null)}
-          />
-        )}
-      </RowSidePanelContext.Provider>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
           opened={saveSearchModalState != null}
@@ -1851,32 +1851,31 @@ function DBSearchPage() {
                         </div>
                       )}
                     {chartConfig &&
+                      searchedConfig.source &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
-                        <RowSidePanelContext.Provider
-                          value={{
+                        <DBSqlRowTableWithSideBar
+                          context={{
                             onPropertyAddClick: searchFilters.setFilterValue,
                             displayedColumns,
                             toggleColumn,
                             generateSearchUrl,
                             dbSqlRowTableConfig,
+                            isChildModalOpen: isDrawerChildModalOpen,
+                            setChildModalOpen: setDrawerChildModalOpen,
                           }}
-                        >
-                          <DBSqlRowTable
-                            config={dbSqlRowTableConfig}
-                            sourceId={searchedConfig.source ?? ''}
-                            onRowExpandClick={onRowExpandClick}
-                            highlightedLineId={rowId ?? undefined}
-                            enabled={isReady}
-                            isLive={isLive ?? true}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onScroll={onTableScroll}
-                            onError={handleTableError}
-                            denoiseResults={denoiseResults}
-                            onExpandedRowsChange={handleExpandedRowsChange}
-                            collapseAllRows={collapseAllRows}
-                          />
-                        </RowSidePanelContext.Provider>
+                          config={dbSqlRowTableConfig}
+                          sourceId={searchedConfig.source}
+                          onSidebarOpen={onSidebarOpen}
+                          onExpandedRowsChange={onExpandedRowsChange}
+                          enabled={isReady}
+                          isLive={isLive ?? true}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          onScroll={onTableScroll}
+                          onError={handleTableError}
+                          denoiseResults={denoiseResults}
+                          collapseAllRows={collapseAllRows}
+                        />
                       )}
                   </>
                 )}

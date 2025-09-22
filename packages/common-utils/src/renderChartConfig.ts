@@ -272,11 +272,13 @@ const aggFnExpr = ({
   where?: string;
 }) => {
   const isAny = fn === 'any';
+  const isNone = fn === 'none';
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
-    UNSAFE_RAW_SQL: isAny ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
+    UNSAFE_RAW_SQL:
+      isAny || isNone ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
   };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
@@ -305,6 +307,11 @@ const aggFnExpr = ({
       sql: `${fn}()`,
       params: {},
     };
+  }
+
+  if (fn === 'none') {
+    // Can not use WHERE in none as we can not apply if to a custom aggregation function
+    return chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
   }
 
   if (expr != null) {
@@ -962,8 +969,8 @@ async function translateMetricChartConfig(
     );
 
     const bucketValueExpr = _select.isDelta
-      ? renderDeltaExpression(chartConfig, _select.valueExpression)
-      : `last_value(${_select.valueExpression})`;
+      ? renderDeltaExpression(chartConfig, 'Value')
+      : `last_value(Value)`;
 
     return {
       ...restChartConfig,

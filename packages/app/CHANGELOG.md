@@ -1,5 +1,49 @@
 # @hyperdx/app
 
+## 2.5.0
+
+### Minor Changes
+
+- 5a44953e: feat: Add new none aggregation function to allow fully user defined aggregations in SQL
+- 0cf8556d: feat: Allow chart series to be reordered
+- 970c0027: Fix: improve the discoverability of inline item expansion within the search table
+
+### Patch Changes
+
+- 7a058059: Reusable DBSqlRowTableWithSideBar Component
+- 2c44ef98: style: Update icon used to show source schema
+- 0d9f3fe0: fix: Always enable query analyzer to fix compatibility issues with old ClickHouse versions.
+- 21f1aa75: fix: filter values for json casted to string
+- 825452fe: refactor: Decouple alerts processing from Mongo
+- 1d79980e: fix: Fix ascending order in windowed searches
+- 0183483a: feat: Add source schema previews
+- Updated dependencies [0d9f3fe0]
+- Updated dependencies [3d82583f]
+- Updated dependencies [5a44953e]
+- Updated dependencies [1d79980e]
+  - @hyperdx/common-utils@0.6.0
+
+## 2.4.0
+
+### Minor Changes
+
+- deff04f6: Adds expandable log lines to search results tables
+- fa45875d: Add delta() function for gauge metrics
+
+### Patch Changes
+
+- c48f4181: Add accordion functionality to filter groups, changed how the system prioritizes which filters are open by default, added new sort logic for prioritizing certain filters.
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- 5c88c463: fix bug where reading value when server is offline could throw client error
+- cd5cc7d2: fix: Fixed trace table source inference to correctly infer span events column
+- Updated dependencies [45e8e1b6]
+- Updated dependencies [fa45875d]
+- Updated dependencies [d938b4a4]
+- Updated dependencies [92224d65]
+- Updated dependencies [e7b590cc]
+  - @hyperdx/common-utils@0.5.0
+
 ## 2.3.0
 
 ### Minor Changes

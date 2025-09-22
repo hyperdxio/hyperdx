@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.3.0",
+  "version": "2.5.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -17,6 +17,9 @@
     "ci:lint": "yarn lint && yarn tsc --noEmit && yarn lint:styles --quiet",
     "ci:unit": "jest --ci --coverage",
     "dev:unit": "jest --watchAll --detectOpenHandles",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "knip": "knip"
@@ -26,7 +29,7 @@
     "@codemirror/lang-sql": "^6.7.0",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.4.0",
+    "@hyperdx/common-utils": "^0.6.0",
     "@hyperdx/node-opentelemetry": "^0.8.2",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "7.9.2",
@@ -104,6 +107,7 @@
     "@chromatic-com/storybook": "^1.5.0",
     "@hookform/devtools": "^4.3.1",
     "@jedmao/location": "^3.0.0",
+    "@playwright/test": "^1.47.0",
     "@storybook/addon-essentials": "^8.1.5",
     "@storybook/addon-interactions": "^8.1.5",
     "@storybook/addon-links": "^8.1.5",

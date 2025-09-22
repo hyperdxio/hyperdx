@@ -42,6 +42,21 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
+// This function will clean json string attributes specifically. It will turn a string like
+// 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.verion'.
+export function cleanedFacetName(key: string): string {
+  if (key.startsWith('toString')) {
+    return key
+      .slice('toString('.length, key.length - 1)
+      .split('.')
+      .map(str =>
+        str.startsWith('`') && str.endsWith('`') ? str.slice(1, -1) : str,
+      )
+      .join('.');
+  }
+  return key;
+}
+
 type FilterCheckboxProps = {
   label: string;
   value?: 'included' | 'excluded' | false;
@@ -57,17 +72,20 @@ export const TextButton = ({
   label,
   ms,
   display,
+  'data-testid': dataTestId,
 }: {
   onClick?: VoidFunction;
   label: React.ReactNode;
   ms?: MantineStyleProps['ms'];
   display?: MantineStyleProps['display'];
+  'data-testid'?: string;
 }) => {
   return (
     <UnstyledButton
       display={display}
       onClick={onClick}
       className={classes.textButton}
+      data-testid={dataTestId}
     >
       <Text size="xxs" c="gray.6" lh={1} ms={ms}>
         {label}
@@ -87,7 +105,10 @@ export const FilterCheckbox = ({
   onClickPin,
 }: FilterCheckboxProps) => {
   return (
-    <div className={classes.filterCheckbox}>
+    <div
+      className={classes.filterCheckbox}
+      data-testid={`filter-checkbox-${label}`}
+    >
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
@@ -103,6 +124,7 @@ export const FilterCheckbox = ({
             emptyFn
           }
           indeterminate={value === 'excluded'}
+          data-testid={`filter-checkbox-input-${label}`}
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -124,13 +146,24 @@ export const FilterCheckbox = ({
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
-        {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
+        {onClickOnly && (
+          <TextButton
+            onClick={onClickOnly}
+            label="Only"
+            data-testid={`filter-only-${label}`}
+          />
+        )}
         {onClickExclude && (
-          <TextButton onClick={onClickExclude} label="Exclude" />
+          <TextButton
+            onClick={onClickExclude}
+            label="Exclude"
+            data-testid={`filter-exclude-${label}`}
+          />
         )}
         <TextButton
           onClick={onClickPin}
           label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
+          data-testid={`filter-pin-${label}`}
         />
       </div>
       {pinned && (
@@ -162,6 +195,7 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  'data-testid'?: string;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -183,6 +217,7 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  'data-testid': dataTestId,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -278,7 +313,7 @@ export const FilterGroup = ({
         setExpanded(v === name);
       }}
     >
-      <Accordion.Item value={name}>
+      <Accordion.Item value={name} data-testid={dataTestId}>
         <Stack gap={0}>
           <Center>
             <Accordion.Control
@@ -305,6 +340,7 @@ export const FilterGroup = ({
                   flex="1"
                   placeholder={name}
                   value={search}
+                  data-testid={`filter-search-${name}`}
                   onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                     setSearch(event.currentTarget.value)
                   }
@@ -455,7 +491,7 @@ const DBSearchPageFiltersComponent = ({
   filters: filterState,
   clearAllFilters,
   clearFilter,
-  setFilterValue,
+  setFilterValue: _setFilterValue,
   isLive,
   chartConfig,
   analysisMode,
@@ -474,6 +510,13 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
+  const setFilterValue: typeof _setFilterValue = (
+    property: string,
+    value: string,
+    action?: 'only' | 'exclude' | 'include' | undefined,
+  ) => {
+    return _setFilterValue(property, value, action);
+  };
   const {
     toggleFilterPin,
     toggleFieldPin,
@@ -612,7 +655,12 @@ const DBSearchPageFiltersComponent = ({
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
-    for (const facet of facets ?? []) {
+    for (const _facet of facets ?? []) {
+      const facet = structuredClone(_facet);
+      if (jsonColumns?.some(col => facet.key.startsWith(col))) {
+        facet.key = `toString(${facet.key})`;
+      }
+
       // don't include empty facets, unless they are already selected
       const filter = filterState[facet.key];
       const hasSelectedValues =
@@ -665,7 +713,14 @@ const DBSearchPageFiltersComponent = ({
     });
 
     return _facets;
-  }, [facets, filterState, tableMetadata, extraFacets, isFieldPinned]);
+  }, [
+    facets,
+    filterState,
+    tableMetadata,
+    extraFacets,
+    isFieldPinned,
+    jsonColumns,
+  ]);
 
   const showClearAllButton = useMemo(
     () =>
@@ -778,7 +833,8 @@ const DBSearchPageFiltersComponent = ({
           {shownFacets.map(facet => (
             <FilterGroup
               key={facet.key}
-              name={facet.key}
+              data-testid={`filter-group-${facet.key}`}
+              name={cleanedFacetName(facet.key)}
               options={facet.value.map(value => ({
                 value,
                 label: value,

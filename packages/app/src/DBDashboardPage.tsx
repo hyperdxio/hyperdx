@@ -49,12 +49,10 @@ import {
 } from '@mantine/core';
 import { useHover, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useQueryClient } from '@tanstack/react-query';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
@@ -66,11 +64,10 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 
-import DBRowSidePanel from './components/DBRowSidePanel';
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import { useAllFields } from './hooks/useMetadata';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -89,7 +86,7 @@ import {
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
 import { getMetricTableName, hashCode, omit } from './utils';
-import { ZIndexContext } from './zIndex';
+import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -201,17 +198,6 @@ const Tile = forwardRef(
 
     const [hovered, setHovered] = useState(false);
 
-    // Search tile
-    const [rowId, setRowId] = useQueryState('rowWhere');
-    const [_, setRowSource] = useQueryState('rowSource');
-    const handleRowExpandClick = useCallback(
-      (rowWhere: string) => {
-        setRowId(rowWhere);
-        setRowSource(chart.config.source);
-      },
-      [chart.config.source, setRowId, setRowSource],
-    );
-
     const alert = chart.config.alert;
     const alertIndicatorColor = useMemo(() => {
       if (!alert) {
@@ -230,6 +216,7 @@ const Tile = forwardRef(
 
     return (
       <div
+        data-testid={`dashboard-tile-${chart.id}`}
         className={`p-2 ${className} d-flex flex-column ${
           isHighlighed && 'dashboard-chart-highlighted'
         }`}
@@ -265,6 +252,7 @@ const Tile = forwardRef(
                   mr={4}
                 >
                   <Button
+                    data-testid={`tile-alerts-button-${chart.id}`}
                     variant="subtle"
                     color="gray.4"
                     size="xxs"
@@ -277,6 +265,7 @@ const Tile = forwardRef(
               )}
 
               <Button
+                data-testid={`tile-duplicate-button-${chart.id}`}
                 variant="subtle"
                 color="gray.4"
                 size="xxs"
@@ -286,6 +275,7 @@ const Tile = forwardRef(
                 <i className="bi bi-copy fs-8"></i>
               </Button>
               <Button
+                data-testid={`tile-edit-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
                 color="gray.4"
@@ -295,11 +285,12 @@ const Tile = forwardRef(
                 <i className="bi bi-pencil"></i>
               </Button>
               <Button
+                data-testid={`tile-delete-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
                 color="gray.4"
                 onClick={onDeleteClick}
-                title="Edit"
+                title="Delete"
               >
                 <i className="bi bi-trash"></i>
               </Button>
@@ -350,7 +341,7 @@ const Tile = forwardRef(
               <HDXMarkdownChart config={queriedConfig} />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
-              <DBSqlRowTable
+              <DBSqlRowTableWithSideBar
                 enabled
                 sourceId={chart.config.source}
                 config={{
@@ -373,9 +364,6 @@ const Tile = forwardRef(
                   groupBy: undefined,
                   granularity: undefined,
                 }}
-                onRowExpandClick={handleRowExpandClick}
-                highlightedLineId={rowId ?? undefined}
-                onScroll={() => {}}
                 isLive={false}
                 queryKeyPrefix={'search'}
               />
@@ -403,6 +391,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
 }) => {
+  const contextZIndex = useZIndex();
+  const modalZIndex = contextZIndex + 10;
   return (
     <Modal
       opened={chart != null}
@@ -411,22 +401,25 @@ const EditTileModal = ({
       centered
       size="90%"
       padding="xs"
+      zIndex={modalZIndex}
     >
       {chart != null && (
-        <EditTimeChartForm
-          dashboardId={dashboardId}
-          chartConfig={chart.config}
-          setChartConfig={config => {}}
-          dateRange={dateRange}
-          isSaving={isSaving}
-          onSave={config => {
-            onSave({
-              ...chart,
-              config: config,
-            });
-          }}
-          onClose={onClose}
-        />
+        <ZIndexContext.Provider value={modalZIndex + 10}>
+          <EditTimeChartForm
+            dashboardId={dashboardId}
+            chartConfig={chart.config}
+            setChartConfig={config => {}}
+            dateRange={dateRange}
+            isSaving={isSaving}
+            onSave={config => {
+              onSave({
+                ...chart,
+                config: config,
+              });
+            }}
+            onClose={onClose}
+          />
+        </ZIndexContext.Provider>
       )}
     </Modal>
   );
@@ -957,6 +950,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 language="lucene"
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 enableHotkey
+                data-testid="search-input"
               />
             )
           }
@@ -1060,6 +1054,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         ) : null}
       </Box>
       <Button
+        data-testid="add-new-tile-button"
         variant="outline"
         mt="sm"
         color={dashboard?.tiles.length === 0 ? 'green' : 'dark.3'}
@@ -1069,16 +1064,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
-      {rowId &&
-        rowSidePanelSource &&
-        (rowSidePanelSource.kind === SourceKind.Log ||
-          rowSidePanelSource.kind === SourceKind.Trace) && (
-          <DBRowSidePanel
-            source={rowSidePanelSource}
-            rowId={rowId}
-            onClose={handleSidePanelClose}
-          />
-        )}
     </Box>
   );
 }

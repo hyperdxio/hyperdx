@@ -327,10 +327,11 @@ export default function ContextSubpanel({
             <DBSqlRowTable
               sourceId={source.id}
               highlightedLineId={rowId}
+              showExpandButton={false}
               isLive={false}
               config={config}
               queryKeyPrefix={QUERY_KEY_PREFIX}
-              onRowExpandClick={handleRowExpandClick}
+              onRowDetailsClick={handleRowExpandClick}
               onChildModalOpen={setChildModalOpen}
             />
           </div>

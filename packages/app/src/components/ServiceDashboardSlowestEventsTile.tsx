@@ -1,23 +1,15 @@
-import { useCallback } from 'react';
-import { parseAsString, useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import {
-  Filter,
-  SourceKind,
-  TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+import { Filter, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
-import DBRowSidePanel from '@/components/DBRowSidePanel';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { getExpressions } from '@/serviceDashboard';
-import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
+import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 
 export default function SlowestEventsTile({
   source,
@@ -38,23 +30,6 @@ export default function SlowestEventsTile({
 }) {
   const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
-
-  const [rowId, setRowId] = useQueryState('rowId', parseAsString);
-  const [rowSource, setRowSource] = useQueryState('rowSource', parseAsString);
-  const { data: rowSidePanelSource } = useSource({ id: rowSource || '' });
-
-  const handleSidePanelClose = useCallback(() => {
-    setRowId(null);
-    setRowSource(null);
-  }, [setRowId, setRowSource]);
-
-  const handleRowExpandClick = useCallback(
-    (rowWhere: string) => {
-      setRowId(rowWhere);
-      setRowSource(source.id);
-    },
-    [source.id, setRowId, setRowSource],
-  );
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
@@ -131,7 +106,9 @@ export default function SlowestEventsTile({
       ) : (
         source && (
           <>
-            <DBSqlRowTable
+            <DBSqlRowTableWithSideBar
+              isNestedPanel
+              breadcrumbPath={[{ label: 'Endpoint' }]}
               sourceId={source.id}
               config={{
                 ...source,
@@ -171,22 +148,9 @@ export default function SlowestEventsTile({
                   },
                 ],
               }}
-              onRowExpandClick={handleRowExpandClick}
-              highlightedLineId={rowId ?? undefined}
               isLive={false}
               queryKeyPrefix="service-dashboard-slowest-transactions"
-              onScroll={() => {}}
             />
-            {rowId &&
-              rowSidePanelSource &&
-              (rowSidePanelSource.kind === SourceKind.Log ||
-                rowSidePanelSource.kind === SourceKind.Trace) && (
-                <DBRowSidePanel
-                  source={rowSidePanelSource}
-                  rowId={rowId}
-                  onClose={handleSidePanelClose}
-                />
-              )}
           </>
         )
       )}

@@ -58,6 +58,7 @@ export const AGG_FNS = [
   { value: 'min' as const, label: 'Minimum' },
   { value: 'count_distinct' as const, label: 'Count Distinct' },
   { value: 'any' as const, label: 'Any' },
+  { value: 'none' as const, label: 'None' },
 ];
 
 export const getMetricAggFns = (

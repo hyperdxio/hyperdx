@@ -70,7 +70,7 @@ export default function PatternTable({
           'severityText',
           'pattern',
         ]}
-        onRowExpandClick={row => setSelectedPattern(row as Pattern)}
+        onRowDetailsClick={row => setSelectedPattern(row as Pattern)}
         hasNextPage={false}
         fetchNextPage={() => {}}
         highlightedLineId={''}
@@ -83,6 +83,7 @@ export default function PatternTable({
           severityText: 'level',
         }}
         config={patternQueryConfig}
+        showExpandButton={false}
       />
       {selectedPattern && source && (
         <PatternSidePanel

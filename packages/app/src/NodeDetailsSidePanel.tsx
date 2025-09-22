@@ -25,7 +25,6 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
@@ -34,6 +33,7 @@ import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 
@@ -201,7 +201,10 @@ function NodeLogs({
         </Flex>
       </Card.Section>
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-        <DBSqlRowTable
+        <DBSqlRowTableWithSideBar
+          sourceId={logSource.id}
+          isNestedPanel
+          breadcrumbPath={[{ label: 'Node Details' }]}
           config={{
             ...logSource,
             where: _where,
@@ -233,12 +236,8 @@ function NodeLogs({
             limit: { limit: 200, offset: 0 },
             dateRange,
           }}
-          onRowExpandClick={() => {}}
-          highlightedLineId={undefined}
           isLive={false}
           queryKeyPrefix="k8s-dashboard-node-logs"
-          showExpandButton={false}
-          onScroll={() => {}}
         />
       </Card.Section>
     </Card>
@@ -361,7 +360,7 @@ export default function NodeDetailsSidePanel({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} data-testid="k8s-node-details-panel">
           <DrawerHeader
             header={`Details for ${nodeName}`}
             onClose={handleClose}
@@ -374,7 +373,7 @@ export default function NodeDetailsSidePanel({
                 metricSource={metricSource}
               />
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="nodes-details-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage by Pod
                   </Card.Section>
@@ -408,7 +407,7 @@ export default function NodeDetailsSidePanel({
                   </Card.Section>
                 </Card>
               </Grid.Col>
-              <Grid.Col span={6}>
+              <Grid.Col span={6} data-testid="nodes-details-memory-usage-chart">
                 <Card p="md">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage by Pod

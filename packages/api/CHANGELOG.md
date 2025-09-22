@@ -1,5 +1,35 @@
 # @hyperdx/api
 
+## 2.5.0
+
+### Patch Changes
+
+- df259392: chore: remove unused npm packages
+- 0d9f3fe0: fix: Always enable query analyzer to fix compatibility issues with old ClickHouse versions.
+- 140e4d2f: feat: Get ClickHouse client from AlertProvider
+- 825452fe: refactor: Decouple alerts processing from Mongo
+- Updated dependencies [0d9f3fe0]
+- Updated dependencies [3d82583f]
+- Updated dependencies [5a44953e]
+- Updated dependencies [1d79980e]
+  - @hyperdx/common-utils@0.6.0
+
+## 2.4.0
+
+### Patch Changes
+
+- 45e8e1b6: fix: Update tsconfigs to resolve IDE type errors
+- d938b4a4: feat: Improve Slack Webhook validation
+- fd732a08: perf: Query AlertHistory in bulk
+- 5d567b99: test: Add integration test for user removal alert updates
+- d9b91124: fix: Update Alerts when creating user is deleted
+- Updated dependencies [45e8e1b6]
+- Updated dependencies [fa45875d]
+- Updated dependencies [d938b4a4]
+- Updated dependencies [92224d65]
+- Updated dependencies [e7b590cc]
+  - @hyperdx/common-utils@0.5.0
+
 ## 2.3.0
 
 ### Minor Changes

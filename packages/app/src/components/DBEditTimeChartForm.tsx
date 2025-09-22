@@ -50,7 +50,6 @@ import {
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
-import { DBSqlRowTable } from '@/components/DBRowTable';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
@@ -75,6 +74,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
+import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
@@ -82,6 +82,7 @@ import {
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
+import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
@@ -126,12 +127,14 @@ function ChartSeriesEditorComponent({
   index,
   namePrefix,
   onRemoveSeries,
+  onSwapSeries,
   onSubmit,
   setValue,
   showGroupBy,
   tableName: _tableName,
   watch,
   parentRef,
+  length,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -141,11 +144,13 @@ function ChartSeriesEditorComponent({
   namePrefix: string;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
+  onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
   tableName: string;
   watch: UseFormWatch<any>;
+  length: number;
 }) {
   const aggFn = watch(`${namePrefix}aggFn`);
   const aggConditionLanguage = watch(
@@ -189,6 +194,28 @@ function ChartSeriesEditorComponent({
               />
             </div>
             {(index ?? -1) > 0 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index - 1)}
+                title="Move up"
+              >
+                <i className="bi bi-arrow-up" />
+              </Button>
+            )}
+            {(index ?? -1) < length - 1 && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onSwapSeries(index, index + 1)}
+                title="Move down"
+              >
+                <i className="bi bi-arrow-down" />
+              </Button>
+            )}
+            {((index ?? -1) > 0 || length > 1) && (
               <Button
                 variant="subtle"
                 color="gray"
@@ -248,7 +275,12 @@ function ChartSeriesEditorComponent({
           </div>
         )}
         {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
-          <div style={{ minWidth: 220 }}>
+          <div
+            style={{
+              minWidth: 220,
+              ...(aggFn === 'none' && { width: '100%' }),
+            }}
+          >
             <SQLInlineEditorControlled
               tableConnections={{
                 databaseName,
@@ -262,44 +294,46 @@ function ChartSeriesEditorComponent({
             />
           </div>
         )}
-        <Flex align={'center'} gap={'xs'} className="flex-grow-1">
-          <Text size="sm">Where</Text>
-          {aggConditionLanguage === 'sql' ? (
-            <SQLInlineEditorControlled
-              tableConnections={{
-                databaseName,
-                tableName: tableName ?? '',
-                connectionId: connectionId ?? '',
-              }}
-              control={control}
-              name={`${namePrefix}aggCondition`}
-              placeholder="SQL WHERE clause (ex. column = 'foo')"
-              onLanguageChange={lang =>
-                setValue(`${namePrefix}aggConditionLanguage`, lang)
-              }
-              additionalSuggestions={attributeKeys}
-              language="sql"
-              onSubmit={onSubmit}
-            />
-          ) : (
-            <SearchInputV2
-              tableConnections={{
-                connectionId: connectionId ?? '',
-                databaseName: databaseName ?? '',
-                tableName: tableName ?? '',
-              }}
-              control={control}
-              name={`${namePrefix}aggCondition`}
-              onLanguageChange={lang =>
-                setValue(`${namePrefix}aggConditionLanguage`, lang)
-              }
-              language="lucene"
-              placeholder="Search your events w/ Lucene ex. column:foo"
-              onSubmit={onSubmit}
-              additionalSuggestions={attributeKeys}
-            />
-          )}
-        </Flex>
+        {aggFn !== 'none' && (
+          <Flex align={'center'} gap={'xs'} className="flex-grow-1">
+            <Text size="sm">Where</Text>
+            {aggConditionLanguage === 'sql' ? (
+              <SQLInlineEditorControlled
+                tableConnections={{
+                  databaseName,
+                  tableName: tableName ?? '',
+                  connectionId: connectionId ?? '',
+                }}
+                control={control}
+                name={`${namePrefix}aggCondition`}
+                placeholder="SQL WHERE clause (ex. column = 'foo')"
+                onLanguageChange={lang =>
+                  setValue(`${namePrefix}aggConditionLanguage`, lang)
+                }
+                additionalSuggestions={attributeKeys}
+                language="sql"
+                onSubmit={onSubmit}
+              />
+            ) : (
+              <SearchInputV2
+                tableConnections={{
+                  connectionId: connectionId ?? '',
+                  databaseName: databaseName ?? '',
+                  tableName: tableName ?? '',
+                }}
+                control={control}
+                name={`${namePrefix}aggCondition`}
+                onLanguageChange={lang =>
+                  setValue(`${namePrefix}aggConditionLanguage`, lang)
+                }
+                language="lucene"
+                placeholder="Search your events w/ Lucene ex. column:foo"
+                onSubmit={onSubmit}
+                additionalSuggestions={attributeKeys}
+              />
+            )}
+          </Flex>
+        )}
         {showGroupBy && (
           <Flex align={'center'} gap={'xs'}>
             <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
@@ -363,6 +397,7 @@ export default function EditTimeChartForm({
   onSave,
   onTimeRangeSelect,
   onClose,
+  'data-testid': dataTestId,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -375,6 +410,7 @@ export default function EditTimeChartForm({
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
+  'data-testid'?: string;
 }) {
   const { control, watch, setValue, handleSubmit, register } =
     useForm<SavedChartConfig>({
@@ -386,6 +422,7 @@ export default function EditTimeChartForm({
     fields,
     append,
     remove: removeSeries,
+    swap: swapSeries,
   } = useFieldArray({
     control: control as Control<SavedChartConfigWithSelectArray>,
     name: 'select',
@@ -572,7 +609,7 @@ export default function EditTimeChartForm({
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   return (
-    <div ref={setParentRef}>
+    <div ref={setParentRef} data-testid={dataTestId}>
       <Controller
         control={control}
         name="displayType"
@@ -623,6 +660,7 @@ export default function EditTimeChartForm({
           w="100%"
           type="text"
           placeholder="My Chart Name"
+          data-testid="chart-name-input"
         />
       </Flex>
       <Divider my="md" />
@@ -654,7 +692,16 @@ export default function EditTimeChartForm({
             <Text c="gray.4" pe="md" size="sm">
               Data Source
             </Text>
-            <SourceSelectControlled size="xs" control={control} name="source" />
+            <SourceSelectControlled
+              size="xs"
+              control={control}
+              name="source"
+              data-testid="source-selector"
+            />
+            <SourceSchemaPreview
+              source={tableSource}
+              iconStyles={{ color: 'dark.2' }}
+            />
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -669,6 +716,8 @@ export default function EditTimeChartForm({
                   parentRef={parentRef}
                   namePrefix={`select.${index}.`}
                   onRemoveSeries={removeSeries}
+                  length={fields.length}
+                  onSwapSeries={swapSeries}
                   onSubmit={onSubmit}
                   setValue={setValue}
                   connectionId={tableSource?.connection}
@@ -884,6 +933,7 @@ export default function EditTimeChartForm({
         <Flex gap="sm">
           {onSave != null && (
             <Button
+              data-testid="chart-save-button"
               loading={isSaving}
               variant="outline"
               onClick={handleSubmit(handleSave)}
@@ -923,6 +973,7 @@ export default function EditTimeChartForm({
           )}
           {activeTab !== 'markdown' && (
             <Button
+              data-testid="chart-run-query-button"
               variant="outline"
               type="submit"
               color="green"
@@ -997,7 +1048,8 @@ export default function EditTimeChartForm({
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
-            <DBSqlRowTable
+            <DBSqlRowTableWithSideBar
+              sourceId={sourceId}
               config={{
                 ...queriedConfig,
                 orderBy: [
@@ -1022,13 +1074,9 @@ export default function EditTimeChartForm({
                 groupBy: undefined,
                 granularity: undefined,
               }}
-              onRowExpandClick={() => {}}
-              highlightedLineId={undefined}
               enabled
               isLive={false}
-              showExpandButton={false}
               queryKeyPrefix={'search'}
-              onScroll={() => {}}
             />
           </div>
         )}
@@ -1049,13 +1097,12 @@ export default function EditTimeChartForm({
                       className="flex-grow-1 d-flex flex-column"
                       style={{ height: 400 }}
                     >
-                      <DBSqlRowTable
+                      <DBSqlRowTableWithSideBar
+                        sourceId={sourceId}
                         config={sampleEventsConfig}
-                        highlightedLineId={undefined}
                         enabled
                         isLive={false}
                         queryKeyPrefix={'search'}
-                        showExpandButton={false}
                       />
                     </div>
                   )}

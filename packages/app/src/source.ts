@@ -334,7 +334,7 @@ export async function inferTableSourceConfig({
   ]);
 
   // Check if SpanEvents column is available
-  const hasSpanEvents = columns.some(col => col.name === 'Events');
+  const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>

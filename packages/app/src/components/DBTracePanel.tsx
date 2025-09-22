@@ -35,6 +35,7 @@ export default function DBTracePanel({
   focusDate,
   parentSourceId,
   initialRowHighlightHint,
+  'data-testid': dataTestId,
 }: {
   parentSourceId?: string | null;
   childSourceId?: string | null;
@@ -49,6 +50,7 @@ export default function DBTracePanel({
     spanId: string;
     body: string;
   };
+  'data-testid'?: string;
 }) {
   const { control, watch, setValue } = useForm({
     defaultValues: {
@@ -126,7 +128,7 @@ export default function DBTracePanel({
 
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
-    <>
+    <div data-testid={dataTestId}>
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text c="dark.2" size="xs" me="xs">
@@ -263,6 +265,6 @@ export default function DBTracePanel({
           </Center>
         </Paper>
       )}
-    </>
+    </div>
   );
 }

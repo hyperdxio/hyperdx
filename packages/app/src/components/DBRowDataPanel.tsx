@@ -125,9 +125,11 @@ export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
 export function RowDataPanel({
   source,
   rowId,
+  'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  'data-testid'?: string;
 }) {
   const { data, isLoading, isError } = useRowData({ source, rowId });
 
@@ -142,7 +144,7 @@ export function RowDataPanel({
   const jsonColumns = getJSONColumnNames(data?.meta);
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto">
+    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
         <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
       </Box>

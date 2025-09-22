@@ -45,11 +45,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
-import {
-  FetchNextPageOptions,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
   ColumnResizeMode,
@@ -287,7 +283,7 @@ export const RawLogTable = memo(
     generateRowId,
     onInstructionsClick,
     // onPropertySearchClick,
-    onRowExpandClick,
+    onRowDetailsClick,
     onScroll,
     onSettingsClick,
     onShowPatternsClick,
@@ -302,6 +298,7 @@ export const RawLogTable = memo(
     loadingDate,
     config,
     onChildModalOpen,
+    renderRowDetails,
     source,
     onExpandedRowsChange,
     collapseAllRows,
@@ -312,16 +309,16 @@ export const RawLogTable = memo(
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
     rows: Record<string, any>[];
-    isLoading: boolean;
-    fetchNextPage: (options?: FetchNextPageOptions | undefined) => any;
-    onRowExpandClick: (row: Record<string, any>) => void;
+    isLoading?: boolean;
+    fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
+    onRowDetailsClick: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => string;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
     // ) => void;
-    hasNextPage: boolean;
-    highlightedLineId: string | undefined;
+    hasNextPage?: boolean;
+    highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
     isLive: boolean;
     onShowPatternsClick?: () => void;
@@ -341,6 +338,7 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
+    renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -365,9 +363,9 @@ export const RawLogTable = memo(
 
     const _onRowExpandClick = useCallback(
       ({ __hyperdx_id, ...row }: Record<string, any>) => {
-        onRowExpandClick(row);
+        onRowDetailsClick?.(row);
       },
-      [onRowExpandClick],
+      [onRowDetailsClick],
     );
 
     const { width } = useWindowSize();
@@ -520,7 +518,7 @@ export const RawLogTable = memo(
             hasNextPage
           ) {
             // Cancel refetch is important to ensure we wait for the last fetch to finish
-            fetchNextPage({ cancelRefetch: false });
+            fetchNextPage?.({ cancelRefetch: false });
           }
         }
       },
@@ -610,7 +608,7 @@ export const RawLogTable = memo(
     useEffect(() => {
       if (
         scrolledToHighlightedLine ||
-        highlightedLineId == null ||
+        !highlightedLineId ||
         rowVirtualizer == null
       ) {
         return;
@@ -619,13 +617,13 @@ export const RawLogTable = memo(
       const rowIdx = dedupedRows.findIndex(
         l => getRowId(l) === highlightedLineId,
       );
-      if (rowIdx == -1) {
+      if (rowIdx == -1 && highlightedLineId) {
         if (
           dedupedRows.length < MAX_SCROLL_FETCH_LINES &&
           !isLoading &&
           hasNextPage
         ) {
-          fetchNextPage({ cancelRefetch: false });
+          fetchNextPage?.({ cancelRefetch: false });
         }
       } else {
         setScrolledToHighlightedLine(true);
@@ -678,6 +676,7 @@ export const RawLogTable = memo(
 
     return (
       <div
+        data-testid="search-results-table"
         className="overflow-auto h-100 fs-8 bg-inherit"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
@@ -698,11 +697,7 @@ export const RawLogTable = memo(
             config={config}
           />
         )}
-        <table
-          className="w-100 bg-inherit"
-          id={tableId}
-          style={{ tableLayout: 'fixed' }}
-        >
+        <table className={cx('w-100 bg-inherit', styles.table)} id={tableId}>
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
@@ -833,34 +828,84 @@ export const RawLogTable = memo(
               return (
                 <React.Fragment key={virtualRow.key}>
                   <tr
-                    onClick={() => {
-                      // onRowExpandClick(row.original.id, row.original.sort_key);
-                      _onRowExpandClick(row.original);
-                    }}
-                    role="button"
-                    // TODO: Restore highlight
+                    data-testid={`table-row-${rowId}`}
                     className={cx(styles.tableRow, {
-                      [styles.tableRow__selected]: highlightedLineId === rowId,
+                      [styles.tableRow__selected]:
+                        highlightedLineId && highlightedLineId === rowId,
                     })}
                     data-index={virtualRow.index}
                     ref={rowVirtualizer.measureElement}
                   >
-                    {row.getVisibleCells().map(cell => {
-                      return (
-                        <td
-                          key={cell.id}
-                          className={cx('align-top overflow-hidden', {
-                            'text-break': wrapLinesEnabled,
-                            'text-truncate': !wrapLinesEnabled,
+                    {/* Expand button cell */}
+                    {showExpandButton && (
+                      <td
+                        className="align-top overflow-hidden"
+                        style={{ width: '40px' }}
+                      >
+                        {flexRender(
+                          row.getVisibleCells()[0].column.columnDef.cell,
+                          row.getVisibleCells()[0].getContext(),
+                        )}
+                      </td>
+                    )}
+
+                    {/* Content columns grouped as one button */}
+                    <td
+                      className="align-top overflow-hidden p-0"
+                      colSpan={columns.length - (showExpandButton ? 1 : 0)}
+                    >
+                      <button
+                        type="button"
+                        className={styles.rowContentButton}
+                        onClick={e => {
+                          e.stopPropagation();
+                          _onRowExpandClick(row.original);
+                        }}
+                        aria-label="View details for log entry"
+                      >
+                        {row
+                          .getVisibleCells()
+                          .slice(showExpandButton ? 1 : 0) // Skip expand column
+                          .map((cell, cellIndex) => {
+                            const columnCustomClassName = (
+                              cell.column.columnDef.meta as any
+                            )?.className;
+                            const columnSize = cell.column.getSize();
+                            const totalContentCells =
+                              row.getVisibleCells().length -
+                              (showExpandButton ? 1 : 0);
+
+                            return (
+                              <div
+                                key={cell.id}
+                                className={cx(
+                                  'flex-shrink-0 overflow-hidden',
+                                  {
+                                    'text-break': wrapLinesEnabled,
+                                    'text-truncate': !wrapLinesEnabled,
+                                  },
+                                  columnCustomClassName,
+                                )}
+                                style={{
+                                  width:
+                                    columnSize === UNDEFINED_WIDTH
+                                      ? 'auto'
+                                      : `${columnSize}px`,
+                                  flex:
+                                    columnSize === UNDEFINED_WIDTH
+                                      ? '1'
+                                      : 'none',
+                                }}
+                              >
+                                {flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext(),
+                                )}
+                              </div>
+                            );
                           })}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </td>
-                      );
-                    })}
+                      </button>
+                    </td>
                   </tr>
                   {showExpandButton && isExpanded && (
                     <ExpandedLogRow
@@ -870,7 +915,12 @@ export const RawLogTable = memo(
                       rowId={rowId}
                       measureElement={rowVirtualizer.measureElement}
                       virtualIndex={virtualRow.index}
-                    />
+                    >
+                      {renderRowDetails?.({
+                        id: rowId,
+                        ...row.original,
+                      })}
+                    </ExpandedLogRow>
                   )}
                 </React.Fragment>
               );
@@ -1085,7 +1135,7 @@ function DBSqlRowTableComponent({
   config,
   sourceId,
   onError,
-  onRowExpandClick,
+  onRowDetailsClick,
   highlightedLineId,
   enabled = true,
   isLive = false,
@@ -1096,14 +1146,16 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange,
   collapseAllRows,
   showExpandButton = true,
+  renderRowDetails,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
-  onRowExpandClick?: (where: string) => void;
-  highlightedLineId: string | undefined;
+  onRowDetailsClick?: (where: string) => void;
+  highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
+  renderRowDetails?: (r: { [key: string]: unknown }) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
@@ -1174,11 +1226,11 @@ function DBSqlRowTableComponent({
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
-  const _onRowExpandClick = useCallback(
+  const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowExpandClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row));
     },
-    [onRowExpandClick, getRowWhere],
+    [onRowDetailsClick, getRowWhere],
   );
 
   useEffect(() => {
@@ -1221,8 +1273,6 @@ function DBSqlRowTableComponent({
   const noisyPatternIds = useMemo(() => {
     return noisyPatterns.data?.map(p => p.id) ?? [];
   }, [noisyPatterns.data]);
-
-  const queryClient = useQueryClient();
 
   const denoisedRows = useQuery({
     queryKey: [
@@ -1270,6 +1320,11 @@ function DBSqlRowTableComponent({
       groupedPatterns.isLoading
     : isFetching;
 
+  const loadingDate =
+    data?.window?.direction === 'ASC'
+      ? data?.window?.endTime
+      : data?.window?.startTime;
+
   return (
     <>
       {denoiseResults && (
@@ -1297,18 +1352,19 @@ function DBSqlRowTableComponent({
         displayedColumns={columns}
         highlightedLineId={highlightedLineId}
         rows={denoiseResults ? (denoisedRows?.data ?? []) : processedRows}
+        renderRowDetails={renderRowDetails}
         isLoading={isLoading}
         fetchNextPage={fetchNextPage}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPage}
-        onRowExpandClick={_onRowExpandClick}
+        onRowDetailsClick={_onRowDetailsClick}
         onScroll={onScroll}
         generateRowId={getRowWhere}
         isError={isError}
         error={error ?? undefined}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
-        loadingDate={data?.window?.startTime}
+        loadingDate={loadingDate}
         config={config}
         onChildModalOpen={onChildModalOpen}
         source={source}
