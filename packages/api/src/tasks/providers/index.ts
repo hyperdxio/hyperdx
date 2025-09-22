@@ -1,16 +1,25 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 
+import { ObjectId } from '@/models';
 import { IAlert } from '@/models/alert';
+import { IAlertHistory } from '@/models/alertHistory';
 import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
+import { IWebhook } from '@/models/webhook';
 import DefaultAlertProvider from '@/tasks/providers/default';
+
+import { AggregatedAlertHistory } from '../checkAlerts';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
   TILE,
 }
+
+// Discriminated union of possible alert channel types with populated channel data
+export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 
 // Details about the alert and the source for the alert. Depending on
 // the taskType either:
@@ -22,6 +31,7 @@ export enum AlertTaskType {
 export type AlertDetails = {
   alert: IAlert;
   source: ISource;
+  previous: AggregatedAlertHistory | undefined;
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;
@@ -39,6 +49,7 @@ export type AlertDetails = {
 export type AlertTask<T = never> = {
   alerts: AlertDetails[];
   conn: IConnection;
+  now: Date;
 } & ([T] extends [never] ? unknown : { metadata: T });
 
 export interface AlertProvider {
@@ -60,6 +71,15 @@ export interface AlertProvider {
     granularity: string;
     startTime: Date;
   }): string;
+
+  /** Save the given AlertHistory and update the associated alert's state */
+  updateAlertState(alertHistory: IAlertHistory): Promise<void>;
+
+  /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
+  getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;
+
+  /** Create and return an authenticated ClickHouse client */
+  getClickHouseClient(connection: IConnection): Promise<ClickhouseClient>;
 }
 
 export function isValidProvider(obj: any): obj is AlertProvider {
@@ -69,7 +89,10 @@ export function isValidProvider(obj: any): obj is AlertProvider {
     typeof obj.asyncDispose === 'function' &&
     typeof obj.getAlertTasks === 'function' &&
     typeof obj.buildLogSearchLink === 'function' &&
-    typeof obj.buildChartLink === 'function'
+    typeof obj.buildChartLink === 'function' &&
+    typeof obj.updateAlertState === 'function' &&
+    typeof obj.getWebhooks === 'function' &&
+    typeof obj.getClickHouseClient === 'function'
   );
 }
 

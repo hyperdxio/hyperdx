@@ -101,6 +101,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import api from './api';
@@ -1222,7 +1223,14 @@ function DBSearchPage() {
               name="source"
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
+              data-testid="source-selector"
             />
+            <span className="ms-1">
+              <SourceSchemaPreview
+                source={inputSourceObj}
+                iconStyles={{ size: 'xs', color: 'dark.2' }}
+              />
+            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
@@ -1437,6 +1445,7 @@ function DBSearchPage() {
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
                 enableHotkey
+                data-testid="search-input"
               />
             }
           />
