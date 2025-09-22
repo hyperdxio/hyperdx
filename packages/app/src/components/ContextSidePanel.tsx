@@ -6,7 +6,9 @@ import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithDateRange,
-  TSource,
+  SourceKind,
+  type TLogSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -34,7 +36,7 @@ enum ContextBy {
 }
 
 interface ContextSubpanelProps {
-  source: TSource;
+  source: TLogSource | TTraceSource;
   dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
@@ -101,9 +103,15 @@ export default function ContextSubpanel({
     setContextRowSource,
   } = useNestedPanelState(isNested);
 
-  const { data: contextRowSidePanelSource } = useSource({
+  const { data: logSource } = useSource({
     id: contextRowSource || '',
+    kind: SourceKind.Log,
   });
+  const { data: traceSource } = useSource({
+    id: contextRowSource || '',
+    kind: SourceKind.Trace,
+  });
+  const contextRowSidePanelSource = logSource || traceSource;
 
   const handleContextSidePanelClose = useCallback(() => {
     setContextRowId(null);

@@ -26,7 +26,7 @@ import {
   getServer,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { Source } from '@/models/source';
+import { LogSource, MetricSource } from '@/models/source';
 
 const TEST_METRIC_TABLES = {
   sum: DEFAULT_METRICS_TABLE.SUM,
@@ -77,7 +77,7 @@ describe('renderChartConfig', () => {
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
-    logSource = await Source.create({
+    logSource = await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {
@@ -88,7 +88,7 @@ describe('renderChartConfig', () => {
       connection: connection.id,
       name: 'Logs',
     });
-    metricSource = await Source.create({
+    metricSource = await MetricSource.create({
       kind: 'metric',
       team: team._id,
       from: {

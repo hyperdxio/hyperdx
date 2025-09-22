@@ -13,7 +13,11 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import Drawer from 'react-modern-drawer';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  type TLogSource,
+  type TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
@@ -72,7 +76,7 @@ enum Tab {
 }
 
 type DBRowSidePanelProps = {
-  source: TSource;
+  source: TLogSource | TTraceSource;
   rowId: string | undefined;
   onClose: () => void;
   isNestedPanel?: boolean;
@@ -208,9 +212,9 @@ const DBRowSidePanel = ({
   const traceId = normalizedRow?.['__hdx_trace_id'];
 
   const childSourceId =
-    source.kind === 'log'
+    source.kind === SourceKind.Log
       ? source.traceSourceId
-      : source.kind === 'trace'
+      : source.kind === SourceKind.Trace
         ? source.logSourceId
         : undefined;
 
@@ -429,11 +433,13 @@ const DBRowSidePanel = ({
           )}
         >
           <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-            <DBInfraPanel
-              source={source}
-              rowData={normalizedRow}
-              rowId={rowId}
-            />
+            {source.kind === SourceKind.Log && (
+              <DBInfraPanel
+                source={source}
+                rowData={normalizedRow}
+                rowId={rowId}
+              />
+            )}
           </Box>
         </ErrorBoundary>
       )}

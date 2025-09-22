@@ -7,6 +7,7 @@ import { isMetricChartConfig } from '@hyperdx/common-utils/dist/renderChartConfi
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Collapse, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -142,7 +143,11 @@ function DBTimeChartComponent({
       return null;
     }
     const isMetricChart = isMetricChartConfig(config);
-    if (isMetricChart && source?.logSourceId == null) {
+    if (
+      isMetricChart &&
+      source?.kind === SourceKind.Metric &&
+      source?.logSourceId == null
+    ) {
       notifications.show({
         color: 'yellow',
         message: 'No log source is associated with the selected metric source.',
@@ -164,7 +169,10 @@ function DBTimeChartComponent({
       whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
     }
     return new URLSearchParams({
-      source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
+      source:
+        (source?.kind === SourceKind.Metric
+          ? source?.logSourceId
+          : source?.id) ?? '',
       where: where,
       whereLanguage: whereLanguage,
       filters: JSON.stringify(config.filters),

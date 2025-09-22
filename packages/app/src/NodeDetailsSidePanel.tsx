@@ -3,9 +3,9 @@ import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import {
-  SearchConditionLanguage,
-  TSource,
+import type {
+  TLogSource,
+  TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -65,7 +65,7 @@ const NodeDetails = ({
 }: {
   name: string;
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
 }) => {
   const where = `${metricSource.resourceAttributesExpression}.k8s.node.name:"${name}"`;
   const groupBy = ['k8s.node.name'];
@@ -160,7 +160,7 @@ function NodeLogs({
   where,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
@@ -249,8 +249,8 @@ export default function NodeDetailsSidePanel({
   metricSource,
   logSource,
 }: {
-  metricSource: TSource;
-  logSource: TSource;
+  metricSource: TMetricSource;
+  logSource: TLogSource;
 }) {
   const [nodeName, setNodeName] = useQueryParam(
     'nodeName',

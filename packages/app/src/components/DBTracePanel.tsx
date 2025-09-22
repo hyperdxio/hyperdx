@@ -99,14 +99,20 @@ export default function DBTracePanel({
     setValue: traceIdSetValue,
   } = useForm<{ traceIdExpression: string }>({
     defaultValues: {
-      traceIdExpression: parentSourceData?.traceIdExpression ?? '',
+      traceIdExpression:
+        (parentSourceData?.kind === SourceKind.Log &&
+          parentSourceData?.traceIdExpression) ||
+        '',
     },
   });
   useEffect(() => {
-    if (parentSourceData?.traceIdExpression) {
+    if (
+      parentSourceData?.kind === SourceKind.Log &&
+      parentSourceData?.traceIdExpression
+    ) {
       traceIdSetValue('traceIdExpression', parentSourceData.traceIdExpression);
     }
-  }, [parentSourceData?.traceIdExpression, traceIdSetValue]);
+  }, [parentSourceData, traceIdSetValue]);
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
@@ -124,8 +130,10 @@ export default function DBTracePanel({
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text c="dark.2" size="xs" me="xs">
-            {parentSourceData?.traceIdExpression}:{' '}
-            {traceId || 'No trace id found for event'}
+            {parentSourceData?.kind === SourceKind.Log
+              ? parentSourceData?.traceIdExpression
+              : undefined}{' '}
+            : {traceId || 'No trace id found for event'}
           </Text>
           {traceId != null && (
             <Button
@@ -170,7 +178,7 @@ export default function DBTracePanel({
                     source: {
                       ...parentSourceData,
                       traceIdExpression,
-                    },
+                    } as any,
                   });
                 }
               })}

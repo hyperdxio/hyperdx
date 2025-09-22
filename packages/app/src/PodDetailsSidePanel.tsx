@@ -3,7 +3,10 @@ import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type {
+  TLogSource,
+  TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
@@ -59,7 +62,7 @@ const PodDetails = ({
   podName,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   podName: string;
 }) => {
   const { data: logsData } = useV2LogBatch<{
@@ -137,7 +140,7 @@ function PodLogs({
   onRowClick,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
   rowId: string | null;
   onRowClick: (rowId: string) => void;
@@ -224,8 +227,8 @@ export default function PodDetailsSidePanel({
   logSource,
   metricSource,
 }: {
-  logSource: TSource;
-  metricSource: TSource;
+  logSource: TLogSource;
+  metricSource: TMetricSource;
 }) {
   const [podName, setPodName] = useQueryParam(
     'podName',

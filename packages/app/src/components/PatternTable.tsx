@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
   ChartConfigWithDateRange,
-  TSource,
+  SourceKind,
+  TLogSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
 import { RawLogTable } from '@/components/DBRowTable';
@@ -23,7 +25,7 @@ export default function PatternTable({
   totalCountConfig: ChartConfigWithDateRange;
   bodyValueExpression: string;
   totalCountQueryKeyPrefix: string;
-  source?: TSource;
+  source?: TLogSource | TTraceSource;
 }) {
   const SAMPLES = 10_000;
 
@@ -42,7 +44,8 @@ export default function PatternTable({
     config,
     samples: SAMPLES,
     bodyValueExpression,
-    severityTextExpression: source?.severityTextExpression ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log && source?.severityTextExpression) || '',
     totalCount,
   });
 

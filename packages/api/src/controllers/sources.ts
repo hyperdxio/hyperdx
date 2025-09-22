@@ -1,4 +1,12 @@
-import { ISource, Source } from '@/models/source';
+import { SourceKind } from '@/../../common-utils/dist/types';
+import {
+  ISource,
+  LogSource,
+  MetricSource,
+  SessionSource,
+  Source,
+  TraceSource,
+} from '@/models/source';
 
 export function getSources(team: string) {
   return Source.find({ team });
@@ -9,7 +17,16 @@ export function getSource(team: string, sourceId: string) {
 }
 
 export function createSource(team: string, source: Omit<ISource, 'id'>) {
-  return Source.create({ ...source, team });
+  switch (source.kind) {
+    case SourceKind.Log:
+      return LogSource.create({ ...source, team });
+    case SourceKind.Trace:
+      return TraceSource.create({ ...source, team });
+    case SourceKind.Metric:
+      return MetricSource.create({ ...source, team });
+    case SourceKind.Session:
+      return SessionSource.create({ ...source, team });
+  }
 }
 
 export function updateSource(
@@ -17,9 +34,24 @@ export function updateSource(
   sourceId: string,
   source: Omit<ISource, 'id'>,
 ) {
-  return Source.findOneAndUpdate({ _id: sourceId, team }, source, {
-    new: true,
-  });
+  switch (source.kind) {
+    case SourceKind.Log:
+      return LogSource.findOneAndUpdate({ _id: sourceId, team }, source, {
+        new: true,
+      });
+    case SourceKind.Trace:
+      return TraceSource.findOneAndUpdate({ _id: sourceId, team }, source, {
+        new: true,
+      });
+    case SourceKind.Metric:
+      return MetricSource.findOneAndUpdate({ _id: sourceId, team }, source, {
+        new: true,
+      });
+    case SourceKind.Session:
+      return SessionSource.findOneAndUpdate({ _id: sourceId, team }, source, {
+        new: true,
+      });
+  }
 }
 
 export function deleteSource(team: string, sourceId: string) {

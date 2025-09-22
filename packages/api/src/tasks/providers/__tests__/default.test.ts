@@ -7,7 +7,7 @@ import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
+import { LogSource } from '@/models/source';
 import {
   AlertProvider,
   AlertTaskType,
@@ -57,7 +57,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create source
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',
@@ -125,7 +125,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create source
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',
@@ -250,7 +250,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create source
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',
@@ -348,7 +348,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create sources for each connection
-      const source1 = await Source.create({
+      const source1 = await LogSource.create({
         team: team._id,
         name: 'Source 1',
         kind: 'log',
@@ -360,7 +360,7 @@ describe('DefaultAlertProvider', () => {
         connection: connection1._id,
       });
 
-      const source2 = await Source.create({
+      const source2 = await LogSource.create({
         team: team._id,
         name: 'Source 2',
         kind: 'log',
@@ -525,7 +525,7 @@ describe('DefaultAlertProvider', () => {
       const team = await createTeam({ name: 'Test Team' });
 
       // Create source with non-existent connection
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',
@@ -599,7 +599,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create source
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',
@@ -661,7 +661,7 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create source
-      const source = await Source.create({
+      const source = await LogSource.create({
         team: team._id,
         name: 'Test Source',
         kind: 'log',

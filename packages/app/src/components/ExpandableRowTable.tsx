@@ -1,7 +1,11 @@
 import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type {
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { useLocalStorage } from '@/utils';
 
@@ -42,7 +46,7 @@ export const ExpandedLogRow = memo(
   }: {
     columnsLength: number;
     virtualKey: string;
-    source: TSource | undefined;
+    source: TLogSource | TTraceSource | undefined;
     rowId: string;
     measureElement?: (element: HTMLElement | null) => void;
     virtualIndex?: number;

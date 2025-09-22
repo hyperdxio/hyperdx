@@ -16,7 +16,10 @@ import {
   SavedChartConfig,
   SourceKind,
   SQLInterval,
-  TSource,
+  type TLogSource,
+  type TMetricSource,
+  type TSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
@@ -518,7 +521,9 @@ export function formatResponseForTimeChart({
         groupColumns[0].name ===
           (source.kind === SourceKind.Log
             ? source.severityTextExpression
-            : source.statusCodeExpression)
+            : source.kind === SourceKind.Trace
+              ? source.statusCodeExpression
+              : undefined)
       ) {
         color = logLevelColor(row[groupColumns[0].name]);
       }
@@ -646,7 +651,7 @@ export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
 };
 
 export const convertV1GroupByToV2 = (
-  metricSource: TSource,
+  metricSource: TMetricSource,
   groupBy: string[],
 ): string => {
   return groupBy
@@ -672,9 +677,9 @@ export const convertV1ChartConfigToV2 = (
     sortOrder?: SortOrder;
   },
   source: {
-    log?: TSource;
-    metric?: TSource;
-    trace?: TSource;
+    log?: TLogSource;
+    metric?: TMetricSource;
+    trace?: TTraceSource;
   },
 ): ChartConfigWithDateRange => {
   const {

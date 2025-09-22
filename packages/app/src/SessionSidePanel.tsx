@@ -7,7 +7,8 @@ import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 
@@ -32,8 +33,8 @@ export default function SessionSidePanel({
   generateChartUrl,
   zIndex = 100,
 }: {
-  traceSource: TSource;
-  sessionSource: TSource;
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
   sessionId: string;
   session: Session;
   dateRange: DateRange['dateRange'];

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, type TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -17,11 +17,15 @@ export function useRowData({
 }) {
   const eventBodyExpr = getEventBody(source);
 
-  const searchedTraceIdExpr = source.traceIdExpression;
-  const searchedSpanIdExpr = source.spanIdExpression;
+  const searchedTraceIdExpr =
+    'traceIdExpression' in source ? source.traceIdExpression : undefined;
+  const searchedSpanIdExpr =
+    'spanIdExpression' in source ? source.spanIdExpression : undefined;
 
   const severityTextExpr =
-    source.severityTextExpression || source.statusCodeExpression;
+    (source.kind === SourceKind.Log && source.severityTextExpression) ||
+    (source.kind === SourceKind.Trace && source.statusCodeExpression) ||
+    undefined;
 
   return useQueriedChartConfig(
     {
@@ -66,26 +70,26 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.serviceNameExpression
+        ...('serviceNameExpression' in source
           ? [
               {
-                valueExpression: source.serviceNameExpression,
+                valueExpression: source.serviceNameExpression ?? '',
                 alias: '__hdx_service_name',
               },
             ]
           : []),
-        ...(source.resourceAttributesExpression
+        ...('resourceAttributesExpression' in source
           ? [
               {
-                valueExpression: source.resourceAttributesExpression,
+                valueExpression: source.resourceAttributesExpression ?? '',
                 alias: '__hdx_resource_attributes',
               },
             ]
           : []),
-        ...(source.eventAttributesExpression
+        ...('eventAttributesExpression' in source
           ? [
               {
-                valueExpression: source.eventAttributesExpression,
+                valueExpression: source.eventAttributesExpression ?? '',
                 alias: '__hdx_event_attributes',
               },
             ]

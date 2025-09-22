@@ -3,7 +3,10 @@ import Link from 'next/link';
 import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type {
+  TLogSource,
+  TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Badge,
@@ -61,7 +64,7 @@ const NamespaceDetails = ({
 }: {
   name: string;
   dateRange: [Date, Date];
-  metricSource?: TSource;
+  metricSource?: TMetricSource;
 }) => {
   const where = `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${name}"`;
   const groupBy = ['k8s.namespace.name'];
@@ -141,7 +144,7 @@ function NamespaceLogs({
   where,
 }: {
   dateRange: [Date, Date];
-  logSource: TSource;
+  logSource: TLogSource;
   where: string;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
@@ -230,8 +233,8 @@ export default function NamespaceDetailsSidePanel({
   metricSource,
   logSource,
 }: {
-  metricSource: TSource;
-  logSource: TSource;
+  metricSource: TMetricSource;
+  logSource: TLogSource;
 }) {
   const [namespaceName, setNamespaceName] = useQueryParam(
     'namespaceName',

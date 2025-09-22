@@ -12,14 +12,10 @@ import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
+import { LogSource } from '@/models/source';
 import Webhook from '@/models/webhook';
 import { getPreviousAlertHistories, processAlert } from '@/tasks/checkAlerts';
 import { AlertTaskType, loadProvider } from '@/tasks/providers';
-import {
-  AlertMessageTemplateDefaultView,
-  buildAlertMessageTemplateTitle,
-} from '@/tasks/template';
 import * as slack from '@/utils/slack';
 
 describe('Single Invocation Alert Test', () => {
@@ -104,7 +100,7 @@ describe('Single Invocation Alert Test', () => {
     });
 
     // Create source
-    const source = await Source.create({
+    const source = await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {
@@ -293,7 +289,7 @@ describe('Single Invocation Alert Test', () => {
     });
 
     // Create source
-    const source = await Source.create({
+    const source = await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {

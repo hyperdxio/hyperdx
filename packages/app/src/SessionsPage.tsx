@@ -253,10 +253,12 @@ export default function SessionsPage() {
   const sourceId = watch('source');
   const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
     id: watch('source'),
+    kind: SourceKind.Session,
   });
 
   const { data: traceTrace } = useSource({
     id: sessionSource?.traceSourceId,
+    kind: SourceKind.Trace,
   });
 
   // Get all sources and select the first session type source by default

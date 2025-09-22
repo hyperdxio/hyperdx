@@ -13,9 +13,8 @@ import {
 import { useForm } from 'react-hook-form';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import {
-  SearchConditionLanguage,
   SourceKind,
-  TSource,
+  type TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -146,7 +145,7 @@ export const InfraPodsStatusTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
@@ -439,7 +438,7 @@ const NodesTable = ({
   where,
   dateRange,
 }: {
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
@@ -608,7 +607,7 @@ const NamespacesTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const groupBy = ['k8s.namespace.name'];
@@ -772,13 +771,14 @@ function KubernetesDashboardPage() {
   const connection = _connection ?? connections?.[0]?.id ?? '';
 
   // TODO: Let users select log + metric sources
-  const { data: sources, isLoading: isLoadingSources } = useSources();
-  const logSource = sources?.find(
-    s => s.kind === SourceKind.Log && s.connection === connection,
-  );
-  const metricSource = sources?.find(
-    s => s.kind === SourceKind.Metric && s.connection === connection,
-  );
+  const { data: logSource } = useSource({
+    connection: connection,
+    kind: SourceKind.Log,
+  });
+  const { data: metricSource } = useSource({
+    connection: connection,
+    kind: SourceKind.Metric,
+  });
 
   const { control, watch } = useForm({
     values: {
@@ -869,13 +869,16 @@ function KubernetesDashboardPage() {
           logSource={logSource}
         />
       )}
-      {rowId && rowSidePanelSource && (
-        <DBRowSidePanel
-          source={rowSidePanelSource}
-          rowId={rowId}
-          onClose={handleSidePanelClose}
-        />
-      )}
+      {rowId &&
+        rowSidePanelSource &&
+        (rowSidePanelSource.kind === SourceKind.Log ||
+          rowSidePanelSource.kind === SourceKind.Trace) && (
+          <DBRowSidePanel
+            source={rowSidePanelSource}
+            rowId={rowId}
+            onClose={handleSidePanelClose}
+          />
+        )}
       <Group justify="space-between">
         <Group>
           <Text c="gray.4" size="xl">

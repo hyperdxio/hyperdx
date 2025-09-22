@@ -1,5 +1,8 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  type TLogSource,
+  type TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -16,7 +19,7 @@ import {
   getServer,
 } from '../../../fixtures';
 import Connection from '../../../models/connection';
-import { ISource, Source } from '../../../models/source';
+import { LogSource, MetricSource } from '../../../models/source';
 
 // Default time range for tests (1 hour)
 const DEFAULT_END_TIME = Date.now();
@@ -77,8 +80,8 @@ describe('External API v2 Charts', () => {
   let team: any;
   let user: any;
   let connection: any;
-  let logSource: ISource;
-  let metricSource: ISource;
+  let logSource: TLogSource;
+  let metricSource: TMetricSource;
 
   beforeAll(async () => {
     await server.start();
@@ -98,19 +101,19 @@ describe('External API v2 Charts', () => {
       password: config.CLICKHOUSE_PASSWORD,
     });
 
-    logSource = await Source.create({
-      kind: SourceKind.Log,
+    logSource = await LogSource.create({
       team: team._id,
+      name: 'Logs',
+      kind: SourceKind.Log,
       from: {
         databaseName: DEFAULT_DATABASE,
         tableName: DEFAULT_LOGS_TABLE,
       },
       timestampValueExpression: 'Timestamp',
       connection: connection._id,
-      name: 'Logs',
     });
 
-    metricSource = await Source.create({
+    metricSource = await MetricSource.create({
       kind: SourceKind.Metric,
       team: team._id,
       from: {

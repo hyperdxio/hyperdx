@@ -3,6 +3,7 @@ import {
   AlertInterval,
   SearchCondition,
   SearchConditionLanguage,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
@@ -62,7 +63,10 @@ export const AlertPreviewChart = ({
           whereLanguage: whereLanguage || undefined,
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
-          implicitColumnExpression: source.implicitColumnExpression,
+          implicitColumnExpression:
+            source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+              ? source.implicitColumnExpression
+              : undefined,
           groupBy,
           with: aliasWith,
           select: [
@@ -73,7 +77,10 @@ export const AlertPreviewChart = ({
               valueExpression: '',
             },
           ],
-          timestampValueExpression: source.timestampValueExpression,
+          timestampValueExpression:
+            source.kind !== SourceKind.Session
+              ? source.timestampValueExpression
+              : '',
           from: source.from,
           connection: source.connection,
         }}

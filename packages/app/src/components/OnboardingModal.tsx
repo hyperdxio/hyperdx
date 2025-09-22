@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   MetricsDataType,
   SourceKind,
+  TLogSource,
+  TMetricSource,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -64,9 +67,9 @@ async function addOtelDemoSources({
     logSourceDatabaseName && logSourceName && logSourceTableName;
   const hasMetricsSource = metricsSourceDatabaseName && metricsSourceName;
 
-  let logSource: TSource | undefined;
+  let logSource: TLogSource | undefined;
   if (hasLogSource) {
-    logSource = await createSourceMutation.mutateAsync({
+    logSource = (await createSourceMutation.mutateAsync({
       source: {
         kind: SourceKind.Log,
         name: logSourceName,
@@ -87,9 +90,9 @@ async function addOtelDemoSources({
         implicitColumnExpression: 'Body',
         displayedTimestampValueExpression: 'Timestamp',
       },
-    });
+    })) as TLogSource;
   }
-  const traceSource = await createSourceMutation.mutateAsync({
+  const traceSource = (await createSourceMutation.mutateAsync({
     source: {
       kind: SourceKind.Trace,
       name: traceSourceName,
@@ -117,10 +120,10 @@ async function addOtelDemoSources({
       statusMessageExpression: 'StatusMessage',
       spanEventsValueExpression: 'Events',
     },
-  });
+  })) as TTraceSource;
   let metricsSource: TSource | undefined;
   if (hasMetricsSource) {
-    metricsSource = await createSourceMutation.mutateAsync({
+    metricsSource = (await createSourceMutation.mutateAsync({
       source: {
         kind: SourceKind.Metric,
         name: metricsSourceName,
@@ -130,7 +133,6 @@ async function addOtelDemoSources({
           tableName: '',
         },
         timestampValueExpression: 'TimeUnix',
-        serviceNameExpression: 'ServiceName',
         metricTables: {
           [MetricsDataType.Gauge]: 'otel_metrics_gauge',
           [MetricsDataType.Histogram]: 'otel_metrics_histogram',
@@ -142,7 +144,7 @@ async function addOtelDemoSources({
         resourceAttributesExpression: 'ResourceAttributes',
         ...(hasLogSource && logSource ? { logSourceId: logSource.id } : {}),
       },
-    });
+    })) as TMetricSource;
   }
   const sessionSource = await createSourceMutation.mutateAsync({
     source: {
@@ -154,15 +156,7 @@ async function addOtelDemoSources({
         tableName: sessionSourceTableName,
       },
       timestampValueExpression: 'TimestampTime',
-      defaultTableSelectExpression: 'Timestamp, ServiceName, Body',
-      serviceNameExpression: 'ServiceName',
-      severityTextExpression: 'SeverityText',
-      eventAttributesExpression: 'LogAttributes',
-      resourceAttributesExpression: 'ResourceAttributes',
       traceSourceId: traceSource.id,
-      traceIdExpression: 'TraceId',
-      spanIdExpression: 'SpanId',
-      implicitColumnExpression: 'Body',
     },
   });
   await Promise.all([
@@ -171,7 +165,6 @@ async function addOtelDemoSources({
           updateSourceMutation.mutateAsync({
             source: {
               ...logSource,
-              sessionSourceId: sessionSource.id,
               traceSourceId: traceSource.id,
               ...(hasMetricsSource && metricsSource
                 ? { metricSourceId: metricsSource.id }

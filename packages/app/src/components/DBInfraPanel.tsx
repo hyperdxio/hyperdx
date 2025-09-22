@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
 import { add, min, sub } from 'date-fns';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  type TLogSource,
+  type TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Card,
@@ -33,7 +37,7 @@ const InfraSubpanelGroup = ({
   where,
 }: {
   fieldPrefix: string;
-  metricSource: TSource;
+  metricSource: TMetricSource;
   timestamp: any;
   title: string;
   where: string;
@@ -210,9 +214,12 @@ export default ({
 }: {
   rowData?: Record<string, any>;
   rowId: string | undefined | null;
-  source: TSource;
+  source: TLogSource;
 }) => {
-  const { data: metricSource } = useSource({ id: source.metricSourceId });
+  const { data: metricSource } = useSource({
+    id: source.metricSourceId,
+    kind: SourceKind.Metric,
+  });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];

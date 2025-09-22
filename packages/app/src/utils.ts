@@ -4,7 +4,7 @@ import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
@@ -705,7 +705,7 @@ export function getMetricTableName(
   source: TSource,
   metricType?: string,
 ): string | undefined {
-  return metricType == null
+  return source.kind !== SourceKind.Metric || metricType == null
     ? source.from.tableName
     : source.metricTables?.[
         metricType.toLowerCase() as keyof typeof source.metricTables

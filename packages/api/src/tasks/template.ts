@@ -5,6 +5,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig'
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  SourceKind,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { _useTry, formatDate } from '@hyperdx/common-utils/dist/utils';
@@ -452,10 +453,17 @@ export const renderAlertTemplate = async ({
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
+      select:
+        savedSearch.select ||
+        ('defaultTableSelectExpression' in source &&
+          source.defaultTableSelectExpression) ||
+        '', // remove alert body if there is no select and defaultTableSelectExpression
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
-      implicitColumnExpression: source.implicitColumnExpression,
+      implicitColumnExpression:
+        source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+          ? source.implicitColumnExpression
+          : undefined,
       timestampValueExpression: source.timestampValueExpression,
       orderBy: savedSearch.orderBy,
       limit: {

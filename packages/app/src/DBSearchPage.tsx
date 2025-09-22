@@ -137,6 +137,8 @@ const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
+const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
+
 // Helper function to get the default source id
 export function getDefaultSourceId(
   sources: { id: string }[] | undefined,
@@ -477,9 +479,16 @@ function useSearchedConfigToChartConfig({
   filters,
   orderBy,
 }: SearchConfig) {
-  const { data: sourceObj, isLoading } = useSource({
+  const { data: logSource, isLoading: isLogSourceLoading } = useSource({
     id: source,
+    kind: SourceKind.Log,
   });
+  const { data: traceSource, isLoading: isTraceSourceLoading } = useSource({
+    id: source,
+    kind: SourceKind.Trace,
+  });
+  const sourceObj = logSource ?? traceSource;
+  const isLoading = isLogSourceLoading || isTraceSourceLoading;
   const defaultOrderBy = useDefaultOrderBy(source);
 
   return useMemo(() => {
@@ -488,7 +497,8 @@ function useSearchedConfigToChartConfig({
         data: {
           select: select || (sourceObj.defaultTableSelectExpression ?? ''),
           from: sourceObj.from,
-          ...(sourceObj.tableFilterExpression != null
+          ...('tableFilterExpression' in sourceObj &&
+          sourceObj.tableFilterExpression != null
             ? {
                 filters: [
                   {
@@ -611,9 +621,15 @@ function DBSearchPage() {
     'hdx-last-selected-source-id',
     '',
   );
-  const { data: searchedSource } = useSource({
+  const { data: logSearchedSource } = useSource({
     id: searchedConfig.source,
+    kind: SourceKind.Log,
   });
+  const { data: traceSearchedSource } = useSource({
+    id: searchedConfig.source,
+    kind: SourceKind.Trace,
+  });
+  const searchedSource = logSearchedSource ?? traceSearchedSource;
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
@@ -685,7 +701,15 @@ function DBSearchPage() {
   const inputSource = watch('source');
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
-  const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
+  const { data: logSource } = useSource({
+    id: inputSource,
+    kind: SourceKind.Log,
+  });
+  const { data: traceSource } = useSource({
+    id: inputSource,
+    kind: SourceKind.Trace,
+  });
+  const inputSourceObj = logSource ?? traceSource;
 
   const defaultOrderBy = useDefaultOrderBy(inputSource);
   const [rowId, setRowId] = useQueryState('rowWhere');
@@ -843,10 +867,12 @@ function DBSearchPage() {
           // Save the selected source ID to localStorage
           setLastSelectedSourceId(newInputSourceObj.id);
 
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
+          if (newInputSourceObj.kind === SourceKind.Log) {
+            setValue(
+              'select',
+              newInputSourceObj.defaultTableSelectExpression ?? '',
+            );
+          }
           // Clear all search filters
           searchFilters.clearAllFilters();
         }
@@ -1221,7 +1247,7 @@ function DBSearchPage() {
               control={control}
               name="source"
               onCreate={openNewSourceModal}
-              allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
+              allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             />
             <Menu withArrow position="bottom-start">
               <Menu.Target>
@@ -1516,7 +1542,10 @@ function DBSearchPage() {
                   setAnalysisMode={setAnalysisMode}
                   chartConfig={filtersChartConfig}
                   sourceId={inputSourceObj?.id}
-                  showDelta={!!searchedSource?.durationExpression}
+                  showDelta={
+                    searchedSource?.kind === SourceKind.Trace &&
+                    !!searchedSource?.durationExpression
+                  }
                   {...searchFilters}
                 />
               </ErrorBoundary>
@@ -1568,8 +1597,9 @@ function DBSearchPage() {
                         dateRange: searchedTimeRange,
                       }}
                       bodyValueExpression={
-                        searchedSource?.bodyExpression ??
-                        chartConfig.implicitColumnExpression ??
+                        ((searchedSource?.kind === SourceKind.Log &&
+                          searchedSource?.bodyExpression) ||
+                          chartConfig.implicitColumnExpression) ??
                         ''
                       }
                       totalCountConfig={histogramTimeChartConfig}
@@ -1577,59 +1607,61 @@ function DBSearchPage() {
                     />
                   </Flex>
                 )}
-              {analysisMode === 'delta' && searchedSource != null && (
-                <Flex direction="column" w="100%">
-                  <div
-                    style={{ minHeight: 210, maxHeight: 210, width: '100%' }}
-                  >
-                    <DBHeatmapChart
-                      config={{
-                        ...chartConfig,
-                        select: [
-                          {
-                            aggFn: 'heatmap',
-                            valueExpression:
-                              getDurationMsExpression(searchedSource),
-                          },
-                        ],
-                        dateRange: searchedTimeRange,
-                        displayType: DisplayType.Heatmap,
-                        granularity: 'auto',
-                        with: aliasWith,
-                      }}
-                      enabled={isReady}
-                      onFilter={(xMin, xMax, yMin, yMax) => {
-                        setOutlierSqlCondition(
-                          [
-                            `${searchedSource.durationExpression} >= ${yMin} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${searchedSource.durationExpression} <= ${yMax} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
-                          ].join(' AND '),
-                        );
-                      }}
-                    />
-                  </div>
-                  {outlierSqlCondition ? (
-                    <DBDeltaChart
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      outlierSqlCondition={outlierSqlCondition ?? ''}
-                    />
-                  ) : (
-                    <Paper shadow="xs" p="xl" h="100%">
-                      <Center mih={100} h="100%">
-                        <Text size="sm" c="gray.4">
-                          Please highlight an outlier range in the heatmap to
-                          view the delta chart.
-                        </Text>
-                      </Center>
-                    </Paper>
-                  )}
-                </Flex>
-              )}
+              {analysisMode === 'delta' &&
+                searchedSource != null &&
+                searchedSource.kind === SourceKind.Trace && (
+                  <Flex direction="column" w="100%">
+                    <div
+                      style={{ minHeight: 210, maxHeight: 210, width: '100%' }}
+                    >
+                      <DBHeatmapChart
+                        config={{
+                          ...chartConfig,
+                          select: [
+                            {
+                              aggFn: 'heatmap',
+                              valueExpression:
+                                getDurationMsExpression(searchedSource),
+                            },
+                          ],
+                          dateRange: searchedTimeRange,
+                          displayType: DisplayType.Heatmap,
+                          granularity: 'auto',
+                          with: aliasWith,
+                        }}
+                        enabled={isReady}
+                        onFilter={(xMin, xMax, yMin, yMax) => {
+                          setOutlierSqlCondition(
+                            [
+                              `${searchedSource.durationExpression} >= ${yMin} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
+                              `${searchedSource.durationExpression} <= ${yMax} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
+                              `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
+                              `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
+                            ].join(' AND '),
+                          );
+                        }}
+                      />
+                    </div>
+                    {outlierSqlCondition ? (
+                      <DBDeltaChart
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                        }}
+                        outlierSqlCondition={outlierSqlCondition ?? ''}
+                      />
+                    ) : (
+                      <Paper shadow="xs" p="xl" h="100%">
+                        <Center mih={100} h="100%">
+                          <Text size="sm" c="gray.4">
+                            Please highlight an outlier range in the heatmap to
+                            view the delta chart.
+                          </Text>
+                        </Center>
+                      </Paper>
+                    )}
+                  </Flex>
+                )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {analysisMode === 'results' &&
                   chartConfig &&

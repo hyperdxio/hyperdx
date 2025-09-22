@@ -10,9 +10,10 @@ import { z } from 'zod';
 import {
   MetricsDataType,
   SourceKind,
-  sourceSchemaWithout,
+  SourceSchemaNoId,
+  TLogSource,
   TSource,
-  TSourceUnion,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -60,7 +61,13 @@ const OTEL_CLICKHOUSE_EXPRESSIONS = {
 
 const CORRELATION_FIELD_MAP: Record<
   SourceKind,
-  Record<string, { targetKind: SourceKind; targetField: keyof TSource }[]>
+  Record<
+    string,
+    {
+      targetKind: SourceKind;
+      targetField: keyof TLogSource | keyof TTraceSource;
+    }[]
+  >
 > = {
   [SourceKind.Log]: {
     metricSourceId: [
@@ -688,9 +695,9 @@ export function SessionTableModelForm({
 }
 
 interface TableModelProps {
-  control: Control<TSourceUnion>;
-  watch: UseFormWatch<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
 }
 
 export function MetricTableModelForm({
@@ -782,9 +789,9 @@ function TableModelForm({
   setValue,
   kind,
 }: {
-  control: Control<TSourceUnion>;
-  watch: UseFormWatch<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  watch: UseFormWatch<TSource>;
+  setValue: UseFormSetValue<TSource>;
   kind: SourceKind;
 }) {
   switch (kind) {
@@ -850,7 +857,7 @@ export function TableSourceForm({
     resetField,
     setError,
     clearErrors,
-  } = useForm<TSourceUnion>({
+  } = useForm<TSource>({
     defaultValues: {
       kind: SourceKind.Log,
       name: defaultName,
@@ -860,8 +867,7 @@ export function TableSourceForm({
         tableName: '',
       },
     },
-    // TODO: HDX-1768 remove type assertion
-    values: source as TSourceUnion,
+    values: source,
     resetOptions: {
       keepDirtyValues: true,
       keepErrors: true,
@@ -869,10 +875,8 @@ export function TableSourceForm({
   });
 
   useEffect(() => {
-    const { unsubscribe } = watch(async (_value, { name, type }) => {
+    const { unsubscribe } = watch(async (value, { name, type }) => {
       try {
-        // TODO: HDX-1768 get rid of this type assertion
-        const value = _value as TSourceUnion;
         if (
           value.connection != null &&
           value.from?.databaseName != null &&
@@ -883,7 +887,7 @@ export function TableSourceForm({
           const config = await inferTableSourceConfig({
             databaseName: value.from.databaseName,
             tableName:
-              value.kind !== SourceKind.Metric ? value.from.tableName : '',
+              (value.kind !== SourceKind.Metric && value.from.tableName) || '',
             connectionId: value.connection,
           });
           if (Object.keys(config).length > 0) {
@@ -925,20 +929,20 @@ export function TableSourceForm({
   const currentSourceId = watch('id');
 
   useEffect(() => {
-    const { unsubscribe } = watch(async (_value, { name, type }) => {
-      const value = _value as TSourceUnion;
+    const { unsubscribe } = watch(async (value, { name, type }) => {
       if (!currentSourceId || !sources || type !== 'change') return;
 
       const correlationFields = CORRELATION_FIELD_MAP[kind];
       if (!correlationFields || !name || !(name in correlationFields)) return;
 
-      const fieldName = name as keyof TSourceUnion;
+      const fieldName = name as keyof TSource;
       const newTargetSourceId = value[fieldName] as string | undefined;
       const targetConfigs = correlationFields[fieldName];
 
       for (const { targetKind, targetField } of targetConfigs) {
         // Find the previously linked source if any
         const previouslyLinkedSource = sources.find(
+          // @ts-ignore
           s => s.kind === targetKind && s[targetField] === currentSourceId,
         );
 
@@ -951,7 +955,7 @@ export function TableSourceForm({
             source: {
               ...previouslyLinkedSource,
               [targetField]: undefined,
-            } as TSource,
+            },
           });
         }
 
@@ -960,6 +964,7 @@ export function TableSourceForm({
           const targetSource = sources.find(s => s.id === newTargetSourceId);
           if (targetSource && targetSource.kind === targetKind) {
             // Only update if the target field is empty to avoid overwriting existing correlations
+            // @ts-ignore
             if (!targetSource[targetField]) {
               await updateSource.mutateAsync({
                 source: {
@@ -976,8 +981,7 @@ export function TableSourceForm({
     return () => unsubscribe();
   }, [watch, kind, currentSourceId, sources, updateSource]);
 
-  const sourceFormSchema = sourceSchemaWithout({ id: true });
-  const handleError = (error: z.ZodError<TSourceUnion>) => {
+  const handleError = (error: z.ZodError<TSource>) => {
     const errors = error.errors;
     for (const err of errors) {
       const errorPath: string = err.path.join('.');
@@ -1004,15 +1008,14 @@ export function TableSourceForm({
   const _onCreate = useCallback(() => {
     clearErrors();
     handleSubmit(async data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error);
         return;
       }
 
       createSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: data },
         {
           onSuccess: async newSource => {
             // Handle bidirectional linking for new sources
@@ -1029,6 +1032,7 @@ export function TableSourceForm({
                     );
                     if (targetSource && targetSource.kind === targetKind) {
                       // Only update if the target field is empty to avoid overwriting existing correlations
+                      // @ts-ignore
                       if (!targetSource[targetField]) {
                         await updateSource.mutateAsync({
                           source: {
@@ -1071,14 +1075,13 @@ export function TableSourceForm({
   const _onSave = useCallback(() => {
     clearErrors();
     handleSubmit(data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error);
         return;
       }
       updateSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: data },
         {
           onSuccess: () => {
             onSave?.();

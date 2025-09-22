@@ -2,7 +2,10 @@ import { useCallback, useContext, useMemo } from 'react';
 import { flatten } from 'flat';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import type {
+  TLogSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
 
 import { getEventBody } from '@/source';
@@ -22,7 +25,7 @@ export function RowOverviewPanel({
   rowId,
   hideHeader = false,
 }: {
-  source: TSource;
+  source: TLogSource | TTraceSource;
   rowId: string | undefined | null;
   hideHeader?: boolean;
 }) {

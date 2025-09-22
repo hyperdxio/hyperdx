@@ -8,6 +8,7 @@ import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
@@ -190,7 +191,10 @@ export const processAlert = async (
         where: savedSearch.where,
         whereLanguage: savedSearch.whereLanguage,
         groupBy: alert.groupBy,
-        implicitColumnExpression: source.implicitColumnExpression,
+        implicitColumnExpression:
+          source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+            ? source.implicitColumnExpression
+            : undefined,
         timestampValueExpression: source.timestampValueExpression,
       };
     } else if (details.taskType === AlertTaskType.TILE) {
@@ -206,8 +210,12 @@ export const processAlert = async (
           from: source.from,
           granularity: `${windowSizeInMins} minute`,
           groupBy: tile.config.groupBy,
-          implicitColumnExpression: source.implicitColumnExpression,
-          metricTables: source.metricTables,
+          implicitColumnExpression:
+            source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+              ? source.implicitColumnExpression
+              : undefined,
+          metricTables:
+            source.kind === SourceKind.Metric ? source.metricTables : undefined,
           select: tile.config.select,
           timestampValueExpression: source.timestampValueExpression,
           where: tile.config.where,

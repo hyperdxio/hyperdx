@@ -1,5 +1,3 @@
-// TODO: HDX-1768 Change TSource here to TSourceUnion and adjust as needed. Then, go to
-// SourceForm.tsx and remove type assertions for TSource and TSourceUnion
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import store from 'store2';
@@ -10,16 +8,26 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  LogSourceSchema,
   MetricsDataType,
+  MetricSourceSchema,
+  SessionSourceSchema,
   SourceKind,
+  TraceSourceSchema,
   TSource,
-  TSourceUnion,
+  TSourceNoId,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   hashCode,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/utils';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryResult,
+} from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
@@ -65,29 +73,33 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
 }
 
 export function getSpanEventBody(eventModel: TSource) {
-  return eventModel.bodyExpression ?? eventModel?.spanNameExpression;
+  return (
+    (eventModel.kind === SourceKind.Log && eventModel.bodyExpression) ||
+    (eventModel.kind === SourceKind.Trace && eventModel.spanNameExpression) ||
+    undefined
+  );
 }
 
 export function getDisplayedTimestampValueExpression(eventModel: TSource) {
   return (
-    eventModel.displayedTimestampValueExpression ??
-    getFirstTimestampValueExpression(eventModel.timestampValueExpression)
+    (eventModel.kind === SourceKind.Log &&
+      eventModel.displayedTimestampValueExpression) ||
+    getFirstTimestampValueExpression(eventModel.timestampValueExpression ?? '')
   );
 }
 
 export function getEventBody(eventModel: TSource) {
   const expression =
-    eventModel.bodyExpression ??
-    ('spanNameExpression' in eventModel
-      ? eventModel?.spanNameExpression
-      : undefined) ??
-    eventModel.implicitColumnExpression; //??
-  // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
+    (eventModel.kind === SourceKind.Log && eventModel.bodyExpression) ||
+    ('spanNameExpression' in eventModel && eventModel?.spanNameExpression) ||
+    ('implicitColumnExpression' in eventModel &&
+      eventModel.implicitColumnExpression) ||
+    undefined;
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0]; // TODO: check if we want to show multiple columns
 }
 
-function addDefaultsToSource(source: TSourceUnion): TSource {
+function addDefaultsToSource(source: TSource): TSource {
   return {
     ...source,
     // Session sources have hard-coded timestampValueExpressions
@@ -106,25 +118,66 @@ export function useSources() {
         return getLocalSources();
       }
 
-      const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+      const rawSources = await hdxServer('sources').json<TSource[]>();
       return rawSources.map(addDefaultsToSource);
     },
   });
 }
 
-export function useSource({ id }: { id?: string | null }) {
+export function useSource(params: {
+  id?: string | null;
+  connection?: string | null;
+}): UseQueryResult<TSource | undefined>;
+export function useSource<K extends TSource['kind']>(params: {
+  id?: string | null;
+  connection?: string | null;
+  kind: K;
+}): UseQueryResult<Extract<TSource, { kind: K }> | undefined>;
+export function useSource<K extends TSource['kind'] | undefined = undefined>({
+  id,
+  connection,
+  kind,
+}: {
+  id?: string | null;
+  connection?: string | null;
+  kind?: K;
+}) {
   return useQuery({
     queryKey: ['sources'],
     queryFn: async () => {
       if (!IS_LOCAL_MODE) {
-        const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+        const rawSources = await hdxServer('sources').json<TSource[]>();
         return rawSources.map(addDefaultsToSource);
       } else {
         return getLocalSources();
       }
     },
-    select: (data: TSource[]): TSource => {
-      return data.filter((s: any) => s.id === id)[0];
+    select: (data: TSource[]) => {
+      if (!id && !connection) return undefined;
+      const source = data.find(
+        s =>
+          (!id || s.id === id) && (!connection || s.connection === connection),
+      );
+      if (!source) return undefined;
+
+      if (kind) {
+        if (source.kind !== kind) return undefined;
+
+        switch (kind) {
+          case SourceKind.Log:
+            return LogSourceSchema.parse(source);
+          case SourceKind.Trace:
+            return TraceSourceSchema.parse(source);
+          case SourceKind.Metric:
+            return MetricSourceSchema.parse(source);
+          case SourceKind.Session:
+            return SessionSourceSchema.parse(source);
+          default:
+            return source;
+        }
+      }
+
+      return source;
     },
     enabled: id != null,
   });
@@ -161,7 +214,7 @@ export function useCreateSource() {
   const queryClient = useQueryClient();
 
   const mut = useMutation({
-    mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
+    mutationFn: async ({ source }: { source: TSourceNoId }) => {
       if (IS_LOCAL_MODE) {
         const localSources = getLocalSources();
         const existingSource = localSources.find(
@@ -236,7 +289,7 @@ export async function inferTableSourceConfig({
   tableName: string;
   connectionId: string;
 }): Promise<
-  Partial<Omit<TSource, 'id' | 'name' | 'from' | 'connection' | 'kind'>>
+  Partial<Omit<TSourceNoId, 'name' | 'from' | 'connection' | 'kind'>>
 > {
   const metadata = getMetadata();
   const columns = await metadata.getColumns({
@@ -342,11 +395,11 @@ export async function inferTableSourceConfig({
   };
 }
 
-export function getDurationMsExpression(source: TSource) {
+export function getDurationMsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
-export function getDurationSecondsExpression(source: TSource) {
+export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 

@@ -1,10 +1,10 @@
-import { SourceKind, TSourceUnion } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
-import { Source } from '@/models/source';
+import { LogSource, Source } from '@/models/source';
 
-const MOCK_SOURCE: Omit<Extract<TSourceUnion, { kind: 'log' }>, 'id'> = {
+const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
   kind: SourceKind.Log,
   name: 'Test Source',
   connection: new Types.ObjectId().toString(),
@@ -35,7 +35,7 @@ describe('sources router', () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     // Create test source
-    await Source.create({
+    await LogSource.create({
       ...MOCK_SOURCE,
       team: team._id,
     });
@@ -93,7 +93,7 @@ describe('sources router', () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     // Create test source
-    const source = await Source.create({
+    const source = await LogSource.create({
       ...MOCK_SOURCE,
       team: team._id,
     });
@@ -129,7 +129,7 @@ describe('sources router', () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     // Create test source
-    const source = await Source.create({
+    const source = await LogSource.create({
       ...MOCK_SOURCE,
       team: team._id,
     });
