@@ -24,6 +24,7 @@ type FilterSelectProps = {
   value: string | null;
   onChange: (value: string | null) => void;
   chartConfig: ChartConfigWithDateRange;
+  dataTestId?: string;
 };
 
 const FilterSelect: React.FC<FilterSelectProps> = ({
@@ -33,6 +34,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   value,
   onChange,
   chartConfig,
+  dataTestId,
 }) => {
   const { data, isLoading } = useGetKeyValues({
     chartConfigs: chartConfig,
@@ -54,6 +56,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
       variant="filled"
       w={200}
       limit={20}
+      data-testid={dataTestId}
     />
   );
 };
@@ -186,6 +189,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         value={podName}
         onChange={value => updateSearchQuery('k8s.pod.name', value, setPodName)}
         chartConfig={chartConfig}
+        dataTestId="pod-filter-select"
       />
 
       <FilterSelect
@@ -197,6 +201,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.deployment.name', value, setDeploymentName)
         }
         chartConfig={chartConfig}
+        dataTestId="deployment-filter-select"
       />
 
       <FilterSelect
@@ -208,6 +213,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.node.name', value, setNodeName)
         }
         chartConfig={chartConfig}
+        dataTestId="node-filter-select"
       />
 
       <FilterSelect
@@ -219,6 +225,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.namespace.name', value, setNamespaceName)
         }
         chartConfig={chartConfig}
+        dataTestId="namespace-filter-select"
       />
 
       <FilterSelect
@@ -230,6 +237,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.cluster.name', value, setClusterName)
         }
         chartConfig={chartConfig}
+        dataTestId="cluster-filter-select"
       />
       <SearchInputV2
         tableConnections={tcFromSource(metricSource)}
@@ -239,6 +247,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         control={control}
         size="xs"
         enableHotkey
+        data-testid="k8s-search-input"
       />
     </Group>
   );

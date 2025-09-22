@@ -352,7 +352,7 @@ export default function PodDetailsSidePanel({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
+        <div className={styles.panel} data-testid="k8s-pod-details-panel">
           <DrawerHeader
             header={`Details for ${podName}`}
             onClose={handleClose}
@@ -365,7 +365,7 @@ export default function PodDetailsSidePanel({
                 podName={podName}
               />
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-details-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage
                   </Card.Section>
@@ -401,7 +401,7 @@ export default function PodDetailsSidePanel({
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="pod-details-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage
                   </Card.Section>

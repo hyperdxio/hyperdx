@@ -100,7 +100,10 @@ const NamespaceDetails = ({
 
   return (
     <Grid.Col span={12}>
-      <div className="p-2 gap-2 d-flex flex-wrap">
+      <div
+        className="p-2 gap-2 d-flex flex-wrap"
+        data-testid="k8s-namespace-details-panel"
+      >
         <PodDetailsProperty label="Namespace" value={name} />
         {properties.ready !== undefined && (
           <PodDetailsProperty
@@ -354,7 +357,7 @@ export default function NamespaceDetailsSidePanel({
                 metricSource={metricSource}
               />
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespace-details-cpu-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     CPU Usage by Pod
                   </Card.Section>
@@ -389,7 +392,7 @@ export default function NamespaceDetailsSidePanel({
                 </Card>
               </Grid.Col>
               <Grid.Col span={6}>
-                <Card p="md">
+                <Card p="md" data-testid="namespace-details-memory-usage-chart">
                   <Card.Section p="md" py="xs" withBorder>
                     Memory Usage by Pod
                   </Card.Section>
