@@ -156,7 +156,9 @@ export function useSource<K extends TSource['kind'] | undefined = undefined>({
       if (!id && !connection) return undefined;
       const source = data.find(
         s =>
-          (!id || s.id === id) && (!connection || s.connection === connection),
+          (!id || s.id === id) &&
+          (!connection || s.connection === connection) &&
+          (!kind || s.kind === kind),
       );
       if (!source) return undefined;
 
