@@ -1,5 +1,28 @@
 # @hyperdx/app
 
+## 2.5.0
+
+### Minor Changes
+
+- 5a44953e: feat: Add new none aggregation function to allow fully user defined aggregations in SQL
+- 0cf8556d: feat: Allow chart series to be reordered
+- 970c0027: Fix: improve the discoverability of inline item expansion within the search table
+
+### Patch Changes
+
+- 7a058059: Reusable DBSqlRowTableWithSideBar Component
+- 2c44ef98: style: Update icon used to show source schema
+- 0d9f3fe0: fix: Always enable query analyzer to fix compatibility issues with old ClickHouse versions.
+- 21f1aa75: fix: filter values for json casted to string
+- 825452fe: refactor: Decouple alerts processing from Mongo
+- 1d79980e: fix: Fix ascending order in windowed searches
+- 0183483a: feat: Add source schema previews
+- Updated dependencies [0d9f3fe0]
+- Updated dependencies [3d82583f]
+- Updated dependencies [5a44953e]
+- Updated dependencies [1d79980e]
+  - @hyperdx/common-utils@0.6.0
+
 ## 2.4.0
 
 ### Minor Changes

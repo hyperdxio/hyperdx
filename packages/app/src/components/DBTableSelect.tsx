@@ -1,7 +1,9 @@
 import { useController, UseControllerProps } from 'react-hook-form';
-import { Select } from '@mantine/core';
+import { Flex, Select } from '@mantine/core';
 
 import { useTablesDirect } from '@/clickhouse';
+
+import SourceSchemaPreview from './SourceSchemaPreview';
 
 export default function DBTableSelect({
   database,
@@ -35,21 +37,35 @@ export default function DBTableSelect({
   }));
 
   return (
-    <Select
-      searchable
-      placeholder="Table"
-      leftSection={<i className="bi bi-table"></i>}
-      maxDropdownHeight={280}
-      data={data}
-      disabled={isTablesLoading}
-      value={table}
-      comboboxProps={{ withinPortal: false }}
-      onChange={v => setTable(v ?? undefined)}
-      onBlur={onBlur}
-      name={name}
-      ref={inputRef}
-      size={size}
-    />
+    <Flex align="center" gap={8}>
+      <Select
+        searchable
+        placeholder="Table"
+        leftSection={<i className="bi bi-table"></i>}
+        maxDropdownHeight={280}
+        data={data}
+        disabled={isTablesLoading}
+        value={table}
+        comboboxProps={{ withinPortal: false }}
+        onChange={v => setTable(v ?? undefined)}
+        onBlur={onBlur}
+        name={name}
+        ref={inputRef}
+        size={size}
+        className="flex-grow-1"
+      />
+      <SourceSchemaPreview
+        source={
+          connectionId && database && table
+            ? {
+                connection: connectionId,
+                from: { databaseName: database, tableName: table },
+              }
+            : undefined
+        }
+        iconStyles={{ color: 'gray.4' }}
+      />
+    </Flex>
   );
 }
 

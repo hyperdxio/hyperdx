@@ -944,6 +944,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 language="lucene"
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 enableHotkey
+                data-testid="search-input"
               />
             )
           }
@@ -1047,6 +1048,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         ) : null}
       </Box>
       <Button
+        data-testid="add-new-tile-button"
         variant="outline"
         mt="sm"
         color={dashboard?.tiles.length === 0 ? 'green' : 'dark.3'}

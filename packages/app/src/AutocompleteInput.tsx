@@ -25,6 +25,7 @@ export default function AutocompleteInput({
   showHotkey,
   onSubmit,
   queryHistoryType,
+  'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLInputElement>;
   value?: string;
@@ -42,6 +43,7 @@ export default function AutocompleteInput({
   language?: 'sql' | 'lucene';
   showHotkey?: boolean;
   queryHistoryType?: string;
+  'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
 
@@ -242,6 +244,7 @@ export default function AutocompleteInput({
         className="border-0 fs-8"
         value={value}
         size={size}
+        data-testid={dataTestId}
         onChange={e => onChange(e.target.value)}
         onFocus={() => {
           setSelectedAutocompleteIndex(-1);
