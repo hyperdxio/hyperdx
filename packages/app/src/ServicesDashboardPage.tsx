@@ -955,7 +955,7 @@ function ServicesDashboardPage() {
               control={control}
               sqlInput={
                 <SQLInlineEditorControlled
-                  tableConnections={tcFromSource(source)}
+                  tableConnection={tcFromSource(source)}
                   onSubmit={onSubmit}
                   control={control}
                   name="where"
@@ -972,7 +972,7 @@ function ServicesDashboardPage() {
               }
               luceneInput={
                 <SearchInputV2
-                  tableConnections={tcFromSource(source)}
+                  tableConnection={tcFromSource(source)}
                   control={control}
                   name="where"
                   onLanguageChange={lang =>

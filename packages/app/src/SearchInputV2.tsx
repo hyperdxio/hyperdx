@@ -25,6 +25,7 @@ export class LuceneLanguageFormatter implements ILanguageFormatter {
 
 const luceneLanguageFormatter = new LuceneLanguageFormatter();
 export default function SearchInputV2({
+  tableConnection,
   tableConnections,
   placeholder = 'Search your events for anything...',
   size = 'sm',
@@ -37,7 +38,8 @@ export default function SearchInputV2({
   queryHistoryType,
   ...props
 }: {
-  tableConnections?: TableConnection | TableConnection[];
+  tableConnection?: TableConnection;
+  tableConnections?: TableConnection[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
@@ -57,9 +59,9 @@ export default function SearchInputV2({
 
   const autoCompleteOptions = useAutoCompleteOptions(
     luceneLanguageFormatter,
-    value != null ? `${value}` : '', // value can be null at times
+    value != null ? `${value}` : '',
     {
-      tableConnections,
+      tableConnection: tableConnection ? tableConnection : tableConnections,
       additionalSuggestions,
     },
   );

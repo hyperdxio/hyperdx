@@ -69,7 +69,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
         }),
       { wrapper },
@@ -82,65 +82,6 @@ describe('useGetKeyValues', () => {
     expect(result.current.data).toEqual(mockKeyValues);
   });
 
-  // Test case: Multiple chart configs with different configurations
-  it('should fetch key values for multiple chart configs', async () => {
-    // Arrange
-    const mockChartConfigs = [
-      createMockChartConfig({
-        from: { databaseName: 'telemetry', tableName: 'traces' },
-        groupBy: "ResourceAttributes['service.name']",
-      }),
-      createMockChartConfig({
-        from: { databaseName: 'logs', tableName: 'application_logs' },
-        orderBy: '"timestamp" DESC',
-      }),
-    ];
-    const mockKeys = [
-      'ResourceAttributes.service.name',
-      'ResourceAttributes.environment',
-    ];
-
-    jest
-      .spyOn(mockMetadata, 'getKeyValues')
-      .mockResolvedValueOnce([
-        {
-          key: "ResourceAttributes['service.name']",
-          value: ['frontend', 'backend'],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          key: "ResourceAttributes['environment']",
-          value: ['production', 'staging'],
-        },
-      ]);
-
-    // Act
-    const { result } = renderHook(
-      () =>
-        useGetKeyValues({
-          chartConfigs: mockChartConfigs,
-          keys: mockKeys,
-        }),
-      { wrapper },
-    );
-
-    // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(result.current.data).toEqual([
-      {
-        key: "ResourceAttributes['service.name']",
-        value: ['frontend', 'backend'],
-      },
-      {
-        key: "ResourceAttributes['environment']",
-        value: ['production', 'staging'],
-      },
-    ]);
-    expect(jest.spyOn(mockMetadata, 'getKeyValues')).toHaveBeenCalledTimes(2);
-  });
-
   // Test case: Handling empty keys
   it('should not fetch when keys array is empty', () => {
     // Arrange
@@ -150,7 +91,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: [],
         }),
       { wrapper },
@@ -180,7 +121,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
           limit: 50,
           disableRowLimit: true,
@@ -206,7 +147,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
         }),
       { wrapper },

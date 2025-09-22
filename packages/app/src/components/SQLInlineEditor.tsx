@@ -28,7 +28,7 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import { useAllFields } from '@/hooks/useMetadata';
+import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
@@ -105,7 +105,8 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  tableConnections?: TableConnection | TableConnection[];
+  tableConnection?: TableConnection;
+  tableConnections?: TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -142,6 +143,7 @@ const styleTheme = EditorView.baseTheme({
 });
 
 export default function SQLInlineEditor({
+  tableConnection,
   tableConnections,
   filterField,
   onChange,
@@ -159,7 +161,10 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
 }: SQLInlineEditorProps) {
-  const { data: fields } = useAllFields(tableConnections ?? []);
+  const _tableConnections = tableConnection
+    ? [tableConnection]
+    : tableConnections;
+  const { data: fields } = useMultipleAllFields(_tableConnections ?? []);
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);

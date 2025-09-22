@@ -35,7 +35,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   chartConfig,
 }) => {
   const { data, isLoading } = useGetKeyValues({
-    chartConfigs: chartConfig,
+    chartConfig,
     keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
   });
 
@@ -232,7 +232,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         chartConfig={chartConfig}
       />
       <SearchInputV2
-        tableConnections={tcFromSource(metricSource)}
+        tableConnection={tcFromSource(metricSource)}
         placeholder="Search query"
         language="lucene"
         name="searchQuery"

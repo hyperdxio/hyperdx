@@ -48,41 +48,39 @@ export function useColumns(
 }
 
 export function useJsonColumns(
-  { databaseName, tableName, connectionId }: TableConnection,
+  tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
   return useQuery<string[]>({
-    queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
+    queryKey: ['useMetadata.useJsonColumns', tableConnection],
     queryFn: async () => {
+      if (!tableConnection) return [];
       const metadata = getMetadata();
-      const columns = await metadata.getColumns({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      const columns = await metadata.getColumns(tableConnection);
       return (
         filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
           column => column.name,
         ) ?? []
       );
     },
-    enabled: !!databaseName && !!tableName && !!connectionId,
+    enabled:
+      tableConnection &&
+      !!tableConnection.databaseName &&
+      !!tableConnection.tableName &&
+      !!tableConnection.connectionId,
     ...options,
   });
 }
 
-export function useAllFields(
-  _tableConnections: TableConnection | TableConnection[],
+export function useMultipleAllFields(
+  tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const tableConnections = Array.isArray(_tableConnections)
-    ? _tableConnections
-    : [_tableConnections];
   const metadata = getMetadata();
   const { data: me, isFetched } = api.useMe();
   return useQuery<Field[]>({
     queryKey: [
-      'useMetadata.useAllFields',
+      'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
@@ -117,6 +115,16 @@ export function useAllFields(
   });
 }
 
+export function useAllFields(
+  tableConnection: TableConnection | undefined,
+  options?: Partial<UseQueryOptions<Field[]>>,
+) {
+  return useMultipleAllFields(
+    tableConnection ? [tableConnection] : [],
+    options,
+  );
+}
+
 export function useTableMetadata(
   {
     databaseName,
@@ -145,7 +153,7 @@ export function useTableMetadata(
   });
 }
 
-export function useGetKeyValues(
+export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
@@ -196,6 +204,31 @@ export function useGetKeyValues(
     placeholderData: keepPreviousData,
     ...options,
   });
+}
+
+export function useGetKeyValues(
+  {
+    chartConfig,
+    keys,
+    limit,
+    disableRowLimit,
+  }: {
+    chartConfig?: ChartConfigWithDateRange;
+    keys: string[];
+    limit?: number;
+    disableRowLimit?: boolean;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  return useMultipleGetKeyValues(
+    {
+      chartConfigs: chartConfig ? [chartConfig] : [],
+      keys,
+      limit,
+      disableRowLimit,
+    },
+    options,
+  );
 }
 
 export function deduplicateArray<T extends object>(array: T[]): T[] {
