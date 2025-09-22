@@ -9,8 +9,8 @@ import rateLimiter from '@/utils/rateLimiter';
 
 const router = express.Router();
 
-const rateLimiterKeyGenerator = (req: express.Request) => {
-  return req.headers.authorization || req.ip;
+const rateLimiterKeyGenerator = (req: express.Request): string => {
+  return req.headers.authorization ?? req.ip ?? 'unknown';
 };
 
 const defaultRateLimiter = rateLimiter({

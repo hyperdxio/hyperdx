@@ -36,6 +36,7 @@ export default function SearchInputV2({
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  'data-testid': dataTestId,
   ...props
 }: {
   tableConnection?: TableConnection;
@@ -49,6 +50,7 @@ export default function SearchInputV2({
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  'data-testid'?: string;
 } & UseControllerProps<any>) {
   const {
     field: { onChange, value },
@@ -97,6 +99,7 @@ export default function SearchInputV2({
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      data-testid={dataTestId}
       aboveSuggestions={
         <>
           <div className="text-muted fs-8 fw-bold me-1">Searching for:</div>

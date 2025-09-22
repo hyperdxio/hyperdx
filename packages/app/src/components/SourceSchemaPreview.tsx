@@ -35,7 +35,7 @@ const SourceSchemaInfoIcon = ({
     >
       <Text {...iconStyles}>
         <i
-          className={`bi bi-info-circle ${isEnabled ? 'cursor-pointer' : ''}`}
+          className={`bi bi-code-square ${isEnabled ? 'cursor-pointer' : ''}`}
         />
       </Text>
     </Tooltip>
