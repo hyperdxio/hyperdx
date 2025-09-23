@@ -69,7 +69,7 @@ const InfraSubpanelGroup = ({
   }, [dateRange]);
 
   return (
-    <div>
+    <div data-testid={`infra-subpanel-${fieldPrefix}`}>
       <Group justify="space-between" align="center">
         <Group align="center">
           <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
@@ -102,7 +102,7 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        <Card p="md">
+        <Card p="md" data-testid="cpu-usage-card">
           <Card.Section p="md" py="xs" withBorder>
             CPU Usage (%)
           </Card.Section>
@@ -134,7 +134,7 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md">
+        <Card p="md" data-testid="memory-usage-card">
           <Card.Section p="md" py="xs" withBorder>
             Memory Used
           </Card.Section>
@@ -166,7 +166,7 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md">
+        <Card p="md" data-testid="disk-usage-card">
           <Card.Section p="md" py="xs" withBorder>
             Disk Available
           </Card.Section>

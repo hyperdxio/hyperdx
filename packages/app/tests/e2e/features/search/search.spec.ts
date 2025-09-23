@@ -124,7 +124,9 @@ test.describe('Search', { tag: '@search' }, () => {
     }) => {
       await test.step('Setup and perform search', async () => {
         const searchInput = page.locator('[data-testid="search-input"]');
-        await searchInput.fill('Order');
+        await searchInput.fill(
+          'ResourceAttributes.k8s.pod.name:* ResourceAttributes.k8s.node.name:* ',
+        );
 
         const searchSubmitButton = page.locator(
           '[data-testid="search-submit-button"]',
@@ -175,7 +177,51 @@ test.describe('Search', { tag: '@search' }, () => {
           await page.waitForTimeout(500);
           await expect(tab.locator).toBeVisible();
         }
-        await page.keyboard.press('Escape');
+      });
+
+      await test.step('Verify infrastructure tab content', async () => {
+        const infrastructureTab = page.locator(
+          '[data-testid="tab-infrastructure"]',
+        );
+        await infrastructureTab.click();
+        await infrastructureTab.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(1000);
+
+        const podSubpanel = page.getByTestId('infra-subpanel-k8s.pod.');
+        await expect(podSubpanel).toBeVisible();
+
+        const podCpuUsageData = podSubpanel
+          .getByTestId('cpu-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(podCpuUsageData).toBeVisible();
+
+        const podMemoryUsageData = podSubpanel
+          .getByTestId('memory-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(podMemoryUsageData).toBeVisible();
+
+        const podDiskUsageData = podSubpanel
+          .getByTestId('disk-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(podDiskUsageData).toBeVisible();
+
+        const nodeSubpanel = page.getByTestId('infra-subpanel-k8s.node.');
+        await expect(nodeSubpanel).toBeVisible();
+
+        const nodeCpuUsageData = nodeSubpanel
+          .getByTestId('cpu-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(nodeCpuUsageData).toBeVisible();
+
+        const nodeMemoryUsageData = nodeSubpanel
+          .getByTestId('memory-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(nodeMemoryUsageData).toBeVisible();
+
+        const nodeDiskUsageData = nodeSubpanel
+          .getByTestId('disk-usage-card')
+          .locator('.recharts-responsive-container');
+        await expect(nodeDiskUsageData).toBeVisible();
       });
     });
 
