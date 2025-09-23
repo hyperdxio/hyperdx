@@ -190,6 +190,7 @@ function DBTimeChartComponent({
       <Button
         className="mx-auto"
         variant="subtle"
+        color="red"
         onClick={() => errorExpansion.open()}
       >
         <Group gap="xxs">
