@@ -1,5 +1,17 @@
 # @hyperdx/common-utils
 
+## 0.6.0
+
+### Minor Changes
+
+- 5a44953e: feat: Add new none aggregation function to allow fully user defined aggregations in SQL
+
+### Patch Changes
+
+- 0d9f3fe0: fix: Always enable query analyzer to fix compatibility issues with old ClickHouse versions.
+- 3d82583f: fix issue where linting could fail locally
+- 1d79980e: fix: Fix ascending order in windowed searches
+
 ## 0.5.0
 
 ### Minor Changes

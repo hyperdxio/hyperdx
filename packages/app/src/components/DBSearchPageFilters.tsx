@@ -72,17 +72,20 @@ export const TextButton = ({
   label,
   ms,
   display,
+  'data-testid': dataTestId,
 }: {
   onClick?: VoidFunction;
   label: React.ReactNode;
   ms?: MantineStyleProps['ms'];
   display?: MantineStyleProps['display'];
+  'data-testid'?: string;
 }) => {
   return (
     <UnstyledButton
       display={display}
       onClick={onClick}
       className={classes.textButton}
+      data-testid={dataTestId}
     >
       <Text size="xxs" c="gray.6" lh={1} ms={ms}>
         {label}
@@ -102,7 +105,10 @@ export const FilterCheckbox = ({
   onClickPin,
 }: FilterCheckboxProps) => {
   return (
-    <div className={classes.filterCheckbox}>
+    <div
+      className={classes.filterCheckbox}
+      data-testid={`filter-checkbox-${label}`}
+    >
       <Group
         gap={8}
         onClick={() => onChange?.(!value)}
@@ -118,6 +124,7 @@ export const FilterCheckbox = ({
             emptyFn
           }
           indeterminate={value === 'excluded'}
+          data-testid={`filter-checkbox-input-${label}`}
         />
         <Tooltip
           openDelay={label.length > 22 ? 0 : 1500}
@@ -139,13 +146,24 @@ export const FilterCheckbox = ({
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
-        {onClickOnly && <TextButton onClick={onClickOnly} label="Only" />}
+        {onClickOnly && (
+          <TextButton
+            onClick={onClickOnly}
+            label="Only"
+            data-testid={`filter-only-${label}`}
+          />
+        )}
         {onClickExclude && (
-          <TextButton onClick={onClickExclude} label="Exclude" />
+          <TextButton
+            onClick={onClickExclude}
+            label="Exclude"
+            data-testid={`filter-exclude-${label}`}
+          />
         )}
         <TextButton
           onClick={onClickPin}
           label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
+          data-testid={`filter-pin-${label}`}
         />
       </div>
       {pinned && (
@@ -177,6 +195,7 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  'data-testid'?: string;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -198,6 +217,7 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  'data-testid': dataTestId,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -293,7 +313,7 @@ export const FilterGroup = ({
         setExpanded(v === name);
       }}
     >
-      <Accordion.Item value={name}>
+      <Accordion.Item value={name} data-testid={dataTestId}>
         <Stack gap={0}>
           <Center>
             <Accordion.Control
@@ -320,6 +340,7 @@ export const FilterGroup = ({
                   flex="1"
                   placeholder={name}
                   value={search}
+                  data-testid={`filter-search-${name}`}
                   onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                     setSearch(event.currentTarget.value)
                   }
@@ -812,6 +833,7 @@ const DBSearchPageFiltersComponent = ({
           {shownFacets.map(facet => (
             <FilterGroup
               key={facet.key}
+              data-testid={`filter-group-${facet.key}`}
               name={cleanedFacetName(facet.key)}
               options={facet.value.map(value => ({
                 value,
