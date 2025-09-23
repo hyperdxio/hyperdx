@@ -10,6 +10,7 @@ import cx from 'classnames';
 import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
+import ms from 'ms';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -1268,11 +1269,18 @@ function DBSqlRowTableComponent({
     queryKey: [
       'denoised-rows',
       config,
-      processedRows,
+      denoiseResults,
+      // Only include processed rows if denoising is enabled
+      // This helps prevent the queryKey from getting extremely large
+      // and causing memory issues, when it's not used.
+      ...(denoiseResults ? [processedRows] : []),
       noisyPatternIds,
       patternColumn,
     ],
     queryFn: async () => {
+      if (!denoiseResults) {
+        return [];
+      }
       // No noisy patterns, so no need to denoise
       if (noisyPatternIds.length === 0) {
         return processedRows;
@@ -1296,6 +1304,7 @@ function DBSqlRowTableComponent({
       }
       return undefined;
     },
+    gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
     enabled:
       denoiseResults &&
       noisyPatterns.isSuccess &&
