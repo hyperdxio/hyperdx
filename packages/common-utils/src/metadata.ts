@@ -583,6 +583,18 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
+        // Get all columns including materialized ones
+        const columns = await this.getColumns({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        });
+
+        // Build select expression that includes all columns by name
+        // This ensures materialized columns are included
+        const selectExpr =
+          columns.map(col => `\`${col.name}\``).join(', ') || '*';
+
         const sql = await renderChartConfig(
           {
             with: [
@@ -590,7 +602,7 @@ export class Metadata {
                 name: 'sampledData',
                 chartConfig: {
                   ...chartConfig,
-                  select: keys.join(', '),
+                  select: selectExpr,
                   limit: {
                     limit: !disableRowLimit
                       ? this.getClickHouseSettings().max_rows_to_read
