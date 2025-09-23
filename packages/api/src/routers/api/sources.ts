@@ -36,6 +36,8 @@ router.get('/', async (req, res, next) => {
           return s.toJSON({ getters: true });
         case SourceKind.Session:
           return s.toJSON({ getters: true });
+        default:
+          throw new Error(`Source found with invalid kind ${(s as any).kind}`);
       }
     });
     return res.json(out);

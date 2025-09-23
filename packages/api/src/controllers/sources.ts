@@ -26,6 +26,8 @@ export function createSource(team: string, source: Omit<ISource, 'id'>) {
       return MetricSource.create({ ...source, team });
     case SourceKind.Session:
       return SessionSource.create({ ...source, team });
+    default:
+      throw new Error(`Source with kind ${source.kind} is invalid`);
   }
 }
 
@@ -51,6 +53,8 @@ export function updateSource(
       return SessionSource.findOneAndUpdate({ _id: sourceId, team }, source, {
         new: true,
       });
+    default:
+      throw new Error(`Source with kind ${source.kind} is invalid`);
   }
 }
 
