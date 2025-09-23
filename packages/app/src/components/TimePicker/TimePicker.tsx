@@ -25,6 +25,7 @@ import { useUserPreferences } from '@/useUserPreferences';
 
 import { Icon } from '../Icon';
 
+import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
 import {
   dateParser,
@@ -34,7 +35,10 @@ import {
   RELATIVE_TIME_OPTIONS,
 } from './utils';
 
-const modeAtom = atomWithStorage('hdx-time-picker-mode', 'Time range');
+const modeAtom = atomWithStorage<TimePickerMode>(
+  'hdx-time-picker-mode',
+  TimePickerMode.Range,
+);
 
 const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
@@ -101,15 +105,25 @@ export const TimePicker = ({
   }, [value]);
 
   React.useEffect(() => {
-    if (dateRange[0] && dateRange[1]) {
-      form.setValues({
-        startDate: dateRange[0],
-        endDate: dateRange[1],
-      });
+    // Only update form values from external dateRange when popover is closed
+    // This prevents overwriting user inputs while they're editing
+    if (!opened && dateRange[0] && dateRange[1]) {
+      if (mode === TimePickerMode.Range) {
+        form.setValues({
+          startDate: dateRange[0],
+          endDate: dateRange[1],
+        });
+      } else if (mode === TimePickerMode.Around) {
+        // For "Around a time" mode, set the startDate to the midpoint of the range
+        const midpoint = new Date(
+          (dateRange[0].getTime() + dateRange[1].getTime()) / 2,
+        );
+        form.setFieldValue('startDate', midpoint);
+      }
     }
-    // only run when dateRange changes
+    // only run when dateRange changes or opened state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange]);
+  }, [dateRange, opened, mode]);
 
   const handleSearch = React.useCallback(
     (value: string | [Date | null, Date | null]) => {
@@ -141,11 +155,11 @@ export const TimePicker = ({
       return;
     }
     const { startDate, endDate } = form.values;
-    if (mode === 'Time range') {
+    if (mode === TimePickerMode.Range) {
       handleSearch([startDate, endDate]);
       close();
     }
-    if (mode === 'Around a time') {
+    if (mode === TimePickerMode.Around) {
       const duration = DURATIONS[form.values.duration];
       const from = startDate && sub(startDate, duration);
       const to = startDate && add(startDate, duration);
@@ -281,11 +295,49 @@ export const TimePicker = ({
               <SegmentedControl
                 size="xs"
                 mb="xs"
-                data={['Time range', 'Around a time']}
+                data={[TimePickerMode.Range, TimePickerMode.Around]}
                 value={mode}
-                onChange={setMode}
+                onChange={newMode => {
+                  const value = newMode as TimePickerMode;
+                  setMode(value);
+                  // When switching to "Around a time", calculate the center point and appropriate duration
+                  if (
+                    value === TimePickerMode.Around &&
+                    form.values.startDate &&
+                    form.values.endDate
+                  ) {
+                    const midpoint = new Date(
+                      (form.values.startDate.getTime() +
+                        form.values.endDate.getTime()) /
+                        2,
+                    );
+                    const halfRangeMs =
+                      (form.values.endDate.getTime() -
+                        form.values.startDate.getTime()) /
+                      2;
+
+                    // Find the closest duration option
+                    const halfRangeMinutes = halfRangeMs / (1000 * 60);
+                    let closestDuration = '15m'; // default
+
+                    if (halfRangeMinutes <= 0.5) closestDuration = '30s';
+                    else if (halfRangeMinutes <= 1) closestDuration = '1m';
+                    else if (halfRangeMinutes <= 5) closestDuration = '5m';
+                    else if (halfRangeMinutes <= 15) closestDuration = '15m';
+                    else if (halfRangeMinutes <= 30) closestDuration = '30m';
+                    else if (halfRangeMinutes <= 60) closestDuration = '1h';
+                    else if (halfRangeMinutes <= 180) closestDuration = '3h';
+                    else if (halfRangeMinutes <= 360) closestDuration = '6h';
+                    else closestDuration = '12h';
+
+                    form.setValues({
+                      startDate: midpoint,
+                      duration: closestDuration,
+                    });
+                  }
+                }}
               />
-              {mode === 'Time range' ? (
+              {mode === TimePickerMode.Range ? (
                 <>
                   <H>Start time</H>
                   <DateInputCmp
