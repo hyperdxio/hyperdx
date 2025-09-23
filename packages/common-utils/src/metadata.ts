@@ -316,6 +316,7 @@ export class Metadata {
     column: string;
     maxKeys?: number;
   } & TableConnection) {
+    return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
       ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${databaseName}.${tableName}.${column}.keys`;
