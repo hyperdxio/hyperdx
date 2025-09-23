@@ -57,6 +57,11 @@ e2e/cypress/screenshots/
 e2e/cypress/videos/
 e2e/cypress/results
 
+# playwright
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
+
 # scripts
 scripts/*.csv
 **/venv
