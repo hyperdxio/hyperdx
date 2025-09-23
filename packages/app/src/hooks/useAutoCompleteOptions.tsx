@@ -72,14 +72,17 @@ export function useAutoCompleteOptions(
       setSearchField(null);
     }
   }, [searchField, setSearchField, value, formatter]);
-  const { data: jsonColumns } = useJsonColumns(
-    Array.isArray(tableConnections)
+  const tcForJson = Array.isArray(tableConnections)
+    ? tableConnections.length > 0
       ? tableConnections[0]
-      : (tableConnections ?? {
-          tableName: '',
-          databaseName: '',
-          connectionId: '',
-        }),
+      : undefined
+    : tableConnections;
+  const { data: jsonColumns } = useJsonColumns(
+    tcForJson ?? {
+      tableName: '',
+      databaseName: '',
+      connectionId: '',
+    },
   );
   const searchKeys = useMemo(
     () =>
