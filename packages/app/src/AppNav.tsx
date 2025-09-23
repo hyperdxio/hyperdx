@@ -822,6 +822,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             [styles.listLinkActive]:
                               pathname.startsWith('/kubernetes'),
                           })}
+                          data-testid="k8s-dashboard-nav-link"
                         >
                           Kubernetes
                         </Link>
