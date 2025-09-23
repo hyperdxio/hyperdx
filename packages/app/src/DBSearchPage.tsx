@@ -1162,15 +1162,6 @@ function DBSearchPage() {
     [onTimeRangeSelect],
   );
 
-  const onTimeChartError = useCallback(
-    (error: Error | ClickHouseQueryError) =>
-      setQueryErrors(prev => ({
-        ...prev,
-        DBTimeChart: error,
-      })),
-    [setQueryErrors],
-  );
-
   const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
@@ -1557,7 +1548,6 @@ function DBSearchPage() {
                           showDisplaySwitcher={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
-                          onError={onTimeChartError}
                         />
                       </Box>
                     )}
@@ -1669,7 +1659,6 @@ function DBSearchPage() {
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
-                            onError={onTimeChartError}
                           />
                         </Box>
                       )}
