@@ -68,15 +68,7 @@ export function useColumns(
 }
 
 export function useJsonColumns(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  { databaseName, tableName, connectionId }: TableConnection,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
   const metadata = useMetadataWithSettings();

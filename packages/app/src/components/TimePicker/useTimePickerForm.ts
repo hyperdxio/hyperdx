@@ -1,12 +1,14 @@
 import { useForm } from '@mantine/form';
 
+import { TimePickerMode } from './types';
+
 type TimePickerForm = {
   startDate: Date | null;
   endDate: Date | null;
   duration: string;
 };
 
-export const useTimePickerForm = ({ mode }: { mode: string }) => {
+export const useTimePickerForm = ({ mode }: { mode: TimePickerMode }) => {
   const form = useForm<TimePickerForm>({
     mode: 'controlled',
     initialValues: {
@@ -16,12 +18,12 @@ export const useTimePickerForm = ({ mode }: { mode: string }) => {
     },
 
     validate: values => {
-      if (mode === 'Time range') {
+      if (mode === TimePickerMode.Range) {
         if (!values.startDate || !values.endDate) {
           return { startDate: 'Required', endDate: 'Required' };
         }
       }
-      if (mode === 'Around a time') {
+      if (mode === TimePickerMode.Around) {
         if (!values.startDate) {
           return { time: 'Required' };
         }

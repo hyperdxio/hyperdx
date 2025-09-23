@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-fix: Fix ascending order in windowed searches
+fix: json getKeyValues (useful for autocomplete)
