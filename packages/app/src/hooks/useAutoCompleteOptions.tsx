@@ -4,10 +4,11 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import {
   deduplicate2dArray,
+  useJsonColumns,
   useMultipleAllFields,
   useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
-import { toArray } from '@/utils';
+import { mergePath, toArray } from '@/utils';
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -77,16 +78,24 @@ export function useAutoCompleteOptions(
       setSearchField(null);
     }
   }, [searchField, setSearchField, value, formatter]);
+  const tcForJson = Array.isArray(tableConnection)
+    ? tableConnection.length > 0
+      ? tableConnection[0]
+      : undefined
+    : tableConnection;
+  const { data: jsonColumns } = useJsonColumns(
+    tcForJson ?? {
+      tableName: '',
+      databaseName: '',
+      connectionId: '',
+    },
+  );
   const searchKeys = useMemo(
     () =>
-      searchField
-        ? [
-            searchField.path.length > 1
-              ? `${searchField.path[0]}['${searchField.path[1]}']`
-              : searchField.path[0],
-          ]
+      searchField && jsonColumns
+        ? [mergePath(searchField.path, jsonColumns)]
         : [],
-    [searchField],
+    [searchField, jsonColumns],
   );
 
   // hooks to get key values
