@@ -8,6 +8,7 @@ import { NextAdapter } from 'next-query-params';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/dropzone/styles.css';
 
 import '../styles/globals.css';
 import '../styles/app.scss';
