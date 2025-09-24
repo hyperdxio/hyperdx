@@ -93,7 +93,7 @@ const DashboardParametersEditForm = ({
           <SQLInlineEditorControlled
             tableConnections={tableConnection}
             control={control}
-            name="key"
+            name="expression"
             placeholder="SQL column or expression"
             language="sql"
             enableHotkey
@@ -120,7 +120,7 @@ const DashboardParametersEditForm = ({
 interface DashboardParametersEditModalProps {
   opened: boolean;
   onClose: () => void;
-  parameters: Record<string, DashboardParameter>;
+  parameters: DashboardParameter[];
   onChangeParameterDefinition: (definition: DashboardParameter) => void;
   onRemoveParameterDefinition: (id: string) => void;
 }
@@ -134,18 +134,22 @@ const DashboardParametersEditModal = ({
 }: DashboardParametersEditModalProps) => {
   const [activeParameterId, setActiveParameterId] = useState<
     string | undefined
-  >(Object.keys(parameters)[0]);
+  >(parameters[0]?.id);
   const [newParameter, setNewParameter] = useState<
     | (Partial<DashboardParameter> & Pick<DashboardParameter, 'id' | 'type'>)
     | null
   >(null);
 
+  useEffect(() => {
+    if (opened) {
+      setActiveParameterId(parameters[0]?.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened]);
+
   const handleRemoveParameterDefinition = (id: string) => {
     if (id === activeParameterId) {
-      const paramIds = Object.keys(parameters).filter(
-        paramId => paramId !== id,
-      );
-      setActiveParameterId(paramIds[0]);
+      setActiveParameterId(parameters[0]?.id);
     }
     onRemoveParameterDefinition(id);
   };
@@ -173,14 +177,14 @@ const DashboardParametersEditModal = ({
     }
   };
 
-  const parametersWithNew = {
+  const parametersWithNew = [
     ...parameters,
-    ...(newParameter
-      ? { [newParameter.id]: newParameter as DashboardParameter }
-      : {}),
-  };
+    ...(newParameter ? [newParameter as DashboardParameter] : []),
+  ];
 
-  const activeParameter = parametersWithNew[activeParameterId ?? ''];
+  const activeParameter = parametersWithNew.find(
+    param => param.id === activeParameterId,
+  );
 
   return (
     <Modal opened={opened} onClose={onClose} title="Edit Parameters" size="xl">
@@ -188,13 +192,13 @@ const DashboardParametersEditModal = ({
         <Flex direction="row" gap="0">
           <Paper withBorder flex={0} miw={200} pt="sm">
             <Stack gap="0">
-              {Object.keys(parametersWithNew).map(id => (
+              {parametersWithNew.map(({ id, name }) => (
                 <UnstyledButton
                   key={id}
                   className="px-2 pb-1 bg-default-dark-grey-hover"
                   onClick={() => setActiveParameterId(id)}
                 >
-                  <Text>{parameters[id]?.name}</Text>
+                  <Text>{name}</Text>
                 </UnstyledButton>
               ))}
               <Button

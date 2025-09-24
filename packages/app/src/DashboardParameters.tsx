@@ -43,7 +43,12 @@ const DashboardParameterSelect = ({
   return (
     <Select
       placeholder={parameter.name}
-      data={keys?.[0]?.value.map(value => ({ value, label: value })) || []}
+      data={
+        keys?.[0]?.value.map(value => ({
+          value: String(value),
+          label: String(value),
+        })) || []
+      }
       searchable
       clearable
       allowDeselect
@@ -59,7 +64,7 @@ const DashboardParameterSelect = ({
 };
 
 interface DashboardParametersProps {
-  parameters: Record<string, DashboardParameter>;
+  parameters: DashboardParameter[];
   parameterValues: Record<string, any>;
   onSetParameterValue: (key: string, value: any) => void;
   dateRange: [Date, Date];

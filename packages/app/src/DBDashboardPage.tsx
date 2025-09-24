@@ -15,7 +15,11 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { AlertState, TSourceUnion } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  DashboardParameter,
+  TSourceUnion,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -59,7 +63,7 @@ import {
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
-import { useDashboardParameters } from './hooks/useDashboardParameters';
+import useDashboardParameters from './hooks/useDashboardParameters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
@@ -559,29 +563,34 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [showVariablesModal, setShowVariablesModal] = useState(false);
 
-  const {
-    parameterDefinitions,
-    setParameterDefinition,
-    removeParameterDefinition,
-    parameterValues,
-    setParameterValue,
-    filters,
-  } = useDashboardParameters({
-    'id-severity': {
-      id: 'id-severity',
-      name: 'severity',
-      type: 'QUERY_EXPRESSION',
-      expression: 'SeverityText',
-      sourceId: '68b7286eedd672755bea9c08',
-    },
-    'id-service-name': {
-      id: 'id-service-name',
-      name: 'service-name',
-      type: 'QUERY_EXPRESSION',
-      expression: "ResourceAttributes['service.name']",
-      sourceId: '68b7286eedd672755bea9c08',
-    },
-  });
+  const parameterDefinitions = dashboard?.parameters ?? [];
+  const { parameterValues, setParameterValue, filters } =
+    useDashboardParameters(parameterDefinitions);
+
+  const handleChangeParameterDefinition = (parameter: DashboardParameter) => {
+    if (!dashboard) return;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        const paramIndex =
+          draft.parameters?.findIndex(p => p.id === parameter.id) ?? -1;
+        if (draft.parameters && paramIndex !== -1) {
+          draft.parameters[paramIndex] = parameter;
+        } else {
+          draft.parameters = [...(draft.parameters ?? []), parameter];
+        }
+      }),
+    );
+  };
+
+  const handleRemoveParameterDefinition = (id: string) => {
+    if (!dashboard) return;
+
+    setDashboard({
+      ...dashboard,
+      parameters: dashboard.parameters?.filter(p => p.id !== id) ?? [],
+    });
+  };
 
   const [isLive, setIsLive] = useState(false);
 
@@ -1154,8 +1163,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         opened={showVariablesModal}
         onClose={() => setShowVariablesModal(false)}
         parameters={parameterDefinitions}
-        onChangeParameterDefinition={setParameterDefinition}
-        onRemoveParameterDefinition={removeParameterDefinition}
+        onChangeParameterDefinition={handleChangeParameterDefinition}
+        onRemoveParameterDefinition={handleRemoveParameterDefinition}
       />
     </Box>
   );

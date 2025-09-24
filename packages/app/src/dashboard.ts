@@ -1,6 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import {
+  DashboardParameter,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -24,6 +27,7 @@ export type Dashboard = {
   name: string;
   tiles: Tile[];
   tags: string[];
+  parameters?: DashboardParameter[];
 };
 
 export function useUpdateDashboard() {
