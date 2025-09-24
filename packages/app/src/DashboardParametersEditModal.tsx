@@ -65,7 +65,7 @@ const DashboardParametersEditForm = ({
         />
         <Input.Wrapper
           label="Data Source"
-          description="The data source that the parameter values are queried from"
+          description="The data source that the filter values are queried from"
           required
         >
           <Group>
@@ -87,7 +87,7 @@ const DashboardParametersEditForm = ({
         </Input.Wrapper>
         <Input.Wrapper
           label="Filter Expression"
-          description="SQL expression that provides allowed parameter values"
+          description="SQL column or expression to filter on"
           required
         >
           <SQLInlineEditorControlled
@@ -117,6 +117,23 @@ const DashboardParametersEditForm = ({
   );
 };
 
+interface EmptyStateProps {
+  onCreateFirstParameter: () => void;
+}
+
+const EmptyState = ({ onCreateFirstParameter }: EmptyStateProps) => {
+  return (
+    <Stack align="center" justify="center" py="xl">
+      <Text size="md" maw={300} ta="center">
+        Dashboard filters allow users of this dashboard to quickly filter on
+        important columns.
+      </Text>
+      <Button variant="outline" onClick={onCreateFirstParameter}>
+        Create Filter
+      </Button>
+    </Stack>
+  );
+};
 interface DashboardParametersEditModalProps {
   opened: boolean;
   onClose: () => void;
@@ -151,6 +168,9 @@ const DashboardParametersEditModal = ({
     if (id === activeParameterId) {
       setActiveParameterId(parameters[0]?.id);
     }
+    if (id === 'new') {
+      setNewParameter(null);
+    }
     onRemoveParameterDefinition(id);
   };
 
@@ -177,6 +197,11 @@ const DashboardParametersEditModal = ({
     }
   };
 
+  const handleClose = () => {
+    setNewParameter(null);
+    onClose();
+  };
+
   const parametersWithNew = [
     ...parameters,
     ...(newParameter ? [newParameter as DashboardParameter] : []),
@@ -187,8 +212,10 @@ const DashboardParametersEditModal = ({
   );
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Edit Parameters" size="xl">
-      {activeParameter && (
+    <Modal opened={opened} onClose={handleClose} title="Filters" size="xl">
+      {parametersWithNew.length === 0 ? (
+        <EmptyState onCreateFirstParameter={handleAddNewParameter} />
+      ) : (
         <Flex direction="row" gap="0">
           <Paper withBorder flex={0} miw={200} pt="sm">
             <Stack gap="0">
@@ -206,16 +233,18 @@ const DashboardParametersEditModal = ({
                 color="gray"
                 onClick={handleAddNewParameter}
               >
-                Add Parameter
+                Add Filter
               </Button>
             </Stack>
           </Paper>
           <Paper withBorder p="md" flex={1}>
-            <DashboardParametersEditForm
-              parameter={activeParameter}
-              onChangeParameterDefinition={handleSubmitParameter}
-              onRemoveParameterDefinition={handleRemoveParameterDefinition}
-            />
+            {activeParameter && (
+              <DashboardParametersEditForm
+                parameter={activeParameter}
+                onChangeParameterDefinition={handleSubmitParameter}
+                onRemoveParameterDefinition={handleRemoveParameterDefinition}
+              />
+            )}
           </Paper>
         </Flex>
       )}

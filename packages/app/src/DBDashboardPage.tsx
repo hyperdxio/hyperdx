@@ -1075,7 +1075,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
           </Button>
         </Tooltip>
-        <Tooltip withArrow label="Edit Parameters" fz="xs" color="gray">
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
           <Button
             variant="outline"
             type="submit"
