@@ -739,3 +739,18 @@ a.mantine-focus-auto:hover {
   background: #50fa7a0d !important;
   color: #2E224788;
 }
+
+.bottom-fade {
+  position: relative;
+}
+
+.bottom-fade::before {
+  content:'';
+  width:100%;
+  height:100%;    
+  position:absolute;
+  left:0;
+  top:0;
+  background:linear-gradient(transparent 20px, rgba(0,0,0,1));
+  pointer-events: none;
+}
