@@ -4,19 +4,16 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import produce from 'immer';
-import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
-import { useHotkeys } from 'react-hotkeys-hook';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { AlertState, TSourceUnion } from '@hyperdx/common-utils/dist/types';
 import {
@@ -29,11 +26,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/utils';
 import {
-  ActionIcon,
-  Badge,
   Box,
   Button,
-  CopyButton,
   Flex,
   Group,
   Indicator,
@@ -41,14 +35,11 @@ import {
   Menu,
   Modal,
   Paper,
-  Popover,
-  ScrollArea,
   Text,
   Title,
   Tooltip,
-  Transition,
 } from '@mantine/core';
-import { useHover, usePrevious } from '@mantine/hooks';
+import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -68,14 +59,15 @@ import {
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
+import { useDashboardParameters } from './hooks/useDashboardParameters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
-import GranularityPicker, {
-  GranularityPickerControlled,
-} from './GranularityPicker';
+import DashboardParameters from './DashboardParameters';
+import DashboardParametersEditModal from './DashboardParametersEditModal';
+import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
@@ -86,7 +78,7 @@ import {
 } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
-import { getMetricTableName, hashCode, omit } from './utils';
+import { getMetricTableName } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -565,6 +557,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     parseAsString.withDefault('lucene'),
   );
 
+  const [showVariablesModal, setShowVariablesModal] = useState(false);
+
+  const {
+    parameterDefinitions,
+    setParameterDefinition,
+    removeParameterDefinition,
+    parameterValues,
+    setParameterValue,
+    filters,
+  } = useDashboardParameters({
+    'id-severity': {
+      id: 'id-severity',
+      name: 'severity',
+      type: 'query',
+      key: 'SeverityText',
+      sourceId: '68b7286eedd672755bea9c08',
+    },
+    'id-service-name': {
+      id: 'id-service-name',
+      name: 'service-name',
+      type: 'query',
+      key: "ResourceAttributes['service.name']",
+      sourceId: '68b7286eedd672755bea9c08',
+    },
+  });
+
   const [isLive, setIsLive] = useState(false);
 
   const { control, watch, setValue, handleSubmit } = useForm<{
@@ -671,6 +689,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 type: whereLanguage === 'sql' ? 'sql' : 'lucene',
                 condition: where,
               },
+              ...filters,
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighed={highlightedTileId === chart.id}
@@ -1047,10 +1066,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
           </Button>
         </Tooltip>
+        <Tooltip withArrow label="Edit Parameters" fz="xs" color="gray">
+          <Button
+            variant="outline"
+            type="submit"
+            color="gray"
+            px="xs"
+            mr={6}
+            onClick={() => setShowVariablesModal(true)}
+          >
+            <i className="bi bi-funnel text-slate-400 fs-5"></i>
+          </Button>
+        </Tooltip>
         <Button variant="outline" type="submit" color="green">
           <i className="bi bi-play"></i>
         </Button>
       </Flex>
+      <DashboardParameters
+        parameters={parameterDefinitions}
+        parameterValues={parameterValues}
+        onSetParameterValue={setParameterValue}
+        dateRange={searchedTimeRange}
+      />
       <Box mt="sm">
         {dashboard != null && dashboard.tiles != null ? (
           <ErrorBoundary
@@ -1113,6 +1150,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
+      <DashboardParametersEditModal
+        opened={showVariablesModal}
+        onClose={() => setShowVariablesModal(false)}
+        parameters={parameterDefinitions}
+        onChangeParameterDefinition={setParameterDefinition}
+        onRemoveParameterDefinition={removeParameterDefinition}
+      />
     </Box>
   );
 }
