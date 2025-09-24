@@ -1,7 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Filter } from '@hyperdx/common-utils/dist/types';
-
-import { DashboardParameter } from '@/DashboardParameters';
+import { DashboardParameter, Filter } from '@hyperdx/common-utils/dist/types';
 
 const dashboardParametersToFilters = (
   parameters: Record<string, DashboardParameter>,
@@ -14,7 +12,7 @@ const dashboardParametersToFilters = (
 
       return {
         type: 'sql' as const,
-        condition: `${parameterDefinition.key} = '${value}'`,
+        condition: `${parameterDefinition.expression} = '${value}'`,
       };
     });
 };

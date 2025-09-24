@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import { DashboardParameter } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Flex,
@@ -17,7 +18,6 @@ import {
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
-import { DashboardParameter } from './DashboardParameters';
 import { useSource } from './source';
 
 interface DashboardParametersEditFormProps {
@@ -153,9 +153,9 @@ const DashboardParametersEditModal = ({
   const handleAddNewParameter = () => {
     setNewParameter({
       id: 'new',
-      type: 'query',
+      type: 'QUERY_EXPRESSION',
       name: 'New Parameter',
-      key: '',
+      expression: '',
       sourceId: '',
     });
     setActiveParameterId('new');

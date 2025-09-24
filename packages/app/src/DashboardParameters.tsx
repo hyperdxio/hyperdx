@@ -1,25 +1,20 @@
+import { DashboardParameter } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
 
 import { useGetKeyValues } from './hooks/useMetadata';
 import { useSource } from './source';
 
-export type DashboardParameter = {
-  type: 'query';
-  id: string;
-  name: string;
-  key: string;
-  sourceId: string;
-};
+interface DashboardParameterSelectProps {
+  parameter: DashboardParameter;
+  dateRange: [Date, Date];
+  onChange: (value: any) => void;
+}
 
 const DashboardParameterSelect = ({
   parameter,
   dateRange,
   onChange,
-}: {
-  parameter: DashboardParameter;
-  dateRange: [Date, Date];
-  onChange: (value: any) => void;
-}) => {
+}: DashboardParameterSelectProps) => {
   const {
     data: { timestampValueExpression, connection, from } = {},
     isLoading: isSourceLoading,
@@ -38,7 +33,7 @@ const DashboardParameterSelect = ({
         whereLanguage: 'sql',
         select: '',
       },
-      keys: [parameter.key],
+      keys: [parameter.expression],
     },
     {
       enabled: !!timestampValueExpression && !!connection && !!from,

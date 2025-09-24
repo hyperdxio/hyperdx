@@ -570,15 +570,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'id-severity': {
       id: 'id-severity',
       name: 'severity',
-      type: 'query',
-      key: 'SeverityText',
+      type: 'QUERY_EXPRESSION',
+      expression: 'SeverityText',
       sourceId: '68b7286eedd672755bea9c08',
     },
     'id-service-name': {
       id: 'id-service-name',
       name: 'service-name',
-      type: 'query',
-      key: "ResourceAttributes['service.name']",
+      type: 'QUERY_EXPRESSION',
+      expression: "ResourceAttributes['service.name']",
       sourceId: '68b7286eedd672755bea9c08',
     },
   });
