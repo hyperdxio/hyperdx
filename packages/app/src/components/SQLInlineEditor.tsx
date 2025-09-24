@@ -17,7 +17,10 @@ import {
   startCompletion,
 } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -105,8 +108,6 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  tableConnection?: TableConnection;
-  tableConnections?: TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -123,7 +124,7 @@ type SQLInlineEditorProps = {
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
-};
+} & TableConnectionChoice;
 
 const styleTheme = EditorView.baseTheme({
   '&.cm-editor.cm-focused': {
@@ -395,7 +396,8 @@ function SQLInlineEditorControlledComponent({
   additionalSuggestions,
   queryHistoryType,
   ...props
-}: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
+}: Omit<SQLInlineEditorProps, 'value' | 'onChange' | 'tableConnections'> &
+  UseControllerProps<any>) {
   const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values

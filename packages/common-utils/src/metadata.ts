@@ -595,6 +595,16 @@ export type TableConnection = {
   metricName?: string;
 };
 
+export type TableConnectionChoice =
+  | {
+      tableConnection?: never;
+      tableConnections?: TableConnection[];
+    }
+  | {
+      tableConnection?: TableConnection;
+      tableConnections?: never;
+    };
+
 export function tcFromChartConfig(config?: ChartConfig): TableConnection {
   return {
     databaseName: config?.from?.databaseName ?? '',
