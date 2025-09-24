@@ -251,6 +251,22 @@ describe('Metadata', () => {
             ],
           }),
       });
+
+      // Mock getColumns to return columns including materialized ones
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
+        if (key.includes('.columns')) {
+          return Promise.resolve([
+            { name: 'regular_column', type: 'String', default_type: '' },
+            {
+              name: 'materialized_column',
+              type: 'String',
+              default_type: 'MATERIALIZED',
+            },
+            { name: 'default_column', type: 'String', default_type: 'DEFAULT' },
+          ]);
+        }
+        return queryFn();
+      });
     });
 
     it('should apply row limit when disableRowLimit is false', async () => {
@@ -335,6 +351,73 @@ describe('Metadata', () => {
       });
 
       expect(result).toEqual([{ key: 'column1', value: ['value1', 'value2'] }]);
+    });
+
+    it('should include materialized fields when selecting all columns', async () => {
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ['column1'],
+        limit: 10,
+      });
+
+      // Verify that renderChartConfig was called with the expanded select list
+      // that includes all columns by name (including materialized ones)
+      expect(renderChartConfigSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          with: [
+            expect.objectContaining({
+              name: 'sampledData',
+              chartConfig: expect.objectContaining({
+                // Should expand to all column names instead of using '*'
+                select:
+                  '`regular_column`, `materialized_column`, `default_column`',
+              }),
+            }),
+          ],
+        }),
+        metadata,
+      );
+    });
+
+    it('should fallback to * when no columns are found', async () => {
+      // Mock getColumns to return empty array
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
+        if (key.includes('.columns')) {
+          return Promise.resolve([]);
+        }
+        return queryFn();
+      });
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ['column1'],
+        limit: 10,
+      });
+
+      // Should fallback to '*' when no columns are found
+      expect(renderChartConfigSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          with: [
+            expect.objectContaining({
+              name: 'sampledData',
+              chartConfig: expect.objectContaining({
+                select: '*',
+              }),
+            }),
+          ],
+        }),
+        metadata,
+      );
     });
   });
 });
