@@ -32,8 +32,8 @@ services:
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
-      # Uncomment to enable stdout logging for the OTel collector
-      OTEL_SUPERVISOR_PASSTHROUGH_LOGS: 'false'
+      # Uncomment to disable stdout logging for the OTel collector
+      # OTEL_SUPERVISOR_PASSTHROUGH_LOGS: 'false'
       # Uncomment to enable JSON schema in ClickHouse
       # Be sure to also set BETA_CH_OTEL_JSON_SCHEMA_ENABLED to 'true' in ch-server
       # OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
