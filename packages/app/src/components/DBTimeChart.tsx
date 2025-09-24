@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
@@ -8,9 +8,10 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Code, Collapse, Text } from '@mantine/core';
+import { Button, Code, Group, Modal, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconArrowsDiagonal } from '@tabler/icons-react';
 
 import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
@@ -26,7 +27,6 @@ function DBTimeChartComponent({
   config,
   enabled = true,
   logReferenceTimestamp,
-  onError,
   onSettled,
   onTimeRangeSelect,
   queryKeyPrefix,
@@ -39,7 +39,6 @@ function DBTimeChartComponent({
   config: ChartConfigWithDateRange;
   enabled?: boolean;
   logReferenceTimestamp?: number;
-  onError?: (error: Error | ClickHouseQueryError) => void;
   onSettled?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
@@ -49,6 +48,7 @@ function DBTimeChartComponent({
   showLegend?: boolean;
   sourceId?: string;
 }) {
+  const [isErrorExpanded, errorExpansion] = useDisclosure(false);
   const {
     displayType: displayTypeProp,
     dateRange,
@@ -67,8 +67,13 @@ function DBTimeChartComponent({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
-      onError,
     });
+
+  useEffect(() => {
+    if (!isError && isErrorExpanded) {
+      errorExpansion.close();
+    }
+  }, [isError, isErrorExpanded, errorExpansion]);
 
   const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
@@ -178,31 +183,48 @@ function DBTimeChartComponent({
       Loading Chart Data...
     </div>
   ) : isError ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted overflow-auto">
+    <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
       <Text ta="center" size="sm" mt="sm">
         Error loading chart, please check your query or try again later.
       </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
-            <Text my="sm" size="sm" ta="center">
-              Sent Query:
-            </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
+      <Button
+        className="mx-auto"
+        variant="subtle"
+        color="red"
+        onClick={() => errorExpansion.open()}
+      >
+        <Group gap="xxs">
+          <IconArrowsDiagonal size={16} />
+          See Error Details
+        </Group>
+      </Button>
+      <Modal
+        opened={isErrorExpanded}
+        onClose={() => errorExpansion.close()}
+        title="Error Details"
+      >
+        <Group align="start">
+          <Text size="sm" ta="center">
+            Error Message:
+          </Text>
+          <Code
+            block
+            style={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {error.message}
+          </Code>
+          {error instanceof ClickHouseQueryError && (
+            <>
+              <Text my="sm" size="sm" ta="center">
+                Sent Query:
+              </Text>
+              <SQLPreview data={error?.query} />
+            </>
+          )}
+        </Group>
+      </Modal>
     </div>
   ) : graphResults.length === 0 ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

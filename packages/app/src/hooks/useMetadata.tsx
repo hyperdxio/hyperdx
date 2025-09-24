@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -20,6 +21,25 @@ import api from '@/api';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
+// Hook to get metadata with proper settings applied
+// TODO: replace all getMetadata calls with useMetadataWithSettings
+export function useMetadataWithSettings() {
+  const metadata = getMetadata();
+  const { data: me } = api.useMe();
+  const settingsApplied = useRef(false);
+
+  useEffect(() => {
+    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+      metadata.setClickHouseSettings({
+        max_rows_to_read: me.team.metadataMaxRowsToRead,
+      });
+      settingsApplied.current = true;
+    }
+  }, [me?.team?.metadataMaxRowsToRead, metadata]);
+
+  return metadata;
+}
+
 export function useColumns(
   {
     databaseName,
@@ -32,10 +52,10 @@ export function useColumns(
   },
   options?: Partial<UseQueryOptions<ColumnMeta[]>>,
 ) {
+  const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
     queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
     queryFn: async () => {
-      const metadata = getMetadata();
       return metadata.getColumns({
         databaseName,
         tableName,
@@ -48,21 +68,13 @@ export function useColumns(
 }
 
 export function useJsonColumns(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  { databaseName, tableName, connectionId }: TableConnection,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
+  const metadata = useMetadataWithSettings();
   return useQuery<string[]>({
     queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
     queryFn: async () => {
-      const metadata = getMetadata();
       const columns = await metadata.getColumns({
         databaseName,
         tableName,
@@ -86,7 +98,7 @@ export function useAllFields(
   const tableConnections = Array.isArray(_tableConnections)
     ? _tableConnections
     : [_tableConnections];
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
   return useQuery<Field[]>({
     queryKey: [
@@ -97,13 +109,6 @@ export function useAllFields(
       const team = me?.team;
       if (team?.fieldMetadataDisabled) {
         return [];
-      }
-
-      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.metadataMaxRowsToRead) {
-        metadata.setClickHouseSettings({
-          max_rows_to_read: team.metadataMaxRowsToRead,
-        });
       }
 
       const fields2d = await Promise.all(
@@ -137,7 +142,7 @@ export function useTableMetadata(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
@@ -167,9 +172,8 @@ export function useGetKeyValues(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   const chartConfigsArr = toArray(chartConfigs);
-  const { data: me, isFetched } = api.useMe();
   return useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
@@ -178,14 +182,6 @@ export function useGetKeyValues(
       disableRowLimit,
     ],
     queryFn: async () => {
-      const team = me?.team;
-
-      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.metadataMaxRowsToRead) {
-        metadata.setClickHouseSettings({
-          max_rows_to_read: team.metadataMaxRowsToRead,
-        });
-      }
       return (
         await Promise.all(
           chartConfigsArr.map(chartConfig =>
@@ -200,7 +196,7 @@ export function useGetKeyValues(
       ).flatMap(v => v);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length && isFetched,
+    enabled: !!keys.length,
     placeholderData: keepPreviousData,
     ...options,
   });
