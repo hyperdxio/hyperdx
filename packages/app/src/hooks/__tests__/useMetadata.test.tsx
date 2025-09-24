@@ -6,7 +6,11 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { deduplicate2dArray, useGetKeyValues } from '../useMetadata';
+import {
+  deduplicate2dArray,
+  useGetKeyValues,
+  useMultipleGetKeyValues,
+} from '../useMetadata';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -80,6 +84,65 @@ describe('useGetKeyValues', () => {
 
     //console.log(result.current.data);
     expect(result.current.data).toEqual(mockKeyValues);
+  });
+
+  // Test case: Multiple chart configs with different configurations
+  it('should fetch key values for multiple chart configs', async () => {
+    // Arrange
+    const mockChartConfigs = [
+      createMockChartConfig({
+        from: { databaseName: 'telemetry', tableName: 'traces' },
+        groupBy: "ResourceAttributes['service.name']",
+      }),
+      createMockChartConfig({
+        from: { databaseName: 'logs', tableName: 'application_logs' },
+        orderBy: '"timestamp" DESC',
+      }),
+    ];
+    const mockKeys = [
+      'ResourceAttributes.service.name',
+      'ResourceAttributes.environment',
+    ];
+
+    jest
+      .spyOn(mockMetadata, 'getKeyValues')
+      .mockResolvedValueOnce([
+        {
+          key: "ResourceAttributes['service.name']",
+          value: ['frontend', 'backend'],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          key: "ResourceAttributes['environment']",
+          value: ['production', 'staging'],
+        },
+      ]);
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useMultipleGetKeyValues({
+          chartConfigs: mockChartConfigs,
+          keys: mockKeys,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual([
+      {
+        key: "ResourceAttributes['service.name']",
+        value: ['frontend', 'backend'],
+      },
+      {
+        key: "ResourceAttributes['environment']",
+        value: ['production', 'staging'],
+      },
+    ]);
+    expect(jest.spyOn(mockMetadata, 'getKeyValues')).toHaveBeenCalledTimes(2);
   });
 
   // Test case: Handling empty keys
