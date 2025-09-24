@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
-import { Form, InputGroup, OverlayTrigger } from 'react-bootstrap';
-import { UnstyledButton } from '@mantine/core';
+import { OverlayTrigger } from 'react-bootstrap';
+import { Textarea, UnstyledButton } from '@mantine/core';
 
 import { useQueryHistory } from '@/utils';
 
@@ -130,10 +130,6 @@ export default function AutocompleteInput({
   };
   const ref = useRef<HTMLDivElement>(null);
 
-  const valueLikelyOverflows =
-    (value ?? '').length > 50 || (value ?? '').includes('\n');
-  const shouldInputExpand = isSearchInputFocused && valueLikelyOverflows;
-
   return (
     <OverlayTrigger
       rootClose
@@ -240,125 +236,105 @@ export default function AutocompleteInput({
       }}
       trigger={[]}
     >
-      <InputGroup
-        className={
-          isSearchInputFocused || !valueLikelyOverflows ? '' : 'bottom-fade'
-        }
-      >
-        <Form.Control
-          ref={inputRef}
-          type="text"
-          placeholder={placeholder}
-          className="border-0 fs-8"
-          value={value}
-          size={size === 'xs' ? 'sm' : size}
-          style={{
-            flexGrow: 1,
-            height: shouldInputExpand ? '5rem' : 'auto',
-            minHeight: '38px',
-            resize: 'none',
-            paddingBottom: '8px',
-            paddingRight:
-              language != null && onLanguageChange != null ? '80px' : undefined,
-          }}
-          as="textarea"
-          rows={1}
-          data-testid={dataTestId}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => {
-            setSelectedAutocompleteIndex(-1);
-            setSelectedQueryHistoryIndex(-1);
-            setIsSearchInputFocused(true);
-          }}
-          onBlur={() => {
-            setSelectedAutocompleteIndex(-1);
-            setSelectedQueryHistoryIndex(-1);
-            setIsSearchInputFocused(false);
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
-              e.target.blur();
-            }
+      <Textarea
+        ref={inputRef}
+        placeholder={placeholder}
+        className="fs-8"
+        value={value}
+        size={size}
+        autosize
+        minRows={1}
+        maxRows={4}
+        style={{
+          flexGrow: 1,
+          resize: 'none',
+        }}
+        data-testid={dataTestId}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => {
+          setSelectedAutocompleteIndex(-1);
+          setSelectedQueryHistoryIndex(-1);
+          setIsSearchInputFocused(true);
+        }}
+        onBlur={() => {
+          setSelectedAutocompleteIndex(-1);
+          setSelectedQueryHistoryIndex(-1);
+          setIsSearchInputFocused(false);
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
+            e.target.blur();
+          }
 
-            // Autocomplete Navigation/Acceptance Keys
-            if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
-                e.preventDefault();
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              }
+          // Autocomplete Navigation/Acceptance Keys
+          if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
+            if (
+              suggestedProperties.length > 0 &&
+              selectedAutocompleteIndex < suggestedProperties.length &&
+              selectedAutocompleteIndex >= 0
+            ) {
+              e.preventDefault();
+              onAcceptSuggestion(
+                suggestedProperties[selectedAutocompleteIndex].value,
+              );
             }
-            if (e.key === 'Enter' && e.target instanceof HTMLTextAreaElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
+          }
+          if (e.key === 'Enter' && e.target instanceof HTMLTextAreaElement) {
+            if (
+              suggestedProperties.length > 0 &&
+              selectedAutocompleteIndex < suggestedProperties.length &&
+              selectedAutocompleteIndex >= 0
+            ) {
+              e.preventDefault();
+              onAcceptSuggestion(
+                suggestedProperties[selectedAutocompleteIndex].value,
+              );
+            } else {
+              // Allow shift+enter to still create new lines
+              if (!e.shiftKey) {
                 e.preventDefault();
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              } else {
-                // Allow shift+enter to still create new lines
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  if (queryHistoryType && value) {
-                    setQueryHistory(value);
-                  }
-                  onSubmit?.();
+                if (queryHistoryType && value) {
+                  setQueryHistory(value);
                 }
+                onSubmit?.();
               }
             }
-            if (
-              e.key === 'ArrowDown' &&
-              e.target instanceof HTMLTextAreaElement
-            ) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.min(
-                    selectedAutocompleteIndex + 1,
-                    suggestedProperties.length - 1,
-                    suggestionsLimit - 1,
-                  ),
-                );
-              }
+          }
+          if (
+            e.key === 'ArrowDown' &&
+            e.target instanceof HTMLTextAreaElement
+          ) {
+            if (suggestedProperties.length > 0) {
+              setSelectedAutocompleteIndex(
+                Math.min(
+                  selectedAutocompleteIndex + 1,
+                  suggestedProperties.length - 1,
+                  suggestionsLimit - 1,
+                ),
+              );
             }
-            if (
-              e.key === 'ArrowUp' &&
-              e.target instanceof HTMLTextAreaElement
-            ) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.max(selectedAutocompleteIndex - 1, 0),
-                );
-              }
+          }
+          if (e.key === 'ArrowUp' && e.target instanceof HTMLTextAreaElement) {
+            if (suggestedProperties.length > 0) {
+              setSelectedAutocompleteIndex(
+                Math.max(selectedAutocompleteIndex - 1, 0),
+              );
             }
-          }}
-        />
-        {language != null && onLanguageChange != null && (
-          <div
-            ref={ref}
-            style={{
-              position: 'absolute',
-              right: '8px',
-              top: shouldInputExpand ? '12px' : '50%',
-              transform: shouldInputExpand ? 'none' : 'translateY(-50%)',
-              zIndex: 1,
-            }}
-          >
-            <InputLanguageSwitch
-              showHotkey={showHotkey && isSearchInputFocused}
-              language={language}
-              onLanguageChange={onLanguageChange}
-            />
-          </div>
-        )}
-      </InputGroup>
+          }
+        }}
+        rightSectionWidth={ref.current?.clientWidth ?? 'auto'}
+        rightSection={
+          language != null && onLanguageChange != null ? (
+            <div ref={ref}>
+              <InputLanguageSwitch
+                showHotkey={showHotkey && isSearchInputFocused}
+                language={language}
+                onLanguageChange={onLanguageChange}
+              />
+            </div>
+          ) : undefined
+        }
+      />
     </OverlayTrigger>
   );
 }
