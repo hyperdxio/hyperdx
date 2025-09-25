@@ -117,7 +117,7 @@ export const FilterCheckbox = ({
 }: FilterCheckboxProps) => {
   return (
     <div
-      className={classes.filterCheckbox}
+      className={cx(classes.filterCheckbox, className)}
       data-testid={`filter-checkbox-${label}`}
     >
       <Group
