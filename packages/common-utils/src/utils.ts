@@ -1,8 +1,17 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+import { z } from 'zod';
 
-import type { ChartConfigWithDateRange, SQLInterval } from '@/types';
+import {
+  ChartConfigWithDateRange,
+  DashboardSchema,
+  DashboardTemplateSchema,
+  DashboardWithoutId,
+  SQLInterval,
+  TileTemplateSchema,
+  TSourceUnion,
+} from '@/types';
 
 export const isBrowser: boolean =
   typeof window !== 'undefined' && typeof window.document !== 'undefined';
@@ -299,6 +308,59 @@ export const formatDate = (
     : fnsFormat(date, formatStr);
 };
 
+type Dashboard = z.infer<typeof DashboardSchema>;
+type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
+type TileTemplate = z.infer<typeof TileTemplateSchema>;
+
+export function convertToDashboardTemplate(
+  input: Dashboard,
+  sources: TSourceUnion[],
+): DashboardTemplate {
+  const output: DashboardTemplate = {
+    version: '0.1.0',
+    name: input.name,
+    tiles: [],
+  };
+
+  const convertToTileTemplate = (
+    input: Dashboard['tiles'][0],
+    sources: TSourceUnion[],
+  ): TileTemplate => {
+    const tile = TileTemplateSchema.strip().parse(structuredClone(input));
+    // Extract name from source or default to '' if not found
+    tile.config.source = (
+      sources.find(source => source.id === tile.config.source) ?? { name: '' }
+    ).name;
+    return tile;
+  };
+
+  for (const tile of input.tiles) {
+    output.tiles.push(convertToTileTemplate(tile, sources));
+  }
+  return output;
+}
+
+export function convertToDashboardDocument(
+  input: DashboardTemplate,
+): DashboardWithoutId {
+  const output: DashboardWithoutId = {
+    name: input.name,
+    tiles: [],
+    tags: [],
+  };
+
+  // expecting that input.tiles[0-n].config.source fields are already converted to ids
+  const convertToTileDocument = (
+    input: TileTemplate,
+  ): DashboardWithoutId['tiles'][0] => {
+    return structuredClone(input);
+  };
+
+  for (const tile of input.tiles) {
+    output.tiles.push(convertToTileDocument(tile));
+  }
+  return output;
+}
 export const getFirstOrderingItem = (
   orderBy: ChartConfigWithDateRange['orderBy'],
 ) => {

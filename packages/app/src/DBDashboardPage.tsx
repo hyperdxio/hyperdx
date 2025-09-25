@@ -18,7 +18,7 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertState, TSourceUnion } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -27,6 +27,7 @@ import {
   SearchConditionLanguage,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
+import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Badge,
@@ -494,6 +495,19 @@ function DashboardName({
   );
 }
 
+// Download an object to users computer as JSON using specified name
+function downloadObjectAsJson(object: object, fileName = 'output') {
+  const dataStr =
+    'data:text/json;charset=utf-8,' +
+    encodeURIComponent(JSON.stringify(object));
+  const downloadAnchorNode = document.createElement('a');
+  downloadAnchorNode.setAttribute('href', dataStr);
+  downloadAnchorNode.setAttribute('download', fileName + '.json');
+  document.body.appendChild(downloadAnchorNode); // required for firefox
+  downloadAnchorNode.click();
+  downloadAnchorNode.remove();
+}
+
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const confirm = useConfirm();
 
@@ -788,6 +802,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  const hasTiles = dashboard && dashboard.tiles.length > 0;
+
   return (
     <Box p="sm">
       <Head>
@@ -890,8 +906,47 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </Menu.Target>
 
               <Menu.Dropdown>
+                {hasTiles && (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-download" />}
+                    onClick={() => {
+                      if (!sources || !dashboard) {
+                        notifications.show({
+                          color: 'red',
+                          message: 'Export Failed',
+                        });
+                        return;
+                      }
+                      downloadObjectAsJson(
+                        convertToDashboardTemplate(
+                          dashboard,
+                          // TODO: fix this type issue
+                          sources as TSourceUnion[],
+                        ),
+                        dashboard?.name,
+                      );
+                    }}
+                  >
+                    Export Dashboard
+                  </Menu.Item>
+                )}
+                <Menu.Item
+                  leftSection={<i className="bi bi-upload" />}
+                  onClick={() => {
+                    if (dashboard && !dashboard.tiles.length) {
+                      router.push(
+                        `/dashboards/import?dashboardId=${dashboard.id}`,
+                      );
+                    } else {
+                      router.push('/dashboards/import');
+                    }
+                  }}
+                >
+                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
+                </Menu.Item>
                 <Menu.Item
                   leftSection={<i className="bi bi-trash-fill" />}
+                  color="red"
                   onClick={() =>
                     deleteDashboard.mutate(dashboard?.id ?? '', {
                       onSuccess: () => {

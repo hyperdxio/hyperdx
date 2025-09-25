@@ -429,25 +429,26 @@ export type ChartConfigWithOptDateRange = Omit<
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
-export const SavedChartConfigSchema = z.intersection(
-  z.intersection(
-    z.object({
-      name: z.string(),
-      source: z.string(),
-      alert: z.union([
-        AlertBaseSchema.optional(),
-        ChartAlertBaseSchema.optional(),
-      ]),
-    }),
+export const SavedChartConfigSchema = z
+  .object({
+    name: z.string(),
+    source: z.string(),
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  })
+  .extend(
     _ChartConfigSchema.omit({
       connection: true,
       timestampValueExpression: true,
-    }),
-  ),
-  SelectSQLStatementSchema.omit({
-    from: true,
-  }),
-);
+    }).shape,
+  )
+  .extend(
+    SelectSQLStatementSchema.omit({
+      from: true,
+    }).shape,
+  );
 
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
@@ -459,6 +460,9 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
 });
+export const TileTemplateSchema = TileSchema.extend({
+  config: TileSchema.shape.config.omit({ alert: true }),
+});
 
 export type Tile = z.infer<typeof TileSchema>;
 
@@ -468,8 +472,15 @@ export const DashboardSchema = z.object({
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
 });
-
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
+export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
+
+export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
+  tags: true,
+}).extend({
+  version: z.string().min(1),
+  tiles: z.array(TileTemplateSchema),
+});
 
 export const ConnectionSchema = z.object({
   id: z.string(),
