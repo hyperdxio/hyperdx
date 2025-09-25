@@ -13,11 +13,13 @@ export { createClient as createNativeClient };
 export class ClickhouseClient extends BaseClickhouseClient {
   constructor(options: ClickhouseClientOptions) {
     super(options);
+
     this.client = createClient({
       url: this.host,
       username: this.username,
       password: this.password,
       request_timeout: this.requestTimeout,
+      application: this.application,
     });
   }
 

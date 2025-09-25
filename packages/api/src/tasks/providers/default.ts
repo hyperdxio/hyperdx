@@ -313,6 +313,7 @@ export default class DefaultAlertProvider implements AlertProvider {
       host,
       username,
       password,
+      application: `hyperdx-alerts ${config.CODE_VERSION}`,
     });
   }
 }

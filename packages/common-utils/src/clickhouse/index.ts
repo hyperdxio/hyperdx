@@ -373,6 +373,8 @@ export type ClickhouseClientOptions = {
   username?: string;
   password?: string;
   queryTimeout?: number;
+  /** Application name, used as the client's HTTP user-agent header */
+  application?: string;
 };
 
 export abstract class BaseClickhouseClient {
@@ -381,6 +383,7 @@ export abstract class BaseClickhouseClient {
   protected readonly password?: string;
   protected readonly queryTimeout?: number;
   protected client?: WebClickHouseClient | NodeClickHouseClient;
+  protected readonly application?: string;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
@@ -394,12 +397,14 @@ export abstract class BaseClickhouseClient {
     username,
     password,
     queryTimeout,
+    application,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
     this.password = password;
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
+    this.application = application;
   }
 
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
