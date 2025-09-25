@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { DashboardParameter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Flex,
@@ -20,30 +20,30 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import { useSource } from './source';
 
-interface DashboardParametersEditFormProps {
-  parameter: DashboardParameter;
-  onChangeParameterDefinition: (definition: DashboardParameter) => void;
-  onRemoveParameterDefinition: (id: string) => void;
+interface DashboardFilterEditFormProps {
+  filter: DashboardFilter;
+  onSaveFilter: (definition: DashboardFilter) => void;
+  onRemoveFilter: (id: string) => void;
   parentRef?: HTMLElement | null;
 }
 
-const DashboardParametersEditForm = ({
-  parameter,
-  onChangeParameterDefinition,
-  onRemoveParameterDefinition,
+const DashboardFilterEditForm = ({
+  filter,
+  onSaveFilter,
+  onRemoveFilter,
   parentRef,
-}: DashboardParametersEditFormProps) => {
+}: DashboardFilterEditFormProps) => {
   const { handleSubmit, register, formState, control, watch, reset } =
-    useForm<DashboardParameter>({
-      defaultValues: parameter,
+    useForm<DashboardFilter>({
+      defaultValues: filter,
     });
 
   useEffect(() => {
-    reset(parameter);
-  }, [parameter, reset]);
+    reset(filter);
+  }, [filter, reset]);
 
-  const onSubmit = (data: DashboardParameter) => {
-    onChangeParameterDefinition(data);
+  const onSubmit = (data: DashboardFilter) => {
+    onSaveFilter(data);
   };
 
   const sourceId = watch('sourceId');
@@ -60,7 +60,7 @@ const DashboardParametersEditForm = ({
       <Stack>
         <TextInput
           label="Name"
-          placeholder={parameter.name}
+          placeholder={filter.name}
           required
           error={formState.errors.name?.message}
           {...register('name', { required: true, minLength: 1 })}
@@ -108,7 +108,7 @@ const DashboardParametersEditForm = ({
           <Button
             variant="outline"
             color="red"
-            onClick={() => onRemoveParameterDefinition(parameter.id)}
+            onClick={() => onRemoveFilter(filter.id)}
           >
             Delete
           </Button>
@@ -122,136 +122,116 @@ const DashboardParametersEditForm = ({
 };
 
 interface EmptyStateProps {
-  onCreateFirstParameter: () => void;
+  onCreateFilter: () => void;
 }
 
-const EmptyState = ({ onCreateFirstParameter }: EmptyStateProps) => {
+const EmptyState = ({ onCreateFilter }: EmptyStateProps) => {
   return (
     <Stack align="center" justify="center" py="xl">
       <Text size="md" maw={300} ta="center">
         Dashboard filters allow users of this dashboard to quickly filter on
-        important columns.
+        important columns. Filters are saved in the dashboard.
       </Text>
-      <Button variant="outline" onClick={onCreateFirstParameter}>
+      <Button variant="outline" onClick={onCreateFilter}>
         Create Filter
       </Button>
     </Stack>
   );
 };
-interface DashboardParametersEditModalProps {
+interface DashboardFiltersEditModalProps {
   opened: boolean;
   onClose: () => void;
-  parameters: DashboardParameter[];
-  onChangeParameterDefinition: (definition: DashboardParameter) => void;
-  onRemoveParameterDefinition: (id: string) => void;
+  filters: DashboardFilter[];
+  onSaveFilter: (filter: DashboardFilter) => void;
+  onRemoveFilter: (id: string) => void;
   parentRef?: HTMLElement | null;
 }
 
-const DashboardParametersEditModal = ({
+const NEW_FILTER_ID = 'new';
+
+const DashboardFiltersEditModal = ({
   opened,
   onClose,
-  parameters,
-  onChangeParameterDefinition,
-  onRemoveParameterDefinition,
-}: DashboardParametersEditModalProps) => {
-  const [activeParameterId, setActiveParameterId] = useState<
-    string | undefined
-  >(parameters[0]?.id);
-  const [newParameter, setNewParameter] = useState<
-    | (Partial<DashboardParameter> & Pick<DashboardParameter, 'id' | 'type'>)
-    | null
-  >(null);
+  filters,
+  onSaveFilter,
+  onRemoveFilter,
+}: DashboardFiltersEditModalProps) => {
+  const [selectedFilter, setSelectedFilter] = useState<
+    DashboardFilter | undefined
+  >(filters[0]);
 
   useEffect(() => {
     if (opened) {
-      setActiveParameterId(parameters[0]?.id);
+      setSelectedFilter(filters[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
 
-  const handleRemoveParameterDefinition = (id: string) => {
-    if (id === activeParameterId) {
-      setActiveParameterId(parameters[0]?.id);
+  const handleRemoveFilter = (id: string) => {
+    if (id === selectedFilter?.id) {
+      setSelectedFilter(filters.find(f => f.id !== id));
     }
-    if (id === 'new') {
-      setNewParameter(null);
-    }
-    onRemoveParameterDefinition(id);
+    onRemoveFilter(id);
   };
 
-  const handleAddNewParameter = () => {
-    setNewParameter({
-      id: 'new',
+  const handleAddNewFilter = () => {
+    setSelectedFilter({
+      id: NEW_FILTER_ID,
       type: 'QUERY_EXPRESSION',
-      name: 'New Parameter',
+      name: 'New Filter',
       expression: '',
       sourceId: '',
     });
-    setActiveParameterId('new');
   };
 
-  const handleSubmitParameter = (parameter: DashboardParameter) => {
-    if (newParameter && parameter.id === 'new') {
-      // Assign a unique ID to the new parameter TODO how to just use the mongo ID?
-      const uniqueId = `param-${Date.now()}`;
-      onChangeParameterDefinition({ ...parameter, id: uniqueId });
-      setActiveParameterId(uniqueId);
-      setNewParameter(null);
+  const handleSaveFilter = (filter: DashboardFilter) => {
+    if (filter.id === NEW_FILTER_ID) {
+      const filterWithRealId = { ...filter, id: crypto.randomUUID() };
+      onSaveFilter(filterWithRealId);
+      setSelectedFilter(filterWithRealId);
     } else {
-      onChangeParameterDefinition(parameter);
+      onSaveFilter(filter);
     }
   };
 
-  const handleClose = () => {
-    setNewParameter(null);
-    onClose();
-  };
-
-  const parametersWithNew = [
-    ...parameters,
-    ...(newParameter ? [newParameter as DashboardParameter] : []),
-  ];
-
-  const activeParameter = parametersWithNew.find(
-    param => param.id === activeParameterId,
+  const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
+    null,
   );
 
-  const modalContentRef = useRef<HTMLDivElement>(null);
-
   return (
-    <Modal opened={opened} onClose={handleClose} title="Filters" size="xl">
-      {parametersWithNew.length === 0 ? (
-        <EmptyState onCreateFirstParameter={handleAddNewParameter} />
+    <Modal opened={opened} onClose={onClose} title="Filters" size="xl">
+      {!selectedFilter && filters.length === 0 ? (
+        <EmptyState onCreateFilter={handleAddNewFilter} />
       ) : (
-        <div ref={modalContentRef}>
+        <div ref={setModalContentRef}>
           <Flex direction="row" gap="0">
             <Paper withBorder flex={0} miw={200} pt="sm">
               <Stack gap="0">
-                {parametersWithNew.map(({ id, name }) => (
+                {filters.map(filter => (
                   <UnstyledButton
-                    key={id}
+                    key={filter.id}
                     className="px-2 pb-1 bg-default-dark-grey-hover"
-                    onClick={() => setActiveParameterId(id)}
+                    onClick={() => setSelectedFilter(filter)}
                   >
-                    <Text>{name}</Text>
+                    <Text>{filter.name}</Text>
                   </UnstyledButton>
                 ))}
                 <Button
                   variant="subtle"
                   color="gray"
-                  onClick={handleAddNewParameter}
+                  onClick={handleAddNewFilter}
                 >
                   Add Filter
                 </Button>
               </Stack>
             </Paper>
             <Paper withBorder p="md" flex={1}>
-              {activeParameter && (
-                <DashboardParametersEditForm
-                  parameter={activeParameter}
-                  onChangeParameterDefinition={handleSubmitParameter}
-                  onRemoveParameterDefinition={handleRemoveParameterDefinition}
-                  parentRef={modalContentRef.current}
+              {selectedFilter && (
+                <DashboardFilterEditForm
+                  filter={selectedFilter}
+                  onSaveFilter={handleSaveFilter}
+                  onRemoveFilter={handleRemoveFilter}
+                  parentRef={modalContentRef}
                 />
               )}
             </Paper>
@@ -262,4 +242,4 @@ const DashboardParametersEditModal = ({
   );
 };
 
-export default DashboardParametersEditModal;
+export default DashboardFiltersEditModal;

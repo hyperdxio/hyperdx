@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
-  DashboardParameter,
+  DashboardFilter,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
@@ -27,7 +27,7 @@ export type Dashboard = {
   name: string;
   tiles: Tile[];
   tags: string[];
-  parameters?: DashboardParameter[];
+  filters?: DashboardFilter[];
 };
 
 export function useUpdateDashboard() {

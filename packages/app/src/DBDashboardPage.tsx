@@ -17,7 +17,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import {
   AlertState,
-  DashboardParameter,
+  DashboardFilter,
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -63,14 +63,14 @@ import {
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
-import useDashboardParameters from './hooks/useDashboardParameters';
+import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
-import DashboardParameters from './DashboardParameters';
-import DashboardParametersEditModal from './DashboardParametersEditModal';
+import DashboardFilters from './DashboardFilters';
+import DashboardFiltersEditModal from './DashboardFiltersEditModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
@@ -563,32 +563,32 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [showVariablesModal, setShowVariablesModal] = useState(false);
 
-  const parameterDefinitions = dashboard?.parameters ?? [];
-  const { parameterValues, setParameterValue, filters } =
-    useDashboardParameters(parameterDefinitions);
+  const filters = dashboard?.filters ?? [];
+  const { filterValues, setFilterValue, filtersAsSql } =
+    useDashboardFilters(filters);
 
-  const handleChangeParameterDefinition = (parameter: DashboardParameter) => {
+  const handleSaveFilter = (filter: DashboardFilter) => {
     if (!dashboard) return;
 
     setDashboard(
       produce(dashboard, draft => {
-        const paramIndex =
-          draft.parameters?.findIndex(p => p.id === parameter.id) ?? -1;
-        if (draft.parameters && paramIndex !== -1) {
-          draft.parameters[paramIndex] = parameter;
+        const filterIndex =
+          draft.filters?.findIndex(p => p.id === filter.id) ?? -1;
+        if (draft.filters && filterIndex !== -1) {
+          draft.filters[filterIndex] = filter;
         } else {
-          draft.parameters = [...(draft.parameters ?? []), parameter];
+          draft.filters = [...(draft.filters ?? []), filter];
         }
       }),
     );
   };
 
-  const handleRemoveParameterDefinition = (id: string) => {
+  const handleRemoveFilter = (id: string) => {
     if (!dashboard) return;
 
     setDashboard({
       ...dashboard,
-      parameters: dashboard.parameters?.filter(p => p.id !== id) ?? [],
+      filters: dashboard.filters?.filter(p => p.id !== id) ?? [],
     });
   };
 
@@ -698,7 +698,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 type: whereLanguage === 'sql' ? 'sql' : 'lucene',
                 condition: where,
               },
-              ...filters,
+              ...filtersAsSql,
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighed={highlightedTileId === chart.id}
@@ -1091,10 +1091,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <i className="bi bi-play"></i>
         </Button>
       </Flex>
-      <DashboardParameters
-        parameters={parameterDefinitions}
-        parameterValues={parameterValues}
-        onSetParameterValue={setParameterValue}
+      <DashboardFilters
+        filters={filters}
+        filterValues={filterValues}
+        onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />
       <Box mt="sm">
@@ -1159,12 +1159,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
-      <DashboardParametersEditModal
+      <DashboardFiltersEditModal
         opened={showVariablesModal}
         onClose={() => setShowVariablesModal(false)}
-        parameters={parameterDefinitions}
-        onChangeParameterDefinition={handleChangeParameterDefinition}
-        onRemoveParameterDefinition={handleRemoveParameterDefinition}
+        filters={filters}
+        onSaveFilter={handleSaveFilter}
+        onRemoveFilter={handleRemoveFilter}
       />
     </Box>
   );

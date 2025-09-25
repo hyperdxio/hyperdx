@@ -466,24 +466,24 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
-export const DashboardParameterType = z.enum(['QUERY_EXPRESSION']);
+export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
-export const DashboardParameterSchema = z.object({
+export const DashboardFilterSchema = z.object({
   id: z.string(),
-  type: DashboardParameterType,
+  type: DashboardFilterType,
   name: z.string().min(1),
   expression: z.string().min(1),
   sourceId: z.string().min(1),
 });
 
-export type DashboardParameter = z.infer<typeof DashboardParameterSchema>;
+export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
-  parameters: z.array(DashboardParameterSchema).optional(),
+  filters: z.array(DashboardFilterSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;

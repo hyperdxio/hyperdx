@@ -1,25 +1,25 @@
-import { DashboardParameter } from '@hyperdx/common-utils/dist/types';
+import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
 
 import { useGetKeyValues } from './hooks/useMetadata';
 import { useSource } from './source';
 
-interface DashboardParameterSelectProps {
-  parameter: DashboardParameter;
+interface DashboardFilterSelectProps {
+  filter: DashboardFilter;
   dateRange: [Date, Date];
   onChange: (value: any) => void;
 }
 
-const DashboardParameterSelect = ({
-  parameter,
+const DashboardFilterSelect = ({
+  filter,
   dateRange,
   onChange,
-}: DashboardParameterSelectProps) => {
+}: DashboardFilterSelectProps) => {
   const {
     data: { timestampValueExpression, connection, from } = {},
     isLoading: isSourceLoading,
   } = useSource({
-    id: parameter.sourceId,
+    id: filter.sourceId,
   });
 
   const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(
@@ -33,7 +33,7 @@ const DashboardParameterSelect = ({
         whereLanguage: 'sql',
         select: '',
       },
-      keys: [parameter.expression],
+      keys: [filter.expression],
     },
     {
       enabled: !!timestampValueExpression && !!connection && !!from,
@@ -42,7 +42,7 @@ const DashboardParameterSelect = ({
 
   return (
     <Select
-      placeholder={parameter.name}
+      placeholder={filter.name}
       data={
         keys?.[0]?.value.map(value => ({
           value: String(value),
@@ -63,30 +63,30 @@ const DashboardParameterSelect = ({
   );
 };
 
-interface DashboardParametersProps {
-  parameters: DashboardParameter[];
-  parameterValues: Record<string, any>;
-  onSetParameterValue: (key: string, value: any) => void;
+interface DashboardFilterProps {
+  filters: DashboardFilter[];
+  filterValues: Record<string, any>;
+  onSetFilterValue: (key: string, value: any) => void;
   dateRange: [Date, Date];
 }
 
-const DashboardParameters = ({
-  parameters,
+const DashboardFilters = ({
+  filters,
   dateRange,
-  onSetParameterValue,
-}: DashboardParametersProps) => {
+  onSetFilterValue,
+}: DashboardFilterProps) => {
   return (
     <Group mt="sm">
-      {Object.values(parameters).map(parameter => (
-        <DashboardParameterSelect
-          key={parameter.id}
-          parameter={parameter}
+      {Object.values(filters).map(filter => (
+        <DashboardFilterSelect
+          key={filter.id}
+          filter={filter}
           dateRange={dateRange}
-          onChange={value => onSetParameterValue(parameter.id, value)}
+          onChange={value => onSetFilterValue(filter.id, value)}
         />
       ))}
     </Group>
   );
 };
 
-export default DashboardParameters;
+export default DashboardFilters;
