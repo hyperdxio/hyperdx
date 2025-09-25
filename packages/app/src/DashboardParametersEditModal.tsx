@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { DashboardParameter } from '@hyperdx/common-utils/dist/types';
@@ -24,12 +24,14 @@ interface DashboardParametersEditFormProps {
   parameter: DashboardParameter;
   onChangeParameterDefinition: (definition: DashboardParameter) => void;
   onRemoveParameterDefinition: (id: string) => void;
+  parentRef?: HTMLElement | null;
 }
 
 const DashboardParametersEditForm = ({
   parameter,
   onChangeParameterDefinition,
   onRemoveParameterDefinition,
+  parentRef,
 }: DashboardParametersEditFormProps) => {
   const { handleSubmit, register, formState, control, watch, reset } =
     useForm<DashboardParameter>({
@@ -75,6 +77,7 @@ const DashboardParametersEditForm = ({
                 name="sourceId"
                 data-testid="source-selector"
                 rules={{ required: true }}
+                comboboxProps={{ withinPortal: true }}
               />
             </span>
             <span className="me-2">
@@ -98,6 +101,7 @@ const DashboardParametersEditForm = ({
             language="sql"
             enableHotkey
             rules={{ required: true }}
+            parentRef={parentRef}
           />
         </Input.Wrapper>
         <Group justify="space-between" mt="md">
@@ -140,6 +144,7 @@ interface DashboardParametersEditModalProps {
   parameters: DashboardParameter[];
   onChangeParameterDefinition: (definition: DashboardParameter) => void;
   onRemoveParameterDefinition: (id: string) => void;
+  parentRef?: HTMLElement | null;
 }
 
 const DashboardParametersEditModal = ({
@@ -211,42 +216,47 @@ const DashboardParametersEditModal = ({
     param => param.id === activeParameterId,
   );
 
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
   return (
     <Modal opened={opened} onClose={handleClose} title="Filters" size="xl">
       {parametersWithNew.length === 0 ? (
         <EmptyState onCreateFirstParameter={handleAddNewParameter} />
       ) : (
-        <Flex direction="row" gap="0">
-          <Paper withBorder flex={0} miw={200} pt="sm">
-            <Stack gap="0">
-              {parametersWithNew.map(({ id, name }) => (
-                <UnstyledButton
-                  key={id}
-                  className="px-2 pb-1 bg-default-dark-grey-hover"
-                  onClick={() => setActiveParameterId(id)}
+        <div ref={modalContentRef}>
+          <Flex direction="row" gap="0">
+            <Paper withBorder flex={0} miw={200} pt="sm">
+              <Stack gap="0">
+                {parametersWithNew.map(({ id, name }) => (
+                  <UnstyledButton
+                    key={id}
+                    className="px-2 pb-1 bg-default-dark-grey-hover"
+                    onClick={() => setActiveParameterId(id)}
+                  >
+                    <Text>{name}</Text>
+                  </UnstyledButton>
+                ))}
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  onClick={handleAddNewParameter}
                 >
-                  <Text>{name}</Text>
-                </UnstyledButton>
-              ))}
-              <Button
-                variant="subtle"
-                color="gray"
-                onClick={handleAddNewParameter}
-              >
-                Add Filter
-              </Button>
-            </Stack>
-          </Paper>
-          <Paper withBorder p="md" flex={1}>
-            {activeParameter && (
-              <DashboardParametersEditForm
-                parameter={activeParameter}
-                onChangeParameterDefinition={handleSubmitParameter}
-                onRemoveParameterDefinition={handleRemoveParameterDefinition}
-              />
-            )}
-          </Paper>
-        </Flex>
+                  Add Filter
+                </Button>
+              </Stack>
+            </Paper>
+            <Paper withBorder p="md" flex={1}>
+              {activeParameter && (
+                <DashboardParametersEditForm
+                  parameter={activeParameter}
+                  onChangeParameterDefinition={handleSubmitParameter}
+                  onRemoveParameterDefinition={handleRemoveParameterDefinition}
+                  parentRef={modalContentRef.current}
+                />
+              )}
+            </Paper>
+          </Flex>
+        </div>
       )}
     </Modal>
   );
