@@ -1,8 +1,15 @@
+import type { Page } from '@playwright/test';
+
 import { expect, test } from '../../utils/base-test';
+
+interface MultilineTestOptions {
+  formSelector?: string;
+  whereText?: string;
+}
 
 test.describe('Multiline Input', { tag: '@search' }, () => {
   // Reusable multiline test functions
-  const testSqlMultiline = async (page, options = {}) => {
+  const testSqlMultiline = async (page: Page, options: MultilineTestOptions = {}) => {
     const { formSelector, whereText = 'WHERE' } = options;
 
     // Try to find form container, fallback to page if not specified
@@ -68,7 +75,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     });
   };
 
-  const testLuceneMultiline = async (page, options = {}) => {
+  const testLuceneMultiline = async (page: Page, options: MultilineTestOptions = {}) => {
     const { formSelector } = options;
 
     // Try to find form container, fallback to page if not specified
