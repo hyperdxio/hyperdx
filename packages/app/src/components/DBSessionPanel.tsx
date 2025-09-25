@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import SessionSubpanel from '@/SessionSubpanel';
@@ -18,46 +19,48 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
-  // trace source
-  const { data: source } = useSource({ id: sourceId });
+  const { data: traceSource } = useSource({
+    id: sourceId,
+    kind: SourceKind.Trace,
+  });
 
   const config = useMemo(() => {
-    if (!source) {
+    if (!traceSource) {
       return;
     }
     return {
       select: [
         {
-          valueExpression: `${source.timestampValueExpression}`,
+          valueExpression: `${traceSource.timestampValueExpression}`,
           alias: 'Timestamp',
         },
         {
-          valueExpression: `${source.resourceAttributesExpression}['rum.sessionId']`,
+          valueExpression: `${traceSource.resourceAttributesExpression}['rum.sessionId']`,
           alias: 'rumSessionId',
         },
         {
-          valueExpression: `${source.resourceAttributesExpression}['service.name']`,
+          valueExpression: `${traceSource.resourceAttributesExpression}['service.name']`,
           alias: 'serviceName',
         },
         {
-          valueExpression: `${source.parentSpanIdExpression}`,
+          valueExpression: `${traceSource.parentSpanIdExpression}`,
           alias: 'parentSpanId',
         },
       ],
-      from: source.from,
-      timestampValueExpression: source.timestampValueExpression,
+      from: traceSource.from,
+      timestampValueExpression: traceSource.timestampValueExpression,
       limit: { limit: 10000 },
-      connection: source.connection,
-      where: `${source.traceIdExpression} = '${traceId}'`,
+      connection: traceSource.connection,
+      where: `${traceSource.traceIdExpression} = '${traceId}'`,
       whereLanguage: 'sql' as const,
     };
-  }, [source, traceId]);
+  }, [traceSource, traceId]);
 
   const { data } = useEventsData({
     config: config!, // ok to force unwrap, the query will be disabled if source is null
     dateRangeStartInclusive: true,
     dateRange,
-    enabled: enabled && !!source,
+    enabled: enabled && !!traceSource,
   });
 
   const result = useMemo(() => {
@@ -99,9 +102,13 @@ export const DBSessionPanel = ({
   serviceName: string;
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
-  const { data: traceSource } = useSource({ id: traceSourceId });
+  const { data: traceSource } = useSource({
+    id: traceSourceId,
+    kind: SourceKind.Trace,
+  });
   const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id: traceSource?.sessionSourceId,
+    kind: SourceKind.Session,
   });
 
   if (!traceSource || (!sessionSource && isSessionSourceLoading)) {

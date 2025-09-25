@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
@@ -65,14 +65,14 @@ describe('getMetricTableName', () => {
   });
 
   it('returns the default table name when metricType is null', () => {
-    const source = createSourceWithMetrics() as unknown as TSource;
+    const source = createSourceWithMetrics() as unknown as TMetricSource;
 
     expect(getMetricTableName(source)).toBe('');
     expect(getMetricTableName(source, undefined)).toBe('');
   });
 
   it('returns the specific metric table when metricType is provided', () => {
-    const source = createSourceWithMetrics() as unknown as TSource;
+    const source = createSourceWithMetrics() as unknown as TMetricSource;
 
     expect(getMetricTableName(source, 'gauge' as MetricsDataType)).toBe(
       'gauge_table',
@@ -83,7 +83,7 @@ describe('getMetricTableName', () => {
   });
 
   it('handles case insensitivity for metric types', () => {
-    const source = createSourceWithMetrics() as unknown as TSource;
+    const source = createSourceWithMetrics() as unknown as TMetricSource;
 
     expect(getMetricTableName(source, 'GAUGE' as MetricsDataType)).toBe(
       'gauge_table',
@@ -99,7 +99,7 @@ describe('getMetricTableName', () => {
       metricTables: {
         gauge: 'gauge_table',
       },
-    } as unknown as TSource;
+    } as unknown as TMetricSource;
 
     expect(
       getMetricTableName(source, 'histogram' as MetricsDataType),
@@ -107,7 +107,7 @@ describe('getMetricTableName', () => {
   });
 
   it('handles sources without metricTables property', () => {
-    const source = createBaseSource() as unknown as TSource;
+    const source = createBaseSource() as unknown as TMetricSource;
 
     expect(getMetricTableName(source)).toBe('');
     expect(

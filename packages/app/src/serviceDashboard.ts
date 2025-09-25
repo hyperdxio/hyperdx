@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 const COALESCE_FIELDS_LIMIT = 100;
 
@@ -136,7 +136,10 @@ function getDefaults({
   };
 }
 
-export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
+export function getExpressions(
+  source?: TTraceSource,
+  jsonColumns: string[] = [],
+) {
   const spanAttributeField =
     source?.eventAttributesExpression || 'SpanAttributes';
   const isAttributeFieldJSON = jsonColumns.includes(spanAttributeField);
@@ -144,13 +147,15 @@ export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
 
   const fieldExpressions = {
     // General
-    duration: source?.durationExpression || defaults.duration,
+    duration:
+      (source && 'durationExpression' in source && source.durationExpression) ||
+      defaults.duration,
     durationPrecision: source?.durationPrecision || defaults.durationPrecision,
     traceId: source?.traceIdExpression || defaults.traceId,
     service: source?.serviceNameExpression || defaults.service,
     spanName: source?.spanNameExpression || defaults.spanName,
     spanKind: source?.spanKindExpression || defaults.spanKind,
-    severityText: source?.severityTextExpression || defaults.severityText,
+    severityText: source?.statusCodeExpression || defaults.severityText,
 
     // HTTP
     httpScheme: defaults.httpScheme,

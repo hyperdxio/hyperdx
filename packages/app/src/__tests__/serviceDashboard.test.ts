@@ -1,4 +1,4 @@
-import type { TSource } from '@hyperdx/common-utils/dist/types';
+import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import {
@@ -11,7 +11,7 @@ function removeAllWhitespace(str: string) {
 }
 
 describe('Service Dashboard', () => {
-  const mockSource: TSource = {
+  const mockSource: TTraceSource = {
     id: 'test-source',
     name: 'Test Source',
     kind: SourceKind.Trace,
@@ -27,7 +27,9 @@ describe('Service Dashboard', () => {
     serviceNameExpression: 'ServiceName',
     spanNameExpression: 'SpanName',
     spanKindExpression: 'SpanKind',
-    severityTextExpression: 'StatusCode',
+    statusCodeExpression: 'StatusCode',
+    spanIdExpression: 'SpanId',
+    parentSpanIdExpression: 'ParentSpanId',
   };
 
   describe('getExpressions', () => {

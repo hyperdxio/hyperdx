@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import Drawer from 'react-modern-drawer';
-import type { Filter } from '@hyperdx/common-utils/dist/types';
+import { type Filter, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Grid, Group, Text } from '@mantine/core';
 
 import {
@@ -31,7 +31,7 @@ export default function ServiceDashboardEndpointSidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({ id: sourceId, kind: SourceKind.Trace });
   const { data: jsonColumns = [] } = useJsonColumns({
     databaseName: source?.from?.databaseName || '',
     tableName: source?.from?.tableName || '',

@@ -495,13 +495,20 @@ export default function EditTimeChartForm({
         const newConfig = {
           ...form,
           from: tableSource.from,
-          timestampValueExpression: tableSource.timestampValueExpression,
+          timestampValueExpression: tableSource.timestampValueExpression || '',
           dateRange,
           connection: tableSource.connection,
-          implicitColumnExpression: tableSource.implicitColumnExpression,
-          metricTables: tableSource.metricTables,
+          ...(tableSource.kind === SourceKind.Log ||
+          tableSource.kind === SourceKind.Trace
+            ? { implicitColumnExpression: tableSource.implicitColumnExpression }
+            : {}),
+          ...(tableSource.kind === SourceKind.Metric
+            ? { metricTables: tableSource.metricTables }
+            : {}),
           select: isSelectEmpty
-            ? tableSource.defaultTableSelectExpression || ''
+            ? ('defaultTableSelectExpression' in tableSource &&
+                tableSource.defaultTableSelectExpression) ||
+              ''
             : form.select,
         };
         setQueriedConfig(
@@ -569,27 +576,31 @@ export default function EditTimeChartForm({
   const sampleEventsConfig = useMemo(
     () =>
       tableSource != null && queriedConfig != null && queryReady
-        ? {
+        ? ({
             ...queriedConfig,
             orderBy: [
               {
                 ordering: 'DESC' as const,
                 valueExpression: getFirstTimestampValueExpression(
-                  tableSource.timestampValueExpression,
+                  tableSource.timestampValueExpression || '',
                 ),
               },
             ],
             dateRange,
-            timestampValueExpression: tableSource.timestampValueExpression,
+            timestampValueExpression:
+              tableSource.timestampValueExpression ?? '',
             connection: tableSource.connection,
             from: tableSource.from,
             limit: { limit: 200 },
-            select: tableSource?.defaultTableSelectExpression || '',
+            select:
+              ('defaultTableSelectExpression' in tableSource
+                ? tableSource.defaultTableSelectExpression
+                : undefined) || '',
             filters: seriesToFilters(queriedConfig.select),
             filtersLogicalOperator: 'OR' as const,
             groupBy: undefined,
             granularity: undefined,
-          }
+          } satisfies ChartConfigWithDateRange)
         : null,
     [queriedConfig, tableSource, dateRange, queryReady],
   );
@@ -813,9 +824,16 @@ export default function EditTimeChartForm({
                 control={control}
                 name="select"
                 placeholder={
-                  tableSource?.defaultTableSelectExpression || 'SELECT Columns'
+                  (tableSource &&
+                    'defaultTableSelectExpression' in tableSource &&
+                    tableSource.defaultTableSelectExpression) ||
+                  'SELECT Columns'
                 }
-                defaultValue={tableSource?.defaultTableSelectExpression}
+                defaultValue={
+                  tableSource && 'defaultTableSelectExpression' in tableSource
+                    ? tableSource.defaultTableSelectExpression
+                    : undefined
+                }
                 onSubmit={onSubmit}
                 label="SELECT"
               />
@@ -1038,18 +1056,20 @@ export default function EditTimeChartForm({
                   {
                     ordering: 'DESC' as const,
                     valueExpression: getFirstTimestampValueExpression(
-                      tableSource.timestampValueExpression,
+                      tableSource.timestampValueExpression ?? '',
                     ),
                   },
                 ],
                 dateRange,
-                timestampValueExpression: tableSource.timestampValueExpression,
+                timestampValueExpression:
+                  tableSource.timestampValueExpression ?? '',
                 connection: tableSource.connection,
                 from: tableSource.from,
                 limit: { limit: 200 },
                 select:
                   queriedConfig.select ||
-                  tableSource?.defaultTableSelectExpression ||
+                  ('defaultTableSelectExpression' in tableSource &&
+                    tableSource.defaultTableSelectExpression) ||
                   '',
                 groupBy: undefined,
                 granularity: undefined,

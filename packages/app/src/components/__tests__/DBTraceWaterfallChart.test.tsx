@@ -1,5 +1,10 @@
 import React from 'react';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { render, screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 
@@ -32,25 +37,27 @@ const MockTimelineChart = TimelineChart as any;
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
-  const mockTraceTableSource: TSource = {
+  const mockTraceTableSource: TTraceSource = {
     id: 'trace-source-id',
     kind: SourceKind.Trace,
     name: 'trace-source',
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
   };
 
-  const mockLogTableSource: TSource = {
+  const mockLogTableSource: TLogSource = {
     id: 'log-source-id',
     kind: SourceKind.Log,
     name: 'log-source',
@@ -58,6 +65,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     timestampValueExpression: 'Timestamp',
     implicitColumnExpression: 'Body',
     connection: 'conn2',
+    defaultTableSelectExpression: '',
   };
 
   const mockDateRange = [
@@ -246,15 +254,17 @@ describe('useEventsAroundFocus', () => {
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
   };
 
   const mockDateRange = [

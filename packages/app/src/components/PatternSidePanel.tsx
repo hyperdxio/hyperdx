@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Drawer from 'react-modern-drawer';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Card, Stack, Text } from '@mantine/core';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
@@ -29,7 +29,7 @@ export default function PatternSidePanel({
   onClose: () => void;
   pattern: Pattern;
   bodyValueExpression: string;
-  source: TSource;
+  source: TLogSource | TTraceSource;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;

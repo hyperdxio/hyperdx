@@ -55,11 +55,12 @@ export default function DBTableSelect({
         className="flex-grow-1"
       />
       <SourceSchemaPreview
-        source={
+        tableConnection={
           connectionId && database && table
             ? {
-                connection: connectionId,
-                from: { databaseName: database, tableName: table },
+                connectionId,
+                databaseName: database,
+                tableName: table,
               }
             : undefined
         }

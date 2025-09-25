@@ -18,7 +18,7 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertState, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -179,14 +179,18 @@ const Tile = forwardRef(
             connection: source.connection,
             dateRange,
             granularity,
-            timestampValueExpression: source.timestampValueExpression,
+            timestampValueExpression: source.timestampValueExpression ?? '',
             from: {
               databaseName: source.from?.databaseName || 'default',
               tableName: tableName || '',
             },
-            implicitColumnExpression: source.implicitColumnExpression,
+            ...('implicitColumnExpression' in source
+              ? { implicitColumnExpression: source.implicitColumnExpression }
+              : {}),
             filters,
-            metricTables: source.metricTables,
+            ...('metricTables' in source
+              ? { metricTables: source.metricTables }
+              : {}),
           });
         }
       }
@@ -353,7 +357,9 @@ const Tile = forwardRef(
                   dateRange,
                   select:
                     queriedConfig.select ||
-                    source?.defaultTableSelectExpression ||
+                    (source && 'defaultTableSelectExpression' in source
+                      ? source.defaultTableSelectExpression
+                      : undefined) ||
                     '',
                   groupBy: undefined,
                   granularity: undefined,

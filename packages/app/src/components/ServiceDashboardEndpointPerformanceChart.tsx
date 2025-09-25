@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Group, Text } from '@mantine/core';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
@@ -18,7 +18,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   service,
   endpoint,
 }: {
-  source?: TSource;
+  source?: TTraceSource;
   dateRange: [Date, Date];
   service?: string;
   endpoint?: string;

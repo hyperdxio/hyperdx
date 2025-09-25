@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
 
@@ -76,8 +77,8 @@ const TableSchemaPreview = ({
 };
 
 export interface SourceSchemaPreviewProps {
-  source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
-    Partial<Pick<TSource, 'kind' | 'name'>>;
+  source?: TSource;
+  tableConnection?: TableConnection;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
 }
 
@@ -91,6 +92,7 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
 
 const SourceSchemaPreview = ({
   source,
+  tableConnection,
   iconStyles,
 }: SourceSchemaPreviewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -119,9 +121,16 @@ const SourceSchemaPreview = ({
       connectionId: source.connection,
       title: source.name ?? source.from.tableName,
     });
+  } else if (tableConnection) {
+    tables.push({
+      databaseName: tableConnection.databaseName,
+      tableName: tableConnection.tableName,
+      connectionId: tableConnection.connectionId,
+      title: tableConnection.tableName,
+    });
   }
 
-  const isEnabled = !!source && tables.length > 0;
+  const isEnabled = (!!source || !!tableConnection) && tables.length > 0;
 
   return (
     <>
