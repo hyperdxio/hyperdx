@@ -130,3 +130,24 @@
     transform: rotate(0deg);
   }
 }
+
+.recentlyMoved {
+  animation: highlight 0.6s ease-out;
+}
+
+@keyframes highlight {
+  0% {
+    background-color: $slate-950;
+    transform: scale(1.02);
+  }
+
+  50% {
+    background-color: $slate-900;
+    transform: scale(1.01);
+  }
+
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+  }
+}
