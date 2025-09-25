@@ -48,10 +48,6 @@ const DashboardFilterEditForm = ({
     reset(filter);
   }, [filter, reset]);
 
-  const onSubmit = (data: DashboardFilter) => {
-    onSaveFilter(data);
-  };
-
   const sourceId = watch('source');
   const { data: source } = useSource({ id: sourceId });
 
@@ -71,11 +67,11 @@ const DashboardFilterEditForm = ({
   );
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form onSubmit={handleSubmit(onSaveFilter)}>
       <Stack>
         <TextInput
           label="Name"
-          placeholder={filter.name}
+          placeholder="Name"
           required
           error={formState.errors.name?.message}
           {...register('name', { required: true, minLength: 1 })}
@@ -217,7 +213,7 @@ const DashboardFiltersEditModal = ({
     setSelectedFilter({
       id: NEW_FILTER_ID,
       type: 'QUERY_EXPRESSION',
-      name: 'New Filter',
+      name: '',
       expression: '',
       source: '',
     });
@@ -249,7 +245,7 @@ const DashboardFiltersEditModal = ({
                 {filters.map(filter => (
                   <UnstyledButton
                     key={filter.id}
-                    className="px-2 pb-1 bg-default-dark-grey-hover"
+                    className={`px-2 py-1 ${filter.id === selectedFilter?.id ? 'bg-light-grey' : 'bg-default-dark-grey-hover'}`}
                     onClick={() => setSelectedFilter(filter)}
                   >
                     <Text>{filter.name}</Text>
