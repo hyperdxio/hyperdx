@@ -45,6 +45,7 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconFilterEdit } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -1072,7 +1073,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             title="Refresh dashboard"
             px="xs"
           >
-            <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
+            <i className="bi bi-arrow-clockwise fs-5"></i>
           </Button>
         </Tooltip>
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
@@ -1084,7 +1085,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             mr={6}
             onClick={() => setShowVariablesModal(true)}
           >
-            <i className="bi bi-funnel text-slate-400 fs-5"></i>
+            <IconFilterEdit strokeWidth={1} />
           </Button>
         </Tooltip>
         <Button variant="outline" type="submit" color="green">
