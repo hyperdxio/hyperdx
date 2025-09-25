@@ -9,7 +9,10 @@ interface MultilineTestOptions {
 
 test.describe('Multiline Input', { tag: '@search' }, () => {
   // Reusable multiline test functions
-  const testSqlMultiline = async (page: Page, options: MultilineTestOptions = {}) => {
+  const testSqlMultiline = async (
+    page: Page,
+    options: MultilineTestOptions = {},
+  ) => {
     const { formSelector, whereText = 'WHERE' } = options;
 
     // Try to find form container, fallback to page if not specified
@@ -75,7 +78,10 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     });
   };
 
-  const testLuceneMultiline = async (page: Page, options: MultilineTestOptions = {}) => {
+  const testLuceneMultiline = async (
+    page: Page,
+    options: MultilineTestOptions = {},
+  ) => {
     const { formSelector } = options;
 
     // Try to find form container, fallback to page if not specified
