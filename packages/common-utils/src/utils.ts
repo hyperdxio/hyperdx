@@ -10,7 +10,6 @@ import {
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
-  Filter,
   SQLInterval,
   TileTemplateSchema,
   TSourceUnion,
