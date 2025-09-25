@@ -19,7 +19,7 @@ const DashboardFilterSelect = ({
     data: { timestampValueExpression, connection, from } = {},
     isLoading: isSourceLoading,
   } = useSource({
-    id: filter.sourceId,
+    id: filter.source,
   });
 
   const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(

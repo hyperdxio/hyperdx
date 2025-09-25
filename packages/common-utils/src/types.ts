@@ -473,7 +473,7 @@ export const DashboardFilterSchema = z.object({
   type: DashboardFilterType,
   name: z.string().min(1),
   expression: z.string().min(1),
-  sourceId: z.string().min(1),
+  source: z.string().min(1),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -493,6 +493,7 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
 }).extend({
   version: z.string().min(1),
   tiles: z.array(TileTemplateSchema),
+  filters: z.array(DashboardFilterSchema).optional(),
 });
 
 export const ConnectionSchema = z.object({

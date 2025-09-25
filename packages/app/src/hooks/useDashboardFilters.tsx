@@ -6,7 +6,7 @@ const convertDashboardFiltersToSql = (
   values: Record<string, any>,
 ): Filter[] => {
   return Object.entries(values)
-    .map(([id, value]) => {
+    .map(([id, value]): Filter | null => {
       const filter = filters.find(p => p.id === id);
       if (!filter) return null;
 
@@ -15,7 +15,7 @@ const convertDashboardFiltersToSql = (
         condition: `${filter.expression} = '${value}'`,
       };
     })
-    .filter(f => f !== null);
+    .filter((f): f is Filter => f !== null);
 };
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {

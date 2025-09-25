@@ -5,9 +5,12 @@ import { z } from 'zod';
 
 import {
   ChartConfigWithDateRange,
+  DashboardFilter,
+  DashboardFilterSchema,
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  Filter,
   SQLInterval,
   TileTemplateSchema,
   TSourceUnion,
@@ -334,9 +337,28 @@ export function convertToDashboardTemplate(
     return tile;
   };
 
+  const convertToFilterTemplate = (
+    input: DashboardFilter,
+    sources: TSourceUnion[],
+  ): DashboardFilter => {
+    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    // Extract name from source or default to '' if not found
+    filter.source =
+      sources.find(source => source.id === input.source)?.name ?? '';
+    return filter;
+  };
+
   for (const tile of input.tiles) {
     output.tiles.push(convertToTileTemplate(tile, sources));
   }
+
+  if (input.filters) {
+    output.filters = [];
+    for (const filter of input.filters ?? []) {
+      output.filters.push(convertToFilterTemplate(filter, sources));
+    }
+  }
+
   return output;
 }
 
@@ -356,11 +378,25 @@ export function convertToDashboardDocument(
     return structuredClone(input);
   };
 
+  // expecting that input.filters[0-n].source fields are already converted to ids
+  const convertToFilterDocument = (input: DashboardFilter): DashboardFilter => {
+    return structuredClone(input);
+  };
+
   for (const tile of input.tiles) {
     output.tiles.push(convertToTileDocument(tile));
   }
+
+  if (input.filters) {
+    output.filters = [];
+    for (const filter of input.filters) {
+      output.filters.push(convertToFilterDocument(filter));
+    }
+  }
+
   return output;
 }
+
 export const getFirstOrderingItem = (
   orderBy: ChartConfigWithDateRange['orderBy'],
 ) => {

@@ -46,7 +46,7 @@ const DashboardFilterEditForm = ({
     onSaveFilter(data);
   };
 
-  const sourceId = watch('sourceId');
+  const sourceId = watch('source');
   const { data: source } = useSource({ id: sourceId });
   const tableConnection: TableConnection | undefined = source
     ? {
@@ -74,7 +74,7 @@ const DashboardFilterEditForm = ({
             <span className="flex-grow-1">
               <SourceSelectControlled
                 control={control}
-                name="sourceId"
+                name="source"
                 data-testid="source-selector"
                 rules={{ required: true }}
                 comboboxProps={{ withinPortal: true }}
@@ -180,7 +180,7 @@ const DashboardFiltersEditModal = ({
       type: 'QUERY_EXPRESSION',
       name: 'New Filter',
       expression: '',
-      sourceId: '',
+      source: '',
     });
   };
 
