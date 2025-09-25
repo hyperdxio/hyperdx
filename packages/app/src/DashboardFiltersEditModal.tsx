@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
+import {
+  DashboardFilter,
+  MetricsDataType,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Flex,
@@ -9,6 +13,7 @@ import {
   Input,
   Modal,
   Paper,
+  Radio,
   Stack,
   Text,
   TextInput,
@@ -19,6 +24,7 @@ import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import { useSource } from './source';
+import { getMetricTableName } from './utils';
 
 interface DashboardFilterEditFormProps {
   filter: DashboardFilter;
@@ -48,12 +54,21 @@ const DashboardFilterEditForm = ({
 
   const sourceId = watch('source');
   const { data: source } = useSource({ id: sourceId });
-  const tableConnection: TableConnection | undefined = source
+
+  const metricType = watch('sourceMetricType');
+  const tableName = source && getMetricTableName(source, metricType);
+  const tableConnection: TableConnection | undefined = tableName
     ? {
         connectionId: source.connection,
-        ...source.from,
+        databaseName: source.from.databaseName,
+        tableName,
       }
     : undefined;
+
+  const sourceIsMetric = source?.kind === SourceKind.Metric;
+  const metricTypes = Object.values(MetricsDataType).filter(
+    type => source?.metricTables?.[type],
+  );
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -88,6 +103,29 @@ const DashboardFilterEditForm = ({
             </span>
           </Group>
         </Input.Wrapper>
+        {sourceIsMetric && (
+          <Input.Wrapper label="Metric Type" required>
+            <Controller
+              control={control}
+              name="sourceMetricType"
+              rules={{ required: true }}
+              render={({ field: { onChange, value } }) => (
+                <Radio.Group
+                  value={value}
+                  onChange={v => onChange(v)}
+                  withAsterisk
+                >
+                  <Group>
+                    {metricTypes.map(type => (
+                      <Radio key={type} value={type} label={type} />
+                    ))}
+                  </Group>
+                </Radio.Group>
+              )}
+            />
+          </Input.Wrapper>
+        )}
+
         <Input.Wrapper
           label="Filter Expression"
           description="SQL column or expression to filter on"
@@ -104,6 +142,7 @@ const DashboardFilterEditForm = ({
             parentRef={parentRef}
           />
         </Input.Wrapper>
+
         <Group justify="space-between" mt="md">
           <Button
             variant="outline"

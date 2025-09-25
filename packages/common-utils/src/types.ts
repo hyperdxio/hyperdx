@@ -474,6 +474,7 @@ export const DashboardFilterSchema = z.object({
   name: z.string().min(1),
   expression: z.string().min(1),
   source: z.string().min(1),
+  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;

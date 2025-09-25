@@ -3,6 +3,7 @@ import { Group, Select } from '@mantine/core';
 
 import { useGetKeyValues } from './hooks/useMetadata';
 import { useSource } from './source';
+import { getMetricTableName } from './utils';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
@@ -15,12 +16,15 @@ const DashboardFilterSelect = ({
   dateRange,
   onChange,
 }: DashboardFilterSelectProps) => {
-  const {
-    data: { timestampValueExpression, connection, from } = {},
-    isLoading: isSourceLoading,
-  } = useSource({
+  const { data: source, isLoading: isSourceLoading } = useSource({
     id: filter.source,
   });
+
+  const { timestampValueExpression, connection } = source || {};
+
+  const databaseName = source?.from.databaseName;
+  const tableName =
+    source && getMetricTableName(source, filter.sourceMetricType);
 
   const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(
     {
@@ -28,7 +32,10 @@ const DashboardFilterSelect = ({
         dateRange,
         timestampValueExpression: timestampValueExpression!,
         connection: connection!,
-        from: from!,
+        from: {
+          databaseName: databaseName!,
+          tableName: tableName!,
+        }!,
         where: '',
         whereLanguage: 'sql',
         select: '',
@@ -36,7 +43,11 @@ const DashboardFilterSelect = ({
       keys: [filter.expression],
     },
     {
-      enabled: !!timestampValueExpression && !!connection && !!from,
+      enabled:
+        !!timestampValueExpression &&
+        !!connection &&
+        !!tableName &&
+        !!databaseName,
     },
   );
 
