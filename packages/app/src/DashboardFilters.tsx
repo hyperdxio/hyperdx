@@ -2,19 +2,22 @@ import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
 
 import { useGetKeyValues } from './hooks/useMetadata';
+import { FilterState } from './searchFilters';
 import { useSource } from './source';
 import { getMetricTableName } from './utils';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
   dateRange: [Date, Date];
-  onChange: (value: any) => void;
+  onChange: (value: string | null) => void;
+  value?: string | null;
 }
 
 const DashboardFilterSelect = ({
   filter,
   dateRange,
   onChange,
+  value,
 }: DashboardFilterSelectProps) => {
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: filter.source,
@@ -54,6 +57,7 @@ const DashboardFilterSelect = ({
   return (
     <Select
       placeholder={filter.name}
+      value={value ?? null} // null clears the select, undefined makes the select uncontrolled
       data={
         keys?.[0]?.value.map(value => ({
           value: String(value),
@@ -76,14 +80,15 @@ const DashboardFilterSelect = ({
 
 interface DashboardFilterProps {
   filters: DashboardFilter[];
-  filterValues: Record<string, any>;
-  onSetFilterValue: (key: string, value: any) => void;
+  filterValues: FilterState;
+  onSetFilterValue: (expression: string, value: string | null) => void;
   dateRange: [Date, Date];
 }
 
 const DashboardFilters = ({
   filters,
   dateRange,
+  filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
   return (
@@ -93,7 +98,10 @@ const DashboardFilters = ({
           key={filter.id}
           filter={filter}
           dateRange={dateRange}
-          onChange={value => onSetFilterValue(filter.id, value)}
+          onChange={value => onSetFilterValue(filter.expression, value)}
+          value={
+            filterValues[filter.expression]?.included.values().next().value
+          }
         />
       ))}
     </Group>

@@ -1,44 +1,55 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { parseAsJson, useQueryState } from 'nuqs';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 
-const convertDashboardFiltersToSql = (
-  filters: DashboardFilter[],
-  values: Record<string, any>,
-): Filter[] => {
-  return Object.entries(values)
-    .map(([id, value]): Filter | null => {
-      const filter = filters.find(p => p.id === id);
-      if (!filter) return null;
-
-      return {
-        type: 'sql' as const,
-        condition: `${filter.expression} = '${value}'`,
-      };
-    })
-    .filter((f): f is Filter => f !== null);
-};
+import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {
-  const [filterValues, setFilterValues] = useState<Record<string, any>>({});
+  const [filterQueries, setFilterQueries] = useQueryState(
+    'filters',
+    parseAsJson<Filter[]>(),
+  );
 
-  const setFilterValue = useCallback((key: string, value: any) => {
-    if (value === undefined || value === null) {
-      setFilterValues(prev => {
-        const newValues = { ...prev };
-        delete newValues[key];
-        return newValues;
+  const setFilterValue = useCallback(
+    (expression: string, value: string | null) => {
+      setFilterQueries(prev => {
+        const { filters: filterValues } = parseQuery(prev ?? []);
+        if (value === undefined || value === null) {
+          delete filterValues[expression];
+        } else {
+          filterValues[expression] = {
+            included: new Set([value]),
+            excluded: new Set(),
+          };
+        }
+
+        return filtersToQuery(filterValues);
       });
-    } else {
-      setFilterValues(prev => ({ ...prev, [key]: value }));
-    }
-  }, []);
+    },
+    [setFilterQueries],
+  );
 
-  const filtersAsSql = convertDashboardFiltersToSql(filters, filterValues);
+  const { valuesForExistingFilters, queriesForExistingFilters } =
+    useMemo(() => {
+      const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
+      const valuesForExistingFilters: FilterState = {};
+
+      for (const { expression } of filters) {
+        if (expression in parsedFilters) {
+          valuesForExistingFilters[expression] = parsedFilters[expression];
+        }
+      }
+
+      return {
+        valuesForExistingFilters,
+        queriesForExistingFilters: filtersToQuery(valuesForExistingFilters),
+      };
+    }, [filterQueries, filters]);
 
   return {
-    filterValues,
+    filterValues: valuesForExistingFilters,
+    filterQueries: queriesForExistingFilters,
     setFilterValue,
-    filtersAsSql,
   };
 };
 

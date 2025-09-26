@@ -565,7 +565,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showVariablesModal, setShowVariablesModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filtersAsSql } =
+  const { filterValues, setFilterValue, filterQueries } =
     useDashboardFilters(filters);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
@@ -699,7 +699,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 type: whereLanguage === 'sql' ? 'sql' : 'lucene',
                 condition: where,
               },
-              ...filtersAsSql,
+              ...(filterQueries ?? []),
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighed={highlightedTileId === chart.id}
