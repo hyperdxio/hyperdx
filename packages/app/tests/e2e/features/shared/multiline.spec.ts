@@ -44,7 +44,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
     // Verify content
     const content = await getContent(editor);
-    expectations.forEach((expectation) => {
+    expectations.forEach(expectation => {
       expect(content).toContain(expectation);
     });
   };
@@ -76,14 +76,16 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       console.log(
         `Height did not expand: initial=${initialHeight}, final=${expandedHeight}`,
       );
-      
+
       // Fallback: verify that content was actually added (multiline functionality works)
       const content = await editor.textContent();
       const inputValue = await editor.inputValue().catch(() => null);
       const actualContent = content || inputValue || '';
-      
+
       // Check that we have multiple lines of content
-      const lineCount = actualContent.split('\n').filter(line => line.trim()).length;
+      const lineCount = actualContent
+        .split('\n')
+        .filter(line => line.trim()).length;
       expect(lineCount).toBeGreaterThan(1);
     } else {
       expect(expandedHeight).toBeGreaterThan(initialHeight);
@@ -115,15 +117,16 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     });
 
     // Get the editor element
-    const editor = config.mode === 'SQL' 
-      ? (() => {
-          const scopedContainer = formSelector ? container : page;
-          const whereContainer = scopedContainer.locator(
-            `div:has(p.mantine-Text-root:has-text("${whereText}"))`,
-          );
-          return whereContainer.locator('.cm-editor').first();
-        })()
-      : page.locator('[data-testid="search-input"]');
+    const editor =
+      config.mode === 'SQL'
+        ? (() => {
+            const scopedContainer = formSelector ? container : page;
+            const whereContainer = scopedContainer.locator(
+              `div:has(p.mantine-Text-root:has-text("${whereText}"))`,
+            );
+            return whereContainer.locator('.cm-editor').first();
+          })()
+        : page.locator('[data-testid="search-input"]');
 
     await expect(editor).toBeVisible();
 
@@ -140,10 +143,13 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
     // Test height expansion
     await test.step('Test editor height expansion', async () => {
-      const additionalLines = 
+      const additionalLines =
         config.mode === 'SQL'
           ? ['AND response_time > 1000', 'AND user_id IS NOT NULL']
-          : ['response_time:>1000 AND status:500', 'user_id:* AND session_id:exists'];
+          : [
+              'response_time:>1000 AND status:500',
+              'user_id:* AND session_id:exists',
+            ];
 
       await testHeightExpansion(page, editor, additionalLines);
     });
@@ -238,11 +244,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       editorSelector: '[data-testid="search-input"]',
       getContent: (editor: Locator) => editor.inputValue(),
       testData: {
-        lines: [
-          'level:error',
-          'service_name:api',
-          'timestamp:[now-1h TO now]',
-        ],
+        lines: ['level:error', 'service_name:api', 'timestamp:[now-1h TO now]'],
         expectations: [
           'level:error',
           'service_name:api',
