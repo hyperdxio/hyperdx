@@ -240,6 +240,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
   showLegend = true,
+  isLive = false,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -256,6 +257,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
+  isLive?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -380,7 +382,7 @@ export const MemoChart = memo(function MemoChart({
         onResize={(width, height) => {
           sizeRef.current = [width ?? 1, height ?? 1];
         }}
-        className={isLoading ? 'effect-pulse' : ''}
+        className={isLoading && !isLive ? 'effect-pulse' : ''}
       >
         <ChartComponent
           width={500}
@@ -542,7 +544,7 @@ export const MemoChart = memo(function MemoChart({
         </ChartComponent>
       </ResponsiveContainer>
 
-      {isLoading && (
+      {isLoading && !isLive && (
         <Text
           size="xs"
           c="gray.4"

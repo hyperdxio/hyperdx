@@ -1548,6 +1548,7 @@ function DBSearchPage() {
                           showDisplaySwitcher={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
+                          isLive={isLive}
                         />
                       </Box>
                     )}
@@ -1659,6 +1660,7 @@ function DBSearchPage() {
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
+                            isLive={isLive}
                           />
                         </Box>
                       )}

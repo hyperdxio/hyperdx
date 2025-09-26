@@ -35,6 +35,7 @@ function DBTimeChartComponent({
   showDisplaySwitcher = true,
   showLegend = true,
   sourceId,
+  isLive = false,
 }: {
   config: ChartConfigWithDateRange;
   enabled?: boolean;
@@ -47,6 +48,7 @@ function DBTimeChartComponent({
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
   sourceId?: string;
+  isLive?: boolean;
 }) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
   const {
@@ -339,6 +341,7 @@ function DBTimeChartComponent({
           groupKeys={groupKeys}
           isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
+          isLive={isLive}
           lineColors={lineColors}
           lineNames={lineNames}
           logReferenceTimestamp={logReferenceTimestamp}
