@@ -1,6 +1,15 @@
-import { ChartConfigWithDateRange } from '@/types';
+import { z } from 'zod';
 
 import {
+  ChartConfigWithDateRange,
+  DashboardSchema,
+  MetricsDataType,
+  SourceKind,
+  TSourceUnion,
+} from '@/types';
+
+import {
+  convertToDashboardTemplate,
   formatDate,
   getFirstOrderingItem,
   isFirstOrderByAscending,
@@ -419,6 +428,250 @@ describe('utils', () => {
     it('should support toStartOf() timestampValueExpressions in tuples', () => {
       const orderBy = '(toStartOfHour(TimestampTime), TimestampTime) ASC';
       expect(isFirstOrderByAscending(orderBy)).toBe(true);
+    });
+  });
+
+  describe('convertToDashboardTemplate', () => {
+    it('should convert a dashboard to a dashboard template', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'My Dashboard',
+        tags: ['tag1', 'tag2'],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Metric Tile',
+              source: 'source2',
+              select: '',
+              where: '',
+            },
+            x: 6,
+            y: 6,
+            w: 6,
+            h: 6,
+          },
+        ],
+        filters: [
+          {
+            id: 'filter1',
+            type: 'QUERY_EXPRESSION',
+            name: 'SeverityFilter',
+            expression: 'Severity',
+            source: 'source1',
+          },
+          {
+            id: 'filter2',
+            type: 'QUERY_EXPRESSION',
+            name: 'ServiceNameFilter',
+            expression: 'ServiceName',
+            source: 'source2',
+            sourceMetricType: MetricsDataType.Gauge,
+          },
+        ],
+      };
+
+      const sources: TSourceUnion[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Metrics',
+          connection: 'connection1',
+          kind: SourceKind.Metric,
+          from: {
+            databaseName: 'db1',
+            tableName: '',
+          },
+          metricTables: {
+            gauge: 'gauge_table',
+            sum: 'sum_table',
+            histogram: 'histogram_table',
+            'exponential histogram': '',
+            summary: '',
+          },
+          timestampValueExpression: 'Timestamp',
+          resourceAttributesExpression: 'ResourceAttributes',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+      expect(template).toEqual({
+        name: 'My Dashboard',
+        version: '0.1.0',
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'Logs',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Metric Tile',
+              source: 'Metrics',
+              select: '',
+              where: '',
+            },
+            x: 6,
+            y: 6,
+            w: 6,
+            h: 6,
+          },
+        ],
+        filters: [
+          {
+            id: 'filter1',
+            type: 'QUERY_EXPRESSION',
+            name: 'SeverityFilter',
+            expression: 'Severity',
+            source: 'Logs',
+          },
+          {
+            id: 'filter2',
+            type: 'QUERY_EXPRESSION',
+            name: 'ServiceNameFilter',
+            expression: 'ServiceName',
+            source: 'Metrics',
+            sourceMetricType: MetricsDataType.Gauge,
+          },
+        ],
+      });
+    });
+
+    it('should convert a dashboard without filters to a dashboard template', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'My Dashboard',
+        tags: ['tag1', 'tag2'],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Metric Tile',
+              source: 'source2',
+              select: '',
+              where: '',
+            },
+            x: 6,
+            y: 6,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSourceUnion[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Metrics',
+          connection: 'connection1',
+          kind: SourceKind.Metric,
+          from: {
+            databaseName: 'db1',
+            tableName: '',
+          },
+          metricTables: {
+            gauge: 'gauge_table',
+            sum: 'sum_table',
+            histogram: 'histogram_table',
+            'exponential histogram': '',
+            summary: '',
+          },
+          timestampValueExpression: 'Timestamp',
+          resourceAttributesExpression: 'ResourceAttributes',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+      expect(template).toEqual({
+        name: 'My Dashboard',
+        version: '0.1.0',
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'Logs',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Metric Tile',
+              source: 'Metrics',
+              select: '',
+              where: '',
+            },
+            x: 6,
+            y: 6,
+            w: 6,
+            h: 6,
+          },
+        ],
+      });
     });
   });
 });

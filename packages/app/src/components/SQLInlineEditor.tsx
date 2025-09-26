@@ -281,7 +281,13 @@ export default function SQLInlineEditor({
         parent: parentRef,
         tooltipSpace: view => {
           const box = view.dom.getBoundingClientRect();
-          return { ...box, right: box.right ?? 0 };
+          const parentBox = parentRef.getBoundingClientRect();
+          return {
+            ...box,
+            right: box.right ?? 0,
+            top: parentBox.top ?? box.top,
+            bottom: parentBox.bottom ?? box.bottom,
+          };
         },
       }),
     ];

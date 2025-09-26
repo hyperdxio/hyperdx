@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { filter } from 'lodash';
 import { Container } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
@@ -180,6 +181,7 @@ function FileSelection({
 const SourceResolutionForm = z.object({
   dashboardName: z.string().min(1),
   sourceMappings: z.array(z.string()),
+  filterSourceMappings: z.array(z.string()).optional(),
 });
 
 type SourceResolutionFormValues = z.infer<typeof SourceResolutionForm>;
@@ -211,7 +213,16 @@ function Mapping({ input }: { input: Input }) {
       return match?.id || '';
     });
 
+    const filterSourceMappings = input.filters?.map(filter => {
+      // find matching source name
+      const match = sources.find(
+        source => source.name.toLowerCase() === filter.source.toLowerCase(),
+      );
+      return match?.id || '';
+    });
+
     setValue('sourceMappings', sourceMappings);
+    setValue('filterSourceMappings', filterSourceMappings);
   }, [setValue, sources, input]);
 
   const isUpdatingRef = useRef(false);
@@ -225,22 +236,23 @@ function Mapping({ input }: { input: Input }) {
     const inputTile = input.tiles[idx];
     if (!inputTile) return;
     const sourceId = a.sourceMappings[idx] ?? '';
-    const matching = input.tiles.reduce(
-      (acc, tile, idx) => {
-        if (tile.config.source === inputTile.config.source) {
-          acc.push({
-            ...tile,
-            index: idx,
-          });
-        }
-        return acc;
-      },
-      [] as Input['tiles'] & { index: number }[],
-    );
+    const keysForTilesWithMatchingSource = input.tiles
+      .map((tile, index) => ({ ...tile, index }))
+      .filter(tile => tile.config.source === inputTile.config.source)
+      .map(({ index }) => `sourceMappings.${index}` as const);
+
+    const keysForFiltersWithMatchingSource =
+      input.filters
+        ?.map((filter, index) => ({ ...filter, index }))
+        .filter(f => f.source === inputTile.config.source)
+        .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
     isUpdatingRef.current = true;
-    for (const tile of matching) {
-      const key = `sourceMappings.${tile.index}` as const;
+
+    for (const key of [
+      ...keysForTilesWithMatchingSource,
+      ...keysForFiltersWithMatchingSource,
+    ]) {
       const fieldState = getFieldState(key);
       // Only set if the field has not been modified
       if (!fieldState.isDirty) {
@@ -249,6 +261,7 @@ function Mapping({ input }: { input: Input }) {
         });
       }
     }
+
     isUpdatingRef.current = false;
   });
 
@@ -270,10 +283,21 @@ function Mapping({ input }: { input: Input }) {
           },
         };
       });
+      // Zip the source mappings with the input filters
+      const zippedFilters = input.filters?.map((filter, idx) => {
+        const source = sources?.find(
+          source => source.id === data.filterSourceMappings?.[idx],
+        );
+        return {
+          ...filter,
+          source: source!.id,
+        };
+      });
       // Format for server
       const output = convertToDashboardDocument({
         ...input,
         tiles: zippedTiles,
+        filters: zippedFilters,
         name: data.dashboardName,
       });
       let _dashboardId = dashboardId;
@@ -334,6 +358,23 @@ function Mapping({ input }: { input: Input }) {
                   <SelectControlled
                     control={control}
                     name={`sourceMappings.${i}`}
+                    data={sources?.map(source => ({
+                      value: source.id,
+                      label: source.name,
+                    }))}
+                    placeholder="Select a source"
+                  />
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {input.filters?.map((filter, i) => (
+              <Table.Tr key={filter.id}>
+                <Table.Td>{filter.name} (filter)</Table.Td>
+                <Table.Td>{filter.source}</Table.Td>
+                <Table.Td>
+                  <SelectControlled
+                    control={control}
+                    name={`filterSourceMappings.${i}`}
                     data={sources?.map(source => ({
                       value: source.id,
                       label: source.name,

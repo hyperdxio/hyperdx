@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { UseControllerProps } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SelectProps } from '@mantine/core';
 
 import SelectControlled from '@/components/SelectControlled';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
@@ -10,12 +11,14 @@ function SourceSelectControlledComponent({
   size,
   onCreate,
   allowedSourceKinds,
+  comboboxProps,
   ...props
 }: {
   size?: string;
   onCreate?: () => void;
   allowedSourceKinds?: SourceKind[];
-} & UseControllerProps<any>) {
+} & UseControllerProps<any> &
+  SelectProps) {
   const { data } = useSources();
   const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
 
@@ -47,7 +50,7 @@ function SourceSelectControlledComponent({
       {...props}
       data={values}
       // disabled={isDatabasesLoading}
-      comboboxProps={{ withinPortal: false }}
+      comboboxProps={{ withinPortal: false, ...comboboxProps }}
       searchable
       placeholder="Data Source"
       leftSection={<i className="bi bi-collection"></i>}
