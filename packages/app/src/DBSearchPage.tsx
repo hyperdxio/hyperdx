@@ -822,10 +822,35 @@ function DBSearchPage() {
     setQueryErrors,
   ]);
 
-  const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
+  // Filter loading state management for live tail mode
+  // This allows showing loading animations when applying filters during live tail,
+  // without kicking the user out of live tail mode (which would show "Resume Live Tail" button)
+  const [isFiltering, setIsFiltering] = useState(false);
+  const filteringTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clean up timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (filteringTimeoutRef.current) {
+        clearTimeout(filteringTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const debouncedSubmit = useDebouncedCallback(() => {
+    onSubmit();
+    // Clear filtering state after the submit completes to restore normal live tail behavior
+    if (filteringTimeoutRef.current) {
+      clearTimeout(filteringTimeoutRef.current);
+    }
+    filteringTimeoutRef.current = setTimeout(() => setIsFiltering(false), 1500);
+  }, 1000);
+
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
       setValue('filters', filters);
+      // Set filtering state to show loading animations even during live tail mode
+      setIsFiltering(true);
       debouncedSubmit();
     },
     [debouncedSubmit, setValue],
@@ -1548,7 +1573,8 @@ function DBSearchPage() {
                           showDisplaySwitcher={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
-                          isLive={isLive}
+                          // Pass false when filtering to show loading animations during live tail
+                          isLive={isLive && !isFiltering}
                         />
                       </Box>
                     )}
@@ -1660,7 +1686,8 @@ function DBSearchPage() {
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
-                            isLive={isLive}
+                            // Pass false when filtering to show loading animations during live tail
+                            isLive={isLive && !isFiltering}
                           />
                         </Box>
                       )}
