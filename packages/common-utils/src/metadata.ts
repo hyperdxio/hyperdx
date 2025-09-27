@@ -94,7 +94,6 @@ export type TableMetadata = {
 export class Metadata {
   private readonly clickhouseClient: BaseClickhouseClient;
   private readonly cache: MetadataCache;
-  private readonly clickhouseSettings: ClickHouseSettings;
 
   constructor(
     clickhouseClient: BaseClickhouseClient,
@@ -103,11 +102,19 @@ export class Metadata {
   ) {
     this.clickhouseClient = clickhouseClient;
     this.cache = cache;
-    this.clickhouseSettings = settings ?? {};
+    if (settings) {
+      this.cache.set('clickhouse-settings', settings);
+    }
+  }
+
+  getClickHouseSettings(): ClickHouseSettings {
+    return this.cache.get<ClickHouseSettings>('clickhouse-settings') ?? {};
   }
 
   setClickHouseSettings(settings: ClickHouseSettings) {
-    Object.assign(this.clickhouseSettings, settings);
+    const currentSettings = this.getClickHouseSettings();
+    const updatedSettings = { ...currentSettings, ...settings };
+    this.cache.set('clickhouse-settings', updatedSettings);
   }
 
   private async queryTableMetadata({
@@ -128,7 +135,7 @@ export class Metadata {
           connectionId,
           query: sql.sql,
           query_params: sql.params,
-          clickhouse_settings: this.clickhouseSettings,
+          clickhouse_settings: this.getClickHouseSettings(),
         })
         .then(res => res.json<TableMetadata>());
       return json.data[0];
@@ -153,7 +160,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.clickhouseSettings,
+            clickhouse_settings: this.getClickHouseSettings(),
           })
           .then(res => res.json())
           .then(d => d.data);
@@ -264,18 +271,39 @@ export class Metadata {
       : '';
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
-      sql = chSql`SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(${{
-        Identifier: column,
-      }}) as keysArr
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}`;
+      sql = chSql`
+        WITH sampledKeys as (
+          SELECT ${{
+            Identifier: column,
+          }}.keys AS keys
+          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+          LIMIT ${{
+            Int32: this.getClickHouseSettings().max_rows_to_read
+              ? Number(this.getClickHouseSettings().max_rows_to_read)
+              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+          }}
+        )
+        SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(keys) as keysArr
+        FROM sampledKeys`;
     } else {
-      sql = chSql`SELECT DISTINCT lowCardinalityKeys(arrayJoin(${{
-        Identifier: column,
-      }}.keys)) as key
-      FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-      LIMIT ${{
-        Int32: maxKeys,
-      }}`;
+      sql = chSql`
+        WITH sampledKeys as (
+          SELECT ${{
+            Identifier: column,
+          }}.keys AS keysArr
+          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+          LIMIT ${{
+            Int32: this.getClickHouseSettings().max_rows_to_read
+              ? Number(this.getClickHouseSettings().max_rows_to_read)
+              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+          }}
+        )
+        SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
+        FROM sampledKeys
+        LIMIT ${{
+          Int32: maxKeys,
+        }}
+      `;
     }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
@@ -285,9 +313,12 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+            max_rows_to_read: String(
+              this.getClickHouseSettings().max_rows_to_read ??
+                DEFAULT_METADATA_MAX_ROWS_TO_READ,
+            ),
             read_overflow_mode: 'break',
-            ...this.clickhouseSettings,
+            ...this.getClickHouseSettings(),
           },
         })
         .then(res => res.json<Record<string, unknown>>())
@@ -316,6 +347,8 @@ export class Metadata {
     column: string;
     maxKeys?: number;
   } & TableConnection) {
+    // HDX-2480 delete line below to reenable json filters
+    return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
       ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${databaseName}.${tableName}.${column}.keys`;
@@ -342,9 +375,12 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
               read_overflow_mode: 'break',
-              ...this.clickhouseSettings,
+              ...this.getClickHouseSettings(),
             },
           })
           .then(res => res.json<{ pathMap: Record<string, string[]> }>())
@@ -357,10 +393,7 @@ export class Metadata {
                 );
               }
               keys.push({
-                key: key
-                  .split('.')
-                  .map(v => `\`${v}\``)
-                  .join('.'),
+                key: key,
                 chType: typeArr[0],
               });
             }
@@ -425,9 +458,12 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
               read_overflow_mode: 'break',
-              ...this.clickhouseSettings,
+              ...this.getClickHouseSettings(),
             },
           })
           .then(res => res.json<Record<string, unknown>>())
@@ -451,6 +487,8 @@ export class Metadata {
     });
 
     for (const c of columns) {
+      // HDX-2480 delete condition below to reenable json filters
+      if (c.type === 'JSON') continue;
       fields.push({
         path: [c.name],
         type: c.type,
@@ -546,15 +584,56 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
-        const sql = await renderChartConfig(
-          {
-            ...chartConfig,
-            select: keys
-              .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-              .join(', '),
-          },
-          this,
-        );
+        const selectClause = keys
+          .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+          .join(', ');
+
+        // When disableRowLimit is true, query directly without CTE
+        // Otherwise, use CTE with row limits for sampling
+        const sqlConfig = disableRowLimit
+          ? {
+              ...chartConfig,
+              select: selectClause,
+            }
+          : await (async () => {
+              // Get all columns including materialized ones
+              const columns = await this.getColumns({
+                databaseName: chartConfig.from.databaseName,
+                tableName: chartConfig.from.tableName,
+                connectionId: chartConfig.connection,
+              });
+
+              // Build select expression that includes all columns by name
+              // This ensures materialized columns are included
+              const selectExpr =
+                columns.map(col => `\`${col.name}\``).join(', ') || '*';
+
+              return {
+                with: [
+                  {
+                    name: 'sampledData',
+                    chartConfig: {
+                      ...chartConfig,
+                      select: selectExpr,
+                      limit: {
+                        limit: this.getClickHouseSettings().max_rows_to_read
+                          ? Number(
+                              this.getClickHouseSettings().max_rows_to_read,
+                            )
+                          : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+                      },
+                    },
+                    isSubquery: true,
+                  },
+                ],
+                select: selectClause,
+                connection: chartConfig.connection,
+                from: { databaseName: '', tableName: 'sampledData' },
+                where: '',
+              };
+            })();
+
+        const sql = await renderChartConfig(sqlConfig, this);
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -563,9 +642,12 @@ export class Metadata {
             connectionId: chartConfig.connection,
             clickhouse_settings: !disableRowLimit
               ? {
-                  max_rows_to_read: String(DEFAULT_METADATA_MAX_ROWS_TO_READ),
+                  max_rows_to_read: String(
+                    this.getClickHouseSettings().max_rows_to_read ??
+                      DEFAULT_METADATA_MAX_ROWS_TO_READ,
+                  ),
                   read_overflow_mode: 'break',
-                  ...this.clickhouseSettings,
+                  ...this.getClickHouseSettings(),
                 }
               : undefined,
           })

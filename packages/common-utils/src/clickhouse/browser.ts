@@ -92,6 +92,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       },
       fetch: myFetch,
       request_timeout: this.requestTimeout,
+      application: this.application,
     });
   }
 
