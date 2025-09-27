@@ -5,6 +5,7 @@
 // please move app-specific functions elsewhere in the app
 // ================================
 
+import { getApiBasePath } from '@hyperdx/common-utils/dist/basePath';
 import {
   chSql,
   ClickhouseClientOptions,
@@ -20,7 +21,7 @@ import { getLocalConnections } from '@/connection';
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
 
-const PROXY_CLICKHOUSE_HOST = `${process.env.HYPERDX_BASE_PATH || ''}/api/clickhouse-proxy`;
+const PROXY_CLICKHOUSE_HOST = `${getApiBasePath()}/clickhouse-proxy`;
 
 export const getClickhouseClient = (
   options: ClickhouseClientOptions = {},

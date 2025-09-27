@@ -1,0 +1,45 @@
+http:
+  routers:
+    hyperdx:
+      rule: "PathPrefix(`/hyperdx`)"
+      service: hyperdx-app
+      middlewares:
+        - strip-frontend
+    hyperdx-api:
+      rule: "PathPrefix(`/hyperdx/api`)"
+      service: hyperdx-api
+      middlewares:
+        - strip-api
+    hyperdx-otel:
+      rule: "PathPrefix(`/hyperdx/otel`)"
+      service: hyperdx-otel
+      middlewares:
+        - strip-otel
+
+  middlewares:
+    strip-frontend:
+      stripPrefix:
+        prefixes:
+          - "/hyperdx"
+    strip-api:
+      stripPrefix:
+        prefixes:
+          - "/hyperdx/api"
+    strip-otel:
+      stripPrefix:
+        prefixes:
+          - "/hyperdx/otel"
+
+  services:
+    hyperdx-app:
+      loadBalancer:
+        servers:
+          - url: "http://app:8080"
+    hyperdx-api:
+      loadBalancer:
+        servers:
+          - url: "http://app:8000"
+    hyperdx-otel:
+      loadBalancer:
+        servers:
+          - url: "http://otel-collector:4318"

@@ -1,5 +1,6 @@
 const { configureRuntimeEnv } = require('next-runtime-env/build/configure');
 const { version } = require('./package.json');
+const { getFrontendBasePath } = require('@hyperdx/common-utils/dist/basePath');
 
 configureRuntimeEnv();
 
@@ -9,7 +10,7 @@ const withNextra = require('nextra')({
 });
 
 module.exports = {
-  basePath: process.env.HYPERDX_BASE_PATH || '',
+  basePath: getFrontendBasePath(),
   experimental: {
     instrumentationHook: true,
     // External packages to prevent bundling issues with Next.js 14
@@ -58,8 +59,8 @@ module.exports = {
     productionBrowserSourceMaps: false,
     ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
       ? {
-        output: 'standalone',
-      }
+          output: 'standalone',
+        }
       : {}),
   }),
 };

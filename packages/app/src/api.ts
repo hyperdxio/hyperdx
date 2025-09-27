@@ -2,6 +2,7 @@ import React from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
+import { getApiBasePath } from '@hyperdx/common-utils/dist/basePath';
 import type { Alert } from '@hyperdx/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
@@ -48,10 +49,7 @@ export function loginHook(request: Request, options: any, response: Response) {
 }
 
 // Get basePath from runtime environment
-const getApiPrefix = () => {
-  const basePath = process.env.HYPERDX_BASE_PATH || '';
-  return `${basePath}/api`;
-};
+const getApiPrefix = () => getApiBasePath();
 
 export const server = ky.create({
   prefixUrl: getApiPrefix(),

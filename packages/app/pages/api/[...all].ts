@@ -1,8 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
+import { getApiBasePath } from '@hyperdx/common-utils/dist/basePath';
 
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
-const API_BASE_PATH = process.env.HYPERDX_API_BASE_PATH || '';
+const API_BASE_PATH = getApiBasePath();
 
 export const config = {
   api: {

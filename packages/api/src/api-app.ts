@@ -1,3 +1,4 @@
+import { getApiBasePath } from '@hyperdx/common-utils/dist/basePath';
 import compression from 'compression';
 import MongoStore from 'connect-mongo';
 import express from 'express';
@@ -20,7 +21,7 @@ import passport from './utils/passport';
 
 const app: express.Application = express();
 
-const API_BASE_PATH = process.env.HYPERDX_API_BASE_PATH || '';
+const API_BASE_PATH = getApiBasePath();
 
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   resave: false,
@@ -83,10 +84,10 @@ if (config.USAGE_STATS_ENABLED) {
 // ---------------------------------------------------------------------
 if (API_BASE_PATH) {
   const apiRouter = express.Router();
-  
+
   // PUBLIC ROUTES
   apiRouter.use('/', routers.rootRouter);
-  
+
   // PRIVATE ROUTES
   apiRouter.use('/alerts', isUserAuthenticated, routers.alertsRouter);
   apiRouter.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
@@ -96,9 +97,13 @@ if (API_BASE_PATH) {
   apiRouter.use('/connections', isUserAuthenticated, connectionsRouter);
   apiRouter.use('/sources', isUserAuthenticated, sourcesRouter);
   apiRouter.use('/saved-search', isUserAuthenticated, savedSearchRouter);
-  apiRouter.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
+  apiRouter.use(
+    '/clickhouse-proxy',
+    isUserAuthenticated,
+    clickhouseProxyRouter,
+  );
   apiRouter.use('/api/v2', externalRoutersV2);
-  
+
   // Only initialize Swagger in development or if explicitly enabled
   if (
     process.env.NODE_ENV !== 'production' &&
@@ -116,7 +121,7 @@ if (API_BASE_PATH) {
         );
       });
   }
-  
+
   app.use(API_BASE_PATH, apiRouter);
 } else {
   // PUBLIC ROUTES
@@ -132,7 +137,7 @@ if (API_BASE_PATH) {
   app.use('/sources', isUserAuthenticated, sourcesRouter);
   app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
   app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
-  
+
   // TODO: Separate external API routers from internal routers
   // ---------------------------------------------------------------------
   // ----------------------- External Routers ----------------------------

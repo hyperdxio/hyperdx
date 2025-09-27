@@ -1,10 +1,11 @@
 import { Head, Html, Main, NextScript } from 'next/document';
+import { getFrontendBasePath } from '@hyperdx/common-utils/dist/basePath';
 
 export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        <script src={`${process.env.HYPERDX_BASE_PATH || ''}/__ENV.js`} />
+        <script src={`${getFrontendBasePath()}/__ENV.js`} />
         <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
         <link
           rel="stylesheet"
