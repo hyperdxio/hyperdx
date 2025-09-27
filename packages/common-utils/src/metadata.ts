@@ -347,6 +347,8 @@ export class Metadata {
     column: string;
     maxKeys?: number;
   } & TableConnection) {
+    // HDX-2480 delete line below to reenable json filters
+    return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
       ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${databaseName}.${tableName}.${column}.keys`;
@@ -485,6 +487,8 @@ export class Metadata {
     });
 
     for (const c of columns) {
+      // HDX-2480 delete condition below to reenable json filters
+      if (c.type === 'JSON') continue;
       fields.push({
         path: [c.name],
         type: c.type,
@@ -580,46 +584,56 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
-        // Get all columns including materialized ones
-        const columns = await this.getColumns({
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        });
+        const selectClause = keys
+          .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+          .join(', ');
 
-        // Build select expression that includes all columns by name
-        // This ensures materialized columns are included
-        const selectExpr =
-          columns.map(col => `\`${col.name}\``).join(', ') || '*';
+        // When disableRowLimit is true, query directly without CTE
+        // Otherwise, use CTE with row limits for sampling
+        const sqlConfig = disableRowLimit
+          ? {
+              ...chartConfig,
+              select: selectClause,
+            }
+          : await (async () => {
+              // Get all columns including materialized ones
+              const columns = await this.getColumns({
+                databaseName: chartConfig.from.databaseName,
+                tableName: chartConfig.from.tableName,
+                connectionId: chartConfig.connection,
+              });
 
-        const sql = await renderChartConfig(
-          {
-            with: [
-              {
-                name: 'sampledData',
-                chartConfig: {
-                  ...chartConfig,
-                  select: selectExpr,
-                  limit: {
-                    limit: !disableRowLimit
-                      ? this.getClickHouseSettings().max_rows_to_read
-                        ? Number(this.getClickHouseSettings().max_rows_to_read)
-                        : DEFAULT_METADATA_MAX_ROWS_TO_READ
-                      : undefined,
+              // Build select expression that includes all columns by name
+              // This ensures materialized columns are included
+              const selectExpr =
+                columns.map(col => `\`${col.name}\``).join(', ') || '*';
+
+              return {
+                with: [
+                  {
+                    name: 'sampledData',
+                    chartConfig: {
+                      ...chartConfig,
+                      select: selectExpr,
+                      limit: {
+                        limit: this.getClickHouseSettings().max_rows_to_read
+                          ? Number(
+                              this.getClickHouseSettings().max_rows_to_read,
+                            )
+                          : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+                      },
+                    },
+                    isSubquery: true,
                   },
-                },
-                isSubquery: true,
-              },
-            ],
-            select: keys
-              .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-              .join(', '),
-            connection: chartConfig.connection,
-            from: { databaseName: '', tableName: 'sampledData' },
-            where: '',
-          },
-          this,
-        );
+                ],
+                select: selectClause,
+                connection: chartConfig.connection,
+                from: { databaseName: '', tableName: 'sampledData' },
+                where: '',
+              };
+            })();
+
+        const sql = await renderChartConfig(sqlConfig, this);
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
