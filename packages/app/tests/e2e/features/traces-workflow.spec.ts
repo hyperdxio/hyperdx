@@ -25,6 +25,9 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await expect(searchInput).toBeVisible();
       await searchInput.fill('Order');
 
+      await page.locator('[data-testid="time-picker-input"]').click();
+      await page.locator('text=Last 1 days').click();
+
       const searchSubmitButton = page.locator(
         '[data-testid="search-submit-button"]',
       );
